@@ -9,8 +9,7 @@ import uuid
 import pytest
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import diff, land, lifecycle, paths, store
-from overbae.services.datasets.notebook import run as run_svc
+from overbae.services.datasets import diff, land, paths, store
 
 pytestmark = pytest.mark.django_db
 ROWS = 20_000
@@ -41,8 +40,12 @@ def test_twenty_thousand_transcripts_land_run_page_and_diff_within_budget():
     dataset.refresh_from_db()
     assert dataset.intent == "train" and dataset.source.fits("train") == (True, "")
 
-    cell = lifecycle.add_cell(dataset, title="Drop a tag", script="df = df[df.tag != 3]\n")
-    _timed(30, lambda: run_svc.execute(dataset))
+    from conftest import import_version
+
+    selected = [
+        r for r in store.iter_rows(paths.cell_path(dataset.pk, dataset.source.pk)) if r["tag"] != 3
+    ]
+    cell = _timed(30, lambda: import_version(dataset, selected, name="Drop a tag"))
     cell.refresh_from_db()
     assert cell.state == "ok" and cell.rows == ROWS - len(range(3, ROWS, 7))
 

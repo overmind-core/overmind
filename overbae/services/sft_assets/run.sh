@@ -12,7 +12,7 @@ set -eux
 # catalog (Qwen2.5 / Qwen3 / Llama 3.x) and packing preserves assistant masks.
 # transformers>=5.2: Qwen3.5 / Gemma4 multimodal architectures.
 # bitsandbytes: paged_adamw_8bit optimizer for full fine-tuning.
-pip install "trl==1.10.0" "peft>=0.17.0" "transformers>=5.2.0" "accelerate" "qwen-vl-utils" "bitsandbytes>=0.44.0"
+pip install "trl==1.10.0" "peft>=0.17.0" "transformers>=5.2.0" "accelerate" "qwen-vl-utils" "bitsandbytes>=0.44.0" "jsonschema==4.26.0"
 
 # Resolve train_image from modal_shared.modelfam (same source Modal images
 # use). Falls back to UNSLOTH_IMAGE env, then "default". Keep pins in sync

@@ -1,6 +1,3 @@
-"""Datasets: landing, the chain of cells, rows with diff marks, export, the
-agent chat and the event stream. Consumers use a cell; the active one by default."""
-
 from __future__ import annotations
 
 import json
@@ -19,37 +16,30 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from overbae.api.dataset_serializers import (
-    CellCreateSerializer,
-    CellSerializer,
-    CellWriteSerializer,
-    ChatSerializer,
     ColumnStatSerializer,
     DatasetCreateSerializer,
     DatasetPairSerializer,
     DatasetSerializer,
     DatasetSplitCreateSerializer,
-    DetailSerializer,
     RowsPageSerializer,
     SourceSerializer,
-    WorkshopControlSerializer,
 )
 from overbae.api.scoping import project_ids_for
-from overbae.models import Capability, Cell, Dataset, Project
+from overbae.api.workbench import WorkbenchActions
+from overbae.models import Capability, Cell, Dataset, DatasetTransfer, Project
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     dispatch,
+    events,
     files,
-    generation,
-    generation_worker,
     lifecycle,
-    operations,
     paths,
     selection,
     store,
+    workbench,
 )
 from overbae.services.datasets import export as export_svc
-from overbae.services.datasets.notebook import events
-from overbae.services.datasets.notebook.agent import resolve_cell
+from overbae.services.datasets.versions import resolve_cell
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +53,6 @@ class ServerSentEventRenderer(JSONRenderer):
 
 def _error(exc: lifecycle.DatasetError, http_status: int = 409) -> Response:
     return Response({"detail": exc.detail, "code": exc.code}, status=http_status)
-
-
-def _agent_owns(dataset: Dataset) -> Response | None:
-    if dataset.state != Dataset.State.DIAGNOSING:
-        return None
-    return _error(lifecycle.DatasetError("The agent is working. Wait for it.", code=dataset.state))
 
 
 _CELL_PARAM = OpenApiParameter(
@@ -95,7 +79,7 @@ _CELL_PARAM = OpenApiParameter(
     ),
     destroy=extend_schema(summary="Delete a dataset (refused while a version is used)"),
 )
-class DatasetViewSet(viewsets.ModelViewSet):
+class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
     serializer_class = DatasetSerializer
     lookup_field = "id"
     lookup_value_regex = "[0-9a-f-]{36}"
@@ -236,6 +220,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:
+        staged = source.get("uploads") or ([source["upload_id"]] if source.get("upload_id") else [])
+        if staged and DatasetTransfer.objects.filter(upload_id__in=staged).exists():
+            raise ValidationError(
+                {"source": "Publish this file through its dataset transfer receipt."}
+            )
         payload = {k: v for k, v in source.items() if v not in (None, "", [])}
         if payload.get("llm_calls") is not None:
             from overbae.services.datasets.llm_calls import Selection, SelectionError
@@ -277,14 +266,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         dataset = serializer.instance
         data = serializer.validated_data
         try:
-            if "name" in data:
-                lifecycle.rename(dataset, data["name"])
-            if "intent" in data:
-                lifecycle.set_intent(dataset, data["intent"])
-            if "capability" in data:
-                lifecycle.set_capability(dataset, data["capability"])
-            if "active" in data:
-                lifecycle.set_active(dataset, data["active"])
+            serializer.instance = workbench.update_dataset(dataset, **data)
         except lifecycle.DatasetError as exc:
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
 
@@ -295,169 +277,6 @@ class DatasetViewSet(viewsets.ModelViewSet):
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def _cell(self, dataset: Dataset, cell_id) -> Cell:
-        cell = dataset.cells.filter(pk=cell_id).first()
-        if cell is None:
-            raise NotFound("No such cell.")
-        return cell
-
-    def _cell_response(self, dataset: Dataset, cell: Cell, http_status: int = 200) -> Response:
-        return Response(
-            CellSerializer(
-                cell,
-                context={
-                    "versions": dataset.versions(),
-                    "frozen_before": dataset.frozen_before,
-                    "intent": dataset.intent,
-                },
-            ).data,
-            status=http_status,
-        )
-
-    @extend_schema(
-        summary="Add a cell at the end of the chain (queued; run to execute)",
-        request=CellCreateSerializer,
-        responses={201: CellSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="cells")
-    def add_cell(self, request, id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        body = CellCreateSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            cell = lifecycle.add_cell(
-                dataset,
-                title=body.validated_data["title"],
-                script=body.validated_data["script"],
-                note=body.validated_data.get("note") or "",
-                user=request.user if request.user.is_authenticated else None,
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        events.publish(dataset.id, {"dataset_id": str(dataset.id), "type": "cells_changed"})
-        return self._cell_response(dataset, cell, status.HTTP_201_CREATED)
-
-    @extend_schema(
-        summary="Edit a cell's title, script or note; a script change queues it and every cell after it",
-        request=CellWriteSerializer,
-        responses={200: CellSerializer},
-    )
-    @action(detail=True, methods=["patch"], url_path=r"cells/(?P<cell_id>[0-9a-f-]{36})")
-    def edit_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        cell = self._cell(dataset, cell_id)
-        body = CellWriteSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            cell = lifecycle.edit_cell(dataset, cell, **body.validated_data)
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return self._cell_response(dataset, cell)
-
-    @extend_schema(summary="Remove a cell (refused when frozen)", responses={204: None})
-    @edit_cell.mapping.delete
-    def remove_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        cell = self._cell(dataset, cell_id)
-        try:
-            dispatch.discard_cell(
-                dataset, cell, request.user if request.user.is_authenticated else None
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        events.publish(dataset.id, {"dataset_id": str(dataset.id), "type": "cells_changed"})
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @extend_schema(
-        summary="Accept a proposal: it joins the chain and the run starts",
-        request=None,
-        responses={202: CellSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path=r"cells/(?P<cell_id>[0-9a-f-]{36})/accept")
-    def accept_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        cell = self._cell(dataset, cell_id)
-        try:
-            dispatch.run_dataset(
-                dataset,
-                request.user if request.user.is_authenticated else None,
-                proposal=cell,
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        cell.refresh_from_db()
-        return self._cell_response(dataset, cell, status.HTTP_202_ACCEPTED)
-
-    @extend_schema(summary="Run the chain", request=None, responses={202: DatasetSerializer})
-    @action(detail=True, methods=["post"], url_path="run")
-    def run(self, request, id=None):
-        dataset = self.get_object()
-        try:
-            dataset = dispatch.run_dataset(
-                dataset, request.user if request.user.is_authenticated else None
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return Response(DatasetSerializer(dataset).data, status=status.HTTP_202_ACCEPTED)
-
-    @extend_schema(request=WorkshopControlSerializer, responses={200: DatasetSerializer})
-    @action(detail=True, methods=["post"], url_path="workflow")
-    def workflow(self, request, id=None):
-        dataset = self.get_object()
-        serializer = WorkshopControlSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            generation.control(dataset, **serializer.validated_data)
-            if serializer.validated_data["action"] == "resume":
-                generation_worker.schedule(serializer.validated_data["run_id"])
-        except (ValueError, generation.WorkshopRun.DoesNotExist) as exc:
-            raise ValidationError(
-                {
-                    "detail": "The workflow cannot accept this action. Inspect its current revision, state and failure before continuing."
-                }
-            ) from exc
-        dataset.refresh_from_db()
-        return Response(DatasetSerializer(dataset).data)
-
-    @extend_schema(request=None, responses={202: DatasetSerializer})
-    @action(detail=True, methods=["post"], url_path="cancel")
-    def cancel(self, request, id=None):
-        dataset = self.get_object()
-        operations.cancel(dataset.pk)
-        dataset.refresh_from_db()
-        return Response(DatasetSerializer(dataset).data, status=202)
-
-    @extend_schema(
-        summary="Send a message to the dataset's agent",
-        request=ChatSerializer,
-        responses={202: DetailSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="chat")
-    def chat(self, request, id=None):
-        dataset = self.get_object()
-        body = ChatSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            dispatch.message_agent(
-                dataset,
-                request.user if request.user.is_authenticated else None,
-                body.validated_data["message"],
-                intent_choice=body.validated_data.get("intent_choice"),
-                intent_turn_id=str(body.validated_data.get("intent_turn_id") or ""),
-                source=self._source_payload(body.validated_data["source"], dataset.project)
-                if body.validated_data.get("source")
-                else None,
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return Response({"detail": "Sent."}, status=status.HTTP_202_ACCEPTED)
 
     def _frame(self, dataset: Dataset, cell: Cell):
         path = paths.cell_path(dataset.id, cell.id)

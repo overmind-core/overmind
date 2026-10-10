@@ -178,8 +178,19 @@ def test_poll_exposes_activity_feed():
         "Checkpoint saved: checkpoint-10 (step 10)",
         "Loading checkpoint shards: done",
     ]
-    progress = progress_from_snapshot(snap)
-    assert progress["activity"] == snap.activity
+
+
+def test_provider_logs_transport_monitoring_without_training_examples():
+    payload = {
+        "policy_fingerprint": "frozen",
+        "checks": [{"key": "1:development:2", "state": "completed", "metrics": {"eval_loss": 0.2}}],
+    }
+    logs = [*_bt_logs(), {"message": "BT_MONITORING " + json.dumps(payload), "timestamp": 123}]
+    snapshot = _poll(logs=logs)
+    assert snapshot.raw["monitoring"] == payload
+    assert not any("BT_MONITORING" in item["message"] for item in snapshot.activity)
+    progress = progress_from_snapshot(snapshot)
+    assert progress["activity"] == snapshot.activity
 
 
 def test_poll_maps_histories_into_monitor_series():
@@ -297,7 +308,9 @@ def test_config_source_validates_against_installed_sdk(settings):
     pytest.importorskip("truss_train")
     settings.BASETEN_PROJECT = "overmind-dev"
 
-    job = SimpleNamespace(id="j1", name="my ft job!", base_model="Qwen/Qwen3-8B")
+    job = SimpleNamespace(
+        id="j1", name="my ft job!", base_model="Qwen/Qwen3-8B", hyperparameters={}
+    )
     src = BasetenRunner()._build_config_source(
         job=job,
         gpu_type="H100",
@@ -363,7 +376,7 @@ def test_cleanup_tmp_never_sweeps_dotfiles(settings, tmp_path):
 
 
 def test_config_source_has_no_id_kwarg():
-    job = SimpleNamespace(id="j1", name="ft", base_model="Qwen/Qwen3-8B")
+    job = SimpleNamespace(id="j1", name="ft", base_model="Qwen/Qwen3-8B", hyperparameters={})
     src = BasetenRunner()._build_config_source(
         job=job,
         gpu_type="H100",

@@ -27,7 +27,6 @@ from overbae.models import (
     User,
 )
 from overbae.services.datasets import land, paths, store
-from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
@@ -239,8 +238,15 @@ def test_native_workshop_dataset_rejects_chat_generation_in_rest_and_mcp(
         dataset,
         [{"state": "", "question": "Choose", "kind": "noul", "options": [], "target": [0.7]}],
     )
-    result = agent.Tools(dataset.pk, context.user, lambda _: None).prepare_examples({})
-    assert result["ok"], result
+    from conftest import import_version
+
+    from overbae.services.datasets import paths, store
+    from overbae.services.datasets.examples import prepare_examples
+
+    prepared = prepare_examples(
+        store.read_frame(paths.cell_path(dataset.pk, dataset.source.pk)), "eval"
+    )
+    import_version(dataset, prepared.to_dict(orient="records"))
     dataset.refresh_from_db()
     cell = dataset.active_cell
     assert cell.intent_report["eval"]["ok"]

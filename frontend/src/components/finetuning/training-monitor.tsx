@@ -4,6 +4,7 @@ import { type Query, useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import apiClient from "@/client";
+import { DevelopmentMonitor } from "@/components/finetuning/development-monitor";
 import {
   groupEvaluationDisplayRows,
   hasPendingEvaluations,
@@ -43,6 +44,7 @@ import type { MetricPoint, MetricSeries } from "@/components/finetuning/loss-cha
 import { liveSeriesPoints } from "@/components/finetuning/loss-series";
 import { ModelLiveAction } from "@/components/finetuning/model-live-action";
 import { NativeEvaluationPanel } from "@/components/finetuning/native-evaluation-panel";
+import { StageProgress } from "@/components/finetuning/stage-progress";
 import { scrubInfraLeak, userFacingJobError } from "@/components/finetuning/train/model-config";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Alert } from "@/components/ui/alert";
@@ -73,8 +75,10 @@ import { seriesColor } from "@/lib/colors";
 import { groupCostUsd, jobCostUsd } from "@/lib/finetuning-cost";
 import {
   downloadStatusLine,
+  hasStageProgress,
   progressPhaseLabel,
-  stageDescription,
+  stageDetailLine,
+  stageLabel,
   stageStatusLine,
 } from "@/lib/finetuning-progress";
 import { formatElapsed } from "@/lib/formatters";
@@ -110,7 +114,7 @@ export function WizardMonitor({
             icon={
               <Icon.finetuning
                 aria-hidden
-                className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+                className="size-6 shrink-0 [image-rendering:pixelated] invert"
               />
             }
             title="Training run"
@@ -516,6 +520,9 @@ export function TrainingMonitorPanel({
         </div>
       </div>
 
+      {focus && (
+        <DevelopmentMonitor jobId={focus.job.id} key={focus.job.id} status={focus.job.status} />
+      )}
       {snapshots
         .filter((s) => isNativeJob(s.job))
         .map((s) => (
@@ -663,7 +670,9 @@ function ExperimentRunCard({
         <HeaderStat
           label={
             native
-              ? "Validation cross entropy"
+              ? job.trainingContract?.objective === "decision_cross_entropy"
+                ? "Validation cross entropy"
+                : "Validation objective loss"
               : latestScored?.baseline_delta != null
                 ? "Score vs baseline"
                 : "Eval score"
@@ -784,18 +793,23 @@ function experimentStatusLine(s: ExperimentSnapshot): string {
     if (status === "failed" && s.job.errorMessage?.trim()) {
       return userFacingJobError(s.job.errorMessage);
     }
-    return activity.at(-1)?.message ?? "";
+    const last = activity.at(-1);
+    return last?.kind === "stage" ? "" : (last?.message ?? "");
   }
+  if (downloadLine) return downloadLine;
   const stageLine = stageStatusLine(progress);
   if (stageLine) return stageLine;
   if (isTraining) {
     const { trained_steps, total_steps } = s.progress;
     return `Training — step ${trained_steps}${total_steps != null ? ` / ${total_steps}` : ""}`;
   }
-  if (downloadLine) return downloadLine;
   const label = isDeploying ? "Deploying" : progressPhaseLabel(progress, status);
   const latest = activity.at(-1)?.message;
-  return latest ? `${label} — ${scrubInfraLeak(latest)}` : `${label} · provider stage not reported`;
+  if (latest) return `${label} — ${scrubInfraLeak(latest)}`;
+  if (["preparing", "submission_unknown", "queued", "validating_files"].includes(status)) {
+    return label;
+  }
+  return `${label} · provider stage not reported`;
 }
 
 function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; projectId: string }) {
@@ -806,14 +820,22 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
   const activity = snapshot.liveProgress?.activity ?? [];
   const status = snapshot.job.status as string;
   const statusLine = experimentStatusLine(snapshot);
-  const description = snapshot.terminal ? null : stageDescription(snapshot.liveProgress);
+  const activeStageLabel = snapshot.terminal ? null : stageLabel(snapshot.liveProgress);
+  const inlineDetail = snapshot.terminal
+    ? null
+    : (stageDetailLine(snapshot.liveProgress) ?? statusLine);
   const deployedModelId = snapshot.job.deployedModelId;
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-border/70 pt-3">
       {/* flex-wrap: the action cluster alone is wider than a ~340px card. */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <FtStatusBadge fallback="queued" solidProgress status={status} />
+        <FtStatusBadge
+          fallback="queued"
+          label={activeStageLabel ?? undefined}
+          solidProgress
+          status={status}
+        />
         {!snapshot.terminal && (
           <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-xs bg-primary" />
         )}
@@ -821,7 +843,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
           className="min-w-0 flex-1 truncate font-mono text-xs leading-none tabular-nums text-muted-foreground"
           title={statusLine}
         >
-          {statusLine}
+          {inlineDetail}
         </p>
         <ModelLiveAction
           capabilityId={snapshot.job.capability}
@@ -881,7 +903,9 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
           )}
         </ModelLiveAction>
       </div>
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      {!snapshot.terminal && snapshot.liveProgress && hasStageProgress(snapshot.liveProgress) && (
+        <StageProgress progress={snapshot.liveProgress} />
+      )}
       {/* column-reverse pins the newest line to the bottom as lines stream in. */}
       {expanded && activity.length > 0 && (
         <div

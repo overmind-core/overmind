@@ -49,7 +49,7 @@ def _auth_error(detail: str) -> MCPError:
     return MCPError("authentication_failed", "The API key is invalid.")
 
 
-def _ip_allowed(token: APIToken, client_ip: str | None) -> bool:
+def ip_allowed(token: APIToken, client_ip: str | None) -> bool:
     allowed_ips = token.allowed_ips or []
     if not allowed_ips:
         return True
@@ -114,7 +114,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
         raise MCPError("authentication_failed", "An MCP API key is required.")
 
     client_ip = (scope.get("client") or (None, None))[0]
-    if not _ip_allowed(token, client_ip):
+    if not ip_allowed(token, client_ip):
         raise MCPError("authentication_failed", "The API key is not valid for this address.")
 
     token_scope = token.scope if isinstance(token.scope, dict) else {}

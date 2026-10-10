@@ -7,12 +7,12 @@ description: Overmind Console design system — semantic tokens, shared primitiv
 
 The Console is "a quiet workshop for agent improvement" — warm minimalism, copper/gold brand, NeueBit (pixel, display + labels) and PP Neue Montreal (body), small radii, flat surfaces. Keep it; don't drift toward default Tailwind.
 
-The token spec is the root `DESIGN.md` — extend its values, don't restructure it. Tokens are declared in `frontend/src/styles.css` under `@theme inline`.
+The token spec is the root `DESIGN.md` — extend its values, don't restructure it. The Console is dark-only: palette values live on `:root` in `frontend/src/styles.css`, exposed under `@theme inline`. First paint, authentication, toasts and flow canvases stay dark regardless of stored or OS preferences. Do not add a theme selector, theme provider or preference listener.
 
 ## Color — semantic tokens only
 
 - **Never** raw Tailwind palette utilities (`bg-green-500`, `text-blue-600`, `border-amber-400`) or hex in class strings (`bg-[#1c1917]`).
-- **Status** → the four semantic tokens as a tint triplet. Tokens flip per theme, so **no `dark:` variants**: `border-success/40 bg-success/10 text-success`. Meanings: `success` = passed/healthy/connected/completed; `warning` = review/degraded/stale; `info` = running/pending/queued/training; `destructive` = failed/error/cancelled. Prefer the components — `<Badge variant="success|warning|info|error|neutral">` or `<StatusBadge status={domainStatus(state)}>` (`lib/job-status.tsx`, `lib/colors.ts`).
+- **Status** → the four semantic tokens as a tint triplet. The palette is fixed, so **no `dark:` variants**: `border-success/40 bg-success/10 text-success`. Meanings: `success` = passed/healthy/connected/completed; `warning` = review/degraded/stale; `info` = running/pending/queued/training; `destructive` = failed/error/cancelled. Prefer the components — `<Badge variant="success|warning|info|error|neutral">` or `<StatusBadge status={domainStatus(state)}>` (`lib/job-status.tsx`, `lib/colors.ts`).
 - **Categorical** — a fixed set of entity types, not status → `text-cat-1 … text-cat-6` / `bg-cat-1/10`. Assign a stable slot per type.
 - **Login / onboarding**, the always-dark cinematic surfaces → the named `--auth-*` tokens (`bg-auth-panel`, `border-auth-border`, `text-auth-text-dim`, `text-auth-accent`, …), never inline hex.
 - Neutrals → `bg-background/card/muted`, `text-foreground/muted-foreground`, `border-border`. Titles use `text-foreground`, never `text-black dark:text-white`.
@@ -40,12 +40,29 @@ Anything below `/60` is invisible. Never lower a border opacity without running 
 
 ## Geometry, type, icons
 
-- **Flat surfaces** — standard `shadow-*` utilities remain disabled. Depth = surface layering + 1px borders. Shared confirmation dialogs alone use `shadow-confirmation`, a subtle theme-aware drop shadow requested by the user.
-- Radii: `rounded-sm` for interactive primitives, `rounded-md` for containers. `rounded-lg/xl/2xl/3xl` are off-system. The Workshop bezel, landing and notebook composer frames and inner input panels use the same `rounded-md` (3px) as other pages. Workspace navigation shares the outer bezel with the content; its 248px grid column expands and collapses on route changes or the notebook's folder toggle, with a reduced-motion alternative. Mobile reveals the same navigation in the bezel while retaining the hidden notebook; it does not create a separate pane.
+- **Flat surfaces** — standard `shadow-*` utilities remain disabled. Depth = surface layering + 1px borders. Shared confirmation dialogs alone use `shadow-confirmation`, a subtle palette-matched drop shadow requested by the user.
+- Radii: `rounded-sm` for interactive primitives, `rounded-md` for containers. `rounded-lg/xl/2xl/3xl` are off-system. The Workshop bezel uses the same `rounded-md` (3px) as other pages. Dataset navigation shares the outer bezel with the content; its 248px grid column starts collapsed and expands with the notebook's folder toggle, with a reduced-motion alternative. Rows are 28px on desktop and 36px on touch layouts, with no gaps between items. Mobile reveals the same navigation in the bezel while retaining the hidden notebook; it does not create a separate pane.
 - Headings use `font-display` (NeueBit, unweighted). `font-mono` is the loaded system stack — Fira Code is not shipped, don't reference it.
 - Icons: **always the central registry** — `import { Icon } from "@/components/ui/icons"` → `<Icon.name className="size-4" />`. The glyphs are pixelarticons paths vendored into `ui/icons/glyphs.ts` (24×24 grid, 2px inset, `currentColor`); never import that module or `lucide-react` in app code; both fail `check:design`. One concept = one glyph (`Icon.delete` = trash, `Icon.close`/`Icon.failed` = the "X"). Missing a glyph? Add `name: glyph("<svg-name>")` to `ui/icons/index.ts`, the only file that may read the table, then `bun run icons:vendor` with `PIXELARTICONS_LICENSE_KEY` set (or `--source <svg dir>` of an unlocked package) — typecheck fails until the table is regenerated. Removing one is the reverse. There is no icon package to install. Sizes: `size-4` in buttons, `size-[17px]` in nav, `size-3` for dense chips.
 
 ## Two duplicated table implementations
+
+Workshop cells retain their existing markup and controls inside the same React Flow
+infrastructure used by Agent. Cell headers drag on a 20px grid; elbow edges follow
+recorded lineage. Steps cascade downward, with sibling branches side by side on
+the same horizontal layer. Cells open full-width at scale 1. Preserve max-w-7xl
+and original notebook padding; explicit zoom and Fit view change only the camera.
+Reset and linked-cell focus restore scale 1; resizing preserves the chosen zoom.
+Reuse Agent trajectory controls and its toggleable, persisted minimap treatment.
+The minimap toggle shares the left-hand control box with the dataset sidebar
+button; there is no cell-search button or cell-selector strip.
+Positions persist per project/dataset in the browser and never
+change execution. A breadcrumb-adjacent version chip replaces the run bar, with
+read-only iteration selection and explicit exact-cell restore. Canvas wrapper
+styles must not redesign cells or the rows grid.
+The default canvas follows the active output's recorded ancestors; All iterations
+reveals history explicitly. Condition chips sit just above destination handles,
+with an opaque card surface and input-token border, not on the shared branch rail.
 
 A table fix applied to one codepath silently misses the other:
 
@@ -68,7 +85,7 @@ The left sidebar logic in `src/routes/_auth.tsx` and `src/components/ui/sidebar.
 
 - Package manager is **Bun** (`bun add`, `bunx shadcn@latest add …`) — never pnpm/npm/yarn. New shadcn components get adapted to the token system after generation.
 - **Biome must not format assets.** `.svg` is excluded in `biome.json` — keep it excluded and never run `biome … --write` over `**/*.svg` (2.5.x sorts attributes and corrupted a logo's XML prolog).
-- Verify every UI change, in both light and dark:
+- Verify every UI change in the dark-only Console, including first paint with a previously saved light preference:
 
 ```bash
 cd frontend

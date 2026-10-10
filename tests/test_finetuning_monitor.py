@@ -153,8 +153,9 @@ def test_cancel_calls_remote_runner_and_sets_cancelled():
 
     mock_runner = MagicMock()
     with (
-        patch("overbae.services.finetuning_runner.get_runner", return_value=mock_runner),
-        patch("overbae.celery.app") as celery_app,
+        patch("overbae.services.training_cancellation.get_runner", return_value=mock_runner),
+        patch("overbae.services.training_cancellation.celery_app") as celery_app,
+        patch("overbae.tasks.finetuning.collect_training_evidence.apply_async"),
     ):
         r = _auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
 
@@ -177,7 +178,10 @@ def test_cancel_still_succeeds_when_remote_cancel_fails():
     )
     mock_runner = MagicMock()
     mock_runner.cancel.side_effect = RuntimeError("provider down")
-    with patch("overbae.services.finetuning_runner.get_runner", return_value=mock_runner):
+    with (
+        patch("overbae.services.training_cancellation.get_runner", return_value=mock_runner),
+        patch("overbae.tasks.finetuning.collect_training_evidence.apply_async"),
+    ):
         r = _auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
     assert r.status_code == 200
     job.refresh_from_db()

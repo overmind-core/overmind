@@ -10,9 +10,10 @@ import logging
 import math
 from typing import Any
 
+from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.core.errors import InputValidationError
 from overbae.services.serving_context import evaluation_budget, serving_plan
-from overbae.services.training_contract import dataset_objective
+from overbae.services.training_contract import dataset_objective, validate_effective_batch
 
 from .analysis import build_analysis
 from .candidates import build_candidate, dataset_total_tokens
@@ -47,6 +48,18 @@ def get_recommendation(
         capability = Capability.objects.get(pk=capability_id, project_id=dataset.project_id)
 
     stats = dataset_stats(dataset, cell)
+    if dataset_objective(cell or dataset.active_cell) in DECISION_OBJECTIVES:
+        return {
+            "task_type": "decision",
+            "task_type_source": "declared_contract",
+            "dataset": stats,
+            "candidates": [],
+            "excluded": [],
+            "shown": [],
+            "skill_weights": {},
+            "benchmark_snapshot": {},
+            "capability_context": None,
+        }
     if capability is not None:
         task_type = classify_capability_task(capability)
         source = "capability" if task_type != "unknown" else "unknown"
@@ -106,6 +119,8 @@ def estimate_for_hyperparams(
     from overbae.services.finetuning_pricing import estimate_training_run  # noqa: PLC0415
 
     dataset = Dataset.objects.get(pk=dataset_id)
+    if active_backend() in {"modal", "baseten"}:
+        validate_effective_batch(hyperparameters or {})
     stats = dataset_stats(dataset, cell)
     entry = find_catalog_model(base_model)
     if entry is None:

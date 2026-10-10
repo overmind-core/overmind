@@ -1,267 +1,228 @@
 ---
 name: data-workshop
-description: Data Workshop internals — Dataset and Cell, derived versions and the use gate, Parquet identity, the sandboxed runner, agent engines and tools, reviewed preparation, synthetic examples, shared splitting and export. Use when changing datasets, cells, versions, the notebook runner or agent, landing, alignment, diff, or dataset export.
+description: Data Workshop internals — source landing, immutable dataset pipelines and runs, lineage-bound external imports, version inspection and consumer pinning. Use when changing these services, Console screens or MCP contracts.
 ---
 
 # Data Workshop
 
-A dataset is a source and a chain of cells. Every frame is Parquet; versions are derived, never stored; one gate freezes what consumers use; every edit goes through `lifecycle.py`, from the chat, REST or MCP.
+The native coding agent owns intelligence. The platform stores evidence and runs
+explicit operations. Source landing does not diagnose, start a chat turn, generate
+examples or resume a platform agent. Chat, mutable-cell and replay endpoints are removed, together with their Console callers. Historical Cell scripts, reviews and frames remain readable. Old conversations, generation records and provider receipts are archived in DatasetHistory before their runtime tables are dropped.
 
-## Model
+## Active path
 
-- `Dataset`: name, source kind/spec, `capability` and `intent` (`train` | `eval` | `explore` | `pending`; capability is proposed by `alignment.rank`, intent comes only from the user, and both freeze at first use), `capability_rank`, `active` (FK `Cell`, null = the last cell that ran), `state` (`landing` | `diagnosing` | `idle` | `running` | `error`), `chat` (the one conversation, a JSON list of turns), `agent_id` (the Cursor engine's session), `agent_messages` (the native engine's OpenAI message list, trimmed to a bounded tail) and `agent_turn_key` (the last Celery task id to run a turn, so an acks_late redelivery is a no-op).
-- `Cell`: one transformation and the frame it left — `position` (0 = the source), `title`, `script` (a Python body over `df`), `note`, `state` (`proposed` | `queued` | `running` | `ok` | `failed`), `rows`, `columns`, `fingerprint`, `input_fingerprint`, `intent_report`, `capability_report`, `review`, `quality_report`, `stats`, `used_at`.
-- Frames live only at `MEDIA_ROOT/datasets/<id>/cells/<cell>.parquet`. Every frame carries `source_row`: row identity, not data. The runner rebuilds it from the index when a script drops the column; `services/datasets/diff.py` joins on it for the row-level and value-level diff the grid and the agent show. The grid, the column count and the agent's tool results hide it; the export keeps it.
-- The Console also hides `_overmind_provenance` and `_overmind_document_id` from table columns, filter choices and column counts. It remains internal row lineage for contamination checks; generation never removes that lineage to change the table presentation.
-- Versions (`Dataset.versions()`): the source is 1.0, each cell after it a minor, a used cell the next major.
-- `use.check(dataset, intent, cell=)` checks the dataset's intent, readable frame and technical format without changing it; validators, readiness tools and estimates call it. `use.use` / `use.freeze` set `used_at` only in the transaction creating the consumer's row, so a refused launch never freezes a version. The FK PROTECTs the cell. A training job pins `cell`, `validation_cell` and `eval_cell`; later consumers read those pinned cells. Used cells and every earlier cell are frozen, together with intent and capability.
-- `use.check` performs the same validation without freezing. Quality findings never block use: missing, failed, unknown, sampled or stale reviews appear as **Review recommended** in the workshop, and users may continue without approval. Reviews cover the checks declared in the saved preparation plan; there is no universal required checklist. Readiness reports technical, preservation, coverage and semantic outcomes separately. `record_quality_review` executes a read-only audit script returning only named boolean-or-null check columns with the original DataFrame index; the runner preserves `source_row`. Explicit identities must copy the original values, not new row numbers. Output shape and identity errors report their exact mismatch. There must be exactly one result per original row. The server derives results, checked/failed/unknown counts and failing source-row examples; caller-supplied counts and verdicts are not trusted. The script and results are persisted against the frame, intent and capability context. Unexecuted or unplanned reports cannot yield Checks passed. These are agent-authored audits, not independent proofs of correctness; unknown semantic claims must remain null, and renderer fidelity requires exact comparison with the actual renderer. Declared input/output schemas are checked deterministically with JSON Schema and reported as advisory capability findings; no external schema references are fetched. Dataset summaries expose active-version readiness; MCP cell contracts expose warnings separately from technical fit. Training setup does not repeat workshop review recommendations.
-- Dataset names are not unique; every tool result carries the id and the resolver prefers ids. Training warns about train/eval or train/validation overlap by normalized input content, trace/conversation identity, configured groups or synthetic seed lineage. It never silently removes those rows.
+- `services/datasets/dispatch.py`: create, split and attach sources.
+- `tasks/datasets.py`: landing and deterministic pipeline execution on the batch
+  prefork worker; the reaper fails expired runs without replaying them.
+- `services/datasets/workbench.py`: shared REST/MCP pipeline, import and publication
+  lifecycle. `api/workbench.py` and `mcp/tools_workbench.py` adapt it.
+- `models/dataset_pipeline.py`: immutable DatasetPipeline recipes and durable
+  DatasetPipelineRun receipts, source/output/artifact FKs and fingerprints.
+- `pipeline_packages.py`, `pipeline_runner.py`, `pipeline_bindings.py`: retained
+  script packages, dedicated container execution and explicitly enabled source bindings.
+- `services/datasets/versions.py`: version/UUID resolution without importing an agent.
+- The Console landing page is a project dataset table. Rows open the existing
+  cells on a grid-snapped flow canvas; the folder button reveals compact,
+  project-scoped navigation. Chat and funding controls are removed. A version chip
+  beside the dataset name selects historical iterations and restores exact cells;
+  its execution details expose revisions, parameters, measured steps and previews.
+  Connections follow recorded parents. Moving cells never changes dependencies.
 
-## Landing and measuring
+New revisions require a retained Python package with native-agent-authored stages.
+Package-free historical revisions stay readable, but validation, new execution and
+bindings reject them with pipeline_package_required. REST and MCP reject inline
+operation definitions; the in-process declarative executor is removed. Project-owned families have immutable numbered
+revisions; `derived_from` creates a separate attributed family. Reuse the exact
+revision across compatible sources in the same project. Packages execute only in
+the dedicated Docker controller: approved immutable image IDs, no network, host
+mounts, credentials or socket inside the job, bounded resources and retained logs.
+Registration and static validation never execute code. Docker records process exit
+status; script-authored status files do not establish completion. Dependencies are
+baked into the approved runtime. Setup and package protocol: `docs/workshop-pipelines.md`.
+External semantic/provider work remains native-agent-owned and imported with lineage.
 
-The Console upload composer requires a written prompt and ready source files, with purpose initially pending. The trace source dialog retains **Choose in workshop**, **Data exploration**, **Evaluation**, **Training**, and **Train + eval**. REST and MCP accept a written request, source data, or both. The original request lives in `Dataset.brief`, independently of inferred task context and train/eval intent. `start_dataset` exposes intent-first creation through MCP. A draft has source kind `pending` and no source cell; `POST /datasets/{id}/source/` or `overmind dataset upload FILE --dataset ID` attaches its first source. Attaching refuses a busy dataset or an unfinished chain. In an existing workshop, the same endpoint or chat with `source.uploads` appends an **Added files** cell after the current chain. The cell becomes active; earlier frames and frozen consumer versions are unchanged. Imported batches are retained at `attachments/<cell>.parquet`, fingerprinted, and replayed by the runner. Batch source-row identities are allocated above existing identities; edits that introduce a collision fail explicitly. Original bytes and file/row evidence remain available. Multiple attachments land atomically. Request identity prevents worker redelivery from merging twice. The chat composer accepts selection, drops and pasted files, retains drafts on rejected requests, and allows an attachment-only message with a merge default. MCP impact is CLI-guided through the existing `--dataset` upload, with upload guidance and bounded source metadata exposed in MCP resources. Capability offers **Decide from the rows**, **None**, or a project capability. REST and MCP source creation distinguish an omitted capability (infer) from explicit null (unbound); attaching to a draft preserves its capability choice.
+A run request key is unique per dataset; revision keys are project-scoped. Identical retries recover the same record;
+changed content conflicts. Pipeline creation does not execute. Runs bind immutable
+source cell IDs and checksums; all output is measured before atomic publication.
+Workbench inspection pages recipes and receipts independently with pipeline_offset,
+run_offset, binding_offset and limit (20 by default, at most 100), returning total and next_cursor.
+Each successful run publishes all step cells atomically. Preview retains samples
+and checks but publishes no cells. Absolute min_rows/max_rows checks are deferred in previews and enforced
+on publication; preservation, schemas and lineage are checked in both modes.
+Step check_results retain passed/failed/deferred checks with expected/actual counts
+on failure. Static validation warns about undeclared output lineage without claiming
+runtime failure. Run receipts expose queue age, a polling interval and terminal time.
+Bindings start paused, pin a revision and
+parameters, and rebuild full source snapshots, including late trace changes and
+removed matches. Checkpoint and cells commit together. Failed attempts pause on
+the next inspection; re-enable or revise explicitly to authorize another attempt.
+Scheduled/ingestion bindings are checked by the dedicated controller, not an agent;
+trace snapshots are capped at 10,000 selected traces and reject overflow.
+Pipeline receipts expose the current measured stage, pinned source row count and
+output row count once written. A running stage is not a percentage or an ETA.
+Landing claims also bind attachment-request identities, so a cancelled delivery
+cannot consume a later attachment. Paired source claims are atomic; a cancelled
+or replaced member releases its unclaimed partner with a retryable source error.
+A failed or cancelled run leaves the selected and consumed versions untouched.
+Cancellation prevents publication; it does not claim to kill an in-flight calculation.
+Worker deadlines and leases bound execution. Unresolved work is never blindly replayed.
 
-PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images land as evidence rows through `documents.py` in the batch worker, capped at 100 MB per document. Upload inspection returns `rows=null` for documents; extraction never runs in the HTTP request. Docling preserves native PDF text, page numbers and bounding boxes. `ocr.py` runs local Tesseract on pages without native text and pages with embedded images; native text regions are masked to avoid duplicate recognition. PDFium renders one page at a time, capped at 16 million pixels and an 8,000-pixel edge. Direct images are capped at 64 megapixels, normalized using EXIF orientation and composited on white for transparency before OCR. Recognition is capped at the same 16 million pixels and 8,000-pixel edge; boxes map back to upright original-image pixels. Animated, corrupt and unsupported image encodings are rejected. OCR has a 60-second page timeout and a 20-minute document budget. The Docker image includes Tesseract with English and orientation data; non-Docker workers need the same system packages. OCR rows record the engine/version, English language and mean word confidence (0–100); artifact metadata lists OCR pages and image dimensions/orientation. File-level extraction progress is persisted in `source_spec.landing_progress` and published over SSE until the atomic landing finishes. Console attachments show image thumbnails and distinguish upload readiness from extraction. Complex reading order and visual tables are not reconstructed. Missing text and extraction limitations remain explicit; unreadable documents do not land partial results. Original upload bytes are copied under the dataset's `sources/<sha256>` and exposed through a project-scoped download. `source_spec.sources` records hashes, parser versions and limitations. Rows retain document identity and evidence references in `_overmind_provenance`; document identities participate in split grouping. Extraction never creates training answers.
+For deployment, stop old Workshop agent workers before the API cutover. A 3.0
+deployment does not acknowledge cancellation of a model request submitted by an
+older worker. Preserve historical receipts and reconcile unknown provider outcomes.
 
-The Console keeps one notebook page with the source at the top. Source details expand within that cell; transformation execution details expose input/output fingerprints and duration. Row expansion reveals evidence references. Selecting a cell scopes chat without changing the active version.
+## Sources, identities and versions
 
-The Console landing page centres “Ready to train?” in the shared Mondwest empty-state headline above a bottom-anchored composer without a footer row. The plus menu offers **Add files** and **Select from traces**. File selection, pasted files and page drops attach compact filename chips inside the input, beside the plus and send controls. Clicking a chip opens file type, size, row count and upload details; failed attachments expose retry and removal. There are no prompt shortcuts or Ask/Auto controls. Dataset purpose follows explicit user intent, never table shape. A second sidebar beside the main navigation groups dataset workspaces by project; it shares a continuous rounded outer bezel with the content. Its column expands on entry and collapses on exit; reduced motion switches immediately, and closed navigation is inert with dataset polling disabled. Single-line workspace rows retain activity status, with full names, source types and row counts in hover/focus details. Outlined search, left-aligned pagination and deletion remain available; touch layouts keep deletion visible. It tucks away inside the cell workshop; mobile exposes it through **Workspaces**. Changing project clears the draft text and attachments. Start requires nonblank prompt text and at least one file, and waits for all retained files to be ready. The button, form submit and Enter share the same guard. Shift+Enter inserts a newline; IME composition does not submit. **Select from traces** opens the source dialog; pasted rows remain API-only. Creation supports up to 100 removable uploads. Each completed file is counted by `POST /api/uploads/{id}/inspect/` with its byte `size`; `source.uploads` carries their ids in selection order and `land.read_uploads` combines the rows before any split. The source dialog defaults **Train + eval** to a 30% evaluation share and previews the backend's half-up row count, with at least one row per dataset. File names, byte sizes and row counts are retained in `source_spec.files`.
+Datasets retain a written brief and explicit train/eval/explore/pending purpose.
+A missing purpose stays pending. Capability inference remains a bounded landing
+hint, not a substitute for user intent. A capability is optional for data-first work.
+Name, purpose, capability and default-version changes use lifecycle services.
 
-`services/datasets/land.py` writes cell 0 (files, pasted rows, or traces: one row per trace with the `TRACE_MANIFEST` columns — identity, runtime, `input`/`output`, wire `messages`/`tools`, `score` from the trace's last scored `TaskExecution` — two queries per chunk of 200 traces, no unit carving; oversized cells are bounded with preview markers), measures it. An `llm_calls` source lands one row per `llm_call` span (`span_id` and `origin_trace_id`, never `trace_id`), commits `idle`, and does not queue a workshop turn. A trace source enters through `services/datasets/selection.TraceSource` (REST create, the MCP tool and the landing task all parse the same payload): explicit `trace_ids` or a traces-list selection, unknown filter keys refused, and `count()` run before the dataset row is created so an empty selection is a 400 / `no_traces`, never a dataset in `error` (`measure.frame`: `contract.measure` for the intent report, `alignment.capability_contract` for the row-level one, `contract.stats`, fingerprint), and proposes `capability_rank`. Landing preserves an explicit intent; without one, it stays `pending` while the agent explores. Table shape cannot choose training versus evaluation. Landing (`tasks/datasets.land`) runs on the `batch` queue, commits both halves atomically as `diagnosing` (never an intermediate `idle`), and queues `diagnose`. Files land unaltered: `files.py` rejects rows wider than their header, repeated columns and non-UTF-8 input; CSV columns become numeric only when every value spells a number exactly. `contract.training_line` builds the same `{messages, tools?}` line for validation and training export. A `Landing` is the source read once; `dispatch.create_split` makes a `<name> train` and a `<name> eval` dataset with intents fixed and lands both from one read, cut by `Landing.split(eval_percent, position)` (`head` | `tail` | `random`, at least one row on each side); each `source_spec.split` names the role and the sibling.
+Frames are Parquet under `MEDIA_ROOT/datasets/<dataset>/cells/<cell>.parquet`.
+Cell IDs bind versions; displayed version labels are derived by Dataset.versions().
+Source identity is `source_row`, not the current display position. The Console
+hides internal lineage columns, while export preserves them. SQL query responses
+decode declared JSON results, including aliases and JSON expressions, without
+reinterpreting ordinary text that happens to look like JSON.
 
-## Running cells
+CLI uploads use DatasetTransfer receipts: a project request key binds SHA-256,
+byte count and destination recipe. Byte writes and publication serialize on the
+transfer, and publication persists the dataset IDs and landing task before
+dispatch. Repeating completion recovers an unacknowledged broker handoff; the
+landing task's claim prevents duplicate cells. Unscoped staging endpoints cannot
+access managed transfer bytes. An explicit json_rows_field selects a top-level
+JSON array and is retained in extraction metadata. MCP get_job(dataset_transfer)
+reads these facts without dispatching. CLI upload states are publication snapshots
+(`state_scope=at_publication`), not
+current landing status. `--wait` observes terminal landing; MCP `get_job` reads
+current progress. First-source attachment
+preserves a draft; later attachment appends a new version. Original document/image
+bytes, extraction metadata and row evidence remain retained. Local English Tesseract
+OCR covers scanned PDF regions and PNG/JPEG/WebP images. Image orientation and
+source coordinates survive extraction. OCR does not reconstruct visual tables.
+If the primary PDF parser returns no text on a page, `pdf_text.py` recovers the
+encoded layer through PDFium before OCR. This includes Type 3 text layers.
+`native_text_recovery` retains affected pages, engine/version, row/character
+counts and non-whitespace control-character count; rows carry their own method
+and regions. Encoding artifacts remain unchanged and flagged. Recovery does not
+certify visual fidelity or partial omissions on otherwise populated pages.
+Documents are capped at 100 MiB; PDFs at 2,000 pages. Upload reservations return
+the file-type byte limit, and chunk writes enforce it before landing. PDF page
+limits are checked before extraction. `overmind://dataset-upload` exposes these
+limits as numeric fields. Single and batch uploads persist file/stage progress;
+PDF OCR also reports total pages and completed/total OCR pages through
+`get_job(kind=dataset_run).progress.landing` and dataset inspection.
+`inspect_dataset` pages source metadata independently with `source_offset` and
+`source_limit` (default 10, maximum 20). Follow `source_page.next_cursor`; response
+budgets may shorten a page. Complete checksums and extraction/OCR metadata survive
+pagination, rather than being replaced by truncated summaries.
 
-Raw question-style sources include their state, context, evidence, passage, text and runtime options in content identity. Targets and source metadata do not distinguish otherwise identical inputs. A single question still matches the same plain-text input. Unknown schemas should expose a complete `input` before relying on content checks. Existing source lineage is immutable; correcting the identity logic does not rewrite already-landed hashes.
+Row storage preserves heterogeneous scalars and integers outside signed 64-bit
+range as JSON. Mixed numeric columns also use JSON when float promotion would
+lose integer precision. Shared pandas readers must preserve these values and
+nullable integers without another inference pass. This is storage fidelity,
+not agent-authored normalization; old immutable cells are not rewritten.
+`query_dataset` bounds its JSON output to 32 KiB as well as 100 rows. Oversize
+responses return `query_result_too_large` without clipping values; project or
+aggregate in SQL, or export the exact cell. A separate configurable execution
+deadline defaults to ten seconds and returns `query_timeout`; source cells and
+later queries remain usable. The byte/column budget is enforced while reading
+results, before building an unbounded Python result.
+Results above 200 columns also fail rather than omitting column metadata.
+MCP Workshop run summaries omit bulky row examples and preview samples from
+routine polling/history. `evidence_resource` points to the unchanged full receipt;
+measured progress, checks, lineage identities and timings stay inline.
+Preview duration and script runtime phases are measured separately from queue
+time. Runtime cleanup confirmation never implies publication success.
+Original sources can be downloaded through `overmind dataset export DATASET --source SHA256 --output FILE --json`; the CLI verifies bytes, refuses redirects
+and existing destinations, and removes checksum failures.
+The installed upload CLI handles one file per transfer. Serial attachments
+combine new rows with the preceding cell into a new version; wait for landing
+between attachments. Atomic REST batches have no resumable CLI/MCP handoff.
+Document-limit reservation errors expose `file_too_large`; no receipt is created.
 
-An interrupted landing that the broker redelivers while the dataset is still `landing` fails with a worker-memory/retry message before rereading the source. This bounds worker-loss retry loops. File landing scans names and exact CSV numeric types across the whole source, then streams Arrow batches through a disk spool before publishing a fixed-schema Parquet file. Late columns and JSON values remain intact. JSON arrays retain their explicit size cap; use JSONL for large JSON inputs. Source train/eval splitting still builds the shared component index and retains its row collection; single-source landing does not. Completed landings remain idempotent. Both halves of an interrupted split fail together.
+External results use either at most 2,000 inline rows/4 MiB or a project-scoped
+uploaded artifact cell and fingerprint. Every row retains source_row or supplies
+all contributing identities in \_overmind_parent_rows. The provenance service
+validates every parent and preserves content/group contamination identities.
+Scripts must emit the actual source_row or intentional parent declarations;
+landed fields are data, not instructions to adopt as transformation lineage.
+The original source remains unchanged.
+An artifact FK prevents disposal of a referenced uploaded output. External execution
+is recorded as external_attributed. Never promote source references or supplied
+human-review flags into proof of semantic correctness.
 
-- `notebook/run.py` runs the queued cells in position order. A cell whose script and `input_fingerprint` are unchanged keeps its frame. The first failure stops the run and leaves the rest `queued`; the last good version stays active.
-- `notebook/runner.py` owns a file-backed result and its temporary workspace; `cell_runtime.py` runs the isolated script. A top-level `transform_batch(df)` explicitly selects row-local batch execution. Read-only `inspect_batch(df)` visits every row in bounded frames, with an optional `finish_inspection()` for accumulated results; no cell is published. Global scripts still receive the complete `df` and `source`; batch scripts never receive a whole-source frame. Batch output schemas are inferred over all returned rows before publication, and a failed batch publishes nothing. The script CPU/wall limits are 900/1100 seconds, below the chain task limits. Parent previews, proposal membership/instruction checks, inherited provenance and deterministic quality audits read bounded rows or disk indexes. Every row is checked; only examples are sampled.
-- Global sampling uses `sample_rows(rows, seed, stratify_by, target_type, minimum_per_stratum)`. The workshop tool applies a recorded cell with the reproducible `df = sample_rows(...)` recipe. Nested paths such as `decision.kind` need no helper column. The trusted runtime counts strata, allocates minimum coverage and largest-remainder remaining capacity, retains reservoir positions, then emits unchanged rows in source order. It never loads the source or selected payloads as one DataFrame. Missing fields, impossible counts and invalid target distributions fail without a partial cell. Sampling retains lineage but is not a group-disjoint split. Truncated diagnostic stdout explicitly reports its byte limit; it is not a complete data artifact. The agent reuses saved whole-source evidence, prefers bounded queries on large inputs, distinguishes joint-stratum infeasibility from individual-field coverage, and revises its plan when recovery changes the actual recipe.
-- `notebook/runner.py` is the sandbox: an rlimited `python3 -I` child with `pd`, `np`, `source` and `df` bound, pandas/numpy file IO disabled, imports audited against `notebook/libraries.py` (the stdlib, a preloaded tier baked into the worker image, and an installable wheel-only tier that `install` pulls into `MEDIA_ROOT/libraries/<project>/`).
-- `lifecycle.py` holds every edit: `add_cell`, `edit_cell` (re-queues everything after), `remove_cell`, `accept_proposal`, `set_active`, `set_intent`, `set_capability`, `delete_dataset`.
-- `run`, `diagnose` and `turn` run on the `interactive` queue. Every busy transition goes through `lifecycle.enter_busy`, which moves `updated_at` with the state; `reap_stuck_runs` (beat) measures a busy state's age from it against that state's own hard limit. Live progress is Redis pubsub (`dataset:<id>`) replayed over the SSE `events/` endpoint.
+## Checks and consumers
 
-## The agent
+The platform measures format and change impact on the published output. Semantic
+quality remains unmeasured unless actual attributable evidence exists; technical
+compatibility is not a semantic pass. Existing reviews stay attached to their exact
+historical cells. Do not create a universal quality-approval gate.
 
-The dataset's chat is an independent workshop agent scoped to one dataset's
-chain; it is separate from the platform's MCP agent surface. `notebook/agent.py`
-owns everything the page sees: the `Tools` class, the one `TOOL_SPECS` table of
-tools — `status`, `record_preparation_plan`, `prepare_examples`, `chunk_text`, `sample_rows`, `query`, `diff`, `try_script`, `inspect`, `add_cell`,
-`edit_cell`, `remove_cell`, `set_active`, `set_intent`, `set_capability`,
-`rename`, `install`, `seed_examples`, `add_synthetic_rows`, `generate_examples`, `record_quality_review`, `check_semantic_quality` — the step and event shapes, the persisted turn and billing
-(`record_workshop_usage`, service `data-workshop`, funding source, engine and model in the metadata).
-Every tool result is JSON-safe. Rejected calls expose `{ok: false, error, failure}` with a classified code, attempts and corrective action. Three identical failure signatures stop the workflow even when successful inspections intervene. Four identical read operations without a data or plan change stop a no-progress loop. A run has a 120-action ceiling. `status.available_tools` describes legal actions in the current state; native engines refresh schemas each round, while Cursor retains a fixed session inventory and shares the same guards. `edit_cell`
-requires an explicit `version` (version string or cell UUID); missing, blank or
-misspelled selectors must never fall back to editing the active cell. `status`
-carries each cell's script so `edit_cell` has something to edit. The system
-prompt (`notebook/prompts.py`) inlines the workshop text, the intent playbook,
-the capability card, the library list and `context.workshop_context`: shared
-downstream SFT/model-eval requirements plus whole-frame source and active-version
-profiles. Profiles are measured with the frame and retained in its stats for bounded-latency MCP inspection. Native profiles recognise probability targets and source/kind families. Profiles group instructions, task labels, input/output shapes and tool
-schemas; all rows are counted, with 16 retained families and eight clipped examples.
-Unlisted-family row counts are explicit and require targeted queries. This is
-structural context, not a semantic audit. MCP `inspect_dataset` exposes the same
-`preparation_context`; the volatile chain arrives through `status`.
+Preserve full probability targets, option order, weights, repeated observations and
+valid blank states. Do not derive argmax labels or invent distributions from means.
+Exploration measures sampling feasibility and allocations; derivation copies a
+complete source. Sample selection runs externally and returns through the import
+contract. Partition plans keep related content, declared groups and synthetic
+seeds together. Unknown explicit group fields fail construction; projected-away
+groups remain usable through preserved lineage. Partition request keys serialize
+at project scope. Generated member names reserve space for the role suffix while
+retaining the full plan name.
 
-Sandboxed SQL exposes manifest-declared nested columns as JSON, while ordinary string columns remain strings. Nested text uses `json_extract_string(column, '$.field')`; arithmetic arrays require an explicit numeric cast. MCP inspection and dataset jobs expose bounded `tool_activity` counts and failure details from persisted events, including recovered failures. Missing event history remains unknown; thinking content is not included.
+Group identity aliases are shared by lineage recording and partition validation.
+A declared `content` column has a separate group identity from internal input
+fingerprints, including after projection removes that column.
 
-`check_semantic_quality` executes named semantic questions against actual rows and declared evidence/answer columns, using Jev with generative fallback for server-funded turns or the selected ChatGPT model for personally funded turns. Semantic requests include the original user brief, declared intent and exact version’s preparation specification; that task context is part of the audit cache contract. Concurrent task changes reject stale results. Task alignment cannot invent harder difficulty or style requirements. Answer support requires separate answer and independent evidence columns. Each call checks at most 200 rows, packed against the transport's UTF-8 state/question budgets; oversized groups split without truncating evidence. Every completed batch checkpoints results and usage before progress is emitted. Repeated calls reread the saved audit and resume the same frame/context/check contract; changed audit checkpoints cannot overwrite concurrent work. Persisted batch IDs make billing reconciliation idempotent on resume. Results are boolean/null, unprocessed and unsupported rows remain unknown, and reports stay advisory. The persisted audit records row identities, decisions, confidence, fallback and usage; status and MCP expose a bounded summary, not the full resumable state. Both quality tools share `review.record_quality_results`, which checks whole-frame coverage and locks the version/context before merging results. The semantic tool never edits rows, invents labels, or grants approval to a transformation. Deterministic scripts remain the tool for exact rules; generation requires an explicit request and semantic changes require source evidence.
+`use.check` verifies readability and technical fit. `use.use` / `use.freeze`
+pin exact cells in the consumer transaction. Training pins train/validation/eval
+cells atomically and does model-specific preprocessing outside Workshop.
+Later transformations append; they do not rewrite these frames.
+Sources and successful versions remain readable after failures or cancellation.
 
-`notebook/engines/` drives the model. Without a personal ChatGPT selection, `engines.select(user)` walks
-`core.model_registry.WORKSHOP_ENGINES` — Cursor, then OpenRouter, then the first
-of OPENAI / ANTHROPIC / GEMINI keys — and both engines take the same tools and
-emit the same events. Startup requires `OPENROUTER_API_KEY`, so an engine is
-always configured. `engines/cursor.py` runs a resumable Composer session
-over a workspace `notebook/workspace.py` writes per turn (`AGENTS.md`,
-`cells/*.py`, `frames/<version>.parquet`) with the tool table as custom tools.
-Cursor SDK 1.0.31 or newer restricts the session to the `mcp` tool group,
-with shell and subagents disabled; the full workshop context is sent in each
-request. Batches cannot bypass the tool callbacks through direct service imports.
-Interrupted local runs are reconciled against that dataset's `.agent` store through
-an explicit SDK bridge. Cancellation verifies the saved agent/run identity and waits
-for acknowledgement; the detached cloud cancellation path cannot resolve local runs.
-The adapter forwards SDK `thinking` events, including their reported duration,
-into the same thinking stream the native engine uses.
-`engines/native.py` is a tool-calling loop over `core.llms.stream_llm_tools`
-(reasoning on; `reasoning_details` ride each assistant message within a turn and
-never persist), capped at `MAX_ROUNDS` after which one tool-less round writes
-the report. Context is a character budget (`fit`): the system prompt is outside
-it and carries a `cache_control` breakpoint that the body builder strips for a
-direct endpoint; oldest tool results compact to a stub first, then whole rounds
-of earlier turns drop, never the turn in flight. A result over `MAX_RESULT_CHARS`
-loses whole items from its largest list and says so (`truncated`).
+## Contracts and verification
 
-### ChatGPT funding
+MCP contract 5.1 adds project revisions, packages, preview, validation, exact-run
+cancellation and binding save/state/run tools. The removed agent endpoints remain
+absent. `get_job` supports exact dataset_pipeline run IDs; revision/package/binding
+resources and paginated pipeline diagnostics expose retained facts. Existing source,
+exploration, partition, export and consumer-readiness operations remain.
 
-Self-hosted users connect an account on the initial **Continue with ChatGPT**
-login or in Settings → Data Workshop models. First login/inline linking selects
-ChatGPT funding and the first available account model when plan permission is
-granted; later logins preserve explicit funding choices.
-Both Workshop composers place **Use ChatGPT** beside the bottom plus button;
-the toggle enables personal funding and the shared model selector chooses from
-the account's catalogue. Turning it off keeps the account connected. The same
-saved preference remains editable in Settings, and pending funding mutations
-disable request submission. `services/chatgpt.py` owns Sign in with ChatGPT, the model
-catalogue and the Responses transport. `models/chatgpt.py` stores per-user
-registrations, encrypted tokens and a persistent funding preference. PKCE, state,
-an HttpOnly browser cookie and verified ID tokens bind the loopback callback;
-refresh rotation locks the account. Clerk or Stripe disables this public local
-integration. Cloud plan usage needs OpenAI's separate access approval.
+`docs/workshop-pipelines.md` records runtime setup and repeatable regression commands.
+Frontend uses the generated OpenAPI client.
+Keep account/project isolation, stable retry keys, changed-key conflicts, source
+checksum checks, failed/cancelled publication and artifact lineage covered.
 
-`engines/chatgpt.py` uses the native tool loop with Responses namespace tools,
-`store=false` and streaming. Tools execute only after `response.completed`;
-the transport retains completed stream items when terminal output is empty.
-Encrypted reasoning is replayed within the turn and stripped from saved history.
-The selected session is pinned for each turn, including semantic checks, which
-use that model instead of Jev. Audit identity includes account and model, so
-switching funding does not reuse a differently funded audit. The ledger records
-zero-charge usage and REST/MCP chat turns expose funding, engine and model.
-Limits, disconnection and unavailable sessions stop the turn without switching
-to server models. Evaluation runs, training and serving retain their own billing.
+Native agents author explicit `id`/`input` dependencies in steps. Inputs name
+`source` or an earlier step; repeated inputs create real forks. The saved entity
+and MCP resource return `flow` with nodes, edges, conditions and output. Script
+conditions cite `expression` and entrypoint `line`, remain `agent_declared`, and
+never execute as expressions. Scripts route rows; every step executes, including
+empty branches. `inputs` concatenates distinct earlier branches in declared order;
+overlapping source_row identities fail before publication. The script receives a
+schema-compatible union; incompatible nonempty data columns/types fail rather than
+coercing values. It is a
+disjoint union, not a relational key join. Flow exposes terminal and unconsumed
+steps so native agents can converge training deliverables rather than leave dead ends.
+Publication records actual `input_cells`, `step_id` and condition evidence per cell.
+Cell `transformation` metadata binds publication membership and output fingerprint to
+the completed run, exact revision, entrypoint and package. It distinguishes isolated
+script execution, historical declarative operations, external imports, sources and unrecorded
+history; review text alone is not proof of execution. The Script section can inspect
+every retained package file, with checksum-verified character pagination shared by
+REST and MCP. Keep each step's substantive logic in its visible entrypoint; shared
+helpers contain genuinely reusable utilities, not an opaque step dispatcher. Change
+recipes by new revisions and executions, never rewriting historical cell scripts.
+The Console preserves full-size cell contents on a 20px grid-snapped flow canvas.
+Steps cascade down; sibling branches align side by side on the same horizontal
+layer. Cells open at scale 1; explicit zoom, Fit view and a toggleable minimap
+navigate the graph without changing cell dimensions. Reset and linked-cell focus
+restore scale 1; resizing preserves the chosen zoom. The chip
+beside the dataset name previews/restores exact versions; it replaces the run bar.
+The left-hand box contains dataset navigation and the minimap toggle, without
+cell search or a cell-selector strip.
 
-MCP classification: account consent and funding selection are frontend-only;
-MCP workshop requests use the caller's saved preference and return the same
-funding provenance. Tokens and OAuth URLs are never MCP resource data.
-
-`add_cell` validates before landing and runs directly; `try_script` is optional.
-One preview is cached per turn by cell, fingerprint and script, so an identical
-`add_cell` consumes it without another sandbox run. Changed inputs or scripts
-invalidate reuse. Identical pending scripts against the same input, intent and
-capability context consume the existing preview after verifying it. Each supported
-mechanical or semantic change runs before the next step reads the new chain tail.
-No-op scripts create nothing. Tool receipts omit large examples; full change-impact
-records remain stored for inspection. Status exposes active_id and flags
-clipped scripts. The agent's remove_cell accepts only an exact pending-proposal
-UUID: applied, source and generated versions cannot be erased during cleanup.
-Proposal file deletion occurs only after the database transaction commits.
-Approving a later proposal uses a free non-negative position and reverse shifts
-to preserve position constraints, then retires the other previews tied to the previous chain tail.
-
-`prepare_examples` applies shared model-independent conversion in bounded batches in
-one cell after exploration and a saved plan. Custom cells can also use
-`prepare_examples(df, intent="train" or "eval", mapping={...}, constants={...})`.
-Mappings connect canonical consumer fields to arbitrary source column paths;
-conflicting existing values are refused. Automatic transforms require a saved
-plan and a declared `plan_step`; no conversion runs before the agent. Eval keeps the complete prefix
-(system, user, prior assistant/tool turns and schemas) in `input`, and separates
-the final assistant target into `expected_output`. Model transcripts are not
-validated against the application's entry-point schema. Identifier-only eval
-inputs carry an advisory evidence warning. Preparation preserves supplied evidence;
-identifiers cannot replace context needed to fulfil the task.
-
-Typed native decisions and flat state/question/kind/options/target rows take the decision path for either intent. Train retains `decision` with its complete target distribution or declared ordinal mean; eval adds `input.decision` containing only request fields and separate probability or mean references. Binary scalar targets expand in No/Yes order. Original rows, metadata, weights, option order, duplicate observations and valid blank states remain intact. Invalid targets are not normalized or silently removed; every native eval request/reference is validated. Profiles count native, valid, invalid, hard and soft rows over the whole frame. This is probability-evaluation data, not a chat response contract.
-
-Automatic semantic judging uses only checks declared with method `semantic` and the plan’s durable `semantic_row_budget` (zero by default). Reservations persist across turns and plan revisions and include failed attempts, so retries cannot replenish the budget. Automatic plan revisions cannot enlarge an already-spent allowance. Structural validity and exact preservation are measured separately from reference truth and semantic evidence sufficiency. Unsupported claims use method `unmeasured` and remain null; a probability-validity predicate cannot establish reference truth. In script reviews, probability validity belongs to output_schema, never answer_support; licensing is separate from task_alignment. Unverified semantic checks remain null. Native decision changes and removal of native rows require source evidence and recorded rationale. The source and previous versions remain readable; unsupported targets stay unknown. REST evaluation creation and MCP readiness reject ordinary generate-mode evaluation of native probability inputs, including mixed datasets; schedule separate calibration/final cells through the native evaluation plan, whose worker consumes input-only requests.
-
-`examples.normalize_record` normalises JSON-encoded `messages` and `tools` at
-preparation and consumer boundaries without decoding message content. Tool schema
-validation runs even on rows with no tool calls; malformed schemas are not dropped.
-The exact preprocessing cache includes the shared export/validation code fingerprint.
-Replacing or removing existing system/developer instructions is measured by
-`review.impact` and classified as semantic. Supported changes apply directly as
-recorded cells; semantic edits append a new step rather than overwrite earlier
-executed versions. Automatic reruns refresh measured impact against their new input.
-
-Source rows and transformations retain hidden source-content and case identity in
-`_overmind_provenance`. It is not a visible data column or a training feature.
-Existing human_reviewed annotations are inherited by source identity; projection
-cannot turn unreviewed synthetic examples into human-reviewed data.
-Contamination checks match packet/onboarding IDs, case IDs and example IDs from
-input JSON as well as existing lineage, including across SFT/eval projections.
-
-`inspect` is the measuring tool: it runs a script in the same sandbox with
-`produce_frame=False`, requires no `df`, lands nothing, and returns stdout. It
-is how the agent computes a threshold before it cuts — `query` covers whatever
-SQL can express over every row, `inspect` covers the rest.
-
-A turn streams `chat_step` (thinking and tool steps; a thinking step's `done`
-part carries the model's reasoning as `text` when the engine streams it),
-`chat_thinking` (reasoning deltas), `chat_delta`, `chat_cell` and `chat_progress`
-events, each published the moment it happens with a per-dataset `seq`.
-The user turn and a running agent entry are saved immediately in `Dataset.chat`.
-Tool callbacks serialise per turn and persist the stage, reason, saved counts,
-steps, narrative text and cell references, so a reload restores progress without SSE replay.
-Steps and cell references carry UTF-16 text offsets. Activity updates retain their starting offset and never insert a paragraph into narration. Both engines use `Tools.respond` for text and `Tools.start_response` only at model-round boundaries; Cursor consumes ordered provider deltas rather than deriving boundaries from asynchronous tool callbacks. The Console places activity after a complete paragraph or fenced code block, never between its tokens. Progress events carry a full saved snapshot.
-Thinking text is snapshotted at most once per second and capped at 16,000
-characters per step. Only provider-exposed text is shown; it is never fabricated.
-Completion updates that entry with `status`, `ms`, `engine` and `model`.
-MCP inspection and `get_job(kind=dataset_run)` expose the same saved progress.
-The turn owns the dataset: `chat` sets `diagnosing` before it
-enqueues (from `idle` or `error`), a run inside the turn holds that state
-(`run.execute(hold=)`), API cell edits refuse it, and `agent.settle` ends it as
-`idle` or, when the last run failed, `error`.
-
-- `diagnose` first resolves purpose from explicit user words or pauses with `awaiting_intent`. Pending tools can inspect data but cannot make purpose-dependent mutations; `set_intent` requires a quote from the user request. Missing intent produces the only clarification question, with Training, Eval and Data exploration chips that submit directly without a separate Continue action. Subsequent work uses source evidence and conservative defaults, records assumptions and reports missing evidence without follow-up questions. Supported semantic changes run directly as recorded cells. Chat accepts `intent_choice` with `intent_turn_id`; the shared locked dispatcher resolves that exact question and continues the original request once. MCP `message_dataset_agent` shares the same fields and resources expose question IDs. Exploration persists as `explore`, follows the user request, and skips automatic train/eval shaping and audits. Once train/eval intent is explicit, `diagnose` explores the source, saves a source-bound plan with task-specific checks and a semantic row budget, then completes the initial chain in one turn: run shaping and measured cleaning (including justified exclusions), audit, repair actionable findings and recheck the changed version. A failed check does not end preparation while supported improvements remain; unresolved findings become non-blocking warnings after those repairs. Do not repeat identical audits or add no-op cells when no supported repair remains. Evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules are mechanical, even when complex. These cells run directly; the source, affected-row examples and coverage impact remain available. Evidence-backed semantic changes run through the same measured path, in sequence against the latest successful output. There is no `run=false` option or per-change approval checkpoint. Earlier unfinished suggestions are supplied to the next turn as context for reassessment, never blindly replayed against changed data. Automatic diagnosis may derive grounded examples from raw sources for the selected train/eval purpose; augmentation beyond those source facts still requires a generation request. Neither path invents missing evidence or replaces a declared task with trivial exercises. Expensive similarity/outlier analysis follows concrete findings or a user request, not a mandatory first-pass checklist.
-- `turn` runs a follow-up.
-
-Existing saved previews remain verifiable through explicit REST/MCP acceptance or
-discard operations: stale or failed previews never activate. New Workshop turns
-apply changes directly and never finish as `awaiting_approval`. Resuming unfinished
-work reassesses earlier suggestions against current data. During generation,
-transformation scripts cannot add rows; new examples must use `add_synthetic_rows`,
-never identifier-remapped copies of source rows.
-
-- The page has no header: the name, the intent and the capability change only through the chat (`rename`, `set_intent`, `set_capability`). The contract chip's suggestions (**Ask Overmind to fix it**, the other intent, a better-ranked capability) each send one turn that makes the change and re-aligns the chain.
-
-## Preparation and splitting
-
-Preparation maps every required target field to existing evidence, a deterministic rule-derived value, a representation change, missing evidence or an evidence-backed agent interpretation. Worker-specific envelopes alone are not a reason to stop: build supported deliverables and audit input evidence and answer support against the same selected target. A canonical prompt is bound only when the example fulfils that task. Do not fabricate tool execution history, outcomes or policies; a transformation cannot supply missing evidence. If the remaining decision has no supported executable preview, preserve affected data, finish independent work and report the missing evidence without asking a follow-up question.
-
-The selected capability defines the task boundary; without one, preserve the task supported by the request and source and record unresolved scope. Worker-shaped sources call for investigating a supported transformation, not an audit-only refusal. Decode nested user JSON and inspect source evidence before declaring it absent; recover supplied evidence lost during shaping and map supported answers to the declared schema. Combine worker evidence only with verified same-case identity, never positional joins or matching mode counts, and never across held-out boundaries. Worker examples cannot become end-to-end examples merely by replacing their system prompts or inventing final deliverables. Worker training uses a separate worker capability or an explicitly dataset-derived task with no capability. Eval shaping retains the full input evidence/tool transcript before the target answer. Identifiers, document references and prompts are not substitutes for evidence. Do not invent missing facts or copy targets into inputs. Both initial and requested follow-up preparation apply supported repairs before recording residual warnings; questions and audit-only requests do not authorise transformations. Incomplete semantic audits remain visible as warnings, not disabled consumer actions.
-
-Automatic planning requires a successful query or inspection bound to the exact source cell and fingerprint, plus an outcome declaring the task, deliverables and model input. Cached inspections can be reused only on the same content. Counts alone do not establish meaning: the agent reads representative content and distinguishes inference inputs from generator-only evidence before editing.
-
-Preparation plans persist the source cell/fingerprint, intent and capability context, objective, interpretation, families, field mappings, assumptions, unresolved questions, steps, checks and bounded exploration receipts. Each executed cell snapshots the producing plan and step. A changed source or context requires replanning; changing a script clears its and downstream cells’ plan attribution. Declared group fields, including nested paths, join inherited contamination lineage. Plans do not establish label correctness. REST and MCP expose the same plan and per-category assessments; the Console retains cell-level quality assessments without a separate preparation-plan panel. The initial purpose comes from an explicit existing request or selection, never transcript shape alone. The Console and MCP accept a written brief. Initial preparation, attachment re-preparation and intent/proposal continuations retain plan requirements and the saved semantic row budget even when a brief is present. A source-to-Q&A request authorizes grounded example construction without another instruction or a user-supplied count.
-
-The Workshop does not select the downstream training model; its funding/model control selects only the Workshop agent. `context.preparation_context` supplies scanned task context and the latest active behaviour contracts for cleaning, coverage analysis and example selection. Train shaping ends with an explicit projection to `messages`, optional `tools`, and only metadata needed for coverage or contamination checks. Redundant source features and labels already represented in the transcript do not remain in the prepared table; the source stays queryable and `source_row` preserves identity. Group/trace/conversation identity, independent coverage annotations and synthetic provenance remain available. `review.readiness` separates format-valid from quality-reviewed (agent-measured checks, not a human approval). Quality results are tied to the frame, intent and capability-context fingerprints; failed/unknown checks remain visible. Exact model/context compatibility belongs to training preparation, not the workshop.
-
-Source-to-examples construction uses `seed_examples(mode="derive", plan_step=...)` with a source-bound plan. The output contains only derived examples; raw sources remain in their earlier versions. The agent chooses an output count from measured usable evidence when the user has not supplied one, and reads complete passages through a deterministic, family-stratified source index. Each example supplies exact column/quote evidence that must occur in its seed. This verifies attribution, not answer correctness. Source rows without examples remain visible in the generation report. Passage-conditioned comprehension examples retain supporting input context; knowledge-learning questions keep their grounding in generator evidence and provenance without automatically including it in model inputs; first-word, word-count and passage-copy exercises are not substitutes for the requested task. Audit the final examples rather than stopping at cleaned pages or a schema pass.
-
-Requested augmentation uses `seed_examples(mode="augment")` and retains the existing examples in the output; its final `target_rows` must exceed the seed count. Neither mode has a draft or Apply step. `seed_examples` pins the source, mode, target, instruction and producing plan in a `WorkshopRun`; pass `run_id` to resume that exact recipe. An empty setup can be replaced after source repair, but accepted or unresolved work cannot silently switch recipes. `add_synthetic_rows` saves a small pilot in immutable batches of at most 50 rows, validates real seed identities, exact evidence and duplicates, and allocates record identities. Generated rows are marked human_reviewed=false and inherit their seed document identity and source name, independent of model-supplied attribution. `generate_examples` qualifies up to eight pilot rows against the pinned original user request, preparation request and independent source evidence before scheduling bounded background batches. Qualification fingerprints include that task context, preventing a mistaken recipe from qualifying solely against itself. Evidence rejections identify every mismatched quote by zero-based example/evidence path, seed, column and source fingerprint; no rows from a rejected batch are committed. Each batch pins a size-bounded sample of accepted output in its saved inputs for formatting and coverage continuity; these examples are never independent factual evidence. Failed qualification allows an explicit recipe revision while retaining the prior pilot; unmeasured judgments remain advisory.
-
-`generation.py` owns the disk-backed source index, immutable batch files, deduplication index, lineage and one-time publication. `generation_worker.py` owns leased claims, provider intents and receipts, bounded retries and usage reconciliation. Completed responses are reused; unknown provider outcomes are blocked rather than repeated. Unsuitable seeds advance through the remaining source; a whole unsupported pass stops without padding. Three failed batch attempts cannot be reset by resume. Accepted batches survive process loss independently of chat history. One cell is published when the target is reached, or when a partial result is explicitly published or source exhaustion is recorded. Earlier and frozen cells are never extended in place. A final audit is dispatched against the exact published cell.
-
-`workflow.py` persists the original request, declared outcome, source/plan bindings and tool receipts. Outcome requirements include deliverables, inference inputs versus generator evidence, preservation, coverage, target rows and measured checks. Completion, consumer compatibility and quality are reported separately; missing required checks or an unmet count prevent a complete outcome. Finalization returns missing checks to the agent for at most two bounded continuations, stopping when the version and missing-check set do not improve. Redundant projection of platform metadata is a no-op, preserving the evaluated version and its checks. Recovered failures remain in execution receipts rather than masquerading as a current failure. `chunk_text` preserves exact text, all contributing parents and inherited split groups while allocating unique output identities. Scripted splits and merges declare `_overmind_parent_rows`; unchanged records retain their original provenance. Semantic audits use deterministic stratification across declared coverage columns within the saved row budget.
-
-REST `POST /datasets/{id}/workflow/` and MCP `manage_dataset_workflow` share revision-checked pause, resume and partial publication. Inspection and dataset job resources expose the same saved workflow. An idle notebook with blocked execution is reported as blocked, with its saved error. Generated counts distinguish saved batches from published rows; unpublished batches do not imply a changed active dataset. Pause stops new claims and permits an already-owned batch to finish; it does not imply provider cancellation. `cancel_dataset` retains its durable cancellation path. Source, context and fingerprints are checked before continued execution; stale bindings cannot mutate a new version.
-
-The notebook weaves requests and agent responses through one canonical cell chain above a bottom-anchored composer. Every cell appears once; later revisions link back without reordering it. Thinking/tool sections are collapsed by default, including during work. The latest final summary is expanded; earlier narration is folded into Preparation activity. A new prompt collapses previous responses, which remain reopenable. Pixel status icons show working, completion and failure, with motion disabled under reduced-motion preferences. Thinking text renders as Markdown, with shared elbow connectors and inspectable tool inputs/results. Generation counts show rows saved, with a notice after 30 seconds without activity and no separate status card. The agent explains its approach, evidence and decisions in public-facing summaries, and its final explanation is preserved alongside verified generation counts. Changes appear through normal cell results; there is no proposal panel or per-change approval control. Generated data appears as a normal cell result; the user requests continuation or adjustments through chat. A snapshot preserves seed dataset/cell/row, context, instruction and inherited content/group lineage in `_overmind_provenance`; durable batch receipts record the serving workshop engine/model and measured or unknown usage. Generated answers are not independently verified ground truth. No extra generator model is selected by the user. Scripts preserve lineage and grouping metadata by `source_row`.
-
-`partition.split_rows` is shared by source train/eval creation and internal training/validation splitting. It removes exact duplicate rows by default; training passes `deduplicate=False` to preserve every reviewed row. It unions normalized input matches, trace/conversation IDs, explicit `group_by` columns and synthetic seed lineage into indivisible components. Optional `stratify_by` balances categorical coverage across those components. Seeded random, head and tail ordering are supported; grouping can change the requested percentage. `source_spec.contamination_report` records actual counts, duplicate removal, group/content overlap and strata. Near-duplicate similarity is explicitly **not checked** by the split operation. Training checks the selected versions again through `rows.contamination`; dataset versions and capability cannot be changed after a job is created.
-
-Modal jobs run exact CPU preprocessing after launch for the selected model, training type, context and dataset versions. Setup does not start, display or wait for this step. Technical incompatibilities fail preparation before GPU training; repairs belong in the workshop, and a job using revised versions is checked again. Explicit REST/MCP preparation remains available. See backend-architecture § Training preparation.
-
-## Consumers
-
-- A train version hands off to the training wizard (`/training?train=true&datasetId=`); an eval version to the optimiser (`/optimiser?optimize=true&datasetId=`) or to the training wizard as the eval dataset (`/training?train=true&evalDatasetId=`). There is no single-run eval flow.
-- A local loop (the SDK's optimiser and backtests) never reads a dataset by id. It pulls the used version through `GET .../export/?cell=&fmt=jsonl|csv` (a raw stream, never a use), whose response carries `X-Overmind-Cell`, `X-Overmind-Version` and `X-Overmind-Fingerprint`, and caches it as `.overmind/datasets/<cell>.jsonl` with the fingerprint beside it (`optimizer_api.export_dataset`).
-
-### Typed decision datasets
-
-For decision/probability supervision, produce the native `decision` object described in the consumer context. Preserve soft `target_probabilities`; never project them to argmax text. Binary [p] references become [1-p,p] with No/Yes options, in false/true semantic order. Keep the state, question, options and source/group/license provenance. Training owns code selection and tokenization. Ordinary conversational datasets retain the messages/tools contract.
-
-Field mapping preserves decision text literally, including JSON-looking states, quoted questions and blank states. Decode JSON containers to reach nested fields and structured target arrays; do not parse or reserialize a text leaf merely because it is valid JSON.
-
-## Operation ownership and bounded diagnostics
-
-Dataset operations retain task ownership, attempt and provider acknowledgement. Cancellation is pending until both the local child and a known provider call are confirmed stopped; unknown submission identity remains unresolved. A stale task cannot complete a newer operation. Proposal handoff releases ownership before the next agent turn. Cell execution checks cancellation before publishing output and reaps the child process.
-
-Column statistics run in an isolated subprocess with bounded DuckDB resources, a cross-process concurrency lock and a fingerprint/implementation-bound cache. Reservoir counts and top values are explicitly approximate; integrity and target checks still scan exact data. A child timeout/crash produces a retryable unavailable response, not an API-process crash or success cache.
-
-Representative sampling is requested through dataset chat. The Workshop explores before applying a deterministic stratified selection, records the recipe and parent coverage, and preserves target distributions and duplicate observations. It is a sample, not a train/eval split.
-
-Dataset operations carry an owning task ID. Delayed provider receipts and tool callbacks cannot mutate a later turn. Created provider runs are cancelled if their ownership receipt cannot be saved. Cancellation stays pending until both local work and provider execution are acknowledged. Attachment import and replay stream the old frame and verified batch into a new file; neither materializes the existing table. Document extraction uses an owned temporary spool.
-
-### Target interpretation and saved partitions
-
-Initial exploration belongs to the Workshop agent. Each prepared family can save `target_meaning` and `target_evidence`; unknown is the default. Means retain `target_mean` and `ordinal_values`, without invented vote distributions. Distribution targets retain probabilities plus their declared semantics, annotation count and provenance. A mean-only eval reference uses `mean` and `ordinal_values`; probability references use `probabilities`. The original brief stays separate from the inferred plan. Consumers validate the declaration rather than reinterpreting labels.
-
-REST and MCP save a `DataPartitionPlan` against a frozen cell. The notebook has no partition-creation panel; representative pilots are requested through dataset chat. Fractions assign train/development/calibration/final roles, with optional nested group/stratification fields and explicit field/value holdouts. Related and synthetic records stay together; duplicate observations survive. Inspect actual rows/groups and assignment hashes. Calibration and final members receive eval intent; train/development members retain training intent for a train/eval source. Native members use the shared lossless evaluation projection: request fields under input.decision and target probabilities or ordinal means under expected_output. Invalid targets remain visible; no normalization, dropping, semantic interpretation or target invention occurs. Other source shapes still need Workshop preparation. Construction reports grouping, assignment, writing and member-preparation progress. Overlap/semantic-independence limitations remain visible, not quality gates.
-
-### Frozen source exploration
-
-`explore_dataset` and `derive_dataset` save `DataExploration` operations against explicit cell identities. Profiles are cached by project/source fingerprint/operation configuration; derive preserves the parent and full-row provenance in a new chain. Sampling preflight reports feasibility and paginated allocations without raising budgets or merging groups. Internal tools reject unknown arguments before execution; `try_script` uses `version`. Preparation families carry scoped evidence references, hypothesis/supported/conflicted status and explicit conflicts; these are agent interpretations, never automatic semantic truth.
-
-Semantic checks accept nested paths and canonical zero-based list indices (for example messages.1.content), projecting only the requested leaves to the judge. Inspect message roles before selecting indices. Run final projection before auditing, without temporary evidence/answer columns where indexed leaves suffice; removing helper columns changes the fingerprint and invalidates the audit. An answer cannot also occur as an ancestor/descendant of an evidence field. On the same source, context, intent and preparation plan, an all-unknown script check preserves earlier measured semantic outcomes and provenance; a script cannot replace them with asserted passes. Changed identities invalidate the prior evidence. Within a Workshop turn, observed version names bind to stable cell IDs so consumer freezing cannot retarget them; UUIDs remain preferred.
+MCP contract 5.2 adds the `author-dataset-transformation` prompt and exact-revision
+lookup using `inspect_dataset_workbench(pipeline=REVISION_UUID)`: selected recipe,
+paged family history and scoped runs/bindings. Stale family updates return
+`revision_conflict`. Branch correctness requires independent member/coverage checks;
+declarations, preview prefixes and successful execution do not establish it.

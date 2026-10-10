@@ -6,7 +6,7 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
-from overbae.services import training_submission
+from overbae.services import operational_progress, training_submission, training_transfer
 from overbae.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ def _reconcile() -> dict:
     from overbae.models.finetuning import FinetuningJob
     from overbae.tasks.finetuning import observe_finetuning_job
 
+    operational_progress.reconcile_training_terminals()
     celery_app = get_celery_app()
     inspect = celery_app.control.inspect(timeout=2)
 
@@ -50,6 +51,7 @@ def _reconcile() -> dict:
     kicked = 0
     observed = 0
     for job in orphaned_jobs:
+        training_transfer.observe(job)
         if job.celery_task_id and job.celery_task_id in running_task_ids:
             continue
         if (
@@ -97,8 +99,7 @@ def _reconcile() -> dict:
 
 
 @shared_task(name="overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs")
-# Short lock timeout: beat is every 15 s, so a lock orphaned by a worker restart
-# must expire before the next tick rather than after the 7-day default.
-@with_task_lock(lock_name="finetuning_reconciler", timeout=300)
+# Provider observation can outlive one tick; only a live collector renews its lease.
+@with_task_lock(lock_name="finetuning_reconciler", timeout=30, renew=True)
 def reconcile_finetuning_jobs() -> dict:
     return _reconcile()

@@ -20,7 +20,7 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
-from overbae.services import deployment, finetuning_eval
+from overbae.services import deployment, finetuning_eval, model_catalog
 from overbae.services.finetuning_eval import (
     baseline_needs_base_deploy,
     reset_before_evals_for_retry,
@@ -39,6 +39,11 @@ FIELDS = ("eval_incumbent_before", "eval_incumbent_after", "eval_model_before", 
 @pytest.fixture
 def job(monkeypatch):
     monkeypatch.setattr("modal.Function.from_name", Mock())
+    monkeypatch.setattr(
+        finetuning_eval,
+        "resolve_training_openrouter_slug",
+        lambda _: "meta-llama/llama-3.2-3b-instruct",
+    )
     project = Project.objects.create(name="Schedule", slug="schedule")
     user = User.objects.create_user(
         email="schedule@example.test", password="test", clerk_user_id="schedule"
@@ -102,7 +107,9 @@ def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choi
     }
     assert set(job.job_evals.values_list("kind", flat=True)) == before
     for row in job.job_evals.all():
-        assert row.model_id == (job.baseline_model if row.kind == "baseline" else job.base_model)
+        assert row.model_id == (
+            job.baseline_model if row.kind == "baseline" else "meta-llama/llama-3.2-3b-instruct"
+        )
 
     job.status = FinetuningJob.Status.SUCCEEDED
     job.output_model_name = "org/trained-model"
@@ -342,6 +349,7 @@ def test_unresolved_baseline_does_not_change_running_training(
     job, monkeypatch, settings, existing_waiter, cancel_pending
 ):
     settings.FINETUNING_BACKEND = "modal"
+    monkeypatch.setattr(finetuning_eval, "resolve_training_openrouter_slug", lambda _: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.for_job",
         lambda _: SimpleNamespace(
@@ -377,9 +385,8 @@ def test_unresolved_baseline_does_not_change_running_training(
     baseline.refresh_from_db()
     assert baseline.status == "failed"
     assert baseline.deployment_dispatching
-    assert baseline.deployment_notify
+    assert not baseline.deployment_notify
     assert baseline.deployment_attempts == 0
-    deployment.advance_deployment(baseline.pk)
 
     job.refresh_from_db()
     assert job.job_evals.get(kind="model_before").status == "failed"
@@ -387,7 +394,7 @@ def test_unresolved_baseline_does_not_change_running_training(
     assert not job.error_message
     runner.submit.assert_called_once()
     spawn.assert_not_called()
-    assert cancel.call_count == int(cancel_pending)
+    cancel.assert_not_called()
 
 
 def test_eval_score_sync_does_not_overwrite_newer_deployment_progress(job):
@@ -451,7 +458,8 @@ def test_starting_model_uses_openrouter_without_provisioning_inference(
     deploy.assert_not_called()
 
 
-def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch):
+def test_missing_openrouter_model_records_failure_without_creating_hosted_base(job, monkeypatch):
+    monkeypatch.setattr(finetuning_eval, "resolve_training_openrouter_slug", lambda _: None)
     job.provider = "modal"
     job.eval_model_before = True
     job.eval_incumbent_before = False
@@ -459,16 +467,63 @@ def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch):
     deploy = Mock()
     monkeypatch.setattr("overbae.tasks.model_deployment.deploy_base_model_for_eval.delay", deploy)
     start_before_evals(job)
-    deploy.assert_called_once_with(job_id=str(job.pk))
-    baseline = deployment.ensure_baseline_deployment(str(job.pk))
-    assert baseline.deployment_stage == "base"
-    assert baseline.status == "queued"
-    assert not job.job_evals.exists()
+    deploy.assert_not_called()
+    assert deployment.ensure_baseline_deployment(str(job.pk)) is None
+    assert not DeployedModel.objects.filter(project=job.project).exists()
+    assert job.job_evals.get(kind="model_before").status == "failed"
 
     monkeypatch.setattr(
         finetuning_eval, "resolve_training_openrouter_slug", Mock(return_value="provider/model")
     )
-    assert baseline_needs_base_deploy(job)
+    assert not baseline_needs_base_deploy(job)
+
+
+@pytest.mark.parametrize(
+    ("model_id", "slug"),
+    [
+        ("meta-llama/Meta-Llama-3.1-8B-Instruct-Reference", "meta-llama/llama-3.1-8b-instruct"),
+        ("Qwen/Qwen2.5-7B-Instruct", "qwen/qwen-2.5-7b-instruct"),
+        ("LiquidAI/LFM2.5-2.6B", "liquid/lfm-2.5-2.6b:free"),
+        ("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", "nvidia/nemotron-3.5-lightning"),
+    ],
+)
+@pytest.mark.parametrize("hosted_base", [False, True])
+def test_registered_identity_drives_benchmark_receipt(
+    job, monkeypatch, model_id, slug, hosted_base, django_capture_on_commit_callbacks
+):
+    job.provider = "modal"
+    job.base_model = model_id
+    job.eval_model_before = True
+    job.eval_incumbent_before = False
+    job.save()
+    if hosted_base:
+        baseline = DeployedModel.objects.create(
+            project=job.project, model_id="base--existing", status="ready"
+        )
+        baseline.deployment_waiters.add(job)
+    fetch = Mock(return_value=([{"id": slug, "hugging_face_id": ""}], True))
+    monkeypatch.setattr(model_catalog, "fetch_model_catalog", fetch)
+    monkeypatch.setattr(
+        finetuning_eval,
+        "resolve_training_openrouter_slug",
+        model_catalog.resolve_training_openrouter_slug,
+    )
+    deploy = Mock()
+    monkeypatch.setattr("overbae.tasks.model_deployment.deploy_base_model_for_eval.delay", deploy)
+    with django_capture_on_commit_callbacks(execute=True):
+        start_before_evals(job)
+    row = job.job_evals.get(kind="model_before")
+    ref = row.eval_run.variants.get().model_ref
+    assert row.model_id == ref.model_id == slug
+    assert ref.base_url == "https://openrouter.ai/api/v1"
+    assert ref.api_key_ref == "OPENROUTER_API_KEY"
+    deploy.assert_not_called()
+
+    fetch.return_value = ([], False)
+    start_before_evals(job)
+    assert job.job_evals.count() == 1
+    assert job.job_evals.get().eval_run.variants.get().model_ref_id == ref.pk
+    deploy.assert_not_called()
 
 
 def test_eval_route_is_not_resolved_again_after_choosing_model(job, monkeypatch):
@@ -589,6 +644,53 @@ def test_api_persists_all_four_choices_and_incumbent_snapshot(job):
     created = serializer.save()
     assert all(getattr(created, field) for field in FIELDS)
     assert created.baseline_model == job.capability.model
+
+
+def test_selected_benchmark_models_run_once_on_the_same_frozen_evaluation(job):
+    serializer = serializer_for(
+        job,
+        baseline_model="openai/gpt-5.6-sol",
+        benchmark_models=["openai/gpt-5.6-sol", "anthropic/claude-sonnet-5"],
+        eval_incumbent_before=True,
+        eval_model_before=True,
+        eval_model_after=True,
+    )
+    assert serializer.is_valid(), serializer.errors
+    created = serializer.save()
+    assert created.benchmark_models == ["openai/gpt-5.6-sol", "anthropic/claude-sonnet-5"]
+    tick_job_evals(created)
+    tick_job_evals(created)
+    rows = list(created.job_evals.select_related("eval_run"))
+    assert created.eval_model_before
+    assert {(row.kind, row.model_id) for row in rows} == {
+        ("baseline", "openai/gpt-5.6-sol"),
+        ("comparator", "anthropic/claude-sonnet-5"),
+        ("model_before", "meta-llama/llama-3.2-3b-instruct"),
+    }
+    assert len({row.eval_run_id for row in rows}) == 3
+    assert {row.eval_run.cell_id for row in rows} == {created.eval_cell_id}
+    assert {row.eval_run.eval_set_id for row in rows} == {created.eval_set_id}
+
+
+def test_benchmark_selection_rejects_duplicates_and_changes_after_launch(job):
+    serializer = serializer_for(
+        job,
+        benchmark_models=["openai/gpt-5.6-sol", "openai/gpt-5.6-sol"],
+        eval_incumbent_before=True,
+    )
+    assert not serializer.is_valid()
+    assert "benchmark_models" in serializer.errors
+
+    job.status = FinetuningJob.Status.RUNNING
+    job.save(update_fields=["status"])
+    serializer = FinetuningJobSerializer(
+        job,
+        data={"benchmark_models": ["anthropic/claude-sonnet-5"]},
+        partial=True,
+        context={"request": SimpleNamespace(user=job.triggered_by)},
+    )
+    assert not serializer.is_valid()
+    assert "benchmark_models" in serializer.errors
 
 
 def test_selected_judge_is_persisted_and_frozen_without_editing_the_set(job):

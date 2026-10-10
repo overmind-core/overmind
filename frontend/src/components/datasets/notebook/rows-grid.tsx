@@ -244,7 +244,11 @@ function FilterAdd({ columns, onAdd }: { columns: string[]; onAdd: (f: RowFilter
   return (
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
-        <Button size="xs" variant="outline">
+        <Button
+          className="relative -ml-px rounded-l-none focus-visible:z-10"
+          size="xs"
+          variant="outline"
+        >
           <Icon.filter />
           Filter
         </Button>
@@ -393,19 +397,25 @@ export function RowsGrid({
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-1">
-        <SearchInput
-          className="w-44"
-          label="Search rows"
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          placeholder="Search"
-          size="xs"
-          value={search}
-        />
-        <FilterAdd
-          columns={columns.map((c) => c.name)}
-          onAdd={(f) => setFilters([...filters, f])}
-        />
+        <div
+          aria-label="Search and filter rows"
+          className="flex min-w-0 max-w-full items-center [&_input]:rounded-r-none [&_input]:border-border"
+          role="group"
+        >
+          <SearchInput
+            className="flex w-44 min-w-0 focus-within:z-10"
+            label="Search rows"
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
+            placeholder="Search"
+            size="xs"
+            value={search}
+          />
+          <FilterAdd
+            columns={columns.map((c) => c.name)}
+            onAdd={(f) => setFilters([...filters, f])}
+          />
+        </div>
         {filters.map((f, i) => (
           <Badge
             className="max-w-full gap-1 rounded-sm border-border font-mono"

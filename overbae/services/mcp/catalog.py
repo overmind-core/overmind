@@ -25,7 +25,15 @@ CostClass = Literal["free", "compute", "llm", "gpu"]
 AsyncMode = Literal["sync", "job", "task"]
 _TOOL_NAME = r"^[a-z][a-z0-9_]{0,63}$"
 _FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment", "cancel_dataset", "retry_data_partition"})
+_ALLOWED_LIFECYCLE_TOOLS = frozenset(
+    {
+        "retry_deployment",
+        "cancel_dataset",
+        "retry_data_partition",
+        "cancel_dataset_pipeline_run",
+        "cancel_finetune",
+    }
+)
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -253,6 +261,10 @@ register_observability_tools(CATALOG)
 from overbae.services.mcp.tools_datasets import register_dataset_tools  # noqa: E402
 
 register_dataset_tools(CATALOG)
+
+from overbae.services.mcp.tools_workbench import register_workbench_tools  # noqa: E402
+
+register_workbench_tools(CATALOG)
 
 from overbae.services.mcp.tools_evaluations import register_evaluation_tools  # noqa: E402
 

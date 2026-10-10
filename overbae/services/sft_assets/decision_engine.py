@@ -29,16 +29,14 @@ from common import (
     ProgressCallback,
 )
 from decision_readout import collate, decision_logits, loss_terms, predict, probability_vectors
+from native_monitor import NativeTrainingMonitor
+from training_monitor import preserve_training_state
 from transformers import get_cosine_schedule_with_warmup
 
 from modal_shared.decision_artifact import read_artifact, seal_artifact
 from modal_shared.decision_batching import microbatches
 from modal_shared.decision_checkpoint import restore_resume, save_resume, training_base_identity
-from modal_shared.decision_checkpoint_policy import (
-    checkpoint_steps,
-    select_checkpoint,
-    validate_policy,
-)
+from modal_shared.decision_checkpoint_policy import checkpoint_steps, validate_policy
 from modal_shared.decision_inference import input_digest
 from modal_shared.decisions import (
     TARGET_FIELDS,
@@ -49,7 +47,8 @@ from modal_shared.decisions import (
 from modal_shared.preparation import training_fingerprint
 from modal_shared.runtime_profile import representative_order
 from modal_shared.serving.artifacts import atomic_json
-from modal_shared.training_telemetry import record_stage
+from modal_shared.training_monitoring import fingerprint, resolve_policy
+from modal_shared.training_telemetry import read_telemetry, record_stage
 
 PADDED_TOKEN_BUDGET = int(os.environ.get("PADDED_TOKEN_BUDGET", MAX_LENGTH))
 
@@ -59,6 +58,7 @@ class IndexedRows:
         self.path = Path(path)
         self.offsets = []
         self.lengths = []
+        self.monitoring_rows = []
         self.fingerprint = hashlib.sha256()
         with self.path.open("rb") as stream:
             while True:
@@ -70,6 +70,13 @@ class IndexedRows:
                 row = json.loads(line)
                 self.offsets.append(offset)
                 self.lengths.append(len(row["input_ids"]))
+                self.monitoring_rows.append(
+                    {
+                        "key": row.get("key") or fingerprint(row),
+                        "group": row.get("group"),
+                        "sha256": fingerprint(row),
+                    }
+                )
         self.fingerprint = self.fingerprint.hexdigest()
 
     def __len__(self):
@@ -148,6 +155,7 @@ def evaluate(model, data, tokenizer, destination, *, stage=None):
                             "key": row["key"],
                             **vectors,
                             **{key: row[key] for key in TARGET_FIELDS if key in row},
+                            "weight": row.get("weight", 1.0),
                             "kind": row["kind"],
                         }
                     )
@@ -193,6 +201,25 @@ def train(model, tokenizer):
         ),
         has_development=validation is not None and len(validation) > 0,
     )
+    monitoring_value = (
+        json.loads(os.environ["TRAINING_MONITORING"])
+        if os.environ.get("TRAINING_MONITORING")
+        else {
+            "mode": "adaptive" if validation else "off",
+            "initial": baseline_enabled,
+            "selection": policy["selection"],
+        }
+    )
+    monitoring_policy = resolve_policy(
+        monitoring_value, has_development=bool(validation), provider="modal"
+    )
+    if monitoring_policy["initial"] != baseline_enabled:
+        raise ValueError("Monitoring initial check conflicts with the native baseline setting")
+    if (
+        "DECISION_CHECKPOINT_POLICY" in os.environ
+        and monitoring_policy["selection"] != policy["selection"]
+    ):
+        raise ValueError("Monitoring and native checkpoint selection conflict")
     run = Path(RUN_DIR)
     prepared = json.loads(Path("preparation.json").read_text())
     global_batch = PER_DEVICE_BATCH * GRAD_ACCUM
@@ -243,9 +270,11 @@ def train(model, tokenizer):
         "weight_decay": WEIGHT_DECAY,
         "warmup_ratio": WARMUP_RATIO,
         "checkpoint_policy": policy,
+        "monitoring": monitoring_policy,
     }
     if profile_measurement is not None:
         record_stage(run, "profile_selection", runtime_profile=profile_measurement)
+    record_stage(run, "initializing_trainer")
     random.seed(SEED)
     torch.manual_seed(SEED)
     torch.cuda.manual_seed_all(SEED)
@@ -268,25 +297,7 @@ def train(model, tokenizer):
     else:
         signature_path = run / "decision-training.json"
         signature_path.write_text(json.dumps(signature, indent=2))
-        if baseline_enabled and validation and len(validation):
-            record_stage(run, "initial_validation", pre_training_baseline={"status": "running"})
-            metrics = evaluate(
-                model,
-                validation,
-                tokenizer,
-                run / "decision-before.jsonl",
-                stage="initial_validation",
-            )
-            (run / "decision-before.json").write_text(json.dumps(metrics))
-            record_stage(
-                run,
-                "initial_validation",
-                pre_training_baseline={"status": "completed", "decisions": metrics["decisions"]},
-            )
-            callback.on_evaluate(
-                None, SimpleNamespace(global_step=0, epoch=0), None, metrics=metrics
-            )
-        else:
+        if not baseline_enabled or not validation:
             record_stage(
                 run,
                 "training",
@@ -301,10 +312,6 @@ def train(model, tokenizer):
     callback.on_train_begin(args, state, None, model=model, tokens_seen=tokens_seen)
     device = model.get_input_embeddings().weight.device
     model.train()
-    retained_path = run / "decision-checkpoints.json"
-    retained = (
-        json.loads(retained_path.read_text())["checkpoints"] if retained_path.exists() else []
-    )
     retained_steps = checkpoint_steps(policy, total_steps)
     probe_indices = sorted(range(len(data)), key=lambda i: data.lengths[i])
     selected = sorted({probe_indices[round(i * (len(data) - 1) / 63)] for i in range(64)})
@@ -312,11 +319,42 @@ def train(model, tokenizer):
     with probe.open("w") as stream:
         for row in data.read(selected):
             stream.write(json.dumps(row) + "\n")
+    monitoring = NativeTrainingMonitor(
+        run,
+        monitoring_policy,
+        data,
+        validation,
+        total_steps=total_steps,
+        evaluate=lambda rows, destination: evaluate(
+            model, rows, tokenizer, destination, stage="validation"
+        ),
+        retain=lambda step: retain_checkpoint(
+            model, tokenizer, run, probe, None, prepared, signature, step
+        ),
+        preserve=lambda: preserve_training_state(model),
+        attempt=read_telemetry(run).get("attempt", 1),
+    )
+    monitoring_enabled = monitoring_policy["mode"] != "off"
+    if monitoring_enabled and monitoring_policy["initial"] and step == 0:
+        check_started = time.monotonic()
+        initial = monitoring.check(0)
+        callback.exclude_monitoring_time(time.monotonic() - check_started)
+        atomic_json(run / "decision-before.json", initial["metrics"])
+        callback.on_evaluate(args, state, None, metrics=initial["metrics"])
+        record_stage(
+            run,
+            "initial_validation",
+            pre_training_baseline={
+                "status": initial["state"],
+                "decisions": initial["coverage"]["scored"],
+            },
+        )
     started = time.monotonic()
     saved_at = started
     epoch = -1
     order = []
     while step < total_steps:
+        step_started = time.monotonic()
         next_epoch, epoch_step = divmod(step, steps_per_epoch)
         if next_epoch != epoch:
             epoch = next_epoch
@@ -335,6 +373,9 @@ def train(model, tokenizer):
             step_loss += loss.detach().item() / normalizer
             tokens_seen += sum(len(row["input_ids"]) for row in micro)
         norm = torch.nn.utils.clip_grad_norm_(parameters, 1.0, error_if_nonfinite=True)
+        monitoring.monitor.observe_metrics(
+            {"loss": step_loss, "grad_norm": norm}, clipping_threshold=1.0
+        )
         optimizer.step()
         scheduler.step()
         step += 1
@@ -351,16 +392,22 @@ def train(model, tokenizer):
             },
         )
         now = time.monotonic()
-        if (
-            step in retained_steps
-            and step < total_steps
-            and not any(item["step"] == step for item in retained)
-        ):
-            checkpoint = retain_checkpoint(
-                model, tokenizer, run, probe, validation, prepared, signature, step
-            )
-            retained.append(checkpoint)
-            atomic_json(retained_path, {"policy": policy, "checkpoints": retained})
+        if monitoring_enabled:
+            monitoring.monitor.observe_step(time.monotonic() - step_started)
+            due = monitoring.monitor.schedule.due(step) or step in retained_steps
+            if monitoring_policy["mode"] == "epoch" and step % steps_per_epoch == 0:
+                due = monitoring.monitor.schedule.checks < monitoring_policy["max_checks"]
+            if due and step < total_steps:
+                check_started = time.monotonic()
+                check = monitoring.check(step)
+                callback.exclude_monitoring_time(time.monotonic() - check_started)
+                callback.on_evaluate(args, state, None, metrics=check["metrics"])
+                if monitoring.monitor.data["stop_reason"]:
+                    break
+        elif step in retained_steps:
+            check_started = time.monotonic()
+            monitoring.retain_at_step(step)
+            callback.exclude_monitoring_time(time.monotonic() - check_started)
         if now - saved_at >= 300 or step in retained_steps:
             save_resume(
                 resume_path,
@@ -379,35 +426,22 @@ def train(model, tokenizer):
                 checkpoint_bytes=resume_path.stat().st_size,
             )
             saved_at = now
-    if len(policy["fractions"]) > 1 or policy["selection"] == "development_loss":
-        if not any(item["step"] == step for item in retained):
-            retained.append(
-                retain_checkpoint(
-                    model, tokenizer, run, probe, validation, prepared, signature, step
-                )
+    if monitoring_enabled:
+        monitoring.check(step)
+        chosen = next(
+            (item for item in monitoring.monitor.data["checkpoints"] if item.get("selected")), None
+        )
+        if chosen and monitoring_policy["selection"] == "development_loss":
+            read_artifact(run / chosen["manifest"]["path"])
+            model.load_adapter(
+                str(run / chosen["manifest"]["path"]), adapter_name="default", is_trainable=True
             )
-        chosen = select_checkpoint(policy, retained)
-        read_artifact(run / chosen["path"])
-        model.load_adapter(str(run / chosen["path"]), adapter_name="default", is_trainable=True)
-        model.set_adapter("default")
-        signature["selected_checkpoint_step"] = chosen["step"]
-        atomic_json(
-            retained_path,
-            {
-                "policy": policy,
-                "checkpoints": retained,
-                "selected": chosen,
-                "selection_data": "development"
-                if policy["selection"] == "development_loss"
-                else None,
-            },
-        )
-    if validation and len(validation):
-        metrics = evaluate(
-            model, validation, tokenizer, run / "decision-after.jsonl", stage="final_validation"
-        )
-        (run / "decision-after.json").write_text(json.dumps(metrics))
-        callback.on_evaluate(args, state, None, metrics=metrics)
+            model.set_adapter("default")
+        signature["selected_checkpoint_step"] = chosen["step"] if chosen else step
+        if monitoring_policy["final"]:
+            final = monitoring.check(signature["selected_checkpoint_step"], final=True)
+            atomic_json(run / "decision-after.json", final["metrics"])
+            callback.on_evaluate(args, state, None, metrics=final["metrics"])
     record_stage(run, "verifying_checkpoint")
     evaluate(model, IndexedRows(probe), tokenizer, run / "decision-reload-reference.jsonl")
     model.save_pretrained(CHECKPOINT_DIR)

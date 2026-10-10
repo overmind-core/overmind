@@ -4,7 +4,6 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { Attachment } from "@/components/datasets/attachment";
 import { evaluationRows } from "@/components/datasets/dataset-split";
-import type { DatasetSource } from "@/components/datasets/new-dataset-button";
 import {
   TraceBulkSourcePicker,
   type TraceSelectionState,
@@ -69,7 +68,7 @@ export interface NewDatasetDialogProps {
   onOpenChange: (open: boolean) => void;
   projectId: string;
   initialCapabilityId?: string;
-  initialSource?: DatasetSource;
+  initialSource?: "file" | "traces";
   initialFiles?: File[];
   initialTraceIds?: string[];
   initialSelection?: TraceSelectionSpec | null;

@@ -1,8 +1,7 @@
 /**
  * Every colour meaning in the app is declared here; call sites never write a
  * hex, an `hsl()` or a raw Tailwind palette class. The semantic tokens behind
- * `TONE_*` are already tuned per theme, so never pair one with a `dark:`
- * variant.
+ * `TONE_*` use the single dark palette.
  */
 
 /** `neutral` means "no signal", not "unknown-and-probably-bad". */
@@ -129,13 +128,13 @@ export const SERIES_COLORS: string[] = Array.from({ length: CATEGORICAL_SLOT_COU
 
 /**
  * A fixed brand ink, not a theme token: the pixel heading icons are inverted
- * wholesale in dark mode via `dark:invert`, so this must stay constant.
+ * wholesale via `invert`, so this must stay constant.
  */
 export const ICON_INK = "#16120F";
 
 /**
  * Native `<input type="datetime-local">` chrome renders its own light picker,
- * so the trigger is forced light in dark mode to match it.
+ * so the trigger retains a light surface to match it.
  */
 export const NATIVE_DATE_TRIGGER =
-  "dark:border-neutral-300 dark:bg-white dark:text-neutral-900 dark:shadow-none dark:hover:bg-neutral-100";
+  "border-neutral-300 bg-white text-neutral-900 shadow-none hover:bg-neutral-100";

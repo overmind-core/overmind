@@ -5,9 +5,11 @@ from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.mcp.context import MCPContext
 
-MAX_MANIFEST_BYTES = 64 * 1024
+MAX_MANIFEST_BYTES = 80 * 1024
 
 EXPECTED_TOOL_NAMES = {
+    "inspect_training_progress",
+    "cancel_finetune",
     "explore_dataset",
     "derive_dataset",
     "prepare_native_evaluation",
@@ -32,14 +34,23 @@ EXPECTED_TOOL_NAMES = {
     "query_traces",
     "query_task_executions",
     "get_job",
+    "inspect_operation",
     "list_datasets",
     "start_dataset",
     "inspect_dataset",
     "query_dataset",
     "create_dataset_from_traces",
     "create_dataset_from_llm_calls",
-    "message_dataset_agent",
-    "run_dataset",
+    "inspect_dataset_workbench",
+    "save_dataset_pipeline",
+    "validate_dataset_pipeline",
+    "cancel_dataset_pipeline_run",
+    "save_dataset_pipeline_binding",
+    "set_dataset_pipeline_binding_state",
+    "run_dataset_pipeline_binding",
+    "run_dataset_pipeline",
+    "import_dataset_version",
+    "update_dataset",
     "check_evaluation_readiness",
     "upsert_evaluator",
     "create_eval_set",
@@ -65,7 +76,6 @@ EXPECTED_TOOL_NAMES = {
     "verify_instrumentation",
     "get_model_catalog",
     "cancel_dataset",
-    "manage_dataset_workflow",
     "schedule_native_evaluation",
 }
 

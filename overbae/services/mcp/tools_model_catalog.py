@@ -30,7 +30,10 @@ def register_model_catalog_tools(catalog) -> None:
             title="Get fine-tuning model catalog",
             description=(
                 "List models available for fine-tuning, including tiers, context limits, "
-                "training methods, tool-calling support, and batch bounds."
+                "training methods, tool-calling support, batch bounds, and exact OpenRouter "
+                "benchmark IDs with catalogue availability. A null ID has no known mapping; "
+                "not_listed and catalog_unavailable do not establish an available route. "
+                "Also returns provider monitoring capabilities, qualification scope and unsupported checks."
             ),
             input_model=GetModelCatalogInput,
             output_model=GetModelCatalogOutput,

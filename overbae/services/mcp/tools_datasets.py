@@ -1,7 +1,6 @@
-"""Project-scoped dataset inspection, creation, agent, and run tools."""
-
 from __future__ import annotations
 
+import json
 import re
 import uuid
 
@@ -11,16 +10,14 @@ from asgiref.sync import sync_to_async
 from overbae.models import Capability, Dataset
 from overbae.services.datasets import (
     dispatch,
-    generation,
-    generation_worker,
-    operations,
     paths,
     store,
+    workbench,
 )
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.datasets.notebook.agent import resolve_cell
 from overbae.services.datasets.selection import TraceSource, TraceSourceError
+from overbae.services.datasets.versions import resolve_cell
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.common import PageContract
 from overbae.services.mcp.contracts.datasets import (
@@ -31,11 +28,8 @@ from overbae.services.mcp.contracts.datasets import (
     InspectDatasetInput,
     ListDatasetsInput,
     ListDatasetsOutput,
-    ManageDatasetWorkflowInput,
-    MessageDatasetAgentInput,
     QueryDatasetInput,
     QueryDatasetOutput,
-    RunDatasetInput,
     StartDatasetInput,
     dataset_resource_link,
     mutation_output,
@@ -46,6 +40,7 @@ from overbae.services.mcp.contracts.datasets import (
 from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
 
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
+QUERY_RESULT_BYTES = 32 * 1024
 
 
 def _uuid(value: str) -> str | None:
@@ -113,9 +108,10 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
 def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> DatasetDetail:
     return serialize_dataset_detail(
         _resolve_dataset(context, payload.dataset),
-        chat_limit=payload.chat_limit,
         cell_offset=payload.cell_offset,
         cell_limit=payload.cell_limit,
+        source_offset=payload.source_offset,
+        source_limit=payload.source_limit,
     )
 
 
@@ -132,14 +128,30 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
         raise MCPError("cell_not_found", "The cell was not found in this dataset.")
     limit = min(payload.limit, 100)
     try:
-        result = store.query(sql, limit=limit + 1, t=paths.cell_path(dataset.id, cell.id))
-    except duckdb.Error as exc:
+        result = store.query(
+            sql,
+            limit=limit + 1,
+            max_bytes=32768,
+            max_columns=200,
+            t=paths.cell_path(dataset.id, cell.id),
+        )
+    except store.QueryTimeoutError as exc:
+        raise MCPError("query_timeout", str(exc), retryable=False) from exc
+    except store.QuerySizeError as exc:
+        raise MCPError("query_result_too_large", str(exc), retryable=False) from exc
+    except (duckdb.Error, store.StoreError) as exc:
         reason = sanitize_error(str(exc).splitlines()[0], 300)
         raise MCPError("query_invalid", f"The query failed: {reason}") from exc
     rows = list(result["rows"])[:limit]
-    columns = [str(column) for column in (result.get("columns") or [])[:200]]
+    columns = [str(column) for column in (result.get("columns") or [])]
+    if len(columns) > 200:
+        raise MCPError(
+            "query_result_too_large",
+            "The query result exceeds 200 columns. Select fewer columns or export the "
+            "full cell through overmind://dataset-export. No column metadata was omitted.",
+        )
     link = dataset_resource_link(dataset)
-    return QueryDatasetOutput(
+    output = QueryDatasetOutput(
         summary=f"{len(rows)} rows.",
         dataset=str(dataset.id),
         cell_id=str(cell.id),
@@ -150,6 +162,14 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
         truncated=len(result["rows"]) > limit,
         resource_links=[link],
     )
+    if len(json.dumps(output.model_dump(mode="json")).encode()) > QUERY_RESULT_BYTES:
+        raise MCPError(
+            "query_result_too_large",
+            "The query result exceeds 32 KiB. Select fewer rows or smaller columns, "
+            "use SQL aggregates, or export the full cell through overmind://dataset-export. "
+            "No values were clipped.",
+        )
+    return output
 
 
 def _create_dataset_from_traces_sync(
@@ -276,24 +296,6 @@ def _create_dataset_from_llm_calls_sync(
     )
 
 
-def _message_dataset_agent_sync(
-    payload: MessageDatasetAgentInput, context: MCPContext
-) -> DatasetMutationOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
-    message = payload.message.strip()
-    try:
-        dispatch.message_agent(
-            dataset,
-            context.user,
-            message,
-            intent_choice=payload.intent_choice,
-            intent_turn_id=payload.intent_turn_id or "",
-        )
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
-    return mutation_output(dataset, summary="Dataset agent queued.")
-
-
 def _start_dataset_sync(payload: StartDatasetInput, context: MCPContext) -> DatasetMutationOutput:
     capability = _resolve_capability(context, payload.capability) if payload.capability else None
     try:
@@ -311,48 +313,13 @@ def _start_dataset_sync(payload: StartDatasetInput, context: MCPContext) -> Data
     return mutation_output(dataset, summary="Dataset started from the written request.")
 
 
-def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetMutationOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
-    proposal = None
-    if payload.proposal_cell:
-        proposal_id = _uuid(payload.proposal_cell)
-        if proposal_id is None:
-            raise MCPError("invalid_input", "Proposal cell references must be UUIDs.")
-        proposal = dataset.cells.filter(id=proposal_id).first()
-        if proposal is None:
-            raise MCPError("cell_not_found", "The proposal was not found in this dataset.")
-    try:
-        dispatch.run_dataset(dataset, context.user, proposal=proposal)
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
-    return mutation_output(dataset, summary="Dataset run queued.")
-
-
 def _cancel_dataset_sync(payload, context):
     dataset = _resolve_dataset(context, payload.dataset)
-    operations.cancel(dataset.pk)
+    workbench.cancel(dataset)
     dataset.refresh_from_db()
     return mutation_output(
-        dataset,
-        summary="Cancellation requested; provider and local acknowledgement are tracked in the dataset operation.",
+        dataset, summary="Cancellation requested. Inspect dataset state and run receipts."
     )
-
-
-def _manage_dataset_workflow_sync(payload, context):
-    dataset = _resolve_dataset(context, payload.dataset)
-    try:
-        generation.control(
-            dataset, payload.run_id, action=payload.action, revision=payload.revision
-        )
-        if payload.action == "resume":
-            generation_worker.schedule(payload.run_id)
-    except (ValueError, generation.WorkshopRun.DoesNotExist) as exc:
-        raise MCPError(
-            "workflow_conflict",
-            "The workflow cannot accept this action. Inspect its current revision, state and failure before continuing.",
-        ) from exc
-    dataset.refresh_from_db()
-    return mutation_output(dataset, summary="Workshop workflow updated.")
 
 
 def _async_handler(function):
@@ -367,19 +334,9 @@ def register_dataset_tools(catalog) -> None:
 
     definitions = [
         (
-            "manage_dataset_workflow",
-            "Manage saved dataset work",
-            "Pause new generation claims, resume saved batches, or publish an explicit partial result. Requires the current run revision from inspect_dataset. Pause does not cancel an in-flight provider request. Unresolved provider submissions cannot be replayed.",
-            ManageDatasetWorkflowInput,
-            DatasetMutationOutput,
-            _manage_dataset_workflow_sync,
-            False,
-            "job",
-        ),
-        (
             "cancel_dataset",
             "Cancel dataset operation",
-            "Cancel an operation; stays pending until local and provider acknowledgement.",
+            "Cancel publication of queued or running pipeline work, or request cancellation of source landing. In-flight calculations may finish without publishing. Inspect dataset state and run receipts; external agents and providers are not stopped.",
             InspectDatasetInput,
             DatasetMutationOutput,
             _cancel_dataset_sync,
@@ -409,7 +366,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect dataset versions, task-family profiles, consumer requirements, sample, agent chat and next actions.",
+            "Inspect dataset versions, extraction metadata, progress, profiles and consumer requirements. Cells expose receipt-backed transformation execution, exact revision/package/entrypoint, distinguishing external imports and unrecorded history. Read all package files through dataset-pipeline-packages resources. Page cells and sources with offsets and next_cursor.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -420,7 +377,9 @@ def register_dataset_tools(catalog) -> None:
             "query_dataset",
             "Query dataset",
             "Read-only SELECT over table t on one ran cell (active unless cell is an id or version). "
-            "At most 100 rows; truncated when more matched.",
+            "At most 100 rows; truncated when more matched. Results over 200 columns or 32 KiB of JSON fail "
+            "with query_result_too_large; project smaller columns, aggregate, or use the "
+            "dataset-export resource for complete data. Values are never clipped.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,
@@ -448,26 +407,6 @@ def register_dataset_tools(catalog) -> None:
             False,
             "task",
         ),
-        (
-            "message_dataset_agent",
-            "Message dataset agent",
-            "Message an idle dataset agent. For awaiting_intent, ask the user, then send intent_choice (train/eval/explore) and intent_turn_id instead of message. Never infer intent from data.",
-            MessageDatasetAgentInput,
-            DatasetMutationOutput,
-            _message_dataset_agent_sync,
-            False,
-            "job",
-        ),
-        (
-            "run_dataset",
-            "Run dataset",
-            "Run a dataset; approving a proposal activates it and resumes its agent request.",
-            RunDatasetInput,
-            DatasetMutationOutput,
-            _run_dataset_sync,
-            False,
-            "job",
-        ),
     ]
     for (
         name,
@@ -493,15 +432,7 @@ def register_dataset_tools(catalog) -> None:
                 required_scopes=frozenset(
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
-                cost_class="llm"
-                if name
-                in {
-                    "run_dataset",
-                    "message_dataset_agent",
-                    "start_dataset",
-                    "manage_dataset_workflow",
-                }
-                else "free",
+                cost_class="free",
                 async_mode=mode,
             ),
             _async_handler(function),

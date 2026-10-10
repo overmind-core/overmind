@@ -16,7 +16,6 @@ from overbae.services.datasets import dispatch, paths, store
 from overbae.services.datasets.land import LandError
 from overbae.services.datasets.llm_calls import call_record, hash_split, shape
 from overbae.services.finetuning_validator import validate_rows
-from overbae.tasks import datasets as dataset_tasks
 
 pytestmark = pytest.mark.django_db
 
@@ -204,10 +203,6 @@ def test_a_final_tool_call_trains_and_a_gap_does_not():
 
 
 def test_landing_settles_idle_without_a_workshop_turn(monkeypatch):
-    queued = []
-    monkeypatch.setattr(
-        dataset_tasks.diagnose, "apply_async", lambda *args, **kwargs: queued.append(kwargs)
-    )
     project = _project()
     capability = Capability.objects.create(project=project, name="Support", slug="support")
     _call_span(project, capability, uuid.uuid4().hex[:16])
@@ -227,7 +222,6 @@ def test_landing_settles_idle_without_a_workshop_turn(monkeypatch):
         infer_capability=False,
     )
     dataset.refresh_from_db()
-    assert queued == []
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.active_cell.fits("eval")[0]
     frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))

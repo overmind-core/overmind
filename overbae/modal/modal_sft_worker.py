@@ -11,7 +11,7 @@ Volume ``overmind-sft`` at /data holds, per run:
   /data/runs/{run_id}/progress.json  latest snapshot (ModalRunner.poll)
   /data/runs/{run_id}/metrics.jsonl  full BT_PROGRESS/BT_EVAL/BT_CHECKPOINT history
   /data/runs/{run_id}/meta.json      run status
-  /data/runs/{run_id}/final/         the ONE checkpoint a run ever saves
+  /data/runs/{run_id}/final/         selected final checkpoint
 
 register_model.py reads straight out of ``final/`` — no external download step. Training itself is
 overbae/services/sft_assets/train.py.
@@ -24,6 +24,7 @@ has landed and the S3 archive is confirmed.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -42,6 +43,8 @@ from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.preparation import run_preparation_process
 from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_data import materialize_files
+from modal_shared.training_failure import failure_receipt
+from modal_shared.training_monitoring_runtime import freeze_run_files
 from modal_shared.training_release import identity
 from modal_shared.training_telemetry import read_telemetry, record_heartbeat, record_stage
 
@@ -107,7 +110,6 @@ def _write_meta(run_dir: Path, **fields) -> None:
 
 def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_count=1) -> dict:
     meter = ComputeMeter(gpu_type=gpu_type, gpu_count=gpu_count)
-    record_stage(_run_dir(run_id), "loading_model")
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
@@ -130,6 +132,8 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
         sft_vol.commit()
         return result
     weights_vol.reload()
+    record_heartbeat(run_dir, new_attempt=True)
+    record_stage(run_dir, "staging_training_files")
     _write_meta(
         run_dir,
         run_id=run_id,
@@ -168,7 +172,6 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
     # ProgressCallback writes to run_dir on every logged step but has no Modal
     # awareness, so commit the Volume on a timer instead of coupling the training
     # script to Modal internals.
-    record_heartbeat(run_dir, new_attempt=True)
     stop_commit = threading.Event()
 
     def _commit_loop() -> None:
@@ -223,8 +226,9 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
             result["artifact_identity"] = seal_artifact(candidate_dir, report)["identity"]
             candidate_dir.rename(final_dir)
         status = "succeeded"
-    except Exception as exc:
-        _write_meta(run_dir, status="failed", error=f"{type(exc).__name__}: {exc}")
+    except Exception:
+        failure = failure_receipt(log_path)
+        _write_meta(run_dir, status="failed", error=failure["message"], failure=failure)
         sft_vol.commit()
         raise
     finally:
@@ -353,7 +357,34 @@ def get_progress(run_id: str) -> dict:
     retained = run_dir / "decision-checkpoints.json"
     if retained.exists():
         out["checkpoint_selection"] = json.loads(retained.read_text())
+    monitoring = run_dir / "monitoring.json"
+    if monitoring.exists():
+        out["monitoring"] = {
+            key: value
+            for key, value in json.loads(monitoring.read_text()).items()
+            if key != "probes"
+        }
     return out
+
+
+@app.function(image=light_image, timeout=60, volumes={DATA_MOUNT: sft_vol})
+def get_monitoring_examples(run_id: str, check_key: str, offset: int = 0, limit: int = 50):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise ValueError("Invalid monitoring evidence page")
+    sft_vol.reload()
+    run_dir = _run_dir(run_id)
+    manifest = json.loads((run_dir / "monitoring.json").read_text())
+    check = next(item for item in manifest["checks"] if item["key"] == check_key)
+    path = check["artifact"]["path"]
+    if Path(path).name != path:
+        raise ValueError("Invalid monitoring artifact path")
+    artifact = json.loads((run_dir / path).read_text())
+    examples = artifact["examples"]
+    return {
+        "sha256": artifact["sha256"],
+        "items": examples[offset : offset + limit],
+        "next_offset": offset + limit if offset + limit < len(examples) else None,
+    }
 
 
 @app.function(
@@ -378,7 +409,11 @@ def mark_cancelled(run_id: str) -> dict:
     volumes={DATA_MOUNT: sft_vol},
 )
 def upload_dataset(
-    run_id: str, preparation_id: str, artifact_sha256: str, selections: dict
+    run_id: str,
+    preparation_id: str,
+    artifact_sha256: str,
+    selections: dict,
+    monitoring: dict | None = None,
 ) -> dict:
     sft_vol.reload()
     run_dir = _run_dir(run_id)
@@ -399,11 +434,39 @@ def upload_dataset(
         (run_dir / f"selected-{name}.keys", run_dir / f"{name}.jsonl", selection)
         for name, selection in selections.items()
     ]
-    materialize_files(preparation / "tokens.jsonl", artifact_sha256, files)
+
+    next_publication = 0.0
+
+    def report_progress(values):
+        nonlocal next_publication
+        publish = time.monotonic() >= next_publication
+        try:
+            atomic_json(run_dir / "transfer-progress.json", {"source_at": time.time(), **values})
+            if publish:
+                sft_vol.commit()
+        except Exception as exc:
+            # Telemetry delivery must not invalidate the selected training rows.
+            logging.getLogger(__name__).warning(
+                "Transfer telemetry unavailable (%s)", type(exc).__name__
+            )
+        finally:
+            if publish:
+                next_publication = time.monotonic() + _VOLUME_COMMIT_INTERVAL_S
+
+    materialize_files(
+        preparation / "tokens.jsonl", artifact_sha256, files, progress=report_progress
+    )
+    report_progress({"stage": "committing_training_data"})
     shutil.copytree(preparation / "tokenizer", run_dir / "tokenizer", dirs_exist_ok=True)
     (run_dir / "preparation.json").write_text(json.dumps(report))
+    plan = (
+        freeze_run_files(run_dir, monitoring)
+        if monitoring and monitoring["mode"] != "off"
+        else None
+    )
     sft_vol.commit()
-    return {"run_id": run_id, "run_dir": str(run_dir)}
+    report_progress({"stage": "training_data_ready"})
+    return {"run_id": run_id, "run_dir": str(run_dir), "monitoring_plan": plan}
 
 
 def _dir_bytes(path: Path) -> int:

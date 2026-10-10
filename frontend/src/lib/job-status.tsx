@@ -66,8 +66,7 @@ export function resolveStatus(status: string | null | undefined, fallback: strin
 }
 
 /**
- * In-progress uses inverted surface tokens, not a pinned white fill, which
- * vanishes into the cream canvas in light mode. h-7 matches Button size=sm.
+ * h-7 matches Button size=sm.
  */
 export function statusBadgeClassName(cfg: StatusMeta, solidProgress?: boolean): string {
   return cn(
@@ -103,12 +102,14 @@ export function StatusBadge({
 
 export function ResolvedStatusBadge({
   cfg,
+  label,
   icon = cfg.icon,
   solidProgress = false,
   progress,
   className,
 }: {
   cfg: StatusMeta;
+  label?: string;
   icon?: React.ReactNode;
   solidProgress?: boolean;
   progress?: number | null;
@@ -121,7 +122,7 @@ export function ResolvedStatusBadge({
       aria-label={
         normalizedProgress == null
           ? undefined
-          : `${cfg.label}, ${Math.round(normalizedProgress)}% complete`
+          : `${label ?? cfg.label}, ${Math.round(normalizedProgress)}% complete`
       }
       aria-valuemax={normalizedProgress == null ? undefined : 100}
       aria-valuemin={normalizedProgress == null ? undefined : 0}
@@ -144,7 +145,7 @@ export function ResolvedStatusBadge({
       )}
       <span className="relative z-10 inline-flex items-center gap-1">
         {icon}
-        <span>{cfg.label}</span>
+        <span>{label ?? cfg.label}</span>
         {normalizedProgress != null && (
           <span className="font-mono tabular-nums">{Math.round(normalizedProgress)}%</span>
         )}

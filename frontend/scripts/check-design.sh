@@ -46,21 +46,18 @@ report "re-derived score tier (use scoreTone)" \
   'lib/colors\.ts|\.test\.'
 report "hex in class strings" \
   '(bg|text|border|ring|fill|stroke|from|to|via)-\[#'
-# The elevation wash is two steps in both themes. `bg-muted/N` alphas step
+# The elevation wash is two steps. `bg-muted/N` alphas step
 # 0.25–0.5 L* against a ~1 L* just-noticeable difference, so they render flat.
 report "alpha wash (use bg-wash-subtle / bg-wash-raised)" \
   'bg-muted/[0-9]'
 # The tokens are hex, not HSL triplets, so hsl() receives a colour and the
-# browser silently discards the whole declaration, in both themes.
+# browser silently discards the whole declaration.
 report "hsl() wrapping a hex token (drops the declaration)" \
   'hsl\(var\(--'
-# An opaque bg-white/bg-black is the same fill in both themes, so one theme is
-# always wrong; bg-foreground/bg-background invert on their own. The `dark:bg-`
-# exemption covers NATIVE_DATE_TRIGGER, which forces light chrome in dark mode
-# to match the native datetime picker's non-themeable popup.
+# Named exceptions such as native date-picker chrome belong in lib/colors.ts.
 report "opaque bg-white/bg-black (use bg-foreground / bg-background)" \
   '\bbg-(white|black)[^/a-zA-Z0-9-]' \
-  'dark:bg-'
+  'lib/colors.ts'
 # Allowlisted: login, a bespoke display surface whose type sits off the UI
 # data-scale.
 report "arbitrary text-[Npx/rem/em] (use scale tokens)" \

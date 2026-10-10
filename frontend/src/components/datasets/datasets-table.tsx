@@ -1,10 +1,9 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { IntentBadge, SOURCE_KIND_LABEL, StateBadge } from "@/components/datasets/badges";
-import { type DatasetSource, NewDatasetButton } from "@/components/datasets/new-dataset-button";
+import { IntentBadge, SOURCE_KIND_LABEL } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -24,7 +23,6 @@ import {
 import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { parseDrfOrdering } from "@/lib/drf-ordering";
-import { formatNumber } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { Dataset } from "@/openapi";
 
@@ -72,8 +70,7 @@ export function DatasetsToolbar({
   capabilityFilter = "all",
   setCapabilityFilter,
   capabilityNameById = {},
-  onCreate,
-}: DatasetsFilterProps & { onCreate: (source: DatasetSource) => void }) {
+}: DatasetsFilterProps) {
   const capabilityIds = useMemo(() => {
     const ids = new Set<string>(Object.keys(capabilityNameById));
     for (const ds of datasets) ids.add(ds.capability || NO_CAPABILITY);
@@ -125,7 +122,6 @@ export function DatasetsToolbar({
         setIntentFilter("all");
         setCapabilityFilter?.("all");
       }}
-      primary={<NewDatasetButton onSelect={onCreate} />}
       search={
         <SearchInput
           className="min-w-[200px] flex-1"
@@ -186,17 +182,12 @@ function getColumns(opts: {
     },
     {
       accessorFn: (row) => row.intent ?? "",
-      cell: ({ row }) => (
-        <span className="flex items-center gap-1.5">
-          <IntentBadge intent={row.original.intent} />
-          <StateBadge dataset={row.original} />
-        </span>
-      ),
+      cell: ({ row }) => <IntentBadge intent={row.original.intent} />,
       header: "Intent",
       id: "intent",
       meta: { label: "Intent", noTruncate: true, orderingField: "intent" },
       minSize: 110,
-      size: 150,
+      size: 130,
     },
     {
       accessorFn: (row) => row.activeVersion ?? "",
@@ -215,7 +206,7 @@ function getColumns(opts: {
       accessorFn: (row) => row.rows ?? 0,
       cell: ({ row }) => (
         <span className="tabular-nums text-sm text-foreground">
-          {formatNumber(row.original.rows ?? 0)}
+          {(row.original.rows ?? 0).toLocaleString()}
         </span>
       ),
       header: "Rows",
@@ -328,16 +319,12 @@ export function DatasetsBrowser({
   isLoading,
   error,
   hideCapabilityColumn,
-  emptyAction,
-  emptyDescription = "Upload files or select data from traces.",
   fill = true,
   rowSearch,
 }: DatasetsFilterProps & {
   isLoading: boolean;
   error?: unknown;
   hideCapabilityColumn?: boolean;
-  emptyAction?: ReactNode;
-  emptyDescription?: string;
   fill?: boolean;
   rowSearch?: Record<string, string>;
 }) {
@@ -365,7 +352,8 @@ export function DatasetsBrowser({
       return 0;
     });
   }, [filtered, ordering]);
-  const pageRows = sorted.slice((page - 1) * pageSize, page * pageSize);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)));
+  const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = intentFilter !== "all" || capabilityFilter !== "all" || !!search;
 
   const columns = useMemo(
@@ -385,14 +373,7 @@ export function DatasetsBrowser({
       columns={columns}
       data={{ count: sorted.length, results: pageRows }}
       emptyState={
-        <EmptyState
-          action={emptyAction}
-          className="flex-1"
-          description={emptyDescription}
-          icon={Icon.dataset}
-          size="section"
-          title="No datasets yet"
-        />
+        <EmptyState className="flex-1" icon={Icon.dataset} size="section" title="No datasets yet" />
       }
       error={error}
       getRowId={(row) => row.id}
@@ -420,7 +401,7 @@ export function DatasetsBrowser({
         })
       }
       ordering={ordering}
-      page={page}
+      page={currentPage}
       pageSize={pageSize}
       storageKey="datasets-table"
     />

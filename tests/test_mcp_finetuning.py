@@ -24,7 +24,7 @@ from overbae.models import (
     TrainingPreparation,
     User,
 )
-from overbae.services.datasets import paths, review, store
+from overbae.services.datasets import paths, store
 from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp import tools_finetuning
 from overbae.services.mcp.catalog import CATALOG
@@ -122,20 +122,9 @@ def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True
     )
     cell.fingerprint = store.file_sha256(path)
     cell.save(update_fields=["fingerprint"])
-    review.record_quality(
-        dataset,
-        cell,
-        [
-            {
-                "name": name,
-                "result": "pass",
-                "rows_checked": rows,
-                "evidence": "Controlled test fixture.",
-            }
-            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
-        ],
-        script="df = pd.DataFrame({'source_row': df.source_row, **{name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')}})",
-    )
+    from conftest import review_fixture
+
+    review_fixture(dataset, cell)
     return cell
 
 
@@ -262,6 +251,10 @@ def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(mo
     assert not unassigned.isError, unassigned.structuredContent
     assert selected.structuredContent["task_type"] == "code_generation"
     assert selected.structuredContent["task_type_source"] == "capability"
+    assert selected.structuredContent["assessment"]["task_suitability"] == "unmeasured"
+    assert selected.structuredContent["assessment"]["technical"] == (
+        "pass" if selected.structuredContent["ready"] else "blocked"
+    )
     assert unassigned.structuredContent["task_type_source"] == "heuristic"
     definition = next(
         item for item in CATALOG.definitions() if item.name == "check_finetune_readiness"
@@ -342,7 +335,7 @@ def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
             "validation_enabled": True,
             "validation_split_ratio": 0.2,
             "split_method": "random",
-            "hyperparameters": {},
+            "hyperparameters": {"monitoring": result.structuredContent["monitoring"]["policy"]},
         },
     }
     assert result.structuredContent["trained_tokens"] == 1000
@@ -672,21 +665,23 @@ def test_run_inference_redacts_service_errors(monkeypatch):
         status=DeployedModel.Status.READY,
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "chat_with_deployed_model",
-        lambda **_kwargs: {"error": "provider secret body"},
-    )
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("provider secret body")
+
+    monkeypatch.setattr("overbae.services.inference_requests.submit", fail)
     result = _call(
         "run_inference",
         {
             "deployment": str(deployment.id),
+            "request_key": "redaction-test",
+            "max_tokens": 32,
             "messages": [{"role": "user", "content": "hello"}],
         },
         context,
     )
     assert result.isError is True
-    assert result.structuredContent["error"]["code"] == "inference_failed"
+    assert result.structuredContent["error"]["code"] == "internal_error"
     assert "provider secret" not in str(result.structuredContent)
 
 
@@ -961,6 +956,13 @@ def test_native_readiness_uses_explicit_full_cell_and_external_validation_withou
     assert body["dataset"]["validation"]["stats"]["train_examples"] == 12
     assert body["dataset"]["validation"]["stats"]["val_examples"] == 3
     assert body["training_contract"]["inference_contract"] == "decision"
+    assert body["task_type"] == "decision"
+    assert body["task_type_source"] == "declared_contract"
+    assert body["recommendations"] == []
+    assert "Qwen/Qwen3-0.6B" in {model for tier in body["catalog"].values() for model in tier}
+    assert "google/gemma-4-31B-it" not in {
+        model for tier in body["catalog"].values() for model in tier
+    }
     assert body["selection"]["validation_cell"] == str(validation.active_cell.id)
     assert str(unrelated_eval.id) not in json.dumps(body["selection"])
 
@@ -993,6 +995,45 @@ def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypa
     changed = _call("start_finetune", {**arguments, "hyperparameters": {"seed": 18}}, context)
     assert changed.isError
     assert dispatch.call_count == 1
+
+
+def test_unsupported_gradient_accumulation_is_rejected_before_dispatch(settings, monkeypatch):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context(permission=["read", "write"])
+    _, train, _, _ = training_setup(context)
+    dispatch = Mock(return_value=SimpleNamespace(id="not-permitted-dispatch"))
+    monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    result = _call(
+        "start_finetune",
+        {
+            "dataset": str(train.id),
+            "base_model": "Qwen/Qwen3-0.6B",
+            "request_key": "unsupported-accumulation",
+            "hyperparameters": {"batch_size": 2, "gradient_accumulation_steps": 8},
+            "eval_model_before": False,
+            "eval_model_after": False,
+        },
+        context,
+    )
+    assert result.isError, result.structuredContent
+    assert "batch_size" in json.dumps(result.structuredContent)
+    assert not FinetuningJob.objects.filter(project=context.project).exists()
+    dispatch.assert_not_called()
+    estimate = _call(
+        "estimate_finetune",
+        {
+            "dataset": str(train.id),
+            "base_model": "Qwen/Qwen3-0.6B",
+            "hyperparameters": {"batch_size": 2, "gradient_accumulation_steps": 8},
+            "eval_model_before": False,
+            "eval_model_after": False,
+        },
+        context,
+    )
+    assert estimate.isError
+    assert "batch_size" in estimate.structuredContent["error"]["message"]
 
 
 def test_native_evaluation_is_shared_by_mcp_rest_and_scoped_resources(settings):
@@ -1076,6 +1117,13 @@ def test_native_baseline_choice_is_pinned_without_disabling_validation(
         "request_key": "baseline-choice",
         "hyperparameters": recipe,
     }
+    quote = _call(
+        "estimate_finetune", {k: v for k, v in arguments.items() if k != "request_key"}, context
+    )
+    assert not quote.isError, quote.structuredContent
+    assert quote.structuredContent["training_contract"]["pre_training_baseline"] is (
+        baseline is not False
+    )
     first = _call("start_finetune", arguments, context)
     assert not first.isError, first.structuredContent
     job = FinetuningJob.objects.get(pk=first.structuredContent["job"]["id"])

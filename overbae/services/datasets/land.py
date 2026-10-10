@@ -95,7 +95,6 @@ def commit(
     state: str = Dataset.State.IDLE,
     infer_capability: bool = True,
 ) -> Dataset:
-    """Write cell 0 without exposing an idle dataset before automatic preparation."""
     sources = []
     for artifact in landing.spec.get("sources", []):
         staged = artifact.get("staged_path")
@@ -149,11 +148,25 @@ def commit(
     return dataset
 
 
-def read_file(path: Path, *, filename: str) -> Landing:
+def read_file(
+    path: Path,
+    *,
+    filename: str,
+    on_progress: Callable[[dict], None] | None = None,
+    json_rows_field: str | None = None,
+) -> Landing:
     spool = None
+
+    def progress(detail):
+        if on_progress:
+            on_progress({"filename": filename, **detail})
+
+    progress(
+        {"stage": "extracting" if filename.lower().endswith(documents.SUFFIXES) else "reading"}
+    )
     try:
         if filename.lower().endswith(documents.SUFFIXES):
-            extracted, extraction = documents.extract(path, filename=filename)
+            extracted, extraction = documents.extract(path, filename=filename, on_progress=progress)
             spool = tempfile.TemporaryDirectory(prefix="overmind-document-")
             cached = Path(spool.name) / "extracted.jsonl"
             with cached.open("w") as output:
@@ -161,7 +174,12 @@ def read_file(path: Path, *, filename: str) -> Landing:
                     output.write(json.dumps(row) + "\n")
             rows = files.FileRows(cached, filename="extracted.jsonl")
         else:
-            rows, extraction = files.FileRows(path, filename=filename), {}
+            rows = files.FileRows(path, filename=filename, json_rows_field=json_rows_field)
+            extraction = (
+                {"json_rows_field": json_rows_field, "selection": "explicit"}
+                if json_rows_field
+                else {}
+            )
     except (files.FileError, documents.DocumentError) as exc:
         raise LandError(str(exc)) from exc
     if not rows:
@@ -230,18 +248,12 @@ def read_uploads(
         path = files.upload_data_path(upload_id)
         if not filename or not path.exists():
             raise LandError("An upload has expired. Start it again.")
-        if on_progress:
-            on_progress(
-                {
-                    "filename": filename,
-                    "completed": index,
-                    "total": len(upload_ids),
-                    "stage": "extracting"
-                    if filename.lower().endswith(documents.SUFFIXES)
-                    else "reading",
-                }
-            )
-        part = read_file(path, filename=filename)
+
+        def progress(detail, index=index):
+            if on_progress:
+                on_progress({"completed": index, "total": len(upload_ids), **detail})
+
+        part = read_file(path, filename=filename, on_progress=progress)
         sources.extend(part.spec["sources"])
         parts.append(part.rows)
     if on_progress:

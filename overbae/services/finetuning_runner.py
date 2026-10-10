@@ -11,7 +11,6 @@ import json
 import logging
 import math
 import re
-import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -22,7 +21,6 @@ from typing import Any, ClassVar
 from django.conf import settings
 
 from modal_shared.decisions import DECISION_OBJECTIVES
-from modal_shared.training_data import write_selection
 from overbae.services.finetuning_policy import (
     BasetenTrainingPlan,
     baseten_context_length,  # noqa: F401 — re-exported; tests/consumers import it from here
@@ -30,6 +28,7 @@ from overbae.services.finetuning_policy import (
 )
 from overbae.services.training_policies import profile_options
 from overbae.services.training_preparation import ready_for_job
+from overbae.services.training_transfer import stage_data
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +233,7 @@ def _activity_message(raw: str) -> str | None:
 
     # The charts already carry BT_PROGRESS; evals and checkpoints ARE stage events, so
     # they survive below as one-liners.
-    if stripped.startswith("BT_PROGRESS "):
+    if stripped.startswith(("BT_PROGRESS ", "BT_MONITORING ")):
         return None
     # Calibration telemetry — not customer-facing.
     if stripped.startswith("BT_MEMORY "):
@@ -815,7 +814,7 @@ class TogetherAIRunner(BaseFinetuningRunner):
                 "lora_trainable_modules", "all-linear"
             )
 
-        _skip = {"training_file", "model", "suffix", "lora"}
+        _skip = {"training_file", "model", "suffix", "lora", "monitoring"}
         for key, value in hp.items():
             normalised = self._HP_ALIASES.get(key, key)
             if normalised in _skip:
@@ -998,14 +997,7 @@ class BasetenRunner(BaseFinetuningRunner):
 
     # Shared with ModalRunner — sft_assets/train.py is the entrypoint both runners plug into.
     _ASSETS_DIR = Path(__file__).parent / "sft_assets"
-    _ASSET_FILES = (
-        "train.py",
-        "common.py",
-        "engine_unsloth.py",
-        "pretok.py",
-        "catalog.py",
-        "run.sh",
-    )
+    _ASSET_FILES = tuple(sorted(path.name for path in _ASSETS_DIR.glob("*.py"))) + ("run.sh",)
 
     def _api_key(self) -> str:
         key = getattr(settings, "BASETEN_API_KEY", "") or ""
@@ -1178,6 +1170,9 @@ class BasetenRunner(BaseFinetuningRunner):
             "ASSISTANT_ONLY_LOSS": "1" if dataset_type == "chat" else "0",
             "SEED": str(plan.seed),
         }
+        if (job.hyperparameters or {}).get("monitoring") is not None:
+            env["TRAINING_MONITORING"] = json.dumps(job.hyperparameters["monitoring"])
+            env["TRAINING_MONITOR_LOGS"] = "1"
         from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
 
         env["UNSLOTH_IMAGE"] = get_unsloth_image(str(job.base_model))
@@ -1356,12 +1351,12 @@ class BasetenRunner(BaseFinetuningRunner):
                 shutil.copytree(families_src, tmp / "families")
             # modal_shared lives outside overbae on purpose — overbae/__init__.py
             # imports Celery, which the bare Baseten container can't configure.
-            modelfam_src = Path(__file__).resolve().parents[2] / "modal_shared" / "modelfam"
-            if modelfam_src.is_dir():
-                pkg = tmp / "modal_shared"
-                pkg.mkdir(exist_ok=True)
-                (pkg / "__init__.py").write_text("")
-                shutil.copytree(modelfam_src, pkg / "modelfam")
+            shared_src = Path(__file__).resolve().parents[2] / "modal_shared"
+            shutil.copytree(
+                shared_src,
+                tmp / "modal_shared",
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
             # Hand-patched {% generation %} chat templates.
             for template_dir in (
                 "llama_templates",
@@ -1441,7 +1436,14 @@ class BasetenRunner(BaseFinetuningRunner):
 
         for entry in logs:
             msg = (entry.get("message") or "").strip()
-            if msg.startswith("BT_PROGRESS "):
+            if msg.startswith("BT_MONITORING "):
+                try:
+                    raw_job["monitoring"] = _json.loads(msg[len("BT_MONITORING ") :])
+                except _json.JSONDecodeError:
+                    raw_job["monitoring_collection_error"] = (
+                        "Provider truncated a monitoring receipt"
+                    )
+            elif msg.startswith("BT_PROGRESS "):
                 try:
                     rec = _json.loads(msg[len("BT_PROGRESS ") :])
                     trained_steps = rec.get("step")
@@ -1742,11 +1744,18 @@ class ModalRunner(BaseFinetuningRunner):
         hp = dict(getattr(job, "hyperparameters", None) or {})
         return str((hp.get("training_type") or {}).get("type") or "Lora")
 
+    @staticmethod
+    def model_config(model_id: str) -> dict[str, Any]:
+        from overbae.modal.model_registry import get_all_models_by_backend  # noqa: PLC0415
+
+        config = get_all_models_by_backend("baseten").get(model_id)
+        if not config:
+            raise ValueError(f"Model {model_id} is unavailable for Modal training.")
+        return config
+
     def _select_training_gpu(self, job, *, context_length: int = 0) -> tuple[str, int]:
         try:
-            from overbae.modal.model_registry import get_model_config_any_backend  # noqa: PLC0415
-
-            cfg = get_model_config_any_backend(job.base_model) or {}
+            cfg = self.model_config(job.base_model)
             params_b = (
                 float(cfg.get("total_params_b") or 0) or (cfg.get("num_parameters") or 0) / 1e9
             )
@@ -1841,10 +1850,9 @@ class ModalRunner(BaseFinetuningRunner):
         if num_examples == 0:
             raise RuntimeError("Dataset produced 0 training examples.")
 
-        from overbae.modal.model_registry import get_model_config_any_backend  # noqa: PLC0415
         from overbae.modal.training_type import training_context_length  # noqa: PLC0415
 
-        model_cfg = get_model_config_any_backend(job.base_model) or {}
+        model_cfg = self.model_config(job.base_model)
         ft_cfg = model_cfg.get("finetuning") or {}
         stats = dict((job.cell.stats if job.cell_id else None) or {})
         try:
@@ -1905,6 +1913,8 @@ class ModalRunner(BaseFinetuningRunner):
         )
         if (job.hyperparameters or {}).get("runtime_profile"):
             env["RUNTIME_PROFILE"] = json.dumps(job.hyperparameters["runtime_profile"])
+        if (job.hyperparameters or {}).get("monitoring") is not None:
+            env["TRAINING_MONITORING"] = json.dumps(job.hyperparameters["monitoring"])
         hidden = int(model_cfg.get("hidden_size") or 0)
         if hidden > 0:
             env["HIDDEN_SIZE"] = str(hidden)
@@ -1967,34 +1977,19 @@ class ModalRunner(BaseFinetuningRunner):
         paths = {"data": training_file_path}
         if validation_file_path:
             paths["val"] = validation_file_path
-        selections = {}
-        with tempfile.TemporaryDirectory(prefix="training-selection-") as directory:
-            for name, source in paths.items():
-                selected = Path(directory) / f"{name}.keys"
-                selections[name] = write_selection(source, selected)
-            if num_examples is not None and selections["data"]["rows"] != num_examples:
-                raise ValueError("The training selection does not match the selected row count.")
-            source_bytes = sum(Path(source).stat().st_size for source in paths.values())
-            selection_bytes = sum(item["rows"] * 32 for item in selections.values())
-            logger.info(
-                "ModalRunner: transferring %d selection bytes for %d source bytes (job %s)",
-                selection_bytes,
-                source_bytes,
-                job.id,
-            )
-            with volume.batch_upload() as batch:
-                for name in paths:
-                    batch.put_file(
-                        Path(directory) / f"{name}.keys", f"/runs/{run_id}/selected-{name}.keys"
-                    )
-        upload_fn.remote(
-            run_id=run_id,
-            preparation_id=str(preparation.id),
-            artifact_sha256=preparation.report["artifact_sha256"],
-            selections=selections,
-        )
+        from overbae.services import training_submission  # noqa: PLC0415
 
+        stage_data(job, paths, run_id, preparation, volume, upload_fn, num_examples=num_examples)
+
+        training_submission.record_pre_dispatch_stage(
+            job,
+            "preparing_base_model",
+            "Checking base model weights and downloading missing files",
+        )
         self._await_base_model(env["MODEL_ID"])
+        training_submission.record_pre_dispatch_stage(
+            job, "starting_training_worker", "Base model weights ready; starting training worker"
+        )
 
         # One Function per frozen train stack — see modal_shared.stacks.TRAIN_FUNCTION_NAMES.
         from modal_shared.stacks import train_function_name  # noqa: PLC0415
@@ -2008,9 +2003,7 @@ class ModalRunner(BaseFinetuningRunner):
         if preparation.config["objective"] in DECISION_OBJECTIVES:
             options["retries"] = modal.Retries(max_retries=10, initial_delay=0.0)
         options.update(profile_options(hp))
-        from overbae.services.training_submission import dispatching
-
-        dispatching(job, run_id)
+        training_submission.dispatching(job, run_id)
         call = train_fn.with_options(**options).spawn(
             run_id=run_id, env=env, gpu_type=gpu_type, gpu_count=gpu_count
         )
@@ -2227,7 +2220,10 @@ class ModalRunner(BaseFinetuningRunner):
             metrics_history=metrics_history,
             eval_history=eval_history,
             activity=[],
-            diagnostics=snap.get("telemetry") or {},
+            diagnostics={
+                **(snap.get("telemetry") or {}),
+                **({"failure": meta["failure"]} if meta.get("failure") else {}),
+            },
             stage=(snap.get("telemetry") or {}).get("stage", ""),
             download=None,
             output_model_name=output_model_name,

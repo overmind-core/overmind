@@ -5,7 +5,11 @@ from unittest.mock import Mock, patch
 import pytest
 
 from overbae.modal.modal_vllm_worker import stream_with_keepalive
-from overbae.services.inference_client import InferenceClient, InferenceClientError
+from overbae.services.inference_client import (
+    ContextBudgetError,
+    InferenceClient,
+    InferenceClientError,
+)
 
 
 @pytest.mark.asyncio
@@ -87,4 +91,52 @@ def test_client_rejects_late_gateway_error_and_does_not_buffer_sse():
         response.iter_lines.return_value = [b'data: {"choices":[]}']
         assert list(client.stream_chat_completions(model_id="test", messages=[]))
     response.iter_lines.assert_called_once_with(chunk_size=1)
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streamed", [False, True])
+async def test_worker_context_rejection_survives_committed_gateway_headers(streamed):
+    async def chunks():
+        yield {"status": 400, "headers": {}}
+        yield json.dumps(
+            {
+                "error": {
+                    "message": "Maximum context length exceeded; private provider detail",
+                    "type": "BadRequestError",
+                }
+            }
+        ).encode()
+
+    wire = b"".join([chunk async for chunk in stream_with_keepalive(chunks(), sse=streamed)])
+    transport_wire = wire
+    if streamed:
+        assert wire.endswith(b"data: [DONE]\n\n")
+        wire = next(line[6:] for line in wire.splitlines() if line.startswith(b"data: {"))
+    body = json.loads(wire)
+    assert body["error"]["code"] == "context_length_exceeded"
+    assert "private provider detail" not in wire.decode()
+
+    client = InferenceClient(base_url="https://gateway.invalid", api_key="test")
+    response = Mock(ok=True, status_code=200, json=Mock(return_value=body))
+    with (
+        patch("overbae.services.inference_client.requests.post", return_value=response),
+        pytest.raises(ContextBudgetError, match="reserved output"),
+    ):
+        if streamed:
+            response.iter_lines.return_value = transport_wire.splitlines()
+            list(client.stream_chat_completions(model_id="test", messages=[], max_tokens=20000))
+        else:
+            client.chat_completions(model_id="test", messages=[], max_tokens=20000)
+
+
+def test_context_classification_preserves_non_object_sse_frames():
+    client = InferenceClient(base_url="https://gateway.invalid", api_key="test")
+    frames = [b"data: null", b"data: []", b"data: 1", b"data: [DONE]"]
+    response = Mock(ok=True, status_code=200)
+    response.iter_lines.return_value = frames
+    with patch("overbae.services.inference_client.requests.post", return_value=response):
+        assert list(client.stream_chat_completions(model_id="test", messages=[])) == [
+            frame.decode() + "\n\n" for frame in frames
+        ]
     response.close.assert_called_once()

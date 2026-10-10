@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SetupPanel } from "@/components/finetuning/train/setup-panel";
@@ -54,7 +54,9 @@ const VALIDATION: DatasetValidationResponse = {
 
 function wizard(over: Partial<TrainWizard>): TrainWizard {
   return {
+    benchmarkingEnabled: false,
     benchmarkModel: "",
+    benchmarkModels: [],
     benchmarkOptions: [],
     benchmarksQuery: { isError: false, isLoading: false },
     capabilities: [{ id: "capability-1", name: "Support" }],
@@ -74,6 +76,7 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
     evalSetId: "es-1",
     evalSets: [{ generativeCount: 3, id: "es-1", isActive: true, name: "Default" }],
     evalSetsQuery: { error: null, isLoading: false },
+    evaluationEnabled: true,
     evaluationPlan: {
       evalIncumbentAfter: false,
       evalIncumbentBefore: false,
@@ -84,230 +87,96 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
     overlapCount: 12,
     runName: "Support · transcripts",
     selectedBenchmark: undefined,
-    setBenchmarkModel: () => {},
+    selectedDrafts: [],
+    setBenchmarkingEnabled: () => {},
     setCapabilityId: () => {},
     setDatasetId: () => {},
     setEvalDatasetId: () => {},
     setEvalSetId: () => {},
     setEvaluationChoice: () => {},
+    setEvaluationEnabled: () => {},
     setRunName: () => {},
-    setValidationDatasetId: vi.fn(),
-    setValidationMode: vi.fn(),
+    toggleBenchmarkModel: () => {},
     validating: false,
     validation: VALIDATION,
-    validationDatasetId: "",
-    validationMode: "split",
     ...over,
   } as unknown as TrainWizard;
 }
 
-function setup(over: Partial<TrainWizard> = {}) {
+function setup(over: Partial<TrainWizard> = {}, section: "data" | "evaluation" = "evaluation") {
   return render(
     <TooltipProvider>
-      <SetupPanel projectId="p-1" wizard={wizard(over)} />
+      <SetupPanel projectId="p-1" section={section} wizard={wizard(over)} />
     </TooltipProvider>
   );
 }
 
 describe("SetupPanel", () => {
-  it("lets native training skip only its pre-training baseline", () => {
-    const setPreTrainingBaseline = vi.fn();
-    setup({ nativeDecision: true, preTrainingBaseline: true, setPreTrainingBaseline });
-    const toggle = screen.getByRole("checkbox", { name: "Run pre-training baseline evaluation" });
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(toggle);
-    expect(setPreTrainingBaseline).toHaveBeenCalledWith(false);
-    expect(screen.getByRole("combobox", { name: /Validation source/ })).toBeTruthy();
+  it("puts eval set first, keeps its judge override attached, and separates benchmarking", () => {
+    setup({
+      benchmarkingEnabled: false,
+      benchmarkModels: ["openai/gpt-5.6-sol"],
+      benchmarkOptions: [
+        { kind: "Codebase incumbent", label: "Incumbent", value: "openai/gpt-5.6-sol" },
+      ],
+      selectedDrafts: [{ id: "draft-1", model: "qwen/qwen3-8b" }],
+    } as Partial<TrainWizard>);
+    const evalSet = screen.getByRole("combobox", { name: "Eval set" });
+    const dataset = screen.getByRole("combobox", { name: "Eval Dataset" });
+    expect(
+      evalSet.compareDocumentPosition(dataset) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change judge model" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Benchmark models" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Training model evaluations" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Incumbent evaluations" })).toBeNull();
   });
 
-  it("hides the native baseline option when validation is disabled", () => {
-    setup({ nativeDecision: true, validationMode: "none" });
+  it("keeps native evaluation details separate from its heading toggle", () => {
+    setup({ nativeDecision: true, preTrainingBaseline: true });
     expect(
       screen.queryByRole("checkbox", { name: "Run pre-training baseline evaluation" })
     ).toBeNull();
+    expect(screen.getByText(/Native probability training/)).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: /Validation source/ })).toBeNull();
   });
 
-  it("aligns evaluation controls on shared grid rows", () => {
+  it("renders evaluation details without a second toggle row", () => {
     setup();
-    const field = (control: HTMLElement) => control.parentElement?.parentElement;
-    const evalSet = field(screen.getByRole("combobox", { name: /^Eval set/ }));
-    const judge = field(screen.getByRole("combobox", { name: /^Judge model/ }));
-    const benchmark = field(screen.getByRole("combobox", { name: /^Benchmark model/ }));
-    const baseline = field(screen.getByRole("group", { name: "Incumbent evaluations" }));
-    const training = field(screen.getByRole("group", { name: "Training model evaluations" }));
-    expect(evalSet?.parentElement).toBe(judge?.parentElement);
-    expect(benchmark?.parentElement).toBe(judge?.parentElement);
-    expect(baseline?.parentElement).toBe(judge?.parentElement);
-    expect(training?.parentElement).toBe(judge?.parentElement);
-    expect(evalSet?.className).toContain("sm:row-start-1");
-    expect(benchmark?.className).toContain("sm:row-start-1");
-    expect(judge?.className).toContain("sm:row-start-2");
-    expect(baseline?.className).toContain("sm:row-start-2");
-    expect(training?.className).toContain("lg:row-start-2");
-    expect(screen.getByText("Benchmark evals")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Run evaluations" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Training Dataset" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Eval Dataset" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Eval set" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Benchmark models" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Validation source" })).toBeNull();
   });
 
-  it("shows the checked row count and reserved-context estimate for a fitting benchmark", () => {
-    setup({
-      benchmarkModel: "ft-benchmark",
-      contextQuery: {
-        data: {
-          checks: [
-            {
-              checkedRows: 500,
-              contextWindow: 16384,
-              model: "ft-benchmark",
-              requiredContext: 9316,
-              role: "generation",
-              status: "fits",
-            },
-          ],
-        },
-      } as unknown as TrainWizard["contextQuery"],
-      evaluationPlan: {
-        evalIncumbentAfter: false,
-        evalIncumbentBefore: true,
-        evalModelAfter: true,
-        evalModelBefore: false,
-      },
-    });
-    expect(screen.getByRole("status").textContent).toBe(
-      "500 rows · 9,316 / 16,384 tokens estimated"
-    );
-    expect(screen.getByRole("combobox", { name: /^Benchmark model/ }).className).not.toContain(
-      "bg-warning/10"
-    );
+  it("shows only training inputs when evaluations are off", () => {
+    setup({ evaluationEnabled: false });
+    expect(screen.queryByRole("combobox", { name: "Training Dataset" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Eval Dataset" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Eval set" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Benchmark model" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Run evaluations" })).toBeNull();
   });
 
-  it("tints the affected benchmark selector and keeps muted alternatives selectable", () => {
-    const setBenchmarkModel = vi.fn();
+  it("shows the selected training base and incumbent when benchmarking is on", () => {
     setup({
-      benchmarkModel: "small",
+      benchmarkingEnabled: true,
+      benchmarkModels: ["openai/gpt-5.6-sol", "qwen/qwen3-8b"],
       benchmarkOptions: [
-        { kind: "Trained model", label: "Small benchmark", value: "small" },
-        { kind: "Trained model", label: "Large benchmark", value: "large" },
-        { kind: "Codebase incumbent", label: "Unknown benchmark", value: "unknown" },
+        { kind: "Codebase incumbent", label: "Incumbent", value: "openai/gpt-5.6-sol" },
       ],
-      benchmarksQuery: {
-        data: [{ maxModelLen: 32000, modelId: "large", status: "ready" }],
-      } as unknown as TrainWizard["benchmarksQuery"],
-      contextQuery: {
-        data: {
-          checks: [
-            {
-              checkedRows: 30,
-              model: "small",
-              requiredContext: 16000,
-              role: "generation",
-              status: "warning",
-            },
-          ],
-        },
-      } as unknown as TrainWizard["contextQuery"],
-      evaluationPlan: {
-        evalIncumbentAfter: false,
-        evalIncumbentBefore: true,
-        evalModelAfter: true,
-        evalModelBefore: true,
-      },
-      selectedBenchmark: { kind: "Trained model", label: "Small benchmark", value: "small" },
-      setBenchmarkModel,
-    });
-    const selector = screen.getByRole("combobox", { name: /Benchmark model/ });
-    expect(selector.className).toContain("bg-warning/10");
-    expect(screen.getByRole("combobox", { name: /Judge model/ }).className).not.toContain(
-      "bg-warning/10"
-    );
-    fireEvent.keyDown(selector, { key: "ArrowDown" });
-    const small = screen.getByRole("option", { name: /Small benchmark/ });
-    expect(small.className).toContain("text-muted-foreground");
-    expect(small.getAttribute("aria-disabled")).not.toBe("true");
-    expect(screen.getByRole("option", { name: /Large benchmark/ }).textContent).toContain(
-      "Fits estimated context"
-    );
-    const unknown = screen.getByRole("option", { name: /Unknown/ });
-    expect(unknown.textContent).toContain("Context unverified");
-    expect(unknown.classList.contains("text-muted-foreground")).toBe(false);
-    fireEvent.click(unknown);
-    expect(setBenchmarkModel).toHaveBeenCalledWith("unknown");
-  });
-  it("keeps an unverified benchmark selector neutral", () => {
-    setup({
-      benchmarkModel: "unknown",
-      contextQuery: {
-        data: {
-          checks: [{ model: "unknown", role: "generation", status: "unknown" }],
-        },
-      } as unknown as TrainWizard["contextQuery"],
-      evaluationPlan: {
-        evalIncumbentAfter: false,
-        evalIncumbentBefore: true,
-        evalModelAfter: true,
-        evalModelBefore: false,
-      },
-    });
-    expect(screen.getByRole("combobox", { name: /^Benchmark model/ }).className).not.toContain(
-      "bg-warning/10"
-    );
-    expect(screen.getByRole("status").textContent).toBe("Context unverified");
-  });
-  it("puts the eval-set judge in a selector below the set without a warning card", () => {
-    setup({
-      contextQuery: {
-        data: {
-          checks: [
-            {
-              checkedRows: 30,
-              estimatedCostUsd: 1,
-              message: "Judge context is too small.",
-              model: "small",
-              role: "judge",
-              status: "warning",
-              suggestions: [
-                {
-                  contextWindow: 128000,
-                  costDeltaUsd: 1,
-                  estimatedCostUsd: 2,
-                  model: "larger",
-                  name: "Fitting judge",
-                  reservedOutputTokens: 17000,
-                },
-              ],
-            },
-          ],
-        },
-        isError: false,
-      } as unknown as TrainWizard["contextQuery"],
-    });
-    const selector = screen.getByRole("combobox", { name: /Judge model/ });
-    expect(selector.textContent).toContain("Small");
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByText("Judge context is too small.")).toBeNull();
-  });
-  it("puts benchmark selection in the training setup grid", () => {
-    const benchmark = {
-      baseModelId: "Qwen/Qwen3.5-27B",
-      kind: "Trained model",
-      label: "Support · Qwen",
-      value: "ft-12345678-qwen3-5-27b",
-    };
-    setup({
-      benchmarkModel: benchmark.value,
-      benchmarkOptions: [benchmark],
-      selectedBenchmark: benchmark,
-    });
-    const selector = screen.getByRole("combobox", { name: "Benchmark model" });
-    expect(within(selector).getByTitle(benchmark.value).getAttribute("data-slot")).not.toBe(
-      "badge"
-    );
-    expect(selector.textContent).toContain("Qwen3.5 27B · FT");
-    expect(selector.getAttribute("title")).toBe("Support · Qwen");
+      selectedDrafts: [{ id: "draft-1", model: "qwen/qwen3-8b" }],
+    } as Partial<TrainWizard>);
+    expect(screen.getByText("Compare with")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Remove Incumbent from benchmarks/ })).toBeTruthy();
     expect(
-      selector.compareDocumentPosition(
-        screen.getByRole("group", { name: "Incumbent evaluations" })
-      ) & Node.DOCUMENT_POSITION_FOLLOWING
+      screen.getByRole("button", { name: /Remove qwen\/qwen3-8b from benchmarks/ })
     ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add model" })).toBeTruthy();
   });
+
   it("keeps workshop review recommendations out of training setup", () => {
     const readiness = {
       assessment: {},
@@ -328,71 +197,19 @@ describe("SetupPanel", () => {
     expect(screen.queryByRole("link", { name: "Open workshop" })).toBeNull();
     expect(screen.queryByText("Can't be trained on yet")).toBeNull();
   });
-  it("groups each model's evaluation targets in its own field", () => {
-    setup();
-
-    const incumbent = within(screen.getByRole("group", { name: "Incumbent evaluations" }));
-    expect(incumbent.getByText("Baseline")).toBeTruthy();
-    expect(incumbent.getByText("After")).toBeTruthy();
-    const training = within(screen.getByRole("group", { name: "Training model evaluations" }));
-    expect(training.getByText("Base")).toBeTruthy();
-    expect(training.getByText("Trained")).toBeTruthy();
-  });
-
-  it("disables incumbent checkboxes without an incumbent", () => {
-    setup();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
-    expect(
-      screen.getByRole("checkbox", { name: "Evaluate incumbent baseline" }).hasAttribute("disabled")
-    ).toBe(true);
-    expect(
-      screen
-        .getByRole("checkbox", { name: "Evaluate incumbent after training" })
-        .hasAttribute("disabled")
-    ).toBe(true);
-    expect(
-      screen.getByRole("checkbox", { name: "Evaluate base model" }).getAttribute("aria-checked")
-    ).toBe("true");
-  });
-
-  it.each([
-    ["Evaluate incumbent baseline", "evalIncumbentBefore"],
-    ["Evaluate incumbent after training", "evalIncumbentAfter"],
-    ["Evaluate base model", "evalModelBefore"],
-    ["Evaluate trained model", "evalModelAfter"],
-  ])("allows independent selection: %s", (name, field) => {
-    const setEvaluationChoice = vi.fn();
-    setup({
-      evaluationPlan: {
-        evalIncumbentAfter: false,
-        evalIncumbentBefore: false,
-        evalModelAfter: false,
-        evalModelBefore: false,
-      },
-      hasIncumbent: true,
-      setEvaluationChoice,
-    });
-    fireEvent.click(screen.getByRole("checkbox", { name }).closest("label")!);
-    expect(setEvaluationChoice).toHaveBeenCalledWith(field, true);
-  });
-
-  it("shows the dataset and evaluation inputs without a capability", () => {
-    setup();
+  it("shows training inputs without a capability", () => {
+    setup({}, "data");
 
     expect(screen.queryByText("Select a capability first.")).toBeNull();
     expect(screen.getByLabelText("Capability (optional)").textContent).toContain("None");
     expect(screen.getByRole("combobox", { name: "Training Dataset" }).textContent).toContain(
       TRAIN_SET.name
     );
-    expect(screen.getByRole("combobox", { name: "Eval Dataset" }).textContent).toContain(
-      EVAL_SET.name
-    );
-    expect(screen.getByRole("combobox", { name: "Eval set" }).textContent).toContain("Default");
-    expect(screen.getByText(/12 training rows overlap this eval dataset/)).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Eval Dataset" })).toBeNull();
   });
 
   it("keeps None available when the project has no capabilities", () => {
-    setup({ capabilities: [] });
+    setup({ capabilities: [] }, "data");
     expect(screen.getByLabelText("Capability (optional)").textContent).toContain("None");
     expect(screen.getByRole("combobox", { name: "Training Dataset" })).toBeTruthy();
   });
@@ -411,19 +228,9 @@ describe("SetupPanel", () => {
   });
 });
 
-it("offers a separate validation source and displays its exact version", () => {
-  setup({
-    datasets: [
-      TRAIN_SET,
-      { ...TRAIN_SET, activeVersion: "v4", id: "holdout", name: "Loss holdout" },
-    ],
-    validationDataset: { ...TRAIN_SET, activeVersion: "v4", id: "holdout", name: "Loss holdout" },
-    validationDatasetId: "holdout",
-    validationMode: "external",
-  });
-  expect(screen.getByRole("combobox", { name: "Validation source" })).toBeTruthy();
-  expect(screen.getByRole("combobox", { name: "Validation dataset" }).textContent).toContain(
-    "Loss holdout"
-  );
-  expect(screen.getByText("v4", { exact: false })).toBeTruthy();
+it("keeps validation at the standard split without an extra selector", () => {
+  setup({}, "data");
+  expect(screen.queryByRole("combobox", { name: "Validation source" })).toBeNull();
+  expect(screen.queryByText(/20% of training data/)).toBeNull();
+  expect(screen.getByRole("button", { name: "About training dataset" })).toBeTruthy();
 });

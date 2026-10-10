@@ -6,11 +6,10 @@ import shutil
 from typing import Any
 
 from django.db import transaction
-from django.db.models import F, Q
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths, proposals
+from overbae.services.datasets import measure, paths
 
 
 class DatasetError(ValueError):
@@ -23,186 +22,26 @@ class DatasetError(ValueError):
 
 
 def enter_busy(dataset_id: Any, state: str, *, from_states: list[str]) -> bool:
-    """Claim the dataset for a landing, a run or a turn. ``updated_at`` moves
+    """Claim the dataset for a landing, a transformation. ``updated_at`` moves
     with the claim because the reaper measures a busy state's age from it."""
     return bool(
-        Dataset.objects.filter(pk=dataset_id, state__in=from_states)
-        .filter(Q(operation__state__isnull=True) | ~Q(operation__state="cancel_pending"))
-        .update(state=state, error="", updated_at=timezone.now())
+        Dataset.objects.filter(pk=dataset_id, state__in=from_states).update(
+            state=state, error="", updated_at=timezone.now()
+        )
     )
 
 
 def _refuse_while_busy(dataset: Dataset) -> None:
     if dataset.state == Dataset.State.RUNNING:
-        raise DatasetError("The notebook is running. Wait for it to finish.", code="running")
+        raise DatasetError("A transformation is running. Wait for it to finish.", code="running")
     if dataset.state == Dataset.State.LANDING:
         raise DatasetError("The source is still landing.", code="landing")
-
-
-def _refuse_frozen(dataset: Dataset, cell: Cell) -> None:
-    if cell.is_source:
-        raise DatasetError("The source cannot change.", code="source")
-    if cell.frozen:
-        raise DatasetError(
-            f"{dataset.versions().get(cell.id, cell.title)} was used and is frozen. "
-            "Add a cell after it.",
-            code="frozen",
-        )
 
 
 def _touch(dataset: Dataset, **fields: Any) -> None:
     Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
     for k, v in fields.items():
         setattr(dataset, k, v)
-
-
-def _queue_after(dataset: Dataset, position: int) -> None:
-    """Cells after ``position`` read a frame that changed: they run again."""
-    dataset.cells.filter(position__gt=position).exclude(state=Cell.State.PROPOSED).update(
-        state=Cell.State.QUEUED, error=""
-    )
-
-
-@transaction.atomic
-def add_cell(
-    dataset: Dataset,
-    *,
-    title: str,
-    script: str,
-    note: str = "",
-    proposed: bool = False,
-    user: Any = None,
-) -> Cell:
-    """A new cell at the end of the chain. A proposal goes after every other
-    proposal; a real cell goes before the first proposal."""
-    _refuse_while_busy(dataset)
-    chain = dataset.chain
-    if not chain:
-        raise DatasetError("Land a source first.", code="no_source")
-    first_proposal = next((c.position for c in chain if c.state == Cell.State.PROPOSED), None)
-    if proposed or first_proposal is None:
-        position = chain[-1].position + 1
-    else:
-        position = first_proposal
-        for cell in reversed([c for c in chain if c.position >= position]):
-            Cell.objects.filter(pk=cell.pk).update(position=F("position") + 1)
-    cell = Cell.objects.create(
-        dataset=dataset,
-        position=position,
-        title=title.strip()[:255] or "Step",
-        script=script,
-        note=note.strip()[:512],
-        state=Cell.State.PROPOSED if proposed else Cell.State.QUEUED,
-        created_by=user if getattr(user, "pk", None) else None,
-    )
-    if dataset.state == Dataset.State.ERROR:
-        _touch(dataset, state=Dataset.State.IDLE, error="")
-    if not proposed:
-        proposals.retire_outdated(dataset)
-    return cell
-
-
-@transaction.atomic
-def edit_cell(
-    dataset: Dataset,
-    cell: Cell,
-    *,
-    script: str | None = None,
-    title: str | None = None,
-    note: str | None = None,
-) -> Cell:
-    _refuse_while_busy(dataset)
-    if cell.review.get("kind") in {"synthetic", "attachment"} and script is not None:
-        raise DatasetError("These rows are a recorded batch. Add a transformation cell after it.")
-    fields: dict[str, Any] = {}
-    if title is not None:
-        fields["title"] = title.strip()[:255] or cell.title
-    if note is not None:
-        fields["note"] = note.strip()[:512]
-    if script is not None and script != cell.script:
-        _refuse_frozen(dataset, cell)
-        fields["script"] = script
-        fields["review"] = {}
-        fields["quality_report"] = {}
-        fields["preparation_plan"] = {}
-        dataset.cells.filter(position__gt=cell.position).update(preparation_plan={})
-        if cell.state != Cell.State.PROPOSED:
-            fields["state"] = Cell.State.QUEUED
-            fields["error"] = ""
-            _queue_after(dataset, cell.position)
-    if fields:
-        Cell.objects.filter(pk=cell.pk).update(**fields, updated_at=timezone.now())
-        cell.refresh_from_db()
-    if dataset.state == Dataset.State.ERROR and "script" in fields:
-        _touch(dataset, state=Dataset.State.IDLE, error="")
-    if "script" in fields:
-        proposals.retire_outdated(dataset)
-    return cell
-
-
-@transaction.atomic
-def remove_cell(dataset: Dataset, cell: Cell) -> None:
-    _refuse_while_busy(dataset)
-    _refuse_frozen(dataset, cell)
-    position, proposed = cell.position, cell.state == Cell.State.PROPOSED
-    path = paths.cell_path(dataset.id, cell.id)
-    attachment_path = paths.attachment_path(dataset.id, cell.id)
-    if dataset.active_id == cell.id:
-        _touch(dataset, active=None)
-    cell.delete()
-    transaction.on_commit(lambda: path.unlink(missing_ok=True))
-    transaction.on_commit(lambda: attachment_path.unlink(missing_ok=True))
-    for later in dataset.cells.filter(position__gt=position).order_by("position"):
-        Cell.objects.filter(pk=later.pk).update(position=F("position") - 1)
-    if not proposed:
-        _queue_after(dataset, position - 1)
-        proposals.retire_outdated(dataset)
-    if dataset.state == Dataset.State.ERROR:
-        _touch(dataset, state=Dataset.State.IDLE, error="")
-
-
-@transaction.atomic
-def discard_proposal(dataset: Dataset, cell_id: Any) -> None:
-    dataset = Dataset.objects.select_for_update().get(pk=dataset.pk)
-    cell = dataset.cells.filter(pk=cell_id).first()
-    if cell is None or cell.state != Cell.State.PROPOSED:
-        raise DatasetError(
-            "Only a pending proposal can be discarded. Applied versions are preserved.",
-            code="not_proposal",
-        )
-    remove_cell(dataset, cell)
-
-
-@transaction.atomic
-def accept_proposal(dataset: Dataset, cell: Cell) -> Cell:
-    dataset.refresh_from_db()
-    """Move a proposal to the end of the real chain and queue it."""
-    _refuse_while_busy(dataset)
-    if cell.state != Cell.State.PROPOSED:
-        return cell
-    chain = dataset.chain
-    if cell.review:
-        previous = next((c for c in reversed(chain) if c.state != Cell.State.PROPOSED), None)
-        report = cell.review
-        if not proposals.is_current(dataset, cell, previous):
-            raise DatasetError(
-                "The proposal is stale. Ask for a new preview against the current data.",
-                code="stale_proposal",
-            )
-        Cell.objects.filter(pk=cell.pk).update(
-            review={**report, "status": "accepted", "accepted_at": timezone.now().isoformat()}
-        )
-    target = next((c.position for c in chain if c.state == Cell.State.PROPOSED), cell.position)
-    if target != cell.position:
-        # Positions have both a non-negative check and a dataset-local unique constraint.
-        Cell.objects.filter(pk=cell.pk).update(position=chain[-1].position + 1)
-        for other in reversed([c for c in chain if target <= c.position < cell.position]):
-            Cell.objects.filter(pk=other.pk).update(position=F("position") + 1)
-        Cell.objects.filter(pk=cell.pk).update(position=target)
-    Cell.objects.filter(pk=cell.pk).update(state=Cell.State.QUEUED, updated_at=timezone.now())
-    proposals.retire_outdated(dataset)
-    cell.refresh_from_db()
-    return cell
 
 
 def set_active(dataset: Dataset, cell: Cell | None) -> Dataset:
@@ -216,19 +55,13 @@ def set_active(dataset: Dataset, cell: Cell | None) -> Dataset:
 
 
 def set_intent(dataset: Dataset, intent: str) -> Dataset:
+    _refuse_while_busy(dataset)
     if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL, Dataset.Intent.EXPLORE):
         raise DatasetError("Choose Training, Eval, or Data exploration.", code="intent")
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the intent is fixed.", code="frozen")
     if intent != dataset.intent:
-        chat = [
-            {**turn, "status": "resolved", "intent_choice": intent}
-            if turn.get("status") == "awaiting_intent"
-            else turn
-            for turn in dataset.chat or []
-        ]
-        _touch(dataset, intent=intent, chat=chat)
-        proposals.retire_outdated(dataset)
+        _touch(dataset, intent=intent)
         measure.capability_only(dataset)
         if intent == Dataset.Intent.EVAL:
             from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
@@ -238,13 +71,13 @@ def set_intent(dataset: Dataset, intent: str) -> Dataset:
 
 
 def set_capability(dataset: Dataset, capability: Any) -> Dataset:
+    _refuse_while_busy(dataset)
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the capability is fixed.", code="frozen")
     if capability is not None and capability.project_id != dataset.project_id:
         raise DatasetError("That capability belongs to another project.", code="capability")
     if getattr(capability, "id", None) != dataset.capability_id:
         _touch(dataset, capability=capability)
-        proposals.retire_outdated(dataset)
         measure.capability_only(dataset)
         from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
 
@@ -305,8 +138,12 @@ def usage(cell: Cell) -> dict[str, list[dict[str, Any]]]:
 
 
 def delete_blocked_reason(dataset: Dataset) -> str:
+    if dataset.state == Dataset.State.LANDING:
+        return "The source is still landing. Cancel it before deleting the dataset."
     if dataset.state == Dataset.State.RUNNING:
-        return "The notebook is running. Wait for it to finish."
+        return "A transformation is running. Wait for it to finish."
+    if dataset.cells.filter(pipeline_artifacts__isnull=False).exists():
+        return "A version is retained as an external transformation artifact. This dataset cannot be deleted."
     used = [c for c in dataset.cells.all() if c.used_at is not None or any(usage(c).values())]
     if used:
         versions = dataset.versions()

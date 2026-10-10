@@ -15,7 +15,6 @@
 
 /**
  * * `landing` - Landing
- * * `diagnosing` - Diagnosing
  * * `idle` - Idle
  * * `running` - Running
  * * `error` - Error
@@ -23,7 +22,6 @@
  */
 export const DatasetStateEnum = {
     landing: 'landing',
-    diagnosing: 'diagnosing',
     idle: 'idle',
     running: 'running',
     error: 'error'

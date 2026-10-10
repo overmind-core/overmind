@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-from conftest import plan_fixture
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.serializers import FinetuningJobSerializer
@@ -58,29 +57,9 @@ def capability():
 
 
 def complete_review(dataset, *, failed=None, unknown=None):
-    cell = dataset.active_cell
-    plan_fixture(dataset, cell)
-    return review.record_quality(
-        dataset,
-        cell,
-        [
-            {
-                "name": name,
-                "result": "fail" if name == failed else "unknown" if name == unknown else "pass",
-                "rows_checked": cell.rows,
-                "evidence": "Controlled fixture: evidence and target checked.",
-            }
-            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
-        ],
-        script="df = pd.DataFrame("
-        + repr(
-            {
-                name: [False if name == failed else None if name == unknown else True] * cell.rows
-                for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
-            }
-        )
-        + ")",
-    )
+    from conftest import review_fixture
+
+    return review_fixture(dataset, failed=failed, unknown=unknown)
 
 
 def make_dataset(capability, *, intent="eval", evidence=True, case_id="case1"):
@@ -149,7 +128,7 @@ def test_missing_or_failed_review_warns_without_blocking_use(capability, failure
     assert review.warnings(ds, ds.active_cell)
     assert use.use(ds, "eval").used_at is not None
     detail = serialize_dataset_detail(ds)
-    assert detail.next_actions[0].tool == "message_dataset_agent"
+    assert detail.next_actions[0].tool == "check_evaluation_readiness"
     assert any(action.tool == "check_evaluation_readiness" for action in detail.next_actions)
     assert not detail.cells[0].readiness["quality_passed"]
     contract = mcp_cell_contract(ds, ds.active_cell, "eval")
@@ -158,20 +137,6 @@ def test_missing_or_failed_review_warns_without_blocking_use(capability, failure
 
 def test_sampled_or_unknown_answer_support_cannot_pass(capability):
     ds = make_dataset(capability)
-    with pytest.raises(ValueError, match="Audit output has 0 rows"):
-        review.record_quality(
-            ds,
-            ds.active_cell,
-            [
-                {
-                    "name": "answer_support",
-                    "result": "pass",
-                    "evidence": "Sample only",
-                    "rows_checked": 0,
-                }
-            ],
-            script="df = df.iloc[:0][['source_row']].assign(answer_support=None)",
-        )
     complete_review(ds, unknown="answer_support")
     assert "Answer support: unknown" in "; ".join(review.warnings(ds, ds.active_cell))
     assert use.use(ds, "eval").used_at is not None

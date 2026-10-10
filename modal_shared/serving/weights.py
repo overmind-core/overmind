@@ -160,7 +160,7 @@ class SharedBaseWeights:
         }
 
     @torch.inference_mode()
-    def restore_shared_base(self):
+    def restore_shared_base(self, progress_path=""):
         started = time.monotonic()
         directory = Path(self.shared_base_directory)
         manifest = read_artifact(directory, self.shared_base_manifest["contract"])
@@ -180,6 +180,7 @@ class SharedBaseWeights:
         }
         original_threads = torch.get_num_threads()
         seen, total = set(), 0
+        last_report = 0
         try:
             os.environ["RUNAI_STREAMER_MEMORY_LIMIT"] = str(memory_gb * 10**9)
             os.environ["RUNAI_STREAMER_CONCURRENCY"] = "16"
@@ -210,6 +211,17 @@ class SharedBaseWeights:
                     total += tensor.numel() * tensor.element_size()
                     seen.add(name)
                     del tensor
+                    if progress_path and time.monotonic() - last_report >= 1:
+                        atomic_json(
+                            Path(progress_path),
+                            {
+                                "completed": total,
+                                "total": manifest["bytes"],
+                                "unit": "bytes",
+                                "parameters": len(seen),
+                            },
+                        )
+                        last_report = time.monotonic()
             if seen != set(parameters) or total != manifest["bytes"]:
                 raise RuntimeError("Incomplete base weight restore")
             for wrapper in manager.modules.values():

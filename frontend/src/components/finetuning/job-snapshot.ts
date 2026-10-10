@@ -72,6 +72,8 @@ export function buildExperimentSnapshot(
 ): ExperimentSnapshot {
   const progressFromJob = (job.progress ?? {}) as Record<string, unknown>;
   const live = curves?.progress;
+  const jobLiveProgress = parseFinetuningProgress(job.progress);
+  const liveProgress = parseFinetuningProgress(live);
   const progress: ExperimentProgress = {
     elapsed_seconds:
       live?.elapsed_seconds ??
@@ -124,13 +126,13 @@ export function buildExperimentSnapshot(
     latestScored:
       [...judgeEvals].reverse().find((e) => e.kind === "final" && e.aggregate_score != null) ??
       null,
-    liveProgress:
-      (live?.metrics_history?.length ?? 0) > 0 ||
-      (live?.eval_history?.length ?? 0) > 0 ||
-      (live?.activity?.length ?? 0) > 0 ||
-      live?.diagnostics != null
-        ? parseFinetuningProgress(live)
-        : parseFinetuningProgress(job.progress),
+    liveProgress: liveProgress
+      ? {
+          ...jobLiveProgress,
+          ...liveProgress,
+          preparation: liveProgress.preparation ?? jobLiveProgress?.preparation,
+        }
+      : jobLiveProgress,
     lrPoints: (curves?.learning_rate ?? [])
       .filter((p): p is { step: number; value: number } => p.step != null && p.value != null)
       .map((p) => ({ step: p.step, value: p.value })),

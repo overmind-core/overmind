@@ -19,23 +19,36 @@ from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.training_telemetry import STARTUP_LABELS
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.core.errors import InputValidationError
 from overbae.models import (
     Capability,
     Cell,
     Dataset,
+    DatasetPipeline,
+    DatasetPipelineBinding,
+    DatasetPipelinePackage,
+    DatasetPipelineRun,
+    DatasetTransfer,
     DeployedModel,
     EvalSet,
     FinetuningJob,
+    InferenceRequest,
     ModelActivation,
     OptimizerCandidate,
     OptimizerExperiment,
     Span,
     TrainingPreparation,
 )
-from overbae.services import model_workflows
-from overbae.services.datasets import workflow
+from overbae.services import (
+    inference_requests,
+    model_workflows,
+    operational_progress,
+    training_monitoring,
+)
+from overbae.services.datasets import paths, pipeline_bindings, pipeline_packages, workbench
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
@@ -53,21 +66,19 @@ from overbae.services.mcp.context import get_context, project_context
 from overbae.services.mcp.contracts.datasets import (
     next_actions,
     serialize_dataset_detail,
-    tool_activity,
 )
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 from overbae.services.mcp.references import project_references
 from overbae.services.model_activation import activation_progress
+from overbae.services.training_preparation import live_progress_for_job
 from overbae.services.training_record import run_record
 
 JSON_MIME = "application/json"
 _MAX_EVENTS = 20
 _MAX_LIST = 50
 _OPTIMIZER_PATCH_CAP = 4_000
-_CHAT_DEFAULT = 10
 _ERROR_CAP = 1_000
-_CHAT_TEXT_CAP = 2_000
 
 
 def _normalize_key(key: object) -> str:
@@ -96,8 +107,11 @@ _SENSITIVE_PARTS = frozenset(
 _SENSITIVE_COMPACT_PARTS = frozenset(_normalize_key(part) for part in _SENSITIVE_PARTS)
 _TOKEN_MEASUREMENTS = frozenset(
     {
+        "tokens",
+        "supervised_tokens",
         "trained_tokens",
         "max_tokens",
+        "max_new_tokens",
         "padded_tokens",
         "padded_token_budget",
         "tokens_per_second",
@@ -172,13 +186,16 @@ def _connector_setup_resource(uri: str) -> dict:
 
 
 def _dataset_upload_resource(uri: str) -> dict:
-    from overbae.services.datasets import files
+    from overbae.services.datasets import documents, files
 
     return {
         "uri": uri,
         "kind": "dataset_upload",
         "extensions": list(files.ALLOWED_SUFFIXES),
         "max_bytes": files.MAX_UPLOAD_BYTES,
+        "document_max_bytes": documents.MAX_BYTES,
+        "pdf_max_pages": documents.MAX_PAGES,
+        "max_files": 100,
         "json_array_max_bytes": files.JSON_ARRAY_MAX_BYTES,
         "limits": (
             f"CSV, TSV, JSON, JSONL, NDJSON, and Parquet uploads are capped at "
@@ -187,25 +204,70 @@ def _dataset_upload_resource(uri: str) -> dict:
             "because the parser reads them whole."
         ),
         "chunk_bytes": files.CHUNK_BYTES,
-        "command": "overmind dataset upload FILE --json",
-        "written_intent": "Use start_dataset with a brief before choosing data or a capability. Attach a file later with overmind dataset upload FILE --dataset DATASET --json. For a new upload, --brief records the original request.",
-        "existing_dataset": "Use overmind dataset upload FILE --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST chat accepts source.uploads with an optional message.",
-        "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MB per document). Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction.",
-        "auth": "Project-scoped API key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
+        "command": "overmind dataset upload FILE --project-id PROJECT --json",
+        "pipeline_packages": {
+            "required_for_transformations": True,
+            "upload": "overmind dataset pipeline-upload DIRECTORY_OR_ZIP --project-id PROJECT --json",
+            "download": "overmind dataset pipeline-download PACKAGE --project-id PROJECT --output pipeline.zip --json",
+            "max_bytes": pipeline_packages.MAX_BYTES,
+            "max_files": pipeline_packages.MAX_FILES,
+            "manifest": {
+                "version": 1,
+                "runtime": "sha256:<approved immutable image ID>",
+                "parameters": {},
+                "steps": [
+                    {
+                        "id": "transform",
+                        "input": "source",
+                        "name": "Transform",
+                        "entrypoint": "transform.py",
+                        "input_schema": {"text": "string", "source_row": "integer"},
+                        "output_schema": {"text": "string", "source_row": "integer"},
+                        "checks": {"preserve_rows": True},
+                    }
+                ],
+            },
+            "script_arguments": ["input.jsonl", "output.jsonl", "parameters.json"],
+            "inspectability": "Keep each step's meaningful logic in its entrypoint; reserve helpers for reusable functions. Cell transformation metadata binds exact run/revision/package/entrypoint and distinguishes platform execution from external imports. Inspect every retained file via the package resource (file, offset, limit in characters; next_offset until exhausted). Source reads verify the package and file checksums without executing code.",
+            "starter_script": "import json, sys\n\nwith open(sys.argv[1], encoding='utf-8') as source, open(sys.argv[2], 'w', encoding='utf-8') as output:\n    for line in source:\n        row = json.loads(line)\n        # Author the requested transformation here; retain source_row.\n        output.write(json.dumps(row, ensure_ascii=False) + '\\n')\n",
+            "checks": "preserve_rows and lineage apply in preview and publish. min_rows/max_rows are full-population assertions: preview records them as deferred, publication enforces them. Do not hardcode the first source's size in a reusable recipe unless that size is a real requirement.",
+            "lineage": "Retain source_row or declare all contributing _overmind_parent_rows. Preserve duplicate observations and unknown meaning. Use input=source/earlier step or inputs=[distinct earlier IDs] to concatenate disjoint branches in declared order. Overlapping source_row identities fail rather than being deduplicated. Omitted input means the previous step.",
+            "flow": "Declare stable step IDs. Script conditions cite expression and entrypoint line; scripts implement selection. Every step executes, including empty outputs. Flow exposes nodes, edges, terminal_steps and unconsumed_steps. Converge training branches into the last step's trainable output, retaining unresolved review metadata. A retained script with inputs consumes combined branches. Cycles, overlapping identities and job-level conditional skipping are unsupported.",
+            "runtime": "Inspect inspect_dataset_workbench.runner for approved images and worker freshness. Dependencies are installed in the pinned operator-approved runtime; network and package installation are unavailable during execution. No credentials or host mounts enter script containers.",
+            "next": "Register with save_dataset_pipeline, validate, preview and inspect; publish explicitly. Reuse revisions on compatible sources, or save a derived_from variant. Save bindings paused and enable explicitly.",
+        },
+        "ingestion_verification": "Before upload, inspect local record boundaries, fields, value types and expected row count. For JSON wrappers, explicitly select the intended top-level record array; clarify unresolved ambiguity instead of treating the whole wrapper as one row. Preserve original bytes. After landing, compare source count and representative nested values using inspect_dataset and query_dataset. Resolve mismatches before transformation or consumer handoff. State verification coverage: a sample is not a full-file audit, and successful transfer is not proof of correct ingestion.",
+        "readiness": "Run overmind connection check --project-id PROJECT --json from the actual coding environment. It verifies MCP, project access, transfer protocol and read/write access with the same resolved connection. A connected MCP client alone does not establish local transfer readiness.",
+        "recovery": "Re-run the identical CLI command to recover its stable transfer key and resume bytes or the existing publication. Use --request-key for an explicitly new upload or a caller-owned identity. Changed content or recipe under the same explicit key conflicts. get_job(kind=dataset_transfer) inspects the receipt without probing or dispatching; dataset_run reports subsequent extraction. Unknown connection errors do not prove sandbox denial. For confirmed network_permission_denied, request the host's supported scoped permission for the same command; do not change sandbox policy, ask for the file again or open a browser.",
+        "json_selection": "For a JSON object containing a row array under a nonstandard field, pass --json-rows-field FIELD explicitly. The selected top-level field is recorded in extraction metadata; original file bytes and wrapper metadata remain downloadable. No target meaning is inferred.",
+        "written_intent": "Use start_dataset with a brief and the user's explicit intent and capability. Its upload.argv carries exact project/dataset identities; replace FILE with the inspected local path. For a new upload, --brief records the original request.",
+        "existing_dataset": "Use overmind dataset upload FILE --project-id PROJECT --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST source accepts uploads; landing does not start preparation.",
+        "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MiB per document, 2000 pages per PDF). Upload reservations return the file-type byte limit. Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction. get_job(kind=dataset_run) exposes file/stage and measured OCR-page progress under progress.landing.",
+        "pdf_text_recovery": {
+            "trigger": "Pages where the primary native parser returned no text are checked with PDFium before OCR, including selectable Type 3 font layers.",
+            "evidence": "Source extraction.native_text_recovery records engine/version, recovered pages, rows, characters, control_characters and reason. Row extraction methods distinguish pdfium-native-text from tesseract-ocr; page regions remain retained.",
+            "limits": "Encoded text is source evidence, not visual verification. Font-encoding artifacts, reading order and diagram relationships require native-agent inspection; the platform does not normalize their meaning. This recovery does not certify partial omissions on pages where the primary parser returned some text.",
+        },
+        "publication_status": "Without --wait, CLI state/state_scope=at_publication describe the saved publication snapshot, not current extraction. Read get_job(kind=dataset_run) for current progress. --wait returns state_scope=observed_after_landing.",
+        "auth": "Account or project API key from --api-key, .overmind/credentials.toml, OVERMIND_API_KEY, or the saved local transfer connection at $XDG_CONFIG_HOME/overmind/connection.toml (default ~/.config/overmind/connection.toml). The saved connection contains an api-key bound to its base-url and must have permissions 0600. MCP authentication alone does not configure CLI authentication. Missing credentials are a local connection error, not a reason to open the Console.",
         "config": (
             "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, "
-            "--api-url, or overmind.toml."
+            "--api-url, or overmind.toml. With no other key, the saved local transfer connection supplies both key and base URL; a different explicitly selected API is rejected."
         ),
         "flow": (
-            "POST /api/uploads/, resume with PUT /api/uploads/{id}/chunk/?offset= using "
-            "chunk_bytes, then POST /api/datasets/ with upload_id and project."
+            "POST /api/dataset-transfers/ with project, request_key, filename, size, sha256 and destination recipe; "
+            "PUT /api/dataset-transfers/{id}/chunk/?offset= streams bounded bytes; "
+            "POST /api/dataset-transfers/{id}/complete/ verifies the hash and publishes once. "
+            "Read the receipt or repeat reservation with the identical key to resume. Publication is separate from landing."
         ),
         "multiple_files": (
-            "Reserve and upload each file, then POST /api/uploads/{id}/inspect/ with size "
-            "in bytes to validate it and obtain rows. POST /api/datasets/ with project, name "
-            "and source.uploads containing the upload UUIDs in row order (up to 100 files). "
-            "For a train/eval pair, POST /api/datasets/split/ with the same source, "
-            "eval_percent (1–99) and position (head, tail or random)."
+            "The installed CLI transfers one file per command. Upload the first file, then "
+            "attach each remaining file with --dataset DATASET, waiting for dataset_run to "
+            "reach idle or error between attachments. Each successful attachment appends an "
+            "import cell combining the preceding cell's rows with the new file's rows. Page retained sources "
+            "with inspect_dataset. Atomic multi-file landing (up to 100 files) is supported "
+            "by REST staging but has no resumable CLI/MCP handoff yet. Managed transfer "
+            "upload IDs cannot be republished through /api/uploads/ or source.uploads."
         ),
         "next_mcp_calls": [
             "get_job(kind=dataset_run, id=dataset_id)",
@@ -218,10 +280,12 @@ def _dataset_export_resource(uri: str) -> dict:
         "uri": uri,
         "kind": "dataset_export",
         "command": "overmind dataset export DATASET --json",
+        "original_source_command": "overmind dataset export DATASET --source SHA256 --output FILE --json",
+        "original_source": "Use a sources[].sha256 from inspect_dataset to retrieve retained original bytes. The CLI verifies SHA-256, refuses redirects and existing output files, and removes a corrupt download. Do not combine --source with --cell or --format csv.",
         "formats": ["jsonl", "csv"],
         "dataset": "Use the dataset id supplied by MCP; the CLI does not resolve dataset names.",
-        "auth": "X-Api-Key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
-        "config": "Base URL from OVERMIND_API_URL, --api-url, or overmind.toml; --path selects overmind.toml.",
+        "auth": "X-Api-Key from --api-key, .overmind/credentials.toml, OVERMIND_API_KEY, or the saved local transfer connection. Missing credentials are a local connection error; do not fall back to the Console.",
+        "config": "Base URL from OVERMIND_API_URL, --api-url, or overmind.toml; --path selects overmind.toml. With no other key, use api-key and base-url together from $XDG_CONFIG_HOME/overmind/connection.toml (default ~/.config/overmind/connection.toml, permissions 0600). A different explicitly selected API is rejected.",
         "output": (
             "Without --output, the CLI uses and sanitizes the server Content-Disposition filename. "
             "It refuses to overwrite an existing local path."
@@ -336,6 +400,8 @@ def finetune_progress_payload(value):
         return progress
     diagnostics = progress.get("diagnostics")
     stage = diagnostics.get("stage") if isinstance(diagnostics, dict) else None
+    if (stage or progress.get("stage")) in STARTUP_LABELS:
+        progress["stage_label"] = STARTUP_LABELS[stage or progress["stage"]]
     if (stage or progress.get("stage")) == "initial_validation":
         progress["stage_label"] = "Pre-training baseline evaluation"
         progress["stage_description"] = (
@@ -655,37 +721,11 @@ def _dataset_human_action(dataset) -> dict:
     }
 
 
-def _chat_turn(raw) -> dict | None:
-    if not isinstance(raw, dict):
-        return None
-    cells = raw.get("cells") if isinstance(raw.get("cells"), list) else []
-    ms = raw.get("ms")
-    return {
-        "id": raw.get("id"),
-        "intent_choice": raw.get("intent_choice"),
-        "role": _clip_text(raw.get("role"), 16),
-        "text": _clip_text(raw.get("text"), _CHAT_TEXT_CAP),
-        "error": _clip_text(raw.get("error"), _ERROR_CAP) or None,
-        "cells": safe_json(cells[:20]),
-        "at": _clip_text(raw.get("at"), 80) or None,
-        "ms": ms if isinstance(ms, int) else None,
-        "status": raw.get("status"),
-        "progress": safe_json(raw.get("progress")),
-        "tool_activity": tool_activity(raw).model_dump(mode="json"),
-    }
-
-
-def _latest_turn(dataset) -> dict | None:
-    chat = dataset.chat or []
-    if not chat:
-        return None
-    return _chat_turn(chat[-1])
-
-
-def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAULT) -> dict:
-    detail = serialize_dataset_detail(dataset, chat_limit=chat_limit)
+def _dataset_detail_payload(dataset, *, uri: str) -> dict:
+    detail = serialize_dataset_detail(dataset)
     payload = detail.model_dump(mode="json", by_alias=True)
     payload["uri"] = uri
+    payload["workbench"] = workbench.describe(dataset)
     payload.setdefault("kind", "dataset")
     if not payload.get("human_action"):
         payload["human_action"] = _dataset_human_action(dataset)
@@ -697,45 +737,19 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
     versions = dataset.versions(chain=chain)
     ran = [cell for cell in chain if cell.state == Cell.State.OK]
     active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
-    execution = workflow.describe(dataset)
-    actions = [
-        action.model_dump(mode="json")
-        for action in next_actions(dataset, chain, active, execution=execution)
-    ]
+    actions = [action.model_dump(mode="json") for action in next_actions(dataset, chain, active)]
     cells = {"n": len(chain), "states": dict(Counter(cell.state for cell in chain))}
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
         "jobs", f"dataset_run/{dataset.id}", (dataset.name or "Dataset run")[:160]
     )
     error = _clip_text(dataset.error, _ERROR_CAP) or None
-    latest_turn = _latest_turn(dataset)
-    waiting = dataset.state == "idle" and (latest_turn or {}).get("status") == "awaiting_approval"
-    status = "awaiting_approval" if waiting else dataset.state
-    if dataset.state == "idle" and execution.get("state") in {
-        "blocked",
-        "partial",
-        "paused",
-        "queued",
-        "running",
-        "cancelled",
-    }:
-        status = execution["state"]
-        error = (
-            error
-            or _clip_text(
-                execution.get("result", {}).get("error")
-                or execution.get("failure", {}).get("detail")
-                or (latest_turn or {}).get("error"),
-                _ERROR_CAP,
-            )
-            or None
-        )
     return {
         "uri": uri,
         "kind": "dataset_run",
         "id": str(dataset.id),
         "name": dataset.name,
-        "status": status,
+        "status": dataset.state,
         "state": dataset.state,
         "error": error,
         "active": (
@@ -748,17 +762,15 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
             if active
             else None
         ),
-        "latest_turn": latest_turn,
-        "workflow": execution,
         "cells": cells,
         "next_action": actions[0] if actions else None,
         "next_actions": actions,
         "dataset": dataset_link,
         "progress": {
-            **((latest_turn or {}).get("progress") or {}),
-            "workflow": execution,
             "cells": cells["states"],
             "rows": active.rows if active else 0,
+            "rows_scope": "active_version",
+            "landing": dataset.source_spec.get("landing_progress"),
         },
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
@@ -917,7 +929,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         raise _not_found("finetune", value)
     events = list(job.events.order_by("-created_at")[:_MAX_LIST])
     deployment = getattr(job, "deployed_model", None)
-    progress = job.progress if isinstance(job.progress, dict) else {}
+    progress = live_progress_for_job(job)
     result = job.result if isinstance(job.result, dict) else {}
     metrics = progress.get("metrics") if isinstance(progress.get("metrics"), dict) else {}
     loss = metrics.get("loss") or result.get("epoch_losses") or []
@@ -925,11 +937,13 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "uri": uri,
         "kind": "finetune",
         "id": str(job.id),
+        "group_id": str(job.group_id) if job.group_id else None,
         "name": job.name,
         "status": job.status,
         "provider": job.provider,
         "base_model": job.base_model,
         "record": safe_json(run_record(job)),
+        "monitoring": safe_json(training_monitoring.summary(job)),
         "training_objective": (job.hyperparameters or {}).get(
             "objective", "assistant_cross_entropy"
         ),
@@ -1190,6 +1204,29 @@ def _optimizer_resource(project, value: str, uri: str) -> dict:
 
 
 def _job_resource(project, kind: str, value: str, uri: str) -> dict:
+    if kind == "inference_request":
+        request = InferenceRequest.objects.filter(project=project, pk=_uuid_ref(value)).first()
+        if request is None:
+            raise _not_found("inference request", value)
+        result = inference_requests.describe(request)
+        params = parse_qs(urlparse(uri).query)
+        try:
+            offset, limit = int(params.get("offset", [0])[0]), int(params.get("limit", [32000])[0])
+            if offset < 0 or not 1 <= limit <= 32000:
+                raise ValueError
+        except ValueError:
+            raise MCPError(
+                "invalid_input", "Use a nonnegative content offset and limit 1–32000"
+            ) from None
+        content = str(request.result.get("content") or "")
+        if request.result:
+            result["result"]["content"] = content[offset : offset + limit]
+            result["content_page"] = {
+                "offset": offset,
+                "total": len(content),
+                "next_offset": offset + limit if offset + limit < len(content) else None,
+            }
+        return {"uri": uri, "kind": kind, **result}
     if kind == "model_activation":
         activation = ModelActivation.objects.filter(
             pk=_uuid_ref(value), capability__project=project
@@ -1231,6 +1268,24 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
         return _optimizer_resource(project, value, uri)
     normalized_id = _uuid_ref(value)
+    if kind == "dataset_transfer":
+        from overbae.services.datasets import transfers
+
+        transfer = DatasetTransfer.objects.filter(project=project, pk=normalized_id).first()
+        if transfer is None:
+            raise _not_found("dataset transfer", value)
+        return {"uri": uri, "kind": kind, **transfers.describe(transfer)}
+    if kind == "dataset_pipeline":
+        run = (
+            DatasetPipelineRun.objects.filter(dataset__project=project, pk=normalized_id)
+            .select_related("dataset", "pipeline__package")
+            .first()
+            if normalized_id
+            else None
+        )
+        if run is None:
+            raise _not_found("dataset pipeline", value)
+        return {"uri": uri, "kind": kind, "status": run.state, **workbench.run_record(run)}
     if kind == "dataset_run":
         job = _load_dataset_job(project, normalized_id)
         if job is None:
@@ -1262,9 +1317,36 @@ def interface_resource():
         else None
     )
     return {
-        "contract_version": "2.0.0",
+        "contract_version": "6.2.1",
+        "transfer_protocol_version": 1,
         "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
         "tool_count": len(manifest),
+        "training_measurements": {
+            "monitoring": "A frozen monitoring policy controls bounded development checks, generation scoring, checkpoint selection and optional early stopping. inspect_training_progress pages durable checks and exact evidence without invoking workers. cancel_finetune preserves completed evidence and records remote acknowledgement separately. Development metrics are not final benchmarks. Native target distributions and mean-only denominators remain distinct.",
+            "billing": "New Modal training charges use deduplicated worker GPU-time receipts and recorded hardware, never local completion-observation delay. Missing usage remains unmeasured. recorded_basis identifies the retained charge calculation; historical charges without that receipt are not retrospectively relabelled.",
+            "forecast": "Matching duration evidence comes from worker usage receipts, excluding collector delay; estimates and recorded charges are not all-in invoices or spend caps.",
+            "recovery": "The training collector renews a short lease while alive. Reconciliation closes missed terminal operational events from local receipts without another provider call; worker heartbeat timestamps are preserved.",
+        },
+        "dataset_transformations": {
+            "progress": "Preview and publication expose aggregate seconds plus per-step runtime stage_seconds for container setup, input transfer, script execution, artifact transfer, output reading and cleanup. A stopped script never reports completed runtime; cleanup_confirmed is separate from publication success.",
+            "parameters": "Package manifest parameters declare types, for example {seed: integer}; run parameters supply values, for example {seed: 42}.",
+            "queries": "Read-only queries have a deployment-configured deadline (default 10 seconds); query_timeout leaves the cell unchanged. Oversized results are rejected during materialization, not clipped.",
+            "inspection": "Cell transformation metadata distinguishes recorded script/operation execution, external imports and unrecorded history. It links the exact run, revision, package checksum and entrypoint. Read all retained package files via dataset-pipeline-packages resources using file/offset/limit character pagination; source reads never execute code.",
+            "prompt": "author-dataset-transformation",
+            "lookup": "inspect_dataset_workbench(pipeline=exact revision ID) returns the recipe and paginated family history; runs and bindings are scoped to that revision",
+            "retained_code": "Every new transformation revision requires an uploaded Python package. Author meaningful staged entrypoints, pipeline-upload, save_dataset_pipeline(package=UUID), validate, preview, publish and verify the exact run/cells. Historical package-free revisions remain readable but cannot execute or bind. External imports are attributed results, not retained transformations.",
+            "branches": "Acyclic forks and fan-in: input selects one parent; inputs concatenates distinct parents in declared order. Nonempty branch schemas must match; overlapping source_row identities or incompatible schemas fail without coercion. Retained scripts implement routing and consume concatenated branch inputs.",
+            "conditions": "Agent-declared expression and retained entrypoint line; never evaluated as code or inferred by the platform",
+            "empty_branches": "All steps execute; zero rows are valid unless row checks reject them",
+            "output": "Last declared step; all published step cells remain selectable",
+            "unsupported": [
+                "overlapping row identities across inputs",
+                "cycles",
+                "job-level conditional skipping",
+                "automatic exclusivity or coverage verification",
+            ],
+            "adaptation": "Reuse the revision for parameters only; new family via derived_from=revision ID for different logic/source contracts; revise a family via pipeline=family ID and expected_revision",
+        },
         "connection": {
             "mcp_url": origin + "/api/mcp/" if origin else None,
             "console_url": settings.FRONTEND_URL,
@@ -1272,7 +1354,8 @@ def interface_resource():
         },
         "guidance": {
             "entry": "list_projects; data-only work does not require code scanning or a capability",
-            "source": "Pass the exact cell UUID. Derive a new dataset to work from a frozen historical parent.",
+            "source": "Pass exact cell UUIDs and fingerprints. Workshop pipelines publish new versions, including from frozen historical parents.",
+            "workshop": "The native agent authors and explains. Discover reusable project revisions with inspect_dataset_workbench. Register script packages via CLI and save_dataset_pipeline, validate, preview, then run on pinned source cells. Each step publishes a cell atomically. Adapt with derived_from; original revisions remain unchanged. Explicitly enabled bindings rebuild full source snapshots using the pinned revision. Scripts run only in approved isolated containers, never API/Celery Python. Imports remain externally attributed.",
             "lifecycle": "create saves a draft; prepare verifies inputs; launch is explicit paid authorization",
             "resume": "Use get_job and next_actions. Saved request keys and provider receipts survive reconnects; unresolved submissions are not replayed.",
             "recipes": "Use get_model_catalog for supported model-specific context, batch and training-method constraints. Hyperparameters remain a model-dependent extension; stable partition, sampling, inference and workload settings are typed.",
@@ -1283,6 +1366,16 @@ def interface_resource():
         "installed_guidance": "Connected tool schemas are authoritative when installed skills differ",
         "discovery": "Compare this endpoint and catalog hash with the connection you intend to use. Refresh tools/list when the cached inventory differs; do not silently switch environments.",
     }
+
+
+def _pipeline_content_page(params):
+    try:
+        offset, limit = int(params.get("offset", [0])[0]), int(params.get("limit", [8000])[0])
+        if offset < 0 or not 1 <= limit <= 16000:
+            raise ValueError
+        return offset, limit
+    except ValueError:
+        raise MCPError("invalid_input", "Use a nonnegative offset and limit 1–16000.") from None
 
 
 def _read_resource_sync(project, raw_uri: str) -> dict:
@@ -1303,6 +1396,89 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         return _checkpoint_download_resource(raw_uri)
     if host == "connector-setup" and not segments:
         return _connector_setup_resource(raw_uri)
+    if host == "dataset-pipelines" and len(segments) == 1:
+        recipe = (
+            DatasetPipeline.objects.select_related("package")
+            .filter(project=project, pk=_uuid_ref(segments[0]))
+            .first()
+        )
+        if recipe is None:
+            raise _not_found("pipeline revision", segments[0])
+        result = {"uri": raw_uri, **workbench.pipeline_record(recipe)}
+        if recipe.package_id:
+            result["package_detail"] = pipeline_packages.record(recipe.package)
+            result["package_resource"] = resource_link(
+                "dataset-pipeline-packages", recipe.package_id, "Retained source package"
+            )
+        return result
+    if host == "dataset-pipeline-bindings" and len(segments) == 1:
+        binding = DatasetPipelineBinding.objects.filter(
+            project=project, pk=_uuid_ref(segments[0])
+        ).first()
+        if binding is None:
+            raise _not_found("pipeline binding", segments[0])
+        return {"uri": raw_uri, **pipeline_bindings.binding_record(binding)}
+    if host == "dataset-pipeline-packages" and len(segments) == 1:
+        package = DatasetPipelinePackage.objects.filter(
+            project=project, pk=_uuid_ref(segments[0])
+        ).first()
+        if package is None:
+            raise _not_found("pipeline package", segments[0])
+        result = {"uri": raw_uri, **pipeline_packages.record(package)}
+        params = parse_qs(parsed.query)
+        filename = params.get("file", [None])[0]
+        if filename:
+            offset, limit = _pipeline_content_page(params)
+            if filename not in {item["path"] for item in package.inventory}:
+                raise _not_found("package file", filename)
+            try:
+                result["file"] = pipeline_packages.source_file(
+                    package, filename, offset=offset, limit=limit
+                )
+            except DatasetError as exc:
+                raise MCPError(exc.code, exc.detail) from exc
+        return result
+    if host == "pipeline-diagnostics" and len(segments) == 1:
+        run = DatasetPipelineRun.objects.filter(
+            dataset__project=project, pk=_uuid_ref(segments[0])
+        ).first()
+        if run is None:
+            raise _not_found("pipeline run", segments[0])
+        params = parse_qs(parsed.query)
+        offset, limit = _pipeline_content_page(params)
+        try:
+            step = int(params.get("step", [0])[0])
+            channel = params.get("channel", ["stderr"])[0]
+            if not 0 <= step < 20 or channel not in {"stderr", "stdout"}:
+                raise ValueError
+        except ValueError:
+            raise MCPError("invalid_input", "Use step 0–19 and stdout or stderr.") from None
+        path = paths.media_root() / "pipeline-runs" / str(run.pk) / f"{step}-{channel}.log"
+        content = path.read_text(errors="replace") if path.exists() else ""
+        return {
+            "run": str(run.pk),
+            "step": step,
+            "channel": channel,
+            "source": "untrusted_script_output",
+            "available": path.exists(),
+            "retained_limit_bytes": 65536,
+            "content": content[offset : offset + limit],
+            "total": len(content),
+            "next_offset": offset + limit if offset + limit < len(content) else None,
+        }
+    if host == "operations" and len(segments) == 1:
+        params = parse_qs(parsed.query)
+        try:
+            return operational_progress.inspect(
+                project.pk,
+                _uuid_ref(segments[0]),
+                after=int(params.get("after", [0])[0]),
+                limit=int(params.get("limit", [50])[0]),
+            )
+        except operational_progress.OperationNotFoundError:
+            raise _not_found("operation", segments[0]) from None
+        except ValueError:
+            raise MCPError("invalid_input", "Invalid operational event cursor or limit") from None
     if (
         host
         in {
@@ -1351,7 +1527,14 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         except ValueError as exc:
             raise MCPError("invalid_input", str(exc)) from None
     if host == "jobs" and len(segments) == 2:
-        return _job_resource(project, segments[0], segments[1], raw_uri)
+        result = _job_resource(project, segments[0], segments[1], raw_uri)
+        operation = operational_progress.latest(project.pk, segments[0], segments[1])
+        if operation:
+            result["operation"] = operation
+            result["operation_resource"] = resource_link(
+                "operations", operation["id"], "Operational timeline"
+            )
+        return result
     raise _not_found("resource", raw_uri)
 
 
@@ -1408,6 +1591,26 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ("trace", "overmind://traces/{trace_id}", "Trace and bounded spans"),
         ("session", "overmind://sessions/{session}", "Session and trace references"),
         ("dataset", "overmind://datasets/{dataset}", "Dataset metadata"),
+        (
+            "dataset-pipeline",
+            "overmind://dataset-pipelines/{id}",
+            "Immutable reusable transformation revision",
+        ),
+        (
+            "dataset-pipeline-package",
+            "overmind://dataset-pipeline-packages/{id}",
+            "Package inventory; file, offset and limit page retained code",
+        ),
+        (
+            "dataset-pipeline-binding",
+            "overmind://dataset-pipeline-bindings/{id}",
+            "Source binding, limits and checkpoint",
+        ),
+        (
+            "pipeline-diagnostics",
+            "overmind://pipeline-diagnostics/{id}",
+            "Untrusted script diagnostics; step, channel, offset and limit",
+        ),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
         ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and evaluator members"),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
@@ -1415,6 +1618,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),
         ("connector", "overmind://connectors/{connector}", "Connector metadata and sync status"),
         ("job", "overmind://jobs/{kind}/{id}", "Project job status"),
+        (
+            "operation",
+            "overmind://operations/{id}",
+            "Durable operational events; after and limit page the timeline",
+        ),
         (
             "exploration-strata",
             "overmind://jobs/data_exploration/{id}/strata",

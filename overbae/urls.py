@@ -24,18 +24,10 @@ from overbae.api.billing import (
     SubscriptionView,
 )
 from overbae.api.capabilities import AgentGraphView, CapabilityViewSet
-from overbae.api.chatgpt import (
-    ChatGPTCallbackView,
-    ChatGPTDisconnectView,
-    ChatGPTLoginSessionView,
-    ChatGPTLoginView,
-    ChatGPTModelsView,
-    ChatGPTStartView,
-    WorkshopFundingView,
-)
 from overbae.api.completions import chat_completions, model_detail, models_list
 from overbae.api.data_exploration import DataExplorationViewSet
 from overbae.api.data_partitions import DataPartitionViewSet
+from overbae.api.dataset_transfers import DatasetTransferViewSet
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.decision_performance import DecisionPerformanceViewSet
 from overbae.api.eval_views import (
@@ -69,8 +61,21 @@ from overbae.api.views import (
     SessionViewSet,
     SpanViewSet,
 )
+from overbae.api.workbench import (
+    DatasetPipelineBindingViewSet,
+    DatasetPipelinePackageViewSet,
+    DatasetPipelineViewSet,
+)
 
 router = DefaultRouter()
+router.register("dataset-transfers", DatasetTransferViewSet, basename="dataset-transfer")
+router.register(
+    "dataset-pipeline-packages", DatasetPipelinePackageViewSet, basename="dataset-pipeline-package"
+)
+router.register("dataset-pipelines", DatasetPipelineViewSet, basename="dataset-pipeline")
+router.register(
+    "dataset-pipeline-bindings", DatasetPipelineBindingViewSet, basename="dataset-pipeline-binding"
+)
 # Must precede ``projects`` so ``…/memberships`` is not captured as a project id.
 router.register("data-explorations", DataExplorationViewSet, basename="data-exploration")
 router.register(r"training-experiments", TrainingExperimentViewSet, basename="training-experiment")
@@ -122,13 +127,6 @@ router.register(r"task-executions", TaskExecutionViewSet, basename="taskexecutio
 
 urlpatterns = [
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
-    path("api/chatgpt/", WorkshopFundingView.as_view()),
-    path("api/chatgpt/start/", ChatGPTStartView.as_view()),
-    path("api/chatgpt/login/", ChatGPTLoginView.as_view()),
-    path("api/chatgpt/callback/session/", ChatGPTLoginSessionView.as_view()),
-    path("api/chatgpt/callback/", ChatGPTCallbackView.as_view()),
-    path("api/chatgpt/models/", ChatGPTModelsView.as_view()),
-    path("api/chatgpt/disconnect/", ChatGPTDisconnectView.as_view()),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),

@@ -41,12 +41,12 @@ export function trainingContextChecks(wizard: TrainWizard) {
 }
 
 export function benchmarkContextStatus(wizard: TrainWizard, model: string) {
-  if (!wizard.evaluationPlan.evalIncumbentBefore && !wizard.evaluationPlan.evalIncumbentAfter) {
+  if (!wizard.benchmarkingEnabled) {
     return undefined;
   }
   if (wizard.contextQuery?.isError) return "unknown";
   const check = wizard.contextQuery?.data?.checks.find(
-    (check) => check.role === "generation" && check.model === wizard.benchmarkModel
+    (check) => check.role === "generation" && check.model === model
   );
   if (!check) return undefined;
   if (model === check.model) return check.status;

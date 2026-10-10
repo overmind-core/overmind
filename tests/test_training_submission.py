@@ -79,6 +79,48 @@ def test_replaced_staging_owner_cannot_dispatch_gpu_work():
     training_submission.dispatching(replacement, f"ft-{job.id}-current")
 
 
+def test_pre_dispatch_validation_error_releases_intent_without_remote_call():
+    project = Project.objects.create(name="Invalid plan", slug="invalid-plan")
+    dataset = Dataset.objects.create(project=project)
+    job = FinetuningJob.objects.create(project=project, dataset=dataset, base_model="fixture")
+    training_submission.claim(job)
+
+    assert training_submission.release_before_dispatch(job)
+    job.refresh_from_db()
+    assert job.provider_submission == {}
+    assert not job.remote_job_id
+
+
+def test_dispatched_submission_cannot_be_released_as_local_failure():
+    project = Project.objects.create(name="Dispatched plan", slug="dispatched-plan")
+    dataset = Dataset.objects.create(project=project)
+    job = FinetuningJob.objects.create(project=project, dataset=dataset, base_model="fixture")
+    training_submission.claim(job)
+    training_submission.dispatching(job, f"ft-{job.id}-sent")
+
+    assert not training_submission.release_before_dispatch(job)
+    job.refresh_from_db()
+    assert job.provider_submission["run_id"] == f"ft-{job.id}-sent"
+
+
+def test_preparation_steps_update_counts_without_duplicating_activity():
+    project = Project.objects.create(name="Preparation progress", slug="preparation-progress")
+    dataset = Dataset.objects.create(project=project)
+    job = FinetuningJob.objects.create(
+        project=project, dataset=dataset, base_model="fixture", status="preparing"
+    )
+
+    training_submission.record_preparation_stage(
+        job, "validating_training_files", "Validating rows", completed=0, total=2, unit="files"
+    )
+    training_submission.record_preparation_stage(
+        job, "validating_training_files", "Validating rows", completed=1, total=2, unit="files"
+    )
+    job.refresh_from_db()
+    assert job.progress["diagnostics"] == {"completed": 1, "total": 2, "unit": "files"}
+    assert [line["message"] for line in job.progress["activity"]] == ["Validating rows"]
+
+
 @pytest.mark.parametrize(
     "requested,field",
     [

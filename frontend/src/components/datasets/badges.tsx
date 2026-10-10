@@ -24,11 +24,7 @@ export function IntentBadge({
 }) {
   if (!intent) return null;
   return (
-    <Badge
-      className={className}
-      size="chip"
-      variant={intent === "pending" || intent === "explore" ? "neutral" : "success"}
-    >
+    <Badge className={className} size="chip" variant="outline">
       {INTENT_LABEL[intent] ?? intent}
     </Badge>
   );
@@ -43,19 +39,11 @@ export function StateBadge({
   className?: string;
 }) {
   if (!dataset) return null;
-  if (
-    dataset.state === "landing" ||
-    dataset.state === "running" ||
-    dataset.state === "diagnosing"
-  ) {
+  if (dataset.state === "landing" || dataset.state === "running") {
     return (
       <Badge className={cn("gap-1", className)} size="chip" variant="info">
         <Spinner className="size-3" />
-        {dataset.state === "landing"
-          ? "Landing"
-          : dataset.state === "running"
-            ? "Running"
-            : "Agent"}
+        {dataset.state === "landing" ? "Landing" : "Running"}
       </Badge>
     );
   }

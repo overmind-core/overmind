@@ -17,6 +17,7 @@ import contextlib
 import json
 import os
 import subprocess
+import threading
 import time
 import urllib.request
 import uuid
@@ -24,7 +25,12 @@ from pathlib import Path
 
 import modal
 
-from modal_shared.context_budget import completion_body
+from modal_shared.context_budget import (
+    CONTEXT_BUDGET_MESSAGE,
+    completion_body,
+    is_context_limit_error,
+)
+from modal_shared.operational_events import STORE, Journal, pool_key
 from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import read_base_manifest
 
@@ -96,7 +102,9 @@ _volume_mounts = {
 }
 
 
-def _wait_for_vllm(timeout: int = 30 * MINUTES, *, proc: subprocess.Popen | None = None) -> None:
+def _wait_for_vllm(
+    timeout: int = 30 * MINUTES, *, proc: subprocess.Popen | None = None, journal=None
+) -> None:
     """A ``proc`` that exits before health is ready (OOM, bad weights, engine init crash) fails
     immediately rather than burning the full timeout, which leaves a GPU container hanging while
     Modal retries the input behind it."""
@@ -104,10 +112,18 @@ def _wait_for_vllm(timeout: int = 30 * MINUTES, *, proc: subprocess.Popen | None
     import urllib.request
 
     url = f"http://localhost:{VLLM_PORT}/health"
-    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    deadline = started + timeout
+    reported_at = started - 15
     while time.monotonic() < deadline:
         if proc is not None and proc.poll() is not None:
             raise RuntimeError(f"vLLM exited before becoming healthy (exit_code={proc.returncode})")
+        now = time.monotonic()
+        if journal and now - reported_at >= 15:
+            journal.emit(
+                "waiting_for_engine", process_alive=proc is not None, elapsed_seconds=now - started
+            )
+            reported_at = now
         try:
             with urllib.request.urlopen(url, timeout=5) as r:
                 if r.status == 200:
@@ -248,16 +264,32 @@ class _BaseVLLMWorker:
         before the input is consumed, which triggers a reschedule just as an enter failure does."""
         self._start()
 
+    def _start_journal(self):
+        self._journal = Journal(
+            pool_key(
+                type(self).__name__,
+                self.model_path,
+                self.max_model_len,
+                self.enable_lora,
+                self.max_lora_rank,
+            )
+        )
+
     def _start(self) -> None:
+        self._start_journal()
+        self._journal.emit("starting_engine")
         self._startup_error: str | None = None
         self._loaded_adapters: set[str] = set()
         self._adapter_lock = None
         try:
             self._startup_inner(_json=json, _os=os)
+            self._journal.emit("engine_ready")
         except Exception as e:
             self._fail_startup(e)
 
     def _fail_startup(self, error) -> None:
+        if getattr(self, "_journal", None):
+            self._journal.emit("startup_failed", error_code="worker_startup_failed")
         proc = getattr(self, "_proc", None)
         if proc is not None and proc.poll() is None:
             proc.kill()
@@ -287,6 +319,7 @@ class _BaseVLLMWorker:
         # uses exactly that ordering — write weights, then drive a worker. The compile
         # cache Volume is the same: without reload the last boot's inductor artifacts
         # are invisible and vLLM recompiles from scratch.
+        self._journal.emit("refreshing_volumes")
         weights_vol.reload()
         vllm_cache_vol.reload()
 
@@ -295,6 +328,7 @@ class _BaseVLLMWorker:
 
         # Fail before allocating GPU/vLLM when the weights are genuinely gone, or a bad
         # param-set crash-loops the input backlog for minutes per attempt.
+        self._journal.emit("validating_weights")
         if not _os.path.isdir(full_path):
             raise RuntimeError(
                 f"weights missing at {full_path} (model_name={self.model_name!r}); "
@@ -373,12 +407,14 @@ class _BaseVLLMWorker:
         self._serve_command = cmd
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
         # are not mangled by the shell.
+        self._journal.emit("starting_engine_process")
         self._proc = subprocess.Popen(cmd)  # noqa: S603
-        _wait_for_vllm(proc=self._proc)
+        _wait_for_vllm(proc=self._proc, journal=self._journal)
         # Writes to a Volume are discarded unless this container commits. Concurrent
         # boots can clobber each other's new files (last commit wins); a lost cache
         # only means the next cold start recompiles.
         with contextlib.suppress(Exception):
+            self._journal.emit("committing_compile_cache")
             vllm_cache_vol.commit()
 
     @modal.exit()
@@ -437,6 +473,7 @@ class _BaseVLLMWorker:
         body: bytes,
         headers: dict,
         adapter: tuple[str, str] | None = None,
+        operation_stream: str = "",
     ) -> dict:
         """RPC entry point for the InferenceAPIServer proxy, returning
         ``{"status": int, "headers": dict, "body": bytes}``.
@@ -450,13 +487,21 @@ class _BaseVLLMWorker:
         """
         import httpx
 
+        journal = Journal(operation_stream) if operation_stream else None
+        if journal:
+            await asyncio.to_thread(journal.emit, "worker_ready")
+
         self._ensure_ready()
 
         if path not in {"/health", "/v1/models", "/v1/chat/completions", "/v1/completions"}:
             raise ValueError("Only inference endpoints may be proxied")
 
         if adapter:
+            if journal:
+                await asyncio.to_thread(journal.emit, "loading_adapter", model_id=adapter[0])
             await self._ensure_adapter(adapter[0], adapter[1])
+            if journal:
+                await asyncio.to_thread(journal.emit, "adapter_ready", model_id=adapter[0])
 
         try:
             body = completion_body(path, body)
@@ -473,7 +518,15 @@ class _BaseVLLMWorker:
             k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")
         }
         async with httpx.AsyncClient(timeout=300) as client:
+            if journal:
+                await asyncio.to_thread(journal.emit, "generating")
             resp = await client.request(method=method, url=url, headers=safe_headers, content=body)
+        if journal:
+            await asyncio.to_thread(
+                journal.emit,
+                "response_received",
+                error_code=None if resp.status_code == 200 else "inference_rejected",
+            )
         return {
             "status": resp.status_code,
             "headers": dict(resp.headers),
@@ -596,10 +649,14 @@ class _SharedBaseVLLMWorker(_BaseVLLMWorker):
             if self._startup_error:
                 return
             artifacts_vol.reload()
+            self._journal.emit("preparing_snapshot_artifact", base_identity=self.base_identity)
             self._artifact = self._base_rpc(
                 "prepare_shared_base", ARTIFACTS_MOUNT, self.base_identity, self._serve_command
             )
             artifacts_vol.commit()
+            self._journal.emit(
+                "snapshot_artifact_ready", artifact_identity=self._artifact.get("identity")
+            )
             self._control("/sleep?level=2")
             print(
                 json.dumps(
@@ -616,6 +673,8 @@ class _SharedBaseVLLMWorker(_BaseVLLMWorker):
 
     @modal.enter(snap=False)
     def restore(self) -> None:
+        self._start_journal()
+        self._journal.emit("refreshing_volumes")
         self._runtime = uuid.uuid4().hex
         self._loaded_adapters = set()
         self._adapter_lock = None
@@ -627,10 +686,42 @@ class _SharedBaseVLLMWorker(_BaseVLLMWorker):
             weights_vol.reload()
             self._verify_base_identity()
             artifacts_vol.reload()
+            self._journal.emit("allocating_weight_memory")
             self._control("/wake_up?tags=weights")
-            self._restore_metrics = self._base_rpc("restore_shared_base")
+            progress_path = f"/tmp/overmind-restore-{self._runtime}.json"
+            stopped = threading.Event()
+
+            def observe_restore():
+                previous = None
+                while not stopped.wait(1):
+                    try:
+                        progress = json.loads(Path(progress_path).read_text())
+                    except (OSError, ValueError):
+                        continue
+                    if progress != previous:
+                        self._journal.emit("restoring_weights", **progress)
+                        previous = progress
+
+            observer = threading.Thread(target=observe_restore, daemon=True)
+            observer.start()
+            self._journal.emit("restoring_weights")
+            try:
+                self._restore_metrics = self._base_rpc("restore_shared_base", progress_path)
+            finally:
+                stopped.set()
+                observer.join(timeout=5)
+            self._journal.emit(
+                "restored_weights",
+                completed=self._restore_metrics["bytes"],
+                total=self._restore_metrics["bytes"],
+                unit="bytes",
+                parameters=self._restore_metrics["parameters"],
+            )
+            self._journal.emit("allocating_kv_cache")
             self._control("/wake_up?tags=kv_cache")
+            self._journal.emit("checking_engine_health")
             _wait_for_vllm(proc=self._proc)
+            self._journal.emit("engine_ready", base_identity=self.base_identity)
             self._restore_metrics.update(
                 restore_to_ready_s=time.monotonic() - started, ready_at=time.time()
             )
@@ -675,6 +766,9 @@ def _wants_stream(body: bytes) -> bool:
 async def stream_with_keepalive(chunks, interval_s=15, *, sse=True):
     pending = None
     first = True
+    status = 200
+    rejected_body = bytearray()
+    error = b'{"error":{"message":"Inference backend error.","type":"server_error"}}'
     ping = b": \n\n" if sse else b"\n"
     try:
         yield ping
@@ -687,17 +781,31 @@ async def stream_with_keepalive(chunks, interval_s=15, *, sse=True):
             except StopAsyncIteration:
                 if first:
                     raise RuntimeError("Worker returned no response") from None
+                if status != 200:
+                    if is_context_limit_error(status, bytes(rejected_body)):
+                        error = json.dumps(
+                            {
+                                "error": {
+                                    "message": CONTEXT_BUDGET_MESSAGE,
+                                    "type": "invalid_request_error",
+                                    "code": "context_length_exceeded",
+                                }
+                            }
+                        ).encode()
+                    raise RuntimeError(f"Worker returned HTTP {status}") from None
                 return
             if first:
                 first = False
-                if chunk["status"] != 200:
-                    raise RuntimeError(f"Worker returned HTTP {chunk['status']}")
+                status = chunk["status"]
+            elif status != 200:
+                if len(rejected_body) + len(chunk) > 65536:
+                    raise RuntimeError("Worker error response exceeds the inspection limit")
+                rejected_body.extend(chunk)
             else:
                 yield chunk
     except Exception as exc:
         print(f"[proxy-stream-error] {type(exc).__name__}: {exc}")
         # Headers were sent before GPU allocation; late failures use the body error contract.
-        error = b'{"error":{"message":"Inference backend error.","type":"server_error"}}'
         yield b"data: " + error + b"\n\n" if sse else error
         if sse:
             yield b"data: [DONE]\n\n"
@@ -1081,6 +1189,63 @@ def cleanup_job_weights(*, job_id: str) -> list[str]:
 
 
 @app.function(
+    image=api_server_image, timeout=45 * MINUTES, retries=0, volumes={WEIGHTS_MOUNT: weights_vol}
+)
+def inference_request(request_id: str, payload: dict) -> dict:
+    call_id = modal.current_function_call_id()
+    modal.Dict.from_name(STORE, create_if_missing=True).put("request:" + request_id, call_id)
+    journal = Journal("call:" + call_id)
+    journal.emit("resolving_worker", provider_call_id=call_id)
+    rel_path = rel_weights_path(payload["weights_path"])
+    adapter_path = payload.get("adapter_path")
+    worker, _ = _make_worker(
+        gpu_type=payload["gpu_type"],
+        model_path=rel_path,
+        model_name=base_pool_name(rel_path) if adapter_path else payload["model_id"],
+        max_model_len=payload["max_model_len"],
+        serve_image=_serve_image_for(model_name=payload["model_id"], model_path=rel_path),
+        enable_lora=bool(adapter_path),
+        max_lora_rank=payload.get("lora_rank") or 16,
+    )
+    started = time.monotonic()
+    journal.emit("waiting_for_worker")
+    response = worker.infer.remote(
+        method="POST",
+        path="/v1/chat/completions",
+        body=json.dumps(
+            {
+                "model": payload["model_id"],
+                "messages": payload["messages"],
+                "temperature": payload["temperature"],
+                "max_tokens": payload["max_tokens"],
+            }
+        ).encode(),
+        headers={"content-type": "application/json", "x-request-id": request_id},
+        adapter=(payload["model_id"], rel_weights_path(adapter_path)) if adapter_path else None,
+        operation_stream="worker-call:" + call_id,
+    )
+    if response["status"] != 200:
+        code = (
+            "context_length_exceeded"
+            if is_context_limit_error(response["status"], response["body"].decode(errors="replace"))
+            else "inference_rejected"
+        )
+        journal.emit("failed", error_code=code)
+        return {"error_code": code}
+    value = json.loads(response["body"])
+    if value.get("error"):
+        return {"error_code": "inference_rejected"}
+    choice = value["choices"][0]
+    journal.emit("completed", elapsed_seconds=time.monotonic() - started)
+    return {
+        "content": choice["message"].get("content") or "",
+        "usage": value.get("usage"),
+        "finish_reason": choice.get("finish_reason"),
+        "latency_ms": (time.monotonic() - started) * 1000,
+    }
+
+
+@app.function(
     image=api_server_image,
     # One cold start, which is ~30 min at the 72B end.
     timeout=45 * MINUTES,
@@ -1108,6 +1273,8 @@ def pre_warm(
     adapter loads onto it. That usually costs seconds rather than a boot, because the base pool
     is often already serving another adapter.
     """
+    journal = Journal("call:" + modal.current_function_call_id())
+    journal.emit("resolving_worker")
     rel_path = rel_weights_path(weights_path)
     serve_image = _serve_image_for(model_name=model_id, model_path=rel_path)
     worker, _cls_name = _make_worker(
@@ -1128,15 +1295,19 @@ def pre_warm(
     ).encode()
     started = time.monotonic()
     print(f"[pre_warm] {model_id} — boot + dummy request...")
+    journal.emit("waiting_for_worker")
     result = worker.infer.remote(
         method="POST",
         path="/v1/chat/completions",
         body=body,
         headers={"content-type": "application/json"},
         adapter=tuple(adapter) if adapter else None,
+        operation_stream="worker-call:" + modal.current_function_call_id(),
     )
     status = result["status"]
     print(f"[pre_warm] status={status} in {time.monotonic() - started:.0f}s")
     if status not in (200, 201):
+        journal.emit("verification_failed", error_code="verification_rejected")
         raise RuntimeError(f"pre_warm inference failed: {status} {result['body'][:300]!r}")
+    journal.emit("generation_verified", elapsed_seconds=time.monotonic() - started)
     print(f"[pre_warm] {model_id} done — leaving {gpu_type} container warm")

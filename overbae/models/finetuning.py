@@ -164,6 +164,7 @@ class FinetuningJob(models.Model):
     )
     eval_incumbent_before = models.BooleanField(default=False)
     eval_judge_model = models.CharField(max_length=255, blank=True, default="")
+    benchmark_models = models.JSONField(default=list, blank=True)
     eval_incumbent_after = models.BooleanField(default=False)
     eval_model_before = models.BooleanField(default=True)
     eval_model_after = models.BooleanField(default=True)
@@ -290,6 +291,7 @@ class FinetuningJobEval(models.Model):
 
     class Kind(models.TextChoices):
         BASELINE = "baseline"
+        COMPARATOR = "comparator"
         INCUMBENT_AFTER = "incumbent_after"
         MODEL_BEFORE = "model_before"
         CHECKPOINT = "checkpoint"

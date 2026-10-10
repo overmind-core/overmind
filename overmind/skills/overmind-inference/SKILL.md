@@ -37,6 +37,19 @@ omission uses the production default. Report finish reason and truncation.
 An oversized context request needs a deliberate input/budget change, not silent
 clipping. A test may incur inference spend.
 
+Supply a stable `request_key`. Contract 4.0 returns an `inference_request` job,
+not a synchronous answer. Read it with `get_job`; a disconnected client can reuse
+the same key/input to recover the same receipt without resubmission. A different
+input under that key conflicts. Unknown provider acknowledgement is not a reason
+to create another request. Result resources support `offset`/`limit` content
+paging when the compact result is clipped.
+
+Follow linked operational receipts with `inspect_operation(operation, after, limit)`. The event timeline distinguishes source/observation time, heartbeat and
+forward progress, and labels shared-pool observations separately from
+request-specific adapter/generation work. Missing measurements, dropped provider
+publications and uncollected event backlog remain explicit. Inspection does not
+wake workers; it cannot establish application integration or semantic quality.
+
 For an authorized rollout, prefer `ship-model` when capability, deployment and
 fine-tuning job are known. Otherwise inspect readiness, then use
 `set_active_model` for the approved capability/deployment. Poll the returned

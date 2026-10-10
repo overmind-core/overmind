@@ -156,7 +156,6 @@ export const trainingSearchSchema = projectIdSearchSchema.extend({
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
   train: z.boolean().optional(),
-  view: z.enum(["jobs", "experiments"]).optional().default("jobs"),
 });
 
 export type TrainingSearch = z.infer<typeof trainingSearchSchema>;
@@ -174,7 +173,11 @@ export const datasetsSearchSchema = projectIdSearchSchema.extend({
     .optional(),
   /** A capability id, or the `NO_CAPABILITY` sentinel for datasets attached to none. */
   ds_capability: z.string().optional().default("all"),
-  ds_intent: z.enum(["all", "train", "eval", "pending"]).optional().default("all").catch("all"),
+  ds_intent: z
+    .enum(["all", "train", "eval", "pending", "explore"])
+    .optional()
+    .default("all")
+    .catch("all"),
   ds_search: z.string().optional().default(""),
 });
 

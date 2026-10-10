@@ -6,10 +6,11 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import BaseParser, JSONParser
 from rest_framework.response import Response
 
+from overbae.models import DatasetTransfer
 from overbae.services.datasets import files
 
 
@@ -56,6 +57,11 @@ class UploadViewSet(viewsets.ViewSet):
     parser_classes = [JSONParser, OctetStreamParser]
     lookup_value_regex = "[0-9a-f-]{36}"
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if kwargs.get("pk") and DatasetTransfer.objects.filter(upload_id=kwargs["pk"]).exists():
+            raise PermissionDenied("Use the project-scoped dataset transfer receipt.")
+
     @extend_schema(
         summary="Validate an uploaded file and count its rows",
         request=InspectUploadSerializer,
@@ -85,12 +91,14 @@ class UploadViewSet(viewsets.ViewSet):
         except files.FileError as exc:
             raise ValidationError({"detail": exc.detail}) from exc
         return Response(
-            {
-                "upload_id": upload_id,
-                "filename": name,
-                "chunk_bytes": files.CHUNK_BYTES,
-                "max_bytes": files.MAX_UPLOAD_BYTES,
-            },
+            UploadReservedSerializer(
+                {
+                    "upload_id": upload_id,
+                    "filename": name,
+                    "chunk_bytes": files.CHUNK_BYTES,
+                    "max_bytes": files.upload_byte_limit(name),
+                }
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 

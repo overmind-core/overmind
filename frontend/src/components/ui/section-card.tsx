@@ -50,9 +50,7 @@ export function SectionCard({
         </div>
         {headerEnd ? <div className="min-w-0 shrink-0">{headerEnd}</div> : null}
       </div>
-      <div
-        className={cn("bg-card/95 p-4 text-sm leading-relaxed dark:bg-card/80", contentClassName)}
-      >
+      <div className={cn("bg-card/80 p-4 text-sm leading-relaxed", contentClassName)}>
         {children}
       </div>
     </Card>

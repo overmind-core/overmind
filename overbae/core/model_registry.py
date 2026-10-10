@@ -359,7 +359,6 @@ class TaskType(StrEnum):
     JUDGE_SCORING = "judge_scoring"
     CRITERIA_GENERATION = "criteria_generation"
     EVAL_RECOMMENDATION = "eval_recommendation"
-    WORKSHOP = "workshop"
     DEFAULT = "default"
 
 
@@ -367,7 +366,6 @@ TASK_ROLES: dict[TaskType, Role] = {
     TaskType.JUDGE_SCORING: Role.FAST,
     TaskType.CRITERIA_GENERATION: Role.FAST,
     TaskType.EVAL_RECOMMENDATION: Role.FAST,
-    TaskType.WORKSHOP: Role.AGENT,
     TaskType.DEFAULT: Role.FAST,
 }
 
@@ -467,41 +465,4 @@ def openrouter_configured() -> bool:
     return PROVIDERS["openrouter"].configured()
 
 
-@dataclass(frozen=True)
-class Engine:
-    provider: Provider
-    models: tuple[str, ...]
-
-    @property
-    def model(self) -> str:
-        return self.models[0]
-
-
-def _agent_model_for(vendor: Vendor) -> str:
-    return next(n for n in ROLE_CHAINS[Role.AGENT] if MODELS_BY_NAME[n].vendor is vendor)
-
-
-WORKSHOP_ENGINES: tuple[Engine, ...] = (
-    Engine(PROVIDERS["cursor"], ("composer-2.5",)),
-    Engine(PROVIDERS["openrouter"], ROLE_CHAINS[Role.AGENT]),
-    Engine(PROVIDERS["openai"], (_agent_model_for(Vendor.OPENAI),)),
-    Engine(PROVIDERS["anthropic"], (_agent_model_for(Vendor.ANTHROPIC),)),
-    Engine(PROVIDERS["gemini"], (_agent_model_for(Vendor.GEMINI),)),
-)
-
-WORKSHOP_KEY_ENVS: tuple[str, ...] = tuple(e.provider.key_env for e in WORKSHOP_ENGINES)
-
-
-def workshop_engine() -> Engine | None:
-    return next((e for e in WORKSHOP_ENGINES if e.provider.configured()), None)
-
-
-def chatgpt_model_choices(payload: dict) -> list[dict[str, str]]:
-    return [
-        {"id": item["slug"], "name": item["display_name"]}
-        for item in payload.get("models", [])
-        if item.get("visibility") == "list"
-        and isinstance(item.get("slug"), str)
-        and 0 < len(item["slug"]) <= 255
-        and isinstance(item.get("display_name"), str)
-    ]
+CURSOR_AGENT_MODEL = "composer-2.5"

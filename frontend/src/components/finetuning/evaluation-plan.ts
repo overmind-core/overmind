@@ -15,7 +15,14 @@ const EVALUATION_CHOICES = [
 ] as const;
 
 export function evaluationKindRank(kind: string): number {
-  return ["baseline", "model_before", "checkpoint", "incumbent_after", "final"].indexOf(kind);
+  return [
+    "baseline",
+    "model_before",
+    "comparator",
+    "checkpoint",
+    "incumbent_after",
+    "final",
+  ].indexOf(kind);
 }
 
 export function evaluationDisplayRows(
@@ -52,6 +59,22 @@ export function evaluationDisplayRows(
       planned: true,
       status: stopped ? "skipped" : "pending",
       waitingReason,
+    });
+  }
+  for (const model of (job.benchmarkModels ?? []).slice(1)) {
+    if (actual.some((row) => row.kind === "comparator" && row.model_id === model)) continue;
+    rows.push({
+      id: `planned-comparator-${model}`,
+      kind: "comparator",
+      label: `Benchmark · ${model}`,
+      model_id: model,
+      planned: true,
+      status: stopped ? "skipped" : "pending",
+      waitingReason: stopped
+        ? job.status === "cancelled"
+          ? "Training cancelled"
+          : "Training failed"
+        : "Waiting to start",
     });
   }
   return rows.sort((a, b) => evaluationKindRank(a.kind) - evaluationKindRank(b.kind));

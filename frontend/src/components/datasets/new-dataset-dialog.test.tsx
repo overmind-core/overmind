@@ -3,7 +3,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NewDatasetButton } from "./new-dataset-button";
 import { NewDatasetDialog } from "./new-dataset-dialog";
 
 const mocks = vi.hoisted(() => ({
@@ -60,18 +59,6 @@ function choose(label: string, option: string) {
 }
 
 describe("new dataset sources", () => {
-  it("offers only upload and trace sources before opening the dialog", () => {
-    const onSelect = vi.fn();
-    render(<NewDatasetButton onSelect={onSelect} />);
-    fireEvent.keyDown(screen.getByRole("button", { name: "New dataset" }), { key: "ArrowDown" });
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      " Upload file",
-      " Data from traces",
-    ]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Data from traces" }));
-    expect(onSelect).toHaveBeenCalledWith("traces");
-  });
-
   it("shows the chosen trace source without a second source selector", () => {
     render(
       <NewDatasetDialog initialSource="traces" onOpenChange={vi.fn()} open projectId="project" />

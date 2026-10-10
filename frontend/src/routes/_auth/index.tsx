@@ -39,7 +39,7 @@ function AgentHeader({ graph }: { graph?: AgentGraph }) {
           <img
             alt=""
             aria-hidden="true"
-            className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+            className="size-6 shrink-0 [image-rendering:pixelated] invert"
             src={desktopMonitorIcon}
           />
         }

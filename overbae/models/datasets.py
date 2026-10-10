@@ -23,7 +23,6 @@ class Dataset(models.Model):
 
     class State(models.TextChoices):
         LANDING = "landing"
-        DIAGNOSING = "diagnosing"
         IDLE = "idle"
         RUNNING = "running"
         ERROR = "error"
@@ -56,12 +55,7 @@ class Dataset(models.Model):
     )
     state = models.CharField(max_length=12, choices=State.choices, default=State.LANDING)
     error = models.TextField(blank=True, default="")
-    # [{role: user|agent, text, cells: [cell ids], at}] — the one conversation.
-    chat = models.JSONField(default=list, blank=True)
     operation = models.JSONField(default=dict, blank=True)
-    agent_id = models.CharField(max_length=128, blank=True, default="")
-    agent_messages = models.JSONField(default=list, blank=True)
-    agent_turn_key = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -84,7 +78,7 @@ class Dataset(models.Model):
 
     @property
     def chain(self) -> list["Cell"]:
-        """Every cell in position order, proposals last."""
+        """Every cell in position order."""
         return list(self.cells.order_by("position"))
 
     @property
@@ -111,8 +105,6 @@ class Dataset(models.Model):
         out: dict[uuid.UUID, str] = {}
         major, minor = 1, 0
         for cell in self.chain if chain is None else chain:
-            if cell.state == Cell.State.PROPOSED:
-                continue
             if cell.position == 0:
                 out[cell.id] = "1.0"
                 continue
@@ -194,7 +186,6 @@ class Cell(models.Model):
     used cell is frozen; consumers PROTECT it."""
 
     class State(models.TextChoices):
-        PROPOSED = "proposed"
         QUEUED = "queued"
         RUNNING = "running"
         OK = "ok"
@@ -204,7 +195,7 @@ class Cell(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="cells")
     position = models.PositiveIntegerField()
     title = models.CharField(max_length=255)
-    # A Python body over ``df``; empty for the source.
+    # Read-only source code retained with historical versions.
     script = models.TextField(blank=True, default="")
     note = models.CharField(max_length=512, blank=True, default="")
     state = models.CharField(max_length=8, choices=State.choices, default=State.QUEUED)
@@ -213,7 +204,7 @@ class Cell(models.Model):
     # [{name, type, null_rate}] of the frame.
     columns = models.JSONField(default=list, blank=True)
     fingerprint = models.CharField(max_length=64, blank=True, default="")
-    # Fingerprint of the frame this cell read; a mismatch means it must run again.
+    # Exact input identity, retained even when a later cell selects an earlier parent.
     input_fingerprint = models.CharField(max_length=64, blank=True, default="")
     # {train: {ok, reason}, eval: {ok, reason}}
     intent_report = models.JSONField(default=dict, blank=True)
@@ -271,3 +262,18 @@ class Cell(models.Model):
         if not shape.get("ok"):
             return False, str(shape.get("reason") or f"the table is not a {intent} table")
         return True, ""
+
+
+class DatasetHistory(models.Model):
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="history")
+    kind = models.CharField(max_length=32)
+    reference = models.CharField(max_length=128, blank=True)
+    payload = models.JSONField(default=dict)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dataset", "kind", "reference"], name="unique_dataset_history"
+            )
+        ]

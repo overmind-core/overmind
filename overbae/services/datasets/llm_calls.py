@@ -11,7 +11,7 @@ import hashlib
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from django.utils import timezone
@@ -56,13 +56,16 @@ class SelectionError(ValueError):
 def _aware(value: datetime) -> datetime:
     if timezone.is_aware(value):
         return value
-    return timezone.make_aware(value, timezone.UTC)
+    return timezone.make_aware(value, UTC)
 
 
 def _parse_time(value: Any, *, what: str) -> datetime:
     if isinstance(value, datetime):
         return _aware(value)
-    parsed = parse_datetime(str(value or "").strip())
+    try:
+        parsed = parse_datetime(str(value or "").strip())
+    except ValueError as exc:
+        raise SelectionError(f"{what} must be an ISO timestamp.") from exc
     if parsed is None:
         raise SelectionError(f"{what} must be an ISO timestamp.")
     return _aware(parsed)

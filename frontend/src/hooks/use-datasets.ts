@@ -6,23 +6,20 @@ import { useEffect, useRef } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient, { fetchWithAuth } from "@/client";
-import type { AgentActivityPart } from "@/components/agent-activity/activity-timeline";
 import { notify } from "@/lib/notify";
 import type {
   Cell,
-  ChatRequest,
   ColumnStat,
   Dataset,
   DatasetPair,
   IntentEnum,
   PaginatedDatasetList,
   PositionEnum,
-  ChatTurn as SavedChatTurn,
   SourceRequest,
 } from "@/openapi";
 
 export type Intent = IntentEnum;
-export type CellState = "proposed" | "queued" | "running" | "ok" | "failed";
+export type CellState = "queued" | "running" | "ok" | "failed";
 
 export interface ColumnInfo {
   name: string;
@@ -35,39 +32,6 @@ export interface CapabilityRank {
   name: string;
   score: number;
   reason: string;
-}
-
-export interface ChatCellRef {
-  id: string;
-  action: "created" | "proposed" | "edited" | "ran" | "failed" | "removed";
-  text_offset?: number;
-}
-
-export type ChatTurn = Omit<SavedChatTurn, "cells" | "steps" | "progress"> & {
-  cells?: ChatCellRef[];
-  steps?: AgentActivityPart[];
-  progress?: WorkshopProgress;
-};
-
-export interface WorkshopProgress {
-  stage:
-    | "working"
-    | "generating"
-    | "validating"
-    | "review"
-    | "awaiting_approval"
-    | "awaiting_intent"
-    | "partial"
-    | "complete"
-    | "error";
-  label: string;
-  detail: string;
-  started_at?: string;
-  updated_at?: string;
-  rows_before?: number;
-  target_rows?: number;
-  generated_rows?: number;
-  cell_id?: string;
 }
 
 /** A page of the grid: `marks` says which rows are new and which values changed. */
@@ -109,20 +73,7 @@ export type DatasetEvent =
       error?: string;
       cached?: boolean;
     }
-  | { type: "cells_changed" | "dataset_changed" }
-  | { type: "chat_turn"; role: "user" | "agent"; text: string; cells?: ChatCellRef[]; at: string }
-  | { type: "chat_delta"; text: string }
-  | {
-      type: "chat_progress";
-      progress: WorkshopProgress;
-      text: string;
-      steps: AgentActivityPart[];
-      cells: ChatCellRef[];
-    }
-  | { type: "chat_thinking"; id: string; text: string }
-  | ({ type: "chat_step" } & Omit<AgentActivityPart, "type">)
-  | { type: "chat_cell"; cell_id: string; action: ChatCellRef["action"]; text_offset?: number }
-  | { type: "chat_failed"; error: string };
+  | { type: "dataset_changed" };
 
 /** The query that produced a traces selection, not the ids it matched. */
 export interface TraceSelectionSpec {
@@ -177,9 +128,6 @@ export const fitOf = (cell: Cell | null | undefined): { ok: boolean; reason: str
 export const rankOf = (dataset: Dataset | null | undefined): CapabilityRank[] =>
   Array.isArray(dataset?.capabilityRank) ? (dataset.capabilityRank as CapabilityRank[]) : [];
 
-export const chatOf = (dataset: Dataset | null | undefined): ChatTurn[] => dataset?.chat ?? [];
-
-/** The cell consumers read: the chosen one, else the last that ran. */
 export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null => {
   const ran = cellsOf(dataset).filter((c) => c.state === "ok" && c.fingerprint);
   if (dataset?.active) {
@@ -190,7 +138,7 @@ export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null =
 };
 
 export const isBusy = (ds: Dataset | null | undefined): boolean =>
-  !!ds && (ds.state === "running" || ds.state === "landing" || ds.state === "diagnosing");
+  !!ds && (ds.state === "running" || ds.state === "landing");
 
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
@@ -258,6 +206,27 @@ export function useDatasetsQuery(projectId: string | undefined, filters: Dataset
         search: filters.search || undefined,
       }),
     queryKey: datasetKeys.list(projectId, filters),
+  });
+}
+
+export async function fetchProjectDatasets(projectId: string, signal?: AbortSignal) {
+  const datasets = new Map<string, Dataset>();
+  for (let page = 1; ; page += 1) {
+    const result = await apiClient.datasets.datasetsList(
+      { page, pageSize: 100, project: projectId },
+      { signal }
+    );
+    for (const dataset of result.results) datasets.set(dataset.id, dataset);
+    if (!result.next) return [...datasets.values()];
+  }
+}
+
+export function useProjectDatasetsQuery(projectId: string | undefined) {
+  return useQuery({
+    enabled: !!projectId,
+    queryFn: ({ signal }) => fetchProjectDatasets(projectId!, signal),
+    queryKey: ["datasets", "list", projectId, "inventory"],
+    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 3000 : 15000),
   });
 }
 
@@ -413,51 +382,6 @@ export function useDeleteDatasetMutation() {
     mutationFn: (id: string) => apiClient.datasets.datasetsDestroy({ id }),
     onError: (e) => notify.error(e, "Couldn't delete dataset"),
     onSuccess: () => invalidateDataset(qc),
-  });
-}
-
-export function useEditCellMutation(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { cellId: string; title?: string; script?: string; note?: string }) =>
-      apiClient.datasets.datasetsCellsPartialUpdate({
-        cellId: input.cellId,
-        id,
-        patchedCellWriteRequest: { note: input.note, script: input.script, title: input.title },
-      }),
-    onError: (e) => notify.error(e, "Couldn't save the cell"),
-    onSuccess: () => invalidateDataset(qc, id),
-  });
-}
-
-export function useRemoveCellMutation(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (cellId: string) => apiClient.datasets.datasetsCellsDestroy({ cellId, id }),
-    onError: (e) => notify.error(e, "Couldn't remove the cell"),
-    onSuccess: () => invalidateDataset(qc, id),
-  });
-}
-
-export function useRunMutation(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiClient.datasets.datasetsRunCreate({ id }),
-    onError: (e) => notify.error(e, "Couldn't start the run"),
-    onSuccess: () => invalidateDataset(qc, id),
-  });
-}
-
-export function useChatMutation(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: string | ChatRequest) =>
-      apiClient.datasets.datasetsChatCreate({
-        chatRequest: typeof input === "string" ? { message: input } : input,
-        id,
-      }),
-    onError: (e) => notify.error(e, "Couldn't send that"),
-    onSuccess: () => invalidateDataset(qc, id),
   });
 }
 

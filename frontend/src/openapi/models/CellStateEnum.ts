@@ -14,7 +14,6 @@
 
 
 /**
- * * `proposed` - Proposed
  * * `queued` - Queued
  * * `running` - Running
  * * `ok` - Ok
@@ -22,7 +21,6 @@
  * @export
  */
 export const CellStateEnum = {
-    proposed: 'proposed',
     queued: 'queued',
     running: 'running',
     ok: 'ok',

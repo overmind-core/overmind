@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient from "@/client";
+import type { FinetuningProgress } from "@/lib/finetuning-progress";
 import { notify } from "@/lib/notify";
 import { backoffPolling } from "@/lib/poll";
 import { isTerminalFinetuningStatus } from "@/lib/running-jobs";
@@ -399,6 +400,7 @@ export interface FinetuningCheckpointRow {
 
 interface FinetuningProgressSnapshot {
   diagnostics?: Record<string, unknown> | null;
+  preparation?: FinetuningProgress["preparation"];
   trained_steps?: number | null;
   total_steps?: number | null;
   percent?: number | null;

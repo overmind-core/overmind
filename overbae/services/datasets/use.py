@@ -34,7 +34,7 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None, verify: bo
                 f"The last run of {dataset.name} failed. Run it again in the data workshop.",
                 code="run_failed",
             )
-        if dataset.state in (Dataset.State.RUNNING, Dataset.State.DIAGNOSING):
+        if dataset.state == Dataset.State.RUNNING:
             raise DatasetError(f"{dataset.name} is running. Wait for it to finish.", code="running")
         raise DatasetError(f"{dataset.name} has no version that ran.", code="no_version")
     ok, reason = cell.fits(intent)

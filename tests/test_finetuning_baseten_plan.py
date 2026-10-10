@@ -30,6 +30,17 @@ def _plan(**overrides):
     return derive_baseten_training_plan(**kwargs)
 
 
+def test_modal_plan_uses_its_catalog_bounds_for_shared_model_id():
+    config = ModalRunner.model_config("Qwen/Qwen3.5-2B")
+    assert config["backend"] == "baseten"
+    plan = _plan(
+        hyperparameters={"batch_size": 1},
+        model_min_batch=config["finetuning"]["min_batch_size"],
+        model_max_batch=config["finetuning"]["max_batch_size"],
+    )
+    assert plan.batch_size == 1
+
+
 class TestGapFill:
     """Missing keys are derived from the dataset, never fabricated constants."""
 

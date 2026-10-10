@@ -7,7 +7,6 @@ import * as z from "zod";
 
 import { AccountBand } from "@/components/billing/account-band";
 import { BillingLedgerTable } from "@/components/billing/billing-ledger-table";
-import { ChatGPTSettings } from "@/components/chatgpt-settings";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
@@ -91,7 +90,6 @@ function SettingsPage() {
             onAutoCheckoutStarted={handleAutoCheckoutStarted}
           />
         </div>
-        <ChatGPTSettings />
         <BillingLedgerTable />
       </section>
     </PageShell>

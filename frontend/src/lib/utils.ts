@@ -21,7 +21,7 @@ export const paginationFromPageLimit = ({
 }) => {
   return {
     count,
-    endItem: Math.min(page * pageSize, (page - 1) * pageSize + count),
+    endItem: Math.min(page * pageSize, count),
     hasNext: count > page * pageSize,
     hasPrevious: page > 1,
     nextPage: page + 1,

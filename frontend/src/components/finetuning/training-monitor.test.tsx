@@ -2,11 +2,14 @@
 import type { ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
+import { buildExperimentSnapshot } from "@/components/finetuning/job-snapshot";
+import type { LossCurveData } from "@/hooks/use-finetuning";
 import type { DeployedModelsQueryParams } from "@/hooks/use-inference";
+import { stageDetailLine, stageLabel, stageStatusLine } from "@/lib/finetuning-progress";
 import type { FinetuningJobList } from "@/openapi";
 
 const CAPABILITY_ID = "00000000-0000-4000-8000-000000000010";
@@ -75,7 +78,7 @@ vi.mock("@/components/finetuning/judge-eval-table", () => ({
 
 // The production action fetches the capability; it has its own tests.
 vi.mock("@/components/finetuning/model-live-action", () => ({
-  ModelLiveAction: () => null,
+  ModelLiveAction: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 // The @lobehub icon ESM subpaths behind the provider logo don't resolve under
@@ -101,6 +104,7 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+import { StageProgress } from "./stage-progress";
 import { TrainingMonitorPanel } from "./training-monitor";
 
 const job = {
@@ -191,7 +195,10 @@ describe("TrainingMonitorPanel deployed-model lookup", () => {
   });
 });
 
-it("shows native validation progress and named experiments without chat token accuracy", () => {
+it.each([
+  ["decision_cross_entropy", "Validation cross entropy"],
+  ["decision_supervised", "Validation objective loss"],
+])("shows native %s validation progress without chat token accuracy", (objective, lossLabel) => {
   const nativeJobs = ["Pilot", "Full corpus"].map((name, i) => ({
     ...job,
     id: `native-${i}`,
@@ -217,7 +224,7 @@ it("shows native validation progress and named experiments without chat token ac
       phase: "training",
     },
     status: "running",
-    trainingContract: { objective: "decision_cross_entropy" },
+    trainingContract: { objective },
   })) as unknown as FinetuningJobList[];
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -231,16 +238,10 @@ it("shows native validation progress and named experiments without chat token ac
     </QueryClientProvider>
   );
   expect(screen.getAllByText("Full corpus").length).toBeGreaterThan(0);
-  expect(
-    screen.getAllByText(/Pre-training baseline evaluation · 600 \/ 1,200 decisions/)
-  ).toHaveLength(2);
-  expect(
-    screen.getAllByText(
-      "Measuring the starting model on the development set before training begins."
-    )
-  ).toHaveLength(2);
+  expect(screen.getAllByText(/600 \/ 1,200 decisions/)).toHaveLength(2);
+  expect(screen.getAllByText("Validating base model")).toHaveLength(2);
   expect(screen.queryByText("Token accuracy")).toBeNull();
-  expect(screen.getAllByText("Validation cross entropy").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(lossLabel).length).toBeGreaterThan(0);
   expect(screen.getAllByText("1.2000")).toHaveLength(2);
 });
 
@@ -301,4 +302,199 @@ it.each([
   if (remaining) expect(label).toContain(remaining);
   else expect(label).not.toContain("remaining");
   expect(label).not.toContain("~1m");
+});
+
+it("describes local submission recovery without claiming a provider stage is missing", () => {
+  const unresolved = {
+    ...job,
+    progress: {},
+    status: "submission_unknown",
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={[unresolved]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.getByText("Reconciling training submission")).toBeTruthy();
+  expect(screen.queryByText(/provider stage not reported/)).toBeNull();
+});
+
+it("explains model loading and exposes the saved stage history", () => {
+  const loading = {
+    ...job,
+    progress: {
+      activity: [
+        { message: "Checking base model weights", ts: 1 },
+        { message: "Loading base model onto GPU", ts: 2 },
+      ],
+      diagnostics: {
+        heartbeat_at: Date.now() / 1000 - 5,
+        last_progress_at: Date.now() / 1000 - 120,
+        stage: "loading_model",
+        stage_started_at: Date.now() / 1000 - 120,
+      },
+      phase: "training",
+      stage: "loading_model",
+    },
+    status: "running",
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={[loading]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.getByText("Base weights ready · loading onto training GPU")).toBeTruthy();
+  expect(screen.getByText("Loading model")).toBeTruthy();
+  expect(screen.getByText(/2m 0s in this stage/)).toBeTruthy();
+  expect(screen.getByText(/5s since worker heartbeat/)).toBeTruthy();
+  expect(screen.getByText(/Loading percentage not reported/)).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Show activity log" }).length).toBeGreaterThan(0);
+});
+
+it("shows the actual startup substage and keeps absent heartbeat explicit", () => {
+  const loading = {
+    ...job,
+    progress: {
+      diagnostics: { stage: "configuring_adapters" },
+      stage: "configuring_adapters",
+    },
+    status: "running",
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={[loading]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.getByText("Configuring adapters")).toBeTruthy();
+  expect(screen.getByText(/Worker heartbeat not reported/)).toBeTruthy();
+  expect(screen.queryByText(/Base weights ready/)).toBeNull();
+});
+
+it("does not present the last running step as the outcome of a cancelled job", () => {
+  const cancelled = {
+    ...job,
+    progress: {
+      activity: [{ kind: "stage", message: "Training started", ts: 1 }],
+      phase: "training",
+      stage: "training",
+    },
+    status: "cancelled",
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={[cancelled]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.queryByText("Training started")).toBeNull();
+});
+
+it("keeps row-level preparation progress when the live metrics response has no preparation field", () => {
+  const preparing = {
+    ...job,
+    progress: {
+      preparation: { completed_rows: 250, state: "running", total_rows: 1000 },
+    },
+    status: "preparing",
+  } as unknown as FinetuningJobList;
+  const curves = { progress: { diagnostics: {} } } as LossCurveData;
+  const snapshot = buildExperimentSnapshot(preparing, curves, "var(--chart-1)");
+  expect(stageStatusLine(snapshot.liveProgress)).toContain("250 / 1,000 rows");
+});
+
+it("shows measured preparation completion without treating an upload as finished tokenization", () => {
+  expect(
+    stageStatusLine({
+      preparation: { completed_rows: 250, stage: "tokenizing", state: "running", total_rows: 1000 },
+    })
+  ).toBe("Tokenizing · 250 / 1,000 rows (25%)");
+  expect(
+    stageStatusLine({
+      preparation: {
+        completed_rows: 1000,
+        stage: "uploading",
+        state: "starting",
+        total_rows: 1000,
+      },
+    })
+  ).toBe("Uploading training data · 1,000 rows prepared");
+  expect(stageLabel({ stage: "loading_model" })).toBe("Loading model");
+  expect(stageDetailLine({ stage: "loading_model" })).toBe(
+    "Base weights ready · loading onto training GPU"
+  );
+});
+
+it("shows measured transfer progress and ages it without inventing more completed work", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(200_000);
+  try {
+    render(
+      <StageProgress
+        progress={{
+          diagnostics: {
+            completed: 250,
+            last_progress_at: 190,
+            source_at: 190,
+            stage: "selecting_prepared_rows",
+            stage_started_at: 150,
+            total: 1000,
+            unit: "rows",
+          },
+          stage: "transferring",
+        }}
+      />
+    );
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+    expect(screen.getByText(/10s since last progress/)).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText(/1m 10s since last progress/)).toBeTruthy();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not invent a transfer percentage when the worker provides no measurements", () => {
+  render(<StageProgress progress={{ stage: "transferring" }} />);
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.getByText(/Progress not reported/)).toBeTruthy();
+});
+
+it("identifies upload counts as acknowledged bytes rather than live network progress", () => {
+  const progress = {
+    diagnostics: {
+      completed: 1024,
+      files_completed: 1,
+      files_total: 2,
+      measurement: "provider_acknowledged_files",
+      stage: "uploading_selections",
+      total: 2048,
+      unit: "bytes",
+    },
+    stage: "transferring",
+  };
+  expect(stageDetailLine(progress)).toContain("1 KiB / 2 KiB acknowledged");
+  expect(stageDetailLine(progress)).toContain("1 / 2 files");
+  expect(stageLabel(progress)).toBe("Transferring data");
 });

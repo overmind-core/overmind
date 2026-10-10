@@ -27,11 +27,14 @@ import {
   BehavioursApi,
   BillingApi,
   CapabilitiesApi,
-  ChatGPTApi,
   Configuration,
   ConnectorCredentialsApi,
   DataPartitionsApi,
+  DatasetPipelineBindingsApi,
+  DatasetPipelinePackagesApi,
+  DatasetPipelinesApi,
   DatasetsApi,
+  DatasetTransfersApi,
   DecisionPerformanceApi,
   DeployedModelsApi,
   EvalRunsApi,
@@ -413,7 +416,6 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export class API {
   mcpOauth: McpOauthApi;
-  chatgpt: ChatGPTApi;
   agent: AgentApi;
   capabilities: CapabilitiesApi;
   auth: AuthApi;
@@ -421,6 +423,10 @@ export class API {
   billing: BillingApi;
   connectorCredentials: ConnectorCredentialsApi;
   datasets: DatasetsApi;
+  datasetPipelines: DatasetPipelinesApi;
+  datasetPipelinePackages: DatasetPipelinePackagesApi;
+  datasetPipelineBindings: DatasetPipelineBindingsApi;
+  datasetTransfers: DatasetTransfersApi;
   deployedModels: DeployedModelsApi;
   feedback: FeedbackApi;
   finetuningJobs: FinetuningJobsApi;
@@ -449,7 +455,6 @@ export class API {
 
   constructor(private cfg: Configuration) {
     this.mcpOauth = new McpOauthApi(this.cfg);
-    this.chatgpt = new ChatGPTApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);
     this.auth = new AuthApi(this.cfg);
@@ -457,6 +462,10 @@ export class API {
     this.billing = new BillingApi(this.cfg);
     this.connectorCredentials = new ConnectorCredentialsApi(this.cfg);
     this.datasets = new DatasetsApi(this.cfg);
+    this.datasetPipelines = new DatasetPipelinesApi(this.cfg);
+    this.datasetPipelinePackages = new DatasetPipelinePackagesApi(this.cfg);
+    this.datasetPipelineBindings = new DatasetPipelineBindingsApi(this.cfg);
+    this.datasetTransfers = new DatasetTransfersApi(this.cfg);
     this.deployedModels = new DeployedModelsApi(this.cfg);
     this.feedback = new FeedbackApi(this.cfg);
     this.finetuningJobs = new FinetuningJobsApi(this.cfg);

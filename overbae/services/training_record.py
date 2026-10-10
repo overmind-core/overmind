@@ -17,6 +17,7 @@ EVALUATION_CHOICES = (
 CONFIGURATION_FIELDS = (
     "base_model",
     "baseline_model",
+    "benchmark_models",
     "hyperparameters",
     "validation_enabled",
     "validation_split_ratio",

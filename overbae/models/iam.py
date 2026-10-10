@@ -42,7 +42,6 @@ class UserManager(BaseUserManager):
 
 class SignOnMethod(models.TextChoices):
     PASSWORD = "password"
-    CHATGPT = "chatgpt", "ChatGPT"
     GOOGLE = "google"
     SAML = "saml"
 

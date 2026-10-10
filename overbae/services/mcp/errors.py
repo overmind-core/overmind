@@ -30,6 +30,10 @@ ErrorCode = Literal[
     "dataset_not_found",
     "dataset_busy",
     "dataset_invalid",
+    "pipeline_package_required",
+    "revision_conflict",
+    "request_key_conflict",
+    "source_conflict",
     "cell_not_found",
     "query_invalid",
     "dataset_build_not_found",
@@ -150,6 +154,10 @@ def serializer_fields(detail) -> dict[str, str]:
 
 
 _DATASET_ERROR_CODES: dict[str, ErrorCode] = {
+    "pipeline_package_required": "pipeline_package_required",
+    "revision_conflict": "revision_conflict",
+    "conflict": "request_key_conflict",
+    "source_conflict": "source_conflict",
     "intent": "dataset_intent_mismatch",
     "running": "dataset_busy",
     "landing": "dataset_busy",
@@ -165,7 +173,9 @@ def dataset_mcp_error(error) -> MCPError:
     message = str(getattr(error, "detail", None) or error)
     if code == "dataset_busy":
         return MCPError(
-            code, f"{message} Poll get_job with kind dataset_run until it is idle.", retryable=True
+            code,
+            f"{message} Read inspect_dataset.next_actions for the exact operation to poll.",
+            retryable=True,
         )
     return MCPError(code, message)
 
@@ -201,7 +211,7 @@ def mcp_dataset(context, reference: str):
 def mcp_cell(dataset, ref: str | None):
     """Optional cell/version; blank means the caller should use the active cell."""
     from overbae.services.datasets.lifecycle import DatasetError
-    from overbae.services.datasets.notebook.agent import resolve_cell
+    from overbae.services.datasets.versions import resolve_cell
 
     if not ref:
         return None

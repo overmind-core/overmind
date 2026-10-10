@@ -293,6 +293,40 @@ Analytics is also off when `CI` is set in env.
 
 ## CLI reference
 
+Dataset upload/export can use a saved account connection outside a repository.
+Store `api-key` and `base-url` together in
+`$XDG_CONFIG_HOME/overmind/connection.toml` (default
+`~/.config/overmind/connection.toml`) with permissions `0600`, using the same
+authorized account and API as MCP. Do not put this credential file in a repository.
+Explicit and repository credentials take precedence. Saved account and repository
+keys are bound to their API address; overriding only the address is rejected
+before a request is sent, including re-supplying the same repository key.
+Account connections still need
+`--project-id` for upload; choose it with MCP `list_projects`.
+MCP login alone does not configure local file-transfer authentication.
+
+Workspace MCP settings can override a global connection. Verify from the actual
+workspace as well as a repository-free directory; an existing hosted project
+binding must not be reused for a local project. Select the project again from
+the connected MCP catalogue after changing deployments.
+
+For global Codex setup, `overmind connection configure --api-url URL --project-id PROJECT --json` verifies and saves the same account connection for MCP and local
+transfer. It requires the account key to be available locally, never in chat.
+Projects remain per-operation. Reload the MCP client after configuration.
+
+`overmind connection check --project-id PROJECT --json` checks MCP, project access,
+the transfer protocol and read/write permissions from the invoking environment.
+It does not grant network access or certify another sandbox. Use the host's scoped
+approval mechanism for a confirmed permission denial; do not disable the sandbox.
+
+Upload automatically preflights, hashes the file and recovers a durable transfer
+from its file/destination-derived key. Repeat the same command after interruption.
+`--request-key` supplies an explicit identity (changed inputs conflict). The JSON
+result retains the transfer receipt; inspect it through MCP `get_job` with
+`kind=dataset_transfer`, then read `dataset_run` for extraction progress.
+For a wrapped JSON object, `--json-rows-field pairs` explicitly selects the
+top-level `pairs` array. The original file and selection provenance remain retained.
+
 ```text
 overmind init [OPTIONS]             Skills, slash commands, MCP; seed overmind.toml
 overmind sync [up|down]             Push/pull overmind.toml with the server

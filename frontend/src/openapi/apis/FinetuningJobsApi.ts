@@ -35,6 +35,8 @@ import type {
   PaginatedFinetuningJobListList,
   PaginatedFinetuningJobRunList,
   PatchedFinetuningJobRequest,
+  TrainingEvidence,
+  TrainingMonitoring,
 } from '../models/index';
 import {
     DatasetOverlapResponseFromJSON,
@@ -77,6 +79,10 @@ import {
     PaginatedFinetuningJobRunListToJSON,
     PatchedFinetuningJobRequestFromJSON,
     PatchedFinetuningJobRequestToJSON,
+    TrainingEvidenceFromJSON,
+    TrainingEvidenceToJSON,
+    TrainingMonitoringFromJSON,
+    TrainingMonitoringToJSON,
 } from '../models/index';
 
 export interface FinetuningJobsBaseModelsRetrieveRequest {
@@ -167,6 +173,22 @@ export interface FinetuningJobsModelSwapPromptRetrieveRequest {
 export interface FinetuningJobsModelsRetrieveRequest {
     hasToolCalling?: boolean;
     maxContext?: number;
+}
+
+export interface FinetuningJobsMonitoringEvidenceRetrieveRequest {
+    id: string;
+    check?: string;
+    limit?: number;
+    offset?: number;
+    probe?: FinetuningJobsMonitoringEvidenceRetrieveProbeEnum;
+}
+
+export interface FinetuningJobsMonitoringRetrieveRequest {
+    id: string;
+    check?: string;
+    limit?: number;
+    offset?: number;
+    probe?: FinetuningJobsMonitoringRetrieveProbeEnum;
 }
 
 export interface FinetuningJobsNativeEvaluationCreateRequest {
@@ -1110,6 +1132,148 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
 
     /**
      */
+    async finetuningJobsMonitoringEvidenceRetrieveRaw(requestParameters: FinetuningJobsMonitoringEvidenceRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TrainingEvidence>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling finetuningJobsMonitoringEvidenceRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['check'] != null) {
+            queryParameters['check'] = requestParameters['check'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['offset'] != null) {
+            queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        if (requestParameters['probe'] != null) {
+            queryParameters['probe'] = requestParameters['probe'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/finetuning-jobs/{id}/monitoring-evidence/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TrainingEvidenceFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async finetuningJobsMonitoringEvidenceRetrieve(requestParameters: FinetuningJobsMonitoringEvidenceRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TrainingEvidence> {
+        const response = await this.finetuningJobsMonitoringEvidenceRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async finetuningJobsMonitoringRetrieveRaw(requestParameters: FinetuningJobsMonitoringRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TrainingMonitoring>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling finetuningJobsMonitoringRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['check'] != null) {
+            queryParameters['check'] = requestParameters['check'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['offset'] != null) {
+            queryParameters['offset'] = requestParameters['offset'];
+        }
+
+        if (requestParameters['probe'] != null) {
+            queryParameters['probe'] = requestParameters['probe'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/finetuning-jobs/{id}/monitoring/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TrainingMonitoringFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async finetuningJobsMonitoringRetrieve(requestParameters: FinetuningJobsMonitoringRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TrainingMonitoring> {
+        const response = await this.finetuningJobsMonitoringRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
     async finetuningJobsNativeEvaluationCreateRaw(requestParameters: FinetuningJobsNativeEvaluationCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NativeEvaluation>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
@@ -1624,6 +1788,24 @@ export const FinetuningJobsListStatusEnum = {
     succeeded: 'succeeded'
 } as const;
 export type FinetuningJobsListStatusEnum = typeof FinetuningJobsListStatusEnum[keyof typeof FinetuningJobsListStatusEnum];
+/**
+ * @export
+ */
+export const FinetuningJobsMonitoringEvidenceRetrieveProbeEnum = {
+    development: 'development',
+    training_reference: 'training_reference',
+    generation: 'generation'
+} as const;
+export type FinetuningJobsMonitoringEvidenceRetrieveProbeEnum = typeof FinetuningJobsMonitoringEvidenceRetrieveProbeEnum[keyof typeof FinetuningJobsMonitoringEvidenceRetrieveProbeEnum];
+/**
+ * @export
+ */
+export const FinetuningJobsMonitoringRetrieveProbeEnum = {
+    development: 'development',
+    training_reference: 'training_reference',
+    generation: 'generation'
+} as const;
+export type FinetuningJobsMonitoringRetrieveProbeEnum = typeof FinetuningJobsMonitoringRetrieveProbeEnum[keyof typeof FinetuningJobsMonitoringRetrieveProbeEnum];
 /**
  * @export
  */

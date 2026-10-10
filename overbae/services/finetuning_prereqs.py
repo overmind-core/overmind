@@ -6,18 +6,22 @@ from typing import Any
 
 from django.db.models import Q
 
-from overbae.modal.model_registry import TIER_ORDER
+from modal_shared.stacks import TRAIN_U2026_8_18
+from overbae.modal.model_registry import TIER_ORDER, get_unsloth_image
+from overbae.modal.training_type import training_enabled
 from overbae.models import Capability, Dataset, EvalSet
 from overbae.services.datasets import review
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.eval.eval_set import snapshot_readiness
 from overbae.services.finetuning_validator import validate_dataset
 from overbae.services.recommendation import (
     get_recommendation,
     recommend_hyperparams_for_model,
     tier_models,
 )
+from overbae.services.recommendation.catalog import active_backend
 
 # The ranking covers the whole catalog; chat gets the head of it, with "catalog" below
 # still naming every trainable model.
@@ -97,9 +101,13 @@ def default_finetune_name(*, display_name: str, dataset_name: str, capability_na
     return " · ".join(parts) if parts else "Chat finetune"
 
 
-def catalog_by_tier(*, has_tool_calling: bool = False) -> dict[str, list[str]]:
+def catalog_by_tier(
+    *, has_tool_calling: bool = False, native: bool = False
+) -> dict[str, list[str]]:
     """Trainable model ids by tier for the active backend."""
     out: dict[str, list[str]] = {}
+    if native and active_backend() != "modal":
+        return out
     for tier in TIER_ORDER:
         models = tier_models().get(tier) or []
         ids = [
@@ -108,6 +116,10 @@ def catalog_by_tier(*, has_tool_calling: bool = False) -> dict[str, list[str]]:
             if m.get("id")
             and not m.get("disabled")
             and (not has_tool_calling or m.get("supports_tool_calling"))
+            and (
+                not native
+                or (get_unsloth_image(m["id"]) == TRAIN_U2026_8_18 and training_enabled(m, "lora"))
+            )
         ]
         if ids:
             out[tier] = ids
@@ -161,6 +173,8 @@ def finetune_prerequisite_report(
         )
     if evaluate and eval_set is None:
         missing.append("eval set — create an eval set with generative evaluators in this project")
+    elif evaluate:
+        missing.extend(error["message"] for error in snapshot_readiness(eval_set)["errors"])
 
     overlap_count = None
     eval_product = eval_cell or (eval_dataset.active_cell if eval_dataset is not None else None)
@@ -200,6 +214,9 @@ def finetune_prerequisite_report(
     candidates = analysis.get("candidates") or []
     has_tool_calling = bool((analysis.get("dataset") or {}).get("has_tool_calling"))
     recommendations = [slim_recommendation_row(r) for r in candidates[:_MAX_CHAT_CANDIDATES]]
+    catalog = catalog_by_tier(
+        has_tool_calling=has_tool_calling, native=analysis.get("task_type") == "decision"
+    )
 
     hint = None
     if missing:
@@ -230,8 +247,10 @@ def finetune_prerequisite_report(
         "eval_set": eval_set.name if eval_set is not None else None,
         "overlap_count": overlap_count,
         "recommendations": recommendations,
-        "n_candidates": len(candidates),
-        "catalog": catalog_by_tier(has_tool_calling=has_tool_calling),
+        "n_candidates": sum(map(len, catalog.values()))
+        if analysis.get("task_type") == "decision"
+        else len(candidates),
+        "catalog": catalog,
         "has_tool_calling": has_tool_calling,
         "task_type": analysis.get("task_type"),
         "task_type_source": analysis.get("task_type_source"),

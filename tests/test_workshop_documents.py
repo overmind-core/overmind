@@ -13,8 +13,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Dataset, Project, ProjectMembership, User
-from overbae.services.datasets import lifecycle, ocr, paths, store
-from overbae.services.datasets.notebook import agent, run
+from overbae.services.datasets import ocr, paths, store
 from overbae.tasks import datasets as tasks
 
 pytestmark = pytest.mark.django_db
@@ -59,7 +58,6 @@ def test_intent_first_then_source_keeps_the_original_request(
     dataset = Dataset.objects.get(pk=created.data["id"])
     assert dataset.brief == brief and dataset.capability_id is None
     assert dataset.source is None and dataset.intent == "pending"
-    agent.settle(dataset.id)
     upload_id, inspection = upload(
         client, "handbook.md", b"# Delivery\n\nStandard delivery takes three days.\n"
     )
@@ -122,7 +120,6 @@ def test_document_rows_remain_evidence_not_fabricated_training_answers(workshop)
     assert "messages" not in frame and "expected_output" not in frame
     assert dataset.source_spec["sources"][0]["sha256"] == frame.iloc[0]["_overmind_document_id"]
     assert not dataset.source.fits("train")[0]
-    assert "Prepare grounded" in agent.system_prompt(dataset)
 
 
 def land_pdf(workshop, name):
@@ -137,6 +134,34 @@ def land_pdf(workshop, name):
     )
     assert created.status_code == 201, created.data
     return Dataset.objects.get(pk=created.data["id"]), content
+
+
+def test_type3_native_text_survives_landing_without_ocr_replacement(workshop):
+    dataset, content = land_pdf(workshop, "type3")
+    assert dataset.source is not None, dataset.error
+    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    assert set(frame["page"]) == {1, 2, 3, 4}
+    for page in range(1, 5):
+        rows = frame[frame["page"] == page].to_dict("records")
+        assert "AI Security: Model Processing 123" in " ".join(row["text"] for row in rows)
+        native = [
+            row
+            for row in rows
+            if row["_overmind_provenance"]["extraction"]["method"] == "pdfium-native-text"
+        ]
+        assert native
+        width, height = (612, 792) if page in (1, 3) else (792, 612)
+        for row in native:
+            box = row["_overmind_provenance"]["evidence"][0]["regions"][0]["bbox"]
+            assert box["coord_origin"] == "TOPLEFT"
+            assert 0 <= box["l"] < box["r"] <= width
+            assert 0 <= box["t"] < box["b"] <= height
+    source = dataset.source_spec["sources"][0]
+    assert source["extraction"]["native_text_recovery"]["pages"] == [1, 2, 3, 4]
+    assert source["extraction"]["native_text_recovery"]["control_characters"] == 4
+    assert any("font-encoding" in value for value in source["extraction"]["limitations"])
+    downloaded = workshop[0].get(f"/api/datasets/{dataset.id}/sources/{source['id']}/")
+    assert b"".join(downloaded.streaming_content) == content
 
 
 @pytest.mark.parametrize("name,ocr_pages", [("scanned", [1]), ("mixed", [2, 3])])
@@ -300,8 +325,8 @@ def test_invalid_image_does_not_partially_append_a_batch(
     bad, _ = upload(client, name, content)
     with django_capture_on_commit_callbacks(execute=True):
         response = client.post(
-            f"/api/datasets/{dataset.id}/chat/",
-            {"source": {"uploads": [good, bad]}},
+            f"/api/datasets/{dataset.id}/source/",
+            {"uploads": [good, bad]},
             format="json",
         )
     assert response.status_code == 202, response.data
@@ -332,8 +357,8 @@ def test_image_can_be_added_to_an_existing_workshop(workshop, django_capture_on_
     upload_id, _ = upload(client, "policy.png", image_bytes("PNG"))
     with django_capture_on_commit_callbacks(execute=True):
         response = client.post(
-            f"/api/datasets/{dataset.id}/chat/",
-            {"source": {"uploads": [upload_id]}},
+            f"/api/datasets/{dataset.id}/source/",
+            {"uploads": [upload_id]},
             format="json",
         )
     assert response.status_code == 202
@@ -386,7 +411,7 @@ def test_ocr_failure_never_lands_partial_native_rows(workshop, monkeypatch, fail
     assert "No partial source was landed" in dataset.error
 
 
-def test_chat_upload_merges_after_existing_cells_and_preserves_frozen_versions(
+def test_source_upload_merges_after_existing_cells_and_preserves_frozen_versions(
     workshop, django_capture_on_commit_callbacks
 ):
     client, project = workshop
@@ -396,27 +421,31 @@ def test_chat_upload_merges_after_existing_cells_and_preserves_frozen_versions(
         format="json",
     )
     dataset = Dataset.objects.get(pk=created.data["id"])
-    transformed = lifecycle.add_cell(dataset, title="Cleaned", script='df["text"] = "cleaned"')
-    run.execute(dataset)
+    from conftest import import_version
+
+    transformed = import_version(dataset, [{"text": "cleaned", "source_row": 0}], name="Cleaned")
     transformed.refresh_from_db()
     transformed.used_at = timezone.now()
     transformed.save(update_fields=["used_at"])
     original_bytes = paths.cell_path(dataset.id, dataset.source.id).read_bytes()
     frozen_bytes = paths.cell_path(dataset.id, transformed.id).read_bytes()
-    dataset.chat = [{"role": "user", "text": "Keep this conversation", "at": "2026-09-29"}]
+    dataset.cells.create(
+        position=transformed.position + 1, title="Unpublished history", state="failed"
+    )
     dataset.active = dataset.source
-    dataset.save(update_fields=["chat", "active"])
+    dataset.save(update_fields=["active"])
     upload_id, _ = upload(client, "more.csv", b"text,category\nnew,example\n")
     with django_capture_on_commit_callbacks(execute=True):
         response = client.post(
-            f"/api/datasets/{dataset.id}/chat/",
-            {"message": "Merge this file", "source": {"uploads": [upload_id]}},
+            f"/api/datasets/{dataset.id}/source/",
+            {"uploads": [upload_id]},
             format="json",
         )
     assert response.status_code == 202, response.data
     dataset.refresh_from_db()
     merged = dataset.chain[-1]
     assert merged.review["kind"] == "attachment"
+    assert merged.position == transformed.position + 2
     assert merged.rows == 2 and dataset.active_cell.id == merged.id
     frame = store.read_frame(paths.cell_path(dataset.id, merged.id))
     assert frame["text"].tolist() == ["cleaned", "new"]
@@ -425,13 +454,6 @@ def test_chat_upload_merges_after_existing_cells_and_preserves_frozen_versions(
     assert frame.iloc[1]["_overmind_provenance"]["file"]["filename"] == "more.csv"
     assert paths.cell_path(dataset.id, dataset.source.id).read_bytes() == original_bytes
     assert paths.cell_path(dataset.id, transformed.id).read_bytes() == frozen_bytes
-    assert dataset.chat[0]["text"] == "Keep this conversation"
-    agent.settle(dataset.id)
-    # A missing derived frame must rebuild from the retained import, not consumed uploads.
-    paths.cell_path(dataset.id, merged.id).unlink()
-    run.execute(dataset)
-    merged.refresh_from_db()
-    assert merged.rows == 2 and merged.state == "ok"
     artifact = dataset.source_spec["sources"][0]
     downloaded = client.get(f"/api/datasets/{dataset.id}/sources/{artifact['id']}/")
     assert b"".join(downloaded.streaming_content) == b"text,category\nnew,example\n"
@@ -440,10 +462,10 @@ def test_chat_upload_merges_after_existing_cells_and_preserves_frozen_versions(
         {"script": "df = df.head(0)"},
         format="json",
     )
-    assert edited.status_code == 409
+    assert edited.status_code == 404
 
 
-def test_chat_attachment_batch_is_atomic_and_can_be_retried(
+def test_source_attachment_batch_is_atomic_and_can_be_retried(
     workshop, django_capture_on_commit_callbacks
 ):
     client, project = workshop
@@ -460,8 +482,8 @@ def test_chat_attachment_batch_is_atomic_and_can_be_retried(
     )
     with django_capture_on_commit_callbacks(execute=True):
         response = client.post(
-            f"/api/datasets/{dataset.id}/chat/",
-            {"source": {"uploads": [valid, bad]}},
+            f"/api/datasets/{dataset.id}/source/",
+            {"uploads": [valid, bad]},
             format="json",
         )
     assert response.status_code == 202, response.data
@@ -471,7 +493,7 @@ def test_chat_attachment_batch_is_atomic_and_can_be_retried(
     fresh, _ = upload(client, "fresh.txt", b"New document evidence.\n")
     with django_capture_on_commit_callbacks(execute=True):
         retried = client.post(
-            f"/api/datasets/{dataset.id}/chat/", {"source": {"uploads": [fresh]}}, format="json"
+            f"/api/datasets/{dataset.id}/source/", {"uploads": [fresh]}, format="json"
         )
     assert retried.status_code == 202, retried.data
     dataset.refresh_from_db()
@@ -480,7 +502,7 @@ def test_chat_attachment_batch_is_atomic_and_can_be_retried(
     assert frame.iloc[1]["_overmind_provenance"]["evidence"]
 
 
-def test_chat_attachment_busy_scope_and_duplicate_delivery(
+def test_source_attachment_busy_scope_and_duplicate_delivery(
     workshop, monkeypatch, django_capture_on_commit_callbacks
 ):
     client, project = workshop
@@ -495,11 +517,11 @@ def test_chat_attachment_busy_scope_and_duplicate_delivery(
     upload_id, _ = upload(client, "more.csv", b"text\nnew\n")
     with django_capture_on_commit_callbacks(execute=True):
         accepted = client.post(
-            f"/api/datasets/{dataset.id}/chat/", {"source": {"uploads": [upload_id]}}, format="json"
+            f"/api/datasets/{dataset.id}/source/", {"uploads": [upload_id]}, format="json"
         )
     assert accepted.status_code == 202
     busy = client.post(
-        f"/api/datasets/{dataset.id}/chat/", {"source": {"uploads": [upload_id]}}, format="json"
+        f"/api/datasets/{dataset.id}/source/", {"uploads": [upload_id]}, format="json"
     )
     assert busy.status_code == 409
     assert tasks.land(**queued[0])["status"] == "ok"
@@ -510,6 +532,6 @@ def test_chat_attachment_busy_scope_and_duplicate_delivery(
         project=Project.objects.create(name="Other", slug=uuid.uuid4().hex)
     )
     denied = client.post(
-        f"/api/datasets/{foreign.id}/chat/", {"source": {"rows": [{"text": "no"}]}}, format="json"
+        f"/api/datasets/{foreign.id}/source/", {"rows": [{"text": "no"}]}, format="json"
     )
     assert denied.status_code == 404

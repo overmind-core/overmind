@@ -134,6 +134,7 @@ def test_inference_client_posts_routing_from_deployed():
             model_id=deployed.model_id,
             messages=[{"role": "user", "content": "hi"}],
             deployed=deployed,
+            max_tokens=128,
         )
     headers = post.call_args.kwargs["headers"]
     assert headers[GPU_TYPE_HEADER] == "L4"
@@ -300,6 +301,7 @@ def test_inference_client_omits_serve_image_header_for_muse():
             model_id=deployed.model_id,
             messages=[{"role": "user", "content": "hi"}],
             deployed=deployed,
+            max_tokens=128,
         )
     headers = post.call_args.kwargs["headers"]
     assert SERVE_IMAGE_HEADER not in headers

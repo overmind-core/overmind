@@ -17,10 +17,8 @@ from overbae.models import (
     User,
 )
 from overbae.services import native_evaluation
-from overbae.services.datasets import land, lifecycle, rows, use
-from overbae.services.datasets.notebook import agent
+from overbae.services.datasets import land, lifecycle, paths, rows, store, use, workbench
 from overbae.services.datasets.partition_plans import build
-from overbae.services.datasets.preparation import PlanRequest, save_plan
 
 pytestmark = pytest.mark.django_db
 
@@ -234,7 +232,7 @@ def test_calibration_and_final_cannot_share_group_identity(settings):
         )
 
 
-def test_workshop_inspects_then_records_mean_mapping_before_preparing(settings):
+def test_native_agent_imports_declared_mean_without_inventing_probabilities(settings):
 
     project = Project.objects.create(name="Ratings", slug="ratings-workshop")
     dataset = Dataset.objects.create(
@@ -258,61 +256,51 @@ def test_workshop_inspects_then_records_mean_mapping_before_preparing(settings):
         ],
     )
     dataset.refresh_from_db()
-    request = PlanRequest(
-        version="1.0",
-        objective=dataset.brief,
-        consumer="decision_evaluation",
-        understanding="The annotation guide declares rating to be an average, not a vote histogram.",
-        families=[
-            {
-                "name": "relevance",
-                "evidence": "Annotation guide and inspected rating row",
-                "input_columns": ["evidence", "prompt"],
-                "target_columns": ["rating"],
-                "target_meaning": "ordinal_mean",
-                "target_evidence": "Source annotation guide declares arithmetic mean on the scale",
-            }
-        ],
-        mapping={
-            "decision.state": "evidence",
-            "decision.question": "prompt",
-            "decision.target_mean": "rating",
-            "decision.option_values": "scale",
-            "decision.options": "choices",
-            "decision.target_semantics": "meaning",
-            "decision.target_provenance": "origin",
+    user = User.objects.create_user(email="ratings@example.com", password="fixture")
+    ProjectMembership.objects.create(project=project, user=user)
+    client = APIClient()
+    client.force_authenticate(user)
+    source = dataset.active_cell
+    original = next(store.iter_rows(paths.cell_path(dataset.id, source.id)))
+    request = {
+        "state": original["evidence"],
+        "question": original["prompt"],
+        "kind": "score",
+        "options": original["choices"],
+        "option_values": original["scale"],
+    }
+    authored = {
+        **original,
+        "decision": {
+            **request,
+            "target_mean": original["rating"],
+            "target_semantics": original["meaning"],
+            "target_provenance": original["origin"],
         },
-        constants={"decision.kind": "score"},
-        checks=[
-            {
-                "name": "source_preservation",
-                "category": "preservation",
-                "method": "deterministic",
-                "question": "Are means and scale unchanged?",
-            }
-        ],
-        steps=[
-            {"id": "prepare", "description": "Map the declared mean and scale", "kind": "transform"}
-        ],
+        "input": {"decision": request},
+        "expected_output": {"mean": original["rating"], "values": original["scale"]},
+    }
+    receipt = client.post(
+        f"/api/datasets/{dataset.pk}/versions/import/",
+        {
+            "source_cell": str(source.pk),
+            "source_fingerprint": source.fingerprint,
+            "request_key": "native-mean-mapping",
+            "name": "Declared mean mapping",
+            "provenance": "Native agent mapped the supplied annotation-guide mean; no distribution was inferred.",
+            "imported_rows": [authored],
+        },
+        format="json",
     )
-    saved = save_plan(
-        dataset,
-        dataset.active_cell,
-        request,
-        user_request=dataset.brief,
-        exploration=[{"tool": "inspect", "finding": "One declared mean on a five-point scale"}],
-    )
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    tools.automatic = True
-    result = tools.prepare_examples({"plan_step": "prepare"})
-    assert result["ok"], result
+    assert receipt.status_code == 202, receipt.data
+    workbench.execute(receipt.data["id"])
     dataset.refresh_from_db()
     row = next(rows.iter_rows(dataset.active_cell))
     assert row.expected_output == {"mean": 3.4, "values": [1, 2, 3, 4, 5]}
     assert "target_probabilities" not in row.extra["decision"]
-    assert dataset.preparation_plan["user_request"] == dataset.brief
-    assert saved["exploration"]
     assert row.extra["rating"] == 3.4
+    assert dataset.active_cell.review["execution"] == "external_attributed"
+    assert next(store.iter_rows(paths.cell_path(dataset.pk, source.pk))) == original
 
 
 def test_changing_an_existing_mean_records_semantic_impact_and_preserves_source():
@@ -329,20 +317,13 @@ def test_changing_an_existing_mean_records_semantic_impact_and_preserves_source(
         "target_semantics": "ordinal_mean",
     }
     land.land_rows(dataset, [{"decision": request}])
-    tools = agent.Tools(dataset.pk, None, lambda _: None)
-    result = tools.add_cell(
-        {
-            "title": "Change mean",
-            "script": "df['decision'] = df['decision'].map(lambda d: {**d, 'target_mean': 0.9})",
-            "kind": "mechanical",
-            "run": True,
-        }
-    )
-    assert result["ok"], result
+    from conftest import import_version
+
+    import_version(dataset, [{"source_row": 0, "decision": {**request, "target_mean": 0.9}}])
     dataset.refresh_from_db()
     assert next(rows.iter_rows(dataset.source)).extra["decision"]["target_mean"] == 0.4
     assert next(rows.iter_rows(dataset.active_cell)).extra["decision"]["target_mean"] == 0.9
-    assert dataset.active_cell.review["kind"] == "semantic"
+    assert dataset.active_cell.review["execution"] == "external_attributed"
     assert dataset.active_cell.review["decision_changes"] == 1
 
 

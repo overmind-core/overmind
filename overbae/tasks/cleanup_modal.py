@@ -58,7 +58,7 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
     by what the Volume reports rather than by the job table, so a run pruned once is never
     reconsidered — the job row outlives its scratch.
     """
-    from overbae.models import FinetuningJob
+    from overbae.models import FinetuningJob, TrainingCheckpoint, TrainingValidationRun
 
     now = now or timezone.now()
     jobs = FinetuningJob.objects.filter(provider=FinetuningJob.Provider.MODAL).only(
@@ -71,6 +71,14 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
         "triggered_by_id",
     )
     by_run = {}
+    protected = set(
+        TrainingCheckpoint.objects.filter(state="available").values_list("job_id", flat=True)
+    )
+    protected.update(
+        TrainingValidationRun.objects.filter(evidence="")
+        .exclude(evidence_sha256="")
+        .values_list("job_id", flat=True)
+    )
     for job in jobs:
         for run_id in (job.remote_job_id.split(":", 1)[0], job.provider_submission.get("run_id")):
             if run_id:
@@ -94,6 +102,9 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
         if settled is None:
             continue
         age = now - settled
+
+        if job.pk in protected:
+            continue
 
         if job.status in _DEAD and age > _PURGE_AFTER:
             # Never archived to S3 and not deployable, so the whole directory is dead.

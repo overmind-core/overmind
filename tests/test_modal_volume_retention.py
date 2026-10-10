@@ -75,6 +75,17 @@ def test_cancelled_run_is_purged_whole():
     assert _plan([run_id])["purge"] == [run_id]
 
 
+def test_cancelled_run_with_retained_artifact_or_uncollected_evidence_is_protected():
+    from overbae.models import TrainingCheckpoint
+
+    run_id = _job(status=FinetuningJob.Status.CANCELLED, age_days=30)
+    job = FinetuningJob.objects.get(remote_job_id__startswith=run_id)
+    TrainingCheckpoint.objects.create(
+        job=job, key="1:2", attempt=1, step=2, state="available", identity="a" * 64
+    )
+    assert _plan([run_id])["purge"] == []
+
+
 def test_succeeded_run_is_trimmed_never_purged():
     """The run's log stays even when everything else goes, so the directory is never dropped
     whole for a job that succeeded."""

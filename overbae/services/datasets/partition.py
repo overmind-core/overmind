@@ -9,6 +9,13 @@ from contextlib import suppress
 
 from overbae.services.datasets.examples import field_value, input_objects
 
+GROUP_ALIASES = {
+    "source_trace_id": "trace_id",
+    "_overmind_document_id": "document_id",
+    # A declared content column must not share the input-fingerprint namespace.
+    "content": "group:content",
+}
+
 _IDENTITY = {"source_row", "trace_id", "source_trace_id", "conversation_id", "_overmind_provenance"}
 _OUTPUT = {
     "output",
@@ -108,9 +115,7 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
         except ValueError:
             continue
         if present(value):
-            kind = {"source_trace_id": "trace_id", "_overmind_document_id": "document_id"}.get(
-                column, column
-            )
+            kind = GROUP_ALIASES.get(column, column)
             keys.add((kind, _canonical(value)))
     for value in input_objects(row):
         for column in ("packet_id", "onboarding_packet_id", "case_id", "example_id"):

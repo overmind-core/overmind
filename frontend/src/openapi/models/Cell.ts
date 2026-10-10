@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { CellTransformation } from './CellTransformation';
+import {
+    CellTransformationFromJSON,
+    CellTransformationFromJSONTyped,
+    CellTransformationToJSON,
+    CellTransformationToJSONTyped,
+} from './CellTransformation';
 import type { DatasetReadiness } from './DatasetReadiness';
 import {
     DatasetReadinessFromJSON,
@@ -20,13 +27,6 @@ import {
     DatasetReadinessToJSON,
     DatasetReadinessToJSONTyped,
 } from './DatasetReadiness';
-import type { PreparationPlan } from './PreparationPlan';
-import {
-    PreparationPlanFromJSON,
-    PreparationPlanFromJSONTyped,
-    PreparationPlanToJSON,
-    PreparationPlanToJSONTyped,
-} from './PreparationPlan';
 import type { CellStateEnum } from './CellStateEnum';
 import {
     CellStateEnumFromJSON,
@@ -72,6 +72,12 @@ export interface Cell {
      * @memberof Cell
      */
     readonly script: string;
+    /**
+     *
+     * @type {CellTransformation}
+     * @memberof Cell
+     */
+    readonly transformation: CellTransformation;
     /**
      *
      * @type {string}
@@ -158,10 +164,10 @@ export interface Cell {
     readonly qualityReport: any | null;
     /**
      *
-     * @type {PreparationPlan}
+     * @type {{ [key: string]: any; }}
      * @memberof Cell
      */
-    readonly preparationPlan: PreparationPlan | null;
+    readonly preparationPlan: { [key: string]: any; } | null;
     /**
      *
      * @type {DatasetReadiness}
@@ -180,6 +186,12 @@ export interface Cell {
      * @memberof Cell
      */
     readonly usedAt: Date | null;
+    /**
+     *
+     * @type {{ [key: string]: Array<{ [key: string]: any; }>; }}
+     * @memberof Cell
+     */
+    readonly usage: { [key: string]: Array<{ [key: string]: any; }>; };
     /**
      *
      * @type {Date}
@@ -205,6 +217,7 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('version' in value) || value['version'] === undefined) return false;
     if (!('title' in value) || value['title'] === undefined) return false;
     if (!('script' in value) || value['script'] === undefined) return false;
+    if (!('transformation' in value) || value['transformation'] === undefined) return false;
     if (!('note' in value) || value['note'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
@@ -223,6 +236,7 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('seconds' in value) || value['seconds'] === undefined) return false;
     if (!('usedAt' in value) || value['usedAt'] === undefined) return false;
+    if (!('usage' in value) || value['usage'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -243,6 +257,7 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'version': json['version'],
         'title': json['title'],
         'script': json['script'],
+        'transformation': CellTransformationFromJSON(json['transformation']),
         'note': json['note'],
         'state': CellStateEnumFromJSON(json['state']),
         'error': json['error'],
@@ -257,10 +272,11 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'stats': json['stats'],
         'review': json['review'],
         'qualityReport': json['quality_report'],
-        'preparationPlan': PreparationPlanFromJSON(json['preparation_plan']),
+        'preparationPlan': json['preparation_plan'],
         'readiness': DatasetReadinessFromJSON(json['readiness']),
         'seconds': json['seconds'],
         'usedAt': (json['used_at'] == null ? null : new Date(json['used_at'])),
+        'usage': json['usage'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -270,7 +286,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'transformation'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'usage'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -5,7 +5,6 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from django.db.models import F
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
@@ -44,9 +43,9 @@ def merge(dataset: Dataset, cell: Cell, previous: Cell, output: Path) -> Path:
 def commit(dataset: Dataset, landing: Landing, *, user=None) -> Cell:
     # The landing worker holds the dataset row lock through this entire commit.
     chain = dataset.chain
-    previous = next(cell for cell in reversed(chain) if cell.state != Cell.State.PROPOSED)
-    if previous.state != Cell.State.OK:
-        raise DatasetError("Run or remove unfinished cells before adding files.")
+    previous = next((cell for cell in reversed(chain) if cell.ran), None)
+    if previous is None:
+        raise DatasetError("No readable source is available. Upload a new dataset.")
     next_row = 0
     for cell in chain:
         if cell.ran:
@@ -70,12 +69,10 @@ def commit(dataset: Dataset, landing: Landing, *, user=None) -> Cell:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(artifact["staged_path"], destination)
         sources[artifact["id"]] = {k: v for k, v in artifact.items() if k != "staged_path"}
-    for proposed in reversed([cell for cell in chain if cell.state == Cell.State.PROPOSED]):
-        Cell.objects.filter(pk=proposed.pk).update(position=F("position") + 1)
     filenames = [item["filename"] for item in landing.spec.get("sources", [])]
     cell = Cell.objects.create(
         dataset=dataset,
-        position=previous.position + 1,
+        position=chain[-1].position + 1,
         title="Added files" if filenames else "Added data",
         note=(", ".join(filenames) or "Attached rows")[:512],
         script="",
@@ -99,7 +96,7 @@ def commit(dataset: Dataset, landing: Landing, *, user=None) -> Cell:
     Dataset.objects.filter(pk=dataset.pk).update(
         source_spec=spec,
         active=cell,
-        state=Dataset.State.DIAGNOSING,
+        state=Dataset.State.IDLE,
         error="",
         updated_at=timezone.now(),
     )

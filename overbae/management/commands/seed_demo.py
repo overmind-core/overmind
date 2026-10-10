@@ -85,11 +85,12 @@ from overbae.services import sync as sync_service
 from overbae.services.capabilities import identity as capability_identity
 from overbae.services.datasets import exploration as dataset_exploration
 from overbae.services.datasets import land as dataset_land
-from overbae.services.datasets import lifecycle as dataset_lifecycle
+from overbae.services.datasets import measure as dataset_measure
 from overbae.services.datasets import partition_plans
 from overbae.services.datasets import paths as dataset_paths
+from overbae.services.datasets import review as dataset_review
 from overbae.services.datasets import rows as row_store
-from overbae.services.datasets.notebook import run as notebook_run
+from overbae.services.datasets import store as dataset_store
 from overbae.services.eval import composition
 from overbae.services.eval import dispatch as eval_dispatch
 from overbae.services.eval import snapshots as eval_snapshots
@@ -319,11 +320,6 @@ _TRIAGE_RATIONALES = [
     "Team matches; urgency one level below the reference for an enterprise merchant.",
     "Routed to support-general where the reference routes to oncall-payments.",
 ]
-_TRACE_EVAL_SCRIPT = (
-    "df = df[df['input'].notna() & df['output'].notna()]\n"
-    "df = df.rename(columns={'output': 'expected_output'})\n"
-    "df = df.drop(columns=[c for c in ('messages', 'tools') if c in df.columns])\n"
-)
 _JUDGE_REASONS = {
     "Triage Accuracy": [
         "Urgency and team match the reference; category wording differs but names the same surface.",
@@ -2816,7 +2812,6 @@ class Command(BaseCommand):
                 Cell.objects.filter(pk=c.pk).update(created_at=born + timedelta(hours=1, minutes=i))
 
         def _run(ds, born, *, want=None):
-            notebook_run.execute(ds)
             ds.refresh_from_db()
             if ds.state != "idle":
                 raise RuntimeError(f"seed dataset {ds.name!r}: {ds.error}")
@@ -2838,6 +2833,30 @@ class Command(BaseCommand):
             dataset_land.land_rows(ds, [dict(r) for r in rows], spec={"pasted": True})
             return _run(ds, born, want=intent if intent != "pending" else None)
 
+        def _records(ds):
+            return list(dataset_store.iter_rows(dataset_paths.cell_path(ds.pk, ds.active_cell.pk)))
+
+        def _publish(ds, title, records):
+            previous = ds.active_cell
+            cell = Cell.objects.create(dataset=ds, position=ds.cells.count(), title=title)
+            output = dataset_paths.cell_path(ds.pk, cell.pk)
+            dataset_store.write_rows(output, records)
+            source = dataset_paths.cell_path(ds.pk, previous.pk)
+            dataset_review.preserve_file_provenance(source, output, output)
+            dataset_measure.frame(
+                ds,
+                cell,
+                output,
+                input_fingerprint=previous.fingerprint,
+                review={
+                    "kind": "external",
+                    "execution": "external_attributed",
+                    **dataset_review.impact_files(source, output),
+                },
+            )
+            Dataset.objects.filter(pk=ds.pk).update(active=cell, state="idle")
+            ds.refresh_from_db()
+
         def _from_traces(cap, name, *, want, intent, born):
             entries = [e for e in trace_index[cap.pk] if e[4]]
             step = max(1, len(entries) // want)
@@ -2847,11 +2866,21 @@ class Command(BaseCommand):
             )
             dataset_land.land_traces(ds, {"trace_ids": [tid for tid, *_ in chosen]})
             if intent == "eval":
-                dataset_lifecycle.add_cell(
+                _publish(
                     ds,
-                    title="Eval pairs",
-                    script=_TRACE_EVAL_SCRIPT,
-                    note="input + delivered output as the reference",
+                    "Eval pairs",
+                    [
+                        {
+                            **{
+                                k: v
+                                for k, v in row.items()
+                                if k not in {"output", "messages", "tools"}
+                            },
+                            "expected_output": row["output"],
+                        }
+                        for row in _records(ds)
+                        if row.get("input") is not None and row.get("output") is not None
+                    ],
                 )
             return _run(ds, born, want=intent)
 
@@ -2966,23 +2995,24 @@ class Command(BaseCommand):
             capability=triage_capability,
             born=days_ago(19),
         )
-        dataset_lifecycle.add_cell(
-            triage_train,
-            title="Drop exact duplicates",
-            script="df = df.drop_duplicates(subset=['messages']).reset_index(drop=True)\n",
-            note="2 rows",
-        )
-        dataset_lifecycle.add_cell(
-            triage_train,
-            title="Cap support-general at 20%",
-            script=(
-                "cap = int(len(df) * 0.20)\n"
-                "general = df[df['team'] == 'support-general']\n"
-                "drop = general.index[cap:] if len(general) > cap else general.index[:0]\n"
-                "df = df.drop(index=drop).reset_index(drop=True)\n"
-            ),
-            note="class balance",
-        )
+        seen = set()
+        unique = []
+        for row in _records(triage_train):
+            identity = json.dumps(row["messages"], sort_keys=True)
+            if identity not in seen:
+                unique.append(row)
+                seen.add(identity)
+        _publish(triage_train, "Drop exact duplicates", unique)
+        cap = int(len(unique) * 0.20)
+        general = 0
+        balanced = []
+        for row in unique:
+            if row["team"] == "support-general":
+                general += 1
+                if general > cap:
+                    continue
+            balanced.append(row)
+        _publish(triage_train, "Cap support-general at 20%", balanced)
         _run(triage_train, days_ago(19), want="train")
         triage_golden = _from_traces(
             triage_capability, "Triage Golden Set", want=60, intent="eval", born=days_ago(21)
@@ -3145,17 +3175,20 @@ class Command(BaseCommand):
             ),
         )
         _run(split_train, days_ago(2), want="train")
-        dataset_lifecycle.add_cell(
+        _publish(
             split_eval,
-            title="Eval pairs from transcripts",
-            script=(
-                "import json\n"
-                "msgs = df['messages'].apply(lambda m: json.loads(m) if isinstance(m, str) else m)\n"
-                "df['input'] = msgs.apply(lambda m: {'ticket': next(x['content'] for x in m if x['role'] == 'user')})\n"
-                "df['expected_output'] = msgs.apply(lambda m: m[-1]['content'])\n"
-                "df = df[['input', 'expected_output', 'team']]\n"
-            ),
-            note="the last assistant turn is the reference",
+            "Eval pairs from transcripts",
+            [
+                {
+                    "source_row": row["source_row"],
+                    "input": {
+                        "ticket": next(m["content"] for m in row["messages"] if m["role"] == "user")
+                    },
+                    "expected_output": row["messages"][-1]["content"],
+                    "team": row["team"],
+                }
+                for row in _records(split_eval)
+            ],
         )
         _run(split_eval, days_ago(2), want="eval")
 
@@ -3213,198 +3246,6 @@ class Command(BaseCommand):
             split_eval,
             voice_notes,
         ]
-
-        def _chat(ds, turns, born):
-            """turns: [(role, text, steps, cells)]; the agent turns read as landed by the workshop."""
-            chat = []
-            at = born + timedelta(hours=1, minutes=2)
-            for i, (role, text, steps, cells) in enumerate(turns):
-                entry = {
-                    "role": role,
-                    "text": text,
-                    "at": (at + timedelta(minutes=i * 2)).isoformat(),
-                }
-                if role == "agent":
-                    entry.update(
-                        {
-                            "error": "",
-                            "cells": cells,
-                            "steps": steps,
-                            "ms": random.randint(24000, 96000),
-                            "engine": "openrouter",
-                            "model": "anthropic/claude-sonnet-5",
-                        }
-                    )
-                chat.append(entry)
-            Dataset.objects.filter(pk=ds.pk).update(chat=chat)
-
-        def _step(i, tool, summary, ms):
-            return {
-                "type": "activity",
-                "phase": "tool_done",
-                "id": f"s{i}",
-                "status": "done",
-                "tool": tool,
-                "title": tool,
-                "summary": summary,
-                "ok": True,
-                "durationMs": ms,
-            }
-
-        def _think(i, text, ms):
-            return {
-                "type": "activity",
-                "phase": "thinking",
-                "id": f"t{i}",
-                "status": "done",
-                "text": text,
-                "durationMs": ms,
-            }
-
-        _chat(
-            triage_train,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "Train contract holds on the source: every row is a transcript with an assistant turn and declared tools.\n\n"
-                    "Quality checks on 362 rows: 2 exact duplicates, 0 truncated finals, 0 undeclared tool calls, 0 rows from another capability. "
-                    "Class balance across `team` is uneven — support-general carries 31% of rows.\n\n"
-                    "- 1.1 **Drop exact duplicates** — 2 rows.\n"
-                    "- 1.2 **Cap support-general at 20%** — 18 rows.\n\n"
-                    "intent ok · capability ok. 342 rows on the active version.",
-                    [
-                        _think(
-                            1,
-                            "Reading the status, the contracts and the playbook before touching the rows.",
-                            4200,
-                        ),
-                        _step(
-                            2, "status", "362 rows × 3 columns · train fits · capability fits", 380
-                        ),
-                        _step(
-                            3,
-                            "query",
-                            "SELECT COUNT(*) FROM t GROUP BY md5(messages) HAVING COUNT(*) > 1 → 2",
-                            910,
-                        ),
-                        _step(
-                            4,
-                            "inspect",
-                            "team share: support-general 31%, oncall-payments 22%, …",
-                            1400,
-                        ),
-                        _step(5, "add_cell", "1.1 Drop exact duplicates — 360 rows", 3100),
-                        _step(6, "add_cell", "1.2 Cap support-general at 20% — 342 rows", 2900),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in triage_train.cells.filter(position__gt=0)
-                    ],
-                ),
-            ],
-            days_ago(19),
-        )
-        _chat(
-            triage_golden,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "Eval contract: the source carries `input` and `output`; cell 1.1 renames the delivered output to `expected_output` and drops the wire transcript.\n\n"
-                    "Quality checks on 60 rows: 0 empty references, 0 ambiguous duplicates, 0 reference leakage. "
-                    "Every `input` carries the capability's required keys.\n\n"
-                    "intent ok · capability ok.",
-                    [
-                        _think(
-                            1,
-                            "The rows are one per trace, so the reference is the delivered output.",
-                            2600,
-                        ),
-                        _step(2, "status", "60 rows × 18 columns · pending", 340),
-                        _step(
-                            3,
-                            "try_script",
-                            "rename output → expected_output on 1.0: 60 rows, fits eval",
-                            2200,
-                        ),
-                        _step(4, "set_intent", "eval", 120),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in triage_golden.cells.filter(position__gt=0)
-                    ],
-                ),
-                ("user", "How many rows route to oncall-payments?", [], []),
-                (
-                    "agent",
-                    "14 of 60 rows have `expected_output.team = oncall-payments`; 11 of them are payout delays and 3 are 3DS failures.",
-                    [
-                        _step(
-                            1,
-                            "query",
-                            "SELECT COUNT(*) FROM t WHERE json_extract(expected_output, '$.team') = 'oncall-payments' → 14",
-                            640,
-                        )
-                    ],
-                    [],
-                ),
-            ],
-            days_ago(21),
-        )
-
-        # The pair's chats: the eval half needed a cell, the train half did not.
-        _chat(
-            split_eval,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "The rows are transcripts, so the eval contract failed on the source. Cell 1.1 lifts the user message into `input` and the last assistant turn into `expected_output`, keeping `team` for the class metrics.\n\n"
-                    "Quality checks on 40 rows: 0 empty references, 0 duplicates, 0 leakage.\n\nintent ok · capability ok.",
-                    [
-                        _think(
-                            1,
-                            "Transcripts cannot fit eval as-is; derive the pair from the messages.",
-                            3100,
-                        ),
-                        _step(
-                            2,
-                            "status",
-                            "40 rows × 3 columns · eval does not fit: no input column",
-                            300,
-                        ),
-                        _step(
-                            3,
-                            "try_script",
-                            "derive input + expected_output: 40 rows, fits eval",
-                            2400,
-                        ),
-                        _step(4, "add_cell", "1.1 Eval pairs from transcripts — 40 rows", 2800),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in split_eval.cells.filter(position__gt=0)
-                    ],
-                ),
-            ],
-            days_ago(2),
-        )
 
         # ── Eval runs ────────────────────────────────────────────────────────────────────
 

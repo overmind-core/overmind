@@ -59,17 +59,23 @@ def _iter_jsonl(fh: io.TextIOBase) -> Iterator[dict[str, Any]]:
         yield value if isinstance(value, dict) else {"value": value}
 
 
-def _iter_json(fh: io.TextIOBase) -> Iterator[dict[str, Any]]:
+def _iter_json(fh: io.TextIOBase, rows_field: str | None = None) -> Iterator[dict[str, Any]]:
     """One JSON document, or JSON Lines under a ``.json`` name."""
     text = fh.read()
     try:
         value = json.loads(text)
     except json.JSONDecodeError as exc:
+        if rows_field:
+            raise FileError("An explicit JSON rows field requires one JSON object.") from exc
         if exc.msg != "Extra data":
             raise FileError(f"Not valid JSON at line {exc.lineno}, column {exc.colno}.") from exc
         yield from _iter_jsonl(io.StringIO(text))
         return
-    if isinstance(value, dict):
+    if rows_field:
+        if not isinstance(value, dict) or not isinstance(value.get(rows_field), list):
+            raise FileError("The selected JSON rows field is missing or is not an array.")
+        value = value[rows_field]
+    elif isinstance(value, dict):
         # {"data": [...]} / {"rows": [...]} wrappers are common exports.
         for key in ("data", "rows", "items", "examples"):
             if isinstance(value.get(key), list):
@@ -168,13 +174,15 @@ def _open_text(path: Path, name: str) -> io.TextIOBase:
     return open(path, encoding="utf-8-sig", newline="")
 
 
-def iter_stream_rows(fh: io.TextIOBase, *, filename: str) -> Iterator[dict[str, Any]]:
+def iter_stream_rows(
+    fh: io.TextIOBase, *, filename: str, json_rows_field: str | None = None
+) -> Iterator[dict[str, Any]]:
     """Rows from an open text stream, keyed off the file extension."""
     name = (filename or "").lower().removesuffix(".gz")
     if name.endswith((".jsonl", ".ndjson")):
         yield from _iter_jsonl(fh)
     elif name.endswith(".json"):
-        yield from _iter_json(fh)
+        yield from _iter_json(fh, json_rows_field)
     elif name.endswith(".tsv"):
         yield from _iter_delimited(fh, "\t")
     elif name.endswith(".csv"):
@@ -190,7 +198,9 @@ def _text_rows(fh: io.TextIOBase, name: str) -> list[dict[str, Any]]:
     return rows
 
 
-def iter_file_rows(path: Path, *, filename: str) -> Iterator[dict[str, Any]]:
+def iter_file_rows(
+    path: Path, *, filename: str, json_rows_field: str | None = None
+) -> Iterator[dict[str, Any]]:
     name = (filename or "").lower()
     if name.endswith(documents.SUFFIXES):
         try:
@@ -212,7 +222,7 @@ def iter_file_rows(path: Path, *, filename: str) -> Iterator[dict[str, Any]]:
         )
     try:
         with _open_text(path, name) as fh:
-            yield from iter_stream_rows(fh, filename=bare)
+            yield from iter_stream_rows(fh, filename=bare, json_rows_field=json_rows_field)
     except UnicodeDecodeError as exc:
         raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
     except (gzip.BadGzipFile, EOFError) as exc:
@@ -220,13 +230,14 @@ def iter_file_rows(path: Path, *, filename: str) -> Iterator[dict[str, Any]]:
 
 
 class FileRows:
-    def __init__(self, path: Path, *, filename: str):
+    def __init__(self, path: Path, *, filename: str, json_rows_field: str | None = None):
         self.path, self.filename = path, filename
+        self.json_rows_field = json_rows_field
         self.count = 0
         names = {}
         numeric = {}
         delimited = filename.lower().removesuffix(".gz").endswith((".csv", ".tsv"))
-        for row in iter_file_rows(path, filename=filename):
+        for row in iter_file_rows(path, filename=filename, json_rows_field=json_rows_field):
             self.count += 1
             for key, value in row.items():
                 names.setdefault(key, None)
@@ -239,7 +250,9 @@ class FileRows:
         return self.count
 
     def __iter__(self):
-        for row in iter_file_rows(self.path, filename=self.filename):
+        for row in iter_file_rows(
+            self.path, filename=self.filename, json_rows_field=self.json_rows_field
+        ):
             yield {
                 self.names[key]: (_number(value) if value not in (None, "") else None)
                 if key in self.numeric
@@ -319,7 +332,7 @@ def safe_filename(name: str) -> str:
     return _SAFE_NAME.sub("_", base)[:200]
 
 
-def begin_upload(filename: str) -> tuple[str, str]:
+def begin_upload(filename: str, *, upload_id=None) -> tuple[str, str]:
     safe = safe_filename(filename)
     lowered = safe.lower()
     if lowered.endswith(".parquet.gz"):
@@ -328,7 +341,7 @@ def begin_upload(filename: str) -> tuple[str, str]:
         raise FileError("Upload documents without gzip compression.")
     if not lowered.removesuffix(".gz").endswith(ALLOWED_SUFFIXES):
         raise FileError(UNSUPPORTED)
-    upload_id = str(uuid.uuid4())
+    upload_id = str(upload_id or uuid.uuid4())
     directory = upload_dir(upload_id)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "name").write_text(safe, encoding="utf-8")
@@ -350,13 +363,20 @@ def upload_received(upload_id: Any) -> int:
         return 0
 
 
+def upload_byte_limit(filename: str) -> int:
+    return (
+        documents.MAX_BYTES if filename.lower().endswith(documents.SUFFIXES) else MAX_UPLOAD_BYTES
+    )
+
+
 def append_chunk(upload_id: Any, offset: int, chunk: bytes) -> int:
     """Idempotent on retry: a chunk whose range is already stored returns the size."""
     path = upload_data_path(upload_id)
     if not path.exists():
         raise FileError("This upload has expired. Start it again.")
-    if offset + len(chunk) > MAX_UPLOAD_BYTES:
-        raise FileError(f"Files are capped at {MAX_UPLOAD_BYTES // 1024**3} GB.")
+    limit = upload_byte_limit(upload_filename(upload_id))
+    if offset + len(chunk) > limit:
+        raise FileError(f"This file type is capped at {limit} bytes.")
     size = path.stat().st_size
     if offset == size:
         with path.open("ab") as fh:

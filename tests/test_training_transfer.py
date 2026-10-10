@@ -85,7 +85,7 @@ def test_runner_transfers_only_bound_selections_and_worker_restores_exact_tokens
         hyperparameters={
             "n_epochs": 1,
             "context_length": 4096,
-            "batch_size": 8,
+            "batch_size": 2,
             "training_type": {"type": "Lora"},
             "objective": objective,
         },

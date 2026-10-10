@@ -120,6 +120,34 @@ def test_succeeded_poll_finalizes_once():
     assert job.events.filter(message="Fine-tuning completed — deploying model").count() == 1
 
 
+@pytest.mark.parametrize("native", [False, True])
+def test_completion_preserves_monitoring_manifest_and_final_observation(native):
+    from modal_shared.training_monitoring import freeze_plan, resolve_policy
+    from overbae.services import training_monitoring
+
+    policy = resolve_policy(None, has_development=True, provider="modal")
+    job = _job(
+        started_at=timezone.now(),
+        hyperparameters={
+            "monitoring": policy,
+            "objective": "decision_supervised" if native else "assistant_cross_entropy",
+        },
+    )
+    plan = freeze_plan(policy, [{"key": "train"}], [{"key": "development"}])
+    training_monitoring.save_plan(job, plan)
+    runner = _runner(state="succeeded")
+    runner.poll.return_value.raw = {
+        "monitoring": {"optimizer_seconds": 12, "monitoring_seconds": 3}
+    }
+    _run_reconcile(runner=runner)
+    job.refresh_from_db()
+    snapshot = training_monitoring.snapshot(job)
+    assert snapshot["current"]["monitoring_seconds"] == 3
+    assert snapshot["current"]["optimizer_seconds"] == 12
+    assert snapshot["probes"]["development"]["actual_rows"] == 1
+    assert training_monitoring.probe_rows(job, "development")["items"][0]["index"] == 0
+
+
 def test_queued_without_remote_still_enqueues_submit():
     job = _job(status=FinetuningJob.Status.QUEUED, remote_job_id="", started_at=None)
     runner = _runner()

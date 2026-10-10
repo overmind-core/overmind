@@ -71,6 +71,12 @@ export interface FinetuningModelCatalogResponse {
      * @memberof FinetuningModelCatalogResponse
      */
     maxContext: number | null;
+    /**
+     *
+     * @type {any}
+     * @memberof FinetuningModelCatalogResponse
+     */
+    monitoring: any | null;
 }
 
 
@@ -84,6 +90,7 @@ export function instanceOfFinetuningModelCatalogResponse(value: object): value i
     if (!('models' in value) || value['models'] === undefined) return false;
     if (!('hasToolCalling' in value) || value['hasToolCalling'] === undefined) return false;
     if (!('maxContext' in value) || value['maxContext'] === undefined) return false;
+    if (!('monitoring' in value) || value['monitoring'] === undefined) return false;
     return true;
 }
 
@@ -102,6 +109,7 @@ export function FinetuningModelCatalogResponseFromJSONTyped(json: any, ignoreDis
         'models': json['models'],
         'hasToolCalling': json['has_tool_calling'],
         'maxContext': json['max_context'],
+        'monitoring': json['monitoring'],
     };
 }
 
@@ -121,5 +129,6 @@ export function FinetuningModelCatalogResponseToJSONTyped(value?: FinetuningMode
         'models': value['models'],
         'has_tool_calling': value['hasToolCalling'],
         'max_context': value['maxContext'],
+        'monitoring': value['monitoring'],
     };
 }

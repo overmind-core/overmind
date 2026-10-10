@@ -92,9 +92,9 @@ def test_landing_measures_every_row_without_full_frame_reads(tmp_path, settings,
 
 @pytest.mark.django_db
 def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkeypatch):
+    from conftest import import_version
+
     from overbae.services.datasets import use
-    from overbae.services.datasets.notebook import agent
-    from overbae.services.datasets.notebook import run as run_svc
 
     settings.MEDIA_ROOT = tmp_path / "media"
     project = Project.objects.create(name="Batch", slug="batch")
@@ -108,28 +108,24 @@ def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkey
         raise AssertionError("Whole-frame read in the batch lifecycle")
 
     monkeypatch.setattr(store, "read_frame", forbid)
-    tools = agent.Tools(dataset.id, None, lambda event: None)
-    script = """
-def transform_batch(df):
-    df = df.loc[df.source_row % 3 != 1].copy()
-    df['decision'] = df.apply(lambda r: {
-        'state': r['text'], 'question': 'Choose', 'kind': 'choice',
-        'options': ['No', 'Yes'], 'target_probabilities': r['target']
-    }, axis=1)
-    return df[['source_row', 'decision']]
-"""
-    preview = tools.try_script({"script": script})
-    assert preview["ok"], preview
-    assert preview["rows"] == 13_335
-    proposed = tools.add_cell({"title": "Native", "script": script, "kind": "mechanical"})
-    assert proposed["ok"] and not proposed.get("proposed"), proposed
-    assert proposed["review"]["rows_removed"] == 6668
-    assert proposed["review"]["identity_preserved"]
-    cell = dataset.cells.get(pk=proposed["id"])
-    run_svc.execute(dataset, activate_cell_id=cell.id)
-    dataset.refresh_from_db()
+    selected = [
+        {
+            "source_row": r["source_row"],
+            "decision": {
+                "state": r["text"],
+                "question": "Choose",
+                "kind": "choice",
+                "options": ["No", "Yes"],
+                "target_probabilities": r["target"],
+            },
+        }
+        for r in store.iter_rows(paths.cell_path(dataset.pk, source.pk))
+        if r["source_row"] % 3 != 1
+    ]
+    cell = import_version(dataset, selected, name="Native")
+    assert cell.review["rows_removed"] == 6668
+    assert cell.review["identity_preserved"]
     assert dataset.state == "idle", dataset.error
-    cell.refresh_from_db()
     assert cell.rows == 13_335 and cell.intent_report["train"]["ok"]
     first = store.head(paths.cell_path(dataset.id, cell.id), 1)[0]
     assert all(
@@ -138,59 +134,6 @@ def transform_batch(df):
     assert first["_overmind_provenance"]["parents"][0]["row"] == original["source_row"]
     assert first["decision"]["target_probabilities"] == [0.25, 0.75]
     assert use.check(dataset, "train", cell=cell).id == cell.id
-
-
-def test_late_batch_failure_never_returns_partial_output(tmp_path):
-    from overbae.services.datasets.notebook import runner
-
-    path = tmp_path / "input.parquet"
-    store.write_rows(path, ({"source_row": i, "x": i} for i in range(20_003)))
-    result = runner.run(
-        """
-def transform_batch(df):
-    if df.x.max() > 20_000:
-        raise ValueError('late batch failed')
-    return df
-""",
-        path,
-        library_cache=tmp_path / "libraries",
-    )
-    assert not result.ok and "late batch failed" in result.error
-    assert result.frame is None
-
-
-@pytest.mark.django_db
-def test_batch_quality_audit_covers_late_failures_without_loading_source(
-    tmp_path, settings, monkeypatch
-):
-    from overbae.services.datasets import review
-
-    settings.MEDIA_ROOT = tmp_path / "media"
-    project = Project.objects.create(name="Audit", slug="audit-stream")
-    dataset = Dataset.objects.create(project=project, name="Audit", intent="eval")
-    land.commit(
-        dataset,
-        land.Landing(
-            {"input": f"question {i}", "expected_output": "answer"} for i in range(20_003)
-        ),
-    )
-
-    def forbid(*args, **kwargs):
-        raise AssertionError("Whole-frame read during audit")
-
-    monkeypatch.setattr(store, "read_frame", forbid)
-    result = review.record_quality(
-        dataset,
-        dataset.source,
-        [{"name": "coverage", "evidence": "Test the final identity"}],
-        script="""
-def transform_batch(df):
-    return df[['source_row']].assign(coverage=df.source_row != 20_002)
-""",
-    )
-    check = result["checks"][0]
-    assert check["rows_checked"] == 20_003
-    assert check["rows_failed"] == 1 and check["failed_source_rows"] == [20_002]
 
 
 def test_row_lookup_reads_only_requested_parquet_groups(tmp_path, monkeypatch):
@@ -279,7 +222,6 @@ def test_attached_files_and_replay_never_materialize_existing_frame(
 ):
     from overbae.models import Dataset, Project
     from overbae.services.datasets import attachments, land, paths, store
-    from overbae.services.datasets.notebook import run
 
     settings.MEDIA_ROOT = tmp_path
     project = Project.objects.create(name="Attachment streaming", slug="attachment-streaming")
@@ -299,8 +241,4 @@ def test_attached_files_and_replay_never_materialize_existing_frame(
     output = paths.cell_path(dataset.id, added.id)
     assert store.page(output, offset=3000)["rows"][0]["text"] == "attached 0"
     assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == source.fingerprint
-    added.state = "queued"
-    added.save(update_fields=["state"])
-    run.execute(dataset)
-    added.refresh_from_db()
     assert added.state == "ok" and added.rows == 3005

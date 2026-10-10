@@ -43,7 +43,7 @@ def _mamba_kernels(image: modal.Image, torch_pin: str) -> modal.Image:
 
 
 def _finish(image: modal.Image, env: dict[str, str]) -> modal.Image:
-    return attach_sft_assets(attach_modelfam(image.env(env)))
+    return attach_sft_assets(attach_modelfam(image.pip_install("jsonschema==4.26.0").env(env)))
 
 
 def _clone_trl(image: modal.Image, *, branch: str | None = "v1.10.0") -> modal.Image:

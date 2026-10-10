@@ -145,11 +145,12 @@ def test_create_dispatches_celery_and_persists_job():
     assert job.triggered_by_id == u.id
     assert job.celery_task_id == "celery-xyz"
     assert job.base_model == "meta-llama/Llama-3.2-3B-Instruct"
-    assert job.hyperparameters == {
+    assert {key: value for key, value in job.hyperparameters.items() if key != "monitoring"} == {
         "learning_rate": 3e-4,
         "epochs": 2,
         "objective": "assistant_cross_entropy",
     }
+    assert job.hyperparameters["monitoring"]["mode"] == "adaptive"
 
     mock_apply.assert_called_once()
     kwargs = mock_apply.call_args.kwargs

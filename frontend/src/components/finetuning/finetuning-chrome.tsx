@@ -75,12 +75,14 @@ export function EvalScoreChip({ value }: { value: number | null | undefined }) {
 export function FtStatusBadge({
   status,
   fallback,
+  label,
   solidProgress = false,
   progress,
   className,
 }: {
   status: string | null | undefined;
   fallback: string;
+  label?: string;
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
@@ -99,6 +101,7 @@ export function FtStatusBadge({
       cfg={cfg}
       className={className}
       icon={icon}
+      label={label}
       progress={progress}
       solidProgress={solidProgress}
     />

@@ -2,23 +2,14 @@ import { useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 
-import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGuestGate } from "@/hooks/use-guest-gate";
-import { cn } from "@/lib/utils";
-
-const THEMES = [
-  { icon: Icon.themeLight, label: "Light", value: "light" },
-  { icon: Icon.themeDark, label: "Dark", value: "dark" },
-  { icon: Icon.model, label: "System", value: "system" },
-] as const;
 
 export function SettingsMenuButton() {
   const navigate = useNavigate();
-  const { theme, setTheme } = useTheme();
   const guard = useGuestGate();
   const [open, setOpen] = useState(false);
 
@@ -68,31 +59,6 @@ export function SettingsMenuButton() {
             Open settings
             <Icon.chevronRight className="size-3" />
           </Button>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-b border-border/70 px-3 py-2">
-          <span className="text-sm text-muted-foreground">Theme</span>
-          <div className="flex overflow-hidden rounded-md border border-border">
-            {THEMES.map((t) => (
-              <button
-                aria-label={`${t.label} theme`}
-                aria-pressed={theme === t.value}
-                className={cn(
-                  "flex h-7 items-center gap-1.5 px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                  theme === t.value
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                  t.value !== "light" && "border-l border-border"
-                )}
-                key={t.value}
-                onClick={() => setTheme(t.value)}
-                type="button"
-              >
-                <t.icon className="size-3.5" />
-                {t.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="p-1">

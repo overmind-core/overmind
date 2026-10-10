@@ -18,6 +18,7 @@
   "models": [
     {
       "id": "Qwen/Qwen3.5-2B",
+      "openrouter_id": null,
       "backend": "together",
       "display": "Qwen 3.5 2B",
       "hf_model_id": "Qwen/Qwen3.5-2B",
@@ -72,6 +73,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-0.8B",
+      "openrouter_id": null,
       "backend": "together",
       "display": "Qwen 3.5 0.8B",
       "hf_model_id": "Qwen/Qwen3.5-0.8B",
@@ -126,6 +128,7 @@
     },
     {
       "id": "Qwen/Qwen3-4B",
+      "openrouter_id": null,
       "backend": "together",
       "display": "Qwen 3 4B",
       "hf_model_id": "Qwen/Qwen3-4B",
@@ -180,6 +183,7 @@
     },
     {
       "id": "Qwen/Qwen3-1.7B",
+      "openrouter_id": null,
       "backend": "together",
       "display": "Qwen 3 1.7B",
       "hf_model_id": "Qwen/Qwen3-1.7B",
@@ -234,6 +238,7 @@
     },
     {
       "id": "meta-llama/Llama-3.2-3B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
       "backend": "together",
       "display": "Llama 3.2 3B Instruct",
       "hf_model_id": "meta-llama/Llama-3.2-3B-Instruct",
@@ -288,6 +293,7 @@
     },
     {
       "id": "meta-llama/Llama-3.2-1B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
       "backend": "together",
       "display": "Llama 3.2 1B Instruct",
       "hf_model_id": "meta-llama/Llama-3.2-1B-Instruct",
@@ -342,6 +348,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-9B",
+      "openrouter_id": "qwen/qwen3.5-9b",
       "backend": "together",
       "display": "Qwen 3.5 9B",
       "hf_model_id": "unsloth/Qwen3.5-9B",
@@ -396,6 +403,7 @@
     },
     {
       "id": "Qwen/Qwen3-8B",
+      "openrouter_id": "qwen/qwen3-8b",
       "backend": "together",
       "display": "Qwen 3 8B",
       "hf_model_id": "Qwen/Qwen3-8B",
@@ -450,6 +458,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-7B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "backend": "together",
       "display": "Qwen 2.5 7B Instruct",
       "hf_model_id": "Qwen/Qwen2.5-7B-Instruct",
@@ -504,6 +513,7 @@
     },
     {
       "id": "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
+      "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
       "backend": "together",
       "display": "Llama 3.1 8B Instruct",
       "hf_model_id": "meta-llama/Llama-3.1-8B-Instruct",
@@ -558,6 +568,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-27B",
+      "openrouter_id": "qwen/qwen3.5-27b",
       "backend": "together",
       "display": "Qwen 3.5 27B",
       "hf_model_id": "Qwen/Qwen3.5-27B",
@@ -612,6 +623,7 @@
     },
     {
       "id": "Qwen/Qwen3-14B",
+      "openrouter_id": "qwen/qwen3-14b",
       "backend": "together",
       "display": "Qwen 3 14B",
       "hf_model_id": "Qwen/Qwen3-14B",
@@ -666,6 +678,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-35B-A3B",
+      "openrouter_id": "qwen/qwen3.5-35b-a3b",
       "backend": "together",
       "display": "Qwen 3.5 35B MoE",
       "hf_model_id": "Qwen/Qwen3.5-35B-A3B",
@@ -720,6 +733,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-4B",
+      "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-4B",
       "display": "Qwen 3.5 4B",
       "tier": "compact",
@@ -782,6 +796,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-2B",
+      "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-2B",
       "display": "Qwen 3.5 2B",
       "tier": "compact",
@@ -844,6 +859,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-0.8B",
+      "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-0.8B",
       "display": "Qwen 3.5 0.8B",
       "tier": "compact",
@@ -906,6 +922,7 @@
     },
     {
       "id": "Qwen/Qwen3-4B",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 3 4B",
       "hf_model_id": "unsloth/Qwen3-4B",
@@ -968,6 +985,7 @@
     },
     {
       "id": "Qwen/Qwen3-1.7B",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 3 1.7B",
       "hf_model_id": "unsloth/Qwen3-1.7B",
@@ -1028,6 +1046,7 @@
     },
     {
       "id": "Qwen/Qwen3-0.6B",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 3 0.6B",
       "hf_model_id": "unsloth/Qwen3-0.6B",
@@ -1088,6 +1107,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 2.5 0.5B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-0.5B-Instruct",
@@ -1148,6 +1168,7 @@
     },
     {
       "id": "meta-llama/Llama-3.2-3B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
       "backend": "baseten",
       "display": "Llama 3.2 3B Instruct",
       "hf_model_id": "unsloth/Llama-3.2-3B-Instruct",
@@ -1208,6 +1229,7 @@
     },
     {
       "id": "meta-llama/Llama-3.2-1B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
       "backend": "baseten",
       "display": "Llama 3.2 1B Instruct",
       "hf_model_id": "unsloth/Llama-3.2-1B-Instruct",
@@ -1268,6 +1290,7 @@
     },
     {
       "id": "LiquidAI/LFM2.5-2.6B",
+      "openrouter_id": "liquid/lfm-2.5-2.6b:free",
       "backend": "baseten",
       "display": "LFM2.5 2.6B",
       "hf_model_id": "LiquidAI/LFM2.5-2.6B",
@@ -1327,6 +1350,7 @@
     },
     {
       "id": "LiquidAI/LFM2.5-1.2B-Instruct",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "LFM2.5 1.2B Instruct",
       "hf_model_id": "unsloth/LFM2.5-1.2B-Instruct",
@@ -1389,6 +1413,7 @@
     },
     {
       "id": "LiquidAI/LFM2.5-350M",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "LFM2.5 350M",
       "hf_model_id": "LiquidAI/LFM2.5-350M",
@@ -1448,6 +1473,7 @@
     },
     {
       "id": "LiquidAI/LFM2.5-230M",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "LFM2.5 230M",
       "hf_model_id": "unsloth/LFM2.5-230M",
@@ -1510,6 +1536,7 @@
     },
     {
       "id": "fdtn-ai/antares-1b",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Antares 1B (Security)",
       "hf_model_id": "fdtn-ai/antares-1b",
@@ -1570,6 +1597,7 @@
     },
     {
       "id": "fdtn-ai/antares-350m",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Antares 350M (Security)",
       "hf_model_id": "fdtn-ai/antares-350m",
@@ -1630,6 +1658,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-9B",
+      "openrouter_id": "qwen/qwen3.5-9b",
       "hf_model_id": "unsloth/Qwen3.5-9B",
       "display": "Qwen 3.5 9B",
       "tier": "small",
@@ -1692,6 +1721,7 @@
     },
     {
       "id": "Qwen/Qwen3-8B",
+      "openrouter_id": "qwen/qwen3-8b",
       "backend": "baseten",
       "display": "Qwen 3 8B",
       "hf_model_id": "unsloth/Qwen3-8B",
@@ -1754,6 +1784,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-7B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "backend": "baseten",
       "display": "Qwen 2.5 7B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-7B-Instruct",
@@ -1816,6 +1847,7 @@
     },
     {
       "id": "google/gemma-4-E4B-it",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Gemma 4 E4B",
       "hf_model_id": "unsloth/gemma-4-E4B-it",
@@ -1878,6 +1910,7 @@
     },
     {
       "id": "google/gemma-4-E2B-it",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Gemma 4 E2B",
       "hf_model_id": "unsloth/gemma-4-E2B-it",
@@ -1939,6 +1972,7 @@
     },
     {
       "id": "meta-llama/Llama-3.1-8B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
       "backend": "baseten",
       "display": "Llama 3.1 8B Instruct",
       "hf_model_id": "unsloth/Llama-3.1-8B-Instruct",
@@ -2001,6 +2035,7 @@
     },
     {
       "id": "LiquidAI/LFM2.5-8B-A1B",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "LFM2.5 8B-A1B",
       "hf_model_id": "LiquidAI/LFM2.5-8B-A1B",
@@ -2060,6 +2095,7 @@
     },
     {
       "id": "Qwen/Qwen3.8-27B",
+      "openrouter_id": "qwen/qwen3.8-27b",
       "hf_model_id": "unsloth/Qwen3.8-27B",
       "display": "Qwen 3.8 27B",
       "tier": "mid",
@@ -2122,6 +2158,7 @@
     },
     {
       "id": "Qwen/Qwen3.6-27B",
+      "openrouter_id": "qwen/qwen3.6-27b",
       "hf_model_id": "unsloth/Qwen3.6-27B",
       "display": "Qwen 3.6 27B",
       "tier": "mid",
@@ -2184,6 +2221,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-27B",
+      "openrouter_id": "qwen/qwen3.5-27b",
       "hf_model_id": "unsloth/Qwen3.5-27B",
       "display": "Qwen 3.5 27B",
       "tier": "mid",
@@ -2246,6 +2284,7 @@
     },
     {
       "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "openrouter_id": "qwen/qwen3-coder-30b-a3b-instruct",
       "hf_model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "display": "Qwen 3 Coder 30B MoE",
       "tier": "mid",
@@ -2308,6 +2347,7 @@
     },
     {
       "id": "Qwen/Qwen3-14B",
+      "openrouter_id": "qwen/qwen3-14b",
       "backend": "baseten",
       "display": "Qwen 3 14B",
       "hf_model_id": "unsloth/Qwen3-14B",
@@ -2370,6 +2410,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-14B-Instruct",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 2.5 14B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-14B-Instruct",
@@ -2432,6 +2473,7 @@
     },
     {
       "id": "google/gemma-4-12B-it",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Gemma 4 12B",
       "hf_model_id": "unsloth/gemma-4-12b-it",
@@ -2493,6 +2535,7 @@
     },
     {
       "id": "openai/gpt-oss-20b",
+      "openrouter_id": "openai/gpt-oss-20b",
       "hf_model_id": "unsloth/gpt-oss-20b-BF16",
       "display": "GPT-OSS 20B",
       "tier": "mid",
@@ -2557,6 +2600,7 @@
     },
     {
       "id": "Qwen/Qwen3.5-35B-A3B",
+      "openrouter_id": "qwen/qwen3.5-35b-a3b",
       "hf_model_id": "unsloth/Qwen3.5-35B-A3B",
       "display": "Qwen 3.5 35B MoE",
       "tier": "large",
@@ -2619,6 +2663,7 @@
     },
     {
       "id": "Qwen/Qwen3-32B",
+      "openrouter_id": "qwen/qwen3-32b",
       "backend": "baseten",
       "display": "Qwen 3 32B",
       "hf_model_id": "unsloth/Qwen3-32B",
@@ -2681,6 +2726,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-72B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-72b-instruct",
       "backend": "baseten",
       "display": "Qwen 2.5 72B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
@@ -2741,6 +2787,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-32B-Instruct",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Qwen 2.5 32B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-32B-Instruct",
@@ -2803,6 +2850,7 @@
     },
     {
       "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-coder-32b-instruct",
       "backend": "baseten",
       "display": "Qwen 2.5 Coder 32B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
@@ -2866,6 +2914,7 @@
     },
     {
       "id": "google/gemma-4-31B-it",
+      "openrouter_id": "google/gemma-4-31b-it",
       "backend": "baseten",
       "display": "Gemma 4 31B",
       "hf_model_id": "unsloth/gemma-4-31B-it",
@@ -2927,6 +2976,7 @@
     },
     {
       "id": "google/gemma-4-26B-A4B-it",
+      "openrouter_id": "google/gemma-4-26b-a4b-it",
       "backend": "baseten",
       "display": "Gemma 4 26B-A4B",
       "hf_model_id": "unsloth/gemma-4-26B-A4B-it",
@@ -2988,6 +3038,7 @@
     },
     {
       "id": "meta-llama/Llama-3.3-70B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.3-70b-instruct",
       "backend": "baseten",
       "display": "Llama 3.3 70B Instruct",
       "hf_model_id": "unsloth/Llama-3.3-70B-Instruct",
@@ -3050,6 +3101,7 @@
     },
     {
       "id": "unsloth/Muse-Glimmer-30B",
+      "openrouter_id": null,
       "backend": "baseten",
       "display": "Muse Glimmer 30B",
       "hf_model_id": "unsloth/Muse-Glimmer-30B",
@@ -3111,6 +3163,7 @@
     },
     {
       "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+      "openrouter_id": "nvidia/nemotron-3.5-lightning",
       "backend": "baseten",
       "display": "Nemotron 3.5 Lightning 30B-A3B",
       "hf_model_id": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",

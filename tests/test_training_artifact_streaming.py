@@ -29,9 +29,45 @@ def test_disk_materialization_preserves_order_duplicates_and_refuses_changed_tar
     with pytest.raises(ValueError, match="validated"):
         materialize_files(tokens, digest, [(selection, destination, spec)])
     assert destination.read_bytes() == before
+
     with pytest.raises(ValueError, match="changed"):
         materialize_files(tokens, "wrong", [(selection, destination, spec)])
     assert destination.read_bytes() == before
+
+
+def test_transfer_measurements_cover_actual_input_and_selected_rows(tmp_path):
+    source, keys, tokens, output = (tmp_path / name for name in ("source", "keys", "tokens", "out"))
+    rows = [{"messages": [{"role": "assistant", "content": str(i)}]} for i in range(3000)]
+    source.write_text("\n" + "".join(json.dumps(row) + "\n" for row in rows + rows[:2]))
+    tokens.write_text(
+        "".join(
+            json.dumps({"key": row_key(row), "input_ids": [i]}) + "\n" for i, row in enumerate(rows)
+        )
+    )
+    exported = []
+    spec = write_selection(source, keys, progress=exported.append)
+    assert spec["rows"] == 3002
+    assert exported[0]["completed"] == 0
+    assert exported[-1]["completed"] == source.stat().st_size
+    assert exported[-1]["unit"] == "bytes"
+    events = []
+    materialize_files(
+        tokens,
+        hashlib.sha256(tokens.read_bytes()).hexdigest(),
+        [(keys, output, spec)],
+        progress=events.append,
+    )
+    for stage in ("verifying_prepared_data", "indexing_prepared_rows", "selecting_prepared_rows"):
+        observations = [event for event in events if event["stage"] == stage]
+        assert observations[0]["completed"] == 0
+        assert observations[-1]["completed"] == observations[-1]["total"]
+        assert [event["completed"] for event in observations] == sorted(
+            event["completed"] for event in observations
+        )
+    assert events[-1]["completed"] == 3002
+    assert [json.loads(line)["input_ids"][0] for line in output.read_text().splitlines()] == list(
+        range(3000)
+    ) + [0, 1]
 
 
 def test_preprocessing_consumes_one_pass_input_and_writes_without_retaining_artifacts(tmp_path):

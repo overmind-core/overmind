@@ -9,7 +9,7 @@ import pandas as pd
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import alignment, contract, proposals, store
+from overbae.services.datasets import alignment, contract, store
 from overbae.services.datasets.profile import profile_records
 
 
@@ -51,7 +51,6 @@ def frame(
         **fields,
     )
     cell.refresh_from_db()
-    proposals.retire_outdated(dataset)
     from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
 
     maybe_enqueue_card_evaluator_sync(dataset)

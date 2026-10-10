@@ -30,7 +30,7 @@ from overbae.modal.model_registry import (
 )
 from overbae.modal.training_type import training_context_length, training_enabled
 from overbae.models import TrainingPreparation
-from overbae.services import training_release
+from overbae.services import operational_progress, training_release
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
@@ -74,7 +74,12 @@ def request_preparation(
         )
     if not 128 <= context_length <= 2_000_000:
         raise InputValidationError("Context length must be between 128 and 2,000,000 tokens.")
-    context_length = baseten_context_length(model_max=maximum, requested=context_length)
+    supported_context = baseten_context_length(model_max=maximum, requested=context_length)
+    if supported_context != context_length:
+        raise InputValidationError(
+            f"context_length={context_length} is unsupported; choose {supported_context} "
+            "or another supported context length."
+        )
     for target in (cell, validation_cell):
         if target is not None:
             if target.dataset.project_id != cell.dataset.project_id:
@@ -163,6 +168,7 @@ def observe_progress(prep):
         TrainingPreparation.objects.filter(
             pk=prep.pk, state="running", remote_id=prep.remote_id
         ).update(report={"progress": progress}, touched_at=timezone.now())
+        operational_progress.preparation(prep, progress)
     except (
         OSError,
         ValueError,
@@ -173,6 +179,29 @@ def observe_progress(prep):
         NotFoundError,
     ):
         return
+
+
+def live_progress_for_job(job):
+    progress = dict(job.progress) if isinstance(job.progress, dict) else {}
+    binding = progress.get("preparation")
+    if job.status != "preparing" or not isinstance(binding, dict) or not binding.get("id"):
+        return progress
+    current = (
+        TrainingPreparation.objects.filter(
+            pk=binding["id"], cell__dataset__project_id=job.project_id
+        )
+        .values("state", "report")
+        .first()
+    )
+    if current:
+        report = current["report"] or {}
+        progress["preparation"] = {
+            **binding,
+            "state": current["state"],
+            "report": report,
+            **(report.get("progress") or {}),
+        }
+    return progress
 
 
 def advance(preparation_id):
@@ -214,6 +243,29 @@ def advance(preparation_id):
                 ]
                 if cell.fingerprint != expected:
                     raise ValueError("Dataset version changed before preprocessing.")
+            total_rows = prep.cell.rows + (prep.validation_cell.rows if prep.validation_cell else 0)
+            report_interval = max(1, min(1000, total_rows // 10))
+
+            def report_export(stage, completed_rows):
+                TrainingPreparation.objects.filter(
+                    pk=prep.pk, state="starting", deadline=prep.deadline
+                ).update(
+                    report={
+                        "progress": {
+                            "stage": stage,
+                            "completed_rows": completed_rows,
+                            "total_rows": total_rows,
+                        }
+                    },
+                    touched_at=timezone.now(),
+                )
+                operational_progress.preparation(
+                    prep,
+                    {"stage": stage, "completed_rows": completed_rows, "total_rows": total_rows},
+                )
+
+            completed_rows = 0
+            report_export("exporting", completed_rows)
             with tempfile.TemporaryDirectory(prefix="training-preparation-") as directory:
                 source = Path(directory) / "rows.jsonl.gz"
                 with (
@@ -237,7 +289,14 @@ def advance(preparation_id):
                                 )
                                 + "\n"
                             )
+                            completed_rows += 1
+                            if (
+                                completed_rows % report_interval == 0
+                                or completed_rows == total_rows
+                            ):
+                                report_export("exporting", completed_rows)
                 digest = file_digest(source)
+                report_export("uploading", completed_rows)
                 remote = f"/preparations/{prep.id}/rows.jsonl.gz"
                 volume = modal.Volume.from_name(
                     "overmind-sft", environment_name=prep.config["runtime"]["environment"]

@@ -18,7 +18,14 @@ def test_native_forecast_uses_matching_measurements_and_selected_gpu():
         id="pilot",
         effective_configuration={"gpu_type": "H200", "gpu_count": 1},
         hyperparameters=recipe,
-        progress={"tokens_per_second": 4000, "trained_steps": 100, "total_steps": 100},
+        progress={
+            "tokens_per_second": 4000,
+            "trained_steps": 100,
+            "total_steps": 100,
+            "compute_usage": [
+                {"usage_id": "worker", "gpu_type": "H200", "gpu_count": 1, "elapsed_seconds": 100}
+            ],
+        },
         started_at=datetime(2026, 10, 4, tzinfo=UTC),
         completed_at=datetime(2026, 10, 4, tzinfo=UTC) + timedelta(seconds=100),
         result={},

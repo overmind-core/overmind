@@ -23,8 +23,11 @@ from overbae.models import (
     Capability,
     ConnectorCredential,
     Dataset,
+    DatasetPipelineRun,
+    DatasetTransfer,
     DeployedModel,
     FinetuningJob,
+    InferenceRequest,
     ModelActivation,
     OptimizerExperiment,
     Score,
@@ -32,7 +35,14 @@ from overbae.models import (
     TaskExecution,
     TrainingPreparation,
 )
-from overbae.services import model_workflows
+from overbae.services import (
+    inference_requests,
+    model_workflows,
+    operational_progress,
+    training_monitoring,
+)
+from overbae.services.datasets import transfers, workbench
+from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_behaviour,
     resolve_capability,
@@ -64,6 +74,8 @@ from overbae.services.mcp.contracts.observability import (
     TraceHealth,
     TraceRow,
 )
+from overbae.services.mcp.contracts.operations import InspectOperationInput, InspectOperationOutput
+from overbae.services.mcp.contracts.workbench import compact_run
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import (
     dataset_run_job_payload,
@@ -547,7 +559,31 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     label = kind
     underlying: list[ResourceLinkContract] = []
 
-    if kind in model_workflows.MODELS:
+    if kind == "dataset_transfer":
+        job = DatasetTransfer.objects.filter(project=context.project, pk=normalized_id).first()
+        if job is None:
+            raise MCPError("resource_not_found", "The transfer was not found in this project.")
+        created_at, updated_at, completed_at = job.created_at, job.updated_at, job.published_at
+        label, status = "Dataset file transfer", job.state
+        details = transfers.describe(job)
+        progress = {
+            "bytes_received": details["received"],
+            "bytes_total": details["size"],
+            "dispatch": details["dispatch"],
+        }
+        primary = _link("jobs", f"dataset_transfer/{job.pk}", label)
+        for field in ("id", "eval_id"):
+            if job.result.get(field):
+                underlying.append(_link("datasets", job.result[field], "Transferred dataset"))
+    elif kind == "inference_request":
+        job = InferenceRequest.objects.filter(project=context.project, pk=normalized_id).first()
+        if job is None:
+            raise MCPError("resource_not_found", "Inference request not found in this project")
+        created_at, updated_at, completed_at = job.created_at, job.updated_at, job.completed_at
+        label, status, job_error = "Inference request", job.state, job.error_code or None
+        details = inference_requests.describe(job)
+        primary = _link("jobs", f"inference_request/{job.pk}", label)
+    elif kind in model_workflows.MODELS:
         job = model_workflows.find(context.project, kind, normalized_id) if normalized_id else None
         if job is None:
             raise MCPError("resource_not_found", "The workflow was not found in this project")
@@ -566,6 +602,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         if job is None:
             raise MCPError("resource_not_found", "The training preparation was not found.")
         created_at, updated_at = job.created_at, job.touched_at
+        completed_at = job.touched_at if job.state in {"ready", "failed"} else None
         label, status, job_error = "Training preparation", job.state, job.error or None
         progress = safe_json(job.report)
         details = safe_json(job.config)
@@ -598,10 +635,28 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         details = {
             "base_model": job.base_model,
             "provider": job.provider,
+            "monitoring": training_monitoring.summary(job),
             "capability": job.capability.slug if job.capability_id else None,
             "dataset_id": str(job.dataset_id),
         }
         primary = _link("finetunes", str(job.id), label)
+    elif kind == "dataset_pipeline":
+        job = (
+            DatasetPipelineRun.objects.select_related("dataset", "pipeline", "source")
+            .filter(dataset__project=context.project, pk=normalized_id)
+            .first()
+            if normalized_id
+            else None
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "The dataset pipeline run was not found.")
+        created_at, updated_at = job.created_at, job.updated_at
+        label, status, job_error = "Dataset transformation", job.state, job.error or None
+        primary = _link("jobs", f"dataset_pipeline/{job.pk}", label)
+        details = compact_run(workbench.run_record(job), primary.model_dump(mode="json"))
+        completed_at = job.updated_at if details["completed_at"] else None
+        progress = details["result"]
+        underlying.append(_link("datasets", str(job.dataset_id), "Dataset"))
     elif kind == "dataset_run":
         job = (
             Dataset.objects.filter(project=context.project, id=normalized_id)
@@ -632,7 +687,6 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "intent": job.intent,
             "source_kind": job.source_kind,
             "active": snapshot["active"],
-            "latest_turn": snapshot["latest_turn"],
             "cells": snapshot["cells"],
             "next_action": snapshot["next_action"],
             "next_actions": snapshot["next_actions"],
@@ -687,8 +741,13 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             job = query.filter(model_id=ref).first()
         if job is None:
             raise MCPError("resource_not_found", "The deployment was not found.")
-        created_at, completed_at = job.created_at, job.deployed_at
+        created_at, updated_at, completed_at = (
+            job.created_at,
+            job.status_changed_at,
+            job.deployed_at,
+        )
         label, status, job_error = job.model_id, job.status, job.error_message or None
+        progress = deployment_progress(job)
         details = {
             "model_id": job.model_id,
             "base_model_id": job.base_model_id,
@@ -725,6 +784,10 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     else:
         raise MCPError("invalid_filter", "The requested job kind is not supported.")
 
+    operation = operational_progress.latest(context.project.pk, kind, job.id)
+    if operation:
+        details["operation"] = operation
+        underlying.append(_link("operations", operation["id"], "Operational timeline"))
     return GetJobOutput(
         kind=kind,
         id=str(job.id),
@@ -738,7 +801,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         details=details,
         resource=primary,
         resource_links=[primary, *underlying],
-        summary=f"{label}: {status}.",
+        summary=f"{label[: 237 - len(status)]}: {status}.",
     )
 
 
@@ -749,8 +812,39 @@ def _async_handler(function: Callable[[BaseModel, MCPContext], BaseModel]):
     return handler
 
 
+def inspect_operation_sync(payload, context):
+    try:
+        result = operational_progress.inspect(
+            context.project.pk, payload.operation, after=payload.after, limit=payload.limit
+        )
+    except operational_progress.OperationNotFoundError as exc:
+        raise MCPError("resource_not_found", str(exc)) from None
+    return InspectOperationOutput(
+        summary=f"{result['stage']}: {result['status']}.",
+        operation=result,
+        resource=_link("operations", str(payload.operation), "Operational timeline"),
+    )
+
+
 def register_observability_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
+
+    catalog.register(
+        ToolDefinition(
+            name="inspect_operation",
+            title="Inspect operation",
+            description="Read a durable operational timeline with cursor pagination. Passive: never starts provider work. Observation, heartbeat and forward progress are separate facts.",
+            input_model=InspectOperationInput,
+            output_model=InspectOperationOutput,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:read"}),
+            cost_class="free",
+            async_mode="sync",
+        ),
+        _async_handler(inspect_operation_sync),
+    )
 
     definitions = [
         (
@@ -792,7 +886,9 @@ def register_observability_tools(catalog) -> None:
         (
             "get_job",
             "Get job",
-            "Read a normalized status snapshot for a project job.",
+            "Read a normalized status snapshot for a project job. Workshop snapshots retain "
+            "measured progress, checks and identities; read evidence_resource for retained "
+            "row examples and preview samples, without starting work.",
             GetJobInput,
             GetJobOutput,
             _get_job_sync,

@@ -578,7 +578,7 @@ const DATETIME_TRIGGER_CLASS = cn(
   "h-8 cursor-pointer rounded-sm border border-border bg-background px-2 text-xs font-medium transition-colors",
   "hover:bg-accent/60 focus-visible:ring-[2px] focus-visible:ring-ring/60",
   NATIVE_DATE_TRIGGER,
-  "dark:[color-scheme:light]"
+  "[color-scheme:light]"
 );
 
 /** ISO → `datetime-local` value (local wall clock). Empty/invalid → "". */

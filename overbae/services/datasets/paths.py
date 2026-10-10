@@ -24,11 +24,3 @@ def source_path(dataset_id: Any, artifact_id: str) -> Path:
 
 def attachment_path(dataset_id: Any, cell_id: Any) -> Path:
     return dataset_dir(dataset_id) / "attachments" / f"{cell_id}.parquet"
-
-
-def workspace_dir(dataset_id: Any) -> Path:
-    return dataset_dir(dataset_id) / "workspace"
-
-
-def library_cache(project_id: Any) -> Path:
-    return media_root() / "libraries" / str(project_id)

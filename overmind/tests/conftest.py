@@ -29,3 +29,7 @@ os.environ["OVERMIND_ANALYTICS_ENABLED"] = "false"
 @pytest.fixture(autouse=True)
 def _isolated_claude_config(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("user-config")))
+    # Endpoint tests must declare their connection, not inherit the developer's local API.
+    for name in ("OVERMIND_API_URL", "OVERMIND_BASE_URL", "OVERMIND_PROJECT_ID"):
+        monkeypatch.delenv(name, raising=False)

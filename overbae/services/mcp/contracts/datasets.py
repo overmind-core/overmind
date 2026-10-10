@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import preparation, review, workflow
+from overbae.services.datasets import review, transformation
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -28,12 +28,10 @@ _CELL_CAP = 50
 _SAMPLE_ROWS = 5
 _SAMPLE_CELL_CHARS = 600
 _QUERY_ROWS = 100
-_CHAT_DEFAULT = 10
-_CHAT_MAX = 30
 _SCRIPT_CHARS = 8_000
 _RANK_CAP = 20
 _SUMMARY_CHARS = 240
-_BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
+_BUSY = (Dataset.State.LANDING, Dataset.State.RUNNING)
 _PATH_RE = re.compile(r"(?:/[\w.-]+)+")
 
 
@@ -107,6 +105,15 @@ def _quality_summary(report):
     return result
 
 
+def _source_summary(source):
+    # Page whole entries: clipping extraction metadata can erase OCR limitations.
+    return {
+        key: source[key]
+        for key in ("id", "sha256", "filename", "bytes", "rows", "extraction")
+        if key in source
+    }
+
+
 def sanitize_error(value: str, limit: int = 500) -> str:
     return _clip(_PATH_RE.sub("<path>", (value or "").strip()), limit)
 
@@ -161,11 +168,24 @@ class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
     intent: Literal["train", "eval", "explore", "pending"]
-    source_kind: Literal["file", "traces", "pending"]
-    state: Literal["landing", "diagnosing", "idle", "running", "error"]
+    source_kind: Literal["file", "traces", "llm_calls", "pending"]
+    state: Literal["landing", "idle", "running", "error"]
     capability: CapabilityRef | None = None
     active: ActiveVersion | None = None
     resource: ResourceLinkContract
+
+
+class CellTransformation(MCPModel):
+    execution: Literal[
+        "source", "unrecorded", "isolated_container", "platform_operations", "external_import"
+    ]
+    run: str | None = Field(max_length=36)
+    pipeline: str | None = Field(max_length=36)
+    revision: int | None = Field(ge=1)
+    package: str | None = Field(max_length=36)
+    package_sha256: str = Field(max_length=64)
+    entrypoint: str = Field(max_length=255)
+    provenance: str = Field(max_length=8000)
 
 
 class CellSummary(MCPModel):
@@ -176,9 +196,10 @@ class CellSummary(MCPModel):
     title: str = Field(min_length=1, max_length=255)
     script: str = Field(default="", max_length=_SCRIPT_CHARS)
     script_truncated: bool = False
+    transformation: CellTransformation
     note: str = Field(default="", max_length=512)
     note_truncated: bool = False
-    state: Literal["proposed", "queued", "running", "ok", "failed"]
+    state: Literal["queued", "running", "ok", "failed"]
     error: str | None = None
     frozen: bool
     rows: int = Field(ge=0)
@@ -209,108 +230,6 @@ class DatasetSample(MCPModel):
     rows: list[dict[str, Any]] = Field(default_factory=list, max_length=_SAMPLE_ROWS)
 
 
-class TouchedCell(MCPModel):
-    id: str
-    action: str = Field(default="", max_length=40)
-    text_offset: int | None = Field(default=None, ge=0)
-
-
-class AgentProgress(MCPModel):
-    run_id: str | None = None
-    remaining_rows: int | None = Field(default=None, ge=0)
-    batches: int | None = Field(default=None, ge=0)
-    source_rows_without_examples: int | None = Field(default=None, ge=0)
-    stage: str = Field(max_length=40)
-    label: str = Field(max_length=255)
-    detail: str = Field(max_length=4000)
-    started_at: str | None = None
-    updated_at: str | None = None
-    rows_before: int | None = Field(default=None, ge=0)
-    source_rows: int | None = Field(default=None, ge=0)
-    target_rows: int | None = Field(default=None, ge=0)
-    generated_rows: int | None = Field(default=None, ge=0)
-    published_rows: int | None = Field(default=None, ge=0)
-    publication: Literal["pending", "published"] | None = None
-    cell_id: str | None = None
-    proposal_id: str | None = None
-
-
-class ToolFailure(MCPModel):
-    id: str = Field(max_length=120)
-    tool: str = Field(max_length=80)
-    detail: str = Field(max_length=600)
-    request: str = Field(default="", max_length=600)
-
-
-class ToolActivity(MCPModel):
-    recorded: bool = False
-    completed: int = Field(default=0, ge=0)
-    succeeded: int = Field(default=0, ge=0)
-    failed: int = Field(default=0, ge=0)
-    unclassified: int = Field(default=0, ge=0)
-    pending: int = Field(default=0, ge=0)
-    failures: list[ToolFailure] = Field(default_factory=list, max_length=10)
-    failures_truncated: bool = False
-
-
-def tool_activity(raw: dict) -> ToolActivity:
-    steps = raw.get("steps")
-    if not isinstance(steps, list):
-        return ToolActivity()
-    started = {}
-    completed = {}
-    for index, step in enumerate(steps):
-        if not isinstance(step, dict):
-            continue
-        identity = str(step.get("id") or f"event-{index}")
-        if step.get("phase") == "tool_start":
-            started[identity] = step
-        elif step.get("phase") == "tool_done":
-            completed[identity] = step
-    failures = [step for step in completed.values() if step.get("ok") is False]
-    succeeded = sum(step.get("ok") is True for step in completed.values())
-    return ToolActivity(
-        recorded=True,
-        completed=len(completed),
-        succeeded=succeeded,
-        failed=len(failures),
-        unclassified=len(completed) - succeeded - len(failures),
-        pending=len(started.keys() - completed.keys()),
-        failures=[
-            ToolFailure(
-                id=str(step.get("id") or "")[:120],
-                tool=str(step.get("tool") or "")[:80],
-                detail=sanitize_error(str(step.get("preview") or ""))[:600],
-                request=sanitize_error(
-                    str(started.get(str(step.get("id")), {}).get("summary") or "")
-                )[:600],
-            )
-            for step in failures[:10]
-        ],
-        failures_truncated=len(failures) > 10,
-    )
-
-
-class ChatTurn(MCPModel):
-    funding_source: Literal["platform", "chatgpt"] | None = None
-    model: str | None = None
-    engine: str | None = None
-    id: str | None = None
-    intent_choice: Literal["train", "eval", "explore"] | None = None
-    role: Literal["user", "agent"]
-    text: str = Field(default="", max_length=_SCRIPT_CHARS)
-    error: str | None = None
-    cells: list[TouchedCell] = Field(default_factory=list, max_length=20)
-    at: str | None = Field(default=None, max_length=80)
-    ms: int | None = Field(default=None, ge=0)
-    status: (
-        Literal["running", "awaiting_approval", "awaiting_intent", "resolved", "complete", "error"]
-        | None
-    ) = None
-    progress: AgentProgress | None = None
-    tool_activity: ToolActivity = Field(default_factory=ToolActivity)
-
-
 class NextAction(MCPModel):
     tool: str = Field(min_length=1, max_length=64)
     reason: str = Field(min_length=1, max_length=500)
@@ -322,20 +241,17 @@ class DatasetHumanAction(MCPModel):
     arguments: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
-class ManageDatasetWorkflowInput(MCPModel):
-    dataset: str = Field(min_length=1, max_length=255)
-    run_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
-    revision: int = Field(ge=0)
-    action: Literal["pause", "resume", "publish_partial"]
-
-
 class DatasetDetail(DatasetListItem):
-    workflow: dict[str, Any] = Field(default_factory=dict)
     operation: dict[str, Any] = Field(default_factory=dict)
+    landing_progress: dict[str, Any] | None = Field(
+        default=None,
+        description="Latest file stage; completed/total count files. PDF OCR adds pages_total, ocr_pages_completed and ocr_pages_total. Not an ETA or overall percentage.",
+    )
     preparation_plan: dict[str, Any] = Field(default_factory=dict)
     brief: str = Field(default="", max_length=8000)
     sources: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     sources_total: int = Field(default=0, ge=0)
+    source_page: PageContract
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
@@ -343,9 +259,7 @@ class DatasetDetail(DatasetListItem):
     cells_truncated: bool = False
     cell_page: PageContract
     truncated_fields: list[str] = Field(default_factory=list)
-    recent_chat_truncated: bool = False
     sample: DatasetSample | None = None
-    recent_chat: list[ChatTurn] = Field(default_factory=list, max_length=_CHAT_MAX)
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=8)
     summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
@@ -356,7 +270,7 @@ class DatasetDetail(DatasetListItem):
 class DatasetMutationRef(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
-    state: Literal["landing", "diagnosing", "idle", "running", "error"]
+    state: Literal["landing", "idle", "running", "error"]
     resource: ResourceLinkContract
 
 
@@ -364,11 +278,17 @@ class DatasetJobReceipt(JobReceipt):
     kind: Literal["dataset_run"] = "dataset_run"
 
 
+class DatasetUploadHandoff(MCPModel):
+    argv: list[str]
+    replace: dict[str, str]
+
+
 class DatasetMutationOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
     dataset: DatasetMutationRef
     job: DatasetJobReceipt
     eval_dataset: DatasetMutationRef | None = None
+    upload: DatasetUploadHandoff | None = None
     # Set by create_dataset_from_traces: the traces the selection resolved to.
     traces: int | None = Field(default=None, ge=0)
     # Set by create_dataset_from_llm_calls: spans matching the selection.
@@ -379,7 +299,7 @@ class DatasetMutationOutput(MCPModel):
 class ListDatasetsInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
     intent: Literal["train", "eval", "explore", "pending"] | None = None
-    state: Literal["landing", "diagnosing", "idle", "running", "error"] | None = None
+    state: Literal["landing", "idle", "running", "error"] | None = None
     search: str | None = Field(default=None, min_length=1, max_length=255)
     limit: int = Field(default=20, ge=1, le=_LIST_CAP)
     offset: int = Field(default=0, ge=0)
@@ -398,9 +318,10 @@ class InspectDatasetInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
-    chat_limit: int = Field(default=_CHAT_DEFAULT, ge=1, le=_CHAT_MAX)
     cell_offset: int = Field(default=0, ge=0)
     cell_limit: int = Field(default=5, ge=1, le=20)
+    source_offset: int = Field(default=0, ge=0)
+    source_limit: int = Field(default=10, ge=1, le=20)
 
 
 class QueryDatasetInput(MCPModel):
@@ -533,36 +454,6 @@ class CreateDatasetFromLlmCallsInput(MCPModel):
         return self
 
 
-class MessageDatasetAgentInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
-    message: str = Field(default="", max_length=_SCRIPT_CHARS)
-    intent_choice: Literal["train", "eval", "explore"] | None = None
-    intent_turn_id: str | None = Field(default=None, min_length=1, max_length=80)
-
-    @model_validator(mode="after")
-    def valid_message(self):
-        if bool(self.intent_choice) != bool(self.intent_turn_id):
-            raise ValueError("Provide the intent choice and question id together.")
-        if self.intent_choice and self.message.strip():
-            raise ValueError("Answer the intent question separately from a message.")
-        if not self.intent_choice and not self.message.strip():
-            raise ValueError("Write a message or answer the intent question.")
-        return self
-
-
-class RunDatasetInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
-    proposal_cell: str | None = Field(default=None, min_length=1, max_length=80)
-
-
 def _mutation_ref(dataset) -> DatasetMutationRef:
     return DatasetMutationRef(
         id=str(dataset.id),
@@ -585,6 +476,24 @@ def mutation_output(
         links += [dataset_resource_link(eval_dataset), dataset_run_job_link(eval_dataset)]
     return DatasetMutationOutput(
         summary=_clip(summary, _SUMMARY_CHARS),
+        upload=DatasetUploadHandoff(
+            argv=[
+                "overmind",
+                "dataset",
+                "upload",
+                "FILE",
+                "--project-id",
+                str(dataset.project_id),
+                "--dataset",
+                str(dataset.id),
+                "--json",
+            ],
+            replace={
+                "FILE": "Absolute local file path; add --json-rows-field FIELD for a selected JSON wrapper array."
+            },
+        )
+        if dataset.source_kind == "pending"
+        else None,
         dataset=_mutation_ref(dataset),
         job=DatasetJobReceipt(
             kind="dataset_run",
@@ -675,8 +584,10 @@ def serialize_dataset_list_item(dataset) -> DatasetListItem:
     return DatasetListItem.model_validate(_list_fields(dataset, _chain(dataset)))
 
 
-def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> CellSummary:
-    version = "proposed" if cell.state == Cell.State.PROPOSED else versions.get(cell.id, "1.0")
+def _cell_summary(
+    dataset, cell: Cell, versions: dict, frozen_before: int, attribution: dict
+) -> CellSummary:
+    version = versions.get(cell.id, "1.0")
     error = sanitize_error(cell.error) or None
     columns = [
         _jsonable(col) if isinstance(col, dict) else {"name": str(col)}
@@ -689,6 +600,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         title=cell.title.strip() or "Cell",
         script=_clip(cell.script or ""),
         script_truncated=len(cell.script or "") > _SCRIPT_CHARS,
+        transformation=attribution,
         note=_clip(cell.note or "", 512),
         note_truncated=len(cell.note or "") > 512,
         state=cell.state,
@@ -763,49 +675,6 @@ def _sample(dataset, cell: Cell | None, versions: dict) -> DatasetSample | None:
     )
 
 
-def _touched(raw) -> list[TouchedCell]:
-    out: list[TouchedCell] = []
-    for item in raw or []:
-        if isinstance(item, dict) and item.get("id"):
-            out.append(TouchedCell(id=str(item["id"]), action=str(item.get("action") or "")[:40]))
-        elif item:
-            out.append(TouchedCell(id=str(item)))
-        if len(out) >= 20:
-            break
-    return out
-
-
-def _chat(raw, limit: int) -> list[ChatTurn]:
-    turns = [item for item in (raw or []) if isinstance(item, dict)]
-    window = turns[-max(1, min(limit, _CHAT_MAX)) :]
-    out: list[ChatTurn] = []
-    for item in window:
-        role = item.get("role")
-        if role not in ("user", "agent"):
-            continue
-        error = sanitize_error(str(item.get("error") or "")) or None
-        ms = item.get("ms")
-        out.append(
-            ChatTurn(
-                funding_source=item.get("funding_source"),
-                model=item.get("model"),
-                engine=item.get("engine"),
-                id=item.get("id"),
-                intent_choice=item.get("intent_choice"),
-                role=role,
-                text=_clip(str(item.get("text") or "")),
-                error=error,
-                cells=_touched(item.get("cells")),
-                at=str(item.get("at") or "")[:80] or None,
-                ms=int(ms) if isinstance(ms, (int, float)) and ms >= 0 else None,
-                status=item.get("status"),
-                progress=item.get("progress"),
-                tool_activity=tool_activity(item),
-            )
-        )
-    return out
-
-
 def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
     project_id = str(dataset.project_id)
     if active is not None:
@@ -815,122 +684,62 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
         )
     if dataset.source_kind in {Dataset.SourceKind.FILE, Dataset.SourceKind.PENDING}:
         return DatasetHumanAction(
-            command="overmind dataset upload FILE --dataset DATASET --json",
+            command="overmind dataset upload FILE --project-id PROJECT --dataset DATASET --json",
             arguments={"file": "<path>", "project_id": project_id, "dataset": str(dataset.id)},
         )
     return None
 
 
-def next_actions(
-    dataset, chain: list[Cell], active: Cell | None, *, execution=None
-) -> list[NextAction]:
-    """The one answer to "what now" for a dataset. Every suggestion satisfies
-    the named tool's schema as given."""
+def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
     ds_id = str(dataset.id)
-    saved = (workflow.describe(dataset) if execution is None else execution).get("generation", {})
-    if (
-        saved
-        and not saved.get("published_cell")
-        and saved.get("state") in {"paused", "partial", "blocked"}
-    ):
-        failure = saved.get("failure", {})
-        if saved["state"] != "blocked" and failure.get("code") != "insufficient_source":
-            return [
-                NextAction(
-                    tool="manage_dataset_workflow",
-                    reason="Resume the saved generation batches.",
-                    arguments={
-                        "dataset": ds_id,
-                        "run_id": saved["id"],
-                        "revision": saved["revision"],
-                        "action": "resume",
-                    },
-                )
-            ]
-        return [
-            NextAction(
-                tool="inspect_dataset",
-                reason="Inspect the saved failure and provider receipt before retrying; completed requests must not be repeated.",
-                arguments={"dataset": ds_id},
-            )
-        ]
+    scoped = {"project_id": str(dataset.project_id)}
     if dataset.state in _BUSY:
+        pipeline_run = (
+            dataset.pipeline_runs.filter(state__in=["queued", "running"])
+            .order_by("-created_at")
+            .values_list("id", flat=True)
+            .first()
+        )
         return [
             NextAction(
                 tool="get_job",
-                reason=f"Dataset is {dataset.state}.",
-                arguments={"kind": "dataset_run", "id": ds_id},
-            )
-        ]
-    if dataset.state == Dataset.State.ERROR:
-        reason = sanitize_error(dataset.error) or "The dataset is in error."
-        return [
-            NextAction(
-                tool="message_dataset_agent",
-                reason=reason,
-                arguments={"dataset": ds_id},
-            )
-        ]
-    proposed = [cell for cell in chain if cell.state == Cell.State.PROPOSED]
-    if proposed:
-        return [
-            NextAction(
-                tool="message_dataset_agent",
-                reason="Continue unfinished preparation against the current data.",
+                reason="Inspect the current dataset operation.",
                 arguments={
-                    "dataset": ds_id,
-                    "message": "Continue the original request and complete the unfinished preparation steps.",
+                    **scoped,
+                    "kind": "dataset_pipeline" if pipeline_run else "dataset_run",
+                    "id": str(pipeline_run) if pipeline_run else ds_id,
                 },
             )
         ]
-    if active is None:
+    if active is None or dataset.intent == Dataset.Intent.PENDING:
         return [
             NextAction(
-                tool="message_dataset_agent",
-                reason="No version has run.",
-                arguments={"dataset": ds_id},
+                tool="inspect_dataset_workbench",
+                reason="Attach source data and explicitly set the requested intent with update_dataset.",
+                arguments={**scoped, "dataset": ds_id},
             )
         ]
-    intent = public_intent(dataset.intent)
-    ok, reason = active.fits(intent)
-    if not ok:
+    ok, reason = active.fits(public_intent(dataset.intent))
+    if not ok or dataset.intent == Dataset.Intent.EXPLORE:
         return [
             NextAction(
-                tool="message_dataset_agent",
-                reason=sanitize_error(reason) or "The active version does not fit.",
-                arguments={"dataset": ds_id},
+                tool="inspect_dataset_workbench",
+                reason=sanitize_error(reason) or "Inspect available transformation operations.",
+                arguments={**scoped, "dataset": ds_id},
             )
         ]
-    actions: list[NextAction] = []
-    if findings := review.warnings(dataset, active):
-        actions.append(
-            NextAction(
-                tool="message_dataset_agent",
-                reason="Review recommended: " + "; ".join(findings),
-                arguments={"dataset": ds_id},
-            )
-        )
-    args = {"dataset": ds_id, "cell": str(active.id)}
-    if intent == Dataset.Intent.TRAIN:
-        return actions + [
-            NextAction(
-                tool="check_finetune_readiness", reason="Active version fits train.", arguments=args
-            )
-        ]
-    actions += [
+    tool = (
+        "check_finetune_readiness"
+        if dataset.intent == Dataset.Intent.TRAIN
+        else "check_evaluation_readiness"
+    )
+    return [
         NextAction(
-            tool="check_evaluation_readiness", reason="Active version fits eval.", arguments=args
+            tool=tool,
+            reason="Check the selected version for the intended consumer.",
+            arguments={**scoped, "dataset": ds_id, "cell": str(active.id)},
         )
     ]
-    if dataset.capability_id:
-        actions.append(
-            NextAction(
-                tool="check_optimizer_readiness",
-                reason="Active version fits eval.",
-                arguments={**args, "capability": str(dataset.capability_id)},
-            )
-        )
-    return actions
 
 
 def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
@@ -941,8 +750,6 @@ def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
         )
     if dataset.state == Dataset.State.LANDING:
         return "Dataset is landing."
-    if dataset.state == Dataset.State.DIAGNOSING:
-        return "Dataset agent is diagnosing."
     if dataset.state == Dataset.State.RUNNING:
         return "Dataset run is in progress."
     n = len(chain)
@@ -952,15 +759,22 @@ def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
 
 
 def serialize_dataset_detail(
-    dataset, *, chat_limit: int = _CHAT_DEFAULT, cell_offset: int = 0, cell_limit: int = 5
+    dataset,
+    *,
+    cell_offset: int = 0,
+    cell_limit: int = 5,
+    source_offset: int = 0,
+    source_limit: int = 10,
 ) -> DatasetDetail:
     chain = _chain(dataset)
     versions = dataset.versions(chain=chain)
     frozen_before = _frozen_before(chain)
     active = _active_cell(dataset, chain)
+    page_cells = chain[cell_offset : cell_offset + cell_limit]
+    attributions = transformation.records(dataset, page_cells)
     cells = [
-        _cell_summary(dataset, cell, versions, frozen_before)
-        for cell in chain[cell_offset : cell_offset + cell_limit]
+        _cell_summary(dataset, cell, versions, frozen_before, attributions[cell.pk])
+        for cell in page_cells
     ]
     fields = _list_fields(dataset, chain)
     dataset_link = fields["resource"]
@@ -968,18 +782,27 @@ def serialize_dataset_detail(
     if dataset.state in _BUSY:
         links.append(dataset_run_job_link(dataset))
     error = sanitize_error(dataset.error) or None
+    sources = dataset.source_spec.get("sources", [])
     result = DatasetDetail.model_validate(
         {
             **fields,
             "operation": _jsonable(dataset.operation),
-            "workflow": _bounded(workflow.describe(dataset), 5000),
+            "landing_progress": dataset.source_spec.get("landing_progress"),
             "brief": _clip(dataset.brief, 8000),
             "sources": [
-                _bounded(item, 500) for item in dataset.source_spec.get("sources", [])[:10]
+                _source_summary(item)
+                for item in sources[source_offset : source_offset + source_limit]
             ],
-            "sources_total": len(dataset.source_spec.get("sources", [])),
+            "sources_total": len(sources),
+            "source_page": {
+                "limit": source_limit,
+                "offset": source_offset,
+                "total": len(sources),
+                "has_more": False,
+                "next_cursor": None,
+            },
             "preparation_context": _bounded(workshop_context(dataset, measure_missing=False), 6000),
-            "preparation_plan": _bounded(preparation.describe(dataset), 3000),
+            "preparation_plan": _bounded(dataset.preparation_plan, 3000),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _bounded(dataset.source_spec.get("contamination_report", {})),
             "cells": cells,
@@ -994,7 +817,6 @@ def serialize_dataset_detail(
                 else None,
             },
             "sample": _sample(dataset, active, versions),
-            "recent_chat": _chat(dataset.chat, chat_limit),
             "next_actions": next_actions(dataset, chain, active),
             "resource_links": links,
             "summary": _detail_summary(dataset, chain, active),
@@ -1004,16 +826,19 @@ def serialize_dataset_detail(
     )
 
     # Pagination preserves identities when rich summaries exceed the transport budget.
-    while len(result.model_dump_json().encode()) > 32_000 and result.recent_chat:
-        result.recent_chat.pop(0)
-        result.recent_chat_truncated = True
-    while len(result.model_dump_json().encode()) > 32_000 and len(result.cells) > 1:
+    while (
+        len(json.dumps(result.model_dump(mode="json")).encode()) > 31_000 and len(result.cells) > 1
+    ):
         result.cells.pop()
-    if len(result.model_dump_json().encode()) > 32_000:
-        result.truncated_fields.extend(["brief", "sample", "sources", "capability_rank"])
+    while (
+        len(json.dumps(result.model_dump(mode="json")).encode()) > 31_000
+        and len(result.sources) > 1
+    ):
+        result.sources.pop()
+    if len(json.dumps(result.model_dump(mode="json")).encode()) > 31_000:
+        result.truncated_fields.extend(["brief", "sample", "capability_rank"])
         result.brief = _bounded(result.brief, 1024)
         result.sample = None
-        result.sources = [_bounded(source, 200) for source in result.sources[:3]]
         result.capability_rank = result.capability_rank[:3]
         for name in (
             "operation",
@@ -1051,4 +876,19 @@ def serialize_dataset_detail(
         str(cell_offset + len(result.cells)) if result.cell_page.has_more else None
     )
     result.cells_truncated = cell_offset > 0 or result.cell_page.has_more
+    result.source_page.has_more = source_offset + len(result.sources) < len(sources)
+    if result.source_page.has_more:
+        result.source_page.next_cursor = str(source_offset + len(result.sources))
+        result.next_actions.append(
+            NextAction(
+                tool="inspect_dataset",
+                reason="Read the next source metadata page.",
+                arguments={
+                    "dataset": str(dataset.pk),
+                    "source_offset": source_offset + len(result.sources),
+                    "source_limit": source_limit,
+                    "project_id": str(dataset.project_id),
+                },
+            )
+        )
     return result

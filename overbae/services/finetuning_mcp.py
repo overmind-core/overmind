@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -16,6 +17,7 @@ class FineTuneDispatchError(RuntimeError):
 def launch_finetune(
     *,
     user,
+    admit_new_training: Callable[[], None],
     request_key=None,
     accepted_findings=None,
     project,
@@ -79,7 +81,10 @@ def launch_finetune(
 
     serializer = FinetuningJobSerializer(
         data=payload,
-        context={"request": SimpleNamespace(user=user)},
+        context={
+            "request": SimpleNamespace(user=user),
+            "admit_new_training": admit_new_training,
+        },
     )
     serializer.is_valid(raise_exception=True)
     job = serializer.save(triggered_by=user)

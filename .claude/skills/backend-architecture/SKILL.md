@@ -24,8 +24,8 @@ Four workers, five queues. Workers are resource profiles; queues are fairness cl
 | ------------- | ------- | ---- | ---------------- | -------------------------------------------------------- |
 | `control`     | threads | 8    | `control`        | orchestration, chord callbacks, FSM advances, beat       |
 | `io`          | threads | 24   | `io`,`io_traces` | judges, live trace scoring, connector polling, rebinding |
-| `batch`       | prefork | 6    | `batch`          | sample generation, dataset landing, connector chunks     |
-| `interactive` | prefork | 4    | `interactive`    | workshop cell runs and agent turns                       |
+| `batch`       | prefork | 6    | `batch`          | dataset landing/pipelines, connector chunks              |
+| `interactive` | prefork | 4    | `interactive`    | bounded interactive compute                              |
 
 Three constraints set the worker split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch` or `interactive`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run.
 
@@ -34,6 +34,20 @@ Three constraints set the worker split. Only prefork enforces `time_limit` and `
 `interactive` sets `--prefetch-multiplier=1` so a busy child never hoards the next turn.
 
 Routing lives in `CELERY_TASK_ROUTES` and must stay in sync with `make worker` (one process standing in for the whole fleet, so its `-Q` lists every queue) and docker-compose. `tests/test_celery_topology.py` enforces it, and asserts no time-limited task lands on a threads lane. Workers hot-restart via watchmedo on `.py` changes.
+
+The training reconciler renews a 30-second Redis lease while alive. Worker death
+expires that lease instead of suppressing observations for five minutes. Domain
+finalization records terminal operational facts on the refreshed job; reconciliation
+repairs missed terminal events from durable local receipts without polling or
+resubmitting a provider. Completion does not advance the worker heartbeat.
+
+Modal training billing and forecast evidence use deduplicated worker usage, not
+the interval before the collector observes completion. Billing retains hardware,
+usage IDs and fetched GPU rates; missing/conflicting usage is unmeasured, never
+replaced with local elapsed time. Ledger creation and the saved charge receipt are
+atomic. Historical charges without a retained calculation remain unattributed;
+they are not silently rewritten. This is measured GPU coverage, not an all-in
+provider invoice.
 
 ## Tracing
 
@@ -82,7 +96,7 @@ Training setup puts the judge selector below the eval set. Blank `FinetuningJob.
 
 Bounded decisions use `core/decisions.py`: registered Jev on OpenRouter's `/systemone` endpoint, structured choice questions, validated complete probability distributions, project/contract-scoped caching, a conservative UTF-8 context guard, and shared Redis request/token pacing. Missing configuration, capacity, invalid responses, oversized context or low confidence fall back through `services/eval/decisions.py`; confidence is not calibrated correctness. Generative question resolution uses closed, required per-question properties compatible with strict provider schemas, preserves original question IDs and the selected judge, and validates coverage and choices before conversion. No evidence is truncated for Jev. `config.decision` pins backend (`jev` or `generative`), model, confidence floor and adapter-policy version; new snapshots and rubric digests include it. The actual served revision and fallback/cost provenance are stored in `_decision` sub-scores.
 
-Configurable evaluator policies default to generative. Explicit Jev policies cover checklist verdicts, extracted-claim support, per-turn dimensions, cascade step ratings and confident successful numeric behaviour steps; qualify them against representative labelled examples before relying on their scores. Fixed grounding, capability classification and workshop semantic services retain bounded Jev routing. Independent question batches retain accepted answers and generatively resolve only uncertainty or unfinished questions after a later transport failure. Generated choices carry reasoning, not fabricated Jev confidence. Claim verification reuses extracted claims on fallback. Failed/uncertain behaviour steps retain full generative causal diagnosis. Label-only categorical judges on both evaluation surfaces can opt into Jev Choice with declared labels and unchanged label-to-score mappings; uncertain or insufficient evidence falls back. Categorical checklists, behaviour contracts, panels and cascade routes retain generative review. Jev labels carry decision provenance, not generated explanations. Holistic outcomes, session ledgers, claim extraction, rubric authoring and cascade summaries remain generative. Grounding keeps insufficient evidence outside its support/contradiction denominator; lookup and persistence use one policy-aware identity. Combined dataset description, evaluator relevance and rubric authoring use one generative call. Cascade provenance is stored once per batch, unknown costs include retries and holistic stages, and decision latency measures the whole adapter call including failures. Jev is excluded from inference and chat-model pickers. Provider calls in tests are blocked unless explicitly stubbed.
+Configurable evaluator policies default to generative. Explicit Jev policies cover checklist verdicts, extracted-claim support, per-turn dimensions, cascade step ratings and confident successful numeric behaviour steps; qualify them against representative labelled examples before relying on their scores. Fixed grounding and capability classification retain bounded Jev routing. Independent question batches retain accepted answers and generatively resolve only uncertainty or unfinished questions after a later transport failure. Generated choices carry reasoning, not fabricated Jev confidence. Claim verification reuses extracted claims on fallback. Failed/uncertain behaviour steps retain full generative causal diagnosis. Label-only categorical judges on both evaluation surfaces can opt into Jev Choice with declared labels and unchanged label-to-score mappings; uncertain or insufficient evidence falls back. Categorical checklists, behaviour contracts, panels and cascade routes retain generative review. Jev labels carry decision provenance, not generated explanations. Holistic outcomes, session ledgers, claim extraction, rubric authoring and cascade summaries remain generative. Grounding keeps insufficient evidence outside its support/contradiction denominator; lookup and persistence use one policy-aware identity. Combined dataset description, evaluator relevance and rubric authoring use one generative call. Cascade provenance is stored once per batch, unknown costs include retries and holistic stages, and decision latency measures the whole adapter call including failures. Jev is excluded from inference and chat-model pickers. Provider calls in tests are blocked unless explicitly stubbed.
 
 Generated samples snapshot the runner's initial messages and tool schemas after system-prompt injection in `trajectory.model_request`; `metadata.output_start` separates context from newly generated messages. This is the initial runner request, not provider chat-template bytes or every replay turn. `services/eval/sample_io.py` supplies the REST detail and MCP resource with separate input, generated output, and grading reference. Historical samples fall back only to the verified pinned dataset row and label it `input_source=dataset`, never an exact captured request; absent sources are `unavailable`. The eval-run MCP resource exposes five bounded sample inspections with grader reasoning.
 
@@ -108,14 +122,13 @@ Behaviour-keyed. The codebase scan mints `Behaviour`/`BehaviourVersion` contract
 
 ## Data Workshop
 
-Source → cells → derived versions, edited only through the dataset's own agent. The full model, runner sandbox, agent tools, landing and export contract: data-workshop skill.
+Source → cells → derived versions. Native coding agents author reusable project revisions or attributed variants. Shared services validate lineage, execute declarative steps or retained packages in a dedicated restricted container runtime, and atomically publish step cells. Preview never publishes; explicitly enabled bindings rebuild changing source snapshots without agent authoring. Platform chat/agent tasks are retired. The dataset table opens existing cells with run inspection; historical records remain readable. Contracts and lifecycle: data-workshop skill.
 
 ## Auth and tenancy
 
-Clerk when `CLERK_API_SECRET_KEY` is set; blank secret is self-hosted local JWT (`POST /api/auth/local/` — email + password, create on first use, no verification), or ChatGPT local login via `api/chatgpt/login/`. ChatGPT uses the verified issuer/client/subject; matching emails never auto-link an existing local account. A signed cookie remembers the registration, a persistent installation row owns the host ID, and the callback redirects without tokens before the browser redeems a one-minute, single-use session ticket. New ChatGPT users have no password. Existing password accounts receive an encrypted ten-minute pending connection and confirm their password on the login screen, with five attempts, before connection and local session creation; OAuth is not repeated. The callback refreshes the browser cookie for this handoff. First ChatGPT login/link enables plan funding and selects the first available account model when permission is granted; later logins preserve explicit funding choices. Settings linking remains available. Project-scoped tenancy (`User` ↔ `Project` via `ProjectMembership`), no org layer. Everything queryable is filtered by project.
+Clerk when `CLERK_API_SECRET_KEY` is set; blank secret is self-hosted local JWT (`POST /api/auth/local/` — email + password, create on first use, no verification). ChatGPT login, linking, funding and credential storage are removed. Existing users remain; accounts without a usable password need administrator password setup. Project-scoped tenancy (`User` ↔ `Project` via `ProjectMembership`), no org layer. Everything queryable is filtered by project.
 
 - A guest (`User.is_guest`, minted by `POST /api/auth/guest/`) holds one project and can read and claim. `GuestJWTAuthentication` (`api/authentication.py`) refuses every other write with `guest_upgrade_required`; a view opts in with `guest_allowed = True` — never a permission class or middleware, since a view's own `permission_classes` replaces the defaults and a guest identity exists only through that token. Guests get no free credits; `/demo` points at local setup. A claim moves the memberships to the Clerk account and deactivates the guest; `tasks/guest_cleanup.py` deletes inactive guests and unclaimed ones after 7 days. Guest claim requires Clerk.
-- ChatGPT code exchange: `invalid_grant` starts one fresh authorization with the issued client ID retained on the browser-bound pending attempt, a new state/nonce/PKCE verifier, and the same installation host. Repeated rejection stops; only terminal refresh errors clear saved credentials. Token rejection logs contain the grant, status, known error code and request ID, never request secrets or raw provider bodies.
 - Console: `VITE_SELF_HOSTED=true` and a blank `VITE_CLERK_PUBLISHABLE_KEY` skip `ClerkProvider` and show the local login form; otherwise Clerk.
 - Project invites: with Clerk, an invitation email is sent; without Clerk the `ProjectInvite` row is stored and claimed on first local (or Clerk) sign-in for that email.
 - Commercial billing (remaining-credit 402s, Free/Pro quotas, Stripe Checkout) injects when `STRIPE_SECRET_KEY` is set (`overbae/services/billing_provider.py`). Ledger charges always run. Empty key → uncapped OSS: spend is recorded and shown, gates and grants no-op.
@@ -127,9 +140,31 @@ Chat-training cost estimates use dataset text statistics and assumed H100 throug
 
 Workshop findings are advisory before model-specific work: incomplete task/evidence/answer/schema reviews, capability mismatches and train/eval overlap produce warnings, not launch blockers. Exact preprocessing checks technical compatibility and does not repair datasets. Fine-tuning validation is read-only, and successful creation freezes the selected train, validation and `eval_cell` versions atomically. The same pinned eval cell is reused for before/after runs; dataset versions and capability cannot be swapped after creation. Internal loss-validation splitting preserves duplicates and cannot silently clean selected data.
 
-The workshop is model-independent and explores before transforming. `services/datasets/preparation.py` owns source-bound plans, mappings, check scope and automatic semantic row budgets; Dataset stores the current plan and each Cell snapshots its producing plan. Data Workshop documents execution and assessment details. `services/training_preparation.py` caches exact Modal preprocessing by training/validation cell fingerprints, model, training type, context length, training stack and the SFT asset code fingerprint. REST `POST /api/training-preparations/` and MCP `prepare_training_data` share the service; MCP returns a `training_preparation` job receipt readable through `get_job` and the jobs resource. Preparation stages checksummed gzip JSONL through Modal Volume uploads and uses CPU-only `prepare_<train_function>` in the matching training image; it does not start GPU training. Tokenization writes artifacts incrementally. All Modal launches upload ordered binary SHA-256 row selections instead of the source rows a second time. The worker verifies each selection checksum and count plus the caller-pinned token artifact, then materializes training/validation through a bounded disk index, preserving order and duplicate visits. Initial source decompression and selection construction stream without retaining the corpus in memory.
+Workshop is model-independent. Native agents inspect before transforming; historical source-bound plans and measured reviews stay attached to their exact versions. New pipeline/import runs record source bindings, impact and external attribution; no automatic semantic audit is scheduled. `services/training_preparation.py` caches exact Modal preprocessing by training/validation cell fingerprints, model, training type, context length, training stack and the SFT asset code fingerprint. REST `POST /api/training-preparations/` and MCP `prepare_training_data` share the service; MCP returns a `training_preparation` job receipt readable through `get_job` and the jobs resource. Preparation stages checksummed gzip JSONL through Modal Volume uploads and uses CPU-only `prepare_<train_function>` in the matching training image; it does not start GPU training. Tokenization writes artifacts incrementally. All Modal launches upload ordered binary SHA-256 row selections instead of the source rows a second time. The worker verifies each selection checksum and count plus the caller-pinned token artifact, then materializes training/validation through a bounded disk index, preserving order and duplicate visits. Initial source decompression and selection construction stream without retaining the corpus in memory.
 
 Console setup does not submit or await preprocessing and has no per-model preparation cards or workshop review recommendations. `run_finetuning` requests or reuses the exact artifact after launch, records its ID, state and report in job progress, and starts GPU training only when ready. Provider observations and finalization preserve that receipt and submission recovery history. Explicit REST/MCP preparation remains available.
+
+Explicit preparation rejects unsupported context lengths rather than silently rounding them to a supported bucket. Model-specific recommendation and internal context selection happen before requesting that exact preparation.
+
+Preparation reports source-export and tokenization row counts against the pinned total, then names upload, file validation and provider submission separately. The training monitor reads the current `TrainingPreparation` receipt on its fast metrics poll; the MCP training-job resource uses the same current progress, so neither has to wait for the job controller's next copy of the receipt. Counts describe their own stage, not overall training completion.
+
+Training handoff separates selection construction, acknowledged selection-file uploads,
+provider artifact verification, indexing, row selection and publication. Only successful
+Modal batch completion increments acknowledged bytes/files; live network-byte progress
+is unavailable. The pinned worker publishes bounded transfer measurements to the run's
+`transfer-progress.json`; the existing 15-second reconciler collects them even while the
+submission task is active. Console and MCP read persisted, attempt-fenced diagnostics
+and operational events, never invoking a worker to read status. Stage start, source
+observation and last forward progress remain separate; absent measurements show no
+percentage. Worker instrumentation requires deployment of a new immutable release and
+cannot retrofit a running pinned call.
+
+GPU startup records file staging, runtime imports, weight loading, adapter setup,
+tokenizer verification, dataset loading/building and trainer/optimiser startup
+separately. Dataset construction reports processed rows; opaque library weight
+loading has no invented percentage. Console and MCP expose stage start, source
+observation, worker heartbeat and last forward progress. A committer heartbeat
+does not advance progress; each new attempt resets its stage clock.
 
 Modal recommendations use row-length estimates to size training context without treating estimates as compatibility verdicts. Job preparation repeats sizing across the pinned training and enabled validation cells, preserving a larger requested context. If exact tokenization exceeds that context but fits the model's training-type limit, it requests a matching larger preparation and rechecks every row before GPU submission. Exact lengths need no estimate headroom; over-limit rows and other incompatibilities still block. No dataset is rewritten, truncated or filtered. A training-job retry can recover an undersized context through this same path.
 
@@ -148,7 +183,127 @@ fails explicitly rather than silently dropping the metric. A rolling Modal deplo
 leaves active calls on their existing code; it cannot add metrics to an already-running
 trainer or reconstruct historical accuracy.
 
+## Development monitoring
+
+`modal_shared/training_monitoring.py` owns strict policy resolution, whole-key/group
+sampling, the timing scheduler and deterministic generated-output metrics.
+`training_monitoring_runtime.py` persists atomic worker check/checkpoint receipts.
+The chat callback preserves RNG, module modes and outer TrainerControl flags;
+all teacher-forced checks use evaluation counters, including the fixed training
+reference. Native checks preserve probability/ordinal targets and existing resume
+artifacts. Initial/final checks are separate from periodic overhead scheduling.
+
+Modal transfer freezes a manifest after exact token materialisation and before GPU
+dispatch. `services/training_monitoring.py` stores the manifest, validates immutable
+receipts, collects generated evidence in background and exposes passive paginated
+reads. Preparation alone has no chosen development split. Check operational events
+link to `TrainingValidationRun`; `TrainingCheckpoint` records checksums, reload
+verification and explicit resume limitations. A locally interrupted check may gain
+late terminal evidence without resurrecting a cancelled training job. Retained
+checkpoints prevent volume cleanup; intermediate download/pruning is not yet exposed.
+
+The shared policy is accepted in readiness, preparation, estimates and launch;
+Console setup uses the same hyperparameter payload. Defaults are adaptive with
+2,048 loss rows, 256 reference rows, a 300-second interval target, 10% overhead
+target and at most 12 interim checks. Whole groups can exceed target sizes.
+Generation is opt-in and supports explicit classification labels, exact matching
+and local JSON Schema or declared `json_fields` checks on Modal. The field scorer
+accepts 1–64 explicit JSON Pointers, preserves boolean/number/null distinctions,
+decimal precision and array order, and rejects ambiguous duplicate JSON keys.
+Missing or malformed references remain unscorable; model-invalid JSON fails.
+Whole-example and per-field pass rates retain their own coverage. Undeclared
+fields are not judged; this does not infer tool contracts or execute tools.
+Inputs exclude the final supervised answer;
+generation never executes tools. Paired changes use group-bootstrap descriptive
+intervals, not final-test guarantees. Metered judges, independent challenge suites
+and declared-strata sampling are rejected as unsupported, not silently ignored.
+
+MCP `inspect_training_progress(job, check|probe, offset, limit)` and REST expose
+the same data without provider calls. MCP evidence over 128 KiB fails explicitly;
+clients reduce page size. `cancel_finetune` and REST share intent-first cancellation
+and delayed evidence collection. Optional check failures remain durable; explicit
+best-loss selection/early stopping require successful checks. Monitoring cost is
+not yet included in the forecasting model and is labelled unmeasured.
+
+The chat monitoring context restores RNG, module modes, gradient checkpointing,
+cache settings and the provider's training mode after generation. A training-
+reference evaluation uses the same loss path but never emits a development-curve
+point. Native prediction receipts preserve probability vectors, original target
+semantics and weights. Completion keeps the frozen manifest and final monitoring
+observation instead of replacing them with a provider-only progress projection.
+Precision with no predicted examples stays null, while missed represented labels
+retain zero recall/F1. Paired classification changes exclude references outside
+the frozen label contract. Evaluation announces zero completed batches before
+the first forward pass, so completed sample construction is not mistaken for
+ongoing validation progress.
+Completed loss, reference and generation measurements are published while the
+overall check is still running; later checkpoint failures retain those facts.
+Adaptive schedule formula 2 retains the preceding interval across restarts, holds
+changes within a 20% deadband and bounds larger changes to half/double per check.
+A bounded cadence that misses the overhead target reports the conflict. Normal
+run/check-count boundaries and explicit step/epoch modes do not imply a budget
+failure. A measured overhead interval that prevents an otherwise due interim
+check is reported separately. Active jobs retain their pinned scheduler release.
+Launch credit/quota admission runs inside the project-locked creation path only
+after request-key recovery. Identical REST/MCP retries remain readable after
+credits or quota are exhausted; changed recipes conflict and new jobs remain gated.
+Chat success records the deduplicated training GPU charge before deployment;
+deployment readiness and its own usage cannot delay or replace the training receipt.
+
+`training_experience.py` adds `facts.delivery.first_result_at` and `finished_at`
+from the collector's receipt clock, independently of optional analytics. An available
+result requires finite loss and complete nonempty loss coverage; it does not
+claim generated-output success. Repeated receipts and late evidence attachment
+preserve those times. Cancellation records an interruption under the same job lock.
+Configured PostHog receives `training_result_available`, `training_check_finished`
+and `training_checkpoint_available` after transaction commit with stable event IDs.
+Events contain project/job/check IDs, counts, measured timing and explicit resume
+availability, not labels, text, error messages or artifact paths. Delivery is
+best-effort, bounded and nonblocking; database receipts remain authoritative.
+Blank `POSTHOG_PROJECT_TOKEN` disables delivery, including local self-host defaults.
+Analytics elapsed time is measured after commit; receipt times are recorded before
+commit and are not a guarantee that another client could already read them.
+The earliest result event per job measures server availability, not user comprehension;
+unobserved-time attribution and explicit human feedback remain separate work.
+
+`training_quality.py` derives versioned classification assessments during receipt
+collection, never on reads. It validates frozen labels, policy identity, confusion
+counts, scored supports and accuracy before comparing with the same scored subset's
+majority-label baseline or noting represented labels without predictions. Original
+worker metrics, findings and receipt fingerprints remain unchanged. Missing or
+inconsistent counts are inconclusive. Late duplicate collection can add this
+separately attributed assessment without replaying work; stable IDs deduplicate
+findings. No automatic training action follows. Compact MCP summaries retain the
+latest generation check independently from loss-only checks, ordered by attempt
+then step; detailed checks retain complete denominators and provenance.
+
 ## Serving and weights
+
+`services/operational_progress.py` stores project-scoped `OperationalRun` attempts
+and append-only events. Domain controllers, not status reads, collect provider
+events. `provider_progress.py` copies the serving journal into the database with
+durable cursors. `modal_shared/operational_events.py` publishes bounded-time
+measurements; unavailable delivery does not fail or replay GPU work. Shared-pool
+startup observations are not tenant-adapter attestation. Preparation and training
+retain their existing row/stage/heartbeat sources in the shared observation model.
+MCP `inspect_operation` pages history; inference result resources support content
+offset/limit paging. Captured history is durable; absent provider instrumentation
+and dropped publications remain explicit rather than reconstructed.
+Collection backlogs survive terminal jobs and drain in background for up to one
+hour after the last active observation. Engine health waits publish process
+liveness without advancing the work counter. Failed publications and dropped
+events are separate facts. Exported row counts never measure upload completion.
+
+MCP inference uses `services/inference_requests.py`: save project request key,
+input/routing fingerprint and payload before dispatch, then the 15-second controller
+claims, submits or observes the existing Modal call. The worker publishes its
+request-to-call mapping before inference, enabling acknowledgement recovery. A
+client reconnect never owns execution. Unknown submissions are never reissued;
+an expired observation deadline is unresolved, not proof of provider cancellation.
+Unresolved requests remain eligible for five-minute reconciliation without
+resubmission; terminal receipts recover missing usage records without another
+provider call.
+The ordinary application completion API retains its streaming/synchronous contract.
 
 `services/model_activation.py` owns making a ready deployment live. REST `active_model` writes and MCP `set_active_model` persist a per-capability `ModelActivation`; the 15s deployment reconciler advances checking, waking/verifying via the existing `pre_warm` handle, and atomic routing switch. Until verification succeeds the previous target serves. Claims expire after 45s, transport errors retain the remote handle, and activation has a 50-minute deadline. Failed activation is retried through the same selection operation; duplicate in-progress selections are idempotent, competing selections are rejected, and clearing routing invalidates the operation generation. The capability retains its previous selection for verified switch-back. First/last application request timestamps only advance on successful API-key calls to the capability alias, excluding optimiser traffic and requests begun before the current switch. Internal probes and pinned calls never confirm alias integration.
 
@@ -176,12 +331,17 @@ Omitting it uses the capability's separate `benchmark_model` default (set throug
 `set_benchmark_model`), or the codebase `model` when that default is null. The Console
 defaults to the codebase incumbent and sends its selection explicitly. New incumbent
 evaluations reject an unavailable selection. The capability Models tab only selects live routing.
-When OpenRouter is configured and its cached
-catalog has an exact model ID or
-Hugging Face checkpoint match, before evals use OpenRouter without a base deployment.
-Unavailable models or catalogs keep the existing provider/Modal fallback. A started
-eval or attached baseline deployment pins the route until an explicit retry; catalog
-refreshes do not switch live evals or provision duplicate baseline infrastructure.
+Every foundation entry in `models.json` carries an explicit nullable `openrouter_id`.
+The shared resolver searches the cached OpenRouter catalogue by that mapping, then
+exact model/checkpoint identities (including declared benchmark aliases), never fuzzy
+names or another model size. Chat models retain their existing core registry slugs.
+MCP and REST training catalogues expose `openrouter_id` and `openrouter_status`:
+`available`, `not_listed`, or `catalog_unavailable`. A retained ID alone does not prove
+availability; null mappings can resolve when an exact checkpoint becomes listed.
+When configured and matched, before evals use OpenRouter ahead of an unused ready
+hosted base. Unavailable models/catalogues retain the provider/Modal fallback.
+A started evaluation or unresolved attached deployment pins its route; refreshes
+do not switch live evaluations or duplicate in-flight deployment work.
 Defaults are untouched-base-before + trained-after; incumbent comparisons are
 separate opt-ins. The matched base is the preferred delta reference. All four can be off, but the eval
 dataset and eval set remain required. Baseline evals launch as independent jobs alongside

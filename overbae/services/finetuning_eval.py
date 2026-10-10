@@ -18,6 +18,7 @@ from django.utils import timezone
 from overbae.core.model_registry import PROVIDERS
 from overbae.models import FinetuningJob
 from overbae.services.eval.context import model_context
+from overbae.services.eval.eval_set import snapshot_readiness
 from overbae.services.model_catalog import resolve_training_openrouter_slug
 from overbae.services.serving_context import evaluation_budget
 
@@ -83,6 +84,7 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
     comparison = comparison_eval(job)
     labels = {
         "baseline": "Incumbent · before" if resolve_baseline_model(job) else "Base model · before",
+        "comparator": "Benchmark model · before",
         "model_before": "Base model · before",
         "incumbent_after": "Incumbent · after",
         "final": "Trained model · after",
@@ -92,7 +94,11 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
             {
                 "id": str(row.id),
                 "kind": row.kind,
-                "label": labels.get(row.kind, f"Checkpoint {row.checkpoint_step or ''}".strip()),
+                "label": (
+                    f"Benchmark · {row.model_id}"
+                    if row.kind == FinetuningJobEval.Kind.COMPARATOR
+                    else labels.get(row.kind, f"Checkpoint {row.checkpoint_step or ''}".strip())
+                ),
                 "comparison_label": labels.get(comparison.kind)
                 if comparison is not None and comparison.pk != row.pk
                 else None,
@@ -348,7 +354,11 @@ def reset_before_evals_for_retry(job) -> None:
     retry_baseline_deployments(job)
     # Keep EvalRuns and their results; only detach unsuccessful attempt links.
     job.job_evals.filter(
-        kind__in=(FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.MODEL_BEFORE),
+        kind__in=(
+            FinetuningJobEval.Kind.BASELINE,
+            FinetuningJobEval.Kind.COMPARATOR,
+            FinetuningJobEval.Kind.MODEL_BEFORE,
+        ),
         status__in=(
             FinetuningJobEval.Status.FAILED,
             FinetuningJobEval.Status.CANCELLED,
@@ -373,6 +383,8 @@ def tick_job_evals(job) -> list[dict[str, Any]]:
     after_training = job.status in (FinetuningJob.Status.DEPLOYING, FinetuningJob.Status.SUCCEEDED)
     try:
         ensure_baseline_eval(job)
+        for model_id in (job.benchmark_models or [])[1:]:
+            ensure_comparator_eval(job, model_id=model_id)
         if job.eval_model_before:
             ensure_target_eval(job, kind=FinetuningJobEval.Kind.MODEL_BEFORE)
     except Exception:  # noqa: BLE001
@@ -463,14 +475,14 @@ def resolve_baseline_model(job) -> str:
     return (getattr(capability, "model", "") or "").strip()
 
 
-def _baseline_target(job) -> _BaselineTarget | None:
+def _baseline_target(job, *, model_id: str | None = None) -> _BaselineTarget | None:
     from django.conf import settings
 
     from overbae.core.model_registry import PROVIDERS, resolve_openrouter_slug
     from overbae.models import DeployedModel, ModelRef
 
     gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
-    current = resolve_baseline_model(job)
+    current = model_id or resolve_baseline_model(job)
     if current:
         dep = DeployedModel.objects.filter(project=job.project, model_id=current).first()
         if dep is not None:
@@ -526,14 +538,10 @@ def _base_target(job) -> _BaselineTarget:
                 f"Base model · {job.base_model}",
                 True,
             )
-    # An attached deployment is already preparing this model. Keep that attempt
-    # until an explicit retry, even if the provider catalog changes meanwhile.
-    slug = (
-        None
-        if job.evaluation_deployments.exists()
-        else resolve_training_openrouter_slug(job.base_model)
-    )
-    if slug:
+    slug = resolve_training_openrouter_slug(job.base_model)
+    # Do not abandon an unresolved deployment attempt. A ready base alone does not pin an eval.
+    deployment_pending = job.evaluation_deployments.exclude(status="ready").exists()
+    if slug and not deployment_pending:
         return _BaselineTarget(
             "openrouter",
             slug,
@@ -543,21 +551,11 @@ def _base_target(job) -> _BaselineTarget:
             f"Base model · {job.base_model}",
             True,
         )
-    if not _is_self_hosted(job):
-        return _BaselineTarget(
-            "provider",
-            job.base_model,
-            ModelRef.Provider.TOGETHER,
-            "",
-            "TOGETHER_API_KEY",
-            f"Base model · {job.base_model}",
-            True,
-        )
     gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
     base = _base_deployment(job)
     return _BaselineTarget(
-        kind="base_deploy",
-        model_id=base.model_id if base else "",
+        kind="gateway" if base else "unavailable",
+        model_id=base.model_id if base else job.base_model,
         provider=ModelRef.Provider.CUSTOM,
         base_url=f"{gateway}/v1",
         api_key_ref="INFERENCE_API_KEY",
@@ -580,7 +578,7 @@ def baseline_needs_base_deploy(job) -> bool:
     return target is not None and target.kind == "base_deploy"
 
 
-def _sibling_baseline_eval(job, *, model_id: str):
+def _sibling_baseline_eval(job, *, model_id: str, kind: str):
     """Reuse a group-mate's baseline EvalRun when it scores the same target.
 
     Wizard multi-model launches share ``group_id`` + eval set/dataset and one
@@ -598,7 +596,7 @@ def _sibling_baseline_eval(job, *, model_id: str):
             job__eval_dataset_id=job.eval_dataset_id,
             job__eval_set_id=job.eval_set_id,
             job__eval_judge_model=job.eval_judge_model,
-            kind=FinetuningJobEval.Kind.BASELINE,
+            kind=kind,
             model_id=model_id,
             eval_run_id__isnull=False,
             eval_run__max_items=0,
@@ -625,7 +623,7 @@ def _attach_shared_baseline(job, shared):
     row = FinetuningJobEval.objects.create(
         job=job,
         eval_run=shared.eval_run,
-        kind=FinetuningJobEval.Kind.BASELINE,
+        kind=shared.kind,
         status=shared.status,
         model_id=shared.model_id,
         aggregate_score=shared.aggregate_score,
@@ -653,6 +651,8 @@ def ensure_baseline_eval(job):
         return existing
 
     target = _baseline_target(job)
+    if target is not None and target.kind == "unavailable":
+        return record_missing_base_route(job, FinetuningJobEval.Kind.BASELINE)
     if target is None or not target.ready or not target.model_id:
         return None
     model_id = target.model_id
@@ -663,6 +663,23 @@ def ensure_baseline_eval(job):
         kind=FinetuningJobEval.Kind.BASELINE,
         model_id=model_id,
         label=label,
+        checkpoint_id="",
+        checkpoint_step=None,
+        target=target,
+    )
+
+
+def ensure_comparator_eval(job, *, model_id: str):
+    from overbae.models import FinetuningJobEval
+
+    target = _baseline_target(job, model_id=model_id)
+    if target is None or not target.ready or not target.model_id:
+        return None
+    return _launch_eval(
+        job,
+        kind=FinetuningJobEval.Kind.COMPARATOR,
+        model_id=target.model_id,
+        label=f"Benchmark before · {model_id}",
         checkpoint_id="",
         checkpoint_step=None,
         target=target,
@@ -706,6 +723,8 @@ def ensure_target_eval(job, *, kind: str):
     target = (
         _base_target(job) if kind == FinetuningJobEval.Kind.MODEL_BEFORE else _baseline_target(job)
     )
+    if target is not None and target.kind == "unavailable":
+        return record_missing_base_route(job, kind)
     if target is None or not target.ready or not target.model_id:
         return None
     label = (
@@ -722,12 +741,28 @@ def ensure_target_eval(job, *, kind: str):
     )
 
 
+def record_missing_base_route(job, kind):
+    from overbae.models import FinetuningJobEval
+
+    row, _ = FinetuningJobEval.objects.get_or_create(
+        job=job,
+        kind=kind,
+        defaults={
+            "status": FinetuningJobEval.Status.FAILED,
+            "model_id": job.base_model,
+            "error_message": "Exact OpenRouter base-model route unavailable; no hosted fallback was started.",
+        },
+    )
+    return row
+
+
 def _provider_routing(job, *, kind: str, target: _BaselineTarget | None) -> tuple[str, str, str]:
     """Return ``(ModelRef.provider, base_url, api_key_env)`` for one eval kind."""
     from overbae.models import FinetuningJobEval, ModelRef
 
     if kind in (
         FinetuningJobEval.Kind.BASELINE,
+        FinetuningJobEval.Kind.COMPARATOR,
         FinetuningJobEval.Kind.INCUMBENT_AFTER,
         FinetuningJobEval.Kind.MODEL_BEFORE,
     ):
@@ -850,11 +885,24 @@ def _launch_eval(
         existing = FinetuningJobEval.objects.filter(job=job, kind=kind)
         if kind == FinetuningJobEval.Kind.CHECKPOINT:
             existing = existing.filter(checkpoint_id=checkpoint_id)
+        elif kind == FinetuningJobEval.Kind.COMPARATOR:
+            existing = existing.filter(model_id=model_id)
         row = existing.first()
         if row is not None:
             return row
-        if kind == FinetuningJobEval.Kind.BASELINE:
-            shared = _sibling_baseline_eval(job, model_id=model_id)
+        readiness = snapshot_readiness(job.eval_set, judge_model=job.eval_judge_model)
+        if not readiness["ready"]:
+            return FinetuningJobEval.objects.create(
+                job=job,
+                kind=kind,
+                status=FinetuningJobEval.Status.FAILED,
+                checkpoint_id=checkpoint_id,
+                checkpoint_step=checkpoint_step,
+                model_id=model_id,
+                error_message="; ".join(error["message"] for error in readiness["errors"]),
+            )
+        if kind in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.COMPARATOR):
+            shared = _sibling_baseline_eval(job, model_id=model_id, kind=kind)
             if shared is not None:
                 return _attach_shared_baseline(job, shared)
 

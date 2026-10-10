@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -31,49 +32,6 @@ class FakeResponse:
         self.closed = True
 
 
-class FakeSession:
-    def __init__(self, *, received: int = 0, chunk_bytes: int = 4, max_bytes: int = 100):
-        self.headers = {}
-        self.received = received
-        self.chunk_bytes = chunk_bytes
-        self.max_bytes = max_bytes
-        self.calls: list[tuple[str, str, dict]] = []
-
-    def post(self, url, **kwargs):
-        self.calls.append(("POST", url, kwargs))
-        if url.endswith("/api/uploads/"):
-            return FakeResponse(
-                {
-                    "upload_id": "upload-1",
-                    "chunk_bytes": self.chunk_bytes,
-                    "max_bytes": self.max_bytes,
-                },
-                201,
-            )
-        if url.endswith("/api/datasets/split/"):
-            return FakeResponse(
-                {
-                    "train": {"id": "dataset-1", "state": "landing"},
-                    "eval": {"id": "dataset-2", "state": "landing"},
-                },
-                201,
-            )
-        return FakeResponse({"id": "dataset-1", "state": "landing"}, 201)
-
-    def get(self, url, **kwargs):
-        self.calls.append(("GET", url, kwargs))
-        return FakeResponse({"upload_id": "upload-1", "received": self.received})
-
-    def put(self, url, **kwargs):
-        self.calls.append(("PUT", url, kwargs))
-        offset = kwargs["params"]["offset"]
-        self.received = offset + len(kwargs["data"])
-        return FakeResponse({"upload_id": "upload-1", "received": self.received})
-
-    def close(self):
-        pass
-
-
 class ExportSession:
     def __init__(self, response: FakeResponse):
         self.headers = {}
@@ -88,119 +46,48 @@ class ExportSession:
         pass
 
 
-def _urls(session: FakeSession) -> list[str]:
-    return [call[1] for call in session.calls]
-
-
-def test_upload_file_small_hits_datasets_not_ingestions(tmp_path: Path):
-    path = tmp_path / "rows.jsonl"
-    path.write_bytes(b"ab")
-    session = FakeSession(chunk_bytes=8)
-
-    result = upload_file(
-        path,
-        project_id="project-1",
-        api_key="key-1",
-        api_url="https://api.example/",
-        session=session,
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_original_source_export_verifies_bytes_and_removes_corrupt_download(tmp_path, corrupt):
+    original = b"%PDF original retained source bytes"
+    fingerprint = hashlib.sha256(original).hexdigest()
+    destination = tmp_path / "source.pdf"
+    session = ExportSession(FakeResponse({}, chunks=[original + b"changed" if corrupt else original]))
+    arguments = dict(
+        source=fingerprint, output=destination, api_key="secret", api_url="http://localhost:8000", session=session
     )
-
-    assert result["id"] == "dataset-1"
-    assert result["state"] == "landing"
-    assert [call[0] for call in session.calls] == ["POST", "GET", "PUT", "POST"]
-    assert session.calls[-1][1] == "https://api.example/api/datasets/"
-    assert all("/api/ingestions/" not in url for url in _urls(session))
-    assert session.calls[-1][2]["json"] == {
-        "project": "project-1",
-        "name": "rows.jsonl",
-        "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
-    }
-    assert {action["tool"] for action in result["next_mcp_actions"]} == {
-        "get_job",
-        "inspect_dataset",
-    }
-    assert result["next_mcp_actions"][0]["arguments"] == {"kind": "dataset_run", "id": result["id"]}
+    if corrupt:
+        with pytest.raises(DatasetExportError, match="checksum"):
+            export_dataset("dataset-1", **arguments)
+        assert not destination.exists()
+    else:
+        result = export_dataset("dataset-1", **arguments)
+        assert destination.read_bytes() == original
+        assert result["sha256"] == fingerprint
+        assert result["format"] == "original"
+    assert session.calls[0][1] == f"http://localhost:8000/api/datasets/dataset-1/sources/{fingerprint}/"
+    assert session.calls[0][2]["allow_redirects"] is False
 
 
-def test_upload_attaches_to_an_existing_draft_without_creating_another_dataset(tmp_path: Path):
-    path = tmp_path / "handbook.txt"
-    path.write_bytes(b"evidence")
-    session = FakeSession()
-    upload_file(
-        path,
-        project_id="project-1",
-        api_key="key-1",
-        api_url="https://api.example",
-        dataset="2d23d030-e704-42b8-919c-6fd5f830ec7b",
-        session=session,
-    )
-    assert session.calls[-1][1] == "https://api.example/api/datasets/2d23d030-e704-42b8-919c-6fd5f830ec7b/source/"
-    assert session.calls[-1][2]["json"] == {"upload_id": "upload-1", "filename": "handbook.txt"}
-
-
-def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path):
-    path = tmp_path / "rows.jsonl"
-    path.write_bytes(b"0123456789")
-    session = FakeSession(received=3, chunk_bytes=4)
-
-    result = upload_file(
-        path,
-        project_id="project-1",
-        api_key="key-1",
-        api_url="https://api.example/",
-        intent="eval",
-        capability="cap-1",
-        session=session,
-    )
-
-    assert result["id"] == "dataset-1"
-    assert result["state"] == "landing"
-    assert [call[0] for call in session.calls] == ["POST", "GET", "PUT", "PUT", "POST"]
-    chunks = [call[2]["data"] for call in session.calls if call[0] == "PUT"]
-    assert chunks == [b"3456", b"789"]
-    assert session.calls[-1][1] == "https://api.example/api/datasets/"
-    assert all("/api/ingestions/" not in url for url in _urls(session))
-    assert session.calls[-1][2]["json"] == {
-        "project": "project-1",
-        "name": "rows.jsonl",
-        "intent": "eval",
-        "capability": "cap-1",
-        "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
-    }
-
-
-def test_upload_file_with_split_hits_the_split_endpoint_and_returns_both_ids(tmp_path: Path):
-    path = tmp_path / "rows.jsonl"
-    path.write_bytes(b"ab")
-    session = FakeSession(chunk_bytes=8)
-
-    result = upload_file(
-        path,
-        project_id="project-1",
-        api_key="key-1",
-        api_url="https://api.example/",
-        split=25,
-        split_position="head",
-        session=session,
-    )
-
-    assert session.calls[-1][1] == "https://api.example/api/datasets/split/"
-    assert session.calls[-1][2]["json"] == {
-        "project": "project-1",
-        "name": "rows.jsonl",
-        "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
-        "eval_percent": 25,
-        "position": "head",
-    }
-    assert (result["id"], result["eval_id"]) == ("dataset-1", "dataset-2")
-    assert result["state"] == result["eval_state"] == "landing"
-    assert result["next_mcp_actions"][1]["arguments"] == {"dataset": "dataset-1"}
+def test_original_source_rejects_cell_selection_and_invalid_identity_before_network(tmp_path):
+    session = ExportSession(FakeResponse({}))
+    for source, cell in (("../escape", None), ("a" * 64, "cell-id")):
+        with pytest.raises(DatasetExportError):
+            export_dataset(
+                "dataset-1",
+                source=source,
+                cell=cell,
+                output=tmp_path / "source",
+                api_key="secret",
+                api_url="http://localhost:8000",
+                session=session,
+            )
+    assert session.calls == []
 
 
 def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"ab")
-    session = FakeSession()
+    session = ExportSession(FakeResponse({}))
     base = {"project_id": "p", "api_key": "k", "api_url": "https://api.example", "session": session}
     for bad in (
         {"split": 0},
@@ -216,7 +103,7 @@ def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
 def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"{}\n")
-    session = FakeSession()
+    session = ExportSession(FakeResponse({}))
 
     with pytest.raises(DatasetUploadError, match="train, eval or explore"):
         upload_file(
@@ -228,41 +115,6 @@ def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
             session=session,
         )
     assert session.calls == []
-
-
-def test_upload_file_checks_maximum_before_reading_state(tmp_path: Path):
-    path = tmp_path / "rows.csv"
-    path.write_bytes(b"1234")
-    session = FakeSession(max_bytes=3)
-
-    with pytest.raises(DatasetUploadError, match="server limit"):
-        upload_file(
-            path,
-            project_id="project-1",
-            api_key="key-1",
-            api_url="https://api.example",
-            session=session,
-        )
-
-    assert [call[0] for call in session.calls] == ["POST"]
-
-
-def test_upload_file_surfaces_server_failure(tmp_path: Path):
-    path = tmp_path / "rows.jsonl"
-    path.write_bytes(b"{}\n")
-
-    class FailingSession(FakeSession):
-        def post(self, url, **kwargs):
-            return FakeResponse({"detail": "service unavailable"}, 503)
-
-    with pytest.raises(DatasetUploadError, match="HTTP 503: service unavailable"):
-        upload_file(
-            path,
-            project_id="project-1",
-            api_key="key-1",
-            api_url="https://api.example",
-            session=FailingSession(),
-        )
 
 
 def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monkeypatch):
@@ -299,7 +151,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     human = CliRunner().invoke(app, ["dataset", "upload", str(file), "--path", str(config_path)])
     assert human.exit_code == 0, human.output
     assert "dataset-1" in human.output
-    assert "landing" in human.output
+    assert "Transfer published" in human.output
     assert "get_job(kind=dataset_run, id=" in human.output
 
 
@@ -327,7 +179,7 @@ def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path:
     )
     assert result.exit_code == 0, result.output
     assert (seen["split"], seen["split_position"]) == (30, "random")
-    assert "Eval dataset dataset-2 is landing." in result.output
+    assert "Eval dataset dataset-2." in result.output
 
 
 def test_upload_command_rejects_removed_flags(tmp_path: Path):
@@ -478,6 +330,16 @@ def test_export_dataset_redacts_api_key_from_server_errors(tmp_path: Path):
     assert not (tmp_path / "rows.jsonl").exists()
 
 
+def test_export_refuses_redirects_without_forwarding_account_credentials(tmp_path):
+    session = ExportSession(FakeResponse({}, 302, headers={"Location": "https://other.invalid"}))
+    with pytest.raises(DatasetExportError, match="redirect"):
+        export_dataset(
+            "dataset-1", api_key="key", api_url="http://localhost:8000", output=tmp_path / "rows.jsonl", session=session
+        )
+    assert session.calls[0][2]["allow_redirects"] is False
+    assert not (tmp_path / "rows.jsonl").exists()
+
+
 def test_export_command_emits_machine_readable_success(tmp_path: Path, monkeypatch):
     captured: dict = {}
 
@@ -552,7 +414,7 @@ def test_upload_command_reports_missing_configuration(
     )
 
     assert result.exit_code == 1
-    assert message in json.loads(result.output)["error"]
+    assert message in str(json.loads(result.output)["error"])
 
 
 def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(monkeypatch):
@@ -580,7 +442,7 @@ def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(mo
         "d1",
         api_key="k",
         api_url="http://x",
-        session=_Session([{"state": "landing"}, {"state": "diagnosing"}, {"state": "idle"}]),
+        session=_Session([{"state": "landing"}, {"state": "running"}, {"state": "idle"}]),
     )
     assert done == {"state": "idle"}
     with pytest.raises(dataset_cmd.DatasetUploadError, match="Row 2 has 3 cells"):
@@ -590,24 +452,3 @@ def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(mo
             api_url="http://x",
             session=_Session([{"state": "error", "error": "Row 2 has 3 cells; the header has 2."}]),
         )
-
-
-def test_a_dropped_chunk_is_sent_again(monkeypatch, tmp_path):
-    from overmind import dataset_cmd
-
-    monkeypatch.setattr(dataset_cmd.time, "sleep", lambda _s: None)
-    path = tmp_path / "rows.jsonl"
-    path.write_text('{"input": "a"}\n')
-    session = FakeSession()
-    real_put = session.put
-    dropped = []
-
-    def flaky_put(*args, **kwargs):
-        if not dropped:
-            dropped.append(1)
-            raise dataset_cmd.requests.ConnectionError("reset")
-        return real_put(*args, **kwargs)
-
-    session.put = flaky_put
-    result = dataset_cmd.upload_file(path, project_id="p", api_key="k", api_url="http://x", session=session)
-    assert dropped and result["id"]

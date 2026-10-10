@@ -10,7 +10,8 @@ from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
 from overbae.models import Capability, DeployedModel, ModelActivation
-from overbae.services.deployment import poll_operation, spawn_verification
+from overbae.services import operational_progress, provider_progress
+from overbae.services.deployment import modal_environment, poll_operation, spawn_verification
 
 logger = logging.getLogger(__name__)
 ACTIVE_STAGES = ("checking", "verifying", "switching")
@@ -33,6 +34,10 @@ def start_activation(capability_id, target_id) -> ModelActivation | None:
                 last_application_request_at=None,
                 updated_at=timezone.now(),
             )
+            if activation:
+                activation.stage = "cancelled"
+                activation.capability = Capability.objects.get(pk=capability.pk)
+                operational_progress.activation(activation)
             return None
         target = DeployedModel.objects.filter(
             pk=target_id, project_id=capability.project_id
@@ -69,6 +74,7 @@ def start_activation(capability_id, target_id) -> ModelActivation | None:
                 "completed_at": None,
             },
         )
+        operational_progress.activation(activation)
         return activation
 
 
@@ -169,6 +175,17 @@ def advance_activation(activation_id) -> None:
         # Poll transport errors retain the saved handle until the deadline.
     finally:
         owned.update(**changes, claim=None, claim_until=None)
+        activation = ModelActivation.objects.select_related("capability", "target").get(
+            pk=activation_id
+        )
+        operation = operational_progress.activation(activation)
+        if activation.call_id:
+            provider_progress.collect(
+                operation,
+                environment=modal_environment(),
+                call_id=activation.call_id,
+                deployed=activation.target,
+            )
 
 
 def activation_progress(activation: ModelActivation | None) -> dict | None:
@@ -181,5 +198,9 @@ def activation_progress(activation: ModelActivation | None) -> dict | None:
         "failed_stage": activation.failed_stage,
         "error": activation.error,
         "started_at": activation.started_at.isoformat(),
+        "deadline": activation.deadline.isoformat(),
+        "next_poll_at": activation.next_poll_at.isoformat()
+        if activation.stage in ACTIVE_STAGES
+        else None,
         "completed_at": activation.completed_at.isoformat() if activation.completed_at else None,
     }

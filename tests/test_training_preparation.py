@@ -165,6 +165,48 @@ def test_worker_reconnects_to_existing_call_without_spawning_again(
     assert request["rows_path"].endswith(preparation_volume[0][0])
 
 
+def test_preparation_reports_exported_rows_before_upload(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    observed = []
+
+    class Batch:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def put_file(self, _local, _remote):
+            prep.refresh_from_db()
+            observed.append(prep.report["progress"])
+
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(return_value=SimpleNamespace(batch_upload=lambda **_: Batch())),
+    )
+    monkeypatch.setattr(
+        preparation.modal.Function,
+        "from_name",
+        Mock(
+            return_value=SimpleNamespace(
+                spawn=Mock(return_value=SimpleNamespace(object_id="fc-prep"))
+            )
+        ),
+    )
+
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert observed, prep.error
+    assert observed == [
+        {
+            "stage": "uploading",
+            "completed_rows": cell.rows,
+            "total_rows": cell.rows,
+        }
+    ]
+
+
 def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(
@@ -263,6 +305,29 @@ def test_preparation_api_is_project_scoped_and_does_not_start_training(cell, mon
     ProjectMembership.objects.filter(user=user).delete()
     assert client.get(f"/api/training-preparations/{response.data['id']}/").status_code == 404
     assert client.post("/api/training-preparations/", body, format="json").status_code == 404
+
+
+@pytest.mark.parametrize("context_length", [128, 5000])
+def test_preparation_api_rejects_settings_that_would_be_changed(cell, monkeypatch, context_length):
+    user = User.objects.create_user(email="prep-context@example.test", password="test")
+    ProjectMembership.objects.create(project=cell.dataset.project, user=user)
+    client = APIClient()
+    client.force_authenticate(user)
+    queue = Mock()
+    monkeypatch.setattr("overbae.api.training_preparation.inspect_preparation.delay", queue)
+    response = client.post(
+        "/api/training-preparations/",
+        {
+            "dataset": str(cell.dataset_id),
+            "model": "Qwen/Qwen3-8B",
+            "context_length": context_length,
+        },
+        format="json",
+    )
+    assert response.status_code == 400, response.data
+    assert "context_length" in str(response.data)
+    assert not preparation.TrainingPreparation.objects.exists()
+    queue.assert_not_called()
 
 
 @pytest.fixture
@@ -443,6 +508,68 @@ def test_training_waits_for_resized_preparation_without_submitting_gpu_work(retr
     runner.return_value.submit.assert_not_called()
     job.refresh_from_db()
     assert job.status == "preparing" and not job.remote_job_id
+
+
+def test_training_reports_configuration_check_before_exact_preprocessing(retry_job):
+    job, _, _, _ = retry_job
+    job.status = "queued"
+    job.save(update_fields=["status"])
+    observed = []
+    original = preparation.for_job
+
+    def inspect_start(current):
+        current.refresh_from_db()
+        observed.append((current.status, current.progress.get("stage")))
+        return original(current)
+
+    with (
+        patch("overbae.services.finetuning_runner.get_runner"),
+        patch("overbae.tasks.finetuning.for_job", side_effect=inspect_start),
+        patch("overbae.tasks.finetuning.inspect_preparation.delay"),
+    ):
+        assert run_finetuning(job_id=str(job.id))["status"] == "preparing"
+    assert observed == [("preparing", "checking_training_configuration")]
+
+
+def test_live_training_metrics_include_preprocessing_counts(retry_job):
+    job, client, _, _ = retry_job
+    job.status = "preparing"
+    job.progress = {
+        "preparation": {
+            "state": "running",
+            "stage": "tokenizing",
+            "completed_rows": 250,
+            "total_rows": 1000,
+        }
+    }
+    job.save(update_fields=["status", "progress"])
+
+    response = client.get(f"/api/finetuning-jobs/{job.id}/loss-curves/")
+    assert response.status_code == 200
+    assert response.data["progress"]["preparation"]["completed_rows"] == 250
+
+
+def test_live_training_metrics_read_newer_preprocessing_counts(retry_job):
+    job, client, _, _ = retry_job
+    prep = preparation.for_job(job)
+    prep.state = "running"
+    prep.report = {"progress": {"stage": "tokenizing", "completed_rows": 500, "total_rows": 1000}}
+    prep.save(update_fields=["state", "report"])
+    job.status = "preparing"
+    job.progress = {
+        "preparation": {
+            "id": str(prep.id),
+            "state": "running",
+            "stage": "tokenizing",
+            "completed_rows": 250,
+            "total_rows": 1000,
+        }
+    }
+    job.save(update_fields=["status", "progress"])
+
+    response = client.get(f"/api/finetuning-jobs/{job.id}/loss-curves/")
+    assert response.status_code == 200
+    assert response.data["progress"]["preparation"]["completed_rows"] == 500
 
 
 def test_resizing_does_not_accept_other_incompatibilities(retry_job):

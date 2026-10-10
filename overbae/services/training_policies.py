@@ -18,7 +18,14 @@ class RuntimeProfile(BaseModel):
 
 
 def profile_options(hyperparameters):
+    limit = hyperparameters.get("runtime_limit_seconds")
     requested = hyperparameters.get("runtime_profile")
+    if limit is not None:
+        if type(limit) is not int or not 60 <= limit <= 86400:
+            raise ValueError("runtime_limit_seconds must be an integer between 60 and 86400")
+        if requested is not None:
+            raise ValueError("Choose one runtime limit: runtime_limit_seconds or runtime_profile")
+        return {"timeout": limit, "retries": 0}
     if requested is None:
         return {}
     profile = RuntimeProfile.model_validate(requested)

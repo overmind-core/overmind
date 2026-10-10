@@ -222,6 +222,7 @@ class ProgressCallback(TrainerCallback):
         self.run_dir = Path(run_dir) if run_dir is not None else None
         self.metrics_path = None
         self.progress_path = None
+        self.evaluation_split = "development"
         if self.run_dir is not None:
             self.run_dir.mkdir(parents=True, exist_ok=True)
             self.metrics_path = self.run_dir / "metrics.jsonl"
@@ -237,6 +238,12 @@ class ProgressCallback(TrainerCallback):
             return
         self._tokens_per_step = int(tokens)
         self._tokens_per_step_assumed = False
+
+    def exclude_monitoring_time(self, seconds: float) -> None:
+        if self._train_start is not None:
+            self._train_start += seconds
+        if self._last_log_mono is not None:
+            self._last_log_mono += seconds
 
     def _emit(self, prefix: str, record: dict[str, Any]) -> None:
         sys.stdout.write(f"{prefix} {json.dumps(record)}\n")
@@ -270,6 +277,14 @@ class ProgressCallback(TrainerCallback):
         self._start_step = state.global_step
         self._start_tokens = int(
             kwargs.get("tokens_seen", getattr(state, "num_input_tokens_seen", 0))
+        )
+        self._emit("BT_STAGE", {"stage": "training"})
+        record_stage(
+            self.run_dir,
+            "training",
+            completed=self._start_step,
+            total=self._total_steps,
+            unit="steps",
         )
 
         # Static footprint (weights + adapters) before the first step. Peak −
@@ -358,7 +373,7 @@ class ProgressCallback(TrainerCallback):
         **kwargs,
     ) -> None:
         metrics = metrics or {}
-        if "eval_loss" not in metrics:
+        if self.evaluation_split != "development" or "eval_loss" not in metrics:
             return
         record: dict[str, Any] = {
             "step": state.global_step,
@@ -373,6 +388,9 @@ class ProgressCallback(TrainerCallback):
             "hard_label_accuracy",
             "hard_label_decisions",
             "brier",
+            "expected_score_mae",
+            "distribution_decisions",
+            "mean_decisions",
             "decisions",
             "runtime_seconds",
         ):

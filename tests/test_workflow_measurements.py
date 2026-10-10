@@ -29,7 +29,14 @@ def measured_job():
         effective_configuration={"gpu_type": "H200", "gpu_count": 1},
         hyperparameters=recipe,
         cell=SimpleNamespace(stats=stats),
-        progress={"tokens_per_second": 999999, "trained_steps": 100, "total_steps": 100},
+        progress={
+            "tokens_per_second": 999999,
+            "trained_steps": 100,
+            "total_steps": 100,
+            "compute_usage": [
+                {"usage_id": "worker", "gpu_type": "H200", "gpu_count": 1, "elapsed_seconds": 200}
+            ],
+        },
         started_at=start,
         completed_at=start + timedelta(seconds=200),
         result={},
@@ -38,6 +45,7 @@ def measured_job():
 
 def test_forecast_uses_complete_execution_instead_of_last_batch_speed():
     job = measured_job()
+    job.completed_at += timedelta(minutes=5)
     job.requested_configuration["runtime"]["release"] = "telemetry-wrapper-only-change"
     with (
         patch("overbae.services.training_forecast.candidates", return_value=[job]),
@@ -64,7 +72,7 @@ def test_invalid_measurements_explain_why_no_forecast_is_available(invalid):
     elif invalid == "incomplete":
         job.progress["trained_steps"] = 20
     elif invalid == "duration":
-        job.completed_at = job.started_at
+        job.progress["compute_usage"] = []
     else:
         stats["avg_input_chars"] *= 10
     with (

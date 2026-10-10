@@ -27,6 +27,8 @@ class ModelCatalogTrainingType(MCPModel):
 
 class ModelCatalogModel(MCPModel):
     id: str
+    openrouter_id: str | None
+    openrouter_status: Literal["available", "not_listed", "catalog_unavailable"]
     display: str
     params: str
     total_params_b: float
@@ -47,3 +49,4 @@ class GetModelCatalogOutput(MCPModel):
     models: dict[str, list[ModelCatalogModel]]
     has_tool_calling: bool
     max_context: int | None = Field(gt=0, le=10_000_000)
+    monitoring: dict

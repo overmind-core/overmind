@@ -8,6 +8,7 @@ from overbae.api.serializers import CapabilitySerializer
 from overbae.core.errors import InputValidationError
 from overbae.models import Capability, DeployedModel, ModelActivation, Project
 from overbae.services import model_activation as service
+from overbae.services import operational_progress
 from overbae.services.deployed_chat import is_cold_start, record_inference_call
 
 pytestmark = pytest.mark.django_db
@@ -103,6 +104,12 @@ def test_competing_switch_is_rejected_and_clearing_cancels_pending_switch(setup)
     capability.refresh_from_db()
     assert capability.active_model is None
     assert activation.stage == "cancelled"
+    assert (
+        operational_progress.latest(capability.project_id, "model_activation", activation.pk)[
+            "status"
+        ]
+        == "cancelled"
+    )
 
 
 def test_poll_transport_error_reconnects_and_deadline_preserves_incumbent(setup):

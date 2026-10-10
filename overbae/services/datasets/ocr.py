@@ -7,6 +7,7 @@ import os
 import subprocess
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -158,13 +159,30 @@ def extract_image(path: Path) -> tuple[list[dict], dict]:
 
 
 def extract_pdf(
-    path: Path, document: DoclingDocument, native_rows: list[dict]
+    path: Path,
+    document: DoclingDocument,
+    native_rows: list[dict],
+    *,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> tuple[list[dict], dict | None]:
     text_pages = {row["page"] for row in native_rows}
     image_pages = {ref.page_no for picture in document.pictures for ref in picture.prov}
     pages = sorted((set(document.pages) - text_pages) | image_pages)
     if not pages:
         return [], None
+
+    def progress(completed):
+        if on_progress:
+            on_progress(
+                {
+                    "stage": "ocr",
+                    "pages_total": len(document.pages),
+                    "ocr_pages_total": len(pages),
+                    "ocr_pages_completed": completed,
+                }
+            )
+
+    progress(0)
     engine = {
         "engine": "tesseract",
         "version": _tesseract(["--version"], timeout=10).splitlines()[0].removeprefix("tesseract "),
@@ -184,7 +202,7 @@ def extract_pdf(
         # Landing runs in the prefork batch worker: PDFium must not be shared across threads.
         with pdfium.PdfDocument(path) as pdf, TemporaryDirectory(prefix="workshop-ocr-") as tmp:
             image_path = Path(tmp) / "page.png"
-            for number in pages:
+            for completed, number in enumerate(pages, start=1):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise OcrError("OCR timed out. No partial source was landed.")
@@ -229,6 +247,7 @@ def extract_pdf(
                 rows.extend(
                     _lines(tsv, page=number, scale_x=scale_x, scale_y=scale_y, engine=engine)
                 )
+                progress(completed)
     except OcrError:
         raise
     except Exception as exc:

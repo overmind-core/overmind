@@ -163,7 +163,10 @@ export function ScriptCode({
             />
           </>
         ) : (
-          <pre className={cn("whitespace-pre-wrap break-words text-foreground/90", METRICS)}>
+          <pre
+            aria-label={ariaLabel}
+            className={cn("whitespace-pre-wrap break-words text-foreground/90", METRICS)}
+          >
             <code>{nodes}</code>
           </pre>
         )}

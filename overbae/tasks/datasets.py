@@ -1,5 +1,3 @@
-"""Landing runs on the ``batch`` queue; runs and agent turns on ``interactive``."""
-
 from __future__ import annotations
 
 import logging
@@ -14,10 +12,6 @@ logger = logging.getLogger(__name__)
 
 LAND_SOFT_LIMIT = 55 * 60
 LAND_HARD_LIMIT = 60 * 60
-RUN_SOFT_LIMIT = 20 * 60
-RUN_HARD_LIMIT = 22 * 60
-TURN_SOFT_LIMIT = 40 * 60
-TURN_HARD_LIMIT = 42 * 60
 REAP_GRACE = 5 * 60
 
 
@@ -99,7 +93,7 @@ def _land_llm_calls(targets, read, *, user, split, infer_capability: bool) -> bo
 
 
 def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
-    from overbae.services.datasets.notebook import events
+    from overbae.services.datasets import events
 
     events.publish(dataset_id, {"dataset_id": str(dataset_id), **event})
 
@@ -130,17 +124,14 @@ def land(
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
     attachment_request: str = "",
-    message: str = "",
 ) -> dict[str, Any]:
     """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}``,
     ``{"traces": {trace_ids | filters}}`` or ``{"llm_calls": {...}}``. With ``split``
     (``eval_dataset_id``, ``eval_percent``, ``position``) the source is read once and cut
-    in two. Trace, file and row sources then start diagnosis. An LLM-call source already
-    matches its contract, so it settles to idle instead."""
+    in two. Landing records evidence and returns to idle without scheduling an agent."""
     from overbae.models import Dataset, User
     from overbae.services.datasets import attachments, files, operations
     from overbae.services.datasets import land as landing
-    from overbae.services.datasets.notebook import agent
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None:
@@ -151,19 +142,55 @@ def land(
         if evaluation is None:
             return {"status": "gone"}
         targets.append(evaluation)
-    if any(target.state != Dataset.State.LANDING for target in targets):
-        return {"status": "landed"}
-    if attachment_request and dataset.source_spec.get("attachment_request") != attachment_request:
-        return {"status": "landed"}
-    appended = None
-    # An unacknowledged worker kill must not trigger an unbounded import retry loop.
-    if (self.request.delivery_info or {}).get("redelivered"):
-        error = "Source import was interrupted. Check worker memory and retry the upload."
+    with transaction.atomic():
+        locked = {
+            target.pk: target
+            for target in Dataset.objects.select_for_update()
+            .filter(pk__in=[target.pk for target in targets])
+            .order_by("pk")
+        }
+        if len(locked) != len(targets):
+            return {"status": "gone"}
+        targets = [locked[target.pk] for target in targets]
+        dataset = targets[0]
+        if any(
+            target.state != Dataset.State.LANDING
+            or target.source_spec.get("attachment_request", "") != attachment_request
+            for target in targets
+        ):
+            if split:
+                for target in targets:
+                    if (
+                        target.state == Dataset.State.LANDING
+                        and target.source_spec.get("attachment_request", "") == attachment_request
+                        and target.operation.get("state") not in {"running", "cancelled"}
+                    ):
+                        _fail(
+                            target.pk,
+                            "The paired source import was cancelled or replaced. Attach the source again.",
+                        )
+            return {"status": "landed"}
+        # An unacknowledged worker kill must not trigger an unbounded import retry loop.
+        if (self.request.delivery_info or {}).get("redelivered"):
+            if any(
+                target.operation.get("task_id") not in (None, "", self.request.id)
+                for target in targets
+            ):
+                return {"status": "not_claimed"}
+            error = "Source import was interrupted. Check worker memory and retry the upload."
+            for target in targets:
+                _fail(target.id, error)
+            return {"status": "failed", "error": error}
         for target in targets:
-            _fail(target.id, error)
-        return {"status": "failed", "error": error}
-    for target in targets:
-        operations.started(target.id, self.request.id or "")
+            if (
+                operations.started(
+                    target.id, self.request.id or "", attachment_request=attachment_request
+                )
+                is None
+            ):
+                transaction.set_rollback(True)
+                return {"status": "not_claimed"}
+    appended = None
     user = User.objects.filter(pk=user_id).first() if user_id else None
     for target in targets:
         _emit(target.id, {"type": "land_started"})
@@ -189,7 +216,12 @@ def land(
             path = files.upload_data_path(upload_id)
             if not path.exists():
                 raise landing.LandError("The upload has expired. Start it again.")
-            read = landing.read_file(path, filename=filename)
+            read = landing.read_file(
+                path,
+                json_rows_field=source.get("json_rows_field"),
+                filename=filename,
+                on_progress=lambda detail: file_progress({"completed": 0, "total": 1, **detail}),
+            )
         elif source.get("rows") is not None:
             read = landing.read_rows(list(source["rows"]), spec={"pasted": True})
         elif source.get("traces") is not None:
@@ -203,6 +235,11 @@ def land(
             read = llm_calls.read(dataset.project_id, dict(source["llm_calls"]), intents=intents)
         else:
             raise landing.LandError("No source given.")
+        if upload_id or upload_ids:
+            total = len(upload_ids) if upload_ids else 1
+            file_progress(
+                {"completed": total, "total": total, "stage": "publishing", "rows": len(read.rows)}
+            )
         if source.get("llm_calls") is not None:
             if not _land_llm_calls(
                 targets, read, user=user, split=split, infer_capability=infer_capability
@@ -229,7 +266,7 @@ def land(
                         target,
                         replace(part, spec=spec),
                         user=user,
-                        state=Dataset.State.DIAGNOSING,
+                        state=Dataset.State.IDLE,
                         infer_capability=infer_capability,
                     )
         elif attachment_request:
@@ -244,7 +281,7 @@ def land(
                         dataset,
                         read,
                         user=user,
-                        state=Dataset.State.DIAGNOSING,
+                        state=Dataset.State.IDLE,
                         infer_capability=False,
                     )
                 targets = [dataset]
@@ -253,7 +290,7 @@ def land(
                 dataset,
                 read,
                 user=user,
-                state=Dataset.State.DIAGNOSING,
+                state=Dataset.State.IDLE,
                 infer_capability=infer_capability,
             )
     except landing.LandError as exc:
@@ -282,159 +319,9 @@ def land(
         )
         rows += landed
         _emit(target.id, {"type": "land_done", "rows": landed})
-        try:
-            if appended or (attachment_request and message):
-                filenames = [item["filename"] for item in read.spec.get("sources", [])]
-                display = message.strip() or "Merge the attached data into this dataset."
-                if filenames:
-                    display += "\n\nAttached: " + ", ".join(filenames)
-                context = display
-                if appended:
-                    context += (
-                        f"\n\nThe files have already been merged in cell {appended.id}: "
-                        f"{landed} added rows. Inspect that cell and the current data before "
-                        "continuing. Do not append these files again. Preserve existing work; "
-                        "semantic changes still require a reviewed proposal."
-                    )
-                turn.apply_async(
-                    kwargs={
-                        "dataset_id": str(target.id),
-                        "user_id": user_id,
-                        "message": context,
-                        "display": display,
-                        "preparation_turn": True,
-                    },
-                    task_id=attachment_request,
-                )
-            else:
-                diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
-        except Exception:  # noqa: BLE001 — a broker failure must not strand the dataset
-            logger.exception("could not queue the first scan for dataset %s", target.id)
-            agent.settle(target.id)
+        if target.operation.get("state") != "cancelled":
+            Dataset.objects.filter(pk=target.pk).update(state=Dataset.State.IDLE)
     return {"status": "ok", "rows": rows}
-
-
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.run",
-    soft_time_limit=RUN_SOFT_LIMIT,
-    time_limit=RUN_HARD_LIMIT,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def run(
-    self, *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
-) -> dict[str, Any]:
-    from celery.exceptions import SoftTimeLimitExceeded
-
-    from overbae.models import Dataset, User
-    from overbae.services.datasets import dispatch, operations
-    from overbae.services.datasets.notebook import run as run_svc
-
-    dataset = Dataset.objects.filter(pk=dataset_id).first()
-    if dataset is None:
-        return {"status": "gone"}
-    if proposal_id and any(proposal_id in item.get("decisions", {}) for item in dataset.chat):
-        return {"status": dataset.state}
-    user = User.objects.filter(pk=user_id).first() if user_id else None
-    operations.started(dataset.id, self.request.id or "")
-    try:
-        run_svc.execute(
-            dataset,
-            user=user,
-            activate_cell_id=proposal_id,
-            hold=Dataset.State.DIAGNOSING if proposal_id else None,
-        )
-        if dataset.error:
-            Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.ERROR)
-            dataset.state = Dataset.State.ERROR
-        elif proposal_id:
-            operations.finished(dataset.id, task_id=self.request.id or "")
-            proposal = dataset.cells.get(pk=proposal_id)
-            dispatch.resume_after_decision(
-                dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
-            )
-            dataset.refresh_from_db()
-            _emit(dataset_id, {"type": "dataset_changed"})
-    except SoftTimeLimitExceeded:
-        Dataset.objects.filter(pk=dataset_id).update(
-            state=Dataset.State.ERROR, error="The run took too long and was stopped."
-        )
-        _emit(dataset_id, {"type": "run_failed", "error": "The run took too long and was stopped."})
-        return {"status": "timeout"}
-    except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
-        logger.exception("run failed for dataset %s", dataset_id)
-        Dataset.objects.filter(pk=dataset_id).update(
-            state=Dataset.State.ERROR, error=str(exc)[:4000]
-        )
-        _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
-        return {"status": "failed", "error": str(exc)}
-    finally:
-        operations.finished(dataset.id, task_id=self.request.id or "")
-    return {"status": dataset.state}
-
-
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.diagnose",
-    soft_time_limit=TURN_SOFT_LIMIT,
-    time_limit=TURN_HARD_LIMIT,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
-    from overbae.models import User
-    from overbae.services.datasets.notebook import agent
-
-    user = User.objects.filter(pk=user_id).first() if user_id else None
-    try:
-        for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
-            pass
-    except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
-        logger.exception("diagnosis failed for dataset %s", dataset_id)
-        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id)
-        return {"status": "failed"}
-    return {"status": "ok"}
-
-
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.turn",
-    soft_time_limit=TURN_SOFT_LIMIT,
-    time_limit=TURN_HARD_LIMIT,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def turn(
-    self,
-    *,
-    dataset_id: str,
-    message: str,
-    user_id: str | None = None,
-    display: str | None = None,
-    preparation_turn: bool = False,
-) -> dict[str, Any]:
-    from overbae.models import User
-    from overbae.services.datasets.notebook import agent
-
-    user = User.objects.filter(pk=user_id).first() if user_id else None
-    try:
-        for _event in agent.follow_up(
-            dataset_id,
-            message,
-            user=user,
-            turn_key=self.request.id or "",
-            display=display,
-            preparation_turn=preparation_turn,
-        ):
-            pass
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("agent turn failed for dataset %s", dataset_id)
-        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id)
-        return {"status": "failed"}
-    return {"status": "ok"}
 
 
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
@@ -443,23 +330,17 @@ def reap_stuck_runs() -> dict[str, Any]:
     longer than the hard limit is dead."""
     from datetime import timedelta
 
-    from overbae.models import Cell, Dataset, WorkshopRun
+    from overbae.models import Dataset, DatasetPipelineRun
 
     now = timezone.now()
-    from overbae.services.datasets import generation_worker, operations
+    from overbae.services.datasets.workbench import expire_runs
 
-    generation_worker.recover()
-    active_workflows = WorkshopRun.objects.filter(
-        kind="generation", state__in=["queued", "running"]
-    ).values("dataset_id")
-    for pending in Dataset.objects.filter(operation__state="cancel_pending").only("id"):
-        operations.reconcile(pending.id)
+    expire_runs()
+    active_workflows = DatasetPipelineRun.objects.filter(state__in=["queued", "running"]).values(
+        "dataset_id"
+    )
     ids: list[Any] = []
-    for state, limit in (
-        (Dataset.State.LANDING, LAND_HARD_LIMIT),
-        (Dataset.State.RUNNING, RUN_HARD_LIMIT),
-        (Dataset.State.DIAGNOSING, TURN_HARD_LIMIT),
-    ):
+    for state, limit in ((Dataset.State.LANDING, LAND_HARD_LIMIT),):
         stuck = Dataset.objects.filter(
             state=state, updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
         ).exclude(pk__in=active_workflows)
@@ -469,15 +350,7 @@ def reap_stuck_runs() -> dict[str, Any]:
             error="The worker stopped before this finished.",
             updated_at=now,
         )
-        for dataset_id in found:
-            dataset = Dataset.objects.get(pk=dataset_id)
-            if dataset.operation.get("provider", {}).get("state") in {"submitting", "running"}:
-                operations.change(dataset_id, state="cancel_pending", local_stopped=True)
-                operations.reconcile(dataset_id, local_stopped=True)
         ids += found
-    Cell.objects.filter(dataset_id__in=ids, state=Cell.State.RUNNING).update(
-        state=Cell.State.QUEUED
-    )
     for dataset_id in ids:
         _emit(
             dataset_id, {"type": "run_failed", "error": "The worker stopped before this finished."}
@@ -485,25 +358,8 @@ def reap_stuck_runs() -> dict[str, Any]:
     return {"reaped": len(ids)}
 
 
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.generate",
-    soft_time_limit=12 * 60,
-    time_limit=14 * 60,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def generate(self, *, run_id):
-    from overbae.models import WorkshopRun
-    from overbae.services.datasets import generation_worker
-    from overbae.services.datasets.notebook import agent
+@shared_task(name="overbae.tasks.datasets.execute_pipeline", soft_time_limit=1500, time_limit=1560)
+def execute_pipeline(run_id):
+    from overbae.services.datasets.workbench import execute
 
-    result = generation_worker.execute(run_id, owner=self.request.id or "")
-    if result["state"] in {"queued", "running"}:
-        generation_worker.schedule(run_id)
-    elif result["published_cell"]:
-        generation_worker.audit(run_id)
-    else:
-        saved = WorkshopRun.objects.get(pk=run_id)
-        agent.settle(saved.dataset_id)
-    return result
+    execute(run_id)

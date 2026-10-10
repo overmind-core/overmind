@@ -10,6 +10,7 @@ from datetime import timedelta
 import modal
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -19,6 +20,7 @@ from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
 from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
+from overbae.services import operational_progress, provider_progress
 from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
 from overbae.services.model_catalog import resolve_training_openrouter_slug
 from overbae.services.plan_limits import PlanLimitExceeded, require_plan_quota
@@ -363,6 +365,26 @@ def poll_operation(call_id: str) -> tuple[str, object]:
         # A transport failure is not proof the remote operation failed. Reconnect to
         # this handle until the provider confirms a terminal result or the deadline.
         graph = _bounded(call.get_call_graph.aio)
+        nodes = list(_call_tree(graph))
+        cache.set(
+            "operation-graph:" + call_id,
+            {
+                "observed_at": timezone.now().isoformat(),
+                "total": len(nodes),
+                "truncated": len(nodes) > 200,
+                "calls": [
+                    {
+                        "provider_call_id": node.function_call_id,
+                        "provider_input_id": getattr(node, "input_id", None),
+                        "worker_id": getattr(node, "task_id", None),
+                        "status": node.status.name,
+                        "function": getattr(node, "function_name", None),
+                    }
+                    for node in nodes[:200]
+                ],
+            },
+            timeout=60,
+        )
         terminal = {
             InputStatus.FAILURE,
             InputStatus.INIT_FAILURE,
@@ -481,6 +503,14 @@ def _finish(deployed: DeployedModel, *, error: str = "") -> None:
 
 
 def _publish_progress(deployed: DeployedModel) -> None:
+    operation = operational_progress.deployment(deployed)
+    if deployed.deployment_call_id:
+        provider_progress.collect(
+            operation,
+            environment=modal_environment(),
+            call_id=deployed.deployment_call_id,
+            deployed=deployed,
+        )
     job_ids = (
         [deployed.finetuning_job_id]
         if deployed.finetuning_job_id
@@ -674,6 +704,13 @@ def advance_deployment(deployment_id) -> None:
             _finish(deployed, error="Deployment deadline exceeded. Checkpoint preserved.")
             return
         if deployed.deployment_call_id:
+            operation = operational_progress.deployment(deployed)
+            provider_progress.collect(
+                operation,
+                environment=modal_environment(),
+                call_id=deployed.deployment_call_id,
+                deployed=deployed,
+            )
             state, result = poll_operation(deployed.deployment_call_id)
             if state == "complete":
                 try:

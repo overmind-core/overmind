@@ -1,117 +1,19 @@
 import json
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from pydantic import ValidationError
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
 from test_mcp_research_journey import call
-from test_workshop_semantic_checks import dataset as dataset
-from test_workshop_semantic_checks import provider as provider
-from test_workshop_semantic_checks import request
 
 from overbae.models import APIToken, Cell, Dataset
 from overbae.services import native_evaluation
-from overbae.services.datasets import land, paths, review, semantic_checks, store, use
-from overbae.services.datasets.context import context_fingerprint
-from overbae.services.datasets.notebook.agent import Tools
+from overbae.services.datasets import land, paths, store
 from overbae.services.datasets.partition_plans import build, prepared_member_rows, request_plan
-from overbae.services.eval.funnel import JudgeOutcome
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.training_forecast import forecast
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def test_semantic_findings_survive_later_unknown_script_and_still_resume(dataset, provider):
-    cell = dataset.active_cell
-    semantic_checks.run_checks(dataset, cell, request(max_rows=1))
-    measured = store.read_frame(paths.cell_path(dataset.id, cell.id))[[store.SOURCE_ROW]]
-    measured["answer_support"] = None
-    measured["schema"] = True
-    saved = review.record_quality_results(
-        dataset,
-        cell,
-        [
-            {"name": "answer_support", "evidence": "Not measured by this script"},
-            {"name": "schema", "evidence": "Required columns present"},
-        ],
-        measured,
-        audit={"method": "row_results", "script": "fixture"},
-        reviewer="workshop_agent",
-        context=context_fingerprint(None),
-    )
-    check = next(c for c in saved["checks"] if c["name"] == "answer_support")
-    assert (check["rows_checked"], check["rows_unknown"]) == (1, 1)
-    assert saved["audits"]["answer_support"]["method"] == "semantic_decisions"
-    finished = semantic_checks.run_checks(dataset, cell, request(max_rows=1))
-    assert finished["remaining_rows"] == 0
-    check = next(c for c in finished["quality_report"]["checks"] if c["name"] == "answer_support")
-    assert check["rows_failed"] == 1
-    assert provider.call_count == 2
-
-
-@pytest.mark.parametrize(
-    "evidence,answer",
-    [("decision", "decision.target_probabilities"), ("decision.options", "decision")],
-)
-def test_nested_answer_cannot_be_in_its_ancestor_evidence(evidence, answer):
-    with pytest.raises(ValidationError, match="independent evidence"):
-        semantic_checks.SemanticCheck(
-            name="answer_support",
-            question="Supported?",
-            evidence_columns=[evidence],
-            answer_columns=[answer],
-        )
-
-
-def test_native_nested_evidence_projects_only_requested_fields(dataset, monkeypatch):
-    native = Dataset.objects.create(project=dataset.project, name="Native", intent="train")
-    original = {
-        "state": "",
-        "question": "Which?",
-        "kind": "choice",
-        "options": ["a", "b"],
-        "target_probabilities": [0.25, 0.75],
-        "private_metadata": "do not send",
-    }
-    land.land_rows(native, [{"decision": original}])
-    native.refresh_from_db()
-    seen = []
-
-    def invoke(state, questions, **kwargs):
-        seen.extend(state["rows"].values())
-        return JudgeOutcome(
-            parsed=SimpleNamespace(answers=dict.fromkeys(questions, "pass")),
-            raw="{}",
-            stats={"response_cost": 0},
-            judge_trace_id="nested-fixture",
-        )
-
-    monkeypatch.setattr(semantic_checks.decisions, "invoke", invoke)
-    result = semantic_checks.run_checks(
-        native,
-        native.active_cell,
-        semantic_checks.SemanticReviewRequest(
-            checks=[
-                semantic_checks.SemanticCheck(
-                    name="answer_support",
-                    question="Supported?",
-                    evidence_columns=["decision.state", "decision.question", "decision.options"],
-                    answer_columns=["decision.target_probabilities"],
-                )
-            ]
-        ),
-    )
-    assert result["processed_rows"] == 1
-    assert seen[0]["decision.state"] == ""
-    assert seen[0]["decision.target_probabilities"] == [0.25, 0.75]
-    assert "decision" not in seen[0] and "private_metadata" not in json.dumps(seen)
-    assert (
-        next(store.iter_rows(paths.cell_path(native.id, native.active_cell.id)))["decision"]
-        == original
-    )
 
 
 def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatch):
@@ -238,17 +140,6 @@ def test_forecast_distinguishes_current_price_from_missing_duration():
     assert quote["estimate_blockers"] == ["duration_unmeasured"]
 
 
-def test_workshop_observed_version_survives_consumer_freezing(dataset):
-    cell = dataset.active_cell
-    tools = Tools(dataset.id, None, lambda _: None)
-    before = tools.status({})
-    version = before["active"]
-    use.freeze(cell)
-    result = tools.query({"version": version, "sql": "SELECT COUNT(*) AS n FROM t"})
-    assert result["rows"] == [{"n": 2}], result
-    assert tools.exploration[-1]["cell"] == str(cell.id)
-
-
 def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     project, _, dataset = workspace()
     cell = dataset.active_cell
@@ -261,7 +152,6 @@ def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     }
     cell.save()
     dataset.brief = "界" * 8000
-    dataset.chat = [{"role": "agent", "text": "界" * 8000}]
     dataset.save()
     key, _ = APIToken.create_for_user(
         project.memberships.first().user, project=project, permission=["read", "write"]
@@ -272,25 +162,6 @@ def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     assert result["cells"][0]["id"] == str(cell.id)
     assert result["cells"][0]["rows"] == cell.rows
     assert result["truncated_fields"]
-
-
-def test_script_cannot_replace_measured_semantic_failure_with_success(dataset, provider):
-    cell = dataset.active_cell
-    semantic_checks.run_checks(dataset, cell, request())
-    frame = store.read_frame(paths.cell_path(dataset.id, cell.id))[[store.SOURCE_ROW]]
-    frame["answer_support"] = True
-    with pytest.raises(ValueError, match="semantic"):
-        review.record_quality_results(
-            dataset,
-            cell,
-            [{"name": "answer_support", "evidence": "claimed pass"}],
-            frame,
-            audit={"method": "row_results"},
-            reviewer="workshop_agent",
-            context=context_fingerprint(None),
-        )
-    cell.refresh_from_db()
-    assert cell.quality_report["checks"][0]["rows_failed"] == 1
 
 
 def test_partition_projection_preserves_mean_only_and_invalid_targets():

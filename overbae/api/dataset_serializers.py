@@ -4,7 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import preparation, review, workflow
+from overbae.services.datasets import lifecycle, review, transformation
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
@@ -21,77 +21,23 @@ class DatasetReadinessSerializer(serializers.Serializer):
     training_configuration = serializers.CharField()
 
 
-class PreparationFamilySerializer(serializers.Serializer):
-    name = serializers.CharField()
-    evidence = serializers.CharField()
-    input_columns = serializers.ListField(child=serializers.CharField())
-    target_columns = serializers.ListField(child=serializers.CharField())
-    group_columns = serializers.ListField(child=serializers.CharField())
-    coverage_columns = serializers.ListField(child=serializers.CharField(), required=False)
-
-
-class PreparationStepSerializer(serializers.Serializer):
-    id = serializers.CharField()
-    description = serializers.CharField()
-    kind = serializers.CharField()
-
-
-class PreparationCheckSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    category = serializers.CharField()
-    method = serializers.CharField()
-    question = serializers.CharField()
-
-
-class PreparationOutcomeSerializer(serializers.Serializer):
-    deliverables = serializers.ListField(child=serializers.CharField())
-    task = serializers.CharField()
-    confidence = serializers.CharField()
-    preservation = serializers.ListField(child=serializers.CharField())
-    required_checks = serializers.ListField(child=serializers.CharField())
-    target_rows = serializers.IntegerField(allow_null=True)
-    coverage = serializers.CharField(allow_blank=True)
-    model_input = serializers.CharField(allow_blank=True)
-
-
-class PreparationSpecificationSerializer(serializers.Serializer):
-    outcome = PreparationOutcomeSerializer(allow_null=True, required=False)
-    objective = serializers.CharField()
-    consumer = serializers.CharField()
-    understanding = serializers.CharField()
-    families = PreparationFamilySerializer(many=True)
-    mapping = serializers.DictField(child=serializers.CharField())
-    constants = serializers.DictField(child=serializers.JSONField())
-    assumptions = serializers.ListField(child=serializers.CharField())
-    unresolved_questions = serializers.ListField(child=serializers.CharField())
-    steps = PreparationStepSerializer(many=True)
-    checks = PreparationCheckSerializer(many=True)
-    semantic_row_budget = serializers.IntegerField()
-
-
-class PreparationExecutionSerializer(serializers.Serializer):
-    cell = serializers.UUIDField()
-    step_id = serializers.CharField()
-    state = serializers.CharField()
-    rows = serializers.IntegerField()
-    fingerprint = serializers.CharField()
-
-
-class PreparationPlanSerializer(serializers.Serializer):
-    id = serializers.UUIDField()
-    source_cell = serializers.UUIDField()
-    source_fingerprint = serializers.CharField()
-    intent = serializers.CharField()
-    context_fingerprint = serializers.CharField()
-    specification = PreparationSpecificationSerializer()
-    user_request = serializers.CharField(allow_blank=True)
-    exploration = serializers.ListField(child=serializers.JSONField())
-    created_at = serializers.DateTimeField()
-    stale = serializers.BooleanField(required=False)
-    executions = PreparationExecutionSerializer(many=True, required=False)
-    semantic_rows_reserved = serializers.IntegerField(required=False)
-    step_id = serializers.CharField(required=False)
-    result_fingerprint = serializers.CharField(required=False)
+class CellTransformationSerializer(serializers.Serializer):
+    execution = serializers.ChoiceField(
+        choices=[
+            "source",
+            "unrecorded",
+            "isolated_container",
+            "platform_operations",
+            "external_import",
+        ]
+    )
+    run = serializers.UUIDField(allow_null=True)
+    pipeline = serializers.UUIDField(allow_null=True)
+    revision = serializers.IntegerField(allow_null=True)
+    package = serializers.UUIDField(allow_null=True)
+    package_sha256 = serializers.CharField(allow_blank=True)
+    entrypoint = serializers.CharField(allow_blank=True)
+    provenance = serializers.CharField(allow_blank=True)
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -103,6 +49,8 @@ class CellSerializer(serializers.ModelSerializer):
     fits = serializers.SerializerMethodField()
     readiness = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()
+    usage = serializers.SerializerMethodField()
+    transformation = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
@@ -112,6 +60,7 @@ class CellSerializer(serializers.ModelSerializer):
             "version",
             "title",
             "script",
+            "transformation",
             "note",
             "state",
             "error",
@@ -130,6 +79,7 @@ class CellSerializer(serializers.ModelSerializer):
             "readiness",
             "seconds",
             "used_at",
+            "usage",
             "created_at",
             "updated_at",
         ]
@@ -141,7 +91,20 @@ class CellSerializer(serializers.ModelSerializer):
             versions = obj.dataset.versions()
         return versions.get(obj.id, "")
 
-    @extend_schema_field(PreparationPlanSerializer(allow_null=True))
+    @extend_schema_field(CellTransformationSerializer)
+    def get_transformation(self, obj):
+        records = self.context.get("transformations")
+        if records is None:
+            records = transformation.records(obj.dataset, [obj])
+        return CellTransformationSerializer(records[obj.pk]).data
+
+    @extend_schema_field(
+        serializers.DictField(child=serializers.ListField(child=serializers.DictField()))
+    )
+    def get_usage(self, obj):
+        return lifecycle.usage(obj) if obj.used_at else {}
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_preparation_plan(self, obj):
         return obj.preparation_plan or None
 
@@ -165,45 +128,10 @@ class CellSerializer(serializers.ModelSerializer):
         )
 
 
-class ChatTurnSerializer(serializers.Serializer):
-    funding_source = serializers.ChoiceField(choices=["platform", "chatgpt"], required=False)
-    model = serializers.CharField(required=False, allow_blank=True)
-    engine = serializers.CharField(required=False, allow_blank=True)
-    id = serializers.CharField(required=False)
-    role = serializers.ChoiceField(choices=["user", "agent"])
-    text = serializers.CharField(allow_blank=True)
-    error = serializers.CharField(required=False, allow_blank=True)
-    cells = serializers.ListField(child=serializers.JSONField(), required=False)
-    steps = serializers.ListField(child=serializers.JSONField(), required=False)
-    ms = serializers.IntegerField(required=False)
-    status = serializers.ChoiceField(
-        choices=[
-            "running",
-            "awaiting_approval",
-            "awaiting_intent",
-            "resolved",
-            "complete",
-            "error",
-        ],
-        required=False,
-    )
-    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
-    progress = serializers.JSONField(required=False)
-    at = serializers.CharField()
-
-
-class WorkshopControlSerializer(serializers.Serializer):
-    run_id = serializers.UUIDField()
-    revision = serializers.IntegerField(min_value=0)
-    action = serializers.ChoiceField(choices=["pause", "resume", "publish_partial"])
-
-
 class DatasetSerializer(serializers.ModelSerializer):
-    workflow = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
     cells = serializers.SerializerMethodField()
-    chat = ChatTurnSerializer(many=True, read_only=True)
     active_version = serializers.SerializerMethodField()
     rows = serializers.SerializerMethodField()
     readiness = serializers.SerializerMethodField()
@@ -226,12 +154,10 @@ class DatasetSerializer(serializers.ModelSerializer):
             "rows",
             "readiness",
             "preparation_plan",
-            "workflow",
             "operation",
             "state",
             "error",
             "cells",
-            "chat",
             "created_by",
             "created_at",
             "updated_at",
@@ -240,17 +166,13 @@ class DatasetSerializer(serializers.ModelSerializer):
             f for f in fields if f not in ("name", "capability", "intent", "active")
         ]
 
-    @extend_schema_field(serializers.DictField())
-    def get_workflow(self, obj):
-        return workflow.describe(obj)
-
     def _chain(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
         return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
 
-    @extend_schema_field(PreparationPlanSerializer(allow_null=True))
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_preparation_plan(self, obj):
-        return preparation.describe(obj) or None
+        return obj.preparation_plan or None
 
     def _context_fingerprint(self, obj):
         fingerprints = self.context.setdefault("capability_fingerprints", {})
@@ -283,6 +205,7 @@ class DatasetSerializer(serializers.ModelSerializer):
                 "intent": obj.intent,
                 "dataset": obj,
                 "preparation_context": self._context_fingerprint(obj),
+                "transformations": transformation.records(obj, chain),
             },
         ).data
 
@@ -394,37 +317,6 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
 class DatasetPairSerializer(serializers.Serializer):
     train = DatasetSerializer()
     eval = DatasetSerializer()
-
-
-class CellWriteSerializer(serializers.Serializer):
-    title = serializers.CharField(required=False, max_length=255)
-    script = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
-    note = serializers.CharField(required=False, allow_blank=True, max_length=512)
-
-
-class CellCreateSerializer(CellWriteSerializer):
-    title = serializers.CharField(max_length=255)
-    script = serializers.CharField(allow_blank=True, trim_whitespace=False)
-
-
-class ChatSerializer(serializers.Serializer):
-    message = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
-    source = SourceSerializer(required=False)
-    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
-    intent_turn_id = serializers.UUIDField(required=False)
-
-    def validate(self, attrs):
-        if bool(attrs.get("intent_choice")) != bool(attrs.get("intent_turn_id")):
-            raise serializers.ValidationError(
-                "Provide the intent choice and its question id together."
-            )
-        if attrs.get("intent_choice") and (attrs.get("message") or attrs.get("source")):
-            raise serializers.ValidationError(
-                "Answer the intent question before sending another message or files."
-            )
-        if not attrs.get("message") and not attrs.get("source") and not attrs.get("intent_choice"):
-            raise serializers.ValidationError("Write a message or attach files.")
-        return attrs
 
 
 class RowsPageSerializer(serializers.Serializer):

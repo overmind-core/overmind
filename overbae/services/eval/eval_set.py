@@ -135,6 +135,21 @@ def runnable_capability_evaluators(capability: Capability) -> list[Evaluator]:
     ]
 
 
+def snapshot_readiness(eval_set, *, judge_model=""):
+    members = list(
+        active_members(eval_set, EvalSetMember.Role.GENERATIVE).select_related("evaluator")
+    )
+    errors = []
+    for member in members:
+        try:
+            snapshots.build_snapshot(member.evaluator, judge_model=judge_model)
+        except ValueError as exc:
+            errors.append({"evaluator": str(member.evaluator_id), "message": str(exc)})
+    if not members:
+        errors.append({"evaluator": None, "message": "Eval set has no runnable evaluators"})
+    return {"ready": not errors, "errors": errors}
+
+
 def expand_to_run_evaluators(
     run, eval_set: EvalSet, *, role: str = EvalSetMember.Role.GENERATIVE, judge_model: str = ""
 ) -> list[RunEvaluator]:

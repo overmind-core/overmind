@@ -85,6 +85,11 @@ from overbae.api.span_ordering import (
     annotate_spans_for_ordering,
     llm_model_sql,
 )
+from overbae.api.training_monitoring import (
+    TrainingEvidenceSerializer,
+    TrainingMonitoringQuerySerializer,
+    TrainingMonitoringSerializer,
+)
 from overbae.core.errors import InputValidationError
 from overbae.models import (
     APIToken,
@@ -105,6 +110,7 @@ from overbae.models import (
     User,
 )
 from overbae.services import native_evaluation as native_evaluation_service
+from overbae.services import training_monitoring
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
 from overbae.services.finetuning_checkpoints import (
@@ -113,7 +119,13 @@ from overbae.services.finetuning_checkpoints import (
 )
 from overbae.services.inference_live import live_worker_stats
 from overbae.services.inference_metrics import model_activity, model_metrics, percentile
-from overbae.services.training_preparation import retry_for_job as retry_training_preparation
+from overbae.services.training_cancellation import cancel as cancel_training
+from overbae.services.training_preparation import (
+    live_progress_for_job,
+)
+from overbae.services.training_preparation import (
+    retry_for_job as retry_training_preparation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -750,9 +762,11 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         from overbae.services.plan_limits import require_plan_quota
         from overbae.tasks.finetuning import run_finetuning
 
-        require_credits(self.request.user)
-        require_plan_quota(self.request.user, "training_jobs")
+        def admit_new_training():
+            require_credits(self.request.user)
+            require_plan_quota(self.request.user, "training_jobs")
 
+        serializer.context["admit_new_training"] = admit_new_training
         job = serializer.save(triggered_by=self.request.user)
         if getattr(job, "launch_reused", False):
             return
@@ -898,84 +912,55 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         return Response(list(base_model_ids))
 
     @extend_schema(
+        parameters=[TrainingMonitoringQuerySerializer], responses=TrainingMonitoringSerializer
+    )
+    @action(detail=True, methods=["get"], url_path="monitoring")
+    def monitoring(self, request, id=None):
+        query = TrainingMonitoringQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        detail = training_monitoring.snapshot(
+            self.get_object(),
+            offset=query.validated_data["offset"],
+            limit=query.validated_data["limit"],
+        )
+        return Response(TrainingMonitoringSerializer(detail).data)
+
+    @extend_schema(
+        parameters=[TrainingMonitoringQuerySerializer], responses=TrainingEvidenceSerializer
+    )
+    @action(detail=True, methods=["get"], url_path="monitoring-evidence")
+    def monitoring_evidence(self, request, id=None):
+        query = TrainingMonitoringQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        if ("check" in data) == ("probe" in data):
+            raise drf_serializers.ValidationError(
+                {"check": "Select either a training check or a frozen probe"}
+            )
+        try:
+            detail = (
+                training_monitoring.probe_rows(
+                    self.get_object(), data["probe"], offset=data["offset"], limit=data["limit"]
+                )
+                if "probe" in data
+                else training_monitoring.examples(
+                    self.get_object(), data["check"], offset=data["offset"], limit=data["limit"]
+                )
+            )
+        except (ValueError, training_monitoring.TrainingValidationRun.DoesNotExist) as exc:
+            raise drf_serializers.ValidationError(
+                "The requested training evidence is unavailable"
+            ) from exc
+        return Response(TrainingEvidenceSerializer(detail).data)
+
+    @extend_schema(
         summary="Cancel a finetuning job",
         request=None,
         responses={200: FinetuningJobSerializer},
     )
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, id=None):
-        from django.utils import timezone
-
-        from overbae.services.finetuning_runner import get_runner
-
-        job = self.get_object()
-        if job.is_terminal:
-            return Response(FinetuningJobSerializer(job).data)
-
-        # Use the job's recorded provider so cancel hits the right backend
-        # even if FINETUNING_BACKEND later changed. Legacy providers (tinker)
-        # fall through to "together": the remote cancel fails and is logged,
-        # but the local status still flips.
-        backend = {
-            FinetuningJob.Provider.BASETEN: "baseten",
-            FinetuningJob.Provider.MODAL: "modal",
-        }.get(job.provider, "together")
-
-        remote_error = ""
-        if job.remote_job_id:
-            try:
-                get_runner(backend, job=job).cancel(job.remote_job_id)
-            except Exception as exc:  # noqa: BLE001 — still flip local status
-                remote_error = str(exc)
-                logger.warning(
-                    "Remote cancel failed for finetuning job %s (%s): %s",
-                    job.id,
-                    job.remote_job_id,
-                    exc,
-                )
-
-        if job.celery_task_id:
-            try:
-                from overbae.celery import app as celery_app
-
-                celery_app.control.revoke(job.celery_task_id, terminate=True)
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "Celery revoke failed for finetuning job %s task %s",
-                    job.id,
-                    job.celery_task_id,
-                    exc_info=True,
-                )
-
-        FinetuningJob.objects.filter(pk=job.pk).update(
-            status=FinetuningJob.Status.CANCELLED,
-            completed_at=timezone.now(),
-            **(
-                {"error_message": f"Cancelled (remote cancel warning: {remote_error})"}
-                if remote_error
-                else {}
-            ),
-        )
-        job.refresh_from_db()
-        try:
-            from overbae.services.finetuning_eval import cancel_related_evals
-
-            cancel_related_evals(job)
-        except Exception:  # noqa: BLE001 — cancel path must still return
-            logger.warning(
-                "Failed cancelling related evals for finetuning job %s",
-                job.id,
-                exc_info=True,
-            )
-        FinetuningJobEvent.objects.create(
-            job=job,
-            event_type="status_change",
-            message="Cancelled by user",
-            data={
-                "status": FinetuningJob.Status.CANCELLED,
-                **({"remote_error": remote_error} if remote_error else {}),
-            },
-        )
+        job = cancel_training(self.get_object())
         return Response(FinetuningJobSerializer(job).data)
 
     @extend_schema(
@@ -1077,14 +1062,13 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         2. ``job.result.epoch_losses`` (completion snapshot)
         3. ``FinetuningJobEvent`` progress events (legacy)
         """
-        from overbae.models import FinetuningJobEvent
 
         job = self.get_object()
         steps, train_loss, eval_loss = [], [], []
         learning_rate, grad_norm = [], []
         checkpoints = []
 
-        progress = job.progress if isinstance(job.progress, dict) else {}
+        progress = live_progress_for_job(job)
         metrics = (progress.get("metrics") or {}) if isinstance(progress, dict) else {}
         loss_points = metrics.get("loss") or []
         if loss_points:
@@ -1178,6 +1162,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "current_epoch": progress.get("current_epoch"),
                     "phase": progress.get("phase"),
                     "stage": progress.get("stage"),
+                    "preparation": progress.get("preparation"),
                     "diagnostics": progress.get("diagnostics") or {},
                     "download": progress.get("download"),
                     "lifecycle_stage": current_lifecycle,

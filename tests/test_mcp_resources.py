@@ -112,12 +112,17 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://traces/{trace_id}",
         "overmind://sessions/{session}",
         "overmind://datasets/{dataset}",
+        "overmind://dataset-pipelines/{id}",
+        "overmind://dataset-pipeline-packages/{id}",
+        "overmind://dataset-pipeline-bindings/{id}",
+        "overmind://pipeline-diagnostics/{id}",
         "overmind://eval-runs/{eval_run}",
         "overmind://eval-sets/{eval_set}",
         "overmind://finetunes/{job_id}",
         "overmind://deployments/{deployment}",
         "overmind://optimizer-runs/{experiment}",
         "overmind://jobs/{kind}/{id}",
+        "overmind://operations/{id}",
         "overmind://jobs/data_exploration/{id}/strata",
         "overmind://connectors/{connector}",
     }
@@ -156,9 +161,7 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
     assert resource["json_array_max_bytes"] == 256 * 1024**2
     assert "capped at 2 GiB" in resource["limits"]
     assert "capped at 256 MiB" in resource["limits"]
-    assert resource["command"] == "overmind dataset upload FILE --json"
-    assert "/inspect/" in resource["multiple_files"]
-    assert "source.uploads" in resource["multiple_files"]
+    assert resource["command"] == "overmind dataset upload FILE --project-id PROJECT --json"
     assert "OVERMIND_API_KEY" in resource["auth"]
     assert "get_job" in resource["next_mcp_calls"][0]
 
@@ -370,10 +373,17 @@ def test_safe_json_redacts_nested_secret_key_styles():
 
 
 def test_token_measurements_remain_visible_without_exposing_credentials():
-    measurements = {"trained_tokens": 54000, "max_tokens": 8192, "padded_tokens": 32768}
+    measurements = {
+        "trained_tokens": 54000,
+        "max_tokens": 8192,
+        "max_new_tokens": 128,
+        "padded_tokens": 32768,
+        "tokens": 54000,
+        "supervised_tokens": 1200,
+    }
     assert safe_json({"forecast": measurements}) == {"forecast": measurements}
     for value in ("credential-value", {"value": 12}, [12], True, float("nan")):
-        assert safe_json({"trained_tokens": value, "access_token": 1234}) == {}
+        assert safe_json({**dict.fromkeys(measurements, value), "access_token": 1234}) == {}
 
 
 def test_finetune_resource_redacts_all_checkpoint_url_styles():
@@ -385,7 +395,16 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
         dataset=dataset,
         base_model="model/base",
         cost_usd="0.2500",
+        group_id=uuid.uuid4(),
         hyperparameters={"objective": "decision_cross_entropy"},
+        requested_configuration={
+            "configuration": {
+                "hyperparameters": {
+                    "monitoring": {"generation": {"max_new_tokens": 128}},
+                    "provider_token": "provider-secret",
+                }
+            }
+        },
         result={"inference_contract": "typed_probabilities"},
         progress={
             "diagnostics": {"stage": "initial_validation", "completed": 600, "total": 1200},
@@ -412,12 +431,16 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
 
     resource = asyncio.run(read())
     assert resource["cost_usd"] == 0.25
+    assert resource["group_id"] == str(job.group_id)
     assert resource["training_objective"] == "decision_cross_entropy"
     assert resource["inference_contract"] == "typed_probabilities"
     encoded = json.dumps(resource)
     assert signed_url not in encoded
     assert "api-secret" not in encoded
     assert "refresh-secret" not in encoded
+    assert "provider-secret" not in encoded
+    frozen = resource["record"]["requested"]["configuration"]["hyperparameters"]
+    assert frozen["monitoring"]["generation"]["max_new_tokens"] == 128
     assert resource["progress"] == {
         "diagnostics": {"stage": "initial_validation", "completed": 600, "total": 1200},
         "nested": {"safe": "kept"},
@@ -478,17 +501,6 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
         capability=capability,
         intent=Dataset.Intent.EVAL,
         state=Dataset.State.LANDING,
-        chat=[
-            {"role": "user", "text": "shape this", "at": "2026-09-09T00:00:00+00:00"},
-            {
-                "role": "agent",
-                "text": "done",
-                "error": "",
-                "cells": [{"id": "c1"}],
-                "ms": 12,
-                "at": "2026-09-09T00:00:01+00:00",
-            },
-        ],
     )
     land.land_rows(dataset, list(EVAL_ROWS))
     dataset.refresh_from_db()
@@ -511,7 +523,7 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
     assert payload["cells_truncated"] is False
     assert payload["sample"]["cell_id"] == payload["active"]["id"]
     assert len(payload["sample"]["rows"]) == 2
-    assert {turn["role"] for turn in payload["recent_chat"]} >= {"user", "agent"}
+    assert "recent_chat" not in payload
     assert payload["next_actions"]
     assert payload["human_action"]["command"] == "overmind dataset export DATASET --json"
     assert "api_key" not in json.dumps(payload["human_action"]).lower()
@@ -530,7 +542,6 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
         project=project,
         name="Notebook",
         state=Dataset.State.LANDING,
-        chat=[{"role": "user", "text": "land it", "at": "t0"}],
     )
     Cell.objects.create(dataset=dataset, position=0, title="Source", state=Cell.State.QUEUED)
     context = _tool_context(project)
@@ -538,7 +549,6 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
 
     states = (
         Dataset.State.LANDING,
-        Dataset.State.DIAGNOSING,
         Dataset.State.RUNNING,
         Dataset.State.IDLE,
         Dataset.State.ERROR,
@@ -563,12 +573,12 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
         job = _read(project, uri)
         assert job["status"] == state
         assert job["dataset"]["uri"] == f"overmind://datasets/{dataset.id}"
-        assert job["latest_turn"]["role"] == "user"
+        assert "latest_turn" not in job
 
     assert result.structuredContent["job_error"] == "clipped-secret"
     assert result.structuredContent["details"]["next_action"]["tool"] in {
         "inspect_dataset",
-        "message_dataset_agent",
+        "inspect_dataset_workbench",
     }
 
 

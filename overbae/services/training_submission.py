@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import modal
@@ -5,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import FinetuningJob
-from overbae.services import training_release
+from overbae.services import operational_progress, training_release
 
 
 class SubmissionUnresolvedError(ValueError):
@@ -28,6 +29,92 @@ def claim(job):
     FinetuningJob.objects.filter(pk=job.pk).update(provider_submission=intent)
     job.provider_submission = intent
     return intent
+
+
+@transaction.atomic
+def release_before_dispatch(job):
+    locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+    intent = locked.provider_submission or {}
+    if (
+        not intent.get("attempt")
+        or intent.get("attempt") != (job.provider_submission or {}).get("attempt")
+        or intent.get("run_id")
+        or intent.get("dispatch_at")
+        or locked.remote_job_id
+    ):
+        return False
+    FinetuningJob.objects.filter(pk=job.pk).update(provider_submission={})
+    job.provider_submission = {}
+    return True
+
+
+@transaction.atomic
+def record_preparation_stage(job, stage, message, *, completed=None, total=None, unit=None):
+    locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+    if (
+        locked.status != FinetuningJob.Status.PREPARING
+        or locked.provider_submission
+        or locked.remote_job_id
+    ):
+        raise SubmissionUnresolvedError("The job is no longer preparing local training data.")
+    progress = dict(locked.progress or {})
+    activity = list(progress.get("activity") or [])
+    if progress.get("stage") != stage:
+        activity.append({"ts": int(time.time() * 1000), "kind": "stage", "message": message})
+    diagnostics = {}
+    if completed is not None:
+        diagnostics["completed"] = completed
+    if total is not None:
+        diagnostics["total"] = total
+    if unit is not None:
+        diagnostics["unit"] = unit
+    progress.update(
+        phase="preparing", stage=stage, diagnostics=diagnostics, activity=activity[-50:]
+    )
+    FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
+    job.progress = progress
+
+
+@transaction.atomic
+def record_pre_dispatch_stage(job, stage, message, *, diagnostics=None, expected_stage=None):
+    locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+    intent = locked.provider_submission or {}
+    if (
+        intent.get("state") != "submitting"
+        or not intent.get("attempt")
+        or intent.get("attempt") != (job.provider_submission or {}).get("attempt")
+        or intent.get("dispatch_at")
+        or locked.status in {"cancelled", "failed", "succeeded"}
+        or locked.remote_job_id
+    ):
+        raise SubmissionUnresolvedError("The staging task no longer owns this submission.")
+    progress = dict(locked.progress or {})
+    if expected_stage and progress.get("stage") != expected_stage:
+        return
+    previous = progress.get("diagnostics") or {}
+    detail = dict(diagnostics or {})
+    now = detail.get("source_at", time.time())
+    if progress.get("stage") == stage and now < previous.get("source_at", 0):
+        return
+    changed_stage = progress.get("stage") != stage or previous.get("stage") != detail.get("stage")
+    advanced = changed_stage or (detail.get("completed") or 0) > (previous.get("completed") or 0)
+    detail.update(
+        source_at=now,
+        stage_started_at=now if changed_stage else previous.get("stage_started_at", now),
+        last_progress_at=now if advanced else previous.get("last_progress_at", now),
+    )
+    activity = list(progress.get("activity") or [])
+    if changed_stage:
+        activity.append({"ts": int(now * 1000), "kind": "stage", "message": message})
+    progress.update(
+        phase="preparing",
+        stage=stage,
+        diagnostics=detail,
+        activity=activity[-50:],
+    )
+    FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
+    job.progress = progress
+    operational_progress.training(job)
 
 
 @transaction.atomic

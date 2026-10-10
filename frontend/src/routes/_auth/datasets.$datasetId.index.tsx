@@ -9,15 +9,15 @@ import { projectIdSearchSchema } from "@/lib/schemas";
 export const Route = createFileRoute("/_auth/datasets/$datasetId/")({
   component: DatasetNotebookPage,
   validateSearch: projectIdSearchSchema.extend({
-    /** A cell to scroll to; back-links from runs carry it. */
+    /** Exact cell focus carried by run back-links. */
     cell: z.string().optional(),
-    request: z.string().max(6000).optional(),
+    iteration: z.string().optional(),
   }),
 });
 
 function DatasetNotebookPage() {
   const { datasetId } = Route.useParams();
-  const { projectId, cell, request } = Route.useSearch();
+  const { projectId, cell, iteration } = Route.useSearch();
 
   if (!projectId) {
     return (
@@ -33,7 +33,7 @@ function DatasetNotebookPage() {
       <DatasetNotebook
         cellParam={cell}
         datasetId={datasetId}
-        initialRequest={request}
+        iteration={iteration}
         key={datasetId}
         projectId={projectId}
       />

@@ -1,12 +1,12 @@
 # Develop models from data
 
-Read `overmind://interface/current` (contract 2.0), then use the native `develop-model-from-data` prompt. A project can start in Console onboarding with **From data**, then upload through Data Workshop or `overmind dataset upload`. No repository scan or capability is required. Keep the original written task with the dataset.
+Read `overmind://interface/current` for the connected contract, then use the native `develop-model-from-data` prompt. A project can start in Console onboarding with **From data**, then upload through Data Workshop or `overmind dataset upload`. No repository scan or capability is required. Keep the original written task with the dataset.
 
-Ask the Workshop agent to explore the whole source and task families before saving a preparation plan. Unknown target meaning stays unknown. Preserve full probabilities and mean-only ordinal targets; numeric shape is not evidence of annotator votes or reference truth. Concrete semantic replacements use the existing proposal review.
+The native coding agent explores the whole source and task families before authoring immutable transformation scripts. Unknown target meaning stays unknown. Preserve full probabilities and mean-only ordinal targets; numeric shape is not evidence of annotator votes or reference truth. Record semantic changes and supporting evidence in the retained recipe and review metadata. Workshop executes scripts and retains facts; it has no planning or generation agent.
 
 `explore_dataset` saves a bounded background profile of an explicit `source_cell`. Optional sampling settings report feasibility, minimum rows and paginated stratum allocations through its resource. Profiles cover the whole source; examples remain bounded. `derive_dataset` creates a separate chain from a readable historical cell, preserves every row and its lineage, and does not move the parent's active version. Repeating an identical failed exploration request retries local work; changed requests need new keys.
 
-The Workshop owns interpretation. Save target meaning as a hypothesis, supported interpretation or conflict, with scoped source references, observed rows and unresolved evidence. Numeric shape or a string labelled evidence is not proof. No mandatory row-by-row LLM review is added.
+The native coding agent owns interpretation. Save target meaning as a hypothesis, supported interpretation or conflict, with scoped source references, observed rows and unresolved evidence. Numeric shape or a string labelled evidence is not proof. No mandatory row-by-row LLM review is added.
 
 Use `create_data_partition` with `source_cell`, `name`, `request_key`, and a recipe containing `seed`, `fractions` keyed by train/development/calibration/final, `group_by`, optional `stratify_by`, and optional `holdouts` (`field`, `values`, `role`). Inspect `get_job(kind="data_partition")` for counts, grouping, assignment hashes and member cells. Prepare each member for its consumer. Retry a failed saved partition with `retry_data_partition`.
 

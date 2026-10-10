@@ -136,7 +136,7 @@ export function SplitBar({ segments }: { segments: Segment[] }) {
         ))}
       </span>
       {segments.map((s) => (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground" key={s.label}>
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground" key={s.label}>
           <span aria-hidden className={cn("size-1.5 rounded-xs", s.className)} />
           {s.label}
           <span className="tabular-nums text-foreground">{s.value.toLocaleString()}</span>

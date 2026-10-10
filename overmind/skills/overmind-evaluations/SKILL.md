@@ -5,6 +5,15 @@ description: Prepare and run Overmind evaluations, author evaluators and eval se
 
 # Overmind Evaluations
 
+Training development checks are a separate measurement surface. Inspect them with
+`inspect_training_progress`; they do not replace a held-out final evaluation and
+must not use calibration/final partitions for checkpoint selection. Generated
+label/schema metrics, coverage and paired descriptive intervals retain their own
+sample identity. An invalid evaluator snapshot or missing exact base-model route
+must remain a visible failure, never an indefinitely pending benchmark. Public
+base benchmarks use exact OpenRouter identity; trained/hosted models use their
+recorded artifact route, not an interchangeable serving alias.
+
 Start with `list_projects` and choose the intended accessible project. For an
 account connection, pass its `project_id` on every project tool and resource
 URI query; follow returned links. Project API keys retain their narrower access.

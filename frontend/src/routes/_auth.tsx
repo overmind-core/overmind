@@ -6,6 +6,7 @@ import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tansta
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
+import { DatasetVersionChip } from "@/components/datasets/notebook/pipeline-runs";
 import { WorkshopSidebar } from "@/components/datasets/workshop-sidebar";
 import { CreateAccountDialog } from "@/components/guest/create-account-dialog";
 import { HeaderCredits } from "@/components/header-credits";
@@ -276,6 +277,9 @@ function Breadcrumb() {
             );
           })}
         </nav>
+        {leaf?.kind === "datasets" && (
+          <DatasetVersionChip datasetId={leaf.slug} key={leaf.slug} projectId={projectId} />
+        )}
       </div>
       <HeaderActions hideProjects={crumbs[1]?.path === "/projects"} />
     </>
@@ -301,10 +305,9 @@ function RootLayout() {
     select: (s) => s.location.pathname,
   });
   const mobile = useIsMobile();
-  const workshopHome = /^\/datasets\/?$/.test(pathname);
   const inWorkshop = /^\/datasets(?:\/[^/]+)?\/?$/.test(pathname);
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
-  const workshopOpen = (workshopHome && !mobile) || (inWorkshop && expandedPath === pathname);
+  const workshopOpen = inWorkshop && expandedPath === pathname;
   const workshopTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     setExpandedPath((expanded) => (expanded === pathname ? expanded : null));

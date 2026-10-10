@@ -13,9 +13,11 @@ from overbae.services.mcp.contracts.common import (
     MCPModel,
     ResourceLinkContract,
 )
+from overbae.services.mcp.contracts.training_monitoring import TrainingMonitoringPolicy
 
 
 class FinetuneSelectionInput(MCPModel):
+    monitoring: TrainingMonitoringPolicy | None = None
     validation_dataset: str | None = None
     validation_cell: str | None = None
     validation_version: str | None = None
@@ -30,6 +32,34 @@ class FinetuneSelectionInput(MCPModel):
     eval_incumbent_after: bool = False
     eval_model_before: bool | None = None
     eval_model_after: bool | None = None
+
+
+class InspectTrainingProgressInput(MCPModel):
+    job: UUID
+    probe: Literal["development", "training_reference", "generation"] | None = None
+    check: UUID | None = Field(
+        default=None, description="Optional check ID for retained example evidence"
+    )
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=25, ge=1, le=100)
+
+
+class InspectTrainingProgressOutput(MCPModel):
+    summary: str
+    progress: dict[str, Any]
+    resource: ResourceLinkContract
+
+
+class CancelFinetuneInput(MCPModel):
+    job: UUID
+
+
+class CancelFinetuneOutput(MCPModel):
+    summary: str
+    id: UUID
+    status: str
+    warning: str
+    resource: ResourceLinkContract
 
 
 class CheckFinetuneReadinessInput(FinetuneSelectionInput):
@@ -74,6 +104,7 @@ class FineTuneEvaluatorReadiness(MCPModel):
     ready: bool
     eval_set: FineTuneEvalSetReadiness | None = None
     evaluators: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    errors: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
 class FineTuneCreditReadiness(MCPModel):
@@ -81,11 +112,20 @@ class FineTuneCreditReadiness(MCPModel):
     available: bool
 
 
+class FineTuneAssessment(MCPModel):
+    technical: Literal["pass", "blocked"]
+    task_suitability: Literal["unmeasured"] = "unmeasured"
+    capability_linked: bool | None = None
+    validation: Literal["separate_dataset", "automatic_split", "disabled"]
+
+
 class CheckFinetuneReadinessOutput(MCPModel):
+    monitoring: dict[str, Any] = Field(default_factory=dict)
     selection: dict[str, Any] = Field(default_factory=dict)
     training_contract: dict[str, Any] = Field(default_factory=dict)
     summary: str = Field(min_length=1, max_length=240)
     ready: bool
+    assessment: FineTuneAssessment
     missing: list[str] = Field(default_factory=list, max_length=20)
     warnings: list[str] = Field(default_factory=list)
     dataset: FineTuneDatasetReadiness
@@ -107,7 +147,10 @@ class CheckFinetuneReadinessOutput(MCPModel):
 
 
 class EstimateFinetuneInput(FinetuneSelectionInput):
-    hyperparameters: dict[str, Any] = Field(default_factory=dict)
+    hyperparameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size.",
+    )
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
     n_epochs: int = Field(default=3, ge=1, le=20)
@@ -122,6 +165,7 @@ class FineTuneTimeEstimate(MCPModel):
 
 
 class EstimateFinetuneOutput(MCPModel):
+    monitoring: dict[str, Any] = Field(default_factory=dict)
     forecast: dict[str, Any] | None = None
     selection: dict[str, Any] = Field(default_factory=dict)
     training_contract: dict[str, Any] = Field(default_factory=dict)
@@ -134,6 +178,7 @@ class EstimateFinetuneOutput(MCPModel):
 
 
 class PrepareTrainingInput(MCPModel):
+    monitoring: TrainingMonitoringPolicy | None = None
     retry_failed: bool = False
     validation_cell: str | None = None
     training_type: Literal["lora", "full"] = "lora"
@@ -145,6 +190,7 @@ class PrepareTrainingInput(MCPModel):
 
 
 class PrepareTrainingOutput(MCPModel):
+    monitoring: dict[str, Any] = Field(default_factory=dict)
     job: JobReceipt
     id: str
     state: str
@@ -154,6 +200,7 @@ class PrepareTrainingOutput(MCPModel):
 
 
 class StartFinetuneInput(MCPModel):
+    monitoring: TrainingMonitoringPolicy | None = None
     request_key: str | None = Field(
         default=None,
         min_length=1,
@@ -200,7 +247,7 @@ class StartFinetuneInput(MCPModel):
     use_case: str = Field(default="", max_length=10_000)
     hyperparameters: dict[str, Any] | None = Field(
         default=None,
-        description="Model recipe. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
+        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
     )
     group_id: UUID | None = None
 

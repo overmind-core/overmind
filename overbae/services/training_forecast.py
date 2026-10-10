@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from overbae.models import FinetuningJob
 from overbae.services import provider_pricing, training_release
+from overbae.services.compute_costs import unique_usage
 from overbae.services.finetuning_runner import ModalRunner
 from overbae.services.recommendation.candidates import dataset_total_tokens
 
@@ -85,8 +86,16 @@ def forecast(project_id, model, recipe, *, tokens, stats):
         ):
             rejected["incomplete"] += 1
             continue
-        start, end = getattr(job, "started_at", None), getattr(job, "completed_at", None)
-        seconds = (end - start).total_seconds() if start and end else None
+        usages, missing = unique_usage(progress.get("compute_usage", []))
+        seconds = (
+            sum(item["elapsed_seconds"] for item in usages.values())
+            if not missing
+            and all(
+                (item.get("gpu_type"), item.get("gpu_count")) == (gpu, count)
+                for item in usages.values()
+            )
+            else None
+        )
         if not seconds or not math.isfinite(seconds) or seconds <= 0:
             rejected["duration"] += 1
             continue

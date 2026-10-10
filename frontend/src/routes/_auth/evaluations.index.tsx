@@ -70,7 +70,7 @@ function EvaluationsPage() {
             icon={
               <Icon.evaluations
                 aria-hidden
-                className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+                className="size-6 shrink-0 [image-rendering:pixelated] invert"
               />
             }
             title="Evaluations"
@@ -106,23 +106,21 @@ function EvaluationsPage() {
       header={
         <PageHeader
           actions={
-            <div className="flex flex-wrap items-center gap-3">
-              {activeView === "runs" && <CreateRunDialog key={projectId} projectId={projectId} />}
-              <Tabs className="w-auto shrink-0" onValueChange={setView} value={activeView}>
-                <TabsList>
-                  <TabsTrigger value="runs">Runs</TabsTrigger>
-                  <TabsTrigger value="decisions">Decisions</TabsTrigger>
-                  <TabsTrigger value="sets">Eval sets</TabsTrigger>
-                  <TabsTrigger value="library">Eval library</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+            <Tabs className="w-auto min-w-0" onValueChange={setView} value={activeView}>
+              <TabsList className="h-auto min-h-9 flex-wrap justify-start">
+                <TabsTrigger value="runs">Runs</TabsTrigger>
+                <TabsTrigger value="decisions">Decisions</TabsTrigger>
+                <TabsTrigger value="sets">Eval sets</TabsTrigger>
+                <TabsTrigger value="library">Eval library</TabsTrigger>
+              </TabsList>
+            </Tabs>
           }
+          className="flex-col lg:flex-row [&>div:last-child]:max-w-full"
           description="Score capabilities against datasets and graders."
           icon={
             <Icon.evaluations
               aria-hidden
-              className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+              className="size-6 shrink-0 [image-rendering:pixelated] invert"
             />
           }
           title="Evaluations"
@@ -144,6 +142,7 @@ function EvaluationsPage() {
         )}
         {activeView === "runs" && (
           <RunsTable
+            action={<CreateRunDialog key={projectId} projectId={projectId} />}
             filters={search}
             onSearchChange={patchSearch}
             page={page}
@@ -226,7 +225,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
           <EmptyState
             description="Create an eval set from the evaluator library."
             icon={Icon.evaluations}
-            iconClassName="dark:invert [image-rendering:pixelated]"
+            iconClassName="invert [image-rendering:pixelated]"
             size="section"
             title="No eval sets yet"
           />

@@ -115,8 +115,6 @@ export const Icon = {
   successDouble: glyph("check-double"),
   target: glyph("target"),
   terminal: glyph("terminal"),
-  themeDark: glyph("moon-star"),
-  themeLight: glyph("sun"),
   tool: glyph("tool-case"),
   training: glyph("sliders-horizontal"),
   trophy: glyph("trophy"),

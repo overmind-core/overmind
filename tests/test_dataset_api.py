@@ -7,13 +7,12 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import EVAL_ROWS, review_fixture
+from conftest import EVAL_ROWS, import_version, review_fixture
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Capability, Dataset, Project, ProjectMembership, Span, User
-from overbae.services.datasets import lifecycle, use
-from overbae.services.datasets.notebook import run as run_svc
+from overbae.services.datasets import paths, store, use
 
 pytestmark = pytest.mark.django_db
 
@@ -63,51 +62,7 @@ def test_create_lands_the_source_and_reads_back_with_cells():
     assert [c["version"] for c in body["cells"]] == ["1.0"]
     assert body["cells"][0]["fits"] == {"ok": True, "reason": ""}
     assert body["active_version"] == "1.0" and body["rows"] == 2
-    assert body["chat"] == []
-
-
-@pytest.mark.parametrize(
-    "status", ["running", "awaiting_approval", "resolved", "error", "complete"]
-)
-def test_chat_refetch_preserves_activity_and_progress(status):
-    project = _project()
-    client = _client(project)
-    dataset = _create(client, project, rows=EVAL_ROWS)
-    legacy = {"role": "user", "text": "Prepare the data.", "at": "2026-09-20T10:00:00Z"}
-    turn = {
-        "id": "turn-1",
-        "role": "agent",
-        "text": "Checking the examples.",
-        "at": legacy["at"],
-        "error": "Check failed" if status == "error" else "",
-        "cells": [{"id": str(dataset.active_id), "action": "ran", "text_offset": 0}],
-        "steps": [
-            {
-                "type": "activity",
-                "phase": "thinking",
-                "id": "step-1",
-                "status": "done",
-                "duration_ms": 4200,
-                "text": "Checking the source.",
-                "text_offset": 0,
-            }
-        ],
-        "ms": 5000,
-        "status": status,
-        "progress": {
-            "stage": "generating",
-            "label": "Generating",
-            "detail": "Adding examples",
-            "generated_rows": 7,
-            "target_rows": 20,
-            "updated_at": legacy["at"],
-        },
-    }
-    dataset.chat = [legacy, {**turn, "turn_key": "internal-delivery-key"}]
-    dataset.save(update_fields=["chat"])
-    response = client.get(f"/api/datasets/{dataset.id}/")
-    assert response.status_code == 200
-    assert response.data["chat"] == [legacy, turn]
+    assert "chat" not in body
 
 
 @pytest.mark.parametrize("split", [False, True])
@@ -199,41 +154,13 @@ def test_create_rejects_two_sources_and_a_foreign_capability():
     assert res.status_code == 404
 
 
-def test_cells_are_added_edited_run_and_removed(django_capture_on_commit_callbacks):
-    project = _project()
-    client = _client(project)
-    dataset = _create(client, project)
-    res = client.post(
-        f"/api/datasets/{dataset.id}/cells/", {"title": "Keep", "script": KEEP}, format="json"
-    )
-    assert res.status_code == 201 and res.data["state"] == "queued" and res.data["version"] == "1.1"
-    keep_id = res.data["id"]
-    with django_capture_on_commit_callbacks(execute=True):
-        res = client.post(f"/api/datasets/{dataset.id}/run/", format="json")
-    assert res.status_code == 202
-    res = client.get(f"/api/datasets/{dataset.id}/")
-    cells = {c["id"]: c for c in res.data["cells"]}
-    assert cells[keep_id]["state"] == "ok" and cells[keep_id]["rows"] == 2
-
-    res = client.patch(
-        f"/api/datasets/{dataset.id}/cells/{keep_id}/",
-        {"script": "df = df\n", "title": "Keep all"},
-        format="json",
-    )
-    assert res.status_code == 200 and res.data["state"] == "queued"
-    assert res.data["title"] == "Keep all"
-
-    res = client.delete(f"/api/datasets/{dataset.id}/cells/{keep_id}/")
-    assert res.status_code == 204
-    assert client.get(f"/api/datasets/{dataset.id}/").data["cells"][-1]["version"] == "1.0"
-
-
 def test_rows_carry_diff_marks_against_the_cell_before():
     project = _project()
     client = _client(project)
     dataset = _create(client, project)
-    shape = lifecycle.add_cell(dataset, title="Upper", script="df['tag'] = df['tag'].str.upper()\n")
-    run_svc.execute(dataset)
+    shape = import_version(
+        dataset, [dict(r, tag=r["tag"].upper(), source_row=i) for i, r in enumerate(ROWS)]
+    )
     res = client.get(f"/api/datasets/{dataset.id}/rows/", {"cell": str(shape.id), "diff": "1"})
     assert res.status_code == 200
     marks = res.data["marks"]
@@ -245,9 +172,19 @@ def test_export_streams_a_version_raw_without_using_it():
     project = _project()
     client = _client(project)
     dataset = _create(client, project, intent="eval")
-    keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
-    shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
-    run_svc.execute(dataset)
+    keep = import_version(
+        dataset,
+        [dict(r, source_row=i) for i, r in enumerate(ROWS) if r["tag"] == "keep"],
+        name="Keep",
+    )
+    shape = import_version(
+        dataset,
+        [
+            dict(r, input=r["question"], expected_output=r["answer"])
+            for r in store.iter_rows(paths.cell_path(dataset.pk, keep.pk))
+        ],
+        name="Shape",
+    )
     res = client.get(f"/api/datasets/{dataset.id}/export/", {"fmt": "jsonl"})
     assert res.status_code == 200
     assert res["X-Overmind-Cell"] == str(shape.id) and res["X-Overmind-Version"] == "1.2"
@@ -265,8 +202,11 @@ def test_patch_sets_capability_intent_and_active_cell():
     client = _client(project)
     capability = Capability.objects.create(project=project, name="KB", slug="kb")
     dataset = _create(client, project)
-    keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
-    run_svc.execute(dataset)
+    keep = import_version(
+        dataset,
+        [dict(r, source_row=i) for i, r in enumerate(ROWS) if r["tag"] == "keep"],
+        name="Keep",
+    )
     res = client.patch(
         f"/api/datasets/{dataset.id}/",
         {"capability": str(capability.id), "intent": "eval", "active": str(dataset.source.id)},
@@ -284,28 +224,6 @@ def test_patch_sets_capability_intent_and_active_cell():
         "rows_ok": 2,
         "reason": "no input schema declared",
     }
-
-
-def test_chat_is_refused_while_busy_and_locks_the_dataset_at_once():
-    project = _project()
-    client = _client(project)
-    dataset = _create(client, project)
-    res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
-    assert res.status_code == 202
-    # The turn owns the dataset from the request, not from the worker's pickup.
-    assert Dataset.objects.get(pk=dataset.pk).state == "diagnosing"
-    res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
-    assert res.status_code == 409
-    res = client.post(f"/api/datasets/{dataset.id}/cells/", {"title": "T", "script": "df = df"})
-    assert res.status_code == 409
-    for state in ("running", "landing"):
-        Dataset.objects.filter(pk=dataset.pk).update(state=state)
-        res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
-        assert res.status_code == 409
-    # A chain whose last run failed is exactly what the user wants the agent for.
-    Dataset.objects.filter(pk=dataset.pk).update(state="error", error="Bad: nope")
-    res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "fix it"}, format="json")
-    assert res.status_code == 202
 
 
 def test_list_filters_by_intent_and_shows_the_active_version():
@@ -339,8 +257,9 @@ def test_delete_refused_while_a_version_is_used():
 def test_another_project_reads_and_writes_nothing():
     project = _project()
     dataset = _create(_client(project), project, intent="eval")
-    cell = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
-    run_svc.execute(dataset)
+    cell = import_version(
+        dataset, [dict(r, source_row=i) for i, r in enumerate(ROWS) if r["tag"] == "keep"]
+    )
     outsider_project = _project()
     outsider = _client(outsider_project)
     own = _create(outsider, outsider_project)

@@ -36,12 +36,12 @@ export function TablePagination({
       aria-label="Table pagination"
       // The workshop table's footer scale, so every table surface carries the same one.
       className={cn(
-        "flex items-center justify-between gap-4 text-xs text-muted-foreground",
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground",
         size === "xs" ? "px-2.5 py-1" : "px-4 py-1.5",
         className
       )}
     >
-      <div className="flex-1 tabular-nums">
+      <div className="flex-1 whitespace-nowrap tabular-nums">
         {pagination.count > 0 ? (
           <>
             {pagination.startItem}–{pagination.endItem} of {pagination.total}{" "}
@@ -51,8 +51,8 @@ export function TablePagination({
           "0 rows"
         )}
       </div>
-      <div className="flex items-center gap-4 sm:gap-6">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6">
+        <div className="flex items-center gap-2 whitespace-nowrap">
           <span>Rows per page</span>
           <Select onValueChange={(v) => onPageSizeChange(Number(v))} value={String(pageSize)}>
             {/* w-20, not 70px — three digits plus the chevron need the room. */}
@@ -68,7 +68,7 @@ export function TablePagination({
             </SelectContent>
           </Select>
         </div>
-        <div className="tabular-nums">
+        <div className="whitespace-nowrap tabular-nums">
           Page {page} of {pagination.totalPages}
         </div>
         <div className="flex items-center gap-1">

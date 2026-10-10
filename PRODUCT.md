@@ -54,8 +54,8 @@ protocol.
 
 ## Operating context
 
-- Data-first onboarding leads to the existing Workshop, where the agent explores
-  the source and proposes target meaning before preparation. Saved group-preserving
+- Data-first onboarding leads to the existing cell-based Workshop. The native coding agent explores
+  the source and authors explicit transformations through MCP. Saved group-preserving
   partitions, standalone decision comparisons, explicit training experiments and
   reproducible performance workloads make this path available through Console
   and MCP. Calibration and development selection stay separate from final results;
@@ -145,70 +145,71 @@ navigation code but are no longer used to stage access.
 
 ### Data Workshop specifics
 
-- Self-hosted users can continue with ChatGPT on the initial login screen, confirming an existing local password once inline when needed, or connect it in Settings. First login/link enables granted plan funding with an available account model; users can toggle **Use ChatGPT**
-  and choose its model at the bottom of either Workshop composer
-  to fund their Workshop turns and semantic checks. These record no Overmind
-  credit charge. ChatGPT plan limits stop the request; server models require an
-  explicit switch. Evaluation runs, training and serving keep their own billing.
-- The Console upload composer requires ready source files and a written
-  prompt. If the user has not specified Training, Eval or Data exploration, the workshop asks them to choose an intent chip before preparation. This is its only clarification question; further work uses inspected evidence and supported defaults, with limitations reported and supported semantic changes applied as recorded cells without per-change approval. Data exploration is a saved intent, not an inferred training or evaluation target. A capability can follow exploration. The original
-  wording stays with the dataset. REST and MCP can still create a source-free draft.
-  A bottom-anchored composer holds compact attachment chips beside the plus button,
-  with retry and removal. The plus menu offers Add files and Select from traces;
-  there is no footer shortcut row. A second sidebar beside the content bezel groups
-  dataset workspaces by project, with activity status and file types and row counts
-  in hover/focus details. It tucks away
-  inside the cell workshop. On mobile, Workspaces opens the same navigation.
-- Tables, pasted rows and traces land as the **source**; a trace is one row.
-  PDF, DOCX, Markdown, text and PNG/JPEG/WebP images land as extracted evidence. Original files,
-  extraction limits and row references remain inspectable in the source cell.
-  PDF extraction preserves encoded text and automatically runs local OCR on scanned pages
-  and embedded images. Direct image uploads support paste and drag-and-drop, with attachment previews and background extraction progress. Source evidence records recognition details and page regions.
-  OCR currently uses English language data; visual tables are not reconstructed.
-- The user chooses **intent** (train, eval or explore); landing proposes the **capability** the rows belong to. The first use freezes both. For train/eval, these are
-  contracts every version is measured against: the intent contract is the
-  shape, the capability contract is row by row — an eval input carries the
-  capability's required keys, a train transcript is the capability's own
-  system prompt and tools. A row that cannot meet them is a finding, never a
-  default value.
-- A linear chain of Python cells is the recipe: a cell is a body (the frame
-  arrives as `df` and leaves as `df`), each cell that ran is a **version**
-  (the source is 1.0, then 1.1, 1.2, …), and each shows what it did to the
-  rows and values against the cell before — added rows, removed rows, and
-  changed values with the old value in reach. The **active version** is the
-  last cell that ran unless the user points elsewhere. Editing a cell re-runs
-  it and every cell after it in place; the numbers do not move.
-- The dataset chat reads before it writes and prepares data through visible
-  cells. Requests and responses share the cell canvas above the bottom composer;
-  thinking stays collapsed by default, the latest answer expands, and previous
-  answers collapse on a new prompt. A selected cell scopes the request without
-  changing the active version.
-  Supported mechanical and semantic changes run sequentially, with source evidence,
-  assumptions and measured impact recorded in the cells. The original source and
-  earlier versions remain available. There are no per-change approval controls;
-  only a missing initial intent asks for a choice. Unsupported facts remain unknown.
-  Requested synthetic generation is recorded as synthetic. Saved workflows retain
-  the original request, intended output, source bindings and measured completion.
-  Grounded generation qualifies a small pilot, continues in durable background
-  batches and publishes one result. Source preservation, coverage, compatibility
-  and quality remain separate. UI, REST and MCP inspect the same execution;
-  revision-checked controls recover saved work without repeating unknown calls.
-  Quality findings are advisory; only unreadable or incompatible data blocks use.
-- Eval runs, optimiser runs, training runs **use** the exact
-  version they read: it becomes the next major (2.0), it and every cell
-  before it freeze, the frame cannot be deleted, and the run links back to it.
-- The product's shape and token distribution feed the training recommender —
-  model tier, epochs, learning rate, adapter settings — with cost and duration
-  estimated before commitment.
+- Data Workshop opens with a project dataset table showing purpose, source,
+  row count, active version, capability and update time. Selecting a dataset opens
+  its unchanged, full-size cells on a grid-snapped flow canvas at scale 1:
+  steps progress downward, sibling branches align side by side on the same layer,
+  with elbow connections from recorded lineage. Zoom, Fit view and a toggleable
+  minimap navigate the graph without changing cell dimensions; Reset and linked-cell
+  focus return to scale 1. A version chip beside the name selects and restores iterations.
+  The left-hand box groups the minimap toggle with the folder button for project
+  dataset navigation; cell search and the cell-selector strip are removed.
+  Platform-agent chat and the prompt-style landing are removed.
+- The native coding agent owns planning, interpretation, transformation code,
+  generation and semantic judgment. The platform owns source landing, version
+  identity, deterministic execution, lineage, impact and consumer pinning.
+- Sources may be files, pasted rows or traces; source-free briefs are supported.
+  Documents and images retain original bytes and extraction evidence, including
+  local English OCR where needed. Intent is explicit and otherwise stays pending.
+- Agents discover reusable project transformations, then validate and preview
+  against a pinned source. Revisions retain ordered scripts, declared contracts,
+  parameters and an approved immutable runtime. Compatible sources reuse the exact
+  revision; adaptations record their origin without changing the original.
+  Each successful run publishes one cell per step atomically. Preview publishes none.
+  Agents declare step IDs, input edges and code-referenced branch conditions in the
+  retained recipe. MCP returns this flow explicitly; execution receipts separately
+  record actual input cells and output counts. Condition labels are declarations,
+  not independent verification of script semantics.
+- Script packages run in isolated, resource-bounded containers without network or
+  platform credentials. Native agents own authoring, semantic work and interpretation.
+  Imported outputs declare all source parents and producer attribution.
+  Large outputs use an uploaded, checksum-bound artifact. Source attribution
+  does not independently verify execution or answer correctness.
+- Retries with the same request key recover the same work; changed inputs conflict.
+  Failed or cancelled transformations never replace a readable version.
+  Runs have durable receipts; unknown work is not blindly replayed.
+- Explicitly enabled bindings reuse an exact revision as source datasets or trace
+  selections change. These are full-snapshot rebuilds, not assumed incremental
+  scripts. Checkpoints advance only with publication; failed work requires explicit
+  retry authorization. Existing training and evaluation inputs do not change.
+- Technical fit, source preservation, coverage and semantic quality are distinct.
+  Unmeasured quality stays unknown. Quality findings remain advisory; unreadable
+  or technically incompatible data blocks consumer use.
+- Evaluation, Optimiser and Training freeze the exact version consumed.
+  Later transformations do not modify those inputs. Training owns
+  model-specific preprocessing; Workshop remains model-independent.
+- MCP is the first-class authoring surface. Chat, mutable-cell editing and script
+  replay are unavailable in the Console. Native-agent intake inspects record
+  boundaries before upload and verifies landed counts and values before handoff;
+  successful transfer does not establish correct ingestion.
 
 ### Training and serving specifics
 
 - Up to four tiered experiments are recommended from dataset statistics and
   live traffic, **Compact to Large**; adapter training for speed or a full
   fine-tune for depth; trace-safe splits.
-- Train/validation loss and token accuracy chart live during the run.
-- Every fine-tuned model is benchmarked against the **incumbent** — the model
-  the capability actually runs in production — with per-metric deltas.
+- Train/validation loss and token accuracy chart live during the run. Development
+  monitoring adds frozen samples, measured check timing, generated-label/schema/field
+  evidence and verified retained checkpoints. Early stopping and best-development
+  checkpoint selection require explicit settings; warnings do not alter training.
+  Classification observations compare the same scored sample with its majority
+  baseline and expose represented labels without predictions. These are not
+  diagnoses or final-test results. Newer loss-only checks do not hide the last
+  generated-output result from the coding agent.
+- Selected final benchmarks compare the trained model with the pinned base or
+  incumbent. They remain independent of development monitoring. Missing exact
+  OpenRouter routes and invalid evaluator definitions are visible failures, not
+  permission to substitute a model or silently launch hosted base inference.
 - Weights are merged, quantised, and deployed to a hosted endpoint; the swap
   is offered as a copy-paste prompt for the coding agent.
 - Training and serving run on **Modal** and **Baseten**. Nebius has been
@@ -228,6 +229,10 @@ navigation code but are no longer used to stage access.
   owns `/pricing`; the Console's legacy `/pricing` route only redirects there.
 - Auth is Clerk, plus issued API keys for SDK/CLI access. Product analytics is
   PostHog.
+- Training delivery analytics measures result availability, check completion,
+  coverage, measured overhead and reload-verified checkpoints. It excludes raw
+  training content and does not infer clarity or delight. Local analytics is off
+  unless explicitly configured; underlying delivery receipts remain available.
 
 ### Stack
 
@@ -299,5 +304,5 @@ Agent > Capabilities > Tasks: "Agent" is the product (one per project),
 
 No formal conformance standard has been set for this product — that decision is
 open. Two constraints hold in the current implementation and future work must
-preserve them: the Console ships **user-selectable light and dark themes**, and
-motion **respects `prefers-reduced-motion`**.
+preserve them: the Console ships a **single dark theme**, independent of stored
+or operating-system preferences, and motion **respects `prefers-reduced-motion`**.

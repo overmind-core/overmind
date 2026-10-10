@@ -2,19 +2,20 @@ import { useRef, useState } from "react";
 
 import apiClient from "@/client";
 import { Attachment } from "@/components/datasets/attachment";
+import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { useAttachDatasetSourceMutation } from "@/hooks/use-datasets";
 import { useDatasetUploads } from "@/hooks/use-uploads";
 import { errorMessage } from "@/lib/notify";
+import type { Dataset } from "@/openapi";
 
 interface SourceArtifact {
   id: string;
   filename: string;
   rows: number;
-  sha256: string;
-  extraction?: { method?: string; version?: string; pages?: number; limitations?: string[] };
 }
 
 export function extractionStatus(spec: unknown): string | undefined {
@@ -35,14 +36,19 @@ export function extractionStatus(spec: unknown): string | undefined {
 
 export function SourceDetails({
   datasetId,
-  brief,
+  kind,
   spec,
 }: {
   datasetId: string;
-  brief?: string;
+  kind: Dataset["sourceKind"];
   spec: unknown;
 }) {
-  const sources = (spec as { sources?: SourceArtifact[] } | null)?.sources ?? [];
+  const sourceSpec = spec as {
+    sources?: SourceArtifact[];
+    filename?: string;
+    derived_from?: { version?: string };
+  } | null;
+  const sources = sourceSpec?.sources ?? [];
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
   const download = async (source: SourceArtifact) => {
@@ -65,22 +71,29 @@ export function SourceDetails({
       setDownloading(null);
     }
   };
-  if (!brief && !sources.length) return null;
+  const label = sourceSpec?.derived_from
+    ? `Derived dataset${sourceSpec.derived_from.version ? ` · ${sourceSpec.derived_from.version}` : ""}`
+    : kind === "file"
+      ? sourceSpec?.filename || SOURCE_KIND_LABEL.file
+      : SOURCE_KIND_LABEL[kind];
+  if (!sources.length && kind === "pending" && !sourceSpec?.derived_from) return null;
   return (
-    <details className="border-b border-border/70 px-2.5 py-2 text-xs">
-      <summary className="cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-primary">
-        {sources.length
-          ? `${sources.length} source ${sources.length === 1 ? "file" : "files"}`
-          : "Original request"}
-      </summary>
-      <div className="mt-3 space-y-3">
-        {brief && <p className="max-w-prose whitespace-pre-wrap leading-relaxed">{brief}</p>}
-        {sources.map((source) => (
-          <div className="space-y-1" key={source.id + source.filename}>
-            <div className="flex items-center gap-2">
-              <Icon.file className="size-3 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{source.filename}</span>
-              <span className="text-muted-foreground">{source.rows.toLocaleString()} rows</span>
+    <div aria-label="Dataset sources" className="border-b border-border/70 px-2.5 py-2">
+      <div className="flex flex-wrap gap-2">
+        {sources.length ? (
+          sources.map((source) => (
+            <Badge
+              className="h-7 min-w-0 max-w-full gap-2 bg-card pr-0.5"
+              key={source.id + source.filename}
+              size="chip"
+              title={source.filename}
+              variant="outline"
+            >
+              <Icon.file className="size-3 text-muted-foreground" />
+              <span className="min-w-0 max-w-sm truncate">{source.filename}</span>
+              <span className="shrink-0 text-muted-foreground">
+                {source.rows.toLocaleString()} rows
+              </span>
               <Button
                 aria-label={`Download ${source.filename}`}
                 disabled={downloading !== null}
@@ -90,27 +103,25 @@ export function SourceDetails({
               >
                 {downloading === source.id ? <Spinner className="size-3" /> : <Icon.download />}
               </Button>
-            </div>
-            <p className="break-all font-mono text-muted-foreground" title={source.sha256}>
-              {source.sha256.slice(0, 12)}
-              {source.extraction?.method
-                ? ` · ${source.extraction.method} ${source.extraction.version}`
-                : ""}
-            </p>
-            {source.extraction?.limitations?.map((limitation) => (
-              <p className="text-warning" key={limitation}>
-                {limitation}
-              </p>
-            ))}
-          </div>
-        ))}
-        {error && (
-          <p className="text-destructive" role="alert">
-            {error}
-          </p>
+            </Badge>
+          ))
+        ) : (
+          <Badge className="max-w-full gap-2 bg-card" size="chip" title={label} variant="outline">
+            {kind === "file" && !sourceSpec?.derived_from ? (
+              <Icon.file className="size-3" />
+            ) : (
+              <Icon.dataset className="size-3" />
+            )}
+            <span className="truncate">{label}</span>
+          </Badge>
         )}
       </div>
-    </details>
+      {error && (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

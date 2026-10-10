@@ -14,7 +14,7 @@ from typing import Any
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.modelfam import resolve
 from overbae.modal.model_registry import context_headroom, get_training_context_policy
-from overbae.services.training_contract import baseline_evaluation_enabled
+from overbae.services.training_contract import baseline_evaluation_enabled, validate_effective_batch
 
 # Epochs when unset: enough example-visits that tiny datasets get real optimizer-step
 # counts (49 rows × 2 epochs still improved on every batch when the LR hit zero).
@@ -376,6 +376,7 @@ def derive_baseten_training_plan(
     """
     hp = dict(hyperparameters or {})
     try:
+        validate_effective_batch(hp)
         baseline = baseline_evaluation_enabled(hp)
     except ValueError as exc:
         raise TrainingPlanError(str(exc)) from exc

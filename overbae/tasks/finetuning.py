@@ -7,14 +7,20 @@ import json
 import logging
 import os
 import tempfile
+import time
 from itertools import chain
 from typing import Any
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 from modal_shared.decisions import DECISION_OBJECTIVES
-from overbae.services import training_submission
+from modal_shared.training_telemetry import STARTUP_LABELS
+from overbae.models import FinetuningJob
+from overbae.services import operational_progress, training_monitoring, training_submission
+from overbae.services.compute_costs import record_training_charge
+from overbae.services.finetuning_runner import get_runner
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
 
@@ -25,6 +31,28 @@ logger = logging.getLogger(__name__)
 # Fail on silence, not duration. Beat is 15s; 20 misses ≈ 5 min of dead provider.
 STALL_S = 30 * 60
 POLL_ERROR_LIMIT = 20
+
+
+@shared_task(bind=True, max_retries=4, queue="io")
+def collect_training_evidence(self, job_id):
+    job = FinetuningJob.objects.get(pk=job_id)
+    if not job.remote_job_id:
+        return
+    try:
+        snapshot = get_runner(job.provider, job=job).poll(job.remote_job_id)
+        payload = (snapshot.raw or {}).get("monitoring")
+        if not payload:
+            return
+        summary = training_monitoring.observe(job, payload)
+        with transaction.atomic():
+            current = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+            FinetuningJob.objects.filter(pk=job.pk).update(
+                progress={**(current.progress or {}), "monitoring": summary}
+            )
+        if summary["collection"]["state"] == "unavailable":
+            raise RuntimeError(summary["collection"]["error"])
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(30 * 2**self.request.retries, 300)) from exc
 
 
 def _enqueue_baseten_cost_sync(job) -> None:
@@ -152,57 +180,9 @@ def _record_event(job, event_type: str, message: str = "", data: dict | None = N
 
 
 def _charge_modal_finetuning(job) -> None:
-    """Bill Modal GPU wall-clock on terminal transition. Never raises."""
-    from decimal import Decimal
-
-    from overbae.models import BillingService, FinetuningJob
-    from overbae.services.billing_ledger import charge_credits
-    from overbae.services.finetuning_runner import ModalRunner
-    from overbae.services.inference_pricing import gpu_usd_per_second
-
-    if job.provider != FinetuningJob.Provider.MODAL:
-        return
-    if job.cost_synced_at is not None:
-        return
-    if not job.started_at or not job.completed_at:
-        return
     try:
-        gpu_type, gpu_count = ModalRunner()._select_training_gpu(
-            job, context_length=int((job.hyperparameters or {}).get("context_length") or 0)
-        )
-    except Exception:  # noqa: BLE001 — billing must never fail the job
-        logger.exception("Modal GPU selection failed for job %s", job.pk)
-        return
-    rate = gpu_usd_per_second(gpu_type)
-    if rate is None:
-        logger.warning("unpriced Modal gpu_type=%s for job %s", gpu_type, job.pk)
-        return
-    seconds = max(0.0, (job.completed_at - job.started_at).total_seconds())
-    cost = Decimal(str(round(seconds * gpu_count * rate, 4)))
-    if cost <= 0:
-        return
-    job.cost_usd = cost
-    job.cost_synced_at = timezone.now()
-    job.save(update_fields=["cost_usd", "cost_synced_at", "updated_at"])
-    if not job.triggered_by_id:
-        return
-    try:
-        charge_credits(
-            job.triggered_by,
-            cost,
-            BillingService.FINETUNING_JOB,
-            project_id=job.project_id,
-            idempotency_key=f"finetuning-job:{job.id}:{cost}",
-            metadata={
-                "job_id": str(job.id),
-                "provider": "modal",
-                "gpu_type": gpu_type,
-                "gpu_count": gpu_count,
-                "seconds": seconds,
-                "cost_usd": str(cost),
-            },
-        )
-    except Exception:  # noqa: BLE001
+        record_training_charge(job)
+    except Exception:  # noqa: BLE001 — billing must not change training outcome
         logger.exception("Failed to charge Modal finetuning job %s", job.pk)
 
 
@@ -225,8 +205,8 @@ def _transition(job, status: str, *, message: str = "", error: str = "") -> None
         updates["error_message"] = sanitize_job_error(error)
 
     FinetuningJob.objects.filter(pk=job.pk).update(**updates)
-    for k, v in updates.items():
-        setattr(job, k, v)
+    job.refresh_from_db()
+    operational_progress.training(job)
     _record_event(
         job,
         "status_change",
@@ -279,10 +259,56 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
         ]
     )
     progress = progress_from_snapshot(snap, started_at=job.started_at)
+    monitoring = (snap.raw or {}).get("monitoring") if isinstance(snap.raw, dict) else None
+    if monitoring:
+        progress["monitoring"] = training_monitoring.observe(job, monitoring)
+        if progress["monitoring"]["collection"]["state"] == "unavailable":
+            collect_training_evidence.apply_async(kwargs={"job_id": str(job.pk)}, countdown=30)
+    if snap.state in {"failed", "error", "cancelled"}:
+        training_monitoring.interrupt(job, reason=snap.state)
     prev = job.progress if isinstance(job.progress, dict) else {}
-    for key in ("judge_evals", "preparation", "submission_recoveries"):
-        if key in prev:
+    for key in (
+        "judge_evals",
+        "preparation",
+        "submission_recoveries",
+        "monitoring",
+        "monitoring_manifest",
+    ):
+        if key in prev and key not in progress:
             progress[key] = prev[key]
+
+    if isinstance(snap.raw, dict) and "run_id" in snap.raw:
+        activity = list(prev.get("activity") or [])
+        if (
+            not progress.get("stage")
+            and prev.get("stage")
+            in {"transferring", "preparing_base_model", "starting_training_worker"}
+            and snap.state not in {"succeeded", "failed", "cancelled"}
+        ):
+            progress["stage"] = prev["stage"]
+            progress["phase"] = prev.get("phase") or progress.get("phase")
+            progress["diagnostics"] = prev.get("diagnostics") or {}
+        stage = progress.get("stage")
+        if stage and stage != prev.get("stage"):
+            messages = {
+                **STARTUP_LABELS,
+                "loading_model": "Loading base model onto GPU",
+                "initial_validation": "Evaluating base model before training",
+                "training": "Training started",
+                "validation": "Validating model checkpoint",
+                "checkpointing": "Saving model checkpoint",
+                "verifying_checkpoint": "Verifying saved checkpoint",
+            }
+            message = messages.get(stage, stage.replace("_", " ").capitalize())
+            started = (progress.get("diagnostics") or {}).get("stage_started_at")
+            activity.append(
+                {
+                    "ts": int(float(started) * 1000) if started else int(time.time() * 1000),
+                    "kind": "stage",
+                    "message": message,
+                }
+            )
+        progress["activity"] = activity[-50:]
 
     metrics = progress.get("metrics") or {}
     moved = _progress_fingerprint(progress) != _progress_fingerprint(prev) and (
@@ -305,6 +331,7 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
 
     FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
     job.progress = progress
+    operational_progress.training(job)
 
     if tick_evals:
         try:
@@ -339,7 +366,6 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
 
 def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     from overbae.models import FinetuningJob
-    from overbae.services.finetuning_runner import progress_from_snapshot
 
     job.refresh_from_db(fields=["status", "started_at", "progress"])
     if job.status not in (
@@ -349,11 +375,8 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     ):
         return {"status": job.status, "job_id": remote}
     epoch_losses = runner.fetch_epoch_losses(remote)
-    progress = progress_from_snapshot(snap, started_at=job.started_at)
-    prev = job.progress if isinstance(job.progress, dict) else {}
-    for key in ("judge_evals", "preparation", "submission_recoveries"):
-        if key in prev:
-            progress[key] = prev[key]
+    _persist_snapshot_progress(job, snap, tick_evals=False)
+    progress = job.progress
     result_blob = {
         "epoch_losses": epoch_losses,
         "model": snap.output_model_name,
@@ -384,6 +407,7 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
         )
         job.refresh_from_db()
         if claimed:
+            operational_progress.training(job)
             _record_event(job, "status_change", "Decision checkpoint saved", {"status": job.status})
             _charge_modal_finetuning(job)
         return {"status": job.status, "job_id": remote}
@@ -405,12 +429,14 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
         job.refresh_from_db(fields=["status"])
         return {"status": job.status, "job_id": remote}
     job.refresh_from_db()
+    operational_progress.training(job)
     _record_event(
         job,
         "status_change",
         message="Fine-tuning completed — deploying model",
         data={"status": FinetuningJob.Status.DEPLOYING},
     )
+    _charge_modal_finetuning(job)
     try:
         from overbae.services.finetuning_eval import tick_job_evals
 
@@ -488,6 +514,19 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
             job.provider = provider
             if backend == "modal":
+                newly_preparing = job.status != FinetuningJob.Status.PREPARING
+                if newly_preparing:
+                    _transition(
+                        job,
+                        FinetuningJob.Status.PREPARING,
+                        message="Checking training configuration",
+                    )
+                if newly_preparing or not (job.progress or {}).get("preparation"):
+                    training_submission.record_preparation_stage(
+                        job,
+                        "checking_training_configuration",
+                        "Checking pinned data and model configuration",
+                    )
                 preparation = for_job(job)
                 if preparation.state in {"failed", "incompatible"}:
                     raise ValueError(preparation_error(preparation))
@@ -502,11 +541,6 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 }
                 FinetuningJob.objects.filter(pk=job.pk).update(progress=job.progress)
                 if preparation.state != "ready":
-                    _transition(
-                        job,
-                        FinetuningJob.Status.PREPARING,
-                        message="Preprocessing dataset for the training model",
-                    )
                     if preparation.state == "queued":
                         inspect_preparation.delay(str(preparation.id))
                     result = run_finetuning.apply_async(
@@ -520,7 +554,11 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 }
                 FinetuningJob.objects.filter(pk=job.pk).update(hyperparameters=job.hyperparameters)
             FinetuningJob.objects.filter(pk=job.pk).update(error_message="")
-            _transition(job, FinetuningJob.Status.PREPARING, message="Preparing dataset")
+            if job.status != FinetuningJob.Status.PREPARING:
+                _transition(job, FinetuningJob.Status.PREPARING, message="Preparing dataset")
+            training_submission.record_preparation_stage(
+                job, "exporting_training_rows", "Splitting and exporting training rows"
+            )
 
             if job.eval_dataset_id and job.cell_id:
                 from overbae.services.datasets import rows as row_store
@@ -539,14 +577,43 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             training_path, validation_path, num_examples, split_meta = _resolve_train_val_paths(
                 job, supports_validation
             )
+            file_count = 2 if validation_path else 1
+            training_submission.record_preparation_stage(
+                job,
+                "validating_training_files",
+                f"Exported {split_meta['train_examples']:,} training rows and {split_meta['val_examples']:,} validation rows",
+                completed=0,
+                total=file_count,
+                unit="files",
+            )
             _validate_jsonl_or_fail(training_path)
+            training_submission.record_preparation_stage(
+                job,
+                "validating_training_files",
+                "Validating training files",
+                completed=1,
+                total=file_count,
+                unit="files",
+            )
             if validation_path:
                 _validate_jsonl_or_fail(validation_path)
+                training_submission.record_preparation_stage(
+                    job,
+                    "validating_training_files",
+                    "Validating training files",
+                    completed=2,
+                    total=2,
+                    unit="files",
+                )
 
             try:
                 start_before_evals(job)
             except Exception:  # noqa: BLE001 — evaluator launch is independent of training
                 logger.exception("Baseline eval launch failed for job %s", job_id)
+
+            training_submission.record_preparation_stage(
+                job, "submitting_training_job", "Training files validated; submitting job"
+            )
 
             try:
                 training_submission.claim(job)
@@ -558,6 +625,8 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                         validation_file_path=validation_path,
                     )
                 except Exception as exc:
+                    if training_submission.release_before_dispatch(job):
+                        raise
                     training_submission.unknown(job, exc)
                     return {"status": "submission_unknown", "job_id": str(job.id)}
             except training_submission.SubmissionUnresolvedError:

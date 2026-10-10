@@ -19,6 +19,12 @@ from overbae.services.recommendation import tier_models
 _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "models.json"
 _CATALOG: list[dict] = json.loads(_MODELS_JSON.read_text())["models"]
 
+
+@pytest.fixture(autouse=True)
+def offline_openrouter_catalog(monkeypatch):
+    monkeypatch.setattr("overbae.services.model_catalog.fetch_model_catalog", lambda: ([], False))
+
+
 _GENERATION_PATTERNS = (
     re.compile(r"Qwen(\d+(?:\.\d+)?)"),
     re.compile(r"Llama-(\d+(?:\.\d+)?)"),
@@ -56,6 +62,7 @@ def test_api_catalog_response_schema_accepts_modal_backend():
             "models": {},
             "has_tool_calling": False,
             "max_context": None,
+            "monitoring": {"schedule_modes": ["adaptive", "steps", "epoch", "off"]},
         }
     )
 
@@ -68,6 +75,15 @@ def test_catalog_carries_no_capability_scores():
     with override_settings(FINETUNING_BACKEND="baseten"):
         exported = [m for models in tier_models().values() for m in models]
     assert [m["id"] for m in exported if "capabilities" in m] == []
+
+
+def test_every_foundation_has_an_explicit_consistent_openrouter_mapping():
+    identities = {}
+    for entry in _CATALOG:
+        assert "openrouter_id" in entry, entry["id"]
+        slug = entry["openrouter_id"]
+        assert slug is None or (slug == slug.lower() and "/" in slug)
+        assert identities.setdefault(entry["id"], slug) == slug
 
 
 def test_each_tier_keeps_a_vendor_contiguous():

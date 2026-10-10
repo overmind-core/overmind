@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import Mock
 
 import pytest
 from django.test import override_settings
@@ -10,6 +11,13 @@ from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.model_catalog import GetModelCatalogOutput
+
+
+@pytest.fixture(autouse=True)
+def openrouter_catalog(monkeypatch):
+    fetch = Mock(return_value=([], False))
+    monkeypatch.setattr("overbae.services.model_catalog.fetch_model_catalog", fetch)
+    return fetch
 
 
 def _context(permission: str = "read") -> MCPContext:
@@ -57,8 +65,17 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
         "models",
         "has_tool_calling",
         "max_context",
+        "monitoring",
     }
     assert output["backend"] == "modal"
+    assert output["monitoring"]["schedule_modes"] == ["adaptive", "steps", "epoch", "off"]
+    assert output["monitoring"]["generation_checks"] == [
+        "classification",
+        "exact_match",
+        "json_schema",
+        "json_fields",
+    ]
+    assert output["monitoring"]["runtime_qualification"] != "gpu_qualified"
     assert output["has_tool_calling"] is False
     assert output["max_context"] is None
     assert output["summary"] == (
@@ -78,6 +95,8 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
         "max_batch_size",
         "supports_tool_calling",
         "training_type",
+        "openrouter_id",
+        "openrouter_status",
     }
     models = [model for tier in output["models"].values() for model in tier]
     assert models
@@ -146,3 +165,26 @@ def test_catalog_requires_read_permission():
 
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_catalog_reports_exact_mapping_and_missing_provider_separately(
+    openrouter_catalog, available
+):
+    openrouter_catalog.return_value = (
+        [{"id": "meta-llama/llama-3.1-8b-instruct", "hugging_face_id": ""}],
+        available,
+    )
+    with override_settings(FINETUNING_BACKEND="modal"):
+        result = _call({})
+    assert not result.isError
+    models = {
+        row["id"]: row for tier in result.structuredContent["models"].values() for row in tier
+    }
+    llama = models["meta-llama/Llama-3.1-8B-Instruct"]
+    assert llama["openrouter_id"] == "meta-llama/llama-3.1-8b-instruct"
+    assert llama["openrouter_status"] == ("available" if available else "catalog_unavailable")
+    absent = models["Qwen/Qwen3.5-4B"]
+    assert absent["openrouter_id"] is None
+    assert absent["openrouter_status"] == ("not_listed" if available else "catalog_unavailable")
+    openrouter_catalog.assert_called_once()

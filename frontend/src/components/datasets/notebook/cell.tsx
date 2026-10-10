@@ -1,11 +1,12 @@
 import { type ReactNode, useEffect, useState } from "react";
 
+import { Handle, Position, useNodeConnections } from "@xyflow/react";
+
+import { CellScript } from "@/components/datasets/notebook/cell-script";
 import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
-import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -26,15 +27,9 @@ import type { Cell } from "@/openapi";
 export type UsePurpose = "train" | "train_eval" | "optimise";
 
 export interface CellActions {
-  onTitle: (title: string) => void;
-  onScript: (script: string) => void;
-  onRemove: () => void;
   onActivate: () => void;
-  onRun: () => void;
   onUse: (purpose: UsePurpose) => void;
   onExport: (fmt: "jsonl" | "csv") => void;
-  /** Ask the agent to make the one failing contract hold, nothing more. */
-  onFix: (problem: string) => void;
   onIntent: (intent: "train" | "eval") => void;
   onCapability: (id: string | null) => void;
 }
@@ -53,43 +48,6 @@ export interface CapabilityChoice {
   name: string;
   /** Landing's score for this table, when it ranked the capability. */
   score?: number;
-}
-
-function TitleField({
-  value,
-  disabled,
-  onSave,
-}: {
-  value: string;
-  disabled: boolean;
-  onSave: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    const next = draft.trim();
-    if (next && next !== value) onSave(next);
-    else setDraft(value);
-  };
-  return (
-    <input
-      aria-label="Cell title"
-      className="w-auto min-w-4 max-w-64 truncate bg-transparent text-xs text-foreground outline-none field-sizing-content focus-visible:underline"
-      disabled={disabled}
-      maxLength={255}
-      onBlur={commit}
-      onChange={(e) => setDraft(e.target.value)}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          setDraft(value);
-          e.currentTarget.blur();
-        }
-      }}
-      value={draft}
-    />
-  );
 }
 
 function ExportDialog({
@@ -113,7 +71,7 @@ function ExportDialog({
       <DialogTrigger asChild>
         <Button
           aria-label={`Export ${title}`}
-          className="h-full rounded-none"
+          className="nodrag h-full rounded-none"
           onClick={(e) => e.stopPropagation()}
           size="icon-xs"
           type="button"
@@ -178,7 +136,6 @@ function SectionHeader({
 const STATE_LABEL: Record<CellState, string> = {
   failed: "failed",
   ok: "",
-  proposed: "proposed",
   queued: "queued",
   running: "running",
 };
@@ -357,7 +314,7 @@ function FitChip({
   capabilityName: string;
   capabilities: CapabilityChoice[];
   /** Absent while the dataset is busy or frozen: the card then only reports. */
-  actions?: Pick<CellActions, "onFix" | "onIntent" | "onCapability">;
+  actions?: Pick<CellActions, "onIntent" | "onCapability">;
 }) {
   if (intent === "explore")
     return (
@@ -376,11 +333,10 @@ function FitChip({
   /** Only the moves that would actually change the verdict, most likely first. */
   function suggest(
     failing: Check,
-    acts: Pick<CellActions, "onFix" | "onIntent" | "onCapability">
+    acts: Pick<CellActions, "onIntent" | "onCapability">
   ): Suggestion[] {
     const out: Suggestion[] = [];
     const capabilityFails = failing.label.endsWith(" rows");
-    const intentFails = !capabilityFails && failing.label !== "Intent";
     if (failing.label === "Intent") {
       for (const choice of ["train", "eval"] as const) {
         if ((reports[choice] as Report | undefined)?.ok) {
@@ -396,16 +352,6 @@ function FitChip({
       return out;
     }
     if (failing.fixable === false) return out;
-    out.push({
-      hint: intentFails
-        ? `Adds a cell so the table is a ${intent} table.`
-        : `Adds a cell so every row matches ${capabilityName}.`,
-      icon: "overmind",
-      key: "fix",
-      primary: true,
-      run: () => acts.onFix(`${failing.label}: ${failing.found}`),
-      title: "Ask Overmind to fix it",
-    });
     if (other && otherFits) {
       out.push({
         hint: `The ${other} shape already holds on this version.`,
@@ -537,7 +483,6 @@ export function NotebookCell({
   capabilities,
   active,
   editable,
-  running,
   selected,
   onSelect,
   actions,
@@ -550,7 +495,6 @@ export function NotebookCell({
   capabilities: CapabilityChoice[];
   active: boolean;
   editable: boolean;
-  running: boolean;
   selected: boolean;
   onSelect: () => void;
   actions: CellActions;
@@ -558,28 +502,28 @@ export function NotebookCell({
 }) {
   const source = cell.position === 0;
   const attachment = (cell.review as { kind?: string } | undefined)?.kind === "attachment";
+  const hasScript = !source && !attachment && !!cell.script;
   const ran = cell.state === "ok" && !!cell.fingerprint;
   const frozen = !!cell.frozen;
-  const canEdit = editable && !frozen && !source && !attachment;
+  const incoming = useNodeConnections({ handleType: "target" });
+  const outgoing = useNodeConnections({ handleType: "source" });
   const [scriptOpen, setScriptOpen] = useState(!ran);
   const [tableOpen, setTableOpen] = useState(true);
-  const [script, setScript] = useState(cell.script);
-  useEffect(() => setScript(cell.script), [cell.script]);
   useEffect(() => {
     if (cell.state === "failed" || cell.state === "queued") setScriptOpen(true);
   }, [cell.state]);
-  const dirty = script !== cell.script;
   const fit = fitOf(cell);
   const columns = columnsOf(cell).length;
 
   const version = cell.version;
+  const frameBorderWidth = active && cell.state !== "failed" && cell.state !== "running" ? 1.5 : 1;
   const stateTone =
     cell.state === "failed"
       ? "border-destructive/60"
       : cell.state === "running"
         ? "border-info/60"
         : active
-          ? "border-[1.5px] border-success/60"
+          ? "border-success/60"
           : selected
             ? "border-primary/60"
             : "border-border";
@@ -598,8 +542,8 @@ export function NotebookCell({
     >
       {/* The chip sticks to the top of the scroll while its cell is in view; the frame
           starts half a chip lower so the border runs through the chip's middle. */}
-      <div className="pointer-events-none sticky top-1 z-20 flex items-center pl-1.5">
-        <div className="pointer-events-auto flex items-center gap-1 bg-card px-1">
+      <div className="pointer-events-none sticky top-1 z-20 flex items-center pl-2.5">
+        <div className="pointer-events-auto flex items-center gap-1 bg-card">
           <span
             className={cn(
               "inline-flex h-6 items-center overflow-hidden rounded-sm bg-card text-xs",
@@ -612,7 +556,7 @@ export function NotebookCell({
               <button
                 aria-label={`Focus version ${version}`}
                 className={cn(
-                  "font-mono hover:underline",
+                  "nodrag font-mono hover:underline",
                   active && "font-semibold text-foreground"
                 )}
                 onClick={onSelect}
@@ -620,62 +564,19 @@ export function NotebookCell({
               >
                 {version}
               </button>
-              {source ? (
-                <span>Source</span>
-              ) : (
-                <TitleField disabled={!canEdit} onSave={actions.onTitle} value={cell.title} />
-              )}
+              {source ? <span>Source</span> : <span>{cell.title}</span>}
             </span>
             <span
               aria-label={`${cell.title} cell`}
               className="flex h-full items-center divide-x divide-border/70 border-l border-border/70"
               role="toolbar"
             >
-              {!source && (
-                <Button
-                  aria-label="Run the chain"
-                  className="h-full rounded-none"
-                  disabled={!editable || running}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (dirty) actions.onScript(script);
-                    else actions.onRun();
-                  }}
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Icon.play />
-                </Button>
-              )}
               {ran && (
                 <ExportDialog
                   columns={columns}
                   onExport={actions.onExport}
                   rows={cell.rows}
                   title={`${version} ${cell.title}`}
-                />
-              )}
-              {!source && (
-                <ConfirmDialog
-                  confirmLabel="Remove"
-                  description="Every cell after it runs again without this step. Versions after this one change."
-                  destructive
-                  onConfirm={actions.onRemove}
-                  title={`Remove ${version} ${cell.title}?`}
-                  trigger={
-                    <Button
-                      aria-label="Remove cell"
-                      className="h-full rounded-none"
-                      disabled={!editable || frozen}
-                      onClick={(e) => e.stopPropagation()}
-                      size="icon-xs"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Icon.delete />
-                    </Button>
-                  }
                 />
               )}
             </span>
@@ -702,70 +603,50 @@ export function NotebookCell({
       </div>
       <div
         className={cn(
-          "relative -mt-3 w-full min-w-0 rounded-md border transition-colors duration-200 motion-reduce:transition-none",
+          "relative -mt-3 w-full min-w-0 rounded-md border bg-card pt-3 transition-colors duration-200 motion-reduce:transition-none",
           stateTone
         )}
+        data-cell-frame
+        style={{ borderWidth: frameBorderWidth }}
       >
-        {!source && !attachment && (
-          <div className="pt-3">
-            <SectionHeader
-              label="Script"
-              onToggle={() => setScriptOpen((o) => !o)}
-              open={scriptOpen}
-            />
-          </div>
+        <Handle
+          className={cn("!size-2 !border-border !bg-card", !incoming.length && "invisible")}
+          position={Position.Top}
+          style={{ top: -frameBorderWidth / 2 }}
+          type="target"
+        />
+        <Handle
+          className={cn("!size-2 !border-border !bg-card", !outgoing.length && "invisible")}
+          position={Position.Bottom}
+          style={{ bottom: -frameBorderWidth / 2 }}
+          type="source"
+        />
+        {hasScript && (
+          <SectionHeader
+            label={
+              cell.transformation.execution === "platform_operations" ? "Operations" : "Script"
+            }
+            meta={
+              cell.transformation.execution === "isolated_container" ||
+              cell.transformation.execution === "platform_operations"
+                ? "Executed by Overmind"
+                : "Execution not recorded"
+            }
+            onToggle={() => setScriptOpen((o) => !o)}
+            open={scriptOpen}
+          />
         )}
-        {!source && !attachment && scriptOpen && (
-          <div className="px-3 pt-1 pb-2.5">
-            <ScriptCode
-              aria-label={`Script of ${cell.title}`}
-              onChange={canEdit ? setScript : undefined}
-              onRun={() => {
-                if (dirty) actions.onScript(script);
-                else actions.onRun();
-              }}
-              source={script}
-            />
-            {dirty && (
-              <div className="mt-1.5 flex justify-end gap-1">
-                <Button onClick={() => setScript(cell.script)} size="xs" variant="secondary">
-                  Discard
-                </Button>
-                <Button onClick={() => actions.onScript(script)} size="xs">
-                  Save and run
-                </Button>
-              </div>
-            )}
-          </div>
+        {hasScript && scriptOpen && <CellScript cell={cell} key={cell.id} />}
+        {cell.transformation.execution === "external_import" && (
+          <p
+            className="px-3 pt-1 pb-2 text-xs text-muted-foreground"
+            title={cell.transformation.provenance}
+          >
+            External import · execution not verified by Overmind
+          </p>
         )}
-        {source && <div className="h-3" />}
-        {attachment && <p className="px-3 pt-4 pb-2 text-xs text-muted-foreground">{cell.note}</p>}
+        {attachment && <p className="px-3 pt-1 pb-2 text-xs text-muted-foreground">{cell.note}</p>}
         {source && sourceDetails}
-        {!source && ran && (
-          <details className="border-t border-border/70 px-2.5 py-2 text-xs">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-              {cell.note || "Execution details"}
-            </summary>
-            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
-              <dt>Input</dt>
-              <dd className="truncate font-mono" title={cell.inputFingerprint}>
-                {cell.inputFingerprint?.slice(0, 12) || "—"}
-              </dd>
-              <dt>Output</dt>
-              <dd className="truncate font-mono" title={cell.fingerprint}>
-                {cell.fingerprint?.slice(0, 12)}
-              </dd>
-              <dt>Duration</dt>
-              <dd>{cell.seconds.toFixed(2)}s</dd>
-              <dt>Version</dt>
-              <dd>
-                {cell.version}
-                {frozen ? " · frozen" : ""}
-              </dd>
-            </dl>
-          </details>
-        )}
-
         {cell.state === "failed" && cell.error && (
           <div className="mx-3 mb-2.5 flex flex-col gap-1">
             <span className="pixel-label flex items-center gap-1 text-xs text-destructive">
@@ -779,7 +660,7 @@ export function NotebookCell({
         )}
 
         {ran ? (
-          <div className={cn(!source && "border-t border-border/70")}>
+          <div className={cn(!source && (hasScript || attachment) && "border-t border-border/70")}>
             <SectionHeader
               label="Data"
               meta={`${cell.rows.toLocaleString()} rows × ${columns}`}

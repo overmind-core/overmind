@@ -12,10 +12,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
-from overbae.models import DataPartitionMember, DataPartitionPlan, Dataset
+from overbae.models import DataPartitionMember, DataPartitionPlan, Dataset, Project
 from overbae.services.datasets import land, paths, rows, store, use
 from overbae.services.datasets.examples import field_value, native_decision, prepare_native_record
-from overbae.services.datasets.partition import contamination_keys, preserve_lineage
+from overbae.services.datasets.partition import GROUP_ALIASES, contamination_keys, preserve_lineage
 
 ROLES = ("train", "development", "calibration", "final")
 
@@ -86,6 +86,7 @@ def request_plan(project, *, name, request_key, source_cell, recipe):
     if source_cell.dataset.project_id != project.pk:
         raise InputValidationError("The source must belong to this project")
     recipe = validate_recipe(recipe)
+    Project.objects.select_for_update().get(pk=project.pk)
     Dataset.objects.select_for_update().get(pk=source_cell.dataset_id)
     existing = DataPartitionPlan.objects.filter(project=project, request_key=request_key).first()
     if existing:
@@ -114,6 +115,7 @@ def request_plan(project, *, name, request_key, source_cell, recipe):
 
 def assign(cell, recipe, destination, *, progress=None):
     parents = []
+    unresolved_groups = set(recipe["group_by"])
 
     def root(index):
         while parents[index] != index:
@@ -130,7 +132,21 @@ def assign(cell, recipe, destination, *, progress=None):
             if progress and index % 10000 == 0:
                 progress("grouping", index, cell.rows)
             parents.append(index)
-            for kind, value in contamination_keys(record, recipe["group_by"]):
+            keys = contamination_keys(record, recipe["group_by"])
+            if unresolved_groups:
+                group_kinds = {kind for kind, _ in keys if kind != "content"}
+                unresolved_groups = {
+                    field
+                    for field in unresolved_groups
+                    if GROUP_ALIASES.get(field, field) not in group_kinds
+                }
+            for field in tuple(unresolved_groups):
+                try:
+                    field_value(record, field)
+                except ValueError:
+                    continue
+                unresolved_groups.remove(field)
+            for kind, value in keys:
                 found = db.execute(
                     "SELECT owner FROM identities WHERE kind=? AND value=?", (kind, value)
                 ).fetchone()
@@ -153,6 +169,10 @@ def assign(cell, recipe, destination, *, progress=None):
             )
             db.execute(
                 "INSERT INTO observations VALUES(?,?,?)", (index, label, next(iter(forced), None))
+            )
+        if unresolved_groups:
+            raise InputValidationError(
+                "Unknown partition group fields: " + ", ".join(sorted(unresolved_groups))
             )
         if progress:
             progress("assigning", len(parents), cell.rows)
@@ -323,7 +343,7 @@ def build(plan_id):
                         pk=dataset_id,
                         defaults={
                             "project": plan.project,
-                            "name": f"{plan.name} · {role}",
+                            "name": f"{plan.name[: 252 - len(role)]} · {role}",
                             "brief": plan.source_cell.dataset.brief,
                             "intent": "eval"
                             if role in {"calibration", "final"}

@@ -79,6 +79,17 @@ def _offline_compute_prices(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _offline_operational_provider(monkeypatch):
+    async def absent(*args, **kwargs):
+        return None, []
+
+    monkeypatch.setattr("overbae.services.provider_progress.read_page", absent)
+    monkeypatch.setattr(
+        "modal_shared.operational_events.Journal.emit", lambda *args, **kwargs: None
+    )
+
+
+@pytest.fixture(autouse=True)
 def _commercial_billing(settings):
     """Remaining-credit billing is on in tests unless a case clears the key."""
     settings.STRIPE_SECRET_KEY = "sk_test_billing"
@@ -106,20 +117,10 @@ def _inline_dataset_tasks(monkeypatch):
     202 answers still leave a finished version behind."""
     from overbae.tasks import datasets as dataset_tasks
 
-    for task in (dataset_tasks.land, dataset_tasks.run):
+    for task in (dataset_tasks.land,):
         monkeypatch.setattr(
             task, "apply_async", lambda kwargs, _t=task, **_: _t.apply(kwargs=kwargs)
         )
-    # The agent needs Cursor; a test that wants a turn drives the agent module itself.
-    # Landing hands the dataset to its first scan, so the stub ends that scan.
-    from overbae.services.datasets.notebook import agent
-
-    monkeypatch.setattr(
-        dataset_tasks.diagnose,
-        "apply_async",
-        lambda kwargs, **_: agent.settle(kwargs["dataset_id"]),
-    )
-    monkeypatch.setattr(dataset_tasks.turn, "apply_async", lambda kwargs, **_: None)
 
 
 def _lift_messages(row):
@@ -146,7 +147,6 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     ready. ``rows`` defaults to a two-row table of the requested intent."""
     from overbae.models import Dataset
     from overbae.services.datasets import land
-    from overbae.services.datasets.notebook import run as run_svc
 
     if rows is None:
         rows = TRAIN_ROWS if contract == "train" else EVAL_ROWS
@@ -154,36 +154,24 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
         project=project, capability=capability, name=name, intent=contract or "pending"
     )
     land.land_rows(dataset, [_lift_messages(r) for r in rows], user=user)
-    run_svc.execute(dataset, user=user)
     dataset.refresh_from_db()
     review_fixture(dataset)
     return dataset
 
 
 def plan_fixture(dataset, cell=None):
-    from overbae.services.datasets.preparation import PlanRequest, save_plan
+    from overbae.models import Cell
 
     cell = cell or dataset.active_cell
-    plan = PlanRequest.model_validate(
-        {
-            "version": str(cell.id),
-            "objective": "Prepare the controlled fixture for its declared task.",
-            "consumer": "custom",
-            "understanding": "Fixture values and intended task are supplied by the test.",
-            "families": [{"name": "Fixture", "evidence": "Controlled inputs and references."}],
-            "steps": [
-                {
-                    "id": "prepare",
-                    "kind": "transform",
-                    "description": "Apply the declared fixture transformation.",
-                }
-            ],
+    plan = {
+        "id": str(cell.pk),
+        "specification": {
             "checks": [
                 {
                     "name": name,
                     "category": category,
                     "method": "deterministic",
-                    "question": "Does the fixture satisfy " + name + "?",
+                    "question": "Controlled fixture",
                 }
                 for name, category in {
                     "task_alignment": "semantic",
@@ -191,31 +179,78 @@ def plan_fixture(dataset, cell=None):
                     "answer_support": "semantic",
                     "output_schema": "technical",
                 }.items()
-            ],
-        }
-    )
-    return save_plan(dataset, cell, plan)
+            ]
+        },
+    }
+    cell.preparation_plan = plan
+    Cell.objects.filter(pk=cell.pk).update(preparation_plan=plan)
+    return plan
 
 
-def review_fixture(dataset, cell=None):
-    from overbae.services.datasets import review
+def review_fixture(dataset, cell=None, *, failed=None, unknown=None):
+    from overbae.models import Cell
+    from overbae.services.datasets.context import context_fingerprint
 
     cell = cell or dataset.active_cell
-    plan_fixture(dataset, cell)
-    review.record_quality(
-        dataset,
-        cell,
-        [
+    plan = plan_fixture(dataset, cell)
+    # Consumer tests load a recorded review; the platform no longer runs semantic judges.
+    report = {
+        "fingerprint": cell.fingerprint,
+        "context_fingerprint": context_fingerprint(dataset.capability),
+        "intent": dataset.intent,
+        "plan_id": plan["id"],
+        "audit": {"method": "row_results"},
+        "checks": [
             {
                 "name": name,
-                "result": "pass",
+                "result": "fail" if name == failed else "unknown" if name == unknown else "pass",
                 "evidence": "Known test fixture.",
                 "rows_checked": cell.rows,
             }
             for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
-        script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
-    )
+    }
+    cell.quality_report = report
+    Cell.objects.filter(pk=cell.pk).update(quality_report=report)
+    return report
+
+
+def import_version(dataset, records, *, name="Native transformation"):
+    from unittest.mock import patch
+    from uuid import uuid4
+
+    from overbae.services.datasets import workbench
+
+    source = dataset.active_cell
+    imported = {"imported_rows": records}
+    if len(records) > 2000:
+        from overbae.models import Dataset
+        from overbae.services.datasets import land
+
+        artifact = Dataset.objects.create(
+            project=dataset.project, name="Native artifact", intent="explore"
+        )
+        land.land_rows(artifact, records)
+        imported = {
+            "artifact_cell": artifact.source.pk,
+            "artifact_fingerprint": artifact.source.fingerprint,
+        }
+    with patch("overbae.tasks.datasets.execute_pipeline.delay"):
+        run = workbench.submit(
+            dataset,
+            None,
+            source_cell=source.pk,
+            source_fingerprint=source.fingerprint,
+            request_key=str(uuid4()),
+            name=name,
+            **imported,
+            provenance="Explicit transformation supplied by the test's native-agent fixture.",
+        )
+    workbench.execute(run.pk)
+    run.refresh_from_db()
+    assert run.state == "completed", run.error
+    dataset.refresh_from_db()
+    return dataset.active_cell
 
 
 @pytest.fixture(autouse=True)
@@ -237,42 +272,3 @@ def _offline_rubric_compiler(monkeypatch):
             "variables": ["input", "output"],
         },
     )
-
-
-@pytest.fixture
-def make_dataset(settings, tmp_path):
-    """Land rows and run the chain in-process, so a test gets a version back
-    synchronously without a worker. ``cells`` is a list of ``(title, script)``."""
-
-    def _make(
-        project,
-        rows,
-        *,
-        name="rows",
-        capability=None,
-        cells=None,
-        run=True,
-        user=None,
-        source_kind="file",
-        target=None,
-    ):
-        from overbae.models import Dataset
-        from overbae.services.datasets import land, lifecycle
-        from overbae.services.datasets.notebook import run as run_svc
-
-        dataset = Dataset.objects.create(
-            project=project,
-            capability=capability,
-            name=name,
-            source_kind=source_kind,
-            intent=target or "pending",
-        )
-        land.land_rows(dataset, list(rows), user=user)
-        for title, script in cells or []:
-            lifecycle.add_cell(dataset, title=title, script=script, user=user)
-        if run:
-            run_svc.execute(dataset, user=user)
-        dataset.refresh_from_db()
-        return dataset
-
-    return _make

@@ -114,15 +114,15 @@ def test_self_hosted_incumbent_routes_via_gateway(status, url, gateway, ready, s
 
 
 @override_settings(INFERENCE_API_URL=GATEWAY)
-def test_no_incumbent_falls_back_to_base_model():
+def test_no_incumbent_reports_unavailable_exact_base_route():
     job = _job(incumbent="")
     target = _baseline_target(job)
 
-    assert target.kind == "base_deploy"
+    assert target.kind == "unavailable"
     assert "Base model" in target.label
     # No base deployment READY yet → not launchable.
     assert target.ready is False
-    assert baseline_needs_base_deploy(job) is True
+    assert baseline_needs_base_deploy(job) is False
 
 
 def test_resolve_baseline_prefers_snapshot_over_live_capability():

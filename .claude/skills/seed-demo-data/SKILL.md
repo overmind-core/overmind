@@ -8,7 +8,7 @@ description: Run or modify the seed_demo management command (the one-project Sup
 Seeds one project — **Support Copilot** at Ledgerline, a fictional payments
 company — with thirty days of traffic across three capabilities (ticket triage,
 KB answering, dispute resolution) and every downstream surface filled: tasks,
-executions and verdicts, sessions, datasets with cell chains and chats, eval
+executions and verdicts, sessions, datasets with immutable cell chains, eval
 runs, optimiser runs (harness, backtest, hybrid), training jobs with judge
 evals and class metrics, deployed models with inference traffic, and the
 credits ledger.
@@ -57,9 +57,9 @@ workers to re-drive seeded rows against **real providers** and spend credits:
 
 - `auto_now_add`/`auto_now` columns are backdated via the raw-SQL `backdate()`
   helper (executemany), not via the ORM.
-- Datasets land through `services/datasets/land` and run through
-  `notebook/run.execute`, so every dataset has an active cell with a real
-  frame. Historical demo consumption stamps `used_at` directly and pins cells,
+- Datasets land through `services/datasets/land`. Explicit fixture transformations
+  publish measured, provenance-preserving frames directly; no platform agent or
+  script runner exists. Every dataset has a real active frame. Historical demo consumption stamps `used_at` directly and pins cells,
   including each training job's `eval_cell`; it does not fabricate a semantic
   quality review. Live use reports missing reviews as warnings. The reset deletes
   jobs, experiments and eval runs before the project.

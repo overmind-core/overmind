@@ -1,24 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html class="dark" lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <script>
-      // Pre-hydration theme. Must resolve identically to getStoredTheme() +
-      // applyTheme() in src/components/theme-provider.tsx, or the first paint
-      // flashes the wrong theme. Only an explicit 'system' follows the OS;
-      // absent/unreadable/unrecognised storage is dark.
-      (() => {
-        var stored = null;
-        try { stored = localStorage.getItem('overmind-theme'); } catch (_) {}
-        var resolved =
-          stored === 'light' ? 'light'
-          : stored === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          : 'dark';
-        if (resolved === 'dark') document.documentElement.classList.add('dark');
-        else document.documentElement.classList.remove('dark');
-      })();
-    </script>
+    <meta content="dark" name="color-scheme" />
     <title>Overmind Console</title>
     <meta content="noindex, nofollow" name="robots" />
     <meta content="Overmind is a devtool that enables AI to learn from production data. Using pattern of life analysis, it turns real-world agent behaviour into continuous improvement, allowing teams to ship secure and highly specialised agents." name="description" />

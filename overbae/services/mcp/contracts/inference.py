@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from overbae.services.mcp.contracts.common import MCPModel, ResourceLinkContract
+from overbae.services.mcp.contracts.common import JobReceipt, MCPModel, ResourceLinkContract
 
 
 class InferenceMessage(MCPModel):
@@ -15,6 +15,7 @@ class InferenceMessage(MCPModel):
 
 
 class RunInferenceInput(MCPModel):
+    request_key: str = Field(min_length=1, max_length=128)
     deployment: str = Field(min_length=1, max_length=255)
     messages: list[InferenceMessage] = Field(min_length=1, max_length=50)
     temperature: float = Field(default=1.0, ge=0.0, le=2.0)
@@ -30,13 +31,7 @@ class InferenceUsage(MCPModel):
 class RunInferenceOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     model_id: str
-    content: str = Field(max_length=32_000)
-    usage: InferenceUsage | None = None
-    latency_ms: float = Field(ge=0)
-    is_cold: bool
-    finish_reason: str | None = None
-    truncated: bool = False
-    content_clipped: bool = False
+    job: JobReceipt
     resource: ResourceLinkContract
 
 

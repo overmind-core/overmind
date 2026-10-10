@@ -260,7 +260,7 @@ function NavGroupItem({
                   // above the FIRST row's centre and ends at its own row's
                   // centre — hence the row pitch (2rem) times index. The active
                   // line is raised above the muted ones, and its colour must
-                  // stay a sidebar token: a hard `#fff` vanishes in light theme.
+                  // stay on the sidebar's semantic palette.
                   className={cn("sidebar-elbow", active && "z-10")}
                   key={item.to}
                   style={

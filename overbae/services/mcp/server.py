@@ -37,12 +37,13 @@ from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
 
 SERVER_NAME = "overmind-platform"
-SERVER_VERSION = "2.0.0"
+SERVER_VERSION = "6.2.1"
 
 mcp_server = Server(
     SERVER_NAME,
     version=SERVER_VERSION,
     instructions=(
+        "Use MCP for Overmind operations and the local CLI for file bytes. Missing tools, credentials or upload failures are not reasons to open a browser; report the connection error. Only open the Console when the user explicitly requests a visual view. "
         "Overmind is an agent improvement platform. Read overmind://interface/current for connected contract identity and workflow rules. Drafts never submit provider work; use explicit preparation and launch operations. Call list_projects first to find "
         "accessible projects and choose the project relevant to the user's request. "
         "Account connections require project_id on each project tool and resource URI; "
@@ -59,9 +60,12 @@ mcp_server = Server(
         "the returned kind and id for asynchronous work. Preserve pagination, truncation, "
         "missing scores, evaluator errors and pinned dataset/model identities in conclusions. "
         "Inspection does not authorize mutations or paid runs. Check readiness and costs "
-        "before an authorized evaluation or training launch. Use message_dataset_agent for "
-        "dataset preparation; supported changes run sequentially with recorded impact, while "
-        "quality findings are advisory. Source-to-examples preparation continues through grounded examples and final checks, preserving raw sources and reporting uncovered evidence; it does not require another generation instruction or user-supplied count. Inspect workflow for saved outcomes, generation counts and receipts. Use manage_dataset_workflow with its exact run_id and revision for pause, resume or partial publication; never repeat unresolved provider work. Benchmark selection and live serving are separate. "
+        "before an authorized evaluation or training launch. The calling coding agent owns dataset interpretation, transformation authoring and semantic work. "
+        "The platform has no Workshop planning agent. Discover reusable project revisions with inspect_dataset_workbench; prefer reuse or an attributed derived_from variant. New transformations require a retained Python package; package-free historical revisions are read-only. Upload scripts using overmind dataset pipeline-upload, register with save_dataset_pipeline, validate_dataset_pipeline, preview then run_dataset_pipeline. Each step publishes an immutable cell. Enable saved source bindings explicitly for repeated snapshot rebuilds. import_dataset_version is for genuine external results, not a substitute for retaining transformation code. "
+        "When asked to prepare data in Overmind, local files alone are not completion: publish and inspect the requested dataset or report an explicit blocker. Inspect the named capability's contract and examples before choosing target semantics; link it explicitly. Preserve unknown meaning rather than inventing task labels. Separate meaningful preparation stages and review branches from final formatting. Use the returned upload argv and identifiers verbatim, replacing only documented placeholders. "
+        "Preview defers absolute min_rows/max_rows bounds to publication; lineage and preserve_rows checks remain enforced. Inspect deferred checks before publishing. Follow poll_after_seconds; queued work alone is not a failure or reason to resubmit. Report format compatibility separately from task suitability, which remains unmeasured without attributable evidence. "
+        "Author explicit step IDs and input dependencies. Converge intended branches with inputs=[earlier IDs]; disjoint rows concatenate in declared order, overlapping source_row identities fail. The last step is the output: inspect flow.unconsumed_steps before publication. Training preparation should end in trainable examples with review metadata, not disconnected inspection tables; never invent targets or treat flags as resolved. Script conditions cite their entrypoint line and describe code, not independently verified semantics. Receipts record actual parent cells, counts and fingerprints. Pin sources and use stable request keys. "
+        "Use author-dataset-transformation for conditional authoring, retrieval and adaptation. inspect_dataset_workbench(pipeline=revision ID) retrieves an exact recipe and its family history. Only retained packages execute in the approved isolated runtime; other code and semantic/provider work stay in the native environment. Technical format checks do not prove semantic quality or exhaustive/exclusive branches. "
         "Local scanning, file transfers, credentials and repository execution use the CLI "
         "handoffs in the relevant resources/prompts. The server does not edit local files. "
         "When a user wants a visual view, open the ordinary Console for this project; "

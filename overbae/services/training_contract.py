@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from modal_shared.decisions import DECISION_OBJECTIVE, DECISION_OBJECTIVES, TEXT_OBJECTIVE
+from overbae.core.errors import InputValidationError
 
 
 def dataset_objective(cell):
@@ -21,6 +22,19 @@ def baseline_evaluation_enabled(hyperparameters):
     ):
         raise ValueError("pre_training_baseline applies only to native decision training.")
     return enabled
+
+
+def validate_effective_batch(hyperparameters):
+    unsupported = {
+        "gradient_accumulation_steps",
+        "per_device_train_batch_size",
+    } & hyperparameters.keys()
+    if unsupported:
+        raise InputValidationError(
+            f"Unsupported batch settings: {', '.join(sorted(unsupported))}. "
+            "Set batch_size to the effective optimizer batch; the runtime derives "
+            "micro-batches and gradient accumulation from the model and memory budget."
+        )
 
 
 def contract(cell, hyperparameters=None):

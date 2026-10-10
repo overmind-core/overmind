@@ -95,6 +95,37 @@ def test_job_wants_evals_requires_both_links():
     assert job_wants_evals(job) is False
 
 
+def test_invalid_judge_creates_failed_training_evaluation_instead_of_invisible_pending():
+    _, _, job, _, eset = _setup()
+    Evaluator.objects.filter(set_memberships__eval_set=eset).update(checklist=[])
+    job.baseline_model = "openai/gpt-5.6-sol"
+    job.save(update_fields=["baseline_model"])
+    with patch("overbae.tasks.eval.run_eval_run.apply_async") as dispatch:
+        result = tick_job_evals(job)
+        repeated = tick_job_evals(job)
+    assert dispatch.call_count == 0
+    assert len(result) == len(repeated) == 1
+    row = FinetuningJobEval.objects.get(job=job)
+    assert row.status == "failed"
+    assert "checklist" in row.error_message.lower()
+
+
+def test_missing_exact_openrouter_base_route_is_visible_and_does_not_provision_gpu():
+    _, _, job, _, _ = _setup()
+    job.eval_incumbent_before = False
+    job.eval_model_before = True
+    job.save(update_fields=["eval_incumbent_before", "eval_model_before"])
+    with patch(
+        "overbae.services.finetuning_eval.resolve_training_openrouter_slug", return_value=None
+    ):
+        result = tick_job_evals(job)
+    assert len(result) == 1
+    row = FinetuningJobEval.objects.get(job=job)
+    assert row.status == "failed"
+    assert "OpenRouter" in row.error_message
+    assert not job.evaluation_deployments.exists()
+
+
 def test_aggregate_from_summary_means():
     summary = {
         "variants": {
@@ -584,16 +615,11 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_baseline_waits_for_base_deployment_then_fires(
+def test_baseten_baseline_uses_an_already_hosted_base_without_deploying(
     django_capture_on_commit_callbacks,
 ):
     _, _, job, _, _ = _setup()
     _basetenify(job)
-
-    with patch("overbae.tasks.eval.run_eval_run.apply_async") as apply:
-        tick_job_evals(job)
-    assert apply.call_count == 0
-    assert FinetuningJobEval.objects.filter(job=job).count() == 0  # pending, not skipped
 
     dep = _ready_base_deployment(job.project)
     # The enqueue is deferred to transaction.on_commit — execute the callbacks.
@@ -704,7 +730,7 @@ def _fake_modal(monkeypatch, calls):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
+def test_missing_public_base_route_records_failure_without_provisioning(
     monkeypatch, django_capture_on_commit_callbacks
 ):
     from overbae.models import DeployedModel
@@ -723,12 +749,10 @@ def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
         deploy_base_model_for_eval(job_id=str(job.id))
 
     assert calls == []
-    dep = DeployedModel.objects.get(model_id=_base_slug("Qwen/Qwen3-8B"))
-    assert dep.status == DeployedModel.Status.QUEUED
-    assert dep.deployment_stage == "base"
-    assert dep.deployment_waiters.filter(pk=job.pk).exists()
-    assert dep.finetuning_job is None  # shared, not tied to this job
-    assert not dep.inference_url
+    assert not DeployedModel.objects.exists()
+    receipt = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.BASELINE)
+    assert receipt.status == FinetuningJobEval.Status.FAILED
+    assert "OpenRouter" in receipt.error_message
     assert apply.call_count == 0
 
 
@@ -752,10 +776,8 @@ def test_deploy_base_model_dedupes_ready_deployment(
         deploy_base_model_for_eval(job_id=str(job.id))
 
     assert calls == []  # no deploy work
-    assert apply.call_count == 0  # the durable notification is processed by the controller
-    from overbae.models import DeployedModel
-
-    assert DeployedModel.objects.get(model_id=_base_slug(job.base_model)).deployment_notify
+    assert apply.call_count == 1
+    assert FinetuningJobEval.objects.get(job=job).status == FinetuningJobEval.Status.RUNNING
 
 
 def test_deploy_base_model_skips_cancelled_job(monkeypatch):

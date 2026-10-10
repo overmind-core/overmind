@@ -1,16 +1,24 @@
 from .behaviour import Behaviour, BehaviourVersion, ConversationEvent, TaskExecution
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
-from .chatgpt import (
-    ChatGPTAccount,
-    ChatGPTAuthorization,
-    ChatGPTInstallation,
-    ChatGPTLoginTicket,
-    WorkshopPreference,
-)
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
-from .datasets import Cell, DataExploration, DataPartitionMember, DataPartitionPlan, Dataset
+from .dataset_pipeline import (
+    DatasetPipeline,
+    DatasetPipelineBinding,
+    DatasetPipelinePackage,
+    DatasetPipelineRun,
+    DatasetPipelineRunner,
+)
+from .dataset_transfer import DatasetTransfer
+from .datasets import (
+    Cell,
+    DataExploration,
+    DataPartitionMember,
+    DataPartitionPlan,
+    Dataset,
+    DatasetHistory,
+)
 from .evaluation import (
     Annotation,
     EvalRun,
@@ -52,6 +60,7 @@ from .iam import (
 )
 from .inference import DeployedModel, InferenceCall, ModelActivation
 from .mcp_oauth import MCPOAuthClient, MCPOAuthGrant, MCPOAuthToken
+from .operations import InferenceRequest, OperationalEvent, OperationalRun
 from .optimizer import (
     OptimizerCandidate,
     OptimizerCommand,
@@ -59,20 +68,19 @@ from .optimizer import (
     OptimizerIteration,
 )
 from .traces import BacktestRun, Conversation, Span
-from .workshop import WorkshopRecord, WorkshopRun, WorkshopWorkItem
+from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 
 __all__ = [
-    "WorkshopRun",
-    "WorkshopWorkItem",
-    "WorkshopRecord",
+    "TrainingCheckpoint",
+    "TrainingValidationRun",
+    "DatasetTransfer",
+    "InferenceRequest",
+    "OperationalEvent",
+    "OperationalRun",
+    "DatasetHistory",
     "MCPOAuthClient",
     "MCPOAuthGrant",
     "MCPOAuthToken",
-    "ChatGPTAccount",
-    "ChatGPTAuthorization",
-    "ChatGPTInstallation",
-    "ChatGPTLoginTicket",
-    "WorkshopPreference",
     "User",
     "UserManager",
     "SignOnMethod",
@@ -95,6 +103,11 @@ __all__ = [
     "ConnectorSyncConfig",
     "ConnectorSyncRun",
     "Dataset",
+    "DatasetPipeline",
+    "DatasetPipelineRun",
+    "DatasetPipelineBinding",
+    "DatasetPipelinePackage",
+    "DatasetPipelineRunner",
     "DataExploration",
     "DataPartitionMember",
     "DataPartitionPlan",

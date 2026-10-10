@@ -83,6 +83,12 @@ export interface FinetuningJobRequest {
     evalJudgeModel?: FinetuningJobRequestEvalJudgeModelEnum;
     /**
      *
+     * @type {Array<string>}
+     * @memberof FinetuningJobRequest
+     */
+    benchmarkModels?: Array<string>;
+    /**
+     *
      * @type {boolean}
      * @memberof FinetuningJobRequest
      */
@@ -249,6 +255,7 @@ export function FinetuningJobRequestFromJSONTyped(json: any, ignoreDiscriminator
         'evalCell': json['eval_cell'] == null ? undefined : json['eval_cell'],
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
         'evalJudgeModel': json['eval_judge_model'] == null ? undefined : json['eval_judge_model'],
+        'benchmarkModels': json['benchmark_models'] == null ? undefined : json['benchmark_models'],
         'evalIncumbentBefore': json['eval_incumbent_before'] == null ? undefined : json['eval_incumbent_before'],
         'evalIncumbentAfter': json['eval_incumbent_after'] == null ? undefined : json['eval_incumbent_after'],
         'evalModelBefore': json['eval_model_before'] == null ? undefined : json['eval_model_before'],
@@ -290,6 +297,7 @@ export function FinetuningJobRequestToJSONTyped(value?: FinetuningJobRequest | n
         'eval_cell': value['evalCell'],
         'eval_set': value['evalSet'],
         'eval_judge_model': value['evalJudgeModel'],
+        'benchmark_models': value['benchmarkModels'],
         'eval_incumbent_before': value['evalIncumbentBefore'],
         'eval_incumbent_after': value['evalIncumbentAfter'],
         'eval_model_before': value['evalModelBefore'],

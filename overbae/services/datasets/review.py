@@ -5,15 +5,11 @@ import sqlite3
 import tempfile
 from collections import Counter
 from contextlib import contextmanager
-from itertools import zip_longest
 from pathlib import Path
 
 import pandas as pd
-from django.db import transaction
-from django.utils import timezone
 
-from overbae.models import Cell, Dataset
-from overbae.services.datasets import operations, paths, preparation, rows, store
+from overbae.services.datasets import store
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.examples import (
@@ -23,7 +19,6 @@ from overbae.services.datasets.examples import (
     messages,
     native_decision,
 )
-from overbae.services.datasets.notebook import runner
 from overbae.services.datasets.partition import contamination_keys, preserve_lineage
 
 PROVENANCE_COLUMN = "_overmind_provenance"
@@ -73,14 +68,6 @@ def summary(report: dict) -> dict:
             "batches": len(audit.get("batches", [])),
         }
     return result
-
-
-def same_frame(before: pd.DataFrame, after: pd.DataFrame) -> bool:
-    try:
-        pd.testing.assert_frame_equal(before, after, check_dtype=False, check_exact=True)
-    except AssertionError:
-        return False
-    return True
 
 
 def preserve_provenance(before: pd.DataFrame, after: pd.DataFrame, *, group_by=()) -> pd.DataFrame:
@@ -179,35 +166,6 @@ def impact(before: pd.DataFrame, after: pd.DataFrame) -> dict:
     }
 
 
-def same_data(before: Path, after: Path) -> bool:
-    # Scripts cannot remove platform lineage; projecting it away is not a new version.
-    inherited = {
-        PROVENANCE_COLUMN,
-        "human_reviewed",
-        "trace_id",
-        "source_trace_id",
-        "conversation_id",
-    }
-    if [
-        c["name"]
-        for c in store.read_manifest(before)
-        if c["name"] not in inherited | {store.SOURCE_ROW}
-    ] != [
-        c["name"]
-        for c in store.read_manifest(after)
-        if c["name"] not in inherited | {store.SOURCE_ROW}
-    ]:
-        return False
-    for a, b in zip_longest(store.iter_rows(before), store.iter_rows(after)):
-        if a is None or b is None:
-            return False
-        if {k: v for k, v in a.items() if k not in inherited} != {
-            k: v for k, v in b.items() if k not in inherited
-        }:
-            return False
-    return True
-
-
 def distribution_file(path: Path) -> dict:
     columns = {c["name"] for c in store.read_manifest(path)}
     result = {}
@@ -224,25 +182,27 @@ def distribution_file(path: Path) -> dict:
 
 
 @contextmanager
-def indexed_rows(path):
+def indexed_rows(path, *, parent_paths=None):
     with tempfile.TemporaryDirectory(prefix="review_") as directory:
         con = sqlite3.connect(Path(directory) / "rows.sqlite")
         con.execute("PRAGMA cache_size=-16384")
         con.execute(
-            "CREATE TABLE original (identity TEXT PRIMARY KEY, body TEXT, seen INTEGER DEFAULT 0)"
+            "CREATE TABLE original (identity TEXT PRIMARY KEY, body TEXT, seen INTEGER DEFAULT 0, cell TEXT, fingerprint TEXT)"
         )
         con.execute("CREATE TABLE selected (identity TEXT PRIMARY KEY)")
         tracked = True
         try:
-            for row in store.iter_rows(path):
-                identity = row.get(store.SOURCE_ROW)
-                if identity is None:
-                    tracked = False
-                count = con.execute(
-                    "INSERT OR IGNORE INTO original(identity, body) VALUES (?, ?)",
-                    (json.dumps(identity), store.json_dumps(row)),
-                ).rowcount
-                tracked = tracked and bool(count)
+            for parent in parent_paths or [path]:
+                fingerprint = store.file_sha256(parent)
+                for row in store.iter_rows(parent):
+                    identity = row.get(store.SOURCE_ROW)
+                    if identity is None:
+                        tracked = False
+                    count = con.execute(
+                        "INSERT OR IGNORE INTO original(identity, body, cell, fingerprint) VALUES (?, ?, ?, ?)",
+                        (json.dumps(identity), store.json_dumps(row), parent.stem, fingerprint),
+                    ).rowcount
+                    tracked = tracked and bool(count)
             con.commit()
             yield con, tracked
         finally:
@@ -308,7 +268,7 @@ def impact_files(before: Path, after: Path) -> dict:
 
 
 def preserve_file_provenance(
-    before: Path, after: Path, destination: Path, *, group_by=(), generated=False
+    before: Path, after: Path, destination: Path, *, group_by=(), parent_paths=None
 ):
     columns = {c["name"] for c in store.read_manifest(before)}
     inherited = {
@@ -320,8 +280,7 @@ def preserve_file_provenance(
     } & columns
     if store.SOURCE_ROW not in columns:
         raise ValueError("The source has no record identities.")
-    fingerprint = store.file_sha256(before)
-    with indexed_rows(before) as (con, tracked):
+    with indexed_rows(before, parent_paths=parent_paths) as (con, tracked):
         if not tracked:
             raise ValueError(
                 "The source has ambiguous row identities. Select an earlier intact version."
@@ -334,13 +293,6 @@ def preserve_file_provenance(
         def records():
             next_id = largest + 1
             for row in store.iter_rows(after):
-                if (
-                    generated
-                    and isinstance(row.get(PROVENANCE_COLUMN), dict)
-                    and row[PROVENANCE_COLUMN].get("kind") == "synthetic"
-                ):
-                    yield row
-                    continue
                 explicit = row.pop("_overmind_parent_rows", None)
                 identity = row.get(store.SOURCE_ROW)
                 parent_ids = explicit if explicit is not None else [identity]
@@ -349,17 +301,20 @@ def preserve_file_provenance(
                         "A merged row needs _overmind_parent_rows containing its contributing source_row identities."
                     )
                 originals = []
+                parents = []
                 for parent in dict.fromkeys(parent_ids):
                     if isinstance(parent, bool) or not isinstance(parent, int) or parent < 0:
                         raise ValueError(
                             "Preserve source_row, or declare _overmind_parent_rows for a split or merge."
                         )
                     found = con.execute(
-                        "SELECT body FROM original WHERE identity=?", (json.dumps(parent),)
+                        "SELECT body, cell, fingerprint FROM original WHERE identity=?",
+                        (json.dumps(parent),),
                     ).fetchone()
                     if found is None:
                         raise ValueError("A parent row is not present in the bound source version.")
                     originals.append(json.loads(found[0]))
+                    parents.append({"cell": found[1], "fingerprint": found[2], "row": parent})
                 if (
                     explicit is not None
                     or con.execute(
@@ -369,7 +324,12 @@ def preserve_file_provenance(
                     identity, next_id = next_id, next_id + 1
                 con.execute("INSERT INTO assigned VALUES (?)", (identity,))
                 row[store.SOURCE_ROW] = identity
-                if explicit is None and len(originals) == 1 and row == originals[0]:
+                if (
+                    (parent_paths is None or len(parent_paths) == 1)
+                    and explicit is None
+                    and len(originals) == 1
+                    and row == originals[0]
+                ):
                     yield row
                     continue
                 keys = set().union(
@@ -382,14 +342,7 @@ def preserve_file_provenance(
                 )
                 row[PROVENANCE_COLUMN] = {
                     **provenance,
-                    "parents": [
-                        {
-                            "cell": before.stem,
-                            "fingerprint": fingerprint,
-                            "row": original[store.SOURCE_ROW],
-                        }
-                        for original in originals
-                    ],
+                    "parents": parents,
                     "source_content_keys": sorted(v for k, v in keys if k == "content"),
                     "source_group_keys": sorted([k, v] for k, v in keys if k != "content"),
                 }
@@ -402,22 +355,10 @@ def preserve_file_provenance(
         store.write_rows(destination, records())
 
 
-def requires_approval(changes: dict, *, allow_exclusions: bool = False) -> bool:
-    return bool(
-        (changes["rows_removed"] and not allow_exclusions)
-        or changes["rows_added"]
-        or not changes["identity_preserved"]
-        or changes["input_evidence_removed"]
-        or changes["instruction_changes"]
-        or changes.get("decision_changes", 0)
-        or changes.get("decision_rows_removed", 0)
-    )
-
-
 def readiness(dataset, cell, *, context: str | None = None) -> dict:
     valid, reason = cell.fits(public_intent(dataset.intent))
     report = cell.quality_report or {}
-    plan = preparation.for_cell(dataset, cell)
+    plan = cell.preparation_plan or {}
     reviewed = bool(
         report.get("fingerprint") == cell.fingerprint
         and report.get("context_fingerprint")
@@ -515,286 +456,12 @@ def warnings(dataset, cell, *, capability=None) -> list[str]:
     return findings
 
 
-def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str) -> dict:
-    before = paths.cell_path(dataset.id, previous.id)
-    path = paths.cell_path(dataset.id, cell.id)
-    preserve_file_provenance(
-        before,
-        output,
-        path,
-        group_by=preparation.group_columns(dataset, cell),
-        generated=kind == "synthetic",
+def group_columns(dataset, cell):
+    return sorted(
+        set(dataset.source_spec.get("split", {}).get("group_by", []))
+        | {
+            column
+            for family in cell.preparation_plan.get("specification", {}).get("families", [])
+            for column in family.get("group_columns", [])
+        }
     )
-    report = {
-        "kind": kind,
-        "reason": note,
-        "input_fingerprint": previous.fingerprint,
-        "output_fingerprint": store.file_sha256(path),
-        "context_fingerprint": context_fingerprint(dataset.capability),
-        "intent": dataset.intent,
-        "status": "pending",
-        "script": cell.script,
-        **impact_files(before, path),
-    }
-    Cell.objects.filter(pk=cell.pk).update(review=report, quality_report={})
-    cell.review = report
-    return report
-
-
-def _audit_shape(columns, names, measured_count, expected_count):
-    expected = {store.SOURCE_ROW, *names}
-    missing, unexpected = expected - set(columns), set(columns) - expected
-    if missing or unexpected:
-        raise ValueError(
-            f"Audit output has missing columns: {sorted(missing)}; unexpected columns: "
-            f"{sorted(unexpected)}. Return only the named check columns with the original "
-            "DataFrame index; the runner preserves source_row."
-        )
-    if measured_count != expected_count:
-        raise ValueError(
-            f"Audit output has {measured_count} rows; expected {expected_count}. "
-            "Return one result per input row, using null for unmeasured checks."
-        )
-
-
-def _audit_identity(missing, unexpected, duplicate_or_null):
-    if missing or unexpected or duplicate_or_null:
-        raise ValueError(
-            f"Audit source_row mismatch: missing={missing}, unexpected={unexpected}, "
-            f"duplicate_or_null={duplicate_or_null}. Preserve df['source_row'] unchanged; "
-            "it is the original identity, not df.index or a new row number. Alternatively "
-            "return only check columns with the original DataFrame index."
-        )
-
-
-def file_quality_outcomes(original: Path, measured: Path, checks: list[dict]) -> list[dict]:
-    names = {c["name"] for c in checks}
-    columns = {c["name"]: c["type"] for c in store.read_manifest(measured)}
-    count = store.row_count(original)
-    _audit_shape(columns, names, store.row_count(measured), count)
-    outcomes = []
-    with store.connect(original=original, measured=measured) as con:
-        covered = con.execute("SELECT count(DISTINCT source_row) FROM measured").fetchone()[0]
-        missing = con.execute(
-            "SELECT count(*) FROM original ANTI JOIN measured USING (source_row)"
-        ).fetchone()[0]
-        unexpected = con.execute(
-            "SELECT count(*) FROM measured ANTI JOIN original USING (source_row)"
-        ).fetchone()[0]
-        _audit_identity(missing, unexpected, count - covered)
-        for check in checks:
-            name = check["name"]
-            quoted = '"' + name.replace('"', '""') + '"'
-            unknown = con.execute(
-                f"SELECT count(*) FROM measured WHERE {quoted} IS NULL"
-            ).fetchone()[0]
-            if columns[name] != "boolean" and unknown != count:
-                raise ValueError(f"{name} results must be booleans or null, not scores or strings.")
-            failed = con.execute(
-                f"SELECT count(*) FROM measured WHERE {quoted} = false"
-            ).fetchone()[0]
-            failed_ids = [
-                r[0]
-                for r in con.execute(
-                    f"SELECT source_row FROM measured WHERE {quoted} = false LIMIT 20"
-                ).fetchall()
-            ]
-            unknown_ids = [
-                r[0]
-                for r in con.execute(
-                    f"SELECT source_row FROM measured WHERE {quoted} IS NULL LIMIT 20"
-                ).fetchall()
-            ]
-            outcomes.append(
-                {
-                    "name": name,
-                    "evidence": check["evidence"][:2000],
-                    "result": "fail" if failed else "unknown" if unknown or not count else "pass",
-                    "rows_checked": count - unknown,
-                    "rows_failed": failed,
-                    "rows_unknown": unknown,
-                    "failed_source_rows": failed_ids,
-                    "unknown_source_rows": unknown_ids,
-                }
-            )
-    return outcomes
-
-
-def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
-    rows.verify(cell)
-    if not script.strip():
-        raise ValueError("Provide an audit script that computes row-level results.")
-    context = context_fingerprint(dataset.capability)
-    result = runner.run(
-        script,
-        paths.cell_path(dataset.id, cell.id),
-        library_cache=paths.library_cache(dataset.project_id),
-        cancelled=lambda: operations.cancellation_requested(dataset.id),
-    )
-    if result.path is None:
-        raise ValueError(result.error or "The audit produced no row results.")
-    return record_quality_results(
-        dataset,
-        cell,
-        checks,
-        result.path,
-        audit={"method": "row_results", "script": script},
-        reviewer="workshop_agent",
-        context=context,
-    )
-
-
-def record_quality_results(
-    dataset,
-    cell,
-    checks: list[dict],
-    measured: pd.DataFrame | Path,
-    *,
-    audit: dict,
-    reviewer: str,
-    context: str,
-    semantic_audit: dict | None = None,
-    expected_semantic_audit: dict | None = None,
-    original: pd.DataFrame | None = None,
-) -> dict:
-    rows.verify(cell)
-    if not checks or len(checks) > 30:
-        raise ValueError("Provide between 1 and 30 measured quality checks.")
-    names = set()
-    for check in checks:
-        if not isinstance(check, dict):
-            raise ValueError("Each check needs a name and evidence.")
-        if not all(
-            isinstance(check.get(key), str) and check[key].strip() for key in ("name", "evidence")
-        ):
-            raise ValueError("Each check needs a name and measured evidence.")
-        name = check["name"]
-        if name in names:
-            raise ValueError("Each quality check must have a unique name.")
-        if name == store.SOURCE_ROW or len(name) > 200:
-            raise ValueError("Check names must be at most 200 characters and not source_row.")
-        names.add(name)
-    if isinstance(measured, Path):
-        outcomes = file_quality_outcomes(paths.cell_path(dataset.id, cell.id), measured, checks)
-    else:
-        if original is None:
-            original = store.read_frame(paths.cell_path(dataset.id, cell.id))
-        _audit_shape(measured.columns, names, len(measured), len(original))
-        source_ids, measured_ids = original[store.SOURCE_ROW], measured[store.SOURCE_ROW]
-        _audit_identity(
-            int((~source_ids.isin(measured_ids)).sum()),
-            int((~measured_ids.isin(source_ids)).sum()),
-            len(measured_ids) - measured_ids.nunique(),
-        )
-        outcomes = []
-        for check in checks:
-            values = measured[check["name"]]
-            if not all(
-                type(value) is bool
-                or value is None
-                or value is pd.NA
-                or isinstance(value, float)
-                and pd.isna(value)
-                for value in values.tolist()
-            ):
-                raise ValueError(
-                    f"{check['name']} results must be booleans or null, not scores or strings."
-                )
-            failed = measured.loc[values.eq(False), store.SOURCE_ROW].tolist()
-            unknown = measured.loc[values.isna(), store.SOURCE_ROW].tolist()
-            outcomes.append(
-                {
-                    "name": check["name"],
-                    "evidence": check["evidence"][:2000],
-                    "result": "fail"
-                    if failed
-                    else "unknown"
-                    if unknown or measured.empty
-                    else "pass",
-                    "rows_checked": len(measured) - len(unknown),
-                    "rows_failed": len(failed),
-                    "rows_unknown": len(unknown),
-                    "failed_source_rows": failed[:20],
-                    "unknown_source_rows": unknown[:20],
-                }
-            )
-    rows.verify(cell)
-    plan = preparation.for_cell(dataset, cell)
-    declared = {check["name"]: check for check in plan.get("specification", {}).get("checks", [])}
-    for outcome in outcomes:
-        definition = declared.get(outcome["name"])
-        if definition:
-            if definition["method"] == "unmeasured" and outcome["rows_checked"]:
-                raise ValueError(
-                    "An unmeasured plan check must remain null. Revise the plan before measuring it."
-                )
-            if (
-                definition["method"] == "semantic"
-                and outcome["rows_checked"]
-                and audit["method"] != "semantic_decisions"
-            ):
-                raise ValueError(
-                    "Semantic plan checks require check_semantic_quality; use null for unmeasured rows."
-                )
-            outcome.update(category=definition["category"], method=definition["method"])
-    report = {
-        "plan_id": plan.get("id"),
-        "fingerprint": cell.fingerprint,
-        "context_fingerprint": context,
-        "intent": public_intent(dataset.intent),
-        "reviewer": reviewer,
-        "at": timezone.now().isoformat(),
-        "checks": outcomes,
-        "audit": audit,
-        **({"semantic_audit": semantic_audit} if semantic_audit is not None else {}),
-    }
-    with transaction.atomic():
-        current_dataset = (
-            Dataset.objects.select_for_update(of=("self",))
-            .select_related("capability")
-            .get(pk=dataset.pk)
-        )
-        current = Cell.objects.select_for_update().get(pk=cell.pk)
-        if (
-            current.fingerprint != cell.fingerprint
-            or current_dataset.brief != dataset.brief
-            or current_dataset.intent != dataset.intent
-            or current_dataset.capability_id != dataset.capability_id
-            or context_fingerprint(current_dataset.capability) != context
-            or preparation.for_cell(current_dataset, current).get("id") != plan.get("id")
-        ):
-            raise ValueError("The version changed during the audit. Run the audit again.")
-        previous = current.quality_report or {}
-        if semantic_audit is not None and previous.get("semantic_audit") != expected_semantic_audit:
-            raise ValueError(
-                "The semantic audit changed during this batch. Resume the audit again."
-            )
-        if (
-            previous.get("fingerprint") == cell.fingerprint
-            and previous.get("context_fingerprint") == context
-            and previous.get("intent") == report["intent"]
-            and previous.get("plan_id") == report["plan_id"]
-        ):
-            preserved = {
-                check["name"]
-                for check in previous.get("checks", [])
-                if previous.get("audits", {}).get(check["name"], {}).get("method")
-                == "semantic_decisions"
-                and audit["method"] != "semantic_decisions"
-            }
-            if any(c["name"] in preserved and c["rows_checked"] for c in outcomes):
-                raise ValueError(
-                    "Measured semantic findings can only be replaced by semantic checks."
-                )
-            replaced = names - preserved
-            report["checks"] = [
-                c for c in previous.get("checks", []) if c["name"] not in replaced
-            ] + [c for c in outcomes if c["name"] in replaced]
-            report["audits"] = {**previous.get("audits", {}), **dict.fromkeys(replaced, audit)}
-            if semantic_audit is None and previous.get("semantic_audit"):
-                report["semantic_audit"] = previous["semantic_audit"]
-        else:
-            report["audits"] = dict.fromkeys(names, audit)
-        Cell.objects.filter(pk=cell.pk).update(quality_report=report)
-    cell.quality_report = report
-    return report

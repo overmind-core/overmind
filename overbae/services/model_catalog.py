@@ -18,6 +18,7 @@ from overbae.core.model_registry import (
     openrouter_configured,
     pricing_slug,
 )
+from overbae.modal.model_registry import get_model_config_any_backend
 
 logger = logging.getLogger(__name__)
 
@@ -124,21 +125,53 @@ def fetch_model_catalog() -> tuple[list[dict], bool]:
     return models, True
 
 
-def resolve_training_openrouter_slug(model_id: str) -> str | None:
-    if not openrouter_configured() or "/" not in model_id:
-        return None
-    models, available = fetch_model_catalog()
+def training_openrouter_match(
+    model_id: str, *, catalog: tuple[list[dict], bool] | None = None
+) -> dict:
+    cfg = get_model_config_any_backend(model_id) or {}
+    configured_id = cfg.get("openrouter_id") or OPENROUTER_MODEL_SLUGS.get(
+        normalize_model_name(model_id)
+    )
+    models, available = catalog if catalog is not None else fetch_model_catalog()
     if not available:
-        return None
-    identity = model_id.strip().casefold()
-    # Match the published checkpoint or the exact provider slug, never a similar name.
+        return {"openrouter_id": configured_id, "openrouter_status": "catalog_unavailable"}
+    identities = {
+        value.strip().casefold()
+        for value in (
+            model_id,
+            cfg.get("id"),
+            cfg.get("hf_model_id"),
+            *(cfg.get("benchmark_hf_model_ids") or []),
+        )
+        if value
+    }
+    # Curated aliases bridge different provider names; other matches require exact identity.
     matches = [
         entry["id"]
         for entry in models
-        if entry["id"].casefold() == identity
-        or str(entry.get("hugging_face_id") or "").casefold() == identity
+        if not entry["id"].endswith(":batch")
+        and (
+            entry["id"] == configured_id
+            or entry["id"].casefold() in identities
+            or str(entry.get("hugging_face_id") or "").casefold() in identities
+        )
     ]
-    return min(matches, key=lambda slug: (":" in slug, slug)) if matches else None
+    matched_id = (
+        min(matches, key=lambda slug: (slug != configured_id, ":" in slug, slug))
+        if matches
+        else None
+    )
+    return {
+        "openrouter_id": matched_id or configured_id,
+        "openrouter_status": "available" if matched_id else "not_listed",
+    }
+
+
+def resolve_training_openrouter_slug(model_id: str) -> str | None:
+    if not openrouter_configured():
+        return None
+    match = training_openrouter_match(model_id)
+    return match["openrouter_id"] if match["openrouter_status"] == "available" else None
 
 
 def resolve_bare_openrouter_slug(model_name: str) -> str | None:

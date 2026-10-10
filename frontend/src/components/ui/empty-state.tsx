@@ -14,7 +14,7 @@ function EmptyState({
   className,
 }: {
   icon?: ComponentType<SVGProps<SVGSVGElement>>;
-  /** For two-tone glyphs (`dark:invert [image-rendering:pixelated]`) that must not take
+  /** For two-tone glyphs (`invert [image-rendering:pixelated]`) that must not take
    *  the default muted-foreground fill. */
   iconClassName?: string;
   title: ReactNode;

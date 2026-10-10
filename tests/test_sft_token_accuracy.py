@@ -258,7 +258,7 @@ def test_accuracy_logs_reach_persisted_training_and_validation_records(tmp_path)
 
 @pytest.mark.parametrize("start_step,start_tokens", [(0, 0), (27, 892733)])
 def test_progress_rates_use_only_work_since_this_attempt_started(
-    tmp_path, start_step, start_tokens
+    tmp_path, start_step, start_tokens, capsys
 ):
     cuda = Mock()
     cuda.is_available.return_value = False
@@ -290,6 +290,7 @@ def test_progress_rates_use_only_work_since_this_attempt_started(
     args = SimpleNamespace(num_train_epochs=10)
     state = SimpleNamespace(global_step=start_step, max_steps=80, epoch=0.0)
     callback.on_train_begin(args, state, None, tokens_seen=start_tokens)
+    assert 'BT_STAGE {"stage": "training"}' in capsys.readouterr().out
     state.global_step += 2
     callback.on_log(args, state, None, {"loss": 0.5, "num_tokens": start_tokens + 400})
     progress = json.loads((tmp_path / "progress.json").read_text())

@@ -677,12 +677,13 @@ wheels = [
 
 [[package]]
 name = "overmind"
-version = "0.1.84"
+version = "0.1.86"
 source = { editable = "." }
 dependencies = [
     { name = "posthog" },
     { name = "requests" },
     { name = "rich" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "tomli-w" },
     { name = "typer" },
 ]
@@ -737,6 +738,7 @@ requires-dist = [
     { name = "posthog", specifier = ">=7.53.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=14.0.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.0" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.25.0" },
 ]

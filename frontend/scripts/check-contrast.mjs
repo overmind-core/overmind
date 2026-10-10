@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Checks the `:root` (light) and `.dark` token blocks of src/styles.css in both
- * themes. `bun run check:contrast`; `--all` also prints passing rows. Exits 1 on
+ * Checks the dark-only `:root` tokens in src/styles.css.
+ * `bun run check:contrast`; `--all` also prints passing rows. Exits 1 on
  * any failure.
  */
 import { readFileSync } from "node:fs";
@@ -11,8 +11,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const css = readFileSync(join(root, "src/styles.css"), "utf8");
 
-// styles.css declares :root/.dark more than once (app palette, workshop
-// instruments), so every block for a selector merges into one theme.
+// Palette and instrument tokens live in separate :root blocks.
 function block(selector) {
   const out = {};
   for (const m of css.matchAll(new RegExp(`${selector}\\s*\\{([^}]*)\\}`, "g"))) {
@@ -26,7 +25,7 @@ function block(selector) {
   return out;
 }
 
-const THEMES = { dark: block("\\.dark"), light: block(":root") };
+const THEMES = { dark: block(":root") };
 
 const srgb = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 function luminance(hex) {
@@ -116,7 +115,7 @@ const TIERS = [
   ["muted", "card", "muted fill vs card"],
 ];
 
-// Every neutral in BOTH themes rides one hue under a chroma ceiling. Hue is
+// Every neutral rides one hue under a chroma ceiling. Hue is
 // asserted only above HUE_MIN_CHROMA; below it a hue is quantisation noise.
 const CHROMA_MAX = 6;
 const HUE_AXIS = 75;
@@ -323,8 +322,8 @@ for (const [theme, tokens] of Object.entries(THEMES))
 
 if (rows.length === 0) {
   console.log(
-    "✓ contrast: every checked pairing clears AA in both themes, border ramp included;\n" +
-      "  every surface tier is perceptibly separated and both ramps hold one hue axis"
+    "✓ contrast: every checked pairing clears AA in the dark palette, border ramp included;\n" +
+      "  every surface tier is perceptibly separated and the neutral ramp holds one hue axis"
   );
 } else {
   const w = (s, n) => String(s).padEnd(n);

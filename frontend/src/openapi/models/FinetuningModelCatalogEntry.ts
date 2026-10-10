@@ -20,6 +20,13 @@ import {
     FinetuningCatalogTrainingTypeToJSON,
     FinetuningCatalogTrainingTypeToJSONTyped,
 } from './FinetuningCatalogTrainingType';
+import type { OpenrouterStatusEnum } from './OpenrouterStatusEnum';
+import {
+    OpenrouterStatusEnumFromJSON,
+    OpenrouterStatusEnumFromJSONTyped,
+    OpenrouterStatusEnumToJSON,
+    OpenrouterStatusEnumToJSONTyped,
+} from './OpenrouterStatusEnum';
 
 /**
  * One model in the fine-tuning catalog (not the OpenRouter one below).
@@ -33,6 +40,18 @@ export interface FinetuningModelCatalogEntry {
      * @memberof FinetuningModelCatalogEntry
      */
     id: string;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningModelCatalogEntry
+     */
+    openrouterId: string | null;
+    /**
+     *
+     * @type {OpenrouterStatusEnum}
+     * @memberof FinetuningModelCatalogEntry
+     */
+    openrouterStatus: OpenrouterStatusEnum;
     /**
      *
      * @type {string}
@@ -101,11 +120,15 @@ export interface FinetuningModelCatalogEntry {
     disabledReason?: string;
 }
 
+
+
 /**
  * Check if a given object implements the FinetuningModelCatalogEntry interface.
  */
 export function instanceOfFinetuningModelCatalogEntry(value: object): value is FinetuningModelCatalogEntry {
     if (!('id' in value) || value['id'] === undefined) return false;
+    if (!('openrouterId' in value) || value['openrouterId'] === undefined) return false;
+    if (!('openrouterStatus' in value) || value['openrouterStatus'] === undefined) return false;
     if (!('display' in value) || value['display'] === undefined) return false;
     if (!('params' in value) || value['params'] === undefined) return false;
     if (!('totalParamsB' in value) || value['totalParamsB'] === undefined) return false;
@@ -128,6 +151,8 @@ export function FinetuningModelCatalogEntryFromJSONTyped(json: any, ignoreDiscri
     return {
 
         'id': json['id'],
+        'openrouterId': json['openrouter_id'],
+        'openrouterStatus': OpenrouterStatusEnumFromJSON(json['openrouter_status']),
         'display': json['display'],
         'params': json['params'],
         'totalParamsB': json['total_params_b'],
@@ -154,6 +179,8 @@ export function FinetuningModelCatalogEntryToJSONTyped(value?: FinetuningModelCa
     return {
 
         'id': value['id'],
+        'openrouter_id': value['openrouterId'],
+        'openrouter_status': OpenrouterStatusEnumToJSON(value['openrouterStatus']),
         'display': value['display'],
         'params': value['params'],
         'total_params_b': value['totalParamsB'],

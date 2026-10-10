@@ -17,10 +17,9 @@ from overbae.models import (
     User,
 )
 from overbae.services import native_evaluation, training_experiments
-from overbae.services.datasets import exploration, land, lifecycle, rows, sampling, store
+from overbae.services.datasets import exploration, land, paths, rows, sampling, store
 from overbae.services.datasets.examples import native_decision
 from overbae.services.datasets.exploration import advance
-from overbae.services.datasets.notebook import run
 from overbae.services.decision_providers import external_step
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.native_evaluation import advance_plan
@@ -258,8 +257,13 @@ def test_mcp_derives_historical_chat_source_with_tool_messages_and_lineage():
     land.land_rows(dataset, [{"messages": messages, "group_id": "same-session"}] * 2)
     dataset.refresh_from_db()
     original = dataset.active_cell
-    latest = lifecycle.add_cell(dataset, title="One conversation", script="df = df.head(1)\n")
-    run.execute(dataset)
+    from conftest import import_version
+
+    latest = import_version(
+        dataset,
+        store.head(paths.cell_path(dataset.pk, dataset.source.pk), 1),
+        name="One conversation",
+    )
     dataset.refresh_from_db()
     assert dataset.active_cell.pk == latest.pk
     assert dataset.active_cell.rows == 1
@@ -514,5 +518,5 @@ def test_account_client_discovers_interface_without_selecting_a_project():
         body = response.json()
         assert "error" not in body, body
         resource = json.loads(body["result"]["contents"][0]["text"])
-        assert resource["contract_version"] == "2.0.0"
+        assert resource["contract_version"] == "6.2.1"
         assert len(resource["catalog_sha256"]) == 64

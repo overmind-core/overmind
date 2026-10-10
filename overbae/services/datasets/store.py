@@ -2,7 +2,7 @@
 
 Every table carries a column manifest ``[{name, type}]`` where ``type`` is one of
 ``string | integer | number | boolean | datetime | json``. Nested values are
-stored as JSON text so a messy upload never fails schema unification; readers
+and heterogeneous scalar values are stored as JSON text without coercion; readers
 decode them back to Python objects. Sandboxed SQL views restore their declared JSON type.
 """
 
@@ -14,6 +14,7 @@ import json
 import math
 import pickle
 import tempfile
+import threading
 from collections.abc import Iterable
 from itertools import batched
 from pathlib import Path
@@ -23,6 +24,7 @@ import duckdb
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+from django.conf import settings
 
 from overbae.services.datasets.statistics import StatisticsUnavailableError, profile
 
@@ -53,6 +55,14 @@ _FILTER_OPS = (
 
 class StoreError(ValueError):
     """A read or write the caller can act on (bad column, bad filter, missing file)."""
+
+
+class QueryTimeoutError(StoreError):
+    pass
+
+
+class QuerySizeError(StoreError):
+    pass
 
 
 def _is_missing(value: Any) -> bool:
@@ -108,30 +118,10 @@ def _coerce(value: Any, kind: str) -> Any:
 
 
 def _infer_kind(values: list[Any]) -> str:
-    """Kind of a column from its non-missing values. Mixed scalars read as string."""
-    kinds: set[str] = set()
+    builder = ManifestBuilder()
     for value in values:
-        if _is_missing(value):
-            continue
-        if isinstance(value, (dict, list, tuple)):
-            return "json"
-        if isinstance(value, bool):
-            kinds.add("boolean")
-        elif isinstance(value, int):
-            kinds.add("integer")
-        elif isinstance(value, float):
-            kinds.add("number")
-        elif isinstance(value, (dt.datetime, pd.Timestamp)):
-            kinds.add("datetime")
-        else:
-            kinds.add("string")
-    if not kinds:
-        return "string"
-    if kinds <= {"integer", "number"}:
-        return "number" if "number" in kinds else "integer"
-    if len(kinds) == 1:
-        return kinds.pop()
-    return "string"
+        builder.add({"value": value})
+    return builder.manifest()[0]["type"] if values else "string"
 
 
 def infer_manifest(rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
@@ -144,22 +134,41 @@ def infer_manifest(rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
 class ManifestBuilder:
     def __init__(self):
         self.kinds = {}
+        self.inexact_floats = set()
 
     def add(self, row):
         for name, value in row.items():
-            kinds = self.kinds.setdefault(str(name), set())
-            if not _is_missing(value):
-                kinds.add(_infer_kind([value]))
+            name = str(name)
+            kinds = self.kinds.setdefault(name, set())
+            if _is_missing(value):
+                continue
+            if isinstance(value, (dict, list, tuple)):
+                kinds.add("json")
+            elif isinstance(value, bool):
+                kinds.add("boolean")
+            elif isinstance(value, int):
+                if not -(2**63) <= value < 2**63:
+                    kinds.add("json")
+                else:
+                    kinds.add("integer")
+                    if int(float(value)) != value:
+                        self.inexact_floats.add(name)
+            elif isinstance(value, float):
+                kinds.add("number")
+            elif isinstance(value, (dt.datetime, pd.Timestamp)):
+                kinds.add("datetime")
+            else:
+                kinds.add("string")
 
     def manifest(self):
         result = []
         for name, kinds in self.kinds.items():
-            if "json" in kinds:
+            if "json" in kinds or ("number" in kinds and name in self.inexact_floats):
                 kind = "json"
             elif kinds and kinds <= {"integer", "number"}:
                 kind = "number" if "number" in kinds else "integer"
             else:
-                kind = next(iter(kinds)) if len(kinds) == 1 else "string"
+                kind = next(iter(kinds)) if len(kinds) == 1 else "json" if kinds else "string"
             result.append({"name": name, "type": kind})
         return result
 
@@ -171,7 +180,8 @@ def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:
         if pd.api.types.is_bool_dtype(series):
             kind = "boolean"
         elif pd.api.types.is_integer_dtype(series):
-            kind = "integer"
+            maximum = series.max()
+            kind = "json" if pd.notna(maximum) and maximum >= 2**63 else "integer"
         elif pd.api.types.is_float_dtype(series):
             kind = "number"
         elif pd.api.types.is_datetime64_any_dtype(series):
@@ -300,10 +310,12 @@ def read_frame(path: Path) -> pd.DataFrame:
     """Pandas frame with JSON columns decoded to Python objects."""
     manifest = read_manifest(path)
     table = pq.read_table(path)
-    df = table.to_pandas()
+    df = table.to_pandas(integer_object_nulls=True)
     for spec in manifest:
         if spec["type"] == "json" and spec["name"] in df.columns:
-            df[spec["name"]] = df[spec["name"]].map(lambda v: _decode(v, "json"))
+            df[spec["name"]] = pd.Series(
+                [_decode(v, "json") for v in df[spec["name"]]], dtype=object
+            )
     return df
 
 
@@ -318,9 +330,16 @@ def iter_rows(path: Path, batch_size: int = ROW_GROUP_SIZE):
 
 
 def iter_frames(path: Path, batch_size: int = ROW_GROUP_SIZE):
-    columns = [c["name"] for c in read_manifest(path)]
+    manifest = read_manifest(path)
     for batch in batched(iter_rows(path, batch_size), batch_size, strict=False):
-        yield pd.DataFrame.from_records(batch, columns=columns)
+        columns = {}
+        for spec in manifest:
+            values = [row.get(spec["name"]) for row in batch]
+            preserve_scalars = spec["type"] == "json" or (
+                spec["type"] == "integer" and any(value is None for value in values)
+            )
+            columns[spec["name"]] = pd.Series(values, dtype=object if preserve_scalars else None)
+        yield pd.DataFrame(columns)
 
 
 def read_rows(path: Path, indices: list[int]) -> list[dict[str, Any]]:
@@ -512,20 +531,66 @@ def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def query(sql: str, *, limit: int | None = 200, **tables: Path) -> dict[str, Any]:
+def query(
+    sql: str,
+    *,
+    limit: int | None = 200,
+    max_bytes: int | None = None,
+    max_columns: int | None = None,
+    **tables: Path,
+) -> dict[str, Any]:
     """Read-only SQL over registered tables. Returns decoded rows and columns."""
     con = connect_sandboxed(**tables)
     sql = sql.strip().rstrip(";").strip()
+    expired = threading.Event()
+
+    def interrupt():
+        expired.set()
+        con.interrupt()
+
+    timeout = settings.DATASET_QUERY_TIMEOUT_SECONDS
+    timer = threading.Timer(timeout, interrupt)
+    timer.daemon = True
+    timer.start()
     try:
         statements = con.extract_statements(sql)
         if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
             raise StoreError("Only one read-only SELECT query is allowed.")
         cur = con.execute(f"SELECT * FROM ({sql}) LIMIT {int(limit)}" if limit else sql)
         cols = [d[0] for d in cur.description]
-        rows = _records(cur)
+        if max_columns is not None and len(cols) > max_columns:
+            raise QuerySizeError(
+                "The query exceeds its column budget. Select fewer columns or export the cell."
+            )
+        json_columns = {d[0] for d in cur.description if str(d[1]) == "JSON"}
+        rows, size = [], 0
+        for batch in cur.to_arrow_reader(batch_size=1):
+            if expired.is_set():
+                raise QueryTimeoutError(
+                    f"The query exceeded {timeout:g} seconds. Narrow the query or export the cell."
+                )
+            for value in batch.to_pylist():
+                row = _json_safe(
+                    {
+                        key: _decode(value, "json") if key in json_columns else value
+                        for key, value in value.items()
+                    }
+                )
+                size += len(json.dumps(row, default=str, ensure_ascii=False).encode())
+                if max_bytes is not None and size > max_bytes:
+                    raise QuerySizeError(
+                        "The query exceeds its byte budget. Select fewer columns, aggregate or export the cell."
+                    )
+                rows.append(row)
+    except duckdb.InterruptException as exc:
+        raise QueryTimeoutError(
+            f"The query exceeded {timeout:g} seconds. Narrow the query or export the cell."
+        ) from exc
     finally:
+        timer.cancel()
+        timer.join()
         con.close()
-    return {"rows": [_json_safe(r) for r in rows], "columns": cols}
+    return {"rows": rows, "columns": cols}
 
 
 def _json_safe(row: dict[str, Any]) -> dict[str, Any]:

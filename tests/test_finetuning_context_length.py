@@ -220,7 +220,9 @@ class TestJobSerializerContextValidation:
         )
         capability = Capability.objects.create(project=project, name="Judge", slug="judge")
         eval_set = EvalSet.objects.create(project=project, capability=capability, name="Judges")
-        evaluator = Evaluator.objects.create(project=project, name="Accuracy", kind="llm_judge")
+        evaluator = Evaluator.objects.create(
+            project=project, name="Accuracy", kind="deterministic", config={"check": "exact_match"}
+        )
         EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
         version = dataset.active_cell
         version.stats = {**version.stats, "max_token_length": max_token_length}

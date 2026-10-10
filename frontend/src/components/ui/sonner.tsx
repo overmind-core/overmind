@@ -34,6 +34,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         unstyled: true,
       }}
       {...props}
+      theme="dark"
     />
   );
 };

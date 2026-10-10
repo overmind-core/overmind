@@ -343,7 +343,9 @@ def run_init(
         console.print(f"{DEFAULT_PATH.name} already present — left unchanged")
 
     if saved_key:
-        console.print("\nReady. MCP authentication uses the saved project credential.")
+        console.print(
+            "\nMCP configured with the saved project credential. Run overmind connection check --project-id PROJECT --json in this coding environment to verify MCP and local transfer readiness."
+        )
     else:
         console.print(
             "\nMCP authentication pending. Run [bold]overmind sync[/bold] to create the console project "

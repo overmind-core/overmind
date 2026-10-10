@@ -67,8 +67,8 @@ function snapshotDate(generatedAt: string): string {
 
 function MetaRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="col-span-2 grid grid-cols-subgrid items-start">
-      <dt className="pixel-label text-xs text-muted-foreground">{label}</dt>
+    <div className="grid min-w-0 grid-cols-1 gap-1 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4">
+      <dt className="pixel-label text-xs leading-5 text-muted-foreground">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </div>
   );
@@ -93,9 +93,10 @@ function AnalysisHeader({
     .map(([skill, weight]) => `${skill} ${Math.round(weight * 100)}%`);
 
   return (
-    <dl className="grid shrink-0 grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-b border-border/70 pb-3">
+    <dl className="flex shrink-0 flex-col gap-1.5">
       <MetaRow label="Task type">
         <FactLine
+          className="min-h-5 text-sm text-foreground"
           items={[
             <span
               className="text-foreground"
@@ -113,12 +114,13 @@ function AnalysisHeader({
 
       <MetaRow label="Training data">
         <FactLine
+          className="min-h-5 text-sm text-foreground"
           items={[
             dataset.rows > 0 ? count(dataset.rows, "row") : null,
             format ?? null,
             dataset.totalTokens > 0 ? `~${compactTokens(dataset.totalTokens)} tokens` : null,
             dataset.maxTokenLength > 0
-              ? `longest ≈${dataset.maxTokenLength.toLocaleString()} tok`
+              ? `longest ${dataset.maxTokenLength.toLocaleString()} tokens`
               : null,
             dataset.hasToolCalling ? "tool-calling" : null,
           ]}
@@ -127,6 +129,7 @@ function AnalysisHeader({
 
       <MetaRow label="Graded on">
         <FactLine
+          className="min-h-5 text-sm text-foreground"
           items={[
             ...(blend.length > 0 ? blend : ["No skill weights"]),
             benchmarkCount > 0 ? (
@@ -552,15 +555,13 @@ export function ModelsPanel({ wizard }: { wizard: TrainWizard }) {
   const stats = validation?.stats ?? {};
   const trainRows = stats.trainExamples ?? 0;
   const valRows = stats.valExamples ?? 0;
-  const evalRows = evalDataset?.rows ?? 0;
+  const evalRows = wizard.evaluationEnabled ? (evalDataset?.rows ?? 0) : 0;
   const composition: Segment[] =
-    trainRows + valRows > 0 && evalRows > 0
+    trainRows + valRows > 0
       ? [
-          // Two shades of one hue for the two halves of the training set, a separate hue
-          // for the eval set: they come from different datasets.
           { className: "bg-primary/70", label: "Train", value: trainRows },
           { className: "bg-primary/30", label: "Validation", value: valRows },
-          { className: "bg-cat-2/70", label: "Eval", value: evalRows },
+          ...(evalRows > 0 ? [{ className: "bg-cat-2/70", label: "Eval", value: evalRows }] : []),
         ]
       : [];
 
@@ -572,10 +573,10 @@ export function ModelsPanel({ wizard }: { wizard: TrainWizard }) {
   const skillWeights = rec?.skillWeights ?? {};
 
   return (
-    <Column>
+    <Column className="[&>div:last-child]:gap-3">
       {!dataReady ? (
         <p className="flex h-24 items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-xs text-muted-foreground">
-          Pick a capability and a valid dataset.
+          Select training data to see compatible models.
         </p>
       ) : recommendQuery.isLoading && drafts.length === 0 ? (
         <>
@@ -606,7 +607,7 @@ export function ModelsPanel({ wizard }: { wizard: TrainWizard }) {
           )}
 
           {drafts.length > 0 && (
-            <ul aria-label="Experiments" className="flex flex-col gap-2">
+            <ul aria-label="Experiments" className="flex flex-col gap-3">
               {drafts.map((draft) => (
                 <ModelRow
                   canRemove={drafts.length > 1}

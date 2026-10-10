@@ -21,6 +21,7 @@ x-env-common: &env-common
   JEV_TOKENS_PER_SECOND: ${JEV_TOKENS_PER_SECOND:-250000}
   TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
   HF_TOKEN: ${HF_TOKEN:-}
+  WORKSHOP_RUNTIME_IMAGES: ${WORKSHOP_RUNTIME_IMAGES:-}
   INFERENCE_API_URL: ${INFERENCE_API_URL:-}
   INFERENCE_API_KEY: ${INFERENCE_API_KEY:-}
   FINETUNING_BACKEND: ${FINETUNING_BACKEND:-modal}
@@ -192,6 +193,43 @@ services:
     restart: unless-stopped
     environment:
       <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  workshop-runner:
+    image: overmind-dev
+    profiles: [workshop]
+    command: python manage.py workshop_runner
+    entrypoint: []
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: overbae.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      DJANGO_DEBUG: "True"
+      DATABASE_URL: postgresql://overbae:overbae@postgres:5432/overbae
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      MEDIA_ROOT: /data/media
+      TMPDIR: /data/tmp
+      WORKSHOP_RUNTIME_IMAGES: ${WORKSHOP_RUNTIME_IMAGES:-}
+      OPENROUTER_API_KEY: unused-workshop-controller
+      MODAL_TOKEN_ID: unused-workshop-controller
+      MODAL_TOKEN_SECRET: unused-workshop-controller
+      INFERENCE_API_URL: http://disabled.invalid
+      INFERENCE_API_KEY: unused-workshop-controller
+      AWS_ACCESS_KEY_ID: unused-workshop-controller
+      AWS_SECRET_ACCESS_KEY: unused-workshop-controller
+      AWS_BUCKET_NAME: unused-workshop-controller
+      HF_TOKEN: unused-workshop-controller
+    volumes:
+      - ./overbae:/code/overbae:ro
+      - ./modal_shared:/code/modal_shared:ro
+      - app_data:/data
+      # Only the trusted controller gets the socket; script containers get no mounts.
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       api:
         condition: service_healthy

@@ -3,14 +3,12 @@ from copy import deepcopy
 
 import pandas as pd
 import pytest
-from conftest import plan_fixture
+from conftest import import_version
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import contract, land, lifecycle, review, rows, store
+from overbae.services.datasets import contract, land, review, rows, store
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.examples import prepare_examples
-from overbae.services.datasets.notebook import agent
-from overbae.services.datasets.notebook import run as notebook_run
 from overbae.services.datasets.profile import profile_records
 from overbae.services.finetuning_validator import row_to_finetuning_line, validate_rows
 
@@ -125,32 +123,20 @@ def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("intent", ["train", "eval"])
-@pytest.mark.parametrize("automatic", [True, False])
-def test_replacing_existing_instructions_records_semantic_impact_and_preserves_source(
-    intent, automatic
-):
+def test_replacing_existing_instructions_records_semantic_impact_and_preserves_source(intent):
     project = Project.objects.create(name="Context", slug="context")
     dataset = Dataset.objects.create(project=project, name="Mixed tasks", intent=intent)
     records = prepare_examples(pd.DataFrame([example(), example("Apply rules")]), intent)
     land.land_rows(dataset, records.to_dict(orient="records"))
     dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    plan_fixture(dataset)
-    tools.automatic = automatic
-    column = "messages" if intent == "train" else "input"
-    transcript = "value" if intent == "train" else 'value["messages"]'
-    result = tools.add_cell(
-        {
-            "plan_step": "prepare",
-            "title": "Replace instructions",
-            "kind": "mechanical",
-            "run": True,
-            "script": f'def replace(value):\n    {transcript}[0]["content"] = "Do everything"\n    return value\ndf["{column}"] = df["{column}"].map(replace)',
-        }
-    )
-    assert result["ok"] and not result.get("proposed")
-    assert result["review"]["kind"] == "semantic"
-    assert result["review"]["instruction_changes"] == 2
+    from overbae.services.datasets import paths
+
+    prepared = list(store.iter_rows(paths.cell_path(dataset.pk, dataset.active_cell.pk)))
+    for row in prepared:
+        transcript = row["messages"] if intent == "train" else row["input"]["messages"]
+        transcript[0]["content"] = "Do everything"
+    output = import_version(dataset, prepared, name="Replace instructions")
+    assert output.review["instruction_changes"] == 2
     dataset.refresh_from_db()
     assert dataset.active_cell.id != dataset.source.id
     assert len(workshop_context(dataset)["profiles"]["source"]["families"]) == 2
@@ -160,29 +146,6 @@ def test_representation_changes_and_projection_do_not_look_like_scope_changes():
     before = pd.DataFrame([example(source_row=0, tools=json.dumps([tool()]))])
     after = prepare_examples(before, "eval")
     assert review.impact(before, after)["instruction_changes"] == 0
-
-
-@pytest.mark.django_db
-def test_edit_and_upstream_rerun_cannot_silently_replace_instructions():
-    project = Project.objects.create(name="Guard", slug="guard")
-    dataset = Dataset.objects.create(project=project, name="Instructions", intent="train")
-    land.land_rows(dataset, [example("Original task")])
-    dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    first = tools.add_cell({"title": "Keep source", "script": "df['coverage'] = 'source'"})
-    last = tools.add_cell({"title": "Keep task", "script": "df['coverage'] = 'task'"})
-    rewrite = 'df["messages"].iloc[0][0]["content"] = "Different task"'
-    edited = tools.edit_cell({"version": last["id"], "script": rewrite})
-    assert not edited["ok"]
-    assert "Different task" not in dataset.cells.get(pk=last["id"]).script
-    shaped = dataset.cells.get(pk=first["id"])
-    kept = dataset.cells.get(pk=last["id"])
-    lifecycle.edit_cell(dataset, shaped, script='df["new_column"] = "value"')
-    kept.script = rewrite
-    kept.save(update_fields=["script"])
-    notebook_run.execute(dataset)
-    kept.refresh_from_db()
-    assert kept.state == "failed" and "task instructions" in kept.error
 
 
 def test_decision_profiles_count_raw_and_native_targets_and_source_families():

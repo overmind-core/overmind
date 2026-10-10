@@ -37,7 +37,7 @@ CONSUMERS = {
         "tools": "Tool schemas advertise callable interfaces, not implementations. Tool replay needs recorded calls and results; it does not execute application tools. Missing replay evidence must be reported, never invented.",
     },
     "shared": {
-        "workshop_execution": "Large row-local transformations and audits use transform_batch(df). Global representative selection uses sample_rows with row count, seed and stratum fields; it scans bounded batches, computes quotas internally and saves a reviewed reproducible cell. Never reconstruct quota tables from clipped tool output or sample each batch independently. Sampling does not establish train/eval disjointness.",
+        "workshop_execution": "The calling coding agent authors transformations and semantic checks. Save deterministic pipelines or import locally produced rows bound to source cells and fingerprints. derive_dataset copies the complete source; explore_dataset measures sampling allocations. Select samples externally and import their pinned source identities. Sampling does not establish train/eval disjointness.",
         "task_scope": "Infer distinct source tasks from prompts, payloads, targets and tool context. A selected capability is the intended target, not evidence that every row already performs it. Transform each family using supported evidence; a prompt-only relabel is not a task transformation.",
         "split": "Keep case, content, conversation and synthetic-seed families disjoint across train/eval. Do not combine evidence across held-out boundaries.",
         "readiness": "Technical format errors require repair. Semantic quality findings are advisory; apply supported repairs, then allow progression with remaining warnings.",

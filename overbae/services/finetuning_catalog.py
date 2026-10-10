@@ -6,7 +6,9 @@ from typing import Any
 
 from django.conf import settings
 
+from modal_shared.training_monitoring import capabilities as monitoring_capabilities
 from overbae.modal.model_registry import TIER_ORDER, baseten_finetuning_catalog
+from overbae.services import model_catalog
 from overbae.services.recommendation.constraints import eligible_models
 
 
@@ -28,22 +30,26 @@ def fetch_finetuning_model_catalog(
                 ]
                 for tier, models in catalog.items()
             }
-        return {
-            "backend": backend,
-            "tiers": [tier for tier in TIER_ORDER if catalog.get(tier)],
-            "models": {tier: models for tier, models in catalog.items() if models},
-            "has_tool_calling": has_tool_calling,
-            "max_context": None,
-        }
-
-    catalog, _excluded = eligible_models(
-        has_tool_calling=has_tool_calling,
-        max_row_tokens=max_context,
-    )
+        max_context = None
+    else:
+        catalog, _excluded = eligible_models(
+            has_tool_calling=has_tool_calling,
+            max_row_tokens=max_context,
+        )
+    upstream = model_catalog.fetch_model_catalog()
+    catalog = {
+        tier: [
+            {**entry, **model_catalog.training_openrouter_match(entry["id"], catalog=upstream)}
+            for entry in models
+        ]
+        for tier, models in catalog.items()
+        if models
+    }
     return {
         "backend": backend,
         "tiers": [tier for tier in TIER_ORDER if tier in catalog],
         "models": catalog,
         "has_tool_calling": has_tool_calling,
         "max_context": max_context,
+        "monitoring": monitoring_capabilities(backend),
     }

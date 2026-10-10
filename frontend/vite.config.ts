@@ -48,6 +48,8 @@ const config = defineConfig({
     tsconfigPaths: true,
   },
   test: {
+    // Unbounded workers starve DOM tests on shared development and CI hosts.
+    maxWorkers: 2,
     // Overrides the vitest 4 default of forks: threads cut wall time ~3–4× here
     // because import/transform dominate and share better across workers.
     pool: "threads",

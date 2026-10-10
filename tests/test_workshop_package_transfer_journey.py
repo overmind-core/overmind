@@ -1,0 +1,209 @@
+import asyncio
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import pytest
+import requests
+from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIClient
+from typer.testing import CliRunner
+
+import overmind
+from overbae.models import APIToken, DatasetPipelinePackage, Project, ProjectMembership, User
+from overbae.services.mcp.context import MCPContext, bind_context
+from overbae.services.mcp.resources import read_resource
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def test_cli_package_roundtrip_through_rest_services(tmp_path, monkeypatch, settings):
+    user = User.objects.create_user(email="package-transfer@example.test")
+    project = Project.objects.create(name="Packages", slug="packages")
+    ProjectMembership.objects.create(user=user, project=project)
+    client = APIClient()
+    client.force_authenticate(user)
+    settings.WORKSHOP_RUNTIME_IMAGES = ["sha256:" + "b" * 64]
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+                "steps": [{"name": "Preserve", "entrypoint": "preserve.py"}],
+            }
+        )
+    )
+    (package / "preserve.py").write_text(
+        "# café 🌍\nraise RuntimeError('registration never executes')\n"
+    )
+    unicode_source = "# café 🌍 retained source\n" * 1000
+    (package / "unicode.py").write_text(unicode_source)
+    specification = importlib.util.spec_from_file_location(
+        "workshop_package_cli", Path(__file__).parents[1] / "overmind/overmind/dataset_cmd.py"
+    )
+    monkeypatch.setattr(
+        overmind,
+        "__path__",
+        [str(Path(__file__).parents[1] / "overmind/overmind"), *overmind.__path__],
+    )
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    calls = []
+
+    class RESTTransport:
+        def __init__(self):
+            self.headers = {}
+
+        def request(self, method, url, **kwargs):
+            calls.append((method, urlsplit(url).path))
+            if method == "POST":
+                name, data, content_type = kwargs["files"]["file"]
+                response = client.post(
+                    urlsplit(url).path,
+                    {**kwargs["data"], "file": SimpleUploadedFile(name, data, content_type)},
+                    format="multipart",
+                )
+            else:
+                response = client.get(urlsplit(url).path)
+            result = requests.Response()
+            result.status_code = response.status_code
+            result._content = (
+                b"".join(response.streaming_content) if response.streaming else response.content
+            )
+            result.raw = io.BytesIO(result.content)
+            result.headers.update(response.headers)
+            return result
+
+        def get(self, url, **kwargs):
+            return self.request("GET", url, **kwargs)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module.requests, "Session", RESTTransport)
+    monkeypatch.setattr(module, "check_connection", lambda **kwargs: {"ready": True})
+    runner = CliRunner()
+    common = [
+        "--project-id",
+        str(project.pk),
+        "--api-key",
+        "test-package-key",
+        "--api-url",
+        "http://testserver",
+        "--path",
+        str(tmp_path / "absent.toml"),
+        "--json",
+    ]
+    original_manifest = (package / "manifest.json").read_text()
+    invalid = json.loads(original_manifest)
+    invalid["parameters"] = {"seed": 42}
+    (package / "manifest.json").write_text(json.dumps(invalid))
+    rejected = runner.invoke(module.dataset_app, ["pipeline-upload", str(package), *common])
+    assert rejected.exit_code == 1
+    failure = json.loads(rejected.output)["error"]
+    assert failure["code"] == "pipeline_parameters"
+    assert '"seed": "integer"' in failure["message"]
+    assert failure["next_action"] == "correct_manifest_parameter_types"
+    assert DatasetPipelinePackage.objects.count() == 0
+    (package / "manifest.json").write_text(original_manifest)
+    uploaded = runner.invoke(module.dataset_app, ["pipeline-upload", str(package), *common])
+    assert uploaded.exit_code == 0, uploaded.output
+    receipt = json.loads(uploaded.output)
+    repeated = runner.invoke(module.dataset_app, ["pipeline-upload", str(package), *common])
+    assert repeated.exit_code == 0 and json.loads(repeated.output)["id"] == receipt["id"]
+    assert DatasetPipelinePackage.objects.count() == 1
+    output = tmp_path / "download.zip"
+    downloaded = runner.invoke(
+        module.dataset_app, ["pipeline-download", receipt["id"], "--output", str(output), *common]
+    )
+    assert downloaded.exit_code == 0, downloaded.output
+    assert hashlib.sha256(output.read_bytes()).hexdigest() == receipt["sha256"]
+    preserved = output.read_bytes()
+    detail = client.get(
+        f"/api/dataset-pipeline-packages/{receipt['id']}/source/",
+        {"file": "preserve.py", "limit": 13},
+    )
+    assert detail.status_code == 200, detail.data
+    recovered = detail.data["content"]
+    while detail.data["next_offset"] is not None:
+        detail = client.get(
+            f"/api/dataset-pipeline-packages/{receipt['id']}/source/",
+            {
+                "file": "preserve.py",
+                "offset": detail.data["next_offset"],
+                "limit": 13,
+            },
+        )
+        assert detail.status_code == 200, detail.data
+        recovered += detail.data["content"]
+    assert recovered == (package / "preserve.py").read_text()
+    assert detail.data["sha256"] == hashlib.sha256(recovered.encode()).hexdigest()
+    for query in (
+        {"file": "../preserve.py"},
+        {"file": "absent.py"},
+        {"file": "preserve.py", "offset": -1},
+        {"file": "preserve.py", "limit": 16001},
+    ):
+        rejected = client.get(f"/api/dataset-pipeline-packages/{receipt['id']}/source/", query)
+        assert rejected.status_code == 400, rejected.data
+    outsider = User.objects.create_user(email="outside-package@example.test")
+    client.force_authenticate(outsider)
+    assert (
+        client.get(
+            f"/api/dataset-pipeline-packages/{receipt['id']}/source/", {"file": "preserve.py"}
+        ).status_code
+        == 404
+    )
+    client.force_authenticate(user)
+    duplicate = runner.invoke(
+        module.dataset_app, ["pipeline-download", receipt["id"], "--output", str(output), *common]
+    )
+    assert duplicate.exit_code == 1 and output.read_bytes() == preserved
+    monkeypatch.setattr(
+        module,
+        "check_connection",
+        lambda **kwargs: {
+            "ready": False,
+            "error": {
+                "message": "Local API unreachable",
+                "code": "connection_failed",
+                "stage": "mcp",
+            },
+        },
+    )
+    before = len(calls)
+    blocked = runner.invoke(module.dataset_app, ["pipeline-upload", str(package), *common])
+    assert blocked.exit_code == 1 and len(calls) == before
+    assert json.loads(blocked.output)["error"]["code"] == "connection_failed"
+    context = MCPContext(
+        user=user,
+        project=project,
+        token=APIToken(
+            scope={"scope": "project", "resourceIds": [str(project.pk)], "permission": ["read"]}
+        ),
+    )
+    recovered = ""
+    offset = 0
+    while offset is not None:
+        query = {"file": "unicode.py", "offset": offset, "limit": 16000}
+        rest = client.get(f"/api/dataset-pipeline-packages/{receipt['id']}/source/", query)
+        with bind_context(context):
+            resource = asyncio.run(
+                read_resource(
+                    f"overmind://dataset-pipeline-packages/{receipt['id']}?file=unicode.py&offset={offset}&limit=16000"
+                )
+            )
+        assert json.loads(resource[0].content)["file"] == rest.data
+        recovered += rest.data["content"]
+        offset = rest.data["next_offset"]
+    assert recovered == unicode_source
+    DatasetPipelinePackage.objects.filter(pk=receipt["id"]).update(sha256="0" * 64)
+    damaged = client.get(
+        f"/api/dataset-pipeline-packages/{receipt['id']}/source/", {"file": "preserve.py"}
+    )
+    assert damaged.status_code == 400 and "fingerprint" in str(damaged.data)

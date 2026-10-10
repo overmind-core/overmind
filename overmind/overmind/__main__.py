@@ -26,6 +26,7 @@ try:
 
     from overmind.analytics import cli_command_from_argv, track_cli_invocation
     from overmind.chassis import chassis as chassis_cmd
+    from overmind.connection_cmd import connection_app
     from overmind.connector_cmd import connector_app
     from overmind.dataset_cmd import dataset_app
     from overmind.init_cmd import init as init_cmd
@@ -89,6 +90,7 @@ app.add_typer(optimise_app, name="optimise", help=OPTIMISE_HELP)
 
 app.add_typer(skills_app, name="skills")
 app.add_typer(dataset_app, name="dataset")
+app.add_typer(connection_app, name="connection")
 app.add_typer(connector_app, name="connector")
 app.add_typer(model_app, name="model")
 app.command("init")(init_cmd)

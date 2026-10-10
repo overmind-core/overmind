@@ -4,12 +4,11 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-from conftest import frozen_dataset
+from conftest import frozen_dataset, import_version
 
 from overbae.models import Capability, Dataset, EvalRun, EvalVariant, Project
 from overbae.services.datasets import alignment, contract, land, paths, review, rows, store, use
 from overbae.services.datasets.examples import prepare_examples
-from overbae.services.datasets.notebook import agent
 from overbae.services.datasets.partition import contamination_keys, split_rows
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.sampling import select_rows
@@ -206,23 +205,16 @@ def test_mechanical_preparation_and_context_loss_record_impact_and_keep_source()
     dataset = Dataset.objects.create(project=project, name="Cases", intent="eval")
     land.land_rows(dataset, [example()])
     dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    tools.automatic = True
-    from conftest import plan_fixture
-
-    plan_fixture(dataset)
-    result = tools.prepare_examples({"plan_step": "prepare"})
-    assert result["ok"] and not result.get("proposed"), result
-    active = dataset.active_cell
-    assert contract.measure(store.read_frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
-    lost = tools.add_cell(
-        {
-            "title": "Identifier projection",
-            "plan_step": "prepare",
-            "script": "df['input'] = [{'onboarding_packet_id': 'case-1'} for _ in range(len(df))]",
-        }
+    prepared = prepare_examples(
+        store.read_frame(paths.cell_path(dataset.pk, dataset.source.pk)), "eval"
     )
-    assert lost["ok"] and lost["review"]["input_evidence_removed"] == 1
+    active = import_version(dataset, prepared.to_dict(orient="records"))
+    assert contract.measure(store.read_frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
+    lost_rows = list(store.iter_rows(paths.cell_path(dataset.pk, active.pk)))
+    for row in lost_rows:
+        row["input"] = {"onboarding_packet_id": "case-1"}
+    lost = import_version(dataset, lost_rows, name="Identifier projection")
+    assert lost.review["input_evidence_removed"] == 1
     assert use.use(dataset, "eval", cell=active).id == active.id
     assert store.head(paths.cell_path(dataset.id, active.id), 1)[0]["input"]["messages"]
 

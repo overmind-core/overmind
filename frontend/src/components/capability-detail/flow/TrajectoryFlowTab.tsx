@@ -15,7 +15,6 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 
-import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -57,7 +56,6 @@ function FlowCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<TrajectoryNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
   const { fitView, getNodes } = useReactFlow();
-  const { resolvedTheme } = useTheme();
   const nodesInitialized = useNodesInitialized();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -146,7 +144,7 @@ function FlowCanvas({
   return (
     <ReactFlow
       aria-label="Capability trajectory map"
-      colorMode={resolvedTheme}
+      colorMode="dark"
       defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
       edges={displayEdges}
       elementsSelectable

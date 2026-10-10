@@ -4,7 +4,6 @@ the surfaces that create it."""
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
 
 import pytest
 from rest_framework.test import APIClient
@@ -72,24 +71,23 @@ def _client(project) -> APIClient:
     return client
 
 
-def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diagnoses():
+def test_create_split_lands_disjoint_readable_sources_without_diagnosis():
     project, user = _project(), _user()
-    with patch("overbae.tasks.datasets.diagnose.apply_async") as diagnose:
-        train, evaluation = dispatch.create_split(
-            project=project,
-            user=user,
-            name="Support",
-            source={"rows": [dict(r) for r in ROWS]},
-            eval_percent=20,
-            position="tail",
-        )
+    train, evaluation = dispatch.create_split(
+        project=project,
+        user=user,
+        name="Support",
+        source={"rows": [dict(r) for r in ROWS]},
+        eval_percent=20,
+        position="tail",
+    )
     train.refresh_from_db()
     evaluation.refresh_from_db()
-    assert (train.name, train.intent, train.state) == ("Support train", "train", "diagnosing")
+    assert (train.name, train.intent, train.state) == ("Support train", "train", "idle")
     assert (evaluation.name, evaluation.intent, evaluation.state) == (
         "Support eval",
         "eval",
-        "diagnosing",
+        "idle",
     )
     assert train.source.rows == 8 and evaluation.source.rows == 2
     assert train.source_spec["split"] == {
@@ -105,10 +103,6 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
     frames = [store.read_frame(paths.cell_path(ds.id, ds.source.id)) for ds in (train, evaluation)]
     assert list(frames[0][store.SOURCE_ROW]) == list(range(8))
     assert list(frames[1][store.SOURCE_ROW]) == [0, 1]
-    assert {call.kwargs["kwargs"]["dataset_id"] for call in diagnose.call_args_list} == {
-        str(train.id),
-        str(evaluation.id),
-    }
 
 
 def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():
