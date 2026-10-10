@@ -877,7 +877,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
             <ConfirmDialog
               cancelLabel="Keep running"
               confirmLabel="Cancel Job"
-              description="Stops this fine-tuning job locally and on the training provider. Progress so far will be lost."
+              description="Requests cancellation. Completed checks and saved checkpoints remain available."
               destructive
               isPending={cancelMutation.isPending}
               onConfirm={() => cancelMutation.mutate(snapshot.job.id)}

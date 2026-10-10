@@ -46,6 +46,7 @@ import type {
 
 const CLASSIFIED_FROM: Record<TaskTypeSourceEnum, string> = {
   capability: "Classified from capability codebase context",
+  declared_contract: "Declared by the dataset's decision contract",
   heuristic: "Classified from dataset structure",
   semantic: "Classified from dataset content",
   unknown: "Capability task could not be classified from codebase context",
@@ -135,7 +136,11 @@ function AnalysisHeader({
             benchmarkCount > 0 ? (
               <span
                 key="benchmarks"
-                title={`Snapshot ${snapshotDate(benchmarkSnapshot.generatedAt)}`}
+                title={
+                  benchmarkSnapshot.generatedAt
+                    ? `Snapshot ${snapshotDate(benchmarkSnapshot.generatedAt)}`
+                    : undefined
+                }
               >
                 {count(benchmarkCount, "benchmark")}
               </span>

@@ -5,10 +5,13 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
+import { useGuestGate } from "@/hooks/use-guest-gate";
 import { featureFlags } from "@/lib/feature-flags";
 import { datasetsSearchSchema } from "@/lib/schemas";
 
@@ -38,6 +41,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
   const query = useProjectDatasetsQuery(projectId);
   const capabilities = useProjectCapabilitiesQuery(projectId);
   const [createOpen, setCreateOpen] = useState(false);
+  const guard = useGuestGate();
   const datasets = query.data ?? [];
 
   useEffect(() => {
@@ -82,6 +86,12 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
     <PageShell
       header={
         <PageHeader
+          actions={
+            <Button onClick={guard(() => setCreateOpen(true))} size="sm">
+              <Icon.add />
+              New dataset
+            </Button>
+          }
           count={query.data?.length}
           description="Source data and step-by-step transformations for training and evaluation."
           title="Datasets"

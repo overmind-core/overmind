@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 LONG_CONTEXT_TOKENS = 8_000
 
 
+def dataset_summary(stats: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "rows": int(stats.get("num_examples") or 0),
+        "total_tokens": dataset_total_tokens(stats),
+        "max_token_length": int(stats.get("max_token_length") or 0),
+        "has_tool_calling": bool(stats.get("has_tool_calling", False)),
+    }
+
+
 def build_analysis(
     stats: Mapping[str, Any],
     *,
@@ -70,12 +79,7 @@ def build_analysis(
         "task_type": task_type,
         "task_type_source": task_type_source,
         "skill_weights": {str(skill): weight for skill, weight in weights.items()},
-        "dataset": {
-            "rows": int(stats.get("num_examples") or 0),
-            "total_tokens": dataset_total_tokens(stats),
-            "max_token_length": max_tokens,
-            "has_tool_calling": has_tool_calling,
-        },
+        "dataset": dataset_summary(stats),
         "candidates": candidates,
         "excluded": [{"model": e.model, "reason": e.reason} for e in exclusions],
         "shown": shown,
@@ -84,4 +88,4 @@ def build_analysis(
     }
 
 
-__all__ = ["LONG_CONTEXT_TOKENS", "build_analysis"]
+__all__ = ["LONG_CONTEXT_TOKENS", "build_analysis", "dataset_summary"]

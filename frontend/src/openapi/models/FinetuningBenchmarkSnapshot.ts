@@ -25,7 +25,7 @@ export interface FinetuningBenchmarkSnapshot {
      * @type {string}
      * @memberof FinetuningBenchmarkSnapshot
      */
-    generatedAt: string;
+    generatedAt: string | null;
 }
 
 /**

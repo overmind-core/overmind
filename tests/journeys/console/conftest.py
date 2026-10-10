@@ -1,5 +1,7 @@
 import functools
+import json
 import os
+import re
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +10,8 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+from ..conftest import RUNS
 
 FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
 PASSWORD = "test-pass-123"
@@ -75,6 +79,18 @@ class Browser:
 class Console:
     def __init__(self, browser: Browser, page) -> None:
         self._browser, self._page = browser, page
+        self.page_errors = []
+        self.server_errors = []
+        browser.call(page.on, "pageerror", lambda error: self.page_errors.append(str(error)))
+        browser.call(
+            page.on,
+            "response",
+            lambda response: (
+                self.server_errors.append({"status": response.status, "url": response.url})
+                if response.status >= 500
+                else None
+            ),
+        )
 
     def goto(self, path: str) -> None:
         self._browser.call(self._page.goto, path)
@@ -92,8 +108,8 @@ class Console:
         self._browser.call(self._page.click, trigger)
         self._browser.call(lambda: self._page.get_by_role("option", name=option).click())
 
-    def sees(self, text: str) -> None:
-        self._browser.call(lambda: self._page.get_by_text(text, exact=True).first.wait_for())
+    def sees(self, text: str, *, exact: bool = True) -> None:
+        self._browser.call(lambda: self._page.get_by_text(text, exact=exact).first.wait_for())
 
     def upload(self, selector: str, path: Path) -> None:
         self._browser.call(self._page.set_input_files, selector, str(path))
@@ -103,6 +119,24 @@ class Console:
 
     def wait_until(self, script: str) -> None:
         self._browser.call(self._page.wait_for_function, script)
+
+    def save_evidence(self, name: str) -> None:
+        RUNS.mkdir(parents=True, exist_ok=True)
+        self._browser.call(
+            lambda: self._page.screenshot(path=str(RUNS / f"{name}.png"), full_page=True)
+        )
+        facts = self._browser.call(
+            self._page.evaluate,
+            """() => ({url: location.href, text: document.body.innerText,
+                colorScheme: getComputedStyle(document.documentElement).colorScheme})""",
+        )
+        facts.update(page_errors=self.page_errors, server_errors=self.server_errors)
+        (RUNS / f"{name}.browser.json").write_text(json.dumps(facts, indent=2))
+
+    def healthy(self) -> None:
+        assert not self.page_errors, self.page_errors
+        assert not self.server_errors, self.server_errors
+        self.wait_until("() => getComputedStyle(document.documentElement).colorScheme === 'dark'")
 
     def close(self) -> None:
         self._browser.call(self._page.close)
@@ -116,7 +150,7 @@ def browser():
 
 
 @pytest.fixture
-def console(browser, console_url, account, settings) -> Console:
+def console(browser, console_url, account, settings, request) -> Console:
     settings.CORS_ALLOW_ALL_ORIGINS = True
     user, _key = account
     console = browser.page(console_url)
@@ -128,4 +162,8 @@ def console(browser, console_url, account, settings) -> Console:
     console.goto("/onboarding")
     console.click("Go to console")
     yield console
-    console.close()
+    try:
+        console.save_evidence(re.sub(r"[^\w.-]+", "_", request.node.nodeid))
+        console.healthy()
+    finally:
+        console.close()

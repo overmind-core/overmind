@@ -17,6 +17,7 @@
  * * `capability` - capability
  * * `semantic` - semantic
  * * `heuristic` - heuristic
+ * * `declared_contract` - declared_contract
  * * `unknown` - unknown
  * @export
  */
@@ -24,6 +25,7 @@ export const TaskTypeSourceEnum = {
     capability: 'capability',
     semantic: 'semantic',
     heuristic: 'heuristic',
+    declared_contract: 'declared_contract',
     unknown: 'unknown'
 } as const;
 export type TaskTypeSourceEnum = typeof TaskTypeSourceEnum[keyof typeof TaskTypeSourceEnum];

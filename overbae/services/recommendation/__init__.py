@@ -15,7 +15,7 @@ from overbae.core.errors import InputValidationError
 from overbae.services.serving_context import evaluation_budget, serving_plan
 from overbae.services.training_contract import dataset_objective, validate_effective_batch
 
-from .analysis import build_analysis
+from .analysis import build_analysis, dataset_summary
 from .candidates import build_candidate, dataset_total_tokens
 from .catalog import MODEL_MIN_BATCH, active_backend, find_catalog_model, tier_models
 
@@ -52,12 +52,12 @@ def get_recommendation(
         return {
             "task_type": "decision",
             "task_type_source": "declared_contract",
-            "dataset": stats,
+            "dataset": dataset_summary(stats),
             "candidates": [],
             "excluded": [],
             "shown": [],
             "skill_weights": {},
-            "benchmark_snapshot": {},
+            "benchmark_snapshot": {"generated_at": None},
             "capability_context": None,
         }
     if capability is not None:

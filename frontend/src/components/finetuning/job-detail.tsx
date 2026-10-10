@@ -333,7 +333,7 @@ function JobDetail({ jobId, projectId }: { jobId: string; projectId: string }) {
             <ConfirmDialog
               cancelLabel="Keep running"
               confirmLabel="Cancel job"
-              description="This stops the running fine-tuning job. Progress so far will be lost and the job cannot be resumed."
+              description="Requests cancellation. Completed checks and saved checkpoints remain available."
               destructive
               isPending={cancelMutation.isPending}
               onConfirm={() => cancelMutation.mutate(job.id)}
