@@ -269,6 +269,11 @@ def _warn_unexpected_target_modules(
         )
 
 
+def _lora_scale(lora_config: LoraConfig) -> float:
+    divisor = lora_config.r**0.5 if lora_config.use_rslora else lora_config.r
+    return lora_config.lora_alpha / divisor
+
+
 def _apply_gpt_oss_expert_loras(
     tensor_name: str,
     tensor: torch.Tensor,
@@ -288,7 +293,7 @@ def _apply_gpt_oss_expert_loras(
     if tensor.ndim < 1:
         return tensor, set()
 
-    scale = lora_config.lora_alpha / lora_config.r
+    scale = _lora_scale(lora_config)
     out = tensor
     consumed: set[str] = set()
     n_experts = int(tensor.shape[0])
@@ -323,7 +328,7 @@ def _merge_lora_weight(
     lora_weights: dict[str, torch.Tensor],
     lora_config: LoraConfig,
 ) -> torch.Tensor:
-    scale = lora_config.lora_alpha / lora_config.r
+    scale = _lora_scale(lora_config)
     lora_prefix = _lora_pair_prefix(tensor_name, lora_weights)
     if lora_prefix is None:
         raise KeyError(f"no LoRA pair for base weight {tensor_name!r}")

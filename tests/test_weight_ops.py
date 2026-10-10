@@ -13,6 +13,7 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("peft")
 pytest.importorskip("safetensors")
 
+from safetensors import safe_open  # noqa: E402
 from safetensors.torch import save_file  # noqa: E402
 
 from overbae.modal.weight_ops import (  # noqa: E402
@@ -83,7 +84,8 @@ def test_merge_lora_weights_applies_delta(tmp_path: Path):
     assert (out / "config.json").exists()
 
 
-def test_merge_lora_weights_gpt_oss_modulelist_experts(tmp_path: Path):
+@pytest.mark.parametrize("use_rslora", [False, True])
+def test_merge_lora_weights_gpt_oss_modulelist_experts(tmp_path: Path, use_rslora: bool):
     """BnB ModuleList LoRA (down_projs.N) folds into fused BF16 experts.down_proj."""
     base = tmp_path / "base"
     adapter = tmp_path / "adapter"
@@ -105,7 +107,7 @@ def test_merge_lora_weights_gpt_oss_modulelist_experts(tmp_path: Path):
     (base / "config.json").write_text(json.dumps({"model_type": "gpt_oss", "hidden_size": hidden}))
 
     r, alpha = 2, 4
-    scale = alpha / r
+    scale = alpha / (r**0.5 if use_rslora else r)
     tensors: dict[str, torch.Tensor] = {}
     expected_down = down.clone()
     expected_gate = gate_up.clone()
@@ -129,6 +131,7 @@ def test_merge_lora_weights_gpt_oss_modulelist_experts(tmp_path: Path):
                 "lora_alpha": alpha,
                 "lora_dropout": 0.0,
                 "target_modules": "down_projs|gate_up_projs",
+                "use_rslora": use_rslora,
                 "base_model_name_or_path": "unsloth/gpt-oss-20b-BF16",
             }
         )
@@ -423,19 +426,28 @@ def test_prepare_fp8_lora_path_merges_then_quantizes(tmp_path: Path):
     assert meta["merge_method"] == "safetensors"
 
 
-def test_load_lora_config_strips_unknown_unsloth_keys(tmp_path: Path):
+def test_merge_lora_weights_ignores_unknown_config_without_rewriting_adapter(tmp_path: Path):
     base, adapter = _write_tiny_lora_pair(tmp_path)
     cfg_path = adapter / "adapter_config.json"
     cfg = json.loads(cfg_path.read_text())
-    cfg["monteclora_config"] = {"enabled": True}
-    cfg["velora_config"] = {"rank": 1}
+    cfg["overmind_test_future_lora_extension"] = {"enabled": True}
+    cfg["use_rslora"] = True
     cfg_path.write_text(json.dumps(cfg))
+    original_config = cfg_path.read_bytes()
+    output = tmp_path / "merged"
 
-    from overbae.modal.weight_ops import _load_lora_config
+    with safe_open(base / "model.safetensors", framework="torch") as handle:
+        weight = handle.get_tensor("model.layers.0.self_attn.q_proj.weight")
+    with safe_open(adapter / "adapter_model.safetensors", framework="torch") as handle:
+        left = handle.get_tensor("model.layers.0.self_attn.q_proj.lora_A.weight")
+        right = handle.get_tensor("model.layers.0.self_attn.q_proj.lora_B.weight")
+    expected = weight + (4 / 2**0.5) * (right @ left)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        loaded = _load_lora_config(adapter)
-    assert loaded.r == 2
-    assert loaded.lora_alpha == 4
-    assert not any("monteclora" in str(w.message) for w in caught)
+        merge_lora_weights(base, adapter, output)
+    with safe_open(output / "model.safetensors", framework="torch") as handle:
+        actual = handle.get_tensor("model.layers.0.self_attn.q_proj.weight")
+    torch.testing.assert_close(actual, expected)
+    assert cfg_path.read_bytes() == original_config
+    assert not any("overmind_test_future_lora_extension" in str(w.message) for w in caught)
