@@ -87,13 +87,13 @@ def test_charge_llm_usage_falls_back_to_catalog_pricing(monkeypatch):
             "prompt_tokens": 1000,
             "completion_tokens": 500,
             "cached_tokens": 700,
-            "served_model": "composer-2.5",
+            "served_model": "openai/gpt-5.6-terra",
         },
         service=BillingService.DATA_WORKSHOP,
         idempotency_key=f"data-workshop:fallback:{uuid.uuid4()}",
     )
     assert row is not None and row.amount == Decimal("-0.4")
-    assert seen == {"model": "composer-2.5", "inp": 1000, "out": 500, "cached": 700}
+    assert seen == {"model": "openai/gpt-5.6-terra", "inp": 1000, "out": 500, "cached": 700}
 
 
 def test_charge_llm_usage_skips_an_empty_turn(monkeypatch):
@@ -304,32 +304,3 @@ def test_missing_or_conflicting_worker_usage_cannot_be_replaced_by_collector_ela
     _transition(job, FinetuningJob.Status.SUCCEEDED)
     job.refresh_from_db()
     assert job.cost_usd is None and job.cost_synced_at is None
-
-
-def test_optimizer_charge_cursor_usage(monkeypatch):
-    from overbae.models import Capability
-    from overbae.models.optimizer import OptimizerExperiment
-
-    user = _user("opt-charge@example.com")
-    project = _project()
-    capability = Capability.objects.create(project=project, name="A", slug="a")
-    exp = OptimizerExperiment.objects.create(
-        project=project,
-        capability=capability,
-        triggered_by=user,
-        cursor_usage={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
-    )
-    seen = {}
-
-    def _estimate(model, inp, out, cached_tokens=None):
-        seen.update(model=model, inp=inp)
-        return 0.55
-
-    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", _estimate)
-    exp._charge_cursor_usage()
-    exp._charge_cursor_usage()  # idempotent
-    rows = BillingTelemetry.objects.filter(user=user, service=BillingService.CURSOR_AGENT)
-    assert rows.count() == 1
-    assert rows.get().idempotency_key == f"cursor-agent:optimizer:{exp.pk}"
-    assert rows.get().amount == Decimal("-0.55")
-    assert seen == {"model": "composer-2.5", "inp": 100}

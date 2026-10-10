@@ -154,4 +154,4 @@ def test_a_credential_error_fails_on_the_first_attempt(fake_llm, slept, message)
 def test_every_catalog_row_names_a_vendor_and_a_tier():
     assert "gemini-3.1-pro-preview" in MODELS_BY_NAME
     for m in CATALOG:
-        assert m.vendor and m.tier and (m.slug or m.priced_as)
+        assert m.vendor and m.tier and m.slug

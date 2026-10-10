@@ -31,7 +31,6 @@ def eager_celery(monkeypatch):
     """Run Celery tasks inline and stop the eval callback from resuming the FSM."""
     monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
     monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
-    # Otherwise eager mode cascades the FSM into candidate codegen (cursor_sdk).
     monkeypatch.setattr(optimizer_module.run_experiment_advance, "delay", lambda *a, **k: None)
 
 

@@ -371,7 +371,6 @@ models/ScoreFailureRoleEnum.ts
 models/ScoreOutcomeEnum.ts
 models/ScoreSourceEnum.ts
 models/ScoreTypeD08Enum.ts
-models/ServiceEnum.ts
 models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts

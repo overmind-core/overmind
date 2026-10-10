@@ -1,5 +1,3 @@
-"""Client-write ledger: template, candidates, outputs, scores — no cursor_sdk."""
-
 from __future__ import annotations
 
 import uuid

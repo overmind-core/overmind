@@ -551,5 +551,5 @@ def test_account_client_discovers_interface_without_selecting_a_project():
         body = response.json()
         assert "error" not in body, body
         resource = json.loads(body["result"]["contents"][0]["text"])
-        assert resource["contract_version"] == "6.3.0"
+        assert resource["contract_version"] == "6.4.0"
         assert len(resource["catalog_sha256"]) == 64

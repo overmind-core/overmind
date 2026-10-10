@@ -13,14 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { ServiceEnum } from './ServiceEnum';
-import {
-    ServiceEnumFromJSON,
-    ServiceEnumFromJSONTyped,
-    ServiceEnumToJSON,
-    ServiceEnumToJSONTyped,
-} from './ServiceEnum';
-
 /**
  * One credits ledger row for the authenticated user.
  * @export
@@ -47,10 +39,10 @@ export interface BillingTelemetry {
     readonly timestamp: Date;
     /**
      *
-     * @type {ServiceEnum}
+     * @type {string}
      * @memberof BillingTelemetry
      */
-    service: ServiceEnum;
+    readonly service: string;
     /**
      *
      * @type {string}
@@ -70,8 +62,6 @@ export interface BillingTelemetry {
      */
     readonly projectName: string | null;
 }
-
-
 
 /**
  * Check if a given object implements the BillingTelemetry interface.
@@ -100,7 +90,7 @@ export function BillingTelemetryFromJSONTyped(json: any, ignoreDiscriminator: bo
         'id': json['id'],
         'amount': json['amount'],
         'timestamp': (new Date(json['timestamp'])),
-        'service': ServiceEnumFromJSON(json['service']),
+        'service': json['service'],
         'serviceLabel': json['service_label'],
         'projectId': json['project_id'],
         'projectName': json['project_name'],
@@ -111,7 +101,7 @@ export function BillingTelemetryToJSON(json: any): BillingTelemetry {
     return BillingTelemetryToJSONTyped(json, false);
 }
 
-export function BillingTelemetryToJSONTyped(value?: Omit<BillingTelemetry, 'id'|'timestamp'|'service_label'|'project_id'|'project_name'> | null, ignoreDiscriminator: boolean = false): any {
+export function BillingTelemetryToJSONTyped(value?: Omit<BillingTelemetry, 'id'|'timestamp'|'service'|'service_label'|'project_id'|'project_name'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -119,6 +109,5 @@ export function BillingTelemetryToJSONTyped(value?: Omit<BillingTelemetry, 'id'|
     return {
 
         'amount': value['amount'],
-        'service': ServiceEnumToJSON(value['service']),
     };
 }

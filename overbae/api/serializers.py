@@ -1934,13 +1934,13 @@ class FinetuningBenchmarkSnapshotSerializer(serializers.Serializer):
     """Which artifact the grades came from. Each evidence row carries its own benchmark
     reference, so the snapshot only dates them."""
 
-    generated_at = serializers.CharField()
+    generated_at = serializers.CharField(allow_null=True)
 
 
 class FinetuningRecommendationResponseSerializer(serializers.Serializer):
     task_type = serializers.CharField()
     task_type_source = serializers.ChoiceField(
-        choices=["capability", "semantic", "heuristic", "unknown"]
+        choices=["capability", "semantic", "heuristic", "declared_contract", "unknown"]
     )
     capability_context = serializers.DictField(allow_null=True)
     skill_weights = serializers.DictField(child=serializers.FloatField())
@@ -2568,7 +2568,13 @@ class BillingTelemetrySerializer(serializers.ModelSerializer):
 
     project_id = serializers.UUIDField(allow_null=True, read_only=True)
     project_name = serializers.CharField(source="project.name", allow_null=True, read_only=True)
-    service_label = serializers.CharField(source="get_service_display", read_only=True)
+    # Append-only receipts can outlive the service that created them.
+    service = serializers.CharField(read_only=True)
+    service_label = serializers.SerializerMethodField()
+
+    def get_service_label(self, obj) -> str:
+        label = obj.get_service_display()
+        return obj.service.replace("-", " ").capitalize() if label == obj.service else label
 
     class Meta:
         model = BillingTelemetry

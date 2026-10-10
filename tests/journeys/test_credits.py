@@ -6,6 +6,8 @@ import time
 import pytest
 import requests
 
+from overbae.models import BillingTelemetry
+
 WEBHOOK_SECRET = "whsec_journey"
 MODEL = "openai/gpt-4.1-mini"
 
@@ -66,6 +68,24 @@ def ledger(rest) -> list[float]:
     return sorted(
         float(row["amount"]) for row in rest.request("GET", "/api/billing/ledger/")["results"]
     )
+
+
+def test_retired_service_receipts_remain_readable(account, rest_for):
+    user, account_key = account
+    receipt = BillingTelemetry.objects.create(
+        user=user,
+        service="cursor-agent",
+        amount="-0.55",
+        idempotency_key="retired-agent-charge",
+        metadata={"llm_usage": {"served_model": "composer-2.5"}},
+    )
+    before = list(BillingTelemetry.objects.filter(user=user).values())
+    rows = rest_for(account_key).request("GET", "/api/billing/ledger/")["results"]
+    retained = next(row for row in rows if row["id"] == str(receipt.pk))
+    assert retained["service"] == "cursor-agent"
+    assert retained["service_label"] == "Cursor agent"
+    assert float(retained["amount"]) == -0.55
+    assert list(BillingTelemetry.objects.filter(user=user).values()) == before
 
 
 @pytest.mark.parametrize("billed", ["hosted"], indirect=True)

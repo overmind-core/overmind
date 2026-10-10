@@ -27,8 +27,6 @@ dependencies = [
     "boto3>=1.38.0",
     "psycopg2-binary>=2.9.10",
     "clerk-backend-api>=5.0.6",
-    # Data Workshop / AI engineer feature (pre-installed for Cursor SDK agent scripts)
-    "cursor-sdk>=1.0.31",
     # Overmind OTel SDK — internal pipeline observability (code analysis agent tracing)
     "overmind>=0.1.49",
     "pandas>=2.2.0",
@@ -82,9 +80,6 @@ dev = [
     "ruff>=0.12.0",
     "pre-commit>=4.5.1",
     "python-dotenv>=1.2.1",
-    # Deploy/manage the hosted GLiNER PII NER service (overbae/modal/modal_pii_ner.py).
-    # The gliner/torch/transformers weights live in the Modal image only — never
-    # in this venv — so only the lightweight `modal` client is a dev dependency.
     "modal>=0.64",
 ]
 test = [
@@ -147,7 +142,7 @@ quote-style = "double"
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 # Model-state tables instead of replaying the squashed migration (~4s/worker).
-# No migration-specific tests live under tests/.
+# Migration-specific tests opt into the migration executor explicitly.
 addopts = "--nomigrations"
 
 [tool.uv]

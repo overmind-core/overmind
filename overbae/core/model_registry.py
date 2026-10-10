@@ -15,7 +15,6 @@ class Vendor(StrEnum):
     MOONSHOT = "moonshotai"
     META = "meta-llama"
     QWEN = "qwen"
-    CURSOR = "cursor"
     TYPESAFE = "typesafe"
 
 
@@ -51,7 +50,6 @@ class Model:
     tier: Tier
     description: str = ""
     reasoning: Reasoning = NO_REASONING
-    priced_as: str = ""
     library: bool = False
 
     @property
@@ -238,15 +236,6 @@ CATALOG: tuple[Model, ...] = (
         library=True,
     ),
     Model("moonshotai/kimi-k2", Vendor.MOONSHOT, "moonshotai/kimi-k2", Tier.LEGACY),
-    # No OpenRouter listing; priced as the Kimi K2.5 that Composer 2.5 was built on.
-    Model(
-        "composer-2.5",
-        Vendor.CURSOR,
-        "",
-        Tier.BALANCED,
-        "Cursor's agentic coding model.",
-        priced_as="moonshotai/kimi-k2.5",
-    ),
     Model("llama-3.2-3b-instruct", Vendor.META, "meta-llama/llama-3.2-3b-instruct", Tier.OPEN),
     Model("llama-3.1-8b-instruct", Vendor.META, "meta-llama/llama-3.1-8b-instruct", Tier.OPEN),
     Model("llama-3.3-70b-instruct", Vendor.META, "meta-llama/llama-3.3-70b-instruct", Tier.OPEN),
@@ -279,7 +268,7 @@ def reasoning_of(model_name: str) -> Reasoning:
 def pricing_slug(model_name: str) -> str | None:
     m = model(model_name)
     if m is not None:
-        return m.priced_as or m.slug or None
+        return m.slug or None
     name = normalize_model_name(model_name)
     return name.removeprefix("openrouter/") if "/" in name else None
 
@@ -457,12 +446,8 @@ PROVIDERS: dict[str, Provider] = {
         "https://generativelanguage.googleapis.com/v1beta/openai/",
         reasoning_effort=True,
     ),
-    "cursor": Provider("cursor", "CURSOR_API_KEY"),
 }
 
 
 def openrouter_configured() -> bool:
     return PROVIDERS["openrouter"].configured()
-
-
-CURSOR_AGENT_MODEL = "composer-2.5"

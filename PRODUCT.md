@@ -96,12 +96,12 @@ The marketing site organises the product under `/product/` into four pillars.
 These are the customer-facing names and claims, and they are the vocabulary
 future work should match:
 
-| Pillar             | Headline                        | Promise                                                                           |
-| ------------------ | ------------------------------- | --------------------------------------------------------------------------------- |
-| **Observability**  | "Understand your agents"        | Capability scanning, automatic tracing, coverage scoring, live scoring on arrival |
-| **Data Workshop**  | "Turn real behaviour into data" | Production traces become audited, redacted training and eval data                 |
-| **Agent Testing**  | "Measure and improve"           | Generated evals, scored candidates, winning diffs in the team's repo              |
-| **Model Training** | "Own your model"                | Fine-tune on your own data, benchmark against the incumbent, serve it             |
+| Pillar             | Headline                        | Promise                                                                                    |
+| ------------------ | ------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Observability**  | "Understand your agents"        | Capability scanning, automatic tracing, coverage scoring, live scoring on arrival          |
+| **Data Workshop**  | "Turn real behaviour into data" | Production traces become versioned training and eval data through explicit transformations |
+| **Agent Testing**  | "Measure and improve"           | Generated evals, scored candidates, winning diffs in the team's repo                       |
+| **Model Training** | "Own your model"                | Fine-tune on your own data, benchmark against the incumbent, serve it                      |
 
 The pillars line up with the Console's navigation groups. Keep the two
 taxonomies in sync rather than letting them drift. Site CTAs are **"Start for

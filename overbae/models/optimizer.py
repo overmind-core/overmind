@@ -270,8 +270,6 @@ class OptimizerExperiment(models.Model):
     num_candidates_per_iteration = models.IntegerField(default=3)
     max_iterations_without_improvement = models.IntegerField(default=3)
     scores = models.JSONField(default=dict, blank=True)
-    # Cursor SDK TokenUsage summed over smoke + candidate codegen.
-    cursor_usage = models.JSONField(default=dict, blank=True)
     # Token-parameterised shell script, shared by every iteration so codegen runs
     # once per experiment.
     command_template = models.TextField(blank=True, default="")
@@ -361,7 +359,6 @@ class OptimizerExperiment(models.Model):
             self.failure_reason = (reason or "").strip()[:2000]
             self.status = self.Status.FAILED
             self.save(update_fields=["failure_reason", "status", "updated_at"])
-        transaction.on_commit(self._charge_cursor_usage)
 
     def _lock_unless_terminal(self) -> bool:
         """Take the row lock inside the caller's transaction; False once the run has ended."""
@@ -377,30 +374,6 @@ class OptimizerExperiment(models.Model):
             self._stop_children(reason="experiment cancelled")
             self.status = self.Status.CANCELLED
             self.save(update_fields=["status", "updated_at"])
-
-    def _charge_cursor_usage(self) -> None:
-        """Debit accumulated Cursor SDK usage for this experiment. Never raises."""
-        from overbae.core.model_registry import CURSOR_AGENT_MODEL
-        from overbae.models import BillingService
-        from overbae.services.billing_ledger import charge_llm_usage
-
-        if not self.triggered_by_id or not self.cursor_usage:
-            return
-        usage = self.cursor_usage
-        cached = int(usage.get("cache_read_tokens") or 0)
-        charge_llm_usage(
-            self.triggered_by,
-            {
-                "prompt_tokens": int(usage.get("input_tokens") or 0) + cached,
-                "completion_tokens": int(usage.get("output_tokens") or 0),
-                "cached_tokens": cached,
-                "served_model": CURSOR_AGENT_MODEL,
-            },
-            service=BillingService.CURSOR_AGENT,
-            project_id=self.project_id,
-            idempotency_key=f"cursor-agent:optimizer:{self.pk}",
-            metadata={"source": "optimizer", "experiment_id": str(self.pk)},
-        )
 
     def _record_baseline_scores(self, iteration: OptimizerIteration):
         best = max((c.score for c in iteration.candidates.all()), default=0.0)

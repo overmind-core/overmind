@@ -220,6 +220,5 @@ def complete_experiment(experiment: OptimizerExperiment) -> OptimizerExperiment:
     experiment.status = OptimizerExperiment.Status.COMPLETED
     experiment._stop_children(reason="experiment completed")
     experiment.save()
-    experiment._charge_cursor_usage()
     experiment.refresh_from_db()
     return experiment

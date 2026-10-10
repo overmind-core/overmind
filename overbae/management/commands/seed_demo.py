@@ -3800,7 +3800,6 @@ class Command(BaseCommand):
                 num_iterations=num_iterations or len(iteration_qs),
                 num_candidates_per_iteration=len(iteration_qs[0]) if iteration_qs else 3,
                 command_template=_COMMAND_TEMPLATE,
-                cursor_usage={},
             )
             datapoints = list(row_store.iter_rows(version))
             span_hours = max(4.0, (done - born).total_seconds() / 3600.0)
@@ -3973,16 +3972,6 @@ class Command(BaseCommand):
             exp.scores = scores
             exp.current_iteration = len(iteration_qs)
             exp.stalled_iterations = stalled
-            exp.cursor_usage = {
-                "input_tokens": random.randint(280_000, 520_000),
-                "output_tokens": random.randint(24_000, 48_000),
-                "cache_read_tokens": random.randint(800_000, 1_500_000),
-                "cache_write_tokens": random.randint(60_000, 130_000),
-                "reasoning_tokens": random.randint(9_000, 26_000),
-            }
-            exp.cursor_usage["total_tokens"] = sum(
-                v for k, v in exp.cursor_usage.items() if k != "reasoning_tokens"
-            )
             state = {"eval_pending": {}}
             if status == "completed" and winner is not None and mode == "optimize":
                 state["winner_score"] = scores["best"]

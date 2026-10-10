@@ -1,36 +1,8 @@
 import json
 import logging
-from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-
-def recurse_redact(value: Any, redact_str: Callable[[str], tuple[str, bool]]) -> tuple[Any, bool]:
-    """Apply *redact_str* over every string leaf in a str / dict / list value.
-
-    ``redact_str`` maps a string to ``(new_string, changed)``; the return is the
-    rebuilt value plus whether any leaf changed.
-    """
-    if isinstance(value, str):
-        return redact_str(value)
-    if isinstance(value, dict):
-        changed = False
-        out: dict[Any, Any] = {}
-        for k, v in value.items():
-            nv, c = recurse_redact(v, redact_str)
-            out[k] = nv
-            changed = changed or c
-        return out, changed
-    if isinstance(value, list):
-        changed = False
-        out_list: list[Any] = []
-        for v in value:
-            nv, c = recurse_redact(v, redact_str)
-            out_list.append(nv)
-            changed = changed or c
-        return out_list, changed
-    return value, False
 
 
 def safe_int(val, default: int = 0) -> int:

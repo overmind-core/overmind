@@ -23,7 +23,6 @@ def no_keys(monkeypatch):
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
     ):
         monkeypatch.delenv(env, raising=False)
 
@@ -76,10 +75,9 @@ def test_catalog_names_are_unique_and_slugs_are_vendor_qualified():
     assert all("/" in m.slug for m in CATALOG if m.slug)
 
 
-def test_pricing_slug_covers_catalog_slugs_and_stand_ins():
+def test_pricing_slug_covers_catalog_and_explicit_slugs():
     assert pricing_slug("claude-sonnet-5") == "anthropic/claude-sonnet-5"
     assert pricing_slug("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra"
-    assert pricing_slug("composer-2.5") == "moonshotai/kimi-k2.5"
     assert pricing_slug("nope") is None
 
 

@@ -333,7 +333,6 @@ export * from './ScoreFailureRoleEnum';
 export * from './ScoreOutcomeEnum';
 export * from './ScoreSourceEnum';
 export * from './ScoreTypeD08Enum';
-export * from './ServiceEnum';
 export * from './ServingContextPlan';
 export * from './Session';
 export * from './SetCommandTemplateRequest';
