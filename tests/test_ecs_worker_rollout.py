@@ -1,5 +1,7 @@
 """A release must update worker commands and prove the new consumer is healthy."""
 
+import copy
+
 import pytest
 
 from scripts import deploy_ecs
@@ -144,16 +146,28 @@ def test_migration_refuses_a_task_definition_without_the_api_container(definitio
 def test_a_release_builds_on_the_latest_revision_of_the_family(monkeypatch, definition):
     """Terraform registers env, secret and role changes as new revisions without moving
     the service, so a release copied from the service's pinned revision would drop them."""
-    described = []
+    latest = {
+        **copy.deepcopy(definition),
+        "revision": 9,
+        "taskRoleArn": "arn:aws:iam::123:role/latest",
+    }
+    latest["containerDefinitions"][0]["environment"] = [{"name": "FROM", "value": "terraform"}]
+    revisions = {definition["taskDefinitionArn"]: definition, "celery-batch-worker": latest}
+    registered = []
 
     def fake_aws(*args, payload=None):
         if args[:2] == ("ecs", "describe-services"):
             return {"services": [{"taskDefinition": definition["taskDefinitionArn"]}]}
         if args[:2] == ("ecs", "describe-task-definition"):
-            described.append(args[-1])
-            return {"taskDefinition": definition}
-        return {"taskDefinition": {**payload, "taskDefinitionArn": "celery-batch-worker:7"}}
+            return {"taskDefinition": revisions[args[-1]]}
+        registered.append(payload)
+        return {"taskDefinition": {**payload, "taskDefinitionArn": "celery-batch-worker:10"}}
 
     monkeypatch.setattr(deploy_ecs, "aws", fake_aws)
     deploy_ecs.register("test-cluster", "celery-batch-worker", "repo:new")
-    assert described == ["celery-batch-worker"]
+    [release] = registered
+    assert release["taskRoleArn"] == "arn:aws:iam::123:role/latest"
+    assert release["containerDefinitions"][0]["environment"] == [
+        {"name": "FROM", "value": "terraform"}
+    ]
+    assert release["containerDefinitions"][0]["image"] == "repo:new"
