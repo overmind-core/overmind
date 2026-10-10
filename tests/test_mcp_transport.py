@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 import threading
+import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -271,6 +272,23 @@ def _hold_token_row(token: APIToken, locked: threading.Event, release: threading
         connection.close()
 
 
+def _a_request_waits_on_a_lock() -> bool:
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock' AND datname = current_database()"
+                )
+                if cursor.fetchone():
+                    return True
+            time.sleep(0.05)
+        return False
+    finally:
+        connection.close()
+
+
 @pytest.mark.asyncio
 async def test_a_request_blocked_in_the_database_does_not_hold_up_other_requests():
     raw_blocked, blocked = await sync_to_async(_token)()
@@ -293,7 +311,7 @@ async def test_a_request_blocked_in_the_database_does_not_hold_up_other_requests
             stuck = asyncio.create_task(
                 client.post(MCP_URL, json=body, headers={**headers, "X-Api-Key": raw_blocked})
             )
-            await asyncio.sleep(0.5)
+            assert await asyncio.to_thread(_a_request_waits_on_a_lock)
             free = await asyncio.wait_for(
                 client.post(MCP_URL, json=body, headers={**headers, "X-Api-Key": raw_free}), 10
             )
