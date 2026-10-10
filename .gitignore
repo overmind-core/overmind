@@ -185,3 +185,5 @@ trajectory_sdk
 .claude/settings.local.json
 .impeccable/
 tests/journeys/.runs/
+scripts/loadtest/.fixtures/
+scripts/loadtest/runs/

@@ -1,0 +1,54 @@
+# Overlay for local load runs: docker compose -f docker-compose.yml -f scripts/loadtest/compose.loadtest.yml up -d
+#
+# Every LLM call goes to scripts/loadtest/fake_llm.py on the host, so runs cost nothing and
+# measure Overmind rather than a provider. Platform keys are placeholders: Modal, inference
+# and the checkpoint archive are never reached by the Data Workshop paths under test.
+# The API runs like the production image (gunicorn, two uvicorn workers, no reload).
+
+x-loadtest-env: &loadtest-env
+  OPENROUTER_BASE_URL: http://host.docker.internal:9000/v1
+  OPENROUTER_API_KEY: loadtest-fake
+  CURSOR_API_KEY: ""
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  GEMINI_API_KEY: ""
+  MODAL_TOKEN_ID: loadtest-placeholder
+  MODAL_TOKEN_SECRET: loadtest-placeholder
+  HF_TOKEN: loadtest-placeholder
+  INFERENCE_API_URL: http://host.docker.internal:9/unused
+  INFERENCE_API_KEY: loadtest-placeholder
+  AWS_ACCESS_KEY_ID: loadtest-placeholder
+  AWS_SECRET_ACCESS_KEY: loadtest-placeholder
+  AWS_BUCKET_NAME: loadtest-placeholder
+  POSTHOG_PROJECT_TOKEN: ""
+
+x-loadtest-host: &loadtest-host
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  api:
+    <<: *loadtest-host
+    command: sh -c "python manage.py collectstatic --noinput && gunicorn overbae.asgi:application --worker-class uvicorn_worker.UvicornWorker --workers 2 --bind 0.0.0.0:8000 --timeout 120 --graceful-timeout 30"
+    environment: *loadtest-env
+  celery-control-worker:
+    <<: *loadtest-host
+    environment: *loadtest-env
+  celery-io-worker:
+    <<: *loadtest-host
+    environment: *loadtest-env
+  celery-batch-worker:
+    <<: *loadtest-host
+    environment: *loadtest-env
+  celery-landing-worker:
+    <<: *loadtest-host
+    environment: *loadtest-env
+    # The production landing task keeps the 4 vCPU / 8 GiB batch envelope (docker/landing-capacity.md).
+    cpus: 4
+    mem_limit: 8g
+  celery-interactive-worker:
+    <<: *loadtest-host
+    environment: *loadtest-env
+  celery-beat:
+    <<: *loadtest-host
+    environment: *loadtest-env

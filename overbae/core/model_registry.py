@@ -433,7 +433,7 @@ class Provider:
         return bool(self.key())
 
 
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1"
 
 PROVIDERS: dict[str, Provider] = {
     "openrouter": Provider(
