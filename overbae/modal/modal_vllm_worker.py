@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.request
@@ -405,24 +406,29 @@ class _BaseVLLMWorker:
         async with self._adapter_lock:
             if name in self._loaded_adapters:
                 return
-            # The adapter was very likely committed to the Volume after this container
-            # started, so the mount has to be refreshed before vLLM can see it.
+            # Reload sees adapters published after boot. vLLM keeps the safetensors
+            # file mapped, and Modal rejects reload while that file is open on the volume.
             weights_vol.reload()
-            full = f"{WEIGHTS_MOUNT}/{rel_path}"
+            source = Path(WEIGHTS_MOUNT) / rel_path
+            staged = Path("/tmp/overmind-adapters") / source.name
+            if staged.exists():
+                shutil.rmtree(staged)
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, staged)
             async with httpx.AsyncClient(timeout=300) as client:
                 resp = await client.post(
                     f"http://localhost:{VLLM_PORT}/v1/load_lora_adapter",
-                    json=lora_load_request(name, full),
+                    json=lora_load_request(name, str(staged)),
                 )
             text = resp.text or ""
             # vLLM answers 400 "has already been loaded" when another container in this pool
             # got there first, which is success as far as the caller is concerned.
             if resp.status_code == 200 or "already been loaded" in text:
                 self._loaded_adapters.add(name)
-                print(f"[vLLM] adapter {name!r} ready from {full}")
+                print(f"[vLLM] adapter {name!r} ready from {staged}")
                 return
             raise RuntimeError(
-                f"loading adapter {name!r} from {full} failed: {resp.status_code} {text[:300]}"
+                f"loading adapter {name!r} from {staged} failed: {resp.status_code} {text[:300]}"
             )
 
     @modal.method()
@@ -812,9 +818,11 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
             **(
                 {
                     "cpu": 8,
+                    # Restore maps the saved process while rebuilding it. Below this the
+                    # container is SIGKILL'd (137) and Modal retries with a cold boot.
                     "memory": {
-                        "L4": 65536,
-                        "L40S": 98304,
+                        "L4": 131072,
+                        "L40S": 196608,
                         "A100-80GB": 131072,
                         "H200": 196608,
                         "B200": 262144,

@@ -1,6 +1,8 @@
 import importlib
 import json
 import os
+import shutil
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -202,3 +204,55 @@ async def test_gateway_reads_base_identity_without_reloading(monkeypatch):
     assert await serving._base_identity_aio(".base_models/fresh") == "immutable"
     vol.reload.assert_not_called()
     assert await serving._base_identity_aio(".base_models/fresh") == "immutable"
+
+
+class _AdapterClient:
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+    async def post(self, url, json):
+        _AdapterClient.posts.append((url, json))
+        return Mock(status_code=200, text="")
+
+
+@pytest.mark.asyncio
+async def test_adapter_load_leaves_the_weights_mount_closed(monkeypatch, tmp_path):
+    mount = tmp_path / "weights"
+    posts = []
+    _AdapterClient.posts = posts
+
+    def write_adapter(cache_key: str, payload: bytes) -> str:
+        adapter = mount / ".adapters" / cache_key
+        adapter.mkdir(parents=True)
+        (adapter / "adapter_config.json").write_text(json.dumps({"r": 8}))
+        (adapter / "adapter_model.safetensors").write_bytes(payload)
+        return f".adapters/{cache_key}"
+
+    first = write_adapter("ft-first", b"first-weights")
+    second = write_adapter("ft-second", b"second-weights")
+    monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(mount))
+    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr("httpx.AsyncClient", _AdapterClient)
+    obj = serving._BaseVLLMWorker()
+    obj._loaded_adapters = set()
+    obj._adapter_lock = None
+
+    try:
+        await obj._ensure_adapter("first", first)
+        await obj._ensure_adapter("second", second)
+
+        assert serving.weights_vol.reload.call_count == 2
+        loaded = [body["lora_path"] for _url, body in posts]
+        assert len(loaded) == 2
+        for path, payload in zip(loaded, (b"first-weights", b"second-weights"), strict=True):
+            staged = Path(path)
+            assert not staged.is_relative_to(mount)
+            assert (staged / "adapter_model.safetensors").read_bytes() == payload
+    finally:
+        shutil.rmtree("/tmp/overmind-adapters", ignore_errors=True)
