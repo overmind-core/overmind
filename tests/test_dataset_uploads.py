@@ -90,6 +90,8 @@ def test_a_retried_chunk_rewrites_the_bytes_an_interrupted_attempt_stored():
     assert files.inspect_upload(upload_id, size=len(content))["rows"] == 2
     with pytest.raises(files.FileError, match="stored"):
         files.append_chunk(upload_id, len(content) + 1, b"{}\n")
+    with pytest.raises(files.FileError, match="negative"):
+        files.append_chunk(upload_id, -1, b"{}\n")
 
 
 def test_inspection_endpoint_counts_rows_and_reports_validation_errors(client_project):

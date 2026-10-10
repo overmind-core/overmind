@@ -277,7 +277,7 @@ def parse_text(text: str, *, filename: str = "") -> list[dict[str, Any]]:
 def upload_dir(upload_id: Any) -> Path:
     from django.conf import settings
 
-    return Path(settings.MEDIA_ROOT) / "uploads" / str(upload_id)
+    return Path(settings.MEDIA_ROOT) / "uploads" / str(uuid.UUID(str(upload_id)))
 
 
 def upload_data_path(upload_id: Any) -> Path:
@@ -336,6 +336,8 @@ def upload_received(upload_id: Any) -> int:
 def append_chunk(upload_id: Any, offset: int, chunk: bytes) -> int:
     """Writes the chunk at its offset, never appended, so a retry that races or
     follows an earlier attempt rewrites the same bytes instead of duplicating them."""
+    if offset < 0:
+        raise FileError("The chunk offset is negative.")
     if offset + len(chunk) > MAX_UPLOAD_BYTES:
         raise FileError(f"Files are capped at {MAX_UPLOAD_BYTES // 1024**3} GB.")
     try:
