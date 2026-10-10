@@ -256,7 +256,14 @@ class SourceSerializer(serializers.Serializer):
     filename = serializers.CharField(required=False, allow_blank=True)
     text = serializers.CharField(required=False, allow_blank=True)
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
-    traces = serializers.JSONField(required=False)
+    traces = serializers.JSONField(
+        required=False,
+        help_text=(
+            "Trace IDs or trace-list filters. A capability filter selects its unique invocation "
+            "and descendants per trace. Otherwise the destination capability is preferred when "
+            "present. Repeated invocations fail; unmatched traces retain original evidence."
+        ),
+    )
     llm_calls = serializers.JSONField(required=False)
 
     def validate(self, attrs):

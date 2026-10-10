@@ -233,7 +233,16 @@ def advance(project, binding_id, *, manual=False):
                     "Trace snapshot exceeds the binding limit; narrow the selection.",
                     code="binding_limit",
                 )
-            records = list(land.iter_trace_rows(binding.project_id, sorted(ids)))
+            try:
+                records = list(
+                    land.iter_trace_rows(
+                        binding.project_id,
+                        sorted(ids),
+                        preferred_capability_id=source_spec.preferred_capability_id,
+                    )
+                )
+            except land.LandError as exc:
+                raise DatasetError(str(exc), code="binding_source") from exc
             if len(records) != len(ids):
                 raise DatasetError(
                     "Some selected traces could not be captured; the checkpoint is unchanged.",

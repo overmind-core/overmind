@@ -1,5 +1,6 @@
 import uuid
 
+from django.db.models import Exists, OuterRef
 from django.db.models.expressions import RawSQL
 from django_filters import rest_framework as filters
 from rest_framework.exceptions import ValidationError
@@ -126,6 +127,7 @@ class LLMActivityFilterMixin:
 
 
 class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
+    capability = filters.UUIDFilter(method="filter_capability")
     name = filters.CharFilter(lookup_expr="icontains")
     operation = filters.CharFilter(lookup_expr="icontains")
     service_name = filters.CharFilter(lookup_expr="icontains")
@@ -180,6 +182,19 @@ class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
             return queryset
         # One row per trace by head span — must match `SpanViewSet.get_queryset`.
         return Span.trace_heads(queryset, self._scoped_project_ids(queryset))
+
+    def filter_capability(self, queryset, name, value):
+        if self.form.cleaned_data.get("all_spans"):
+            return queryset.filter(capability_id=value)
+        return queryset.filter(
+            Exists(
+                Span.objects.filter(
+                    project_id=OuterRef("project_id"),
+                    trace_id=OuterRef("trace_id"),
+                    capability_id=value,
+                )
+            )
+        )
 
     def filter_min_duration_ms(self, queryset, name, value):
         return queryset.filter(duration_ns__gte=int(value) * 1_000_000)

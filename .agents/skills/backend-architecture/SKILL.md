@@ -13,7 +13,7 @@ Single Django app `overbae`, project-scoped tenancy.
 - `overbae/models/` — split by domain (`iam.py`, `capabilities.py`, `traces.py`, `evaluation.py`, `finetuning.py`, `datasets.py`, `optimizer.py`, `billing.py`, …).
 - `overbae/services/` — business logic; largest subtrees: `eval/` (rubric/judging/cascade/runner), `datasets/` (Parquet store, landing, cell runner, contract, alignment, diff, use), `mcp/` (Streamable HTTP MCP server — procedure in the mcp skill), `codebase/`, `scan/` (AI-surface extraction, footprint matcher, scan application), `capabilities/` (identity, lifecycle, graph).
 - `overbae/tasks/` — Celery tasks, roughly one module per feature; `utils/task_lock.py` for locking.
-- `overbae/modal/` — Modal.com GPU workers (vLLM serving, SFT, PII NER).
+- `overbae/modal/` — Modal.com GPU workers (vLLM serving, SFT, native decision evaluation).
 - `overbae/management/commands/` — backfills and syncs.
 
 ## Celery topology
@@ -82,7 +82,7 @@ Read surface, backed by `SpanViewSet` rather than a trace viewset:
 - `GET /api/traces/services/` — distinct `service_name`; `GET /api/traces/models/` — distinct models
 - No `/api/spans/` route exists.
 
-Query params are span-native (`received_at__gte`, `trace_id`, `span_type`, `operation`, `service_name`, `has_error`).
+Query params are span-native (`received_at__gte`, `trace_id`, `span_type`, `operation`, `service_name`, `has_error`). In the trace-head view, `capability` matches any span within the same project and trace; `all_spans=true` filters each span directly. REST, MCP and trace-source selection share this filter.
 
 ## Evaluation
 

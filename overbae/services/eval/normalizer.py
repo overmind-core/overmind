@@ -342,9 +342,10 @@ def _harness_final_output(ordered: list, model_final: str) -> str | None:
 
 def capability_io(spans: list) -> tuple[Any, Any]:
     """The wrapper span's raw I/O, not an intermediate LLM lane."""
-    if not spans:
+    wrappers = [s for s in spans if not _is_llm(s) and not _is_tool(s)]
+    if not wrappers:
         return None, None
-    ordered = sorted(spans, key=lambda s: getattr(s, "start_time_ns", 0) or 0)
+    ordered = sorted(wrappers, key=lambda s: getattr(s, "start_time_ns", 0) or 0)
     attrs = _span_attrs(_io_source_span(ordered))
     raw_in = chatml.maybe_parse_json(chatml.pick(attrs, chatml.INPUT_KEYS))
     raw_out = chatml.maybe_parse_json(chatml.pick(attrs, chatml.OUTPUT_KEYS))

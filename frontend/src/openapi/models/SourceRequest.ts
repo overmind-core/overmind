@@ -52,7 +52,7 @@ export interface SourceRequest {
      */
     rows?: Array<any>;
     /**
-     *
+     * Trace IDs or trace-list filters. A capability filter selects its unique invocation and descendants per trace. Otherwise the destination capability is preferred when present. Repeated invocations fail; unmatched traces retain original evidence.
      * @type {any}
      * @memberof SourceRequest
      */

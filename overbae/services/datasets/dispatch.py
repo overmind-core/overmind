@@ -31,6 +31,18 @@ def _check_source(source: dict) -> None:
         )
 
 
+def _trace_preference(source: dict, capability_id) -> dict:
+    if source.get("traces") is None or not capability_id:
+        return source
+    traces = source["traces"]
+    if traces.get("preferred_capability_id") or (traces.get("filters") or {}).get("capability"):
+        return source
+    return {
+        **source,
+        "traces": {**source["traces"], "preferred_capability_id": str(capability_id)},
+    }
+
+
 def stage_dataset(
     project, user, name: str, source: dict, intent: str | None, capability, brief=""
 ) -> Dataset:
@@ -71,6 +83,7 @@ def create_dataset(
 ) -> Dataset:
     """Land one trace selection, row collection, upload or ordered upload collection."""
     source = source or {}
+    source = _trace_preference(source, getattr(capability, "pk", None))
     if not source and not brief.strip():
         raise DatasetError("Describe what you want to do or add source data.", code="source")
     if source:
@@ -115,6 +128,7 @@ def stage_attachment(dataset, source: dict) -> str:
 
 
 def attach_source(dataset, user, source: dict) -> Dataset:
+    source = _trace_preference(source, dataset.capability_id)
     with transaction.atomic():
         request_id = stage_attachment(dataset, source)
         from overbae.tasks.datasets import land
@@ -152,6 +166,7 @@ def create_split(
 ) -> tuple[Dataset, Dataset]:
     """One source, read once, landed as a train dataset and an eval dataset."""
     _check_source(source)
+    source = _trace_preference(source, getattr(capability, "pk", None))
     if not 1 <= int(eval_percent) <= 99:
         raise DatasetError("eval_percent must be between 1 and 99.", code="split")
     from overbae.services.datasets.llm_calls import HASH_POSITION, Selection, SelectionError

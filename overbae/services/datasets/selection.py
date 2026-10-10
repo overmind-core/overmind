@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from overbae.models.traces import Span
 from overbae.services import trace_selection
@@ -51,6 +52,7 @@ class TraceSource:
     ordering: str = ""
     exclude_trace_ids: tuple[str, ...] = ()
     limit: int | None = None
+    preferred_capability_id: str | None = None
 
     @classmethod
     def parse(cls, payload: Any) -> TraceSource:
@@ -61,6 +63,14 @@ class TraceSource:
         if not isinstance(raw_filters, Mapping):
             raise TraceSourceError("filters must be an object.")
         filters = {str(k): str(v) for k, v in raw_filters.items() if v not in (None, "")}
+        preferred = payload.get("preferred_capability_id") or filters.get("capability")
+        if preferred:
+            try:
+                preferred = str(UUID(str(preferred)))
+            except ValueError as exc:
+                raise TraceSourceError(
+                    "preferred_capability_id must be a capability UUID."
+                ) from exc
         allowed = allowed_filters()
         unknown = sorted(k for k in filters if k not in allowed)
         if unknown:
@@ -86,20 +96,25 @@ class TraceSource:
         if not trace_ids and not filters and not search:
             raise TraceSourceError("Give trace_ids, or at least one filter or a search.")
         if trace_ids:
-            return cls(trace_ids=trace_ids)
+            return cls(trace_ids=trace_ids, preferred_capability_id=preferred)
         return cls(
             filters=filters,
             search=search,
             ordering=ordering,
             exclude_trace_ids=exclude,
             limit=limit,
+            preferred_capability_id=preferred,
         )
 
     def spec(self) -> dict[str, Any]:
         """The stored form: only what selects."""
-        if self.trace_ids:
-            return {"trace_ids": list(self.trace_ids)}
-        out: dict[str, Any] = {"filters": dict(self.filters)}
+        out: dict[str, Any] = (
+            {"trace_ids": list(self.trace_ids)}
+            if self.trace_ids
+            else {"filters": dict(self.filters)}
+        )
+        if self.preferred_capability_id:
+            out["preferred_capability_id"] = self.preferred_capability_id
         if self.search:
             out["search"] = self.search
         if self.ordering:

@@ -58,6 +58,14 @@ removed matches. Checkpoint and cells commit together. Failed attempts pause on
 the next inspection; re-enable or revise explicitly to authorize another attempt.
 Scheduled/ingestion bindings are checked by the dedicated controller, not an agent;
 trace snapshots are capped at 10,000 selected traces and reject overflow.
+
+Trace landing pins `preferred_capability_id` in the source recipe. A source capability
+filter takes precedence over the destination capability; otherwise the destination
+is preferred when it appears in a trace. Each row uses the unique outer matching
+invocation and its descendants for I/O, transcript, usage and score. Repeated outer
+invocations fail before publication. Without a match, whole-trace evidence remains;
+mixed traces are not attributed to their first capability. Missing wrapper I/O
+stays missing instead of borrowing tool arguments. Bindings use the same extraction.
 Pipeline receipts expose the current measured stage, pinned source row count and
 output row count once written. A running stage is not a percentage or an ETA.
 Landing claims also bind attachment-request identities, so a cancelled delivery

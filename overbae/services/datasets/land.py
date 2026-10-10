@@ -1,8 +1,7 @@
 """Landing: rows arrive verbatim as cell 0, stamped with ``source_row``.
 
-A trace source lands one row per trace: the traces-table facts, the wire
-transcript, the delivered I/O and the trace's score. Landing never rejects a
-row and never triggers scoring. It proposes the capability rank.
+A trace source lands one row per trace, scoped to the selected capability when
+present. Ambiguous invocations fail before publication. Landing never triggers scoring.
 """
 
 from __future__ import annotations
@@ -36,6 +35,7 @@ from overbae.services.datasets import (
     store,
 )
 from overbae.services.datasets.partition import preserve_lineage, split_rows
+from overbae.services.eval import units
 
 logger = logging.getLogger(__name__)
 
@@ -380,10 +380,13 @@ def _attr(span: Span, key: str) -> Any:
 
 
 def _root(spans: list[Span]) -> Span:
-    """The parentless span; an interrupted trace has none, so its longest span stands in."""
     for span in spans:
         if span.parent_span_id is None:
             return span
+    ids = {span.span_id for span in spans}
+    roots = [span for span in spans if span.parent_span_id not in ids]
+    if len(roots) == 1:
+        return roots[0]
     return max(spans, key=lambda s: s.duration_ns or 0)
 
 
@@ -443,8 +446,7 @@ def _error(root: Span, spans: list[Span]) -> str | None:
 
 
 def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
-    """One row for one trace: the traces-table facts, the wire transcript and the
-    capability's delivered I/O. ``spans`` is the whole trace in start order."""
+    """``spans`` is one whole trace or selected invocation in start order."""
     from overbae.services.eval import chatml, normalizer
 
     root = _root(spans)
@@ -456,7 +458,10 @@ def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
     raw_in, raw_out = normalizer.capability_io(spans)
     delivered = _delivered(spans)
     usage = _usage(spans)
-    capability = root.capability or next((s.capability for s in spans if s.capability_id), None)
+    capabilities = {s.capability_id: s.capability for s in spans if s.capability_id}
+    capability = root.capability or (
+        next(iter(capabilities.values())) if len(capabilities) == 1 else None
+    )
     conversation = next(
         (s.conversation.external_id for s in (root, *spans) if s.conversation_id), None
     )
@@ -493,20 +498,45 @@ def _chunks(items: Iterable[str], size: int) -> Iterator[list[str]]:
         yield batch
 
 
-def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, float]:
-    """The trace's score is its last scored task execution: the terminal unit of a
-    single-task trace, the latest turn of a session."""
+def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, list[tuple[str, float]]]:
+    """Keep span membership so scoped rows cannot borrow a sibling's score."""
     rows = (
         TaskExecution.objects.filter(project_id=project_id, trace_id__in=trace_ids)
         .exclude(success_score=None)
         .order_by("started_at", "created_at")
-        .values_list("trace_id", "success_score")
+        .values_list("trace_id", "unit_span_id", "success_score")
     )
-    return dict(rows)
+    scores: dict[str, list[tuple[str, float]]] = {}
+    for trace_id, span_id, score in rows:
+        scores.setdefault(trace_id, []).append((span_id, score))
+    return scores
+
+
+def _preferred_spans(spans: list[Span], capability_id: str | None) -> list[Span]:
+    if not capability_id:
+        return spans
+    matches = [s for s in spans if str(s.capability_id) == capability_id]
+    if not matches:
+        return spans
+    roots = [
+        s
+        for s in matches
+        if not any(str(a.capability_id) == capability_id for a in units.ancestor_chain(spans, s))
+    ]
+    if len(roots) != 1:
+        raise LandError(
+            f"Trace {spans[0].trace_id} has {len(roots)} separate invocations of the selected "
+            "capability. Select LLM calls or import explicit invocation rows."
+        )
+    return sorted(units.subtree_spans(spans, roots[0]), key=lambda s: s.start_time_ns or 0)
 
 
 def iter_trace_rows(
-    project_id: Any, trace_ids: Iterable[str], *, on_progress: Any = None
+    project_id: Any,
+    trace_ids: Iterable[str],
+    *,
+    on_progress: Any = None,
+    preferred_capability_id: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Two queries per chunk of traces, then pure assembly; a trace whose spans
     are gone is skipped."""
@@ -525,8 +555,18 @@ def iter_trace_rows(
             trace_spans = by_trace.get(trace_id)
             if not trace_spans:
                 continue
+            scoped = _preferred_spans(trace_spans, preferred_capability_id)
+            ids = {s.span_id for s in scoped}
+            score = next(
+                (
+                    value
+                    for span_id, value in reversed(scores.get(trace_id, []))
+                    if scoped is trace_spans or span_id in ids
+                ),
+                None,
+            )
             try:
-                row = trace_row(trace_spans, score=scores.get(trace_id))
+                row = trace_row(scoped, score=score)
             except Exception:  # noqa: BLE001 — one unreadable trace must not sink the batch
                 logger.warning("trace %s did not land", trace_id, exc_info=True)
                 continue
@@ -541,7 +581,12 @@ def read_traces(project_id: Any, spec: dict[str, Any], *, on_progress: Any = Non
     try:
         source = selection.TraceSource.parse(spec)
         rows = list(
-            iter_trace_rows(project_id, source.iter_trace_ids(project_id), on_progress=on_progress)
+            iter_trace_rows(
+                project_id,
+                source.iter_trace_ids(project_id),
+                on_progress=on_progress,
+                preferred_capability_id=source.preferred_capability_id,
+            )
         )
     except selection.TraceSourceError as exc:
         raise LandError(str(exc)) from exc

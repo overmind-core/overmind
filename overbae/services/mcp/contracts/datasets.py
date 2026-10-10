@@ -404,7 +404,12 @@ class CreateDatasetFromTracesInput(MCPModel):
         default=None,
         min_length=1,
         max_length=255,
-        description="Capability uuid. Omit to infer from the rows; null means none.",
+        description=(
+            "Destination capability uuid. If present in a trace, land its unique invocation "
+            "and descendants; repeated invocations fail. Otherwise retain the complete source "
+            "trace. A source capability filter takes precedence for extraction. Omit to infer "
+            "from source rows; null means none."
+        ),
     )
     split: SplitInput | None = Field(
         default=None,

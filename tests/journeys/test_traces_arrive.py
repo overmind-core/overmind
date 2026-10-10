@@ -33,7 +33,7 @@ def assert_one_rooted_tree(mcp, trace_id: str) -> dict:
 
 
 def test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities(
-    project, sample_agent, live_api, support_desk_llm, fake_llm, worker
+    project, sample_agent, live_api, support_desk_llm, fake_llm, worker, rest_for, cli
 ):
     replies = sample_agent.run(
         "Refund order 42 please", api_url=live_api.url, llm_url=support_desk_llm
@@ -56,6 +56,24 @@ def test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities(
     )
     assert root["total_tokens"] == agent_tokens
     assert models
+    rest = rest_for(cli.project_key(sample_agent))
+    for slug in ("triage", "answer"):
+        capability = project.capability(slug)["id"]
+        [filtered] = project.call("query_traces", {"capability": capability})["traces"]
+        assert filtered["span_id"] == root["span_id"]
+        page = rest.request(
+            "GET",
+            "/api/traces/",
+            params={
+                "project": project.project()["id"],
+                "capability": capability,
+            },
+        )
+        assert [row["span_id"] for row in page["results"]] == [root["span_id"]]
+        spans = project.call("query_traces", {"capability": capability, "all_spans": True})[
+            "traces"
+        ]
+        assert spans and all(span["capability"] == slug for span in spans)
 
 
 def _attr(key: str, value) -> KeyValue:
