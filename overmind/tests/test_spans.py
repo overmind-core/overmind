@@ -1,118 +1,121 @@
-"""Integration tests for end-to-end span ingestion.
+"""Real OpenAI instrumentation and OTLP export, confined to localhost."""
 
-These tests require live API keys (OVERMIND_API_KEY, OPENAI_API_KEY) and
-network access to api.overmindlab.ai.  They are skipped automatically in
-environments where those conditions are not met so they never block the
-unit-test suite.
-"""
-
+import gzip
 import json
 import os
-from datetime import datetime, timezone
-from time import sleep
+import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import version
+from pathlib import Path
+from threading import Thread
 
-import pytest
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-requests = pytest.importorskip("requests")
+SCRIPT = """
+import json
+import sys
+from importlib.metadata import version
+import overmind
+from openai import OpenAI
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("OVERMIND_API_KEY") or not os.environ.get("OPENAI_API_KEY"),
-    reason="Integration test: requires OVERMIND_API_KEY and OPENAI_API_KEY",
-)
-
-openai = pytest.importorskip("openai")
-OpenAI = openai.OpenAI
-
-from opentelemetry import trace as otel_trace  # noqa: E402
-
-from overmind.tracing import init  # noqa: E402
-
-project_id = "e5445c2d-0e4b-4cb1-8a0c-26c18d0ba19f"
-
-base_url = "https://api.overmindlab.ai"
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _init_overmind():
-    init(service_name="test-spans", environment="local", providers=["openai"])
-
-
-@pytest.fixture(scope="module")
-def openai_client():
-    return OpenAI()
-
-
-def check_for_signature(signature: str) -> list[bool]:
-    traces_response = requests.get(
-        f"{base_url}/api/v1/traces/list",
-        params={
-            "project_id": project_id,
-            "limit": 5,
-            "offset": 0,
-            "root_only": True,
-        },
-        headers={
-            "X-Api-Key": os.getenv("OVERMIND_API_KEY"),
-        },
-        timeout=30,
+overmind.init("local-span-test", overmind_base_url=sys.argv[1],
+              service_name="span-io", environment="test", providers=["openai"])
+client = OpenAI(api_key="fake-openai", base_url=sys.argv[1] + "/v1", max_retries=0)
+with overmind.run("structured-classification", capability_id="11111111-1111-4111-8111-111111111111"):
+    response = client.chat.completions.create(
+        model="test-model", response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": "Classify these shoes as JSON."}],
     )
-    if traces_response.status_code != 200:
-        pytest.skip(f"Traces API returned {traces_response.status_code}; skipping integration test.")
-    traces = traces_response.json()["traces"]
-    input_has_signature = []
-    for trace in traces:
-        has_signature = signature in trace["Inputs"]
-        input_has_signature.append(has_signature)
-        if not has_signature:
-            continue
-
-        span_attributes = trace["SpanAttributes"]
-        assert span_attributes["gen_ai.request.model"] == "gpt-5-mini"
-        assert span_attributes["gen_ai.completion.0.finish_reason"] == "stop"
-        assert span_attributes["gen_ai.request.structured_output_schema"] == json.dumps({"type": "json_object"})
-
-    return input_has_signature
+    assert response.choices[0].message.content == '{"category":"Shoes"}'
+overmind.force_flush_traces(timeout_millis=10000)
+print(json.dumps({"openai": version("openai")}))
+"""
 
 
-today = str(datetime.now(tz=timezone.utc).timestamp())
-system_prompt = f"""You are a fashion taxonomy assistant.
-Classify the product into exactly one category from the allowed list.
-Return strict JSON only in this format:
-{{"category": "<one allowed category>", "confidence": <0 to 1>, "reason": "<short reason>"}}
-Today's date: {today}"""
+def test_spans(tmp_path):
+    exports, requests = [], []
 
-user_message = """Allowed categories: Dresses, Tops, Shirts, T-Shirts, Knitwear, Coats, Jackets, Blazers, Jeans, Trousers, Skirts, Shorts, Shoes, Bags, Accessories, Other
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            if self.headers.get("Content-Encoding") == "gzip":
+                body = gzip.decompress(body)
+            requests.append((self.path, self.headers.get("X-Api-Key")))
+            if self.path == "/api/v1/traces":
+                exports.append(ExportTraceServiceRequest.FromString(body))
+                response = b""
+            elif self.path == "/v1/chat/completions":
+                request = json.loads(body)
+                assert request["response_format"] == {"type": "json_object"}
+                response = json.dumps({
+                    "id": "chatcmpl-local",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "test-model",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "finish_reason": "stop",
+                            "message": {
+                                "role": "assistant",
+                                "content": '{"category":"Shoes"}',
+                            },
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10},
+                }).encode()
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if response else "application/x-protobuf")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
 
-Product description:
-Triple S Sneaker in light grey microfiber and rhinestones.
-Leather free sneaker microfiber and rhinestones complex 3-layered outsole embroidered size at the edge of the toe embroidered logo on the side embossed logo in the back triple s rubber branding on the tongue 2 laces loops including 1 functional lacing system featuring 12 fabric eyelets laces recalling hiking boots' laces back and tongue pull-on tab made in china.
-Upper: nylon, polyurethane - Sole: tpu - Insole: foam."""
+        def log_message(self, *_):
+            pass
 
-
-def test_spans(openai_client):
-    openai_client.chat.completions.create(
-        model="gpt-5-mini",
-        reasoning_effort="minimal",
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt.strip(),
-            },
-            {
-                "role": "user",
-                "content": user_message.strip(),
-            },
-        ],
-    )
-    otel_trace.get_tracer_provider().force_flush(timeout_millis=10_000)
-
-    retries = 4
-    for i in range(retries):
-        input_has_signature = check_for_signature(today)
-        if any(input_has_signature):
-            break
-        if i < retries - 1:
-            sleep(5)
-
-    assert any(input_has_signature), "unable to find trace pushed to prod"
+    host = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = Thread(target=host.serve_forever, daemon=True)
+    worker.start()
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("OVERMIND_", "OPENAI_", "OTEL_"))}
+    env.update({
+        "OVERMIND_ANALYTICS_ENABLED": "false",
+        "PYTHONPATH": os.pathsep.join([str(Path(__file__).resolve().parents[1]), *sys.path]),
+    })
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", SCRIPT, f"http://127.0.0.1:{host.server_port}"],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        host.shutdown()
+        host.server_close()
+        worker.join(timeout=2)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["openai"] == version("openai")
+    spans = [
+        span
+        for export in exports
+        for resource in export.resource_spans
+        for scope in resource.scope_spans
+        for span in scope.spans
+    ]
+    [llm] = [span for span in spans if any(attr.key == "gen_ai.request.model" for attr in span.attributes)]
+    attributes = {attr.key: getattr(attr.value, attr.value.WhichOneof("value")) for attr in llm.attributes}
+    assert attributes["gen_ai.request.model"] == "test-model"
+    assert [item.string_value for item in attributes["gen_ai.response.finish_reasons"].values] == ["stop"]
+    assert json.loads(attributes["gen_ai.request.structured_output_schema"]) == {"type": "json_object"}
+    assert attributes["genai.prompt_tokens"] == 7
+    assert attributes["genai.completion_tokens"] == 3
+    assert attributes["overmind.capability.id"] == "11111111-1111-4111-8111-111111111111"
+    [root] = [span for span in spans if not span.parent_span_id]
+    assert llm.trace_id == root.trace_id and llm.parent_span_id == root.span_id
+    assert all(key == "local-span-test" for path, key in requests if path == "/api/v1/traces")
+    assert all(key is None for path, key in requests if path == "/v1/chat/completions")

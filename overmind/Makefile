@@ -22,13 +22,13 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 test: ## Run all tests in parallel (default)
-	$(PYTEST) tests/ -x -n $(WORKERS) --ignore=tests/test_spans.py --dist worksteal -q $(test_args)
+	$(PYTEST) tests/ -x -n $(WORKERS) --dist worksteal -q $(test_args)
 
 test-cov: ## Run all tests with coverage report (sorted by coverage %)
-	$(PYTEST) tests/ -n $(WORKERS) --ignore=tests/test_spans.py --dist worksteal --cov=overmind --cov-report=term-missing -q $(test_args)
+	$(PYTEST) tests/ -n $(WORKERS) --dist worksteal --cov=overmind --cov-report=term-missing -q $(test_args)
 
 test-serial: ## Run all tests serially (for debugging)
-	$(PYTEST) tests/ -x --ignore=tests/test_spans.py -v $(test_args)
+	$(PYTEST) tests/ -x -v $(test_args)
 
 lint-check: ## Check lint + format (CI — no changes)
 	$(RUFF) check

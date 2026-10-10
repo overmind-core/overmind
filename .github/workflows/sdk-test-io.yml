@@ -21,12 +21,7 @@ jobs:
       run:
         working-directory: overmind
     permissions:
-      id-token: write
       contents: read
-
-    env:
-      OVERMIND_API_KEY: ${{ secrets.OVERMIND_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     strategy:
       fail-fast: false
@@ -55,10 +50,10 @@ jobs:
       - name: Install OpenAI ${{ matrix.openai-version }}
         run: |
           if [ "${{ matrix.openai-version }}" = "latest" ]; then
-            uv pip install openai
+            uv pip install --upgrade openai
           else
             uv pip install "openai==${{ matrix.openai-version }}"
           fi
 
       - name: Run span IO tests
-        run: uv run pytest tests/test_spans.py -v
+        run: uv run --no-sync pytest tests/test_spans.py -v
