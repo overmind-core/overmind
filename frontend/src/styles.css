@@ -156,8 +156,8 @@ code {
   /* One masked box with two mask layers, so a single background-color drives
      both segments (active rows override --elbow-color). The vertical layer
      stops 12px short so the corner reads as pixel steps, not a filled square.
-     Shared by sidebar sub-nav (fixed --elbow-h pitch math) and agent-activity
-     plan steps (live-measured row centers). */
+     Shared by sidebar sub-nav (fixed --elbow-h pitch math) and trace details
+     (live-measured row centers). */
   .sidebar-elbow::before {
     position: absolute;
     bottom: 50%;
