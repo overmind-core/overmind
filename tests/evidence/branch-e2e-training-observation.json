@@ -1,0 +1,773 @@
+{
+  "conflict": {
+    "error": {
+      "code": "finetune_invalid",
+      "message": "The fine-tuning request was refused: This launch key already belongs to a different recipe.",
+      "retryable": false,
+      "fields": {
+        "request_key": "This launch key already belongs to a different recipe."
+      }
+    }
+  },
+  "monitoring": {
+    "summary": "Training succeeded; recorded development evidence.",
+    "progress": {
+      "job_id": "76f061a9-4214-43c8-b620-401923382b17",
+      "policy": {
+        "mode": "steps",
+        "seed": 42,
+        "final": true,
+        "initial": true,
+        "version": 1,
+        "selection": "last",
+        "generation": null,
+        "max_checks": 12,
+        "loss_sample": 32,
+        "train_sample": 16,
+        "early_stopping": null,
+        "failure_policy": "continue",
+        "interval_steps": 2,
+        "target_seconds": 300,
+        "generation_every": 3,
+        "overhead_fraction": 0.1
+      },
+      "status": "succeeded",
+      "count": 4,
+      "current": {
+        "schedule": {
+          "checks": 2,
+          "next_step": null,
+          "step_seconds": [
+            14.577022736000004,
+            0.25875777000000255,
+            0.27061932300000535,
+            0.23372564500000692
+          ],
+          "interval_steps": 2,
+          "last_checked_step": 4
+        },
+        "collection": {
+          "state": "observed",
+          "observed_at": "2026-10-10T22:10:38.948213+00:00"
+        },
+        "stop_reason": null,
+        "numerical_health": {
+          "basis": "logged training intervals, not every optimizer update",
+          "logged_updates": 4,
+          "skipped_updates": null,
+          "loss_filtering_enabled": false,
+          "skipped_updates_reason": "not exposed by this trainer callback",
+          "gradient_norm_available": true,
+          "nonfinite_loss_observations": 0,
+          "nonfinite_gradient_observations": 0,
+          "clipping_threshold_exceeded_observations": 1
+        },
+        "optimizer_seconds": 15.340125474000018,
+        "monitoring_seconds": 21.996789402000005,
+        "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+        "schedule_decisions": [
+          {
+            "step": 2,
+            "basis": "measured_optimizer_time",
+            "conflicts": [],
+            "next_step": null,
+            "adaptation": "explicit_interval",
+            "stop_reason": "run_boundary",
+            "check_seconds": 1.8904887619999968,
+            "formula_version": 2,
+            "target_interval_steps": 41,
+            "overhead_interval_steps": 3,
+            "candidate_interval_steps": 2,
+            "effective_interval_steps": 2,
+            "optimizer_step_seconds_median": 7.417890253000003
+          },
+          {
+            "step": 4,
+            "basis": "measured_optimizer_time",
+            "conflicts": [],
+            "next_step": null,
+            "adaptation": "explicit_interval",
+            "stop_reason": "run_boundary",
+            "check_seconds": 1.8965392580000042,
+            "formula_version": 2,
+            "target_interval_steps": 1134,
+            "overhead_interval_steps": 65,
+            "candidate_interval_steps": 2,
+            "effective_interval_steps": 2,
+            "optimizer_step_seconds_median": 0.26468854650000395
+          }
+        ],
+        "selected_checkpoint": "1:4"
+      },
+      "probes": {
+        "development": {
+          "seed": 42,
+          "groups": 32,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 32,
+          "fingerprint": "9a0b2c4b998371c255634ab65cf2b80482de2050365dcee0d3597b6122f41efc",
+          "requested_rows": 32,
+          "population_rows": 89
+        },
+        "training_reference": {
+          "seed": 42,
+          "groups": 15,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 16,
+          "fingerprint": "eb19e0014707af421a3bb475de655b08e5effb54916cb2239117c7f42211e5c4",
+          "requested_rows": 16,
+          "population_rows": 624
+        }
+      },
+      "next_offset": null,
+      "checks": [
+        {
+          "id": "b236e8e4-c49c-486c-bbce-f2d59e291473",
+          "key": "1:development:0",
+          "state": "completed",
+          "step": 0,
+          "attempt": 1,
+          "stream": "development",
+          "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+          "sample_fingerprint": "9a0b2c4b998371c255634ab65cf2b80482de2050365dcee0d3597b6122f41efc",
+          "started_at": "2026-10-10T22:08:59.531521Z",
+          "observed_at": "2026-10-10T22:09:12.901913Z",
+          "completed_at": "2026-10-10T22:09:12.901913Z",
+          "metrics": {
+            "brier": 0.5034525099386928,
+            "decisions": 32,
+            "eval_loss": 0.6965997517108917,
+            "eval_runtime": 13.214297752999997,
+            "cross_entropy": 0.696599742397666,
+            "mean_decisions": 0,
+            "development_gap": 0.00246390700340271,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.21875,
+            "hard_label_decisions": 32,
+            "distribution_decisions": 32,
+            "argmax_target_agreement": 0.21875,
+            "training_reference_loss": 0.694135844707489
+          },
+          "coverage": {
+            "scored": 32,
+            "expected": 32
+          },
+          "facts": {
+            "delivery": {
+              "finished_at": "2026-10-10T22:09:31.537571+00:00",
+              "first_result_at": "2026-10-10T22:09:31.537571+00:00"
+            },
+            "findings": [],
+            "gap_basis": "fixed samples; evaluation mode; typed probability loss",
+            "assessment": {
+              "state": "measured",
+              "source": "recorded_native_categorical_metrics",
+              "assessed_at": "2026-10-10T22:09:31.534027+00:00",
+              "limitations": [
+                "Same scored development subset within each declared categorical question and option set",
+                "Soft distributions and mean targets do not establish categorical correctness",
+                "No inferred cause, automatic training action or final-benchmark conclusion"
+              ],
+              "rule_version": 2,
+              "source_observed_at": "2026-10-10T22:09:12.901913+00:00",
+              "source_receipt_fingerprint": "b74cb4792dee15820c1d408b91bef6f511d317161e13a1dea8c085b57db6f1c4"
+            },
+            "measurement": "native_probabilities",
+            "operation_id": "2f0c1d91-b5c3-4c89-bc6e-57a23bc7b988",
+            "evidence_kind": "native_probabilities",
+            "duration_seconds": 13.370392329000005,
+            "full_development": false
+          },
+          "error": {},
+          "evidence_available": true,
+          "evidence_sha256": "647190f8edb6cfb0ad6eeea03040ad249a0a483752aca9c8bca583f8110c72bc",
+          "collections": [
+            {
+              "field": "/checks/b236e8e4-c49c-486c-bbce-f2d59e291473/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "8460a32fed8015f8557269474677e6292d708b459050c87262878049a8ee94d7"
+            },
+            {
+              "field": "/checks/b236e8e4-c49c-486c-bbce-f2d59e291473/facts/assessment/comparisons",
+              "count": 1,
+              "type": "array",
+              "sha256": "120646886203a0b5ba6744e3f88c7164e3dc558cde6fdd89062d7724a9d451a2"
+            },
+            {
+              "field": "/checks/b236e8e4-c49c-486c-bbce-f2d59e291473/facts/assessment/findings",
+              "count": 2,
+              "type": "array",
+              "sha256": "3221784c2aff71b8690ea8787b27260bb146365057ca57db4d5baf0e47dca9b2"
+            }
+          ]
+        },
+        {
+          "id": "f46b430c-6006-45a7-8c6c-d15dcdcf6db2",
+          "key": "1:development:2",
+          "state": "completed",
+          "step": 2,
+          "attempt": 1,
+          "stream": "development",
+          "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+          "sample_fingerprint": "9a0b2c4b998371c255634ab65cf2b80482de2050365dcee0d3597b6122f41efc",
+          "started_at": "2026-10-10T22:09:27.792222Z",
+          "observed_at": "2026-10-10T22:09:29.682709Z",
+          "completed_at": "2026-10-10T22:09:29.682709Z",
+          "metrics": {
+            "brier": 0.42611445093731015,
+            "decisions": 32,
+            "eval_loss": 0.6187306195497513,
+            "eval_runtime": 0.2571519010000003,
+            "cross_entropy": 0.6187306102365255,
+            "mean_decisions": 0,
+            "development_gap": -0.06615404784679413,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.78125,
+            "hard_label_decisions": 32,
+            "distribution_decisions": 32,
+            "argmax_target_agreement": 0.78125,
+            "training_reference_loss": 0.6848846673965454
+          },
+          "coverage": {
+            "scored": 32,
+            "expected": 32
+          },
+          "facts": {
+            "delivery": {
+              "finished_at": "2026-10-10T22:10:02.735281+00:00",
+              "first_result_at": "2026-10-10T22:10:02.735281+00:00"
+            },
+            "findings": [],
+            "gap_basis": "fixed samples; evaluation mode; typed probability loss",
+            "assessment": {
+              "state": "measured",
+              "source": "recorded_native_categorical_metrics",
+              "assessed_at": "2026-10-10T22:10:02.729856+00:00",
+              "limitations": [
+                "Same scored development subset within each declared categorical question and option set",
+                "Soft distributions and mean targets do not establish categorical correctness",
+                "No inferred cause, automatic training action or final-benchmark conclusion"
+              ],
+              "rule_version": 2,
+              "source_observed_at": "2026-10-10T22:09:29.682709+00:00",
+              "source_receipt_fingerprint": "2ce4ba2f808758dfc9f2f65f392e536822788a3548d796585dc6ab27dc39f191"
+            },
+            "measurement": "native_probabilities",
+            "operation_id": "5619d270-48d9-4cd7-ad51-ae8de9a2d157",
+            "evidence_kind": "native_probabilities",
+            "duration_seconds": 1.8904887619999968,
+            "full_development": false,
+            "checkpoint_identity": "a89b141e38ab1a76ef29b787edf262ad1c7c76c81080db2ef34f585aeed7c4ef"
+          },
+          "error": {},
+          "evidence_available": true,
+          "evidence_sha256": "11ed2d04610c05a57c6f8386dc7f755903dc41a29bf62d3bc755c973bcf9354d",
+          "collections": [
+            {
+              "field": "/checks/f46b430c-6006-45a7-8c6c-d15dcdcf6db2/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "f5027d188c96f960edd9a0cb0623dbd4b38ad9c94d994cba5aabe90c788f71fb"
+            },
+            {
+              "field": "/checks/f46b430c-6006-45a7-8c6c-d15dcdcf6db2/facts/assessment/comparisons",
+              "count": 1,
+              "type": "array",
+              "sha256": "a2867554c25779b3519e8f5224986401784d8f889f659d86d4c5bcbc7f8ea831"
+            },
+            {
+              "field": "/checks/f46b430c-6006-45a7-8c6c-d15dcdcf6db2/facts/assessment/findings",
+              "count": 1,
+              "type": "array",
+              "sha256": "e0ea132921f78ffdd38a30af7dc620732b78aebcbcbc61004a38d862cc0e7bbb"
+            }
+          ]
+        },
+        {
+          "id": "42a33e70-e973-44cd-8ac6-8bccaeb17623",
+          "key": "1:development:4",
+          "state": "completed",
+          "step": 4,
+          "attempt": 1,
+          "stream": "development",
+          "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+          "sample_fingerprint": "9a0b2c4b998371c255634ab65cf2b80482de2050365dcee0d3597b6122f41efc",
+          "started_at": "2026-10-10T22:09:33.421007Z",
+          "observed_at": "2026-10-10T22:09:35.317545Z",
+          "completed_at": "2026-10-10T22:09:35.317545Z",
+          "metrics": {
+            "brier": 0.4757959976000169,
+            "decisions": 32,
+            "eval_loss": 0.6689272820949554,
+            "eval_runtime": 0.31354421900000773,
+            "cross_entropy": 0.6689272820949554,
+            "mean_decisions": 0,
+            "development_gap": -0.01923617720603943,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.78125,
+            "hard_label_decisions": 32,
+            "distribution_decisions": 32,
+            "argmax_target_agreement": 0.78125,
+            "training_reference_loss": 0.6881634593009949
+          },
+          "coverage": {
+            "scored": 32,
+            "expected": 32
+          },
+          "facts": {
+            "delivery": {
+              "finished_at": "2026-10-10T22:10:02.741958+00:00",
+              "first_result_at": "2026-10-10T22:10:02.741958+00:00"
+            },
+            "findings": [],
+            "gap_basis": "fixed samples; evaluation mode; typed probability loss",
+            "assessment": {
+              "state": "measured",
+              "source": "recorded_native_categorical_metrics",
+              "assessed_at": "2026-10-10T22:10:02.738250+00:00",
+              "limitations": [
+                "Same scored development subset within each declared categorical question and option set",
+                "Soft distributions and mean targets do not establish categorical correctness",
+                "No inferred cause, automatic training action or final-benchmark conclusion"
+              ],
+              "rule_version": 2,
+              "source_observed_at": "2026-10-10T22:09:35.317545+00:00",
+              "source_receipt_fingerprint": "5d5b3fc6ed19f0c8eb4b14bc6429d5e80ae8b10920afa75b22a9851cbd3f53fb"
+            },
+            "measurement": "native_probabilities",
+            "operation_id": "9c914376-6a61-4b17-99ea-ffa263a7786a",
+            "evidence_kind": "native_probabilities",
+            "duration_seconds": 1.8965392580000042,
+            "full_development": false,
+            "checkpoint_identity": "bb009f1afc969fb2185bdc01332acf3e3883689d3365098d8f8facea302cb822"
+          },
+          "error": {},
+          "evidence_available": true,
+          "evidence_sha256": "67043bef6d3a8c493dc2043ae7d4fc9bf499c2d12b03dc937549ed63f7023afa",
+          "collections": [
+            {
+              "field": "/checks/42a33e70-e973-44cd-8ac6-8bccaeb17623/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "f5027d188c96f960edd9a0cb0623dbd4b38ad9c94d994cba5aabe90c788f71fb"
+            },
+            {
+              "field": "/checks/42a33e70-e973-44cd-8ac6-8bccaeb17623/facts/assessment/comparisons",
+              "count": 1,
+              "type": "array",
+              "sha256": "a2867554c25779b3519e8f5224986401784d8f889f659d86d4c5bcbc7f8ea831"
+            },
+            {
+              "field": "/checks/42a33e70-e973-44cd-8ac6-8bccaeb17623/facts/assessment/findings",
+              "count": 1,
+              "type": "array",
+              "sha256": "5da89ab58b166db05d539e79ee82ec44d306f4dd313a97c542b7a619c13dc7dd"
+            }
+          ]
+        },
+        {
+          "id": "fbc70054-b658-4737-a7f7-bf82577a9355",
+          "key": "1:final_development:4",
+          "state": "completed",
+          "step": 4,
+          "attempt": 1,
+          "stream": "final_development",
+          "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+          "sample_fingerprint": "22b35aea535c9139da8fb1907dc06dfdbc59253178db9cf421622ac9ee9cc597",
+          "started_at": "2026-10-10T22:09:35.341659Z",
+          "observed_at": "2026-10-10T22:09:40.181008Z",
+          "completed_at": "2026-10-10T22:09:40.181008Z",
+          "metrics": {
+            "brier": 0.4913921272055852,
+            "decisions": 89,
+            "eval_loss": 0.6845338217328104,
+            "eval_runtime": 4.816644013000001,
+            "cross_entropy": 0.6845338270905312,
+            "mean_decisions": 0,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.6067415730337079,
+            "hard_label_decisions": 89,
+            "distribution_decisions": 89,
+            "argmax_target_agreement": 0.6067415730337079
+          },
+          "coverage": {
+            "scored": 89,
+            "expected": 89
+          },
+          "facts": {
+            "delivery": {
+              "finished_at": "2026-10-10T22:10:02.746753+00:00",
+              "first_result_at": "2026-10-10T22:10:02.746753+00:00"
+            },
+            "findings": [],
+            "assessment": {
+              "state": "measured",
+              "source": "recorded_native_categorical_metrics",
+              "assessed_at": "2026-10-10T22:10:02.743904+00:00",
+              "limitations": [
+                "Same scored development subset within each declared categorical question and option set",
+                "Soft distributions and mean targets do not establish categorical correctness",
+                "No inferred cause, automatic training action or final-benchmark conclusion"
+              ],
+              "rule_version": 2,
+              "source_observed_at": "2026-10-10T22:09:40.181008+00:00",
+              "source_receipt_fingerprint": "540d2998ea0613d7b45778a689dfed62d460c3ffe88808587a7b8df7bb2bcc89"
+            },
+            "measurement": "native_probabilities",
+            "operation_id": "f7fc0d01-34a4-40d2-b359-677f361a1b77",
+            "evidence_kind": "native_probabilities",
+            "duration_seconds": 4.839369052999999,
+            "full_development": true
+          },
+          "error": {},
+          "evidence_available": true,
+          "evidence_sha256": "b50b5c1d55e45877c480886f8f96c1262d58a0ff26d90d7a83a44c699392b60e",
+          "collections": [
+            {
+              "field": "/checks/fbc70054-b658-4737-a7f7-bf82577a9355/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "7ba537c26c04304b06fc68595079252df070e717539b385c7d5bff8ee2b159d8"
+            },
+            {
+              "field": "/checks/fbc70054-b658-4737-a7f7-bf82577a9355/facts/assessment/comparisons",
+              "count": 1,
+              "type": "array",
+              "sha256": "608d7640c93025a613674e18be2e7ace186d03c8a7eeccfec0fb87d1bf89e3e0"
+            },
+            {
+              "field": "/checks/fbc70054-b658-4737-a7f7-bf82577a9355/facts/assessment/findings",
+              "count": 1,
+              "type": "array",
+              "sha256": "aad4f563fac592ea9d22bcd814dde1bb9be859a1028fcbd458e53b21c5c60dc9"
+            }
+          ]
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "3682a896-3401-4703-b225-3d3664535852",
+          "key": "1:2",
+          "attempt": 1,
+          "step": 2,
+          "state": "available",
+          "identity": "a89b141e38ab1a76ef29b787edf262ad1c7c76c81080db2ef34f585aeed7c4ef",
+          "manifest": {
+            "path": "checkpoints/2",
+            "native_artifact_identity": "4e7e12272e1120501dbc940bbcf40add6f69a09ed4f02351a4fe42b08a5cea00"
+          },
+          "verification": {
+            "scope": "retained inference artifact; optimizer recovery is a separate latest-state artifact",
+            "method": "native_probability_replay",
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "reload_verified": true,
+            "resume_supported": false,
+            "max_absolute_error": 0,
+            "attention_implementation": "sdpa"
+          },
+          "metrics": {
+            "brier": 0.42611445093731015,
+            "decisions": 32,
+            "eval_loss": 0.6187306195497513,
+            "eval_runtime": 0.2571519010000003,
+            "cross_entropy": 0.6187306102365255,
+            "mean_decisions": 0,
+            "development_gap": -0.06615404784679413,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.78125,
+            "hard_label_decisions": 32,
+            "distribution_decisions": 32,
+            "argmax_target_agreement": 0.78125,
+            "training_reference_loss": 0.6848846673965454
+          },
+          "selected": false,
+          "collections": [
+            {
+              "field": "/checkpoints/3682a896-3401-4703-b225-3d3664535852/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "f5027d188c96f960edd9a0cb0623dbd4b38ad9c94d994cba5aabe90c788f71fb"
+            }
+          ]
+        },
+        {
+          "id": "bfe2b0af-e3c3-4c3d-a7dd-d2b493a76f7e",
+          "key": "1:4",
+          "attempt": 1,
+          "step": 4,
+          "state": "available",
+          "identity": "bb009f1afc969fb2185bdc01332acf3e3883689d3365098d8f8facea302cb822",
+          "manifest": {
+            "path": "checkpoints/4",
+            "native_artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd"
+          },
+          "verification": {
+            "scope": "retained inference artifact; optimizer recovery is a separate latest-state artifact",
+            "method": "native_probability_replay",
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "reload_verified": true,
+            "resume_supported": false,
+            "max_absolute_error": 0,
+            "attention_implementation": "sdpa"
+          },
+          "metrics": {
+            "brier": 0.4757959976000169,
+            "decisions": 32,
+            "eval_loss": 0.6689272820949554,
+            "eval_runtime": 0.31354421900000773,
+            "cross_entropy": 0.6689272820949554,
+            "mean_decisions": 0,
+            "development_gap": -0.01923617720603943,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.78125,
+            "hard_label_decisions": 32,
+            "distribution_decisions": 32,
+            "argmax_target_agreement": 0.78125,
+            "training_reference_loss": 0.6881634593009949
+          },
+          "selected": true,
+          "collections": [
+            {
+              "field": "/checkpoints/bfe2b0af-e3c3-4c3d-a7dd-d2b493a76f7e/metrics/categorical_families",
+              "count": 1,
+              "type": "object",
+              "sha256": "f5027d188c96f960edd9a0cb0623dbd4b38ad9c94d994cba5aabe90c788f71fb"
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Development checks inform progress, not final generalisation.",
+        "No monitoring records does not establish that a model is improving."
+      ]
+    },
+    "resource": {
+      "uri": "overmind://finetunes/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Training run",
+      "mimeType": "application/json"
+    }
+  },
+  "operation": {
+    "summary": "succeeded: succeeded.",
+    "operation": {
+      "id": "3b55806c-1f9a-457e-8ef0-c51bfaca636b",
+      "kind": "finetune_job",
+      "reference": "76f061a9-4214-43c8-b620-401923382b17",
+      "attempt": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+      "unit": "steps",
+      "facts": {
+        "run_id": null,
+        "attempt": 1,
+        "provider": "modal",
+        "files_total": null,
+        "measurement": null,
+        "files_completed": null,
+        "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+        "telemetry_available": true
+      },
+      "stage": "succeeded",
+      "total": 4,
+      "status": "succeeded",
+      "completed": 4,
+      "event_count": 8,
+      "last_observed_at": "2026-10-10T22:10:38.955702+00:00",
+      "last_heartbeat_at": "2026-10-10T22:10:10.616269+00:00",
+      "last_progress_at": "2026-10-10T22:10:38.952192+00:00",
+      "telemetry": "recorded",
+      "provider": {},
+      "events": [
+        {
+          "sequence": 1,
+          "event": "progress",
+          "source_at": "2026-10-10T22:08:24.291634+00:00",
+          "observed_at": "2026-10-10T22:08:24.873894+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": null,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "starting_training_worker",
+          "total": null,
+          "status": "running",
+          "completed": null,
+          "heartbeat_at": null
+        },
+        {
+          "sequence": 2,
+          "event": "progress",
+          "source_at": "2026-10-10T22:08:31.191128+00:00",
+          "observed_at": "2026-10-10T22:08:49.773868+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "initializing_training_runtime",
+          "total": null,
+          "status": "running",
+          "completed": null,
+          "heartbeat_at": "2026-10-10T22:08:41.192456+00:00"
+        },
+        {
+          "sequence": 3,
+          "event": "progress",
+          "source_at": "2026-10-10T22:08:49.077335+00:00",
+          "observed_at": "2026-10-10T22:09:00.606079+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "loading_model",
+          "total": null,
+          "status": "running",
+          "completed": null,
+          "heartbeat_at": "2026-10-10T22:08:53.171811+00:00"
+        },
+        {
+          "sequence": 4,
+          "event": "progress",
+          "source_at": "2026-10-10T22:08:59.541126+00:00",
+          "observed_at": "2026-10-10T22:09:16.700028+00:00",
+          "unit": "decisions",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "validation",
+          "total": 32,
+          "status": "running",
+          "completed": 0,
+          "heartbeat_at": "2026-10-10T22:09:07.567847+00:00"
+        },
+        {
+          "sequence": 5,
+          "event": "progress",
+          "source_at": "2026-10-10T22:09:12.916260+00:00",
+          "observed_at": "2026-10-10T22:09:36.547597+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "training",
+          "total": 4,
+          "status": "running",
+          "completed": 0,
+          "heartbeat_at": "2026-10-10T22:09:26.626588+00:00"
+        },
+        {
+          "sequence": 6,
+          "event": "progress",
+          "source_at": "2026-10-10T22:09:44.904965+00:00",
+          "observed_at": "2026-10-10T22:10:10.133335+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "initializing_training_runtime",
+          "total": null,
+          "status": "running",
+          "completed": null,
+          "heartbeat_at": "2026-10-10T22:09:55.849693+00:00"
+        },
+        {
+          "sequence": 7,
+          "event": "progress",
+          "source_at": "2026-10-10T22:10:10.616269+00:00",
+          "observed_at": "2026-10-10T22:10:35.670749+00:00",
+          "unit": "decisions",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "checkpoint_reload",
+          "total": 32,
+          "status": "running",
+          "completed": 32,
+          "heartbeat_at": "2026-10-10T22:10:10.616269+00:00"
+        },
+        {
+          "sequence": 8,
+          "event": "progress",
+          "source_at": "2026-10-10T22:10:38.952192+00:00",
+          "observed_at": "2026-10-10T22:10:38.955702+00:00",
+          "unit": "steps",
+          "facts": {
+            "run_id": null,
+            "attempt": 1,
+            "provider": "modal",
+            "files_total": null,
+            "measurement": null,
+            "files_completed": null,
+            "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+            "telemetry_available": true
+          },
+          "stage": "succeeded",
+          "total": 4,
+          "status": "succeeded",
+          "completed": 4,
+          "heartbeat_at": "2026-10-10T22:10:10.616269+00:00"
+        }
+      ],
+      "page": {
+        "has_more": false,
+        "next_cursor": 8,
+        "through_sequence": 8
+      }
+    },
+    "resource": {
+      "uri": "overmind://operations/3b55806c-1f9a-457e-8ef0-c51bfaca636b?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Operational timeline",
+      "mimeType": "application/json"
+    }
+  }
+}

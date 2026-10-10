@@ -6,6 +6,8 @@ from pathlib import Path
 
 import requests
 
+from modal_shared.training_monitoring import fingerprint
+
 PROJECT = "1e3f3e92-b50d-4590-85ed-97921d132d3c"
 JOBS = [
     "b6500866-ed71-4a16-b0ce-20bdc4b4b77f",
@@ -17,6 +19,9 @@ JOBS = [
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--job", action="append", default=[])
+    parser.add_argument(
+        "--output", type=Path, default=Path("tests/evidence/unsloth-decision-surface-parity.json")
+    )
     args = parser.parse_args()
     config = (
         Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
@@ -75,14 +80,43 @@ def main():
             if check["state"] != "completed":
                 continue
             other = indexed[check["id"]]
+            for collection in check.get("collections", []):
+                items, offset = [], 0
+                while offset is not None:
+                    params = {"field": collection["field"], "limit": 100, "offset": offset}
+                    page = rpc(
+                        "tools/call",
+                        {
+                            "name": "inspect_training_progress",
+                            "arguments": {"project_id": PROJECT, "job": job, **params},
+                        },
+                    )
+                    assert not page.get("isError"), page
+                    detail = page["structuredContent"]["progress"]
+                    assert detail == get(f"/api/finetuning-jobs/{job}/monitoring-evidence/", params)
+                    assert detail["sha256"] == collection["sha256"]
+                    items.extend(detail["items"])
+                    offset = detail["next_offset"]
+                assert len(items) == collection["count"]
+                value = (
+                    {item["key"]: item["value"] for item in items}
+                    if collection["type"] == "object"
+                    else items
+                )
+                assert fingerprint(value) == collection["sha256"]
+                *parents, leaf = collection["field"].split("/")[3:]
+                target = check
+                for parent in parents:
+                    target = target.setdefault(parent, {})
+                target[leaf] = value
             for key in ("metrics", "coverage", "facts", "evidence_sha256", "sample_fingerprint"):
                 assert check[key] == other[key], (job, check["id"], key)
             compared.append(check["id"])
         assert compared
-        args = {"project_id": PROJECT, "job": job, "check": compared[0], "limit": 2}
-        examples = rpc("tools/call", {"name": "inspect_training_progress", "arguments": args})[
-            "structuredContent"
-        ]["progress"]
+        evidence_args = {"project_id": PROJECT, "job": job, "check": compared[0], "limit": 2}
+        examples = rpc(
+            "tools/call", {"name": "inspect_training_progress", "arguments": evidence_args}
+        )["structuredContent"]["progress"]
         rest_examples = get(
             f"/api/finetuning-jobs/{job}/monitoring-evidence/", {"check": compared[0], "limit": 2}
         )
@@ -101,9 +135,7 @@ def main():
                 "status": "passed",
             }
         )
-    Path("tests/evidence/unsloth-decision-surface-parity.json").write_text(
-        json.dumps(receipts, indent=2) + "\n"
-    )
+    args.output.write_text(json.dumps(receipts, indent=2) + "\n")
     print(json.dumps(receipts))
 
 

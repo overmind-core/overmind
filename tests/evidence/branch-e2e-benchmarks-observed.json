@@ -1,0 +1,125 @@
+[
+  {
+    "benchmark": "banking77",
+    "experiment": "1fc1b469-d34a-4c40-8133-7e430a854737",
+    "evaluation": "8baf98f1-6109-4bb5-a03a-792e0e69215c",
+    "status": "passed",
+    "archived_report_sha256": "55d42d59db765c59aaf91cff64b112b9ecd749225434fa9db8f14e8721efaf07",
+    "live_report_sha256": "55d42d59db765c59aaf91cff64b112b9ecd749225434fa9db8f14e8721efaf07",
+    "report_bytes": 251839,
+    "participants": {
+      "qwen3-base": {
+        "name": "Qwen3 0.6B base",
+        "scored": 3080,
+        "coverage": 1.0,
+        "accuracy": 0.12272727272727273
+      },
+      "candidate-0": {
+        "name": "Qwen3 0.6B trained",
+        "scored": 3080,
+        "coverage": 1.0,
+        "accuracy": 0.9266233766233766
+      },
+      "qwen35-base": {
+        "name": "Qwen3.5 0.8B base",
+        "scored": 3080,
+        "coverage": 1.0,
+        "accuracy": 0.08831168831168831
+      },
+      "candidate-1": {
+        "name": "Qwen3.5 0.8B trained",
+        "scored": 3080,
+        "coverage": 1.0,
+        "accuracy": 0.9357142857142857
+      },
+      "jev": {
+        "name": "Jev 1.13",
+        "scored": 3080,
+        "coverage": 1.0,
+        "accuracy": 0.8029220779220779
+      }
+    }
+  },
+  {
+    "benchmark": "sst5",
+    "experiment": "a800f0c7-94b9-4f06-a005-4e191241d8c2",
+    "evaluation": "1b99db8b-222f-4fff-b45f-1f0748f43b38",
+    "status": "passed",
+    "archived_report_sha256": "a52d22b3e4cd509c314ac43e5b94bd290ae452955fee93c693d16de89dcacf07",
+    "live_report_sha256": "a52d22b3e4cd509c314ac43e5b94bd290ae452955fee93c693d16de89dcacf07",
+    "report_bytes": 233544,
+    "participants": {
+      "qwen3-base": {
+        "name": "Qwen3 0.6B base",
+        "scored": 2210,
+        "coverage": 1.0,
+        "accuracy": 0.20180995475113123
+      },
+      "candidate-0": {
+        "name": "Qwen3 0.6B trained",
+        "scored": 2210,
+        "coverage": 1.0,
+        "accuracy": 0.5574660633484163
+      },
+      "qwen35-base": {
+        "name": "Qwen3.5 0.8B base",
+        "scored": 2210,
+        "coverage": 1.0,
+        "accuracy": 0.29411764705882354
+      },
+      "candidate-1": {
+        "name": "Qwen3.5 0.8B trained",
+        "scored": 2210,
+        "coverage": 1.0,
+        "accuracy": 0.5429864253393665
+      },
+      "jev": {
+        "name": "Jev 1.13",
+        "scored": 2210,
+        "coverage": 1.0,
+        "accuracy": 0.5864253393665159
+      }
+    }
+  },
+  {
+    "benchmark": "boolq",
+    "experiment": "66fe5fe2-c40d-4c27-bfb8-d62406edb8f1",
+    "evaluation": "58a99159-2626-4af8-a960-457c09112b8e",
+    "status": "passed",
+    "archived_report_sha256": "70dc44b6920a7219c0dcacd775ee96e16e7d1571d352dfde9f87186997b318a0",
+    "live_report_sha256": "70dc44b6920a7219c0dcacd775ee96e16e7d1571d352dfde9f87186997b318a0",
+    "report_bytes": 70860363,
+    "participants": {
+      "qwen3-base": {
+        "name": "Qwen3 0.6B base",
+        "scored": 3270,
+        "coverage": 1.0,
+        "accuracy": 0.6217125382262997
+      },
+      "candidate-0": {
+        "name": "Qwen3 0.6B trained",
+        "scored": 3270,
+        "coverage": 1.0,
+        "accuracy": 0.8275229357798165
+      },
+      "qwen35-base": {
+        "name": "Qwen3.5 0.8B base",
+        "scored": 3270,
+        "coverage": 1.0,
+        "accuracy": 0.6085626911314985
+      },
+      "candidate-1": {
+        "name": "Qwen3.5 0.8B trained",
+        "scored": 3270,
+        "coverage": 1.0,
+        "accuracy": 0.8415902140672783
+      },
+      "jev": {
+        "name": "Jev 1.13",
+        "scored": 3270,
+        "coverage": 1.0,
+        "accuracy": 0.9152905198776758
+      }
+    }
+  }
+]

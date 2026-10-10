@@ -1,0 +1,1700 @@
+{
+  "arguments": {
+    "calibration_cell": "ccd52e73-f98d-4ac9-b925-8783d70b346e",
+    "final_cell": "a2106963-49ae-4093-a935-06e21167435a",
+    "job": "76f061a9-4214-43c8-b620-401923382b17",
+    "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c"
+  },
+  "endpoint": "http://localhost:8000/api/mcp/",
+  "outcome": {
+    "kind": "native_evaluation",
+    "id": "598e53a5-a271-4aae-a399-49f433326717",
+    "status": "completed",
+    "label": "Branch E2E · Titanic · four-step decision canary",
+    "job_error": null,
+    "created_at": "2026-10-10T22:54:03.253971Z",
+    "updated_at": "2026-10-10T22:57:28.704310Z",
+    "completed_at": null,
+    "progress": {
+      "id": "598e53a5-a271-4aae-a399-49f433326717",
+      "job": "76f061a9-4214-43c8-b620-401923382b17",
+      "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "name": "Branch E2E · Titanic · four-step decision canary",
+      "state": "completed",
+      "config": {
+        "seed": 73491,
+        "suites": {
+          "final": {
+            "cell": "a2106963-49ae-4093-a935-06e21167435a",
+            "rows": 89,
+            "dataset": "3ac9db2d-6be9-5af7-9539-61875ba9b5ee",
+            "fingerprint": "c507859d7a3a5899f0f953d0666d240d0fbf0f92417646065769bc2a21463849"
+          },
+          "calibration": {
+            "cell": "ccd52e73-f98d-4ac9-b925-8783d70b346e",
+            "rows": 89,
+            "dataset": "10b056a8-201e-5991-a5fb-cc0f811e6a71",
+            "fingerprint": "3fec27e45982c6ead74a57244d67346572821dbeb035ff552b1cc5c94ef49bbf"
+          }
+        },
+        "runtime": {
+          "app": "overmind-decision-eval-ba6230f3b2b98765ed6d1052",
+          "release": "ba6230f3b2b98765ed6d1052b13c769e9b624ac963852a4e5f2e112a135ee850",
+          "training": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b",
+          "environment": "overmind-dev"
+        },
+        "baseline": "base",
+        "inference": {
+          "batch_size": 64,
+          "concurrency": 8,
+          "padded_tokens": 32768,
+          "context_length": 8192
+        },
+        "boundaries": {
+          "base": {
+            "final": {
+              "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+              "examples": [],
+              "train_total": 624,
+              "overlap_count": 0,
+              "near_duplicate_check": "not_checked"
+            },
+            "calibration": {
+              "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+              "examples": [],
+              "train_total": 624,
+              "overlap_count": 0,
+              "near_duplicate_check": "not_checked"
+            }
+          },
+          "candidate": {
+            "final": {
+              "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+              "examples": [],
+              "train_total": 624,
+              "overlap_count": 0,
+              "near_duplicate_check": "not_checked"
+            },
+            "calibration": {
+              "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+              "examples": [],
+              "train_total": 624,
+              "overlap_count": 0,
+              "near_duplicate_check": "not_checked"
+            }
+          }
+        },
+        "participants": [
+          {
+            "job": "76f061a9-4214-43c8-b620-401923382b17",
+            "key": "base",
+            "kind": "foundation",
+            "name": "Unchanged base",
+            "model": "Qwen/Qwen3-0.6B"
+          },
+          {
+            "job": "76f061a9-4214-43c8-b620-401923382b17",
+            "key": "candidate",
+            "kind": "trained",
+            "name": "Trained model",
+            "model": "Qwen/Qwen3-0.6B"
+          }
+        ],
+        "temperatures": [],
+        "suite_overlap": {
+          "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+          "examples": [],
+          "train_total": 89,
+          "overlap_count": 0,
+          "near_duplicate_check": "not_checked"
+        },
+        "logarithm_floor": 1e-12,
+        "bootstrap_samples": 1000,
+        "calibration_method": "clef_temperature_cross_entropy",
+        "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels."
+      },
+      "calls": {
+        "score": {
+          "state": "completed",
+          "observed_at": "2026-10-10T22:57:28.704253+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 0.033059,
+          "observation_active_seconds": 0.9018856259972381
+        },
+        "final_base": {
+          "id": "fc-01M4M0GA9C0PPN9Z5PP0594HQ3",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:57:13.129956+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 7.290177,
+          "observation_active_seconds": 3.781601916991349,
+          "receipt": {
+            "base_only": true,
+            "decisions": 89,
+            "input_sha256": "1a6cb87f19c7b1d3cd5116abe0f6e3bbf8d593b0f63f675958ddfd325b9471c1",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": "H100",
+              "usage_id": "b67e731eb4704c7ca1a67f2625b485db",
+              "gpu_count": 1,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 37.773401147,
+              "cpu_core_seconds": 17.035000000000004,
+              "memory_gib_seconds": 254.19811341948116
+            },
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "predictions_sha256": "6e58b54879cb620937ed245db0ba63efd94c433de78c2b95e0a14201c3d0b4e1",
+            "runtime_fingerprint": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b"
+          }
+        },
+        "final_prepare": {
+          "id": "fc-01M4M0FDMXYV2BF1HCD91PCDAQ",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:56:25.422388+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 12.246288,
+          "observation_active_seconds": 3.5998334610012535,
+          "receipt": {
+            "renderer": "unsloth_clef",
+            "objective": "decision_cross_entropy",
+            "max_tokens": 189,
+            "input_sha256": "1a6cb87f19c7b1d3cd5116abe0f6e3bbf8d593b0f63f675958ddfd325b9471c1",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": null,
+              "usage_id": "cf48e72cd2584b4a80ae2ce0406abaae",
+              "gpu_count": 0,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 13.899705002999994,
+              "cpu_core_seconds": 111.19764002399995,
+              "memory_gib_seconds": 111.19764002399995
+            },
+            "context_length": 4096,
+            "failures_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ready_decisions": 89,
+            "failed_decisions": 0,
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+            "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4"
+          }
+        },
+        "verify_inputs": {
+          "state": "completed",
+          "observed_at": "2026-10-10T22:54:03.505697+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": null,
+          "observation_active_seconds": 0.13888754199797404,
+          "receipt": {
+            "boundaries": {
+              "base": {
+                "final": {
+                  "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+                  "examples": [],
+                  "train_total": 624,
+                  "overlap_count": 0,
+                  "near_duplicate_check": "not_checked"
+                },
+                "calibration": {
+                  "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+                  "examples": [],
+                  "train_total": 624,
+                  "overlap_count": 0,
+                  "near_duplicate_check": "not_checked"
+                }
+              },
+              "candidate": {
+                "final": {
+                  "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+                  "examples": [],
+                  "train_total": 624,
+                  "overlap_count": 0,
+                  "near_duplicate_check": "not_checked"
+                },
+                "calibration": {
+                  "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+                  "examples": [],
+                  "train_total": 624,
+                  "overlap_count": 0,
+                  "near_duplicate_check": "not_checked"
+                }
+              }
+            },
+            "suite_overlap": {
+              "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+              "examples": [],
+              "train_total": 89,
+              "overlap_count": 0,
+              "near_duplicate_check": "not_checked"
+            }
+          }
+        },
+        "final_candidate": {
+          "id": "fc-01M4M0GA9B3GG621QZ6VJADX32",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:57:27.756810+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 15.034133,
+          "observation_active_seconds": 2.1532568350012298,
+          "receipt": {
+            "base_only": false,
+            "decisions": 89,
+            "input_sha256": "1a6cb87f19c7b1d3cd5116abe0f6e3bbf8d593b0f63f675958ddfd325b9471c1",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": "H100",
+              "usage_id": "41c7b69f12c141c7ada42fccab0958d9",
+              "gpu_count": 1,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 49.53689967700001,
+              "cpu_core_seconds": 21.420000000000005,
+              "memory_gib_seconds": 333.46815890582667
+            },
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "predictions_sha256": "339985d01b970c675e47c084ed4e9d4a7a46756411dcda355672cc477cda98ef",
+            "runtime_fingerprint": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b"
+          }
+        },
+        "fit_calibration": {
+          "state": "completed",
+          "observed_at": "2026-10-10T22:55:54.704464+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 0.02304,
+          "observation_active_seconds": 0.15921016599895665,
+          "receipt": {
+            "arms": {
+              "base": {
+                "scope": "calibration_in_sample",
+                "fitted": true,
+                "decisions": 89,
+                "optimizer": "scipy_l_bfgs_b",
+                "temperature": 19.999999999999996,
+                "target_basis": "one_hot_references",
+                "cross_entropy": 0.6931587302134933,
+                "prediction_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+                "temperature_by_kind": {
+                  "noul": 99.99999999999997
+                }
+              },
+              "candidate": {
+                "scope": "calibration_in_sample",
+                "fitted": true,
+                "decisions": 89,
+                "optimizer": "scipy_l_bfgs_b",
+                "temperature": 0.20184413890996714,
+                "target_basis": "one_hot_references",
+                "cross_entropy": 0.669289517341027,
+                "prediction_sha256": "f5ef986dbe7eff0721fe29b526885a8503390e8a5da18d47c7a4abb0fb5c303c",
+                "temperature_by_kind": {
+                  "noul": 0.20184413890996714
+                }
+              }
+            },
+            "grid": [],
+            "method": "clef_temperature_cross_entropy",
+            "decisions": 89,
+            "fitted_on": "calibration",
+            "frozen_at": "2026-10-10T22:55:54.581869+00:00",
+            "source_manifest": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6"
+          }
+        },
+        "calibration_base": {
+          "id": "fc-01M4M0CY2B6PQ70C8HENT33MCS",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:55:34.760025+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 10.650385,
+          "observation_active_seconds": 3.08550916799868,
+          "receipt": {
+            "base_only": true,
+            "decisions": 89,
+            "input_sha256": "b6550544835a70f840a9744e1ee381c518891b9e979fcedddd5de4b17821d56a",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": "H100",
+              "usage_id": "7483ca7c114647168ac53058be338c0f",
+              "gpu_count": 1,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 44.281059619,
+              "cpu_core_seconds": 18.805,
+              "memory_gib_seconds": 297.99174746167495
+            },
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "predictions_sha256": "b19f7ab9744898907a604db7404ae479b9c3990e86fdf9a97ccce724c856b2ad",
+            "runtime_fingerprint": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b"
+          }
+        },
+        "calibration_prepare": {
+          "id": "fc-01M4M0C1NE6B8XEZJGGS4EWHJC",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:54:34.618277+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 11.827536,
+          "observation_active_seconds": 4.2025265020020015,
+          "receipt": {
+            "renderer": "unsloth_clef",
+            "objective": "decision_cross_entropy",
+            "max_tokens": 189,
+            "input_sha256": "b6550544835a70f840a9744e1ee381c518891b9e979fcedddd5de4b17821d56a",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": null,
+              "usage_id": "c97ac0878135406da86bd43d5c504274",
+              "gpu_count": 0,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 21.560810366,
+              "cpu_core_seconds": 172.486482928,
+              "memory_gib_seconds": 172.486482928
+            },
+            "context_length": 4096,
+            "failures_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ready_decisions": 89,
+            "failed_decisions": 0,
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+            "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4"
+          }
+        },
+        "calibration_candidate": {
+          "id": "fc-01M4M0CY29TPP1RNWT73909DS0",
+          "state": "completed",
+          "observed_at": "2026-10-10T22:55:54.506838+00:00",
+          "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+          "last_queue_wait_seconds": 15.037295,
+          "observation_active_seconds": 3.3803057949990034,
+          "receipt": {
+            "base_only": false,
+            "decisions": 89,
+            "input_sha256": "b6550544835a70f840a9744e1ee381c518891b9e979fcedddd5de4b17821d56a",
+            "compute_usage": {
+              "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+              "gpu_type": "H100",
+              "usage_id": "8bf871caeebe48efae5aafc3daeddd2b",
+              "gpu_count": 1,
+              "limitations": [
+                "Running child resources enter the observation when reaped.",
+                "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+                "Unrelated container processes and provider billing adjustments are not measured."
+              ],
+              "elapsed_seconds": 53.494787995,
+              "cpu_core_seconds": 23.34,
+              "memory_gib_seconds": 359.99561481422217
+            },
+            "artifact_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+            "predictions_sha256": "0727bfaaa35568a0640b1fcc307876be888caffdf2a6030141b7cf7243da4d52",
+            "runtime_fingerprint": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b"
+          }
+        }
+      },
+      "calibration": {
+        "arms": {
+          "base": {
+            "scope": "calibration_in_sample",
+            "fitted": true,
+            "decisions": 89,
+            "optimizer": "scipy_l_bfgs_b",
+            "temperature": 19.999999999999996,
+            "target_basis": "one_hot_references",
+            "cross_entropy": 0.6931587302134933,
+            "prediction_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+            "temperature_by_kind": {
+              "noul": 99.99999999999997
+            }
+          },
+          "candidate": {
+            "scope": "calibration_in_sample",
+            "fitted": true,
+            "decisions": 89,
+            "optimizer": "scipy_l_bfgs_b",
+            "temperature": 0.20184413890996714,
+            "target_basis": "one_hot_references",
+            "cross_entropy": 0.669289517341027,
+            "prediction_sha256": "f5ef986dbe7eff0721fe29b526885a8503390e8a5da18d47c7a4abb0fb5c303c",
+            "temperature_by_kind": {
+              "noul": 0.20184413890996714
+            }
+          }
+        },
+        "grid": [],
+        "method": "clef_temperature_cross_entropy",
+        "decisions": 89,
+        "fitted_on": "calibration",
+        "frozen_at": "2026-10-10T22:55:54.581869+00:00",
+        "source_manifest": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6"
+      },
+      "results": {
+        "costs": {
+          "base": {
+            "native_compute": {
+              "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+              "rate_card": {
+                "rates": {
+                  "cpu_hour_cost": 0.0473,
+                  "egress_gib_cost": 0.04,
+                  "gpu_hour_cost_l4": 0.8,
+                  "gpu_hour_cost_t4": 0.59,
+                  "mem_gib_hour_cost": 0.008,
+                  "gpu_hour_cost_a10g": 1.1,
+                  "gpu_hour_cost_b200": 6.25,
+                  "gpu_hour_cost_b300": 7.1,
+                  "gpu_hour_cost_h100": 3.95,
+                  "gpu_hour_cost_h200": 4.54,
+                  "gpu_hour_cost_l40s": 1.95,
+                  "gpu_hour_cost_mi355x": 6.75,
+                  "cpu_hour_cost_sandbox": 0.1419,
+                  "gpu_hour_cost_rtx6000": 3.03,
+                  "gpu_hour_cost_a100_40gb": 2.1,
+                  "gpu_hour_cost_a100_80gb": 2.5,
+                  "mem_gib_hour_cost_sandbox": 0.024,
+                  "volume_storage_gib_month_cost": 0.09,
+                  "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+                  "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+                  "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+                  "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+                  "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+                  "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+                  "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+                  "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+                  "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+                  "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+                  "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+                  "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+                  "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+                  "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+                  "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+                  "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+                  "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+                  "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+                  "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+                  "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27
+                },
+                "source": "modal.Workspace.billing.rates",
+                "status": "current",
+                "fetched_at": "2026-10-10T22:57:28.205059+00:00",
+                "cache_seconds": 300
+              },
+              "exclusions": [
+                "image_boot",
+                "post_measurement_idle",
+                "storage",
+                "network",
+                "local_orchestration",
+                "provider_discounts_or_premiums",
+                "attempts_without_receipts"
+              ],
+              "estimated_usd": 0.09608766747555413,
+              "components_usd": {
+                "cpu": 0.004198191948786,
+                "gpu": 0.09003197778491667,
+                "memory": 0.001857497741851458
+              },
+              "all_in_actual_usd": null,
+              "known_estimate_usd": 0.09608766747555413,
+              "unique_measurements": 4,
+              "gpu_covered_by_ledger": false,
+              "unmeasured_components": []
+            },
+            "training_coverage": "training_gpu",
+            "all_in_invoice_usd": null,
+            "unknown_api_attempts": 0,
+            "recorded_training_usd": 0.1161,
+            "unreported_components": [
+              "storage",
+              "network",
+              "local_orchestration",
+              "provider_billing_adjustments"
+            ],
+            "recorded_evaluation_api_usd": 0
+          },
+          "candidate": {
+            "native_compute": {
+              "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+              "rate_card": {
+                "rates": {
+                  "cpu_hour_cost": 0.0473,
+                  "egress_gib_cost": 0.04,
+                  "gpu_hour_cost_l4": 0.8,
+                  "gpu_hour_cost_t4": 0.59,
+                  "mem_gib_hour_cost": 0.008,
+                  "gpu_hour_cost_a10g": 1.1,
+                  "gpu_hour_cost_b200": 6.25,
+                  "gpu_hour_cost_b300": 7.1,
+                  "gpu_hour_cost_h100": 3.95,
+                  "gpu_hour_cost_h200": 4.54,
+                  "gpu_hour_cost_l40s": 1.95,
+                  "gpu_hour_cost_mi355x": 6.75,
+                  "cpu_hour_cost_sandbox": 0.1419,
+                  "gpu_hour_cost_rtx6000": 3.03,
+                  "gpu_hour_cost_a100_40gb": 2.1,
+                  "gpu_hour_cost_a100_80gb": 2.5,
+                  "mem_gib_hour_cost_sandbox": 0.024,
+                  "volume_storage_gib_month_cost": 0.09,
+                  "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+                  "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+                  "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+                  "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+                  "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+                  "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+                  "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+                  "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+                  "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+                  "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+                  "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+                  "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+                  "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+                  "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+                  "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+                  "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+                  "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+                  "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+                  "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+                  "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+                  "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27
+                },
+                "source": "modal.Workspace.billing.rates",
+                "status": "current",
+                "fetched_at": "2026-10-10T22:57:28.205059+00:00",
+                "cache_seconds": 300
+              },
+              "exclusions": [
+                "image_boot",
+                "post_measurement_idle",
+                "storage",
+                "network",
+                "local_orchestration",
+                "provider_discounts_or_premiums",
+                "attempts_without_receipts"
+              ],
+              "estimated_usd": 0.11517778458171124,
+              "components_usd": {
+                "cpu": 0.0005880966666666667,
+                "gpu": 0.1130486573067778,
+                "memory": 0.0015410306082667751
+              },
+              "all_in_actual_usd": null,
+              "known_estimate_usd": 0.11517778458171124,
+              "unique_measurements": 2,
+              "gpu_covered_by_ledger": false,
+              "unmeasured_components": []
+            },
+            "training_coverage": "training_gpu",
+            "all_in_invoice_usd": null,
+            "unknown_api_attempts": 0,
+            "recorded_training_usd": 0.1161,
+            "unreported_components": [
+              "storage",
+              "network",
+              "local_orchestration",
+              "provider_billing_adjustments"
+            ],
+            "recorded_evaluation_api_usd": 0
+          }
+        },
+        "report": {
+          "bytes": 99907,
+          "format": "json",
+          "sha256": "73ed61e6e4b0afaaa5e06f6cf68e7da571dd5ff787c67f055a7a1075c5b7e946",
+          "contents": "Complete metrics, diagnostic slices, calibration and provider receipts"
+        },
+        "baseline": "base",
+        "limitations": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+        "participants": [
+          {
+            "job": "76f061a9-4214-43c8-b620-401923382b17",
+            "key": "base",
+            "kind": "foundation",
+            "name": "Unchanged base",
+            "model": "Qwen/Qwen3-0.6B"
+          },
+          {
+            "job": "76f061a9-4214-43c8-b620-401923382b17",
+            "key": "candidate",
+            "kind": "trained",
+            "name": "Trained model",
+            "model": "Qwen/Qwen3-0.6B"
+          }
+        ],
+        "logarithm_floor": 1e-12,
+        "detail": "summary; complete benchmark metrics and diagnostics are in report",
+        "comparisons": {
+          "base": {
+            "raw": {
+              "bootstrap": {
+                "seed": 73491,
+                "method": "paired differences; resample shared groups within each benchmark",
+                "samples": 1000
+              },
+              "paired_sha256": "49cfa48023417e78dafc89b7aa8923207b27c46ef42a111163ae47ed07653c2a",
+              "macro_across_benchmarks": {
+                "brier": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "accuracy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "cross_entropy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "mode_agreement": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "top1_reference_mass": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                }
+              },
+              "benchmark_count": 1,
+              "baseline": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "5494f7a02e0307e36abf6de0956e75e675e536e2f04611d08f641024d44ecc05",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5019467239764289,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6950939310695187,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "candidate": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "5494f7a02e0307e36abf6de0956e75e675e536e2f04611d08f641024d44ecc05",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5019467239764289,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6950939310695187,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "paired_coverage": {
+                "expected": 89,
+                "paired_decisions": 89,
+                "baseline_only": 0,
+                "candidate_only": 0
+              }
+            },
+            "calibrated": {
+              "bootstrap": {
+                "seed": 73491,
+                "method": "paired differences; resample shared groups within each benchmark",
+                "samples": 1000
+              },
+              "paired_sha256": "49cfa48023417e78dafc89b7aa8923207b27c46ef42a111163ae47ed07653c2a",
+              "macro_across_benchmarks": {
+                "brier": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "accuracy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "cross_entropy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "mode_agreement": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                },
+                "top1_reference_mass": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0
+                }
+              },
+              "benchmark_count": 1,
+              "baseline": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "8dc114680d8e1dcf868550bc9d015dfd6f090e43c89e11d9b4ce365ae10af67a",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5000192955865747,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6931664761465435,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "candidate": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "8dc114680d8e1dcf868550bc9d015dfd6f090e43c89e11d9b4ce365ae10af67a",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5000192955865747,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6931664761465435,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "paired_coverage": {
+                "expected": 89,
+                "paired_decisions": 89,
+                "baseline_only": 0,
+                "candidate_only": 0
+              }
+            }
+          },
+          "candidate": {
+            "raw": {
+              "bootstrap": {
+                "seed": 73491,
+                "method": "paired differences; resample shared groups within each benchmark",
+                "samples": 1000
+              },
+              "paired_sha256": "b2025da7df33fd9e6949f4229fdb8097317d81988fe444b60386af35c5c4371c",
+              "macro_across_benchmarks": {
+                "brier": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": -0.015512363137298002
+                },
+                "accuracy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                },
+                "cross_entropy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": -0.01552109749950156
+                },
+                "mode_agreement": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                },
+                "top1_reference_mass": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                }
+              },
+              "benchmark_count": 1,
+              "baseline": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "5494f7a02e0307e36abf6de0956e75e675e536e2f04611d08f641024d44ecc05",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5019467239764289,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6950939310695187,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "candidate": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+                "slices_in_report": true,
+                "predictions_sha256": "0df713bf95c3529c14fdb971a32e75f76b7d55a00086faa1f4f27f397fb916d1",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.48643436083913094,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6795728335700171,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "paired_coverage": {
+                "expected": 89,
+                "paired_decisions": 89,
+                "baseline_only": 0,
+                "candidate_only": 0
+              }
+            },
+            "calibrated": {
+              "bootstrap": {
+                "seed": 73491,
+                "method": "paired differences; resample shared groups within each benchmark",
+                "samples": 1000
+              },
+              "paired_sha256": "80f745ad1ac7128b2c47db7859b8f4adda8f0ba29ddb3b0e65d2294d532ae81d",
+              "macro_across_benchmarks": {
+                "brier": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": -0.047477491541130734
+                },
+                "accuracy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                },
+                "cross_entropy": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": -0.04806175629338377
+                },
+                "mode_agreement": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                },
+                "top1_reference_mass": {
+                  "benchmarks": 1,
+                  "candidate_minus_baseline": 0.3258426966292135
+                }
+              },
+              "benchmark_count": 1,
+              "baseline": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                "slices_in_report": true,
+                "predictions_sha256": "8dc114680d8e1dcf868550bc9d015dfd6f090e43c89e11d9b4ce365ae10af67a",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.5000192955865747,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6931664761465435,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.33707865168539325,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "candidate": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "resample groups with replacement within each benchmark",
+                  "samples": 1000
+                },
+                "slice_count": 1,
+                "model_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+                "slices_in_report": true,
+                "predictions_sha256": "b96d43a7f43a1c9e8325a8a09d87499fd9ae6ac002cf58262ba74b6fdbfef7f7",
+                "suite_manifest_sha256": "b69590c355500fe1fd0c953dfb320605ce03832bc6c14484e129eaecc0ea26c6",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "mean": 0.4525418040454439,
+                    "benchmarks": 1
+                  },
+                  "accuracy": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  },
+                  "cross_entropy": {
+                    "mean": 0.6451047198531596,
+                    "benchmarks": 1
+                  },
+                  "mode_agreement": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  },
+                  "top1_reference_mass": {
+                    "mean": 0.6629213483146067,
+                    "benchmarks": 1
+                  }
+                },
+                "coverage": {
+                  "expected": 89,
+                  "scored": 89,
+                  "missing_predictions": 0,
+                  "invalid_predictions": 0,
+                  "incompatible_inputs": 0,
+                  "fraction": 1
+                }
+              },
+              "paired_coverage": {
+                "expected": 89,
+                "paired_decisions": 89,
+                "baseline_only": 0,
+                "candidate_only": 0
+              }
+            }
+          }
+        },
+        "calibration": {
+          "fit": {
+            "arms": {
+              "base": {
+                "scope": "calibration_in_sample",
+                "fitted": true,
+                "decisions": 89,
+                "optimizer": "scipy_l_bfgs_b",
+                "temperature": 19.999999999999996,
+                "target_basis": "one_hot_references",
+                "cross_entropy": 0.6931587302134933,
+                "prediction_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+                "temperature_by_kind": {
+                  "noul": 99.99999999999997
+                }
+              },
+              "candidate": {
+                "scope": "calibration_in_sample",
+                "fitted": true,
+                "decisions": 89,
+                "optimizer": "scipy_l_bfgs_b",
+                "temperature": 0.20184413890996714,
+                "target_basis": "one_hot_references",
+                "cross_entropy": 0.669289517341027,
+                "prediction_sha256": "f5ef986dbe7eff0721fe29b526885a8503390e8a5da18d47c7a4abb0fb5c303c",
+                "temperature_by_kind": {
+                  "noul": 0.20184413890996714
+                }
+              }
+            },
+            "grid": [],
+            "method": "clef_temperature_cross_entropy",
+            "decisions": 89,
+            "fitted_on": "calibration",
+            "frozen_at": "2026-10-10T22:55:54.581869+00:00",
+            "source_manifest": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6"
+          },
+          "in_sample": true,
+          "detail": "summary; complete benchmark metrics and diagnostics are in report",
+          "comparisons": {
+            "base": {
+              "raw": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "paired differences; resample shared groups within each benchmark",
+                  "samples": 1000
+                },
+                "paired_sha256": "fbc87d2a2974eb2f75cfbacf9e5e74be767ea81da31097fd9a4d75c12d3da0a4",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "accuracy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "cross_entropy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "mode_agreement": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "top1_reference_mass": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  }
+                },
+                "benchmark_count": 1,
+                "baseline": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5011719453022416,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6943191368362303,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "candidate": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5011719453022416,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6943191368362303,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "paired_coverage": {
+                  "expected": 89,
+                  "paired_decisions": 89,
+                  "baseline_only": 0,
+                  "candidate_only": 0
+                }
+              },
+              "calibrated": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "paired differences; resample shared groups within each benchmark",
+                  "samples": 1000
+                },
+                "paired_sha256": "fbc87d2a2974eb2f75cfbacf9e5e74be767ea81da31097fd9a4d75c12d3da0a4",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "accuracy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "cross_entropy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "mode_agreement": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  },
+                  "top1_reference_mass": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0
+                  }
+                },
+                "benchmark_count": 1,
+                "baseline": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "db6de4a9f4a85067e000e001fab95d4d67e1ec7826ec726910be5859fe38467f",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5000115496535372,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6931587302134932,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "candidate": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "db6de4a9f4a85067e000e001fab95d4d67e1ec7826ec726910be5859fe38467f",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5000115496535372,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6931587302134932,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "paired_coverage": {
+                  "expected": 89,
+                  "paired_decisions": 89,
+                  "baseline_only": 0,
+                  "candidate_only": 0
+                }
+              }
+            },
+            "candidate": {
+              "raw": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "paired differences; resample shared groups within each benchmark",
+                  "samples": 1000
+                },
+                "paired_sha256": "8047c576b6e9e958f49b5165a8d17a2c19b390b1010f8381342b7e4ffce071eb",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": -0.009880222788256187
+                  },
+                  "accuracy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  },
+                  "cross_entropy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": -0.00988592976214819
+                  },
+                  "mode_agreement": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  },
+                  "top1_reference_mass": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  }
+                },
+                "benchmark_count": 1,
+                "baseline": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "657f2abbf84575bf95f5900bd479462c85a88ef66a34437fbc780c4afd0b5567",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5011719453022416,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6943191368362303,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "candidate": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+                  "slices_in_report": true,
+                  "predictions_sha256": "f5ef986dbe7eff0721fe29b526885a8503390e8a5da18d47c7a4abb0fb5c303c",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.4912917225139854,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6844332070740821,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "paired_coverage": {
+                  "expected": 89,
+                  "paired_decisions": 89,
+                  "baseline_only": 0,
+                  "candidate_only": 0
+                }
+              },
+              "calibrated": {
+                "bootstrap": {
+                  "seed": 73491,
+                  "method": "paired differences; resample shared groups within each benchmark",
+                  "samples": 1000
+                },
+                "paired_sha256": "1f79b15b44215c33cabdeb246c65135661b7e43989c708cb47630b14b861ed5e",
+                "macro_across_benchmarks": {
+                  "brier": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": -0.023650615264875784
+                  },
+                  "accuracy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  },
+                  "cross_entropy": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": -0.02386921287246626
+                  },
+                  "mode_agreement": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  },
+                  "top1_reference_mass": {
+                    "benchmarks": 1,
+                    "candidate_minus_baseline": 0.21348314606741572
+                  }
+                },
+                "benchmark_count": 1,
+                "baseline": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+                  "slices_in_report": true,
+                  "predictions_sha256": "db6de4a9f4a85067e000e001fab95d4d67e1ec7826ec726910be5859fe38467f",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.5000115496535372,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6931587302134932,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.39325842696629215,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "candidate": {
+                  "bootstrap": {
+                    "seed": 73491,
+                    "method": "resample groups with replacement within each benchmark",
+                    "samples": 1000
+                  },
+                  "slice_count": 1,
+                  "model_identity": "e3aa48199ad324ce9ccbfb96465838bd8c3f8d6b90f3854a4e4da7fa23e9bacd",
+                  "slices_in_report": true,
+                  "predictions_sha256": "2fd6cdcb0cd7f979e4fc918f68084bd3a4492a9b9a4fc5bf5c4af96abae416f6",
+                  "suite_manifest_sha256": "1d789a1972e90d9af3388ce8dfb9b7d6f37fa2c86585ac9442c7fd259a6199b6",
+                  "macro_across_benchmarks": {
+                    "brier": {
+                      "mean": 0.47636093438866145,
+                      "benchmarks": 1
+                    },
+                    "accuracy": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    },
+                    "cross_entropy": {
+                      "mean": 0.6692895173410269,
+                      "benchmarks": 1
+                    },
+                    "mode_agreement": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    },
+                    "top1_reference_mass": {
+                      "mean": 0.6067415730337079,
+                      "benchmarks": 1
+                    }
+                  },
+                  "coverage": {
+                    "expected": 89,
+                    "scored": 89,
+                    "missing_predictions": 0,
+                    "invalid_predictions": 0,
+                    "incompatible_inputs": 0,
+                    "fraction": 1
+                  }
+                },
+                "paired_coverage": {
+                  "expected": 89,
+                  "paired_decisions": 89,
+                  "baseline_only": 0,
+                  "candidate_only": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "error": "",
+      "created_at": "2026-10-10 22:54:03.253971+00:00",
+      "updated_at": "2026-10-10 22:57:28.704310+00:00",
+      "report": {
+        "available": true,
+        "json_path": "/api/native-evaluations/598e53a5-a271-4aae-a399-49f433326717/report/?format=json",
+        "markdown_path": "/api/native-evaluations/598e53a5-a271-4aae-a399-49f433326717/report/?format=md",
+        "authentication": "Use the same Overmind API credential on this server.",
+        "contents": "All benchmarks, raw/calibrated metrics, paired intervals, coverage, failures, calibration results and diagnostics."
+      },
+      "next_actions": [
+        "get_job"
+      ],
+      "action_requirements": {
+        "evaluation": "598e53a5-a271-4aae-a399-49f433326717"
+      },
+      "input_required": false,
+      "poll_after_seconds": null
+    },
+    "details": {},
+    "resource": {
+      "uri": "overmind://jobs/native_evaluation/598e53a5-a271-4aae-a399-49f433326717?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Branch E2E · Titanic · four-step decision canary",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/native_evaluation/598e53a5-a271-4aae-a399-49f433326717?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Branch E2E · Titanic · four-step decision canary",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "Branch E2E · Titanic · four-step decision canary: completed."
+  }
+}

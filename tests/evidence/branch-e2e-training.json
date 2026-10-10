@@ -1,0 +1,486 @@
+{
+  "arguments": {
+    "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "dataset": "24835eb2-a78c-5256-83b1-5098893cfb13",
+    "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+    "validation_dataset": "30a2b675-86b8-5186-a10a-0c9d9056dca4",
+    "validation_cell": "9c666875-9c38-4953-95e7-617d33311274",
+    "validation_enabled": true,
+    "eval_model_before": false,
+    "eval_model_after": false,
+    "eval_incumbent_before": false,
+    "eval_incumbent_after": false,
+    "monitoring": {
+      "mode": "steps",
+      "interval_steps": 2,
+      "loss_sample": 32,
+      "train_sample": 16,
+      "initial": true,
+      "final": true,
+      "selection": "last"
+    },
+    "base_model": "Qwen/Qwen3-0.6B",
+    "hyperparameters": {
+      "n_epochs": 1,
+      "max_steps": 4,
+      "batch_size": 8,
+      "context_length": 4096,
+      "learning_rate": 0.0002,
+      "seed": 42,
+      "pre_training_baseline": true,
+      "runtime_limit_seconds": 900,
+      "training_type": {
+        "type": "Lora",
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "lora_dropout": 0
+      }
+    },
+    "name": "Branch E2E · Titanic · four-step decision canary",
+    "request_key": "branch-e2e-20261010-titanic-four-steps"
+  },
+  "readiness": {
+    "monitoring": {
+      "version": 1,
+      "mode": "steps",
+      "initial": true,
+      "final": true,
+      "loss_sample": 32,
+      "train_sample": 16,
+      "seed": 42,
+      "interval_steps": 2,
+      "target_seconds": 300,
+      "overhead_fraction": 0.1,
+      "max_checks": 12,
+      "generation_every": 3,
+      "generation": null,
+      "selection": "last",
+      "early_stopping": null,
+      "failure_policy": "continue"
+    },
+    "selection": {
+      "train_dataset": "24835eb2-a78c-5256-83b1-5098893cfb13",
+      "train_cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+      "train_fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+      "train_rows": 624,
+      "validation_dataset": "30a2b675-86b8-5186-a10a-0c9d9056dca4",
+      "validation_cell": "9c666875-9c38-4953-95e7-617d33311274",
+      "validation_fingerprint": "bc4b36475eb11b745999fd8c4d66b6bd28bade133d4c8700de7945c702e51936",
+      "validation_rows": 89,
+      "eval_dataset": null,
+      "eval_cell": null,
+      "eval_fingerprint": null,
+      "eval_rows": null,
+      "validation_enabled": true,
+      "validation_split_ratio": null,
+      "split_method": null,
+      "eval_set": null,
+      "evaluations": {
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false
+      },
+      "grouping": [
+        "exact_input_content",
+        "declared_case_group",
+        "synthetic_seed"
+      ],
+      "fingerprint": "d4cdbdf043527df1176b176d225e8f2a701ee852f233cc1dabe2a2e2d484ba68"
+    },
+    "training_contract": {
+      "objective": "decision_cross_entropy",
+      "inference_contract": "decision",
+      "target": "declared_decision_supervision",
+      "target_semantics": {
+        "categorical_gold": 624
+      },
+      "losses": {
+        "distribution": "cross_entropy",
+        "ordinal_mean": "squared_error_of_normalized_expectation"
+      },
+      "methods": [
+        "lora"
+      ],
+      "providers": [
+        "modal"
+      ],
+      "metrics": [
+        "cross_entropy",
+        "brier",
+        "hard_label_accuracy",
+        "expected_score_mae",
+        "coverage"
+      ],
+      "evaluation": "native_probabilities",
+      "max_gpus": 1,
+      "pre_training_baseline": true
+    },
+    "summary": "Training format checks passed; task suitability is unmeasured.",
+    "ready": true,
+    "assessment": {
+      "technical": "pass",
+      "task_suitability": "unmeasured",
+      "capability_linked": null,
+      "validation": "separate_dataset"
+    },
+    "missing": [],
+    "warnings": [
+      "training dataset: No current workshop quality review."
+    ],
+    "dataset": {
+      "id": "24835eb2-a78c-5256-83b1-5098893cfb13",
+      "name": "Decision Workshop titanic grouped handoff · train",
+      "intent": "train",
+      "cell": {
+        "id": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 624,
+        "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+        "fits": true,
+        "reason": "",
+        "warnings": [
+          "No current workshop quality review."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "format": "decision",
+        "num_examples": 624,
+        "errors": [],
+        "warnings": [],
+        "stats": {
+          "checkpoint": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+          "total_examples": 624,
+          "train_examples": 624,
+          "val_examples": 89,
+          "validation_mode": "separate",
+          "split_method": "random",
+          "format": "decision"
+        }
+      }
+    },
+    "capability": null,
+    "eval_dataset": null,
+    "eval_set": null,
+    "overlap_count": null,
+    "recommendations": [],
+    "n_candidates": 29,
+    "catalog": {
+      "compact": [
+        "Qwen/Qwen3.5-4B",
+        "Qwen/Qwen3.5-2B",
+        "Qwen/Qwen3.5-0.8B",
+        "Qwen/Qwen3-4B",
+        "Qwen/Qwen3-1.7B",
+        "Qwen/Qwen3-0.6B",
+        "Qwen/Qwen2.5-0.5B-Instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "meta-llama/Llama-3.2-1B-Instruct",
+        "LiquidAI/LFM2.5-1.2B-Instruct",
+        "LiquidAI/LFM2.5-350M",
+        "LiquidAI/LFM2.5-230M",
+        "fdtn-ai/antares-1b",
+        "fdtn-ai/antares-350m"
+      ],
+      "small": [
+        "Qwen/Qwen3.5-9B",
+        "Qwen/Qwen3-8B",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "meta-llama/Llama-3.1-8B-Instruct"
+      ],
+      "mid": [
+        "Qwen/Qwen3.6-27B",
+        "Qwen/Qwen3.5-27B",
+        "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "Qwen/Qwen3-14B",
+        "Qwen/Qwen2.5-14B-Instruct"
+      ],
+      "large": [
+        "Qwen/Qwen3.5-35B-A3B",
+        "Qwen/Qwen3-32B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-32B-Instruct",
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct"
+      ]
+    },
+    "has_tool_calling": false,
+    "task_type": "decision",
+    "task_type_source": "declared_contract",
+    "excluded": [],
+    "recommendation_error": null,
+    "evaluator_readiness": {
+      "ready": false,
+      "eval_set": null,
+      "evaluators": [],
+      "errors": []
+    },
+    "credits": {
+      "required": true,
+      "available": true
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://datasets/24835eb2-a78c-5256-83b1-5098893cfb13?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Decision Workshop titanic grouped handoff · train",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "estimate": {
+    "monitoring": {
+      "policy": {
+        "version": 1,
+        "mode": "steps",
+        "initial": true,
+        "final": true,
+        "loss_sample": 32,
+        "train_sample": 16,
+        "seed": 42,
+        "interval_steps": 2,
+        "target_seconds": 300,
+        "overhead_fraction": 0.1,
+        "max_checks": 12,
+        "generation_every": 3,
+        "generation": null,
+        "selection": "last",
+        "early_stopping": null,
+        "failure_policy": "continue"
+      },
+      "cost_coverage": "Periodic validation, generation probes and checkpoint storage are not yet measured by this forecast",
+      "overhead_target_is_spend_cap": false
+    },
+    "forecast": {
+      "basis": "unmeasured_recipe",
+      "gpu_type": "H100",
+      "gpu_count": 1,
+      "rate_card": {
+        "status": "current",
+        "rates": {
+          "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+          "cpu_hour_cost_sandbox": 0.1419,
+          "cpu_hour_cost": 0.0473,
+          "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+          "gpu_hour_cost_l4": 0.8,
+          "gpu_hour_cost_t4": 0.59,
+          "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+          "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+          "gpu_hour_cost_mi355x": 6.75,
+          "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+          "gpu_hour_cost_a10g": 1.1,
+          "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+          "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+          "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+          "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+          "volume_storage_gib_month_cost": 0.09,
+          "gpu_hour_cost_b200": 6.25,
+          "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+          "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+          "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+          "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+          "gpu_hour_cost_a100_40gb": 2.1,
+          "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+          "gpu_hour_cost_a100_80gb": 2.5,
+          "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+          "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+          "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+          "gpu_hour_cost_l40s": 1.95,
+          "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+          "gpu_hour_cost_b300": 7.1,
+          "gpu_hour_cost_h100": 3.95,
+          "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+          "egress_gib_cost": 0.04,
+          "gpu_hour_cost_h200": 4.54,
+          "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+          "mem_gib_hour_cost_sandbox": 0.024,
+          "gpu_hour_cost_rtx6000": 3.03,
+          "mem_gib_hour_cost": 0.008,
+          "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+          "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+          "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27,
+          "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3
+        },
+        "source": "modal.Workspace.billing.rates",
+        "fetched_at": "2026-10-10T22:07:40.816783+00:00",
+        "cache_seconds": 300
+      },
+      "price_status": "current",
+      "gpu_hour_usd": 3.95,
+      "duration_status": "unmeasured",
+      "estimate_blockers": [
+        "duration_unmeasured"
+      ],
+      "trained_tokens": 92768,
+      "training_seconds": null,
+      "training_gpu_usd": null,
+      "evidence_jobs": [],
+      "evidence": [],
+      "rejected_measurements": {
+        "runtime": 6
+      },
+      "confidence": "unmeasured",
+      "planning_margin": {
+        "lower_multiplier": 0.5,
+        "upper_multiplier": 1.5
+      },
+      "all_in_usd": null,
+      "runtime": {
+        "app": "overmind-sft-2338195cab6bc6770083e01f",
+        "release": "2338195cab6bc6770083e01f9687a725e832e271e8a6fafb6a53575f54e81450",
+        "processor": "68231f0ed4259e55c514e633d0488a46b86d3a67304a72be844c2f6755f2f0aa",
+        "training": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b",
+        "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+        "environment": "overmind-dev"
+      },
+      "measurement_window": "completed_gpu_execution_including_load_validation_and_reload",
+      "token_basis": "source_character_estimate_for_both_requested_and_evidence_workloads",
+      "budget_enforcement": "none",
+      "unpriced_components": [
+        "preparation",
+        "training_cpu_memory",
+        "native_final_calibration",
+        "storage"
+      ],
+      "limitations": [
+        "A completed matching recipe measurement is required before this objective has a calibrated duration or GPU quote."
+      ],
+      "token_estimate": "proportional_to_selected_rows",
+      "selected_training_rows": 624
+    },
+    "selection": {
+      "train_dataset": "24835eb2-a78c-5256-83b1-5098893cfb13",
+      "train_cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+      "train_fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+      "train_rows": 624,
+      "validation_dataset": "30a2b675-86b8-5186-a10a-0c9d9056dca4",
+      "validation_cell": "9c666875-9c38-4953-95e7-617d33311274",
+      "validation_fingerprint": "bc4b36475eb11b745999fd8c4d66b6bd28bade133d4c8700de7945c702e51936",
+      "validation_rows": 89,
+      "eval_dataset": null,
+      "eval_cell": null,
+      "eval_fingerprint": null,
+      "eval_rows": null,
+      "validation_enabled": true,
+      "validation_split_ratio": null,
+      "split_method": null,
+      "eval_set": null,
+      "evaluations": {
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false
+      },
+      "grouping": [
+        "exact_input_content",
+        "declared_case_group",
+        "synthetic_seed"
+      ],
+      "fingerprint": "d4cdbdf043527df1176b176d225e8f2a701ee852f233cc1dabe2a2e2d484ba68"
+    },
+    "training_contract": {
+      "objective": "decision_cross_entropy",
+      "inference_contract": "decision",
+      "target": "declared_decision_supervision",
+      "target_semantics": {
+        "categorical_gold": 624
+      },
+      "losses": {
+        "distribution": "cross_entropy",
+        "ordinal_mean": "squared_error_of_normalized_expectation"
+      },
+      "methods": [
+        "lora"
+      ],
+      "providers": [
+        "modal"
+      ],
+      "metrics": [
+        "cross_entropy",
+        "brier",
+        "hard_label_accuracy",
+        "expected_score_mae",
+        "coverage"
+      ],
+      "evaluation": "native_probabilities",
+      "max_gpus": 1,
+      "pre_training_baseline": true
+    },
+    "summary": "Fine-tuning estimate calculated.",
+    "cost_estimate": null,
+    "time_estimate": {
+      "seconds": null,
+      "human": "Unmeasured recipe"
+    },
+    "trained_tokens": 92768,
+    "cell": {
+      "id": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+      "version": "1.0",
+      "title": "Source",
+      "rows": 624,
+      "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+      "fits": true,
+      "reason": "",
+      "warnings": [
+        "No current workshop quality review."
+      ]
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://datasets/24835eb2-a78c-5256-83b1-5098893cfb13?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Decision Workshop titanic grouped handoff · train",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "launch": {
+    "summary": "Fine-tuning job: queued.",
+    "finetune": {
+      "kind": "finetune_job",
+      "id": "76f061a9-4214-43c8-b620-401923382b17",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://finetunes/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Branch E2E · Titanic · four-step decision canary",
+        "mimeType": "application/json"
+      },
+      "name": "Branch E2E · Titanic · four-step decision canary"
+    },
+    "job": {
+      "kind": "finetune_job",
+      "id": "76f061a9-4214-43c8-b620-401923382b17",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://jobs/finetune/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Branch E2E · Titanic · four-step decision canary",
+        "mimeType": "application/json"
+      },
+      "name": "Branch E2E · Titanic · four-step decision canary"
+    },
+    "cell": {
+      "id": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+      "version": "1.0",
+      "title": "Source",
+      "rows": 624,
+      "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+      "fits": true,
+      "reason": "",
+      "warnings": [
+        "No current workshop quality review."
+      ]
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://finetunes/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Branch E2E · Titanic · four-step decision canary",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://jobs/finetune/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Branch E2E · Titanic · four-step decision canary",
+        "mimeType": "application/json"
+      }
+    ]
+  }
+}

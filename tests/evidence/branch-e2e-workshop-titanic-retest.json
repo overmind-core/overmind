@@ -1,0 +1,1184 @@
+{
+  "endpoint": "http://localhost:8000/api/mcp/",
+  "suffix": "branch-e2e-20261010",
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-rl750su_",
+  "cases": {
+    "titanic": {
+      "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "source": "034f3f2e-2c0e-4053-910c-7ad9327de5f4",
+      "dataset": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+      "selected": {
+        "id": "f4e244a5-bd90-433a-a60d-a01c1ee56675",
+        "rows": 891,
+        "title": "Source",
+        "version": "1.0",
+        "dataset_id": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+        "fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642"
+      },
+      "source_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-rl750su_/titanic-source.jsonl",
+        "dataset_id": "e004ec33-2b62-4a98-8b08-e1230090018f",
+        "format": "jsonl",
+        "bytes_written": 451151,
+        "cell": "034f3f2e-2c0e-4053-910c-7ad9327de5f4",
+        "version": "1.0",
+        "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+      },
+      "package": {
+        "id": "2a21d42d-1d75-4fc2-9ff3-22896bd91025",
+        "sha256": "76afe70cad817769abe5d02baaa1f20336a6c70368c2fbec497eb5b327fdb137"
+      },
+      "pipeline": "d67eecc9-be7a-4f0c-a7df-a2a6918c272b",
+      "runs": [
+        {
+          "id": "5f539257-4e9b-4234-88d6-2a7ade27f700",
+          "mode": "preview",
+          "details": {
+            "id": "5f539257-4e9b-4234-88d6-2a7ade27f700",
+            "pipeline": "d67eecc9-be7a-4f0c-a7df-a2a6918c272b",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 titanic",
+            "revision": 1,
+            "source_dataset": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+            "source_cell": "f4e244a5-bd90-433a-a60d-a01c1ee56675",
+            "source_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "preview",
+            "parameters": {},
+            "binding": null,
+            "operation": {
+              "id": "d46a833a-a64f-49da-9793-8ba88148bb32",
+              "kind": "dataset_pipeline",
+              "reference": "5f539257-4e9b-4234-88d6-2a7ade27f700",
+              "attempt": "9c4af6c6-b901-413c-8a08-cbe2d0a0cc8a",
+              "unit": "steps",
+              "facts": {
+                "attempt": "9c4af6c6-b901-413c-8a08-cbe2d0a0cc8a",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 891
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 32,
+              "last_observed_at": "2026-10-10T22:01:48.848272+00:00",
+              "last_heartbeat_at": "2026-10-10T22:01:48.777395+00:00",
+              "last_progress_at": "2026-10-10T22:01:48.848272+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "executing",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T22:05:49.053905+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": null,
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "preview",
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Separate passenger evidence from recorded outcome and identifiers",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "source",
+                      "fingerprint": "2d2589598e901ce5d87239ad80ec0286e1342b23ce41620552b8678f2a84dddd"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7751,
+                    "observed_at": "2026-10-10T22:01:47.836973+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0497,
+                      "input_transfer": 0.0884,
+                      "output_reading": 0.0032,
+                      "container_setup": 0.1234,
+                      "script_execution": 0.2335,
+                      "artifact_transfer": 0.2769
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.848,
+                  "step_id": "evidence",
+                  "container": "overmind-workshop-5f539257-4e9b-4234-88d6-2a7ade27f700-9c4af6c6-b901-413c-8a08-cbe2d0a0cc8a-0",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T22:01:47.057850+00:00",
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T22:01:47.908939+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "2d2589598e901ce5d87239ad80ec0286e1342b23ce41620552b8678f2a84dddd",
+                  "output_fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5",
+                  "provider_execution": "3dc55ccf73268356ea0e1426e9ac1abadb6f9b219447b8102511069c23c7bda9",
+                  "sample_count": 5
+                },
+                {
+                  "name": "Encode the recorded survival class as a typed decision",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "max_rows": 891,
+                    "min_rows": 891,
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "evidence",
+                      "fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.8603,
+                    "observed_at": "2026-10-10T22:01:48.775612+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0459,
+                      "input_transfer": 0.0828,
+                      "output_reading": 0.0049,
+                      "container_setup": 0.1574,
+                      "script_execution": 0.2652,
+                      "artifact_transfer": 0.3042
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.932,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-5f539257-4e9b-4234-88d6-2a7ade27f700-9c4af6c6-b901-413c-8a08-cbe2d0a0cc8a-1",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "evidence",
+                  "started_at": "2026-10-10T22:01:47.910248+00:00",
+                  "input_steps": [
+                    "evidence"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T22:01:48.845337+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {
+                      "max_rows": 891,
+                      "min_rows": 891
+                    }
+                  },
+                  "input_fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5",
+                  "output_fingerprint": "7bc2994fd57360142d6d3bb3b6163654dff114bac2bbcba6a129f00f83df63a9",
+                  "provider_execution": "9b993dc0a93a186038f753aa0e81945e1c3a2c3d6119994817b6ff5324b5b1b6",
+                  "sample_count": 5
+                }
+              ],
+              "attempt": "9c4af6c6-b901-413c-8a08-cbe2d0a0cc8a",
+              "seconds": 1.803,
+              "started_at": "2026-10-10T22:01:47.044342+00:00",
+              "output_rows": 50,
+              "source_rows": 891,
+              "stage_seconds": {
+                "measuring_impact": 0.076,
+                "step_1_executing": 0.786,
+                "step_2_executing": 0.874,
+                "verifying_source": 0.014,
+                "step_1_checking_rows": 0.005,
+                "step_2_checking_rows": 0.004,
+                "step_1_preserving_lineage": 0.021,
+                "step_2_preserving_lineage": 0.022
+              },
+              "stage_started_at": "2026-10-10T22:01:48.847155+00:00",
+              "revision_fingerprint": "4b05eb20e0e596dd9d3f2e89e6d935917c1d36597ff165af43d7ac2f07efc086"
+            },
+            "created_at": "2026-10-10T22:01:46.740260+00:00",
+            "updated_at": "2026-10-10T22:01:48.850421+00:00",
+            "completed_at": "2026-10-10T22:01:48.850421+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/5f539257-4e9b-4234-88d6-2a7ade27f700?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        },
+        {
+          "id": "2347a8fb-aab2-49c6-a1d9-92b67c04aa48",
+          "mode": "publish",
+          "details": {
+            "id": "2347a8fb-aab2-49c6-a1d9-92b67c04aa48",
+            "pipeline": "d67eecc9-be7a-4f0c-a7df-a2a6918c272b",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 titanic",
+            "revision": 1,
+            "source_dataset": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+            "source_cell": "f4e244a5-bd90-433a-a60d-a01c1ee56675",
+            "source_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "publish",
+            "parameters": {},
+            "binding": null,
+            "operation": {
+              "id": "6894fc9b-3f9c-47e5-b333-842c3484a6c5",
+              "kind": "dataset_pipeline",
+              "reference": "2347a8fb-aab2-49c6-a1d9-92b67c04aa48",
+              "attempt": "f1dbf8dd-74e2-4554-bacc-3314a070bc4f",
+              "unit": "steps",
+              "facts": {
+                "attempt": "f1dbf8dd-74e2-4554-bacc-3314a070bc4f",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 891
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 33,
+              "last_observed_at": "2026-10-10T22:01:59.618976+00:00",
+              "last_heartbeat_at": "2026-10-10T22:01:59.053894+00:00",
+              "last_progress_at": "2026-10-10T22:01:59.618976+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "executing",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T22:05:49.053905+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "publish",
+              "rows": 891,
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Separate passenger evidence from recorded outcome and identifiers",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 891,
+                    "rows_before": 891,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "f4e244a5-bd90-433a-a60d-a01c1ee56675",
+                      "rows": 891,
+                      "step": "source",
+                      "fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7492,
+                    "observed_at": "2026-10-10T22:01:57.978856+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0555,
+                      "input_transfer": 0.102,
+                      "output_reading": 0.0117,
+                      "container_setup": 0.1047,
+                      "script_execution": 0.2336,
+                      "artifact_transfer": 0.2417
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.971,
+                  "step_id": "evidence",
+                  "container": "overmind-workshop-2347a8fb-aab2-49c6-a1d9-92b67c04aa48-f1dbf8dd-74e2-4554-bacc-3314a070bc4f-0",
+                  "exit_code": 0,
+                  "input_rows": 891,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T22:01:57.222718+00:00",
+                  "input_cells": [
+                    "f4e244a5-bd90-433a-a60d-a01c1ee56675"
+                  ],
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_cell": "5c3ccb60-1d27-4c02-970f-6ca69387bb11",
+                  "output_rows": 891,
+                  "completed_at": "2026-10-10T22:01:58.195033+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+                  "output_fingerprint": "fb101de93b53b13704982bfd287e08cde07b5a5734f0c2123c51823304999ed1",
+                  "provider_execution": "5395a0ecd9d1a7823d9f4693739cf09fc48905b949f0eb1886c280df62df4533"
+                },
+                {
+                  "name": "Encode the recorded survival class as a typed decision",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "max_rows": 891,
+                    "min_rows": 891,
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 891,
+                    "rows_before": 891,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "5c3ccb60-1d27-4c02-970f-6ca69387bb11",
+                      "rows": 891,
+                      "step": "evidence",
+                      "fingerprint": "fb101de93b53b13704982bfd287e08cde07b5a5734f0c2123c51823304999ed1"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.8427,
+                    "observed_at": "2026-10-10T22:01:59.052243+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0427,
+                      "input_transfer": 0.1151,
+                      "output_reading": 0.0161,
+                      "container_setup": 0.15,
+                      "script_execution": 0.2372,
+                      "artifact_transfer": 0.2818
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 1.191,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-2347a8fb-aab2-49c6-a1d9-92b67c04aa48-f1dbf8dd-74e2-4554-bacc-3314a070bc4f-1",
+                  "exit_code": 0,
+                  "input_rows": 891,
+                  "input_step": "evidence",
+                  "started_at": "2026-10-10T22:01:58.195267+00:00",
+                  "input_cells": [
+                    "5c3ccb60-1d27-4c02-970f-6ca69387bb11"
+                  ],
+                  "input_steps": [
+                    "evidence"
+                  ],
+                  "output_cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+                  "output_rows": 891,
+                  "completed_at": "2026-10-10T22:01:59.393639+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "max_rows": 891,
+                      "min_rows": 891,
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "fb101de93b53b13704982bfd287e08cde07b5a5734f0c2123c51823304999ed1",
+                  "output_fingerprint": "548493c0c02ee06e6b72c7cba0799074918c16b03fd3de7d42a592ac3e1a0a2c",
+                  "provider_execution": "d8c5f5f39cd349d83bb872159158410b965dedb5ae1d6ccf75a991f3545420d4"
+                }
+              ],
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 891,
+                "rows_before": 891,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "attempt": "f1dbf8dd-74e2-4554-bacc-3314a070bc4f",
+              "seconds": 2.403,
+              "started_at": "2026-10-10T22:01:57.217496+00:00",
+              "output_rows": 891,
+              "source_rows": 891,
+              "stage_seconds": {
+                "publishing": 0.225,
+                "measuring_impact": 0.164,
+                "step_1_executing": 0.778,
+                "step_2_executing": 1.035,
+                "verifying_source": 0.005,
+                "step_1_checking_rows": 0.007,
+                "step_2_checking_rows": 0.004,
+                "step_1_preserving_lineage": 0.101,
+                "step_2_preserving_lineage": 0.082
+              },
+              "semantic_quality": "unmeasured",
+              "stage_started_at": "2026-10-10T22:01:59.618252+00:00",
+              "revision_fingerprint": "4b05eb20e0e596dd9d3f2e89e6d935917c1d36597ff165af43d7ac2f07efc086"
+            },
+            "created_at": "2026-10-10T22:01:56.806482+00:00",
+            "updated_at": "2026-10-10T22:01:59.620084+00:00",
+            "completed_at": "2026-10-10T22:01:59.620084+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/2347a8fb-aab2-49c6-a1d9-92b67c04aa48?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        }
+      ],
+      "output_cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+      "output_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-rl750su_/titanic-output.jsonl",
+        "dataset_id": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+        "format": "jsonl",
+        "bytes_written": 1354667,
+        "cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+        "version": "2.0",
+        "fingerprint": "548493c0c02ee06e6b72c7cba0799074918c16b03fd3de7d42a592ac3e1a0a2c"
+      },
+      "verification": {
+        "verified_rows": 891,
+        "missing_feature_rows": 708
+      },
+      "readiness": {
+        "monitoring": {
+          "version": 1,
+          "mode": "off",
+          "initial": true,
+          "final": true,
+          "loss_sample": 2048,
+          "train_sample": 256,
+          "seed": 42,
+          "interval_steps": null,
+          "target_seconds": 300,
+          "overhead_fraction": 0.1,
+          "max_checks": 12,
+          "generation_every": 3,
+          "generation": null,
+          "selection": "last",
+          "early_stopping": null,
+          "failure_policy": "continue"
+        },
+        "selection": {
+          "train_dataset": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+          "train_cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+          "train_fingerprint": "548493c0c02ee06e6b72c7cba0799074918c16b03fd3de7d42a592ac3e1a0a2c",
+          "train_rows": 891,
+          "validation_dataset": null,
+          "validation_cell": null,
+          "validation_fingerprint": null,
+          "validation_rows": null,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": false,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "7ee1d365f2e38fd620270434cb7e9a0ceb4be80f90481e6f3b597e8bfdd2e98e"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "categorical_gold": 891
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Training format checks passed; task suitability is unmeasured.",
+        "ready": true,
+        "assessment": {
+          "technical": "pass",
+          "task_suitability": "unmeasured",
+          "capability_linked": null,
+          "validation": "disabled"
+        },
+        "missing": [],
+        "warnings": [
+          "training dataset: No current workshop quality review."
+        ],
+        "dataset": {
+          "id": "5fc821ab-9e03-5267-85a0-bd3b68bbc512",
+          "name": "Decision Workshop acceptance \u00b7 Titanic",
+          "intent": "train",
+          "cell": {
+            "id": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+            "version": "2.0",
+            "title": "Encode the recorded survival class as a typed decision",
+            "rows": 891,
+            "fingerprint": "548493c0c02ee06e6b72c7cba0799074918c16b03fd3de7d42a592ac3e1a0a2c",
+            "fits": true,
+            "reason": "",
+            "warnings": [
+              "No current workshop quality review."
+            ]
+          },
+          "validation": {
+            "valid": true,
+            "format": "decision",
+            "num_examples": 891,
+            "errors": [],
+            "warnings": [],
+            "stats": {
+              "checkpoint": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+              "total_examples": 891,
+              "train_examples": 891,
+              "val_examples": 0,
+              "validation_mode": "off",
+              "split_method": "random",
+              "format": "decision"
+            }
+          }
+        },
+        "capability": null,
+        "eval_dataset": null,
+        "eval_set": null,
+        "overlap_count": null,
+        "recommendations": [],
+        "n_candidates": 29,
+        "catalog": {
+          "compact": [
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-1.7B",
+            "Qwen/Qwen3-0.6B",
+            "Qwen/Qwen2.5-0.5B-Instruct",
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "LiquidAI/LFM2.5-1.2B-Instruct",
+            "LiquidAI/LFM2.5-350M",
+            "LiquidAI/LFM2.5-230M",
+            "fdtn-ai/antares-1b",
+            "fdtn-ai/antares-350m"
+          ],
+          "small": [
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3-8B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "meta-llama/Llama-3.1-8B-Instruct"
+          ],
+          "mid": [
+            "Qwen/Qwen3.6-27B",
+            "Qwen/Qwen3.5-27B",
+            "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "Qwen/Qwen3-14B",
+            "Qwen/Qwen2.5-14B-Instruct"
+          ],
+          "large": [
+            "Qwen/Qwen3.5-35B-A3B",
+            "Qwen/Qwen3-32B",
+            "Qwen/Qwen2.5-72B-Instruct",
+            "Qwen/Qwen2.5-32B-Instruct",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "meta-llama/Llama-3.3-70B-Instruct"
+          ]
+        },
+        "has_tool_calling": false,
+        "task_type": "decision",
+        "task_type_source": "declared_contract",
+        "excluded": [],
+        "recommendation_error": null,
+        "evaluator_readiness": {
+          "ready": false,
+          "eval_set": null,
+          "evaluators": [],
+          "errors": []
+        },
+        "credits": {
+          "required": true,
+          "available": true
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/5fc821ab-9e03-5267-85a0-bd3b68bbc512?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop acceptance \u00b7 Titanic",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "parent_active_unchanged": true,
+      "partition_request": {
+        "summary": "Decision Workshop titanic grouped handoff: completed",
+        "workflow": {
+          "id": "5eb44035-d365-4f7f-a517-c78205aebc43",
+          "name": "Decision Workshop titanic grouped handoff",
+          "state": "completed",
+          "kind": "data_partition",
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": null
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/5eb44035-d365-4f7f-a517-c78205aebc43?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop titanic grouped handoff",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "partition": {
+        "kind": "data_partition",
+        "id": "5eb44035-d365-4f7f-a517-c78205aebc43",
+        "status": "completed",
+        "label": "Decision Workshop titanic grouped handoff",
+        "job_error": null,
+        "created_at": "2026-10-10T22:02:07.851436Z",
+        "updated_at": "2026-10-10T22:02:08.163983Z",
+        "completed_at": null,
+        "progress": {
+          "id": "5eb44035-d365-4f7f-a517-c78205aebc43",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "Decision Workshop titanic grouped handoff",
+          "source_cell": "996305a1-7408-44cc-bc6e-781962c2c5a2",
+          "recipe": {
+            "seed": 42,
+            "group_by": [
+              "Ticket"
+            ],
+            "holdouts": [],
+            "fractions": {
+              "final": 0.1,
+              "train": 0.7,
+              "calibration": 0.1,
+              "development": 0.1
+            },
+            "stratify_by": null
+          },
+          "report": {
+            "counts": {
+              "final": 89,
+              "train": 624,
+              "calibration": 89,
+              "development": 89
+            },
+            "groups": {
+              "final": 81,
+              "train": 342,
+              "calibration": 78,
+              "development": 77
+            },
+            "strata": {
+              "final": {
+                "all": 89
+              },
+              "train": {
+                "all": 624
+              },
+              "calibration": {
+                "all": 89
+              },
+              "development": {
+                "all": 89
+              }
+            },
+            "overlap": {
+              "pretraining": "unknown",
+              "near_duplicates": "not_checked",
+              "content_and_declared_groups": 0
+            },
+            "progress": {
+              "stage": "completed",
+              "total": 891,
+              "completed": 891,
+              "updated_at": "2026-10-10T22:02:08.163763+00:00"
+            },
+            "fingerprint": "548493c0c02ee06e6b72c7cba0799074918c16b03fd3de7d42a592ac3e1a0a2c",
+            "source_rows": 891,
+            "assignments_sha256": "f1a19f847b23d04660a201eba744fae59671478b23e8226fa9841c2e9ec9cbb1",
+            "duplicates_removed": 0
+          },
+          "state": "completed",
+          "error": "",
+          "members": [
+            {
+              "role": "final",
+              "cell": {
+                "id": "a2106963-49ae-4093-a935-06e21167435a",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "c507859d7a3a5899f0f953d0666d240d0fbf0f92417646065769bc2a21463849",
+                "dataset_id": "3ac9db2d-6be9-5af7-9539-61875ba9b5ee"
+              }
+            },
+            {
+              "role": "train",
+              "cell": {
+                "id": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 624,
+                "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+                "dataset_id": "24835eb2-a78c-5256-83b1-5098893cfb13"
+              }
+            },
+            {
+              "role": "calibration",
+              "cell": {
+                "id": "ccd52e73-f98d-4ac9-b925-8783d70b346e",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "3fec27e45982c6ead74a57244d67346572821dbeb035ff552b1cc5c94ef49bbf",
+                "dataset_id": "10b056a8-201e-5991-a5fb-cc0f811e6a71"
+              }
+            },
+            {
+              "role": "development",
+              "cell": {
+                "id": "9c666875-9c38-4953-95e7-617d33311274",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "bc4b36475eb11b745999fd8c4d66b6bd28bade133d4c8700de7945c702e51936",
+                "dataset_id": "30a2b675-86b8-5186-a10a-0c9d9056dca4"
+              }
+            }
+          ],
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": null,
+          "created_at": "2026-10-10 22:02:07.851436+00:00",
+          "updated_at": "2026-10-10 22:02:08.163983+00:00"
+        },
+        "details": {},
+        "resource": {
+          "uri": "overmind://jobs/data_partition/5eb44035-d365-4f7f-a517-c78205aebc43?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Decision Workshop titanic grouped handoff",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/5eb44035-d365-4f7f-a517-c78205aebc43?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop titanic grouped handoff",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Decision Workshop titanic grouped handoff: completed."
+      },
+      "partition_verified": {
+        "rows": 891,
+        "groups": 681,
+        "cross_role_groups": 0,
+        "references_verified": true
+      },
+      "preparation_request": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "adaptive",
+            "initial": true,
+            "final": true,
+            "loss_sample": 2048,
+            "train_sample": 256,
+            "seed": 42,
+            "interval_steps": null,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "sample_state": "Modal freezes the resolved training/development samples during transfer, before GPU dispatch; token preparation alone does not select the development split"
+        },
+        "job": {
+          "kind": "training_preparation",
+          "id": "e3047c4b-d578-438c-9bae-51f725c02929",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/training_preparation/e3047c4b-d578-438c-9bae-51f725c02929?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          }
+        },
+        "id": "e3047c4b-d578-438c-9bae-51f725c02929",
+        "state": "queued",
+        "report": {},
+        "error": "",
+        "config": {
+          "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+          "model": "Qwen/Qwen3-0.6B",
+          "stack": "u2026_10_3_decision",
+          "runtime": {
+            "app": "overmind-sft-2338195cab6bc6770083e01f",
+            "release": "2338195cab6bc6770083e01f9687a725e832e271e8a6fafb6a53575f54e81450",
+            "training": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b",
+            "processor": "68231f0ed4259e55c514e633d0488a46b86d3a67304a72be844c2f6755f2f0aa",
+            "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "processor": "68231f0ed4259e55c514e633d0488a46b86d3a67304a72be844c2f6755f2f0aa",
+          "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+          "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+          "training_type": "lora",
+          "context_length": 4096,
+          "tokenizer_model": "unsloth/Qwen3-0.6B",
+          "validation_cell": "9c666875-9c38-4953-95e7-617d33311274",
+          "validation_fingerprint": "bc4b36475eb11b745999fd8c4d66b6bd28bade133d4c8700de7945c702e51936"
+        }
+      },
+      "preparation": {
+        "kind": "training_preparation",
+        "id": "e3047c4b-d578-438c-9bae-51f725c02929",
+        "status": "ready",
+        "label": "Training preparation",
+        "job_error": null,
+        "created_at": "2026-10-10T22:02:21.341507Z",
+        "updated_at": "2026-10-10T22:06:49.617232Z",
+        "completed_at": "2026-10-10T22:06:49.617232Z",
+        "progress": {
+          "rows": 713,
+          "model": "Qwen/Qwen3-0.6B",
+          "ready": true,
+          "issues": [],
+          "tokens": 130530,
+          "previews": [
+            {
+              "row": 0,
+              "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+              "tokens": 189,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                0,
+                1
+              ]
+            },
+            {
+              "row": 1,
+              "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+              "tokens": 187,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                0,
+                1
+              ]
+            },
+            {
+              "row": 2,
+              "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+              "tokens": 182,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                1,
+                0
+              ]
+            }
+          ],
+          "renderer": "unsloth_clef",
+          "objective": "decision_cross_entropy",
+          "max_tokens": 198,
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": null,
+            "usage_id": "ff7edb9544d04a9aac83948233eaeaa0",
+            "gpu_count": 0,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 22.879537045,
+            "cpu_core_seconds": 183.03629636,
+            "memory_gib_seconds": 183.03629636
+          },
+          "context_length": 4096,
+          "artifact_sha256": "0ce57448397a9693b73e8779993fc22f518798914bb2eea23a3734e47060b3ae",
+          "incompatible_rows": 0,
+          "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+          "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4",
+          "supervised_decisions": 713
+        },
+        "details": {
+          "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+          "model": "Qwen/Qwen3-0.6B",
+          "stack": "u2026_10_3_decision",
+          "runtime": {
+            "app": "overmind-sft-2338195cab6bc6770083e01f",
+            "release": "2338195cab6bc6770083e01f9687a725e832e271e8a6fafb6a53575f54e81450",
+            "training": "f80ddfc934978d3a29b40a3cc7ffca62ee1719a0fd887fb61059efdcd01cce3b",
+            "processor": "68231f0ed4259e55c514e633d0488a46b86d3a67304a72be844c2f6755f2f0aa",
+            "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "processor": "68231f0ed4259e55c514e633d0488a46b86d3a67304a72be844c2f6755f2f0aa",
+          "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+          "fingerprint": "b9fd8bb6a75f3fada641caa8b3cbb82f28a0bc837e0aa2563c9a55541436b8a3",
+          "training_type": "lora",
+          "context_length": 4096,
+          "validation_cell": "9c666875-9c38-4953-95e7-617d33311274",
+          "validation_fingerprint": "bc4b36475eb11b745999fd8c4d66b6bd28bade133d4c8700de7945c702e51936",
+          "operation": {
+            "id": "6b0e8659-ca54-4a95-b593-03ce60c50081",
+            "kind": "training_preparation",
+            "reference": "e3047c4b-d578-438c-9bae-51f725c02929",
+            "attempt": "2026-10-11T22:06:06.092777+00:00",
+            "unit": "rows",
+            "facts": {
+              "deadline": "2026-10-11T22:06:06.092777+00:00",
+              "provider": "modal",
+              "retry_safe": false,
+              "provider_call_id": "fc-01M4KXMAE0NG0SYT2CW2930SVM",
+              "source_export_rows": null,
+              "telemetry_available": true
+            },
+            "stage": "ready",
+            "total": 713,
+            "status": "ready",
+            "completed": 713,
+            "event_count": 15,
+            "last_observed_at": "2026-10-10T22:06:49.630709+00:00",
+            "last_heartbeat_at": null,
+            "last_progress_at": "2026-10-10T22:06:49.630709+00:00",
+            "telemetry": "recorded",
+            "provider": {}
+          }
+        },
+        "resource": {
+          "uri": "overmind://jobs/training_preparation/e3047c4b-d578-438c-9bae-51f725c02929?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Training preparation",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/training_preparation/e3047c4b-d578-438c-9bae-51f725c02929?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://operations/6b0e8659-ca54-4a95-b593-03ce60c50081?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Operational timeline",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Training preparation: ready."
+      }
+    }
+  },
+  "catalog": "d6584d81afde3f7d6c08a9ca2621de5981bf779a6a2465df14d45a670bbc0929",
+  "upload_contract": {
+    "uri": "overmind://dataset-upload?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "kind": "dataset_upload",
+    "extensions": [
+      ".csv",
+      ".tsv",
+      ".json",
+      ".jsonl",
+      ".ndjson",
+      ".parquet",
+      ".pdf",
+      ".docx",
+      ".md",
+      ".txt",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".webp"
+    ],
+    "max_bytes": 2147483648,
+    "document_max_bytes": 104857600,
+    "pdf_max_pages": 2000,
+    "max_files": 100,
+    "json_array_max_bytes": 268435456,
+    "limits": "CSV, TSV, JSON, JSONL, NDJSON, and Parquet uploads are capped at 2 GiB. Monolithic JSON arrays are capped at 256 MiB because the parser reads them whole.",
+    "chunk_bytes": 8388608,
+    "command": "overmind dataset upload FILE --project-id PROJECT --json",
+    "pipeline_packages": {
+      "required_for_transformations": true,
+      "upload": "overmind dataset pipeline-upload DIRECTORY_OR_ZIP --project-id PROJECT --json",
+      "download": "overmind dataset pipeline-download PACKAGE --project-id PROJECT --output pipeline.zip --json",
+      "max_bytes": 10485760,
+      "max_files": 100,
+      "manifest": {
+        "version": 1,
+        "runtime": "sha256:<approved immutable image ID>",
+        "parameters": {},
+        "steps": [
+          {
+            "id": "transform",
+            "input": "source",
+            "name": "Transform",
+            "entrypoint": "transform.py",
+            "input_schema": {
+              "text": "string",
+              "source_row": "integer"
+            },
+            "output_schema": {
+              "text": "string",
+              "source_row": "integer"
+            },
+            "checks": {
+              "preserve_rows": true
+            }
+          }
+        ]
+      },
+      "script_arguments": [
+        "input.jsonl",
+        "output.jsonl",
+        "parameters.json"
+      ],
+      "inspectability": "Keep each step's meaningful logic in its entrypoint; reserve helpers for reusable functions. Cell transformation metadata binds exact run/revision/package/entrypoint and distinguishes platform execution from external imports. Inspect every retained file via the package resource (file, offset, limit in characters; next_offset until exhausted). Source reads verify the package and file checksums without executing code.",
+      "starter_script": "import json, sys\n\nwith open(sys.argv[1], encoding='utf-8') as source, open(sys.argv[2], 'w', encoding='utf-8') as output:\n    for line in source:\n        row = json.loads(line)\n        # Author the requested transformation here; retain source_row.\n        output.write(json.dumps(row, ensure_ascii=False) + '\\n')\n",
+      "checks": "preserve_rows and lineage apply in preview and publish. min_rows/max_rows are full-population assertions: preview records them as deferred, publication enforces them. Do not hardcode the first source's size in a reusable recipe unless that size is a real requirement.",
+      "lineage": "Retain source_row or declare all contributing _overmind_parent_rows. Preserve duplicate observations and unknown meaning. Use input=source/earlier step or inputs=[distinct earlier IDs] to concatenate disjoint branches in declared order. Overlapping source_row identities fail rather than being deduplicated. Omitted input means the previous step.",
+      "flow": "Declare stable step IDs. Script conditions cite expression and entrypoint line; scripts implement selection. Every step executes, including empty outputs. Flow exposes nodes, edges, terminal_steps and unconsumed_steps. Converge training branches into the last step's trainable output, retaining unresolved review metadata. A retained script with inputs consumes combined branches. Cycles, overlapping identities and job-level conditional skipping are unsupported.",
+      "runtime": "Inspect inspect_dataset_workbench.runner for approved images and worker freshness. Dependencies are installed in the pinned operator-approved runtime; network and package installation are unavailable during execution. No credentials or host mounts enter script containers.",
+      "next": "Register with save_dataset_pipeline, validate, preview and inspect; publish explicitly. Reuse revisions on compatible sources, or save a derived_from variant. Save bindings paused and enable explicitly."
+    },
+    "ingestion_verification": "Before upload, inspect local record boundaries, fields, value types and expected row count. For JSON wrappers, explicitly select the intended top-level record array; clarify unresolved ambiguity instead of treating the whole wrapper as one row. Preserve original bytes. After landing, compare source count and representative nested values using inspect_dataset and query_dataset. Resolve mismatches before transformation or consumer handoff. State verification coverage: a sample is not a full-file audit, and successful transfer is not proof of correct ingestion.",
+    "readiness": "Run overmind connection check --project-id PROJECT --json from the actual coding environment. It verifies MCP, project access, transfer protocol and read/write access with the same resolved connection. A connected MCP client alone does not establish local transfer readiness.",
+    "recovery": "Re-run the identical CLI command to recover its stable transfer key and resume bytes or the existing publication. Use --request-key for an explicitly new upload or a caller-owned identity. Changed content or recipe under the same explicit key conflicts. get_job(kind=dataset_transfer) inspects the receipt without probing or dispatching; dataset_run reports subsequent extraction. Unknown connection errors do not prove sandbox denial. For confirmed network_permission_denied, request the host's supported scoped permission for the same command; do not change sandbox policy, ask for the file again or open a browser.",
+    "json_selection": "For a JSON object containing a row array under a nonstandard field, pass --json-rows-field FIELD explicitly. The selected top-level field is recorded in extraction metadata; original file bytes and wrapper metadata remain downloadable. No target meaning is inferred.",
+    "written_intent": "Use start_dataset with a brief and the user's explicit intent and capability. Its upload.argv carries exact project/dataset identities; replace FILE with the inspected local path. For a new upload, --brief records the original request.",
+    "existing_dataset": "Use overmind dataset upload FILE --project-id PROJECT --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST source accepts uploads; landing does not start preparation.",
+    "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MiB per document, 2000 pages per PDF). Upload reservations return the file-type byte limit. Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction. get_job(kind=dataset_run) exposes file/stage and measured OCR-page progress under progress.landing.",
+    "pdf_text_recovery": {
+      "trigger": "Pages where the primary native parser returned no text are checked with PDFium before OCR, including selectable Type 3 font layers.",
+      "evidence": "Source extraction.native_text_recovery records engine/version, recovered pages, rows, characters, control_characters and reason. Row extraction methods distinguish pdfium-native-text from tesseract-ocr; page regions remain retained.",
+      "limits": "Encoded text is source evidence, not visual verification. Font-encoding artifacts, reading order and diagram relationships require native-agent inspection; the platform does not normalize their meaning. This recovery does not certify partial omissions on pages where the primary parser returned some text."
+    },
+    "publication_status": "Without --wait, CLI state/state_scope=at_publication describe the saved publication snapshot, not current extraction. Read get_job(kind=dataset_run) for current progress. --wait returns state_scope=observed_after_landing.",
+    "auth": "Account or project API key from --api-key, .overmind/credentials.toml, OVERMIND_API_KEY, or the saved local transfer connection at $XDG_CONFIG_HOME/overmind/connection.toml (default ~/.config/overmind/connection.toml). The saved connection contains an api-key bound to its base-url and must have permissions 0600. MCP authentication alone does not configure CLI authentication. Missing credentials are a local connection error, not a reason to open the Console.",
+    "config": "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, --api-url, or overmind.toml. With no other key, the saved local transfer connection supplies both key and base URL; a different explicitly selected API is rejected.",
+    "flow": "POST /api/dataset-transfers/ with project, request_key, filename, size, sha256 and destination recipe; PUT /api/dataset-transfers/{id}/chunk/?offset= streams bounded bytes; POST /api/dataset-transfers/{id}/complete/ verifies the hash and publishes once. Read the receipt or repeat reservation with the identical key to resume. Publication is separate from landing.",
+    "multiple_files": "The installed CLI transfers one file per command. Upload the first file, then attach each remaining file with --dataset DATASET, waiting for dataset_run to reach idle or error between attachments. Each successful attachment appends an import cell combining the preceding cell's rows with the new file's rows. Page retained sources with inspect_dataset. Atomic multi-file landing (up to 100 files) is supported by REST staging but has no resumable CLI/MCP handoff yet. Managed transfer upload IDs cannot be republished through /api/uploads/ or source.uploads.",
+    "next_mcp_calls": [
+      "get_job(kind=dataset_run, id=dataset_id)"
+    ]
+  },
+  "state": "passed"
+}

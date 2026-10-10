@@ -206,12 +206,13 @@ def main(
     diagnostic_attention: str = "",
     diagnostic_checkpointing: str = "unsloth",
     diagnostic_name: str = "qwen35",
+    output: str = "",
 ):
     if verify_retained_only:
         if not diagnostic_run:
             raise ValueError("Retained verification requires --diagnostic-run")
         result = verify_retained_run.remote(diagnostic_run)
-        Path(f"tests/evidence/unsloth-{diagnostic_name}-fixed-reload.json").write_text(
+        Path(output or f"tests/evidence/unsloth-{diagnostic_name}-fixed-reload.json").write_text(
             json.dumps(result, indent=2) + "\n"
         )
         print(json.dumps(result))
@@ -234,13 +235,13 @@ def main(
             if wrapper_probe_only
             else "replay"
         )
-        Path(f"tests/evidence/unsloth-{diagnostic_name}-{label}-probe.json").write_text(
+        Path(output or f"tests/evidence/unsloth-{diagnostic_name}-{label}-probe.json").write_text(
             json.dumps(result, indent=2) + "\n"
         )
         return
     if reload_only:
         result = inspect_reload.remote()
-        Path("tests/evidence/unsloth-qwen35-reload-investigation.json").write_text(
+        Path(output or "tests/evidence/unsloth-qwen35-reload-investigation.json").write_text(
             json.dumps(result, indent=2) + "\n"
         )
         return
@@ -249,7 +250,7 @@ def main(
         return
     result = qualify.remote(semantics_only, skip_baseline)
     label = "semantics" if semantics_only else "without-baseline" if skip_baseline else "runtime"
-    Path(f"tests/evidence/unsloth-decision-{label}-results.json").write_text(
+    Path(output or f"tests/evidence/unsloth-decision-{label}-results.json").write_text(
         json.dumps(result, indent=2) + "\n"
     )
     print(json.dumps(result))

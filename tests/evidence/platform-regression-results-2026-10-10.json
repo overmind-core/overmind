@@ -1,0 +1,1193 @@
+{
+  "branch": "codex/general-decision-training",
+  "starting_commit": "b5c466e00e69340f83133c3b4aee55967b5ffdc7",
+  "scope": "localhost and overmind-dev; provider fakes in repeatable journeys, separate live GPU and evaluation receipts",
+  "checks": [
+    {
+      "name": "backend",
+      "passed": 4306,
+      "skipped": 7,
+      "log": "/tmp/platform-backend-final.log",
+      "log_sha256": "3cad790c4d66dfcfeb340aa651a8d9ac3fd17e231e15d23d1a771e2e7bf22369"
+    },
+    {
+      "name": "optional_ml_baseten_and_trace_assembly",
+      "passed": 56,
+      "skipped": 0,
+      "log": "/tmp/platform-optional-final.log",
+      "log_sha256": "04c864696d2e5825f971dbc33703ccac501518be2c2643feaa9cc6833e5edc69"
+    },
+    {
+      "name": "recommendation_and_mcp_followup",
+      "passed": 303,
+      "skipped": 0,
+      "log": "/tmp/platform-recommendation-backend-retest.log",
+      "log_sha256": "763faefecd854122d778493d2d765e507cb20e99a2b1be09ecc786eb623b1635"
+    },
+    {
+      "name": "frontend",
+      "passed": 867,
+      "skipped": 0,
+      "log": "/tmp/platform-frontend-final.log",
+      "log_sha256": "88c05a969866acfb69f584c09404e3e8feb41e3aa548ebe364916298745b5be6"
+    },
+    {
+      "name": "sdk",
+      "passed": 591,
+      "skipped": 0,
+      "log": "/tmp/platform-sdk-final.log",
+      "log_sha256": "53943bb6be25b7ce5b39ecd78d8b49dc56afe051303b1ea8599e32600acd7b30"
+    },
+    {
+      "name": "network_and_console",
+      "passed": 68,
+      "skipped": 0,
+      "log": "/tmp/platform-journeys-final.log",
+      "log_sha256": "d6e9f58b0569062dff57f8cde0c80bf7d8a2733619cafea10cc01b87b61c82ef"
+    },
+    {
+      "name": "strengthened_native_console",
+      "passed": 1,
+      "skipped": 0,
+      "log": "/tmp/platform-native-console-final.log",
+      "log_sha256": "f80726173cef92b4bb1ea905c8008940044b5660f40cc1249aeb7ffcfb4c2564"
+    }
+  ],
+  "skip_disposition": "All seven lightweight-backend skip entries passed in the optional dependency and Redis runs. Removed PII checks were retired, not counted as passes.",
+  "redis": "Both tests/test_task_lock.py cases passed in /tmp/platform-native-console-retest.log; that run separately had one Console text-locator failure, fixed and retested in platform-native-console-final.log.",
+  "sdk_openai_matrix": [
+    {
+      "version": "1.70.0",
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "tracing",
+        "--group",
+        "dev",
+        "--with",
+        "openai==1.70.0",
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_spans.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/platform-openai-1.70.0.log"
+    },
+    {
+      "version": "1.109.1",
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "tracing",
+        "--group",
+        "dev",
+        "--with",
+        "openai==1.109.1",
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_spans.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/platform-openai-1.109.1.log"
+    },
+    {
+      "version": "2.6.1",
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "tracing",
+        "--group",
+        "dev",
+        "--with",
+        "openai==2.6.1",
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_spans.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/platform-openai-2.6.1.log"
+    },
+    {
+      "version": "2.20.0",
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "tracing",
+        "--group",
+        "dev",
+        "--with",
+        "openai==2.20.0",
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_spans.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/platform-openai-2.20.0.log"
+    }
+  ],
+  "latest_journey_cases": [
+    {
+      "node": "tests/journeys/console/test_console.py::test_a_console_brief_survives_its_first_cli_attachment",
+      "command": ".venv/bin/pytest tests/journeys/console/ tests/test_task_lock.py -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.269,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231715Z/tests_journeys_console_test_console.py_test_a_console_brief_survives_its_first_cli_attachment.json"
+    },
+    {
+      "node": "tests/journeys/console/test_console.py::test_a_file_uploaded_in_the_console_becomes_a_usable_dataset",
+      "command": ".venv/bin/pytest tests/journeys/console/ tests/test_task_lock.py -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.785,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231715Z/tests_journeys_console_test_console.py_test_a_file_uploaded_in_the_console_becomes_a_usable_dataset.json"
+    },
+    {
+      "node": "tests/journeys/console/test_console.py::test_decision_data_selects_native_training_controls",
+      "command": ".venv/bin/pytest tests/journeys/console/test_console.py::test_decision_data_selects_native_training_controls -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.812,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231831Z/tests_journeys_console_test_console.py_test_decision_data_selects_native_training_controls.json"
+    },
+    {
+      "node": "tests/journeys/console/test_console.py::test_native_monitoring_evidence_remains_readable_after_cancellation",
+      "command": ".venv/bin/pytest tests/journeys/console/ tests/test_task_lock.py -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 5.927,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231715Z/tests_journeys_console_test_console.py_test_native_monitoring_evidence_remains_readable_after_cancellation.json"
+    },
+    {
+      "node": "tests/journeys/console/test_console.py::test_project_surfaces_render_without_browser_or_server_errors",
+      "command": ".venv/bin/pytest tests/journeys/console/ tests/test_task_lock.py -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.678,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231715Z/tests_journeys_console_test_console.py_test_project_surfaces_render_without_browser_or_server_errors.json"
+    },
+    {
+      "node": "tests/journeys/console/test_console.py::test_the_console_shows_the_synced_agent_and_its_traces",
+      "command": ".venv/bin/pytest tests/journeys/console/ tests/test_task_lock.py -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 2.245,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T231715Z/tests_journeys_console_test_console.py_test_the_console_shows_the_synced_agent_and_its_traces.json"
+    },
+    {
+      "node": "tests/journeys/test_access.py::test_another_account_cannot_read_the_project_over_mcp",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.098,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_access.py_test_another_account_cannot_read_the_project_over_mcp.json"
+    },
+    {
+      "node": "tests/journeys/test_access.py::test_no_list_endpoint_answers_without_credentials",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.069,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_access.py_test_no_list_endpoint_answers_without_credentials.json"
+    },
+    {
+      "node": "tests/journeys/test_access.py::test_no_list_endpoint_shows_a_project_to_another_account",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.396,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_access.py_test_no_list_endpoint_shows_a_project_to_another_account.json"
+    },
+    {
+      "node": "tests/journeys/test_agent_instructions.py::test_every_command_the_mcp_surface_hands_an_agent_parses",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.188,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_agent_instructions.py_test_every_command_the_mcp_surface_hands_an_agent_parses.json"
+    },
+    {
+      "node": "tests/journeys/test_agent_model.py::test_a_capability_the_scan_misses_leaves_the_agent_and_returns_in_place",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.01,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_agent_model.py_test_a_capability_the_scan_misses_leaves_the_agent_and_returns_in_place.json"
+    },
+    {
+      "node": "tests/journeys/test_agent_model.py::test_a_deleted_capability_is_hidden_and_a_later_scan_mints_a_new_one",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.611,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_agent_model.py_test_a_deleted_capability_is_hidden_and_a_later_scan_mints_a_new_one.json"
+    },
+    {
+      "node": "tests/journeys/test_agent_model.py::test_a_scanned_agent_syncs_its_capabilities_and_checkout",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.166,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_agent_model.py_test_a_scanned_agent_syncs_its_capabilities_and_checkout.json"
+    },
+    {
+      "node": "tests/journeys/test_agent_testing.py::test_an_evaluation_grades_on_card_criteria_with_a_frozen_judge",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.757,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_agent_testing.py_test_an_evaluation_grades_on_card_criteria_with_a_frozen_judge.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[AWS_BUCKET_NAME-AWS_BUCKET_NAME]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.126,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_AWS_BUCKET_NAME-AWS_BUCKET_NAME_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[HF_TOKEN-HF_TOKEN]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.138,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_HF_TOKEN-HF_TOKEN_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[INFERENCE_API_KEY-INFERENCE_API_KEY]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.126,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_INFERENCE_API_KEY-INFERENCE_API_KEY_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[INFERENCE_API_URL-INFERENCE_API_URL]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.127,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_INFERENCE_API_URL-INFERENCE_API_URL_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[MODAL_TOKEN_SECRET-MODAL_TOKEN_SECRET]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.124,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_MODAL_TOKEN_SECRET-MODAL_TOKEN_SECRET_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_a_missing_required_variable_stops_startup_and_is_named[OPENROUTER_API_KEY-OPENROUTER_API_KEY]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.127,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_a_missing_required_variable_stops_startup_and_is_named_OPENROUTER_API_KEY-OPENROUTER_API_KEY_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys[hosted media]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.56,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys_hosted_media_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys[hosted static]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.577,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys_hosted_static_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys[self-hosted files stay local]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.54,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_file_storage_follows_the_bucket_settings_and_never_borrows_checkpoint_keys_self-hosted_files_stay_local_.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_health_fails_when_the_database_is_unreachable",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.809,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_health_fails_when_the_database_is_unreachable.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_the_hosted_environment_boots",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.71,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_the_hosted_environment_boots.json"
+    },
+    {
+      "node": "tests/journeys/test_boot.py::test_the_self_hosted_environment_boots_and_answers_health",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 2.263,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_boot.py_test_the_self_hosted_environment_boots_and_answers_health.json"
+    },
+    {
+      "node": "tests/journeys/test_credits.py::test_hosted_credits_meter_spend_stop_at_zero_and_top_up_once[hosted]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.132,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_credits.py_test_hosted_credits_meter_spend_stop_at_zero_and_top_up_once_hosted_.json"
+    },
+    {
+      "node": "tests/journeys/test_credits.py::test_retired_service_receipts_remain_readable",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.011,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_credits.py_test_retired_service_receipts_remain_readable.json"
+    },
+    {
+      "node": "tests/journeys/test_credits.py::test_self_hosted_usage_is_metered_without_a_credit_cap[self_host]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.129,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_credits.py_test_self_hosted_usage_is_metered_without_a_credit_cap_self_host_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_a_source_capability_filter_is_preserved_when_the_destination_differs",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.226,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_a_source_capability_filter_is_preserved_when_the_destination_differs.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_an_unreadable_file_is_refused_before_it_becomes_a_dataset",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.25,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_an_unreadable_file_is_refused_before_it_becomes_a_dataset.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.003,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_repeated_capability_invocations_refuse_to_publish_a_mixed_example",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.563,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_repeated_capability_invocations_refuse_to_publish_a_mixed_example.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_landing_preserves_source_text_for_explicit_transformation",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.152,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_landing_preserves_source_text_for_explicit_transformation.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-False-answer-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.163,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-False-answer-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-False-answer-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.19,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-False-answer-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-False-triage-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.167,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-False-triage-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-False-triage-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.237,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-False-triage-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-True-answer-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.174,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-True-answer-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-True-answer-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.321,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-True-answer-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-True-triage-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.172,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-True-triage-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[filter-True-triage-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.143,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_filter-True-triage-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-False-answer-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.187,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-False-answer-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-False-answer-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.257,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-False-answer-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-False-triage-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.107,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-False-triage-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-False-triage-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.138,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-False-triage-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-True-answer-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.225,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-True-answer-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-True-answer-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.234,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-True-answer-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-True-triage-mcp]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.189,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-True-triage-mcp_.json"
+    },
+    {
+      "node": "tests/journeys/test_data_workshop.py::test_trace_rows_carry_the_capability_they_were_selected_for[ids-True-triage-rest]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.12,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_data_workshop.py_test_trace_rows_carry_the_capability_they_were_selected_for_ids-True-triage-rest_.json"
+    },
+    {
+      "node": "tests/journeys/test_inference_client.py::test_the_sdk_client_reaches_served_and_frontier_models_through_the_gateway",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.103,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_inference_client.py_test_the_sdk_client_reaches_served_and_frontier_models_through_the_gateway.json"
+    },
+    {
+      "node": "tests/journeys/test_interface_discovery.py::test_account_discovery_agrees_with_the_connected_contract",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.112,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_interface_discovery.py_test_account_discovery_agrees_with_the_connected_contract.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_connectors.py::test_a_recorded_vendor_trace_lands_as_one_rooted_tree[braintrust]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 6.613,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_connectors.py_test_a_recorded_vendor_trace_lands_as_one_rooted_tree_braintrust_.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_connectors.py::test_a_recorded_vendor_trace_lands_as_one_rooted_tree[galileo]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 9.74,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_connectors.py_test_a_recorded_vendor_trace_lands_as_one_rooted_tree_galileo_.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_connectors.py::test_a_recorded_vendor_trace_lands_as_one_rooted_tree[langfuse]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.515,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_connectors.py_test_a_recorded_vendor_trace_lands_as_one_rooted_tree_langfuse_.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_connectors.py::test_a_recorded_vendor_trace_lands_as_one_rooted_tree[langsmith]",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 3.606,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_connectors.py_test_a_recorded_vendor_trace_lands_as_one_rooted_tree_langsmith_.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_gpu_training.py::test_a_cancelled_job_stops_the_gpu_call",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 6.329,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_gpu_training.py_test_a_cancelled_job_stops_the_gpu_call.json"
+    },
+    {
+      "node": "tests/journeys/test_kit_gpu_training.py::test_a_gpu_failure_fails_the_job_and_deploys_nothing",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 6.353,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_kit_gpu_training.py_test_a_gpu_failure_fails_the_job_and_deploys_nothing.json"
+    },
+    {
+      "node": "tests/journeys/test_model_training.py::test_a_trained_model_is_benchmarked_served_and_switched_in",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 96.496,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_model_training.py_test_a_trained_model_is_benchmarked_served_and_switched_in.json"
+    },
+    {
+      "node": "tests/journeys/test_observability.py::test_a_silent_capability_is_named_with_the_fix_that_instruments_it",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.553,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_observability.py_test_a_silent_capability_is_named_with_the_fix_that_instruments_it.json"
+    },
+    {
+      "node": "tests/journeys/test_observability.py::test_traces_are_scored_on_arrival_and_every_surface_reads_the_same_scores",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.076,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_observability.py_test_traces_are_scored_on_arrival_and_every_surface_reads_the_same_scores.json"
+    },
+    {
+      "node": "tests/journeys/test_periodic_tasks_recover.py::test_a_task_lock_expires_on_its_timeout_and_releases_after_the_task",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.002,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_periodic_tasks_recover.py_test_a_task_lock_expires_on_its_timeout_and_releases_after_the_task.json"
+    },
+    {
+      "node": "tests/journeys/test_periodic_tasks_recover.py::test_evidence_collection_for_a_missing_training_job_stops",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.057,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_periodic_tasks_recover.py_test_evidence_collection_for_a_missing_training_job_stops.json"
+    },
+    {
+      "node": "tests/journeys/test_sdk_server_contract.py::test_every_attribute_the_sdk_and_server_both_name_has_one_value",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.0,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_sdk_server_contract.py_test_every_attribute_the_sdk_and_server_both_name_has_one_value.json"
+    },
+    {
+      "node": "tests/journeys/test_sdk_server_contract.py::test_the_usage_keys_the_sdk_emits_are_the_ones_ingest_rolls_up",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.0,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {},
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_sdk_server_contract.py_test_the_usage_keys_the_sdk_emits_are_the_ones_ingest_rolls_up.json"
+    },
+    {
+      "node": "tests/journeys/test_the_loop.py::test_failing_traces_become_a_measured_winning_diff",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 32.575,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_the_loop.py_test_failing_traces_become_a_measured_winning_diff.json"
+    },
+    {
+      "node": "tests/journeys/test_traces_arrive.py::test_any_otel_exporter_can_send_traces_without_the_sdk",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 0.221,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_traces_arrive.py_test_any_otel_exporter_can_send_traces_without_the_sdk.json"
+    },
+    {
+      "node": "tests/journeys/test_traces_arrive.py::test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities",
+      "command": ".venv/bin/pytest tests/journeys/ -q -rs --no-cov --ds=branch_e2e_settings",
+      "outcome": "passed",
+      "seconds": 1.572,
+      "env": {
+        "database": "localhost",
+        "redis": "redis://localhost:6379/15",
+        "sdk": "0.1.86"
+      },
+      "fixtures": {
+        "support_desk": "f439c2f01c34cae1"
+      },
+      "error": null,
+      "receipt": "tests/journeys/.runs/20261010T230915Z/tests_journeys_test_traces_arrive.py_test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities.json"
+    }
+  ],
+  "unrelated_original_untracked_files_preserved": 205
+}

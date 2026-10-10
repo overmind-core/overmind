@@ -1,0 +1,33 @@
+{
+  "first_call_max_error": 0.0,
+  "gpu": "NVIDIA L4",
+  "input_only_predictions": 12,
+  "metrics": {
+    "argmax_target_agreement": 0.6666666666666666,
+    "brier": 0.2739689743687339,
+    "categorical_families": {},
+    "cross_entropy": 0.6804415106773376,
+    "decisions": 12,
+    "distribution_decisions": 9,
+    "eval_loss": 0.5103577971458435,
+    "eval_runtime": 0.13828510500000846,
+    "expected_score_mae": 0.030985766649246238,
+    "hard_label_accuracy": 1.0,
+    "hard_label_decisions": 3,
+    "mean_decisions": 3
+  },
+  "pre_training_baseline": false,
+  "recovery": {
+    "completed_resume_step": 4,
+    "interrupted_step": 2,
+    "max_parameter_error": 0.0
+  },
+  "torch": "2.10.0+cu128",
+  "verification": {
+    "attention_implementation": "sdpa",
+    "decisions": 12,
+    "max_absolute_error": 0.0,
+    "tolerance": 0.0001,
+    "weight_reload": "exact"
+  }
+}

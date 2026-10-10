@@ -1,0 +1,697 @@
+{
+  "kind": "finetune_job",
+  "id": "76f061a9-4214-43c8-b620-401923382b17",
+  "status": "succeeded",
+  "label": "Branch E2E · Titanic · four-step decision canary",
+  "job_error": null,
+  "created_at": "2026-10-10T22:08:05.406838Z",
+  "updated_at": "2026-10-10T22:10:38.974556Z",
+  "completed_at": "2026-10-10T22:10:38.952192Z",
+  "progress": {
+    "eta_s": null,
+    "phase": "finalizing",
+    "stage": "checkpoint_reload",
+    "metrics": {
+      "loss": [
+        {
+          "step": 0,
+          "eval_loss": 0.6966
+        },
+        {
+          "step": 1,
+          "train_loss": 0.692963
+        },
+        {
+          "step": 2,
+          "eval_loss": 0.618731,
+          "train_loss": 0.698461
+        },
+        {
+          "step": 3,
+          "train_loss": 0.742845
+        },
+        {
+          "step": 4,
+          "eval_loss": 0.684534,
+          "train_loss": 0.695038
+        }
+      ],
+      "grad_norm": [
+        {
+          "step": 1,
+          "value": 0.128623
+        },
+        {
+          "step": 2,
+          "value": 1.348657
+        },
+        {
+          "step": 3,
+          "value": 0.788375
+        },
+        {
+          "step": 4,
+          "value": 0.095118
+        }
+      ],
+      "learning_rate": [
+        {
+          "step": 1,
+          "value": 0
+        },
+        {
+          "step": 2,
+          "value": 0.0002
+        },
+        {
+          "step": 3,
+          "value": 0.00015000000000000001
+        },
+        {
+          "step": 4,
+          "value": 0.00005000000000000002
+        }
+      ]
+    },
+    "observe": {
+      "saw_step": true,
+      "poll_errors": 0,
+      "last_move_at": "2026-10-10T22:10:35.669153+00:00"
+    },
+    "percent": 100,
+    "activity": [
+      {
+        "ts": 1791670085606,
+        "kind": "stage",
+        "message": "Checking pinned data and model configuration"
+      },
+      {
+        "ts": 1791670085627,
+        "kind": "stage",
+        "message": "Splitting and exporting training rows"
+      },
+      {
+        "ts": 1791670085741,
+        "kind": "stage",
+        "message": "Exported 624 training rows and 89 validation rows"
+      },
+      {
+        "ts": 1791670085758,
+        "kind": "stage",
+        "message": "Training files validated; submitting job"
+      },
+      {
+        "ts": 1791670085774,
+        "kind": "stage",
+        "message": "Building row selections"
+      },
+      {
+        "ts": 1791670085823,
+        "kind": "stage",
+        "message": "Uploading row selections"
+      },
+      {
+        "ts": 1791670092918,
+        "kind": "stage",
+        "message": "Row selections uploaded; awaiting provider progress"
+      },
+      {
+        "ts": 1791670100928,
+        "kind": "stage",
+        "message": "Checking base model weights and downloading missing files"
+      },
+      {
+        "ts": 1791670104291,
+        "kind": "stage",
+        "message": "Base model weights ready; starting training worker"
+      },
+      {
+        "ts": 1791670111191,
+        "kind": "stage",
+        "message": "Initialising training runtime"
+      },
+      {
+        "ts": 1791670129077,
+        "kind": "stage",
+        "message": "Loading base model onto GPU"
+      },
+      {
+        "ts": 1791670139533,
+        "kind": "stage",
+        "message": "Validating model checkpoint"
+      },
+      {
+        "ts": 1791670152903,
+        "kind": "stage",
+        "message": "Training started"
+      },
+      {
+        "ts": 1791670184904,
+        "kind": "stage",
+        "message": "Initialising training runtime"
+      },
+      {
+        "ts": 1791670204829,
+        "kind": "stage",
+        "message": "Checkpoint reload"
+      }
+    ],
+    "eta_basis": "recent_step_window; elapsed-time average with 0.8–1.3 planning margin, widened by observed step-time quantiles; training steps only, excludes final validation/reload; not confidence bounds",
+    "eval_loss": 0.6845338217328104,
+    "eta_window": {
+      "seconds": 2.200000000000001,
+      "intervals": 3
+    },
+    "monitoring": {
+      "schedule": {
+        "checks": 2,
+        "next_step": null,
+        "step_seconds": [
+          14.577022736000004,
+          0.25875777000000255,
+          0.27061932300000535,
+          0.23372564500000692
+        ],
+        "interval_steps": 2,
+        "last_checked_step": 4
+      },
+      "collection": {
+        "state": "observed",
+        "observed_at": "2026-10-10T22:10:38.948213+00:00"
+      },
+      "stop_reason": null,
+      "numerical_health": {
+        "basis": "logged training intervals, not every optimizer update",
+        "logged_updates": 4,
+        "skipped_updates": null,
+        "loss_filtering_enabled": false,
+        "skipped_updates_reason": "not exposed by this trainer callback",
+        "gradient_norm_available": true,
+        "nonfinite_loss_observations": 0,
+        "nonfinite_gradient_observations": 0,
+        "clipping_threshold_exceeded_observations": 1
+      },
+      "optimizer_seconds": 15.340125474000018,
+      "monitoring_seconds": 21.996789402000005,
+      "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+      "schedule_decisions": [
+        {
+          "step": 2,
+          "basis": "measured_optimizer_time",
+          "conflicts": [],
+          "next_step": null,
+          "adaptation": "explicit_interval",
+          "stop_reason": "run_boundary",
+          "check_seconds": 1.8904887619999968,
+          "formula_version": 2,
+          "target_interval_steps": 41,
+          "overhead_interval_steps": 3,
+          "candidate_interval_steps": 2,
+          "effective_interval_steps": 2,
+          "optimizer_step_seconds_median": 7.417890253000003
+        },
+        {
+          "step": 4,
+          "basis": "measured_optimizer_time",
+          "conflicts": [],
+          "next_step": null,
+          "adaptation": "explicit_interval",
+          "stop_reason": "run_boundary",
+          "check_seconds": 1.8965392580000042,
+          "formula_version": 2,
+          "target_interval_steps": 1134,
+          "overhead_interval_steps": 65,
+          "candidate_interval_steps": 2,
+          "effective_interval_steps": 2,
+          "optimizer_step_seconds_median": 0.26468854650000395
+        }
+      ]
+    },
+    "train_loss": 0.6950375437736511,
+    "diagnostics": {
+      "unit": "decisions",
+      "stage": "checkpoint_reload",
+      "total": 32,
+      "attempt": 1,
+      "completed": 32,
+      "source_at": 1791670210.6162694,
+      "heartbeat_at": 1791670210.6162694,
+      "checkpoint_step": 4,
+      "last_progress_at": 1791670210.6162694,
+      "stage_started_at": 1791670204.8291569,
+      "attempt_started_at": 1791670108.1627285,
+      "overall_started_at": 1791670108.1627285
+    },
+    "eta_seconds": null,
+    "preparation": {
+      "id": "e3047c4b-d578-438c-9bae-51f725c02929",
+      "state": "ready",
+      "report": {
+        "rows": 713,
+        "model": "Qwen/Qwen3-0.6B",
+        "ready": true,
+        "issues": [],
+        "previews": [
+          {
+            "row": 0,
+            "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "Survived",
+              "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+            },
+            "target_probabilities": [
+              0,
+              1
+            ]
+          },
+          {
+            "row": 1,
+            "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "Survived",
+              "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+            },
+            "target_probabilities": [
+              0,
+              1
+            ]
+          },
+          {
+            "row": 2,
+            "cell": "1fe122f6-fd0b-4e7f-904b-329bd9a1ba11",
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "Survived",
+              "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+            },
+            "target_probabilities": [
+              1,
+              0
+            ]
+          }
+        ],
+        "renderer": "unsloth_clef",
+        "objective": "decision_cross_entropy",
+        "compute_usage": {
+          "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+          "gpu_type": null,
+          "usage_id": "ff7edb9544d04a9aac83948233eaeaa0",
+          "gpu_count": 0,
+          "limitations": [
+            "Running child resources enter the observation when reaped.",
+            "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+            "Unrelated container processes and provider billing adjustments are not measured."
+          ],
+          "elapsed_seconds": 22.879537045,
+          "cpu_core_seconds": 183.03629636,
+          "memory_gib_seconds": 183.03629636
+        },
+        "context_length": 4096,
+        "incompatible_rows": 0,
+        "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+        "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4",
+        "supervised_decisions": 713
+      }
+    },
+    "total_steps": 4,
+    "eval_history": [
+      {
+        "step": 0,
+        "brier": 0.5034525099386928,
+        "epoch": 0,
+        "decisions": 32,
+        "eval_loss": 0.6966,
+        "hard_label_accuracy": 0.21875,
+        "hard_label_decisions": 32,
+        "argmax_target_agreement": 0.21875
+      },
+      {
+        "step": 2,
+        "brier": 0.42611445093731015,
+        "epoch": 0.0256,
+        "decisions": 32,
+        "eval_loss": 0.618731,
+        "hard_label_accuracy": 0.78125,
+        "hard_label_decisions": 32,
+        "argmax_target_agreement": 0.78125
+      },
+      {
+        "step": 4,
+        "brier": 0.4757959976000169,
+        "epoch": 0.0513,
+        "decisions": 32,
+        "eval_loss": 0.668927,
+        "hard_label_accuracy": 0.78125,
+        "hard_label_decisions": 32,
+        "argmax_target_agreement": 0.78125
+      },
+      {
+        "step": 4,
+        "brier": 0.4913921272055852,
+        "epoch": 0.0513,
+        "decisions": 89,
+        "eval_loss": 0.684534,
+        "hard_label_accuracy": 0.6067415730337079,
+        "hard_label_decisions": 89,
+        "argmax_target_agreement": 0.6067415730337079
+      }
+    ],
+    "compute_usage": [
+      {
+        "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+        "gpu_type": "H100",
+        "usage_id": "8b5e0e49d08d4d0e98a93883604419ef",
+        "gpu_count": 1,
+        "limitations": [
+          "Running child resources enter the observation when reaped.",
+          "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+          "Unrelated container processes and provider billing adjustments are not measured."
+        ],
+        "elapsed_seconds": 105.80926612500001,
+        "cpu_core_seconds": 46.505,
+        "memory_gib_seconds": 775.8133946111112
+      }
+    ],
+    "current_epoch": 0.0513,
+    "learning_rate": 0.00005000000000000002,
+    "trained_steps": 4,
+    "elapsed_seconds": 134,
+    "metrics_history": [
+      {
+        "lr": 0,
+        "step": 1,
+        "epoch": 0.0128,
+        "grad_norm": 0.128623,
+        "train_loss": 0.692963
+      },
+      {
+        "lr": 0.0002,
+        "step": 2,
+        "epoch": 0.0256,
+        "grad_norm": 1.348657,
+        "train_loss": 0.698461
+      },
+      {
+        "lr": 0.00015000000000000001,
+        "step": 3,
+        "epoch": 0.0385,
+        "grad_norm": 0.788375,
+        "train_loss": 0.742845
+      },
+      {
+        "lr": 0.00005000000000000002,
+        "step": 4,
+        "epoch": 0.0513,
+        "grad_norm": 0.095118,
+        "train_loss": 0.695038
+      }
+    ],
+    "provider_status": "succeeded",
+    "epochs_completed": 0,
+    "estimated_finish": null,
+    "latest_eval_loss": 0.6845338217328104,
+    "tokens_processed": 5840,
+    "eta_range_seconds": null,
+    "latest_train_loss": 0.6950375437736511,
+    "tokens_per_second": 347.1,
+    "monitoring_manifest": {
+      "path": "training-monitoring/76f061a9-4214-43c8-b620-401923382b17/06b20e3d49b8a90e8d31ff6e808bf6e41db754cfa7c10c4c925a94f9cb48ba0a.json",
+      "probes": {
+        "development": {
+          "seed": 42,
+          "groups": 32,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 32,
+          "fingerprint": "9a0b2c4b998371c255634ab65cf2b80482de2050365dcee0d3597b6122f41efc",
+          "requested_rows": 32,
+          "population_rows": 89
+        },
+        "training_reference": {
+          "seed": 42,
+          "groups": 15,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 16,
+          "fingerprint": "eb19e0014707af421a3bb475de655b08e5effb54916cb2239117c7f42211e5c4",
+          "requested_rows": 16,
+          "population_rows": 624
+        }
+      },
+      "identity": "06b20e3d49b8a90e8d31ff6e808bf6e41db754cfa7c10c4c925a94f9cb48ba0a"
+    }
+  },
+  "details": {
+    "base_model": "Qwen/Qwen3-0.6B",
+    "provider": "modal",
+    "monitoring": {
+      "policy": {
+        "mode": "steps",
+        "seed": 42,
+        "final": true,
+        "initial": true,
+        "version": 1,
+        "selection": "last",
+        "generation": null,
+        "max_checks": 12,
+        "loss_sample": 32,
+        "train_sample": 16,
+        "early_stopping": null,
+        "failure_policy": "continue",
+        "interval_steps": 2,
+        "target_seconds": 300,
+        "generation_every": 3,
+        "overhead_fraction": 0.1
+      },
+      "check_count": 4,
+      "latest_decision_check": {
+        "id": "fbc70054-b658-4737-a7f7-bf82577a9355",
+        "state": "completed",
+        "step": 4,
+        "attempt": 1,
+        "stream": "final_development",
+        "observed_at": "2026-10-10T22:09:40.181008Z",
+        "sample_fingerprint": "22b35aea535c9139da8fb1907dc06dfdbc59253178db9cf421622ac9ee9cc597",
+        "metrics": {
+          "eval_loss": 0.6845338217328104,
+          "cross_entropy": 0.6845338270905312,
+          "brier": 0.4913921272055852,
+          "hard_label_accuracy": 0.6067415730337079,
+          "expected_score_mae": null,
+          "decisions": 89,
+          "distribution_decisions": 89,
+          "mean_decisions": 0,
+          "hard_label_decisions": 89
+        },
+        "coverage": {
+          "scored": 89,
+          "expected": 89
+        },
+        "assessment": {
+          "state": "measured",
+          "source": "recorded_native_categorical_metrics",
+          "findings": [
+            {
+              "id": "fbc70054-b658-4737-a7f7-bf82577a9355:b571d367833051faa77564ea5d2dcb6efd0ed60db5b028cec94d3afe89b24956:represented_labels_not_predicted:2",
+              "code": "represented_labels_not_predicted",
+              "step": 4,
+              "scope": "scored_development_categorical_decisions",
+              "state": "observed",
+              "action": "none",
+              "message": "Some represented categorical options have no predictions",
+              "check_id": "fbc70054-b658-4737-a7f7-bf82577a9355",
+              "assessed_at": "2026-10-10T22:10:02.743904+00:00",
+              "rule_version": 2,
+              "family_fingerprint": "b571d367833051faa77564ea5d2dcb6efd0ed60db5b028cec94d3afe89b24956",
+              "sample_fingerprint": "22b35aea535c9139da8fb1907dc06dfdbc59253178db9cf421622ac9ee9cc597"
+            }
+          ],
+          "assessed_at": "2026-10-10T22:10:02.743904+00:00",
+          "comparisons": [
+            {
+              "scored": 89,
+              "correct": 54,
+              "expected": 89,
+              "majority_correct": 54,
+              "family_fingerprint": "b571d367833051faa77564ea5d2dcb6efd0ed60db5b028cec94d3afe89b24956",
+              "majority_label_indices": [
+                0
+              ],
+              "unpredicted_label_indices": [
+                1
+              ]
+            }
+          ],
+          "limitations": [
+            "Same scored development subset within each declared categorical question and option set",
+            "Soft distributions and mean targets do not establish categorical correctness",
+            "No inferred cause, automatic training action or final-benchmark conclusion"
+          ],
+          "rule_version": 2,
+          "source_observed_at": "2026-10-10T22:09:40.181008+00:00",
+          "source_receipt_fingerprint": "540d2998ea0613d7b45778a689dfed62d460c3ffe88808587a7b8df7bb2bcc89"
+        },
+        "findings": [],
+        "error": {}
+      },
+      "latest_generation_check": null,
+      "latest_check": {
+        "id": "fbc70054-b658-4737-a7f7-bf82577a9355",
+        "state": "completed",
+        "step": 4,
+        "stream": "final_development",
+        "observed_at": "2026-10-10T22:09:40.181008Z",
+        "loss": 0.6845338217328104,
+        "coverage": {
+          "scored": 89,
+          "expected": 89
+        },
+        "generation": {
+          "scored": null,
+          "expected": null,
+          "coverage": null,
+          "accuracy": null,
+          "pass_rate": null,
+          "macro_f1": null,
+          "technical_errors": null
+        },
+        "error": {},
+        "findings": []
+      },
+      "selected_checkpoint": {
+        "id": "bfe2b0af-e3c3-4c3d-a7dd-d2b493a76f7e",
+        "step": 4,
+        "state": "available",
+        "verification": {
+          "scope": "retained inference artifact; optimizer recovery is a separate latest-state artifact",
+          "method": "native_probability_replay",
+          "decisions": 32,
+          "tolerance": 0.0001,
+          "weight_reload": "exact",
+          "reload_verified": true,
+          "resume_supported": false,
+          "max_absolute_error": 0,
+          "attention_implementation": "sdpa"
+        }
+      },
+      "current": {
+        "schedule": {
+          "checks": 2,
+          "next_step": null,
+          "step_seconds": [
+            14.577022736000004,
+            0.25875777000000255,
+            0.27061932300000535,
+            0.23372564500000692
+          ],
+          "interval_steps": 2,
+          "last_checked_step": 4
+        },
+        "collection": {
+          "state": "observed",
+          "observed_at": "2026-10-10T22:10:38.948213+00:00"
+        },
+        "stop_reason": null,
+        "numerical_health": {
+          "basis": "logged training intervals, not every optimizer update",
+          "logged_updates": 4,
+          "skipped_updates": null,
+          "loss_filtering_enabled": false,
+          "skipped_updates_reason": "not exposed by this trainer callback",
+          "gradient_norm_available": true,
+          "nonfinite_loss_observations": 0,
+          "nonfinite_gradient_observations": 0,
+          "clipping_threshold_exceeded_observations": 1
+        },
+        "optimizer_seconds": 15.340125474000018,
+        "monitoring_seconds": 21.996789402000005,
+        "policy_fingerprint": "5d62c676167a69647cab841312568bc31d8a982a83d3c863012a91109701ca95",
+        "schedule_decisions": [
+          {
+            "step": 2,
+            "basis": "measured_optimizer_time",
+            "conflicts": [],
+            "next_step": null,
+            "adaptation": "explicit_interval",
+            "stop_reason": "run_boundary",
+            "check_seconds": 1.8904887619999968,
+            "formula_version": 2,
+            "target_interval_steps": 41,
+            "overhead_interval_steps": 3,
+            "candidate_interval_steps": 2,
+            "effective_interval_steps": 2,
+            "optimizer_step_seconds_median": 7.417890253000003
+          },
+          {
+            "step": 4,
+            "basis": "measured_optimizer_time",
+            "conflicts": [],
+            "next_step": null,
+            "adaptation": "explicit_interval",
+            "stop_reason": "run_boundary",
+            "check_seconds": 1.8965392580000042,
+            "formula_version": 2,
+            "target_interval_steps": 1134,
+            "overhead_interval_steps": 65,
+            "candidate_interval_steps": 2,
+            "effective_interval_steps": 2,
+            "optimizer_step_seconds_median": 0.26468854650000395
+          }
+        ],
+        "selected_checkpoint": "1:4"
+      },
+      "inspect_tool": "inspect_training_progress",
+      "reads_invoke_provider": false
+    },
+    "capability": null,
+    "dataset_id": "24835eb2-a78c-5256-83b1-5098893cfb13",
+    "operation": {
+      "id": "3b55806c-1f9a-457e-8ef0-c51bfaca636b",
+      "kind": "finetune_job",
+      "reference": "76f061a9-4214-43c8-b620-401923382b17",
+      "attempt": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+      "unit": "steps",
+      "facts": {
+        "run_id": null,
+        "attempt": 1,
+        "provider": "modal",
+        "files_total": null,
+        "measurement": null,
+        "files_completed": null,
+        "provider_call_id": "ft-76f061a9-4214-43c8-b620-401923382b17-18d38503:fc-01M4KXRCNVW88DMV9R5R104HTZ",
+        "telemetry_available": true
+      },
+      "stage": "succeeded",
+      "total": 4,
+      "status": "succeeded",
+      "completed": 4,
+      "event_count": 8,
+      "last_observed_at": "2026-10-10T22:10:38.955702+00:00",
+      "last_heartbeat_at": "2026-10-10T22:10:10.616269+00:00",
+      "last_progress_at": "2026-10-10T22:10:38.952192+00:00",
+      "telemetry": "recorded",
+      "provider": {}
+    }
+  },
+  "resource": {
+    "uri": "overmind://finetunes/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "title": "Branch E2E · Titanic · four-step decision canary",
+    "mimeType": "application/json"
+  },
+  "resource_links": [
+    {
+      "uri": "overmind://finetunes/76f061a9-4214-43c8-b620-401923382b17?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Branch E2E · Titanic · four-step decision canary",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "overmind://operations/3b55806c-1f9a-457e-8ef0-c51bfaca636b?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Operational timeline",
+      "mimeType": "application/json"
+    }
+  ],
+  "summary": "Branch E2E · Titanic · four-step decision canary: succeeded."
+}

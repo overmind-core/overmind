@@ -108,7 +108,7 @@ def verify_rows(case, before, after):
     return {"verified_rows": len(after), **counts}
 
 
-async def main(output, suffix):
+async def main(output, suffix, selected_cases=None):
     directory = Path(tempfile.mkdtemp(prefix="decision-workshop-"))
     transport = command("/usr/local/bin/codex", "mcp", "get", "overmind", "--json")["transport"]
     assert transport["url"] == "http://localhost:8000/api/mcp/"
@@ -172,6 +172,8 @@ async def main(output, suffix):
 
         try:
             for case, (project, source, parent, count) in CASES.items():
+                if selected_cases and case not in selected_cases:
+                    continue
                 result = evidence["cases"].setdefault(case, {})
                 parent_before = await call(project, "inspect_dataset", dataset=parent, cell_limit=1)
                 derived = await call(
@@ -386,5 +388,6 @@ if __name__ == "__main__":
         "--output", type=Path, default=ROOT / "decision-workshop-verified-results.json"
     )
     parser.add_argument("--request-prefix", default="decision-workshop-20261010-verified")
+    parser.add_argument("--case", choices=tuple(CASES), action="append")
     args = parser.parse_args()
-    anyio.run(main, args.output, args.request_prefix)
+    anyio.run(main, args.output, args.request_prefix, args.case)

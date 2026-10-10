@@ -1,0 +1,101 @@
+{
+  "evaluation": "598e53a5-a271-4aae-a399-49f433326717",
+  "status": "passed",
+  "report_sha256": "73ed61e6e4b0afaaa5e06f6cf68e7da571dd5ff787c67f055a7a1075c5b7e946",
+  "report_bytes": 99907,
+  "participants": {
+    "base": {
+      "raw": {
+        "brier": {
+          "mean": 0.5019467239764289,
+          "benchmarks": 1
+        },
+        "accuracy": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        },
+        "cross_entropy": {
+          "mean": 0.6950939310695187,
+          "benchmarks": 1
+        },
+        "mode_agreement": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        },
+        "top1_reference_mass": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        }
+      },
+      "calibrated": {
+        "brier": {
+          "mean": 0.5000192955865747,
+          "benchmarks": 1
+        },
+        "accuracy": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        },
+        "cross_entropy": {
+          "mean": 0.6931664761465435,
+          "benchmarks": 1
+        },
+        "mode_agreement": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        },
+        "top1_reference_mass": {
+          "mean": 0.33707865168539325,
+          "benchmarks": 1
+        }
+      }
+    },
+    "candidate": {
+      "raw": {
+        "brier": {
+          "mean": 0.48643436083913094,
+          "benchmarks": 1
+        },
+        "accuracy": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        },
+        "cross_entropy": {
+          "mean": 0.6795728335700171,
+          "benchmarks": 1
+        },
+        "mode_agreement": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        },
+        "top1_reference_mass": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        }
+      },
+      "calibrated": {
+        "brier": {
+          "mean": 0.4525418040454439,
+          "benchmarks": 1
+        },
+        "accuracy": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        },
+        "cross_entropy": {
+          "mean": 0.6451047198531596,
+          "benchmarks": 1
+        },
+        "mode_agreement": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        },
+        "top1_reference_mass": {
+          "mean": 0.6629213483146067,
+          "benchmarks": 1
+        }
+      }
+    }
+  },
+  "scope": "Download bytes and metrics agree with the retained MCP completion receipt"
+}
