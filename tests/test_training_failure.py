@@ -1,6 +1,22 @@
 from modal_shared.training_failure import failure_receipt
 
 
+def test_decision_reload_failure_exposes_the_failed_check_without_worker_text(tmp_path):
+    log = tmp_path / "worker.log"
+    log.write_text(
+        "private input and paths\n"
+        "ValueError: Checkpoint prediction parity failed: maximum difference 0.010771095752716064\n"
+    )
+    receipt = failure_receipt(log)
+    assert receipt["code"] == "decision_checkpoint_verification_failed"
+    assert "probabilities" in receipt["message"]
+    assert "private" not in str(receipt)
+    log.write_text("ValueError: Reloaded decision weights differ from the saved checkpoint\n")
+    receipt = failure_receipt(log)
+    assert receipt["code"] == "decision_checkpoint_verification_failed"
+    assert "weights" in receipt["message"]
+
+
 def test_gpu_failure_returns_actionable_facts_without_raw_worker_text(tmp_path):
     log = tmp_path / "worker.log"
     log.write_text(

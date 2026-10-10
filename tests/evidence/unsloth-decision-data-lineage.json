@@ -1,0 +1,233 @@
+{
+  "pipeline": {
+    "id": "45368aed-f1f2-43a6-a7ff-b29d9f7a8d55",
+    "pipeline_id": "8f9c9a29-c307-445b-91b5-49cd2a9afe00",
+    "revision": 1,
+    "parent": null,
+    "derived_from": null,
+    "package": "6ffb2722-51d5-443a-bf43-81a10fe92dc1",
+    "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+    "executable": true,
+    "name": "SST-2 typed decisions with retained labels and content groups",
+    "fingerprint": "0fff0e0f46fe2546a324d1d70dda06a9a22194f42c6a4f153787e54f69e5e032",
+    "steps": [
+      {
+        "id": "audit",
+        "name": "Validate published labels and retain content identities",
+        "input": "source",
+        "checks": {
+          "preserve_rows": true
+        },
+        "entrypoint": "audit.py",
+        "input_schema": {
+          "label": "integer",
+          "sentence": "string"
+        },
+        "output_schema": {
+          "source_row": "integer",
+          "content_group": "string"
+        }
+      },
+      {
+        "id": "decisions",
+        "name": "Project supplied sentiment labels into typed decisions",
+        "input": "audit",
+        "checks": {
+          "preserve_rows": true
+        },
+        "entrypoint": "decision.py",
+        "output_schema": {
+          "group": "string",
+          "input": "object",
+          "decision": "object",
+          "source_row": "integer",
+          "expected_output": "object"
+        }
+      },
+      {
+        "id": "sample",
+        "name": "Select frozen content groups and exclude final-benchmark overlap",
+        "input": "decisions",
+        "checks": {
+          "min_rows": 100
+        },
+        "entrypoint": "sample.py",
+        "output_schema": {
+          "group": "string",
+          "decision": "object",
+          "source_row": "integer"
+        }
+      }
+    ],
+    "flow": {
+      "source": "source",
+      "output": "sample",
+      "nodes": [
+        {
+          "id": "audit",
+          "step": 0,
+          "name": "Validate published labels and retain content identities",
+          "entrypoint": "audit.py",
+          "input": "source",
+          "inputs": [
+            "source"
+          ]
+        },
+        {
+          "id": "decisions",
+          "step": 1,
+          "name": "Project supplied sentiment labels into typed decisions",
+          "entrypoint": "decision.py",
+          "input": "audit",
+          "inputs": [
+            "audit"
+          ]
+        },
+        {
+          "id": "sample",
+          "step": 2,
+          "name": "Select frozen content groups and exclude final-benchmark overlap",
+          "entrypoint": "sample.py",
+          "input": "decisions",
+          "inputs": [
+            "decisions"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "source": "source",
+          "target": "audit",
+          "condition": null
+        },
+        {
+          "source": "audit",
+          "target": "decisions",
+          "condition": null
+        },
+        {
+          "source": "decisions",
+          "target": "sample",
+          "condition": null
+        }
+      ],
+      "terminal_steps": [
+        "sample"
+      ],
+      "unconsumed_steps": [],
+      "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+      "routing": "retained_code",
+      "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+    },
+    "created_at": "2026-10-10T17:14:23.027652+00:00"
+  },
+  "runs": [
+    {
+      "id": "56f991f1-1f44-4578-ad96-ce1fed472762",
+      "mode": "publish",
+      "state": "completed",
+      "source_dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+      "source_cell": "3ba4dec0-3a67-4a74-a4ee-376adc79ae9b",
+      "source_fingerprint": "447e52ca9ffe9c03e3b795920c7303ccfb5c3840b988073cfdc8c9de5fde3c0e",
+      "parameters": {
+        "seed": 42,
+        "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
+        "max_groups": 0,
+        "exclude_final": false
+      },
+      "output_cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+      "source_rows": 872,
+      "output_rows": 872,
+      "impact": {
+        "rows_added": 0,
+        "rows_after": 872,
+        "rows_before": 872,
+        "rows_removed": 0,
+        "coverage_after": {
+          "label": {
+            "0": 428,
+            "1": 444
+          }
+        },
+        "coverage_before": {
+          "label": {
+            "0": 428,
+            "1": 444
+          }
+        },
+        "decision_changes": 0,
+        "identity_preserved": true,
+        "instruction_changes": 0,
+        "decision_rows_removed": 0,
+        "input_evidence_removed": 0
+      },
+      "completed_at": "2026-10-10T17:16:01.553775+00:00"
+    },
+    {
+      "id": "6dbb640c-e019-4805-912e-70b919aff747",
+      "mode": "publish",
+      "state": "completed",
+      "source_dataset": "78729cf6-0c0e-4552-a2d8-6f5fdfc0da7c",
+      "source_cell": "dd15a7cf-f751-4f33-bf77-2a1e7efbada1",
+      "source_fingerprint": "96defe762b32b69b78ce147e34602a46bc10bce9f24fc0d75ff79efce71c6746",
+      "parameters": {
+        "seed": 42,
+        "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
+        "max_groups": 2560,
+        "exclude_final": true
+      },
+      "output_cell": "17b68402-d168-48bf-bb73-b9d95fbb6152",
+      "source_rows": 67349,
+      "output_rows": 2573,
+      "impact": {
+        "rows_added": 0,
+        "rows_after": 2573,
+        "rows_before": 67349,
+        "rows_removed": 64776,
+        "coverage_after": {
+          "label": {
+            "0": 1129,
+            "1": 1444
+          }
+        },
+        "coverage_before": {
+          "label": {
+            "0": 29780,
+            "1": 37569
+          }
+        },
+        "decision_changes": 0,
+        "identity_preserved": true,
+        "instruction_changes": 0,
+        "decision_rows_removed": 64776,
+        "input_evidence_removed": 0
+      },
+      "completed_at": "2026-10-10T17:15:56.179108+00:00"
+    },
+    {
+      "id": "cbc1edc0-0a86-4760-8908-8d5d4ced08b7",
+      "mode": "preview",
+      "state": "completed",
+      "source_dataset": "78729cf6-0c0e-4552-a2d8-6f5fdfc0da7c",
+      "source_cell": "dd15a7cf-f751-4f33-bf77-2a1e7efbada1",
+      "source_fingerprint": "96defe762b32b69b78ce147e34602a46bc10bce9f24fc0d75ff79efce71c6746",
+      "parameters": {
+        "seed": 42,
+        "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
+        "max_groups": 2560,
+        "exclude_final": true
+      },
+      "output_cell": null,
+      "source_rows": 67349,
+      "output_rows": 100,
+      "completed_at": "2026-10-10T17:14:33.303701+00:00"
+    }
+  ],
+  "page": {
+    "limit": 5,
+    "offset": 0,
+    "total": 3,
+    "has_more": false,
+    "next_cursor": null
+  }
+}

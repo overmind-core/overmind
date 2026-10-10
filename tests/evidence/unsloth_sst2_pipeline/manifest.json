@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "parameters": {
+    "seed": "integer",
+    "max_groups": "integer",
+    "exclude_final": "boolean",
+    "revision": "string"
+  },
+  "limits": {
+    "seconds": 120,
+    "memory_mb": 1024,
+    "scratch_mb": 1024,
+    "cpus": 1
+  },
+  "steps": [
+    {
+      "id": "audit",
+      "input": "source",
+      "name": "Validate published labels and retain content identities",
+      "entrypoint": "audit.py",
+      "input_schema": {
+        "sentence": "string",
+        "label": "integer"
+      },
+      "output_schema": {
+        "content_group": "string",
+        "source_row": "integer"
+      },
+      "checks": {
+        "preserve_rows": true
+      }
+    },
+    {
+      "id": "decisions",
+      "input": "audit",
+      "name": "Project supplied sentiment labels into typed decisions",
+      "entrypoint": "decision.py",
+      "output_schema": {
+        "decision": "object",
+        "input": "object",
+        "expected_output": "object",
+        "group": "string",
+        "source_row": "integer"
+      },
+      "checks": {
+        "preserve_rows": true
+      }
+    },
+    {
+      "id": "sample",
+      "input": "decisions",
+      "name": "Select frozen content groups and exclude final-benchmark overlap",
+      "entrypoint": "sample.py",
+      "output_schema": {
+        "decision": "object",
+        "group": "string",
+        "source_row": "integer"
+      },
+      "checks": {
+        "min_rows": 100
+      }
+    }
+  ]
+}

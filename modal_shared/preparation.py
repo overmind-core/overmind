@@ -9,6 +9,8 @@ def processor_fingerprint(assets: Path) -> str:
     digest = hashlib.sha256()
     modules = {
         "prepare_training.py",
+        "prepare_native_training.py",
+        "decision_tokenizer.py",
         "preprocess.py",
         "pretok.py",
         "catalog.py",
@@ -18,7 +20,10 @@ def processor_fingerprint(assets: Path) -> str:
         digest.update(str(path.relative_to(assets)).encode())
         digest.update(path.read_bytes())
     shared = Path(__file__).parent
-    paths = [shared / name for name in ("decisions.py", "training_data.py", "preparation.py")]
+    paths = [
+        shared / name
+        for name in ("decisions.py", "decision_encoding.py", "training_data.py", "preparation.py")
+    ]
     paths.extend(sorted((shared / "modelfam").rglob("*.py")))
     for path in paths:
         digest.update(str(path.relative_to(shared)).encode())
@@ -31,7 +36,7 @@ def training_fingerprint(assets: Path) -> str:
     for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".sh"}):
         digest.update(str(path.relative_to(assets)).encode())
         digest.update(path.read_bytes())
-    for name in ("decision_checkpoint.py", "decision_batching.py", "training_telemetry.py"):
+    for name in ("decision_batching.py", "training_telemetry.py"):
         digest.update(name.encode())
         digest.update(Path(__file__).with_name(name).read_bytes())
     return digest.hexdigest()

@@ -40,7 +40,19 @@ def test_runner_transfers_only_bound_selections_and_worker_restores_exact_tokens
             {
                 "key": row_key(row),
                 "input_ids": [1, 2],
-                "option_token_ids": [3, 4],
+                "option_order": [1, 0],
+                "record": {
+                    "record_id": None,
+                    "questions": [
+                        {
+                            "question_id": "decision",
+                            "question_type": "choice",
+                            "question_span": [0, 1],
+                            "option_spans": [[0, 1], [1, 2]],
+                            "option_ids": ["no", "yes"],
+                        }
+                    ],
+                },
                 "target_probabilities": row["decision"]["target_probabilities"],
                 "weight": row["decision"]["weight"],
             }

@@ -1,0 +1,44 @@
+{
+  "banking77": {
+    "label_index": 6,
+    "label": "balance_not_updated_after_cheque_or_cash_deposit",
+    "train_count": 149,
+    "train_total": 8045,
+    "final_correct": 40,
+    "final_total": 3080,
+    "accuracy": 0.012987012987012988,
+    "export_sha256": {
+      "train": "124adc8b6ce8c497650e0eb4dcfbba661358eee1664f20243131e6509c6cb23c",
+      "final": "9c9fcc77928cdebbf16ebfe152c55a81cb65034e0cbc1fa5910568a3b8806ab1"
+    },
+    "selection": "Most frequent training label; lowest label index breaks ties. No final labels select the predictor."
+  },
+  "sst5": {
+    "label_index": 3,
+    "label": "positive",
+    "train_count": 2107,
+    "train_total": 7720,
+    "final_correct": 510,
+    "final_total": 2210,
+    "accuracy": 0.23076923076923078,
+    "export_sha256": {
+      "train": "0bf3a4dc57cc355704ca3d8dbcc7fef9e9db1b6e097500f41b34c06c5ead4f74",
+      "final": "115eba2561ed8ec53e382117f92ee8e857d63bebf6f6b622c1a1ad0094a157b6"
+    },
+    "selection": "Most frequent training label; lowest label index breaks ties. No final labels select the predictor."
+  },
+  "boolq": {
+    "label_index": 1,
+    "label": "Yes",
+    "train_count": 3995,
+    "train_total": 6372,
+    "final_correct": 2033,
+    "final_total": 3270,
+    "accuracy": 0.6217125382262997,
+    "export_sha256": {
+      "train": "f7976d7c8adef1ab242ee0288065b94b80643a74e595498ffa20052df9f54277",
+      "final": "727c46ee1f1f3e24b0b0f6368def3d588da5c7383a00374d128d3af1e3ace871"
+    },
+    "selection": "Most frequent training label; lowest label index breaks ties. No final labels select the predictor."
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "provider": "typesafe/jev-1.13",
+  "pricing_url": "https://openrouter.ai/typesafe/jev-1.13/",
+  "observed_date": "2026-10-10",
+  "input_usd_per_million": 0.042,
+  "output_usd_per_million": 0,
+  "estimates": {
+    "banking77": {
+      "rows": 4088,
+      "input_json_bytes": 8469892,
+      "one_byte_per_token_price_proxy_usd": 0.35573546400000006,
+      "scope": "Conservative byte-based proxy before provider token receipts; framing and retries are not included."
+    },
+    "sst5": {
+      "rows": 3030,
+      "input_json_bytes": 875314,
+      "one_byte_per_token_price_proxy_usd": 0.036763188,
+      "scope": "Conservative byte-based proxy before provider token receipts; framing and retries are not included."
+    },
+    "boolq": {
+      "rows": 4096,
+      "input_json_bytes": 2831868,
+      "one_byte_per_token_price_proxy_usd": 0.11893845600000001,
+      "scope": "Conservative byte-based proxy before provider token receipts; framing and retries are not included."
+    }
+  }
+}

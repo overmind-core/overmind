@@ -80,6 +80,7 @@ export function DevelopmentMonitor({ jobId, status }: { jobId: string; status: s
   const first = history.data?.pages[0];
   const checkpoints = first?.checkpoints ?? [];
   const current = first?.current;
+  const native = checks.some((check) => typeof check.metrics?.distribution_decisions === "number");
   const loss = checks
     .filter(
       (check) =>
@@ -158,7 +159,13 @@ export function DevelopmentMonitor({ jobId, status }: { jobId: string; status: s
                 <TableHead>Step</TableHead>
                 <TableHead>Check</TableHead>
                 <TableHead>Loss</TableHead>
-                <TableHead>{contractProbe ? "Contract pass rate" : "Generated accuracy"}</TableHead>
+                <TableHead>
+                  {native
+                    ? "Hard-label accuracy"
+                    : contractProbe
+                      ? "Contract pass rate"
+                      : "Generated accuracy"}
+                </TableHead>
                 <TableHead>Loss coverage</TableHead>
                 <TableHead>Evidence</TableHead>
               </TableRow>
@@ -179,9 +186,11 @@ export function DevelopmentMonitor({ jobId, status }: { jobId: string; status: s
                   <TableCell className="tabular-nums">{number(check.metrics?.eval_loss)}</TableCell>
                   <TableCell className="tabular-nums">
                     {number(
-                      contractProbe
-                        ? check.metrics?.generation?.pass_rate
-                        : check.metrics?.generation?.accuracy,
+                      native
+                        ? check.metrics?.hard_label_accuracy
+                        : contractProbe
+                          ? check.metrics?.generation?.pass_rate
+                          : check.metrics?.generation?.accuracy,
                       true
                     )}
                   </TableCell>
@@ -244,17 +253,25 @@ export function DevelopmentMonitor({ jobId, status }: { jobId: string; status: s
               <dt className="text-muted-foreground">Development gap</dt>
               <dd>{number(selected.metrics?.development_gap)}</dd>
             </div>
-            <div>
-              <dt className="text-muted-foreground">Generation coverage</dt>
-              <dd>{number(generated?.coverage, true)}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Macro F1</dt>
-              <dd>{number(generated?.macro_f1)}</dd>
-            </div>
+            {!native && (
+              <div>
+                <dt className="text-muted-foreground">Generation coverage</dt>
+                <dd>{number(generated?.coverage, true)}</dd>
+              </div>
+            )}
+            {!native && (
+              <div>
+                <dt className="text-muted-foreground">Macro F1</dt>
+                <dd>{number(generated?.macro_f1)}</dd>
+              </div>
+            )}
           </dl>
           {typeof selected.metrics?.distribution_decisions === "number" && (
             <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Distribution cross entropy</dt>
+                <dd>{number(selected.metrics.cross_entropy)}</dd>
+              </div>
               <div>
                 <dt className="text-muted-foreground">
                   Brier · {selected.metrics.distribution_decisions} distributions
@@ -273,6 +290,11 @@ export function DevelopmentMonitor({ jobId, status }: { jobId: string; status: s
               </div>
             </dl>
           )}
+          {selected.facts?.assessment?.findings?.map((finding: { id: string; message: string }) => (
+            <Alert key={finding.id} variant="warning">
+              {finding.message}
+            </Alert>
+          ))}
           {generated?.per_class && (
             <div className="overflow-x-auto">
               <Table aria-label="Development class metrics">

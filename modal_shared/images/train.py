@@ -9,6 +9,7 @@ import modal
 
 from modal_shared.images import attach_modelfam, attach_sft_assets
 from modal_shared.stacks import (
+    TRAIN_DECISION,
     TRAIN_U2026_7,
     TRAIN_U2026_8_18,
     TRAIN_U2026_8_GPOS,
@@ -227,7 +228,26 @@ _u2026_8_gptoss = _finish(
 # module, regardless of which specific Function/image is being invoked.
 light_image = attach_modelfam(modal.Image.debian_slim(python_version="3.11"))
 
+_decision = _finish(
+    _base_cuda.pip_install(
+        "torch==2.10.0",
+        "torchvision==0.25.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    ).pip_install(
+        "unsloth==2026.10.3",
+        "unsloth_zoo==2026.10.3",
+        "transformers==5.17.0",
+        "trl==1.13.0",
+        "datasets==4.7.0",
+        "sentencepiece",
+        "protobuf",
+        "bitsandbytes==0.49.2",
+    ),
+    {**_SFT_ENV, "UNSLOTH_IMAGE": TRAIN_DECISION, "UNSLOTH_DISABLE_STATISTICS": "1"},
+)
+
 TRAIN_IMAGES: dict[str, modal.Image] = {
+    TRAIN_DECISION: _decision,
     TRAIN_U2026_7: _u2026_7,
     TRAIN_U2026_8_TF510: _u2026_8_tf510,
     TRAIN_U2026_8_TF515: _u2026_8_tf515,

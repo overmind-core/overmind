@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "limits": {"seconds": 120, "memory_mb": 2048, "scratch_mb": 1024, "cpus": 1},
+  "steps": [
+    {"id": "audit", "input": "source", "name": "Validate published labels and freeze benchmark groups and roles", "entrypoint": "audit.py", "input_schema": {"record": "object", "split": "string", "benchmark": "string"}, "output_schema": {"source_row": "integer", "label": "integer", "group_id": "string", "benchmark_role": "string", "exclusion_reason": "string"}, "checks": {"preserve_rows": true}},
+    {"id": "eligible", "input": "audit", "name": "Exclude lower-priority groups overlapping reserved benchmark splits", "entrypoint": "eligible.py", "checks": {"min_rows": 1}},
+    {"id": "decisions", "input": "eligible", "name": "Encode supplied categorical labels as typed decisions with isolated references", "entrypoint": "decisions.py", "output_schema": {"source_row": "integer", "decision": "object", "input": "object", "expected_output": "object", "group": "string"}, "checks": {"preserve_rows": true}}
+  ]
+}

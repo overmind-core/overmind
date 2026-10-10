@@ -2,6 +2,7 @@ import math
 from collections import Counter
 from types import SimpleNamespace
 
+from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.models import FinetuningJob
 from overbae.services import provider_pricing, training_release
 from overbae.services.compute_costs import unique_usage
@@ -23,6 +24,7 @@ RECIPE_FIELDS = (
     "gradient_accumulation_steps",
     "checkpoint_policy",
     "pre_training_baseline",
+    "max_steps",
 )
 
 
@@ -45,6 +47,9 @@ def candidates(project_id, model):
 
 def forecast(project_id, model, recipe, *, tokens, stats):
     gpu, count = hardware(model, recipe)
+    defaults = {"pre_training_baseline": True}
+    if recipe.get("objective") in DECISION_OBJECTIVES:
+        defaults["packing"] = False
     durations, evidence = [], []
     rejected = Counter()
     release = training_release.current()
@@ -57,8 +62,7 @@ def forecast(project_id, model, recipe, *, tokens, stats):
             rejected["runtime"] += 1
             continue
         if any(
-            job.hyperparameters.get(key, True if key == "pre_training_baseline" else None)
-            != recipe.get(key, True if key == "pre_training_baseline" else None)
+            job.hyperparameters.get(key, defaults.get(key)) != recipe.get(key, defaults.get(key))
             for key in RECIPE_FIELDS
         ):
             rejected["recipe"] += 1

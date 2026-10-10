@@ -29,6 +29,13 @@ def inventory(directory):
         name.startswith("adapter_model") and name.endswith(".safetensors") for name in files
     ):
         raise ValueError("Decision artifact has no adapter weights")
+    contract = json.loads((directory / "decision.json").read_text())
+    if (
+        contract.get("renderer") == "unsloth_clef"
+        and not {"joint_head.safetensors", "joint_head_config.json", "unsloth_decision_config.json"}
+        <= files.keys()
+    ):
+        raise ValueError("Decision artifact is missing its trained head or configuration")
     return files
 
 
@@ -41,8 +48,10 @@ def verify_report(report):
         type(value) in {int, float} and math.isfinite(value) for value in (error, tolerance)
     ):
         raise ValueError("Decision reload verification must be finite")
-    if not 0 <= error <= tolerance <= 1e-4:
+    if not 0 <= error <= tolerance <= 1e-3:
         raise ValueError("Decision artifact did not pass reload verification")
+    if tolerance > 1e-4 and report.get("weight_reload") != "exact":
+        raise ValueError("Mixed-precision replay requires exact saved-weight verification")
 
 
 def read_artifact(directory):
@@ -51,7 +60,7 @@ def read_artifact(directory):
     file_state(marker)
     manifest = json.loads(marker.read_text())
     payload = {key: value for key, value in manifest.items() if key != "identity"}
-    if manifest.get("schema") != 1 or manifest.get("identity") != digest_json(payload):
+    if manifest.get("schema") not in {1, 2} or manifest.get("identity") != digest_json(payload):
         raise ValueError("Decision artifact manifest checksum mismatch")
     verify_report(manifest["verification"])
     if inventory(directory) != manifest["files"]:
@@ -78,10 +87,9 @@ def seal_artifact(directory, verification):
     if not isinstance(repository, str) or not repository:
         raise ValueError("Decision artifact requires a base repository")
     payload = {
-        "schema": 1,
+        "schema": 2,
         "objective": contract["objective"],
         "renderer": contract["renderer"],
-        "codebook": contract["codebook"],
         "vocab_fingerprint": contract["vocab_fingerprint"],
         "training": contract["training"],
         "base_repository": repository,

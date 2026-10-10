@@ -7,6 +7,8 @@ from conftest import import_version
 from overbae.models import Dataset, Project
 from overbae.services.datasets import land, paths, store, use
 from overbae.services.datasets.examples import prepare_examples
+from overbae.services.datasets.profile import profile_records
+from overbae.services.datasets.review import decision_changed
 
 pytestmark = pytest.mark.django_db
 
@@ -31,6 +33,25 @@ def flat(index=0, **changes):
         group_id=f"case-{index}",
         **changes,
     )
+
+
+def test_flat_supervision_changes_are_visible_to_workshop_review():
+    original = flat(weight=2.5, target_semantics="posterior", target_provenance={"field": "p"})
+    for field, value in {
+        "weight": 1.0,
+        "target_semantics": "teacher_distribution",
+        "target_provenance": {"field": "teacher_p"},
+    }.items():
+        assert decision_changed(original, {**original, field: value})
+    prepared = prepare_examples(pd.DataFrame([original]), "train").iloc[0]["decision"]
+    assert prepared["weight"] == 2.5
+    assert prepared["target_semantics"] == "posterior"
+    assert prepared["target_provenance"] == {"field": "p"}
+
+
+def test_flat_semantics_cannot_hide_invalid_gold_supervision():
+    result = profile_records([flat(target_semantics="categorical_gold")])
+    assert result["counts"].get("invalid_decision_rows", 0) == 1
 
 
 @pytest.mark.parametrize("intent", ["train", "eval"])

@@ -30,6 +30,7 @@ class NativeTrainingMonitor:
             total_steps=total_steps,
             attempt=attempt,
             identity_rows=True,
+            measurement="native_probabilities",
         )
         self.step, self.final = 0, False
 

@@ -14,7 +14,7 @@ from overbae.services.datasets import land
 pytestmark = pytest.mark.django_db
 
 
-def setup_plan(*, prepare=True):
+def setup_plan(*, prepare=True, question_count=None):
     project = Project.objects.create(name="Research", slug="research")
     train = Dataset.objects.create(project=project, name="Training", intent="train")
     job = FinetuningJob.objects.create(
@@ -34,7 +34,7 @@ def setup_plan(*, prepare=True):
                     "input": {
                         "decision": {
                             "state": f"{name} evidence {i}",
-                            "question": "Choose",
+                            "question": f"Choose for question {i}" if question_count else "Choose",
                             "kind": "choice",
                             "options": ["yes", "no"],
                         }
@@ -43,7 +43,7 @@ def setup_plan(*, prepare=True):
                     "benchmark": "fixture",
                     "group": str(i),
                 }
-                for i in range(3)
+                for i in range(question_count or 3)
             ],
         )
         dataset.refresh_from_db()
@@ -61,6 +61,69 @@ def setup_plan(*, prepare=True):
         native_evaluation.advance(plan.pk, stage="verify_inputs")
     plan.refresh_from_db()
     return plan
+
+
+def test_many_question_report_stays_in_artifact_and_paused_scoring_recovers_without_provider(
+    tmp_path, settings
+):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan(question_count=240)
+    plan.config["bootstrap_samples"] = 2
+    plan.save()
+    for role in ("calibration", "final"):
+        source = native_evaluation.seal_suite(plan, role)
+        for arm in ("base", "candidate"):
+            probability = 0.8 if arm == "candidate" else 0.6
+            with (source.parent / f"{arm}.jsonl").open("w") as output:
+                for row in native_evaluation.records(source):
+                    output.write(
+                        json.dumps(
+                            {
+                                "key": row["key"],
+                                "input_sha256": row["input_sha256"],
+                                "kind": "choice",
+                                "model_identity": arm,
+                                "probabilities": [probability, 1 - probability],
+                                "log_probabilities": [
+                                    math.log(probability),
+                                    math.log(1 - probability),
+                                ],
+                            }
+                        )
+                        + "\n"
+                    )
+    plan.calibration = native_evaluation.fit_calibration(plan)
+    plan.calls = {
+        stage: {"state": "completed", "receipt": {}}
+        for stage in native_evaluation.stage_sequence(plan)[:-1]
+    }
+    plan.save()
+    with patch.object(native_evaluation, "submit", side_effect=AssertionError("no provider")):
+        native_evaluation.advance(plan.pk, stage="score")
+    plan.refresh_from_db()
+    assert plan.state == "completed", plan.error
+    assert len(json.dumps({"calls": plan.calls, "results": plan.results})) < 128 * 1024
+    report = native_evaluation.directory(plan, "report") / "results.json"
+    full = json.loads(report.read_text())
+    saved = plan.results["comparisons"]["candidate"]["raw"]["candidate"]
+    original = full["comparisons"]["candidate"]["raw"]["candidate"]
+    assert saved["benchmarks"] == original["benchmarks"]
+    assert saved["slice_count"] == len(original["slices"]) >= 240
+    assert plan.calls["score"]["receipt"]["sha256"] == native_evaluation.digest_file(report)
+    plan.calls["score"] = {
+        "state": "submitting",
+        "lease": "stopped-worker",
+        "lease_started_at": native_evaluation.timezone.now().isoformat(),
+    }
+    plan.state = "paused"
+    plan.save()
+    native_evaluation.resume(plan, stage="score")
+    with patch.object(native_evaluation, "submit", side_effect=AssertionError("no provider")):
+        native_evaluation.advance(plan.pk, stage="score")
+    plan.refresh_from_db()
+    assert plan.state == "completed"
+    assert json.loads(report.read_text())["comparisons"] == full["comparisons"]
+    assert plan.calls["score"]["receipt"]["sha256"] == native_evaluation.digest_file(report)
 
 
 def test_plan_keeps_references_local_and_freezes_calibration_before_final_predictions(
@@ -153,6 +216,36 @@ def test_retry_keeps_pinned_evaluation_release(tmp_path, settings):
         )
     assert again.pk == plan.pk
     assert again.config["runtime"]["app"] == "eval-release"
+
+
+def test_paused_provider_collection_recovers_only_its_recorded_call(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:training"
+    plan.job.save()
+    plan.state = "paused"
+    plan.calls["calibration_prepare"] = {
+        "state": "running",
+        "id": "fc-existing",
+        "lease": "interrupted-collector",
+        "lease_started_at": native_evaluation.timezone.now().isoformat(),
+    }
+    plan.save()
+    for call_id in (None, "fc-different"):
+        with pytest.raises(ValueError):
+            native_evaluation.resume(plan, stage="calibration_prepare", call_id=call_id)
+    native_evaluation.resume(plan, stage="calibration_prepare", call_id="fc-existing")
+    with (
+        patch.object(native_evaluation, "submit", side_effect=AssertionError("no new call")),
+        patch.object(native_evaluation.modal.FunctionCall, "from_id") as lookup,
+    ):
+        lookup.return_value.get.side_effect = TimeoutError
+        native_evaluation.advance(plan.pk, stage="calibration_prepare")
+    lookup.assert_called_once_with("fc-existing")
+    plan.refresh_from_db()
+    assert plan.calls["calibration_prepare"]["id"] == "fc-existing"
+    assert "lease" not in plan.calls["calibration_prepare"]
 
 
 def test_complete_plan_uses_six_provider_calls_and_retains_paired_coverage(tmp_path, settings):

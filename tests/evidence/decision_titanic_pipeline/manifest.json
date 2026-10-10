@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "steps": [
+    {"id": "evidence", "input": "source", "name": "Separate passenger evidence from recorded outcome and identifiers", "entrypoint": "evidence.py", "input_schema": {"Survived": "integer", "Ticket": "string"}, "output_schema": {"source_row": "integer", "model_evidence": "object", "review_flags": "array"}, "checks": {"preserve_rows": true}},
+    {"id": "decisions", "input": "evidence", "name": "Encode the recorded survival class as a typed decision", "entrypoint": "decisions.py", "output_schema": {"source_row": "integer", "decision": "object"}, "checks": {"preserve_rows": true, "min_rows": 891, "max_rows": 891}}
+  ]
+}

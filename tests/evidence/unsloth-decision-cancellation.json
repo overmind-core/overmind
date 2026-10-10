@@ -1,0 +1,503 @@
+{
+  "launch": {
+    "summary": "Fine-tuning job: queued.",
+    "finetune": {
+      "kind": "finetune_job",
+      "id": "5907d62a-d4a3-4063-a704-60f21c5bbbc4",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://finetunes/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Unsloth cancellation and observations qualification",
+        "mimeType": "application/json"
+      },
+      "name": "Unsloth cancellation and observations qualification"
+    },
+    "job": {
+      "kind": "finetune_job",
+      "id": "5907d62a-d4a3-4063-a704-60f21c5bbbc4",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://jobs/finetune/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Unsloth cancellation and observations qualification",
+        "mimeType": "application/json"
+      },
+      "name": "Unsloth cancellation and observations qualification"
+    },
+    "cell": {
+      "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+      "version": "1.0",
+      "title": "Source",
+      "rows": 2059,
+      "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+      "fits": true,
+      "reason": "",
+      "warnings": [
+        "No current workshop quality review."
+      ]
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://finetunes/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Unsloth cancellation and observations qualification",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://jobs/finetune/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Unsloth cancellation and observations qualification",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "request": {
+    "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+    "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+    "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+    "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+    "validation_enabled": true,
+    "eval_model_before": false,
+    "eval_model_after": false,
+    "eval_incumbent_before": false,
+    "eval_incumbent_after": false,
+    "monitoring": {
+      "mode": "steps",
+      "interval_steps": 4,
+      "loss_sample": 16,
+      "train_sample": 4,
+      "initial": false,
+      "final": true,
+      "selection": "last"
+    },
+    "base_model": "Qwen/Qwen3-0.6B",
+    "hyperparameters": {
+      "n_epochs": 2,
+      "max_steps": 256,
+      "batch_size": 16,
+      "context_length": 4096,
+      "learning_rate": 0.0002,
+      "seed": 0,
+      "pre_training_baseline": false,
+      "runtime_limit_seconds": 900,
+      "training_type": {
+        "type": "Lora",
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "lora_dropout": 0
+      }
+    },
+    "name": "Unsloth cancellation and observations qualification",
+    "request_key": "unsloth-sst2-cancellation-20261010"
+  },
+  "cancellation": {
+    "summary": "Training cancelled; completed evidence retained.",
+    "id": "5907d62a-d4a3-4063-a704-60f21c5bbbc4",
+    "status": "cancelled",
+    "warning": "",
+    "resource": {
+      "uri": "overmind://finetunes/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Training run",
+      "mimeType": "application/json"
+    }
+  },
+  "retained": {
+    "summary": "Training cancelled; recorded development evidence.",
+    "progress": {
+      "job_id": "5907d62a-d4a3-4063-a704-60f21c5bbbc4",
+      "policy": {
+        "mode": "steps",
+        "seed": 42,
+        "final": true,
+        "initial": false,
+        "version": 1,
+        "selection": "last",
+        "generation": null,
+        "max_checks": 12,
+        "loss_sample": 16,
+        "train_sample": 4,
+        "early_stopping": null,
+        "failure_policy": "continue",
+        "interval_steps": 4,
+        "target_seconds": 300,
+        "generation_every": 3,
+        "overhead_fraction": 0.1
+      },
+      "status": "cancelled",
+      "count": 1,
+      "current": {
+        "schedule": {
+          "checks": 1,
+          "next_step": 8,
+          "step_seconds": [
+            41.001479226,
+            0.41931136200000196,
+            0.3706822639999956,
+            0.40961014200000534
+          ],
+          "interval_steps": 4,
+          "last_checked_step": 4
+        },
+        "collection": {
+          "state": "observed",
+          "observed_at": "2026-10-10T17:38:06.451984+00:00"
+        },
+        "stop_reason": null,
+        "numerical_health": {
+          "basis": "logged training intervals, not every optimizer update",
+          "logged_updates": 4,
+          "skipped_updates": null,
+          "loss_filtering_enabled": false,
+          "skipped_updates_reason": "not exposed by this trainer callback",
+          "gradient_norm_available": true,
+          "nonfinite_loss_observations": 0,
+          "nonfinite_gradient_observations": 0,
+          "clipping_threshold_exceeded_observations": 0
+        },
+        "optimizer_seconds": 42.201082994000004,
+        "monitoring_seconds": 10.565994203000002,
+        "policy_fingerprint": "b9199fccb9194810e5f9c9ecc0891608d0cf17d6d110031b1e01a32388dba075",
+        "schedule_decisions": [
+          {
+            "step": 4,
+            "basis": "measured_optimizer_time",
+            "conflicts": [],
+            "next_step": 8,
+            "adaptation": "explicit_interval",
+            "stop_reason": null,
+            "check_seconds": 10.565994203000002,
+            "formula_version": 2,
+            "target_interval_steps": 724,
+            "overhead_interval_steps": 230,
+            "candidate_interval_steps": 4,
+            "effective_interval_steps": 4,
+            "optimizer_step_seconds_median": 0.41446075200000365
+          }
+        ],
+        "selected_checkpoint": "1:4"
+      },
+      "probes": {
+        "development": {
+          "seed": 42,
+          "groups": 16,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 16,
+          "fingerprint": "73b4c0a939f473cac17646f6bb4149549aeba1c157b8862a1ff6c05abc48ee8e",
+          "requested_rows": 16,
+          "population_rows": 257
+        },
+        "training_reference": {
+          "seed": 42,
+          "groups": 4,
+          "sampling": "seeded_whole_groups; duplicates retained; descriptive unweighted evidence",
+          "actual_rows": 4,
+          "fingerprint": "45dd743bf910475dd4c92b3dd5e7fa9c0b0e75367ba4a9c22e9968e0cdd571d0",
+          "requested_rows": 4,
+          "population_rows": 2059
+        }
+      },
+      "next_offset": null,
+      "checks": [
+        {
+          "id": "872b301b-dbf8-41ef-8eab-f1ffe008ee94",
+          "key": "1:development:4",
+          "state": "completed",
+          "step": 4,
+          "attempt": 1,
+          "stream": "development",
+          "policy_fingerprint": "b9199fccb9194810e5f9c9ecc0891608d0cf17d6d110031b1e01a32388dba075",
+          "sample_fingerprint": "73b4c0a939f473cac17646f6bb4149549aeba1c157b8862a1ff6c05abc48ee8e",
+          "started_at": "2026-10-10T17:37:37.423012Z",
+          "observed_at": "2026-10-10T17:37:47.989005Z",
+          "completed_at": "2026-10-10T17:37:47.989005Z",
+          "metrics": {
+            "brier": 0.5040961537511461,
+            "decisions": 16,
+            "eval_loss": 0.6972288489341736,
+            "eval_runtime": 4.410628383000002,
+            "cross_entropy": 0.6972288526594639,
+            "mean_decisions": 0,
+            "development_gap": 0.07172542810440063,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.4375,
+            "categorical_families": {
+              "1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b": {
+                "kind": "choice",
+                "scored": 16,
+                "options": [
+                  "negative",
+                  "positive"
+                ],
+                "support": [
+                  9,
+                  7
+                ],
+                "expected": 16,
+                "question": "What is the sentiment of this movie review?",
+                "predicted": [
+                  0,
+                  16
+                ],
+                "confusion_matrix": [
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    0,
+                    7
+                  ]
+                ]
+              }
+            },
+            "hard_label_decisions": 16,
+            "distribution_decisions": 16,
+            "argmax_target_agreement": 0.4375,
+            "training_reference_loss": 0.625503420829773
+          },
+          "coverage": {
+            "scored": 16,
+            "expected": 16
+          },
+          "facts": {
+            "delivery": {
+              "finished_at": "2026-10-10T17:38:02.085155+00:00",
+              "first_result_at": "2026-10-10T17:38:02.085155+00:00"
+            },
+            "findings": [],
+            "gap_basis": "fixed samples; evaluation mode; typed probability loss",
+            "assessment": {
+              "state": "measured",
+              "source": "recorded_native_categorical_metrics",
+              "findings": [
+                {
+                  "id": "872b301b-dbf8-41ef-8eab-f1ffe008ee94:1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b:represented_labels_not_predicted:2",
+                  "code": "represented_labels_not_predicted",
+                  "step": 4,
+                  "scope": "scored_development_categorical_decisions",
+                  "state": "observed",
+                  "action": "none",
+                  "message": "Some represented categorical options have no predictions",
+                  "check_id": "872b301b-dbf8-41ef-8eab-f1ffe008ee94",
+                  "assessed_at": "2026-10-10T17:38:02.080937+00:00",
+                  "rule_version": 2,
+                  "family_fingerprint": "1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b",
+                  "sample_fingerprint": "73b4c0a939f473cac17646f6bb4149549aeba1c157b8862a1ff6c05abc48ee8e"
+                },
+                {
+                  "id": "872b301b-dbf8-41ef-8eab-f1ffe008ee94:1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b:below_probe_majority_baseline:2",
+                  "code": "below_probe_majority_baseline",
+                  "step": 4,
+                  "scope": "scored_development_categorical_decisions",
+                  "state": "observed",
+                  "action": "none",
+                  "message": "Accuracy is below the majority-option baseline on the same scored decisions",
+                  "check_id": "872b301b-dbf8-41ef-8eab-f1ffe008ee94",
+                  "assessed_at": "2026-10-10T17:38:02.080937+00:00",
+                  "rule_version": 2,
+                  "family_fingerprint": "1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b",
+                  "sample_fingerprint": "73b4c0a939f473cac17646f6bb4149549aeba1c157b8862a1ff6c05abc48ee8e"
+                }
+              ],
+              "assessed_at": "2026-10-10T17:38:02.080937+00:00",
+              "comparisons": [
+                {
+                  "scored": 16,
+                  "correct": 7,
+                  "expected": 16,
+                  "majority_correct": 9,
+                  "family_fingerprint": "1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b",
+                  "majority_label_indices": [
+                    0
+                  ],
+                  "unpredicted_label_indices": [
+                    0
+                  ]
+                }
+              ],
+              "limitations": [
+                "Same scored development subset within each declared categorical question and option set",
+                "Soft distributions and mean targets do not establish categorical correctness",
+                "No inferred cause, automatic training action or final-benchmark conclusion"
+              ],
+              "rule_version": 2,
+              "source_observed_at": "2026-10-10T17:37:47.989005+00:00",
+              "source_receipt_fingerprint": "dca26ba3e82631119e896e71edb1c7575622878e47027acc9c4137484550e209"
+            },
+            "measurement": "native_probabilities",
+            "operation_id": "6079d3e7-bc5f-4386-810a-18718e02c1e9",
+            "evidence_kind": "native_probabilities",
+            "duration_seconds": 10.565994203000002,
+            "full_development": false,
+            "checkpoint_identity": "9c55859da41fee6add3652483571e55ab172d50f1a53f1a5a28e91430370056c"
+          },
+          "error": {},
+          "evidence_available": true,
+          "evidence_sha256": "ff7dc199efaeb3f79fcd9d894cafc1754eb555d3d7a8b85de3ca04425a7afed0"
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "a83739f6-7031-4996-b1b7-7e6c07c78f05",
+          "key": "1:4",
+          "attempt": 1,
+          "step": 4,
+          "state": "available",
+          "identity": "9c55859da41fee6add3652483571e55ab172d50f1a53f1a5a28e91430370056c",
+          "manifest": {
+            "path": "checkpoints/4",
+            "native_artifact_identity": "d67d0763867374a2723aa338f32a028036ce63c241d456e85f8c4c1e27dc415c"
+          },
+          "verification": {
+            "scope": "retained inference artifact; optimizer recovery is a separate latest-state artifact",
+            "method": "native_probability_replay",
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "reload_verified": true,
+            "resume_supported": false,
+            "max_absolute_error": 0
+          },
+          "metrics": {
+            "brier": 0.5040961537511461,
+            "decisions": 16,
+            "eval_loss": 0.6972288489341736,
+            "eval_runtime": 4.410628383000002,
+            "cross_entropy": 0.6972288526594639,
+            "mean_decisions": 0,
+            "development_gap": 0.07172542810440063,
+            "expected_score_mae": null,
+            "hard_label_accuracy": 0.4375,
+            "categorical_families": {
+              "1c1260d3e87869a48dab5c5e0e5ad9d4a9eb97ba4f2776f060fba0eee0f7258b": {
+                "kind": "choice",
+                "scored": 16,
+                "options": [
+                  "negative",
+                  "positive"
+                ],
+                "support": [
+                  9,
+                  7
+                ],
+                "expected": 16,
+                "question": "What is the sentiment of this movie review?",
+                "predicted": [
+                  0,
+                  16
+                ],
+                "confusion_matrix": [
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    0,
+                    7
+                  ]
+                ]
+              }
+            },
+            "hard_label_decisions": 16,
+            "distribution_decisions": 16,
+            "argmax_target_agreement": 0.4375,
+            "training_reference_loss": 0.625503420829773
+          },
+          "selected": true
+        }
+      ],
+      "limitations": [
+        "Development checks inform progress, not final generalisation.",
+        "No monitoring records does not establish that a model is improving."
+      ]
+    },
+    "resource": {
+      "uri": "overmind://finetunes/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Training run",
+      "mimeType": "application/json"
+    }
+  },
+  "examples": {
+    "summary": "Training cancelled; recorded development evidence.",
+    "progress": {
+      "items": [
+        {
+          "status": "completed",
+          "index": 2,
+          "key": "5db2af84936f70566d2f14de1f1e4594d123837ad519981f836d8c26d9e0b2f8",
+          "probabilities": [
+            0.46412816643714905,
+            0.5358718037605286
+          ],
+          "log_probabilities": [
+            -0.767594575881958,
+            -0.6238602995872498
+          ],
+          "target_probabilities": [
+            0,
+            1
+          ],
+          "target_semantics": "categorical_gold",
+          "target_provenance": {
+            "dataset": "stanfordnlp/sst2",
+            "field": "label",
+            "mapping": {
+              "0": "negative",
+              "1": "positive"
+            },
+            "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+            "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+          },
+          "weight": 1,
+          "kind": "choice",
+          "question": "What is the sentiment of this movie review?",
+          "options": [
+            "negative",
+            "positive"
+          ]
+        },
+        {
+          "status": "completed",
+          "index": 5,
+          "key": "d655c76d8b794cae4d3e96f610a45f90a8b8d423df7ce5dc4257c650f69f06bf",
+          "probabilities": [
+            0.4659075140953064,
+            0.5340924859046936
+          ],
+          "log_probabilities": [
+            -0.7637681365013123,
+            -0.6271862983703613
+          ],
+          "target_probabilities": [
+            1,
+            0
+          ],
+          "target_semantics": "categorical_gold",
+          "target_provenance": {
+            "dataset": "stanfordnlp/sst2",
+            "field": "label",
+            "mapping": {
+              "0": "negative",
+              "1": "positive"
+            },
+            "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+            "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+          },
+          "weight": 1,
+          "kind": "choice",
+          "question": "What is the sentiment of this movie review?",
+          "options": [
+            "negative",
+            "positive"
+          ]
+        }
+      ],
+      "count": 16,
+      "available": true,
+      "next_offset": 2,
+      "sha256": "ff7dc199efaeb3f79fcd9d894cafc1754eb555d3d7a8b85de3ca04425a7afed0"
+    },
+    "resource": {
+      "uri": "overmind://finetunes/5907d62a-d4a3-4063-a704-60f21c5bbbc4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "Training run",
+      "mimeType": "application/json"
+    }
+  }
+}

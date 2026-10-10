@@ -19,7 +19,7 @@ from modal.exception import InternalError, NotFoundError, ServiceError
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
-from modal_shared.stacks import train_function_name
+from modal_shared.stacks import TRAIN_DECISION, train_function_name
 from modal_shared.training_data import file_digest
 from modal_shared.training_release import data_format_identity
 from overbae.core.errors import InputValidationError
@@ -111,7 +111,7 @@ def request_preparation(
         "validation_fingerprint": validation_cell.fingerprint if validation_cell else None,
         "processor": runtime["processor"] if runtime else processor_fingerprint(),
         "data_format": runtime["data_format"],
-        "stack": get_unsloth_image(model),
+        "stack": TRAIN_DECISION if objective in DECISION_OBJECTIVES else get_unsloth_image(model),
     }
     signature = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
     preparation, _ = TrainingPreparation.objects.get_or_create(

@@ -1,0 +1,245 @@
+{
+  "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+  "request": {
+    "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+    "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+    "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+    "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+    "validation_enabled": true,
+    "eval_model_before": false,
+    "eval_model_after": false,
+    "eval_incumbent_before": false,
+    "eval_incumbent_after": false,
+    "monitoring": {
+      "mode": "steps",
+      "interval_steps": 32,
+      "loss_sample": 257,
+      "train_sample": 64,
+      "initial": true,
+      "final": true,
+      "selection": "last"
+    },
+    "hyperparameters": {
+      "n_epochs": 2,
+      "max_steps": 256,
+      "batch_size": 16,
+      "context_length": 4096,
+      "learning_rate": 0.0002,
+      "seed": 0,
+      "pre_training_baseline": true,
+      "runtime_limit_seconds": 3600,
+      "training_type": {
+        "type": "Lora",
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "lora_dropout": 0
+      }
+    },
+    "base_model": "Qwen/Qwen3.5-0.8B",
+    "name": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B \u00b7 verified reload",
+    "request_key": "unsloth-sst2-qwen35-verified-retest-20261010"
+  },
+  "job": "114a1e42-ce5b-4ada-be9b-a01170b4e6c1",
+  "preparation": {
+    "id": "753bc58a-2683-46ad-9eaf-0def609f60e3",
+    "state": "ready",
+    "config": {
+      "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+      "model": "Qwen/Qwen3.5-0.8B",
+      "stack": "u2026_10_3_decision",
+      "runtime": {
+        "app": "overmind-sft-4ddd4869101ce64d7ad5b6bf",
+        "release": "4ddd4869101ce64d7ad5b6bfc70a26d09dd2fb3a24ee1830028836c1a1debc33",
+        "training": "fcec69e6a88817cd30a154ad7383b8b507a44fe4526e3067e410292763e6634d",
+        "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "environment": "overmind-dev"
+      },
+      "objective": "decision_cross_entropy",
+      "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+      "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+      "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+      "training_type": "lora",
+      "context_length": 4096,
+      "tokenizer_model": "unsloth/Qwen3.5-0.8B",
+      "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+      "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a"
+    },
+    "report": {
+      "rows": 2316,
+      "model": "Qwen/Qwen3.5-0.8B",
+      "ready": true,
+      "issues": [],
+      "tokens": 305667,
+      "previews": [
+        {
+          "row": 0,
+          "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "tokens": 127,
+          "decision_options": 2,
+          "target_semantics": "categorical_gold",
+          "target_provenance": {
+            "field": "label",
+            "dataset": "stanfordnlp/sst2",
+            "mapping": {
+              "0": "negative",
+              "1": "positive"
+            },
+            "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+            "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+          },
+          "target_probabilities": [
+            1,
+            0
+          ]
+        },
+        {
+          "row": 1,
+          "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "tokens": 130,
+          "decision_options": 2,
+          "target_semantics": "categorical_gold",
+          "target_provenance": {
+            "field": "label",
+            "dataset": "stanfordnlp/sst2",
+            "mapping": {
+              "0": "negative",
+              "1": "positive"
+            },
+            "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+            "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+          },
+          "target_probabilities": [
+            0,
+            1
+          ]
+        },
+        {
+          "row": 2,
+          "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "tokens": 126,
+          "decision_options": 2,
+          "target_semantics": "categorical_gold",
+          "target_provenance": {
+            "field": "label",
+            "dataset": "stanfordnlp/sst2",
+            "mapping": {
+              "0": "negative",
+              "1": "positive"
+            },
+            "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+            "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+          },
+          "target_probabilities": [
+            1,
+            0
+          ]
+        }
+      ],
+      "renderer": "unsloth_clef",
+      "objective": "decision_cross_entropy",
+      "max_tokens": 177,
+      "compute_usage": {
+        "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+        "gpu_type": null,
+        "usage_id": "e4073f2215714fa186aa098e58bf10fc",
+        "gpu_count": 0,
+        "limitations": [
+          "Running child resources enter the observation when reaped.",
+          "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+          "Unrelated container processes and provider billing adjustments are not measured."
+        ],
+        "elapsed_seconds": 22.448867716000002,
+        "cpu_core_seconds": 179.59094172800002,
+        "memory_gib_seconds": 179.59094172800002
+      },
+      "context_length": 4096,
+      "artifact_sha256": "e61ec6d60aebec656827aedcbc574ac37ce66dd9adc442e98a154a20168cf0b0",
+      "incompatible_rows": 0,
+      "vocab_fingerprint": "365c2d8a0c0e72d4bcc5dbc6c2e9330a87dae7ffc77e9fcd9d65739f4d16bfff",
+      "tokenizer_revision": null,
+      "chat_template_sha256": "ea210e5b4997b7b1d3af5ee3ad34e7677ffe38df7469e8d88089789b5a27fae5",
+      "supervised_decisions": 2316
+    }
+  },
+  "estimate": {
+    "gpu_type": "H100",
+    "gpu_hour_usd": 3.95,
+    "rate_fetched_at": "2026-10-10T17:50:01.121496+00:00",
+    "duration_status": "unmeasured",
+    "training_gpu_usd": null,
+    "limitations": [
+      "A completed matching recipe measurement is required before this objective has a calibrated duration or GPU quote."
+    ]
+  },
+  "evaluation": {
+    "id": "6ba1475b-8a4c-4f61-ab87-0a37af2f8f66",
+    "config": {
+      "seed": 73491,
+      "suites": {
+        "final": {
+          "cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+          "rows": 872,
+          "dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+          "fingerprint": "2bbfe1dfa2caf7354795e1043ff0acca18d2b140ec1316e105300304d8dee3ba"
+        },
+        "calibration": {
+          "cell": "ad47f675-6b7b-499b-9f31-e481462087ff",
+          "rows": 257,
+          "dataset": "dfb5ed51-9293-594b-affa-4a42902d2e63",
+          "fingerprint": "ae0a384b6c7ef75bde5e5eabbd19912030c6702d2320c48a1f9982e3489e67a9"
+        }
+      },
+      "runtime": {
+        "app": "overmind-decision-eval-a68616d6fa6b4ebb5acc9ae0",
+        "release": "a68616d6fa6b4ebb5acc9ae01917ecdaa2f6c2847549f1ad17d4b7c2b0c56487",
+        "training": "fcec69e6a88817cd30a154ad7383b8b507a44fe4526e3067e410292763e6634d",
+        "environment": "overmind-dev"
+      },
+      "baseline": "base",
+      "inference": {
+        "batch_size": 64,
+        "concurrency": 8,
+        "padded_tokens": 32768,
+        "context_length": 8192
+      },
+      "boundaries": {},
+      "participants": [
+        {
+          "job": "114a1e42-ce5b-4ada-be9b-a01170b4e6c1",
+          "key": "base",
+          "kind": "foundation",
+          "name": "Unchanged base",
+          "model": "Qwen/Qwen3.5-0.8B"
+        },
+        {
+          "job": "114a1e42-ce5b-4ada-be9b-a01170b4e6c1",
+          "key": "candidate",
+          "kind": "trained",
+          "name": "Trained model",
+          "model": "Qwen/Qwen3.5-0.8B"
+        }
+      ],
+      "temperatures": [],
+      "suite_overlap": null,
+      "logarithm_floor": 1e-12,
+      "bootstrap_samples": 1000,
+      "calibration_method": "clef_temperature_cross_entropy",
+      "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+      "authorization": {
+        "user": "4",
+        "authorized_at": "2026-10-10T17:50:39.740962+00:00",
+        "scope": "saved_participants_and_suites",
+        "configuration_sha256": "d15b7cb119db7b7be0cf2196f79756a00be343d0b352071e668ec224aa28215a"
+      }
+    }
+  },
+  "observed_state": "failed_probability_replay",
+  "failure": {
+    "max_absolute_error": 0.010771095752716064,
+    "tolerance": 0.001,
+    "exact_saved_weights": true,
+    "dependent_evaluation": "failed_required_checkpoint_unavailable"
+  }
+}

@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+from dataclasses import dataclass
 
 import pytest
 
@@ -8,13 +9,18 @@ from modal_shared.decision_inference import prepare_requests
 from modal_shared.serving.artifacts import digest_json
 
 
-class Tokenizer:
-    def apply_chat_template(self, messages, **kwargs):
-        return messages[0]["content"] + "<decision>"
+@dataclass
+class EncodedRecord:
+    input_ids: tuple
+    questions: tuple = ()
+    record_id: str = "test"
 
-    def encode(self, text, **kwargs):
-        prefix, suffix = text.split("<decision>", 1)
-        return [1] * len(prefix) + [2] + ([{"A": 3, "B": 4}[suffix]] if suffix else [])
+
+def encode_record(tokenizer, value, *, max_length):
+    assert set(value) == {"state", "questions"}
+    ids = tuple(json.dumps(value).encode())
+    assert len(ids) <= max_length
+    return EncodedRecord(ids)
 
 
 def record():
@@ -28,9 +34,9 @@ def prepare(records, context=1024):
         records,
         output,
         failures,
-        Tokenizer(),
-        [{"code": "A", "token_id": 3}, {"code": "B", "token_id": 4}],
+        None,
         context,
+        encode_record,
     )
     return result, output.getvalue(), failures.getvalue()
 
@@ -39,7 +45,16 @@ def test_native_prediction_preparation_keeps_identity_without_supervision():
     report, output, failures = prepare(iter([record()]))
     row = json.loads(output)
     assert row["key"] == "row" and row["input_sha256"] == record()["input_sha256"]
-    assert set(row) == {"key", "input_sha256", "input_ids", "option_token_ids", "kind"}
+    assert set(row) == {
+        "key",
+        "input_sha256",
+        "input_ids",
+        "record",
+        "option_order",
+        "kind",
+        "question",
+        "options",
+    }
     assert report["ready_decisions"] == 1 and report["failed_decisions"] == 0
     assert failures == ""
 
@@ -76,45 +91,3 @@ def test_multilingual_request_uses_the_sealed_export_hash_encoding():
     ).hexdigest()
     report, _, _ = prepare([row])
     assert report["ready_decisions"] == 1
-
-
-def test_prediction_stream_preserves_every_key_and_model_identity_without_gold():
-    torch = pytest.importorskip("torch")
-    from types import SimpleNamespace
-
-    from overbae.services.sft_assets.decision_readout import predict
-
-    class Model(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.embedding = torch.nn.Embedding(8, 3)
-            self.head = torch.nn.Linear(3, 8)
-
-        def get_decoder(self):
-            return lambda input_ids, **kw: SimpleNamespace(
-                last_hidden_state=self.embedding(input_ids)
-            )
-
-        def get_output_embeddings(self):
-            return self.head
-
-        def get_input_embeddings(self):
-            return self.embedding
-
-    _, prepared, _ = prepare([record()])
-    output = io.StringIO()
-    predict(
-        Model(),
-        0,
-        iter([json.loads(prepared)]),
-        output,
-        "artifact-sha",
-        max_rows=8,
-        max_tokens=1024,
-    )
-    row = json.loads(output.getvalue())
-    assert row["key"] == "row" and row["model_identity"] == "artifact-sha"
-    assert row["input_sha256"] == record()["input_sha256"]
-    assert sum(row["probabilities"]) == pytest.approx(1)
-    assert len(row["log_probabilities"]) == 2
-    assert "target_probabilities" not in row

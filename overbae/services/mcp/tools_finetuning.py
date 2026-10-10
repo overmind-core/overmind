@@ -1012,10 +1012,14 @@ def inspect_training_progress_sync(payload, context):
     if job is None:
         raise MCPError("not_found", "Training job not found in this project")
     try:
-        if payload.probe and payload.check:
-            raise ValueError("Choose a check or a frozen probe, not both")
+        if sum(value is not None for value in (payload.probe, payload.check, payload.field)) > 1:
+            raise ValueError("Choose a check, frozen probe or receipt field")
         detail = (
-            training_monitoring.probe_rows(
+            training_monitoring.field_page(
+                job, payload.field, offset=payload.offset, limit=payload.limit
+            )
+            if payload.field is not None
+            else training_monitoring.probe_rows(
                 job, payload.probe, offset=payload.offset, limit=payload.limit
             )
             if payload.probe
@@ -1023,7 +1027,7 @@ def inspect_training_progress_sync(payload, context):
                 job, payload.check, offset=payload.offset, limit=payload.limit
             )
             if payload.check
-            else training_monitoring.snapshot(job, offset=payload.offset, limit=payload.limit)
+            else training_monitoring.overview(job, offset=payload.offset, limit=payload.limit)
         )
     except (ValueError, training_monitoring.TrainingValidationRun.DoesNotExist) as exc:
         raise MCPError(
@@ -1033,7 +1037,7 @@ def inspect_training_progress_sync(payload, context):
     if len(encoded.encode()) > 128 * 1024:
         raise MCPError(
             "training_evidence_too_large",
-            "Evidence exceeds 128 KiB; request a smaller page. No values were clipped.",
+            "Evidence exceeds 128 KiB; request a smaller page or a deeper receipt field. No values were clipped.",
         )
     return InspectTrainingProgressOutput(
         summary=f"Training {job.status}; recorded development evidence.",
@@ -1063,7 +1067,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "inspect_training_progress",
             "Inspect training progress",
-            "Read durable development checks, coverage, failures and verified checkpoints. Pass check for paginated examples. Passive: never invokes a provider. Development evidence is not a final benchmark.",
+            "Read durable development checks, coverage, failures and verified checkpoints. Native decision checks report distribution cross entropy/Brier, applicable categorical accuracy and ordinal mean error with separate denominators. Per-question metrics and assessments have collections descriptors: pass their field JSON Pointer to page exact retained values, or append escaped keys/indices to inspect nested values. Pass check for paginated examples. Passive: never invokes a provider. Development evidence is not a final benchmark.",
             InspectTrainingProgressInput,
             InspectTrainingProgressOutput,
             inspect_training_progress_sync,

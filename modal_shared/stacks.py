@@ -24,6 +24,7 @@ TRAIN_U2026_8_TF515 = "u2026_8_tf515"
 TRAIN_U2026_8_GPOS = "u2026_8_gptoss"
 TRAIN_U2026_8_18 = "u2026_8_18"
 TRAIN_U2026_9_2 = "u2026_9_2"
+TRAIN_DECISION = "u2026_10_3_decision"
 
 TRAIN_STACKS: tuple[str, ...] = (
     TRAIN_U2026_7,
@@ -32,6 +33,7 @@ TRAIN_STACKS: tuple[str, ...] = (
     TRAIN_U2026_8_GPOS,
     TRAIN_U2026_8_18,
     TRAIN_U2026_9_2,
+    TRAIN_DECISION,
 )
 
 # Historical FamilySpec / models.json keys. Lookup must normalize.
@@ -53,6 +55,7 @@ TRAIN_STACK_ALIASES: dict[str, str] = {
 TRAIN_FUNCTION_NAMES: dict[str, str] = {s: f"sft_{s}" for s in TRAIN_STACKS}
 
 TRAIN_STACK_PINS: dict[str, str] = {
+    TRAIN_DECISION: "unsloth==2026.10.3 / unsloth_zoo==2026.10.3 / torch==2.10.0 / transformers==5.17.0 / trl==1.13.0",
     TRAIN_U2026_7: "unsloth[cu128-torch270]==2026.7.5 / torch==2.7.0 / transformers>=5.2 / trl v1.10.0",
     TRAIN_U2026_8_TF510: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
     TRAIN_U2026_8_TF515: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.15 / trl v1.10.0",

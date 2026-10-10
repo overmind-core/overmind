@@ -1,0 +1,105 @@
+[
+  {
+    "checkpointing": "reconstruct_base",
+    "adapter_differences": [
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_a.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_a.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_b.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_b.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_qkv.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_qkv.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_z.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.in_proj_z.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.out_proj.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.linear_attn.out_proj.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.mlp.down_proj.lora_A.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      },
+      {
+        "key": "base_model.model.model.language_model.layers.0.mlp.down_proj.lora_B.weight",
+        "saved_dtype": "torch.float32",
+        "loaded_dtype": "torch.float32",
+        "max_error": 0.0
+      }
+    ],
+    "head_error": 0.0,
+    "probability_error": 0.00023251771926879883,
+    "forced_float32": false
+  },
+  {
+    "saved_args": {
+      "tf32": null,
+      "torch_compile": false,
+      "bf16": true,
+      "fp16": false
+    },
+    "initial_matmul_precision": "highest",
+    "initial_tf32": false
+  },
+  {
+    "precision": "highest",
+    "probability_error": 0.00023251771926879883
+  },
+  {
+    "precision": "high",
+    "probability_error": 0.0004024505615234375
+  },
+  {
+    "trainer_initialized": true,
+    "probability_error": 0.0004024505615234375,
+    "matmul_precision": "high"
+  }
+]

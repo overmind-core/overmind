@@ -40,12 +40,22 @@ def freeze_run_files(run_dir, policy):
 
 class Monitor:
     def __init__(
-        self, run_dir, policy, train, development, *, total_steps, attempt, identity_rows=False
+        self,
+        run_dir,
+        policy,
+        train,
+        development,
+        *,
+        total_steps,
+        attempt,
+        identity_rows=False,
+        measurement="teacher_forced",
     ):
         self.root = Path(run_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "monitoring.json"
         self.policy, self.attempt = policy, attempt
+        self.measurement = measurement
         plan = freeze_plan(
             policy,
             train if identity_rows else [row_identity(row) for row in train],
@@ -151,7 +161,7 @@ class Monitor:
             "sample_fingerprint": sample_fingerprint,
             "metrics": {},
             "coverage": {"expected": len(indices), "scored": 0},
-            "facts": {"measurement": "teacher_forced", "full_development": final},
+            "facts": {"measurement": self.measurement, "full_development": final},
         }
         self.data["checks"].append(check)
         self.publish()
@@ -193,7 +203,11 @@ class Monitor:
                     raise ValueError("Training reference loss must be finite")
                 check["metrics"]["training_reference_loss"] = train_metrics["eval_loss"]
                 check["metrics"]["development_gap"] = loss - train_metrics["eval_loss"]
-                check["facts"]["gap_basis"] = "fixed samples; evaluation mode; teacher-forced loss"
+                check["facts"]["gap_basis"] = (
+                    "fixed samples; evaluation mode; typed probability loss"
+                    if self.measurement == "native_probabilities"
+                    else "fixed samples; evaluation mode; teacher-forced loss"
+                )
                 check["observed_at"] = time.time()
                 self.publish()
             generation_due = (

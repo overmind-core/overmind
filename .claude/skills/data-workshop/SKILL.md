@@ -161,6 +161,12 @@ historical cells. Do not create a universal quality-approval gate.
 
 Preserve full probability targets, option order, weights, repeated observations and
 valid blank states. Do not derive argmax labels or invent distributions from means.
+Decision/Jev preparation publishes a typed `decision`, retaining tied maxima and
+declared supervision metadata. Record evidence-backed target semantics in retained
+code and output metadata; historical preparation plans are not a writable API.
+Flat-source profiles and impact measurements include weights, semantics and target
+provenance. Profiler upgrades invalidate cached measurements for new requests;
+replaying a request key still returns its original frozen operation.
 Exploration measures sampling feasibility and allocations; derivation copies a
 complete source. Sample selection runs externally and returns through the import
 contract. Partition plans keep related content, declared groups and synthetic

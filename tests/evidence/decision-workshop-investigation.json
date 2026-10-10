@@ -1,0 +1,72 @@
+{
+  "inventory": {
+    "projects": 9,
+    "datasets": 428
+  },
+  "source": {
+    "rows": 15000,
+    "counts": {
+      "blank_state": 149,
+      "soft": 1414,
+      "choice": 11914,
+      "noul": 2077,
+      "score": 1009
+    },
+    "errors": []
+  },
+  "historical_chat": {
+    "rows": 14978,
+    "missing_rows": 22,
+    "missing_sources": {
+      "acceptability-prediction/rating_votes": 2,
+      "glue/stsb": 4,
+      "oasst2/helpfulness": 1,
+      "oasst2/toxicity": 1,
+      "proto_qa/proto_qa": 4,
+      "sick/relatedness": 5,
+      "sts-companion": 5
+    },
+    "all_missing_have_tied_maximum": true
+  },
+  "failures_repaired": [
+    {
+      "failure": "Flat supervision weights and semantic/provenance changes were invisible to Workshop impact review",
+      "before": "2 focused regression failures",
+      "after": "Both pass within the 119-test regression run"
+    },
+    {
+      "failure": "Changing the internal profiler version rejected existing unchanged request keys",
+      "before": "2 MCP recovery regression failures and live request conflict",
+      "after": "Request recovery compares user configuration, while new profiles use a new cache version"
+    },
+    {
+      "failure": "New data-format release was undeployed",
+      "app": "overmind-sft-07e8a773f7d959be0cef1d5d",
+      "after": "Deployed to overmind-dev; the same preparation receipt was retried and reached ready"
+    }
+  ],
+  "harness_corrections": [
+    "Used supported context length 4096 after the API rejected 1024",
+    "Recognized training_preparation ready as a successful terminal state"
+  ],
+  "regressions": {
+    "passed": 119,
+    "skipped": 3,
+    "skip_scope": "opt-in Docker runtime tests; real isolated execution separately verified through MCP"
+  },
+  "precommit": "passed",
+  "runtime": {
+    "environment": "overmind-dev",
+    "training": {
+      "app": "overmind-sft-07e8a773f7d959be0cef1d5d",
+      "release": "07e8a773f7d959be0cef1d5dff328df1fea81a8377fe14c2c1e5163038868053",
+      "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+      "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+      "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2"
+    },
+    "evaluation": {
+      "app": "overmind-decision-eval-962d3fa005915fcedbe08961",
+      "release": "962d3fa005915fcedbe08961cdd4792250b4845cf8bb80f4ae29da4f33610d2b"
+    }
+  }
+}

@@ -1,0 +1,1078 @@
+{
+  "operations": {
+    "qwen3": {
+      "summary": "succeeded: succeeded.",
+      "operation": {
+        "id": "4278023a-7cf4-41c4-a14c-1021d60eab0e",
+        "kind": "finetune_job",
+        "reference": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+        "attempt": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+        "unit": "steps",
+        "facts": {
+          "run_id": null,
+          "attempt": 1,
+          "provider": "modal",
+          "files_total": null,
+          "measurement": null,
+          "files_completed": null,
+          "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+          "telemetry_available": true
+        },
+        "stage": "succeeded",
+        "total": 256,
+        "status": "succeeded",
+        "completed": 256,
+        "event_count": 15,
+        "last_observed_at": "2026-10-10T19:25:30.712379+00:00",
+        "last_heartbeat_at": "2026-10-10T19:25:08.857057+00:00",
+        "last_progress_at": "2026-10-10T19:25:30.704748+00:00",
+        "telemetry": "recorded",
+        "provider": {},
+        "events": [
+          {
+            "sequence": 1,
+            "event": "progress",
+            "source_at": "2026-10-10T19:20:44.436842+00:00",
+            "observed_at": "2026-10-10T19:20:45.069751+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": null,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "starting_training_worker",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": null
+          },
+          {
+            "sequence": 2,
+            "event": "progress",
+            "source_at": "2026-10-10T19:20:52.727013+00:00",
+            "observed_at": "2026-10-10T19:21:00.732523+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:20:56.323414+00:00"
+          },
+          {
+            "sequence": 3,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:20:52.727013+00:00",
+            "observed_at": "2026-10-10T19:21:11.794104+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:21:02.928885+00:00"
+          },
+          {
+            "sequence": 4,
+            "event": "progress",
+            "source_at": "2026-10-10T19:21:22.522377+00:00",
+            "observed_at": "2026-10-10T19:21:26.932649+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "configuring_adapters",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:21:22.692079+00:00"
+          },
+          {
+            "sequence": 5,
+            "event": "progress",
+            "source_at": "2026-10-10T19:21:27.441099+00:00",
+            "observed_at": "2026-10-10T19:21:42.028569+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:21:30.839062+00:00"
+          },
+          {
+            "sequence": 6,
+            "event": "progress",
+            "source_at": "2026-10-10T19:21:45.920923+00:00",
+            "observed_at": "2026-10-10T19:21:57.097097+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 256,
+            "heartbeat_at": "2026-10-10T19:21:47.944111+00:00"
+          },
+          {
+            "sequence": 7,
+            "event": "progress",
+            "source_at": "2026-10-10T19:21:51.691763+00:00",
+            "observed_at": "2026-10-10T19:22:19.326944+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:22:03.973220+00:00"
+          },
+          {
+            "sequence": 8,
+            "event": "progress",
+            "source_at": "2026-10-10T19:22:27.541731+00:00",
+            "observed_at": "2026-10-10T19:22:46.029927+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 39,
+            "heartbeat_at": "2026-10-10T19:22:27.628598+00:00"
+          },
+          {
+            "sequence": 9,
+            "event": "progress",
+            "source_at": "2026-10-10T19:22:51.259080+00:00",
+            "observed_at": "2026-10-10T19:23:04.928675+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 90,
+            "heartbeat_at": "2026-10-10T19:22:51.436388+00:00"
+          },
+          {
+            "sequence": 10,
+            "event": "progress",
+            "source_at": "2026-10-10T19:23:15.202699+00:00",
+            "observed_at": "2026-10-10T19:23:34.693236+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 128,
+            "heartbeat_at": "2026-10-10T19:23:16.962203+00:00"
+          },
+          {
+            "sequence": 11,
+            "event": "progress",
+            "source_at": "2026-10-10T19:23:42.391227+00:00",
+            "observed_at": "2026-10-10T19:24:01.231630+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 182,
+            "heartbeat_at": "2026-10-10T19:23:42.391227+00:00"
+          },
+          {
+            "sequence": 12,
+            "event": "progress",
+            "source_at": "2026-10-10T19:23:57.732410+00:00",
+            "observed_at": "2026-10-10T19:24:19.586825+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 209,
+            "heartbeat_at": "2026-10-10T19:23:58.010382+00:00"
+          },
+          {
+            "sequence": 13,
+            "event": "progress",
+            "source_at": "2026-10-10T19:24:31.874701+00:00",
+            "observed_at": "2026-10-10T19:24:51.964926+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:24:39.276021+00:00"
+          },
+          {
+            "sequence": 14,
+            "event": "progress",
+            "source_at": "2026-10-10T19:25:07.038974+00:00",
+            "observed_at": "2026-10-10T19:25:12.391847+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "checkpoint_reload",
+            "total": 32,
+            "status": "running",
+            "completed": 32,
+            "heartbeat_at": "2026-10-10T19:25:08.857057+00:00"
+          },
+          {
+            "sequence": 15,
+            "event": "progress",
+            "source_at": "2026-10-10T19:25:30.704748+00:00",
+            "observed_at": "2026-10-10T19:25:30.712379+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c:fc-01M4KM5CMAPJX0F6ZTB2HN25MV",
+              "telemetry_available": true
+            },
+            "stage": "succeeded",
+            "total": 256,
+            "status": "succeeded",
+            "completed": 256,
+            "heartbeat_at": "2026-10-10T19:25:08.857057+00:00"
+          }
+        ],
+        "page": {
+          "has_more": false,
+          "next_cursor": 15,
+          "through_sequence": 15
+        }
+      },
+      "resource": {
+        "uri": "overmind://operations/4278023a-7cf4-41c4-a14c-1021d60eab0e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    },
+    "qwen35": {
+      "summary": "succeeded: succeeded.",
+      "operation": {
+        "id": "65a863b2-479e-41ff-a363-fe5ceb30e1f4",
+        "kind": "finetune_job",
+        "reference": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+        "attempt": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+        "unit": "steps",
+        "facts": {
+          "run_id": null,
+          "attempt": 1,
+          "provider": "modal",
+          "files_total": null,
+          "measurement": null,
+          "files_completed": null,
+          "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+          "telemetry_available": true
+        },
+        "stage": "succeeded",
+        "total": 256,
+        "status": "succeeded",
+        "completed": 256,
+        "event_count": 26,
+        "last_observed_at": "2026-10-10T19:28:31.975367+00:00",
+        "last_heartbeat_at": "2026-10-10T19:28:16.205935+00:00",
+        "last_progress_at": "2026-10-10T19:28:31.968502+00:00",
+        "telemetry": "recorded",
+        "provider": {},
+        "events": [
+          {
+            "sequence": 1,
+            "event": "progress",
+            "source_at": "2026-10-10T19:20:44.733093+00:00",
+            "observed_at": "2026-10-10T19:20:45.230981+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": null,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "starting_training_worker",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": null
+          },
+          {
+            "sequence": 2,
+            "event": "progress",
+            "source_at": "2026-10-10T19:20:51.295834+00:00",
+            "observed_at": "2026-10-10T19:21:01.607661+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "staging_training_files",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:20:51.295834+00:00"
+          },
+          {
+            "sequence": 3,
+            "event": "progress",
+            "source_at": "2026-10-10T19:20:57.940808+00:00",
+            "observed_at": "2026-10-10T19:21:13.152700+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:20:59.998774+00:00"
+          },
+          {
+            "sequence": 4,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:20:57.940808+00:00",
+            "observed_at": "2026-10-10T19:21:27.721060+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:21:17.218191+00:00"
+          },
+          {
+            "sequence": 5,
+            "event": "progress",
+            "source_at": "2026-10-10T19:21:33.473403+00:00",
+            "observed_at": "2026-10-10T19:21:43.103963+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:21:33.473403+00:00"
+          },
+          {
+            "sequence": 6,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:21:33.473403+00:00",
+            "observed_at": "2026-10-10T19:21:57.875216+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:21:51.269635+00:00"
+          },
+          {
+            "sequence": 7,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:21:33.473403+00:00",
+            "observed_at": "2026-10-10T19:22:20.446884+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:22:08.756243+00:00"
+          },
+          {
+            "sequence": 8,
+            "event": "progress",
+            "source_at": "2026-10-10T19:22:37.585900+00:00",
+            "observed_at": "2026-10-10T19:22:46.938773+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 257,
+            "status": "running",
+            "completed": 256,
+            "heartbeat_at": "2026-10-10T19:22:37.585900+00:00"
+          },
+          {
+            "sequence": 9,
+            "event": "progress",
+            "source_at": "2026-10-10T19:22:51.553589+00:00",
+            "observed_at": "2026-10-10T19:23:09.500854+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:22:58.138560+00:00"
+          },
+          {
+            "sequence": 10,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:22:51.553589+00:00",
+            "observed_at": "2026-10-10T19:23:35.652374+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:23:27.926985+00:00"
+          },
+          {
+            "sequence": 11,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:22:51.553589+00:00",
+            "observed_at": "2026-10-10T19:24:02.188276+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:23:55.028420+00:00"
+          },
+          {
+            "sequence": 12,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:22:51.553589+00:00",
+            "observed_at": "2026-10-10T19:24:20.778286+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:24:12.205563+00:00"
+          },
+          {
+            "sequence": 13,
+            "event": "progress",
+            "source_at": "2026-10-10T19:24:32.883883+00:00",
+            "observed_at": "2026-10-10T19:24:53.371174+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 15,
+            "heartbeat_at": "2026-10-10T19:24:32.883883+00:00"
+          },
+          {
+            "sequence": 14,
+            "event": "progress",
+            "source_at": "2026-10-10T19:24:54.735535+00:00",
+            "observed_at": "2026-10-10T19:25:18.025100+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 61,
+            "heartbeat_at": "2026-10-10T19:24:54.735535+00:00"
+          },
+          {
+            "sequence": 15,
+            "event": "progress",
+            "source_at": "2026-10-10T19:25:14.687958+00:00",
+            "observed_at": "2026-10-10T19:25:35.594354+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 64,
+            "status": "running",
+            "completed": 64,
+            "heartbeat_at": "2026-10-10T19:25:15.467986+00:00"
+          },
+          {
+            "sequence": 16,
+            "event": "observation",
+            "source_at": "2026-10-10T19:25:30.673903+00:00",
+            "observed_at": "2026-10-10T19:26:01.097272+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "validation",
+            "total": 64,
+            "status": "running",
+            "completed": 16,
+            "heartbeat_at": "2026-10-10T19:25:30.673903+00:00"
+          },
+          {
+            "sequence": 17,
+            "event": "progress",
+            "source_at": "2026-10-10T19:25:46.855816+00:00",
+            "observed_at": "2026-10-10T19:26:16.185266+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 158,
+            "heartbeat_at": "2026-10-10T19:25:46.998238+00:00"
+          },
+          {
+            "sequence": 18,
+            "event": "progress",
+            "source_at": "2026-10-10T19:25:59.188202+00:00",
+            "observed_at": "2026-10-10T19:26:30.583561+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 180,
+            "heartbeat_at": "2026-10-10T19:25:59.188202+00:00"
+          },
+          {
+            "sequence": 19,
+            "event": "progress",
+            "source_at": "2026-10-10T19:26:27.250011+00:00",
+            "observed_at": "2026-10-10T19:26:49.343781+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "training",
+            "total": 256,
+            "status": "running",
+            "completed": 228,
+            "heartbeat_at": "2026-10-10T19:26:27.250011+00:00"
+          },
+          {
+            "sequence": 20,
+            "event": "progress",
+            "source_at": "2026-10-10T19:26:44.005282+00:00",
+            "observed_at": "2026-10-10T19:27:18.384659+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "verifying_checkpoint",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:26:44.655738+00:00"
+          },
+          {
+            "sequence": 21,
+            "event": "progress",
+            "source_at": "2026-10-10T19:27:01.997007+00:00",
+            "observed_at": "2026-10-10T19:27:27.118151+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "initializing_training_runtime",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": "2026-10-10T19:27:17.498179+00:00"
+          },
+          {
+            "sequence": 22,
+            "event": "progress",
+            "source_at": "2026-10-10T19:27:31.336242+00:00",
+            "observed_at": "2026-10-10T19:27:42.360507+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "checkpoint_reload",
+            "total": 32,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:27:31.336242+00:00"
+          },
+          {
+            "sequence": 23,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:27:31.336242+00:00",
+            "observed_at": "2026-10-10T19:27:57.021867+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "checkpoint_reload",
+            "total": 32,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:27:49.812086+00:00"
+          },
+          {
+            "sequence": 24,
+            "event": "heartbeat",
+            "source_at": "2026-10-10T19:27:31.336242+00:00",
+            "observed_at": "2026-10-10T19:28:12.175244+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "checkpoint_reload",
+            "total": 32,
+            "status": "running",
+            "completed": 0,
+            "heartbeat_at": "2026-10-10T19:28:07.388008+00:00"
+          },
+          {
+            "sequence": 25,
+            "event": "progress",
+            "source_at": "2026-10-10T19:28:15.119674+00:00",
+            "observed_at": "2026-10-10T19:28:29.697692+00:00",
+            "unit": "decisions",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "checkpoint_reload",
+            "total": 32,
+            "status": "running",
+            "completed": 32,
+            "heartbeat_at": "2026-10-10T19:28:16.205935+00:00"
+          },
+          {
+            "sequence": 26,
+            "event": "progress",
+            "source_at": "2026-10-10T19:28:31.968502+00:00",
+            "observed_at": "2026-10-10T19:28:31.975367+00:00",
+            "unit": "steps",
+            "facts": {
+              "run_id": null,
+              "attempt": 1,
+              "provider": "modal",
+              "files_total": null,
+              "measurement": null,
+              "files_completed": null,
+              "provider_call_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6:fc-01M4KM5CTN2NZYSVKV6V5JZSM5",
+              "telemetry_available": true
+            },
+            "stage": "succeeded",
+            "total": 256,
+            "status": "succeeded",
+            "completed": 256,
+            "heartbeat_at": "2026-10-10T19:28:16.205935+00:00"
+          }
+        ],
+        "page": {
+          "has_more": false,
+          "next_cursor": 26,
+          "through_sequence": 26
+        }
+      },
+      "resource": {
+        "uri": "overmind://operations/65a863b2-479e-41ff-a363-fe5ceb30e1f4?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    }
+  },
+  "forecasts": {
+    "qwen3": {
+      "basis": "matched_measurements",
+      "runtime": {
+        "app": "overmind-sft-ebc520f5648151eec275bf69",
+        "release": "ebc520f5648151eec275bf69da99f82d08077a024544a985529de03dd980fa2f",
+        "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+        "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "environment": "overmind-dev"
+      },
+      "gpu_type": "H100",
+      "gpu_count": 1,
+      "gpu_hour_usd": 3.95,
+      "rate_source": "modal.Workspace.billing.rates",
+      "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00",
+      "training_seconds": [
+        131.458256925,
+        394.374770775
+      ],
+      "training_gpu_usd": [
+        0.1442,
+        0.4327
+      ],
+      "evidence_jobs": [
+        "03a02602-b320-42c1-9d0f-11379b0be5cd"
+      ],
+      "evidence": [
+        {
+          "job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+          "elapsed_seconds": 262.91651385,
+          "source_estimated_tokens": 749476,
+          "scaled_seconds": 262.91651385
+        }
+      ],
+      "confidence": "low",
+      "unpriced_components": [
+        "preparation",
+        "training_cpu_memory",
+        "native_final_calibration",
+        "storage"
+      ],
+      "all_in_usd": null
+    },
+    "qwen35": {
+      "basis": "matched_measurements",
+      "runtime": {
+        "app": "overmind-sft-ebc520f5648151eec275bf69",
+        "release": "ebc520f5648151eec275bf69da99f82d08077a024544a985529de03dd980fa2f",
+        "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+        "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "environment": "overmind-dev"
+      },
+      "gpu_type": "H100",
+      "gpu_count": 1,
+      "gpu_hour_usd": 3.95,
+      "rate_source": "modal.Workspace.billing.rates",
+      "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00",
+      "training_seconds": [
+        226.1463707335,
+        678.4391122005
+      ],
+      "training_gpu_usd": [
+        0.2481,
+        0.7444
+      ],
+      "evidence_jobs": [
+        "bce5630c-c13d-49c1-b86f-e72189c8977e"
+      ],
+      "evidence": [
+        {
+          "job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+          "elapsed_seconds": 452.292741467,
+          "source_estimated_tokens": 749476,
+          "scaled_seconds": 452.292741467
+        }
+      ],
+      "confidence": "low",
+      "unpriced_components": [
+        "preparation",
+        "training_cpu_memory",
+        "native_final_calibration",
+        "storage"
+      ],
+      "all_in_usd": null
+    }
+  }
+}

@@ -1,7 +1,8 @@
 import hashlib
 import json
 
-from modal_shared.decisions import DecisionTokenizer, decision_request
+from modal_shared.decision_encoding import DecisionEncoder
+from modal_shared.decisions import decision_request
 
 
 def input_digest(request):
@@ -10,8 +11,8 @@ def input_digest(request):
     ).hexdigest()
 
 
-def prepare_requests(records, output, failures, tokenizer, book, context_length):
-    encoder = DecisionTokenizer(tokenizer, book)
+def prepare_requests(records, output, failures, tokenizer, context_length, encode_record):
+    encoder = DecisionEncoder(tokenizer, encode_record)
     keys = set()
     report = {"ready_decisions": 0, "failed_decisions": 0, "tokens": 0, "max_tokens": 0}
     for record in records:

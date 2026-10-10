@@ -85,7 +85,7 @@ Each line is the invariant; the named skill section carries the mechanics.
   clocks. Weight-loading percentages remain unavailable when the library reports
   no counter. New instrumentation requires a new pinned worker release.
 
-- Typed decision training currently supports Modal LoRA on one GPU and uses a native `decision` column with runtime options and full target distributions. Native `hyperparameters.pre_training_baseline` defaults to true; false skips only the initial development baseline and retains checkpoint/final validation. Console and MCP expose the choice, receipts pin it, and worker telemetry records an omitted baseline as not requested. The native coding agent explores the source and user request before declaring evidence-backed per-family target semantics; unknown meaning stays unknown. The measured contract selects distribution cross entropy or mixed distribution/ordinal-mean supervision; it never invents a distribution from a mean or turns soft labels into argmax text. Decision checkpoints use typed probabilities and do not enter chat deployment/evaluation. Detail: backend-architecture § Native decision training.
+- Typed decision training uses Unsloth `FastDecisionModel`/`DecisionTrainer` on its separately pinned runtime, supports Modal LoRA on one GPU and accepts a native `decision` column with runtime options and full target distributions. Clef encoding retains upstream option spans and an explicit order mapping; full-precision head weights accompany every adapter. Shared preparation, monitoring, operational receipts and MCP lifecycle remain authoritative. Native `hyperparameters.pre_training_baseline` defaults to true; false skips only the initial development baseline and retains checkpoint/final validation. Console and MCP expose the choice, receipts pin it, and worker telemetry records an omitted baseline as not requested. The native coding agent explores the source and user request before declaring evidence-backed per-family target semantics; unknown meaning stays unknown. The measured contract selects distribution cross entropy or mixed distribution/ordinal-mean supervision; it never invents a distribution from a mean or turns soft labels into argmax text. Decision checkpoints use typed probabilities and do not enter chat deployment/evaluation. Detail: backend-architecture § Native decision training.
 
 - Training launch receipts pin the runtime release/environment, exact cells and requested recipe. Stall detection counts native validation and checkpoint-stage progress independently of optimizer steps; a committer heartbeat alone does not establish forward progress. Reusing a project request key returns the same job; a changed recipe conflicts. Provider intent is persisted before dispatch; an unknown acknowledgement is reconciled against that job's provider metadata, never resubmitted. Explicit settings that require a clamp are rejected. Native paired evaluation uses its own frozen calibration/final plan, retains incompatible rows, keeps references local and fits calibration before final predictions. Downloadable run records distinguish recorded GPU spend from unreported components. Detail: backend-architecture § Reproducible training experiments.
 
@@ -97,6 +97,9 @@ Each line is the invariant; the named skill section carries the mechanics.
   artifact fingerprints, reload verification and cancelled-run evidence. MCP
   `inspect_training_progress` and REST read stored checks/examples/sample identities
   without waking workers; `cancel_finetune` records intent before provider requests.
+  MCP check overviews expose large native per-question metrics and assessments as
+  `collections`; `field` JSON Pointers page the exact retained values, including
+  nested check/checkpoint fields. REST monitoring-evidence shares this pagination.
   Development-loss selection and early stopping are explicit opt-ins. Generation
   checks require agent-declared labels/exact matching/JSON schema/JSON field pointers; missing metrics
   remain missing. Metered judges, challenge suites and declared-slice sampling are
@@ -134,6 +137,13 @@ Each line is the invariant; the named skill section carries the mechanics.
 - Workshop handoffs return project-bound upload argv. Absolute min_rows/max_rows checks apply at publication and remain visibly deferred in previews; row preservation, schema and lineage checks apply in both modes. Runs expose queue age, polling interval, terminal time and structured failed checks. Format readiness does not establish task suitability. The native agent inspects the named capability and verifies published output before claiming preparation complete. Detail: data-workshop and mcp skills.
 
 - Data-first workflow mechanics share services across MCP and REST. `DataExploration` freezes an explicit cell for cached whole-source profiles or a separate derived chain; paginated sampling allocations never silently change coverage. Workshop interpretation remains agent-owned with scoped evidence and explicit hypothesis/conflict states. Native comparisons save drafts, prepare immutable suites in background and launch explicitly. Independent stages use recoverable leases, chunk-indexed input verification and durable provider receipts; pause stops new claims without claiming remote cancellation. Training experiments prepare a configuration-bound forecast before launch, optionally enforce user-defined planning constraints, and expose aggregate child outcomes. Bounded runtime profiles use explicit step/time limits; compatible prediction reuse is explicit and never substitutes for independent repetitions or performance measurements. MCP contract version and catalog fingerprint are discoverable at `overmind://interface/current`; installed guidance is not a correctness dependency.
+
+  Native comparison database receipts retain aggregate and per-benchmark metrics;
+  complete diagnostic slices live in the checksum-bound downloadable report.
+  Scoring receipts reference that artifact rather than duplicating it. Explicit
+  local-stage resume on a paused comparison fences interrupted local work and
+  reuses saved inputs; it never resubmits provider inference. A paused native
+  collector can be recovered only with its exact recorded provider call ID.
 
 - Benchmark selection is separate from serving: capability `benchmark_model` selects a ready trained model, or null for the codebase incumbent. New training jobs snapshot the primary choice in `baseline_model`; `active_model` only controls serving. Chat-training setup can pin additional benchmark models for the same eval set and dataset; they and the selected training bases are scored before training when benchmarking is enabled. Trained models are scored after training when evaluations are enabled. MCP `set_benchmark_model` sets the capability default.
 
@@ -178,6 +188,12 @@ PDF landing checks pages missed entirely by the primary native parser with PDFiu
 before OCR. Recovery retains encoded text, page regions and engine/count facts;
 font-encoding artifacts are flagged, never semantically corrected. Detail:
 data-workshop skill.
+
+Workshop decision/Jev recipes retain full distributions, ties, weights and source
+groups in typed decisions. Target meaning and evidence belong to retained code
+and output metadata; historical preparation plans are not a writable authoring
+API. Flat-source profiling and impact checks retain declared supervision metadata
+so changed weights or semantic declarations cannot disappear from the review.
 
 ## Style
 

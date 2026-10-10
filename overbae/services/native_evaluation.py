@@ -30,6 +30,7 @@ from overbae.models import (
 from overbae.services.compute_costs import estimate_usage
 from overbae.services.datasets import paths, rows, use
 from overbae.services.decision_benchmark_scoring import compare_suite, records
+from overbae.services.decision_calibration import fit_decision_calibration
 from overbae.services.decision_providers import (
     SubmissionUnknownError,
     external_step,
@@ -133,8 +134,12 @@ def create_plan(
         "participants": selected,
         "baseline": baseline,
         "inference": inference,
-        "calibration_method": "scalar_temperature_cross_entropy" if calibration_cell else None,
-        "temperatures": TEMPERATURES if calibration_cell else [],
+        "calibration_method": existing.config.get("calibration_method")
+        if existing
+        else "clef_temperature_cross_entropy"
+        if calibration_cell
+        else None,
+        "temperatures": existing.config.get("temperatures", []) if existing else [],
         "bootstrap_samples": bootstrap_samples,
         "seed": seed,
         "logarithm_floor": 1e-12,
@@ -361,6 +366,10 @@ def stage_sequence(plan):
 
 
 def calibrated(prediction, temperature):
+    if isinstance(temperature, dict):
+        temperature = temperature.get("temperature_by_kind", {}).get(
+            prediction["kind"], temperature["temperature"]
+        )
     logits = [value / temperature for value in prediction["log_probabilities"]]
     maximum = max(logits)
     normalizer = maximum + math.log(math.fsum(math.exp(value - maximum) for value in logits))
@@ -431,6 +440,8 @@ def fit_calibration(plan):
         for arm in (p["key"] for p in participants(plan)):
             totals = [0.0] * len(result["grid"])
             count = 0
+            db.execute("DROP TABLE IF EXISTS calibration_samples")
+            db.execute("CREATE TABLE calibration_samples(kind TEXT, logits TEXT, target TEXT)")
             for prediction in records(source / f"{arm}.jsonl"):
                 found = db.execute(
                     "SELECT q FROM refs WHERE key=? AND hash=?",
@@ -439,6 +450,14 @@ def fit_calibration(plan):
                 if not found:
                     continue
                 q = json.loads(found[0])
+                db.execute(
+                    "INSERT INTO calibration_samples VALUES(?,?,?)",
+                    (
+                        prediction["kind"],
+                        json.dumps(prediction["log_probabilities"]),
+                        found[0],
+                    ),
+                )
                 for i, temperature in enumerate(result["grid"]):
                     adjusted = calibrated(prediction, temperature)
                     totals[i] -= math.fsum(
@@ -449,13 +468,29 @@ def fit_calibration(plan):
                 raise InputValidationError(
                     "Calibration has no valid probability-labelled decisions."
                 )
-            best = min(range(len(totals)), key=lambda i: (totals[i], abs(result["grid"][i] - 1)))
-            result["arms"][arm] = {
-                "temperature": result["grid"][best],
-                "decisions": count,
-                "cross_entropy": totals[best] / count,
-                "prediction_sha256": digest_file(source / f"{arm}.jsonl"),
-            }
+            if plan.config["calibration_method"] == "clef_temperature_cross_entropy":
+
+                def samples():
+                    for kind, logits, target in db.execute(
+                        "SELECT kind, logits, target FROM calibration_samples"
+                    ):
+                        yield {
+                            "kind": kind,
+                            "logits": json.loads(logits),
+                            "target": json.loads(target),
+                        }
+
+                result["arms"][arm] = fit_decision_calibration(samples)
+            else:
+                best = min(
+                    range(len(totals)), key=lambda i: (totals[i], abs(result["grid"][i] - 1))
+                )
+                result["arms"][arm] = {
+                    "temperature": result["grid"][best],
+                    "decisions": count,
+                    "cross_entropy": totals[best] / count,
+                }
+            result["arms"][arm]["prediction_sha256"] = digest_file(source / f"{arm}.jsonl")
         db.close()
     result["decisions"] = min(arm["decisions"] for arm in result["arms"].values())
     NativeEvaluationPlan.objects.filter(pk=plan.pk, calibration={}).update(calibration=result)
@@ -569,10 +604,7 @@ def comparison(plan, role, arm, calibrated_output):
             with adjusted.open("w") as output:
                 for prediction in records(path):
                     output.write(
-                        json.dumps(
-                            calibrated(prediction, plan.calibration["arms"][key]["temperature"])
-                        )
-                        + "\n"
+                        json.dumps(calibrated(prediction, plan.calibration["arms"][key])) + "\n"
                     )
             failures = path.with_suffix(".failures.jsonl")
             if failures.exists():
@@ -643,6 +675,17 @@ def cost_record(plan):
     return result
 
 
+def _report_metrics(value):
+    if isinstance(value, list):
+        return [_report_metrics(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {key: _report_metrics(item) for key, item in value.items() if key != "slices"}
+    if "slices" in value:
+        result.update(slice_count=len(value["slices"]), slices_in_report=True)
+    return result
+
+
 def score(plan):
     result = {
         "participants": participants(plan),
@@ -678,7 +721,8 @@ def score(plan):
     if "candidate" in result["comparisons"]:
         result.update(result["comparisons"]["candidate"])
     directory(plan, "report").mkdir(parents=True, exist_ok=True)
-    atomic_json(directory(plan, "report") / "results.json", result)
+    report_path = directory(plan, "report") / "results.json"
+    atomic_json(report_path, result)
     report_lines = [
         f"# {plan.name}",
         "",
@@ -713,17 +757,31 @@ def score(plan):
             "",
         ]
     (directory(plan, "report") / "results.md").write_text("\n".join(report_lines))
-    return result
+    summary = _report_metrics(result)
+    summary.pop("calls", None)
+    summary["report"] = {
+        "sha256": digest_file(report_path),
+        "bytes": report_path.stat().st_size,
+        "format": "json",
+        "contents": "Complete metrics, diagnostic slices, calibration and provider receipts",
+    }
+    return summary
 
 
 @transaction.atomic
 def resume(plan, *, stage=None, call_id=None):
     plan = NativeEvaluationPlan.objects.select_for_update().get(pk=plan.pk)
-    if plan.state == "paused":
+    if plan.state == "paused" and stage is None:
         plan.state, plan.error = "running", ""
         plan.save()
         return plan
-    if plan.state not in {"failed", "submission_unknown"}:
+    if (
+        plan.state == "paused"
+        and stage not in {"verify_inputs", "fit_calibration", "score"}
+        and (not call_id or call_id != plan.calls.get(stage, {}).get("id"))
+    ):
+        raise InputValidationError("Supply the recorded provider call ID to recover collection")
+    if plan.state not in {"paused", "failed", "submission_unknown"}:
         raise InputValidationError("Only a stopped evaluation can be resumed")
     pending = next(
         (s for s in stage_sequence(plan) if plan.calls.get(s, {}).get("state") != "completed"), None
@@ -1065,7 +1123,7 @@ def advance(plan_id, *, stage=None):
             state="completed"
             if receipt is not None and (not external or reused or receipt["completed"])
             else "running",
-            receipt=receipt,
+            receipt=receipt["report"] if stage == "score" and receipt is not None else receipt,
         )
     except TimeoutError:
         call["state"] = (

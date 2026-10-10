@@ -1,0 +1,3623 @@
+{
+  "endpoint": "http://localhost:8000/api/mcp/",
+  "suffix": "decision-workshop-20261010-verified",
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl",
+  "cases": {
+    "mixed": {
+      "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "source": "f31614eb-2dfa-4a05-a34d-0cc332e30323",
+      "dataset": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+      "selected": {
+        "id": "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461",
+        "rows": 15000,
+        "title": "Source",
+        "version": "1.0",
+        "dataset_id": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+        "fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b"
+      },
+      "source_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/mixed-source.jsonl",
+        "dataset_id": "e882b605-9f95-47f6-9b20-0267400e9658",
+        "format": "jsonl",
+        "bytes_written": 22525301,
+        "cell": "f31614eb-2dfa-4a05-a34d-0cc332e30323",
+        "version": "1.0",
+        "fingerprint": "2a0b88493163f584ffc90688fde99445876178a2013d5b53a52d40e012d75543"
+      },
+      "package": {
+        "id": "16c9a333-6d85-4cb4-b1fd-e9a5c5900c98",
+        "sha256": "b2ca5d86a96b988117ac49a12e2a6490a5e5d36ea851f2588228d5b332b7613d"
+      },
+      "pipeline": "18e03ae6-db34-43ea-87d0-cc364f3ee5c6",
+      "runs": [
+        {
+          "id": "8abd59ea-4122-43ef-a581-6b055160805c",
+          "mode": "preview",
+          "details": {
+            "id": "8abd59ea-4122-43ef-a581-6b055160805c",
+            "pipeline": "18e03ae6-db34-43ea-87d0-cc364f3ee5c6",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 mixed",
+            "revision": 1,
+            "source_dataset": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+            "source_cell": "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461",
+            "source_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "preview",
+            "parameters": {
+              "required_semantics": ""
+            },
+            "binding": null,
+            "operation": {
+              "id": "4a0db8c1-c97a-453d-9aab-7275566e6c0b",
+              "kind": "dataset_pipeline",
+              "reference": "8abd59ea-4122-43ef-a581-6b055160805c",
+              "attempt": "c4a3c2da-3ecb-4a6c-af85-885a720fef7b",
+              "unit": "steps",
+              "facts": {
+                "attempt": "c4a3c2da-3ecb-4a6c-af85-885a720fef7b",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 15000
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 32,
+              "last_observed_at": "2026-10-10T19:46:45.792871+00:00",
+              "last_heartbeat_at": "2026-10-10T19:46:45.677317+00:00",
+              "last_progress_at": "2026-10-10T19:46:45.792871+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "executing",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:47:01.079661+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": null,
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "preview",
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Audit supplied decision targets without resolving unknown meaning",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {
+                      "kind": {
+                        "choice": 50
+                      },
+                      "source": {
+                        "IntentGrasp/all": 1,
+                        "HelpSteer3/preference": 25,
+                        "HelpSteer3/edit_quality": 24
+                      }
+                    },
+                    "coverage_before": {
+                      "kind": {
+                        "choice": 50
+                      },
+                      "source": {
+                        "IntentGrasp/all": 1,
+                        "HelpSteer3/preference": 25,
+                        "HelpSteer3/edit_quality": 24
+                      }
+                    },
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "source",
+                      "fingerprint": "e50be123d366f3564935623da8d39deb1580da8faffacbe8948f6c8039f0e6ec"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7526,
+                    "observed_at": "2026-10-10T19:46:44.838722+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0841,
+                      "input_transfer": 0.0901,
+                      "output_reading": 0.0041,
+                      "container_setup": 0.1052,
+                      "script_execution": 0.2145,
+                      "artifact_transfer": 0.2546
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.843,
+                  "step_id": "audit",
+                  "container": "overmind-workshop-8abd59ea-4122-43ef-a581-6b055160805c-c4a3c2da-3ecb-4a6c-af85-885a720fef7b-0",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:46:44.082137+00:00",
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:46:44.927743+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "e50be123d366f3564935623da8d39deb1580da8faffacbe8948f6c8039f0e6ec",
+                  "output_fingerprint": "344fe51b15f801fb1c1d6e7e9a92cf1638094a9b122e37447c6f97507b3af1a3",
+                  "provider_execution": "b34dc2184eed71e52ed5e5db02f90f243c320cf08a4357297e1f095c4410ff97",
+                  "sample_count": 2
+                },
+                {
+                  "name": "Preserve full distributions in typed decisions",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {
+                      "kind": {
+                        "choice": 50
+                      },
+                      "source": {
+                        "IntentGrasp/all": 1,
+                        "HelpSteer3/preference": 25,
+                        "HelpSteer3/edit_quality": 24
+                      }
+                    },
+                    "coverage_before": {
+                      "kind": {
+                        "choice": 50
+                      },
+                      "source": {
+                        "IntentGrasp/all": 1,
+                        "HelpSteer3/preference": 25,
+                        "HelpSteer3/edit_quality": 24
+                      }
+                    },
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "audit",
+                      "fingerprint": "344fe51b15f801fb1c1d6e7e9a92cf1638094a9b122e37447c6f97507b3af1a3"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7351,
+                    "observed_at": "2026-10-10T19:46:45.673778+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0407,
+                      "input_transfer": 0.0819,
+                      "output_reading": 0.0071,
+                      "container_setup": 0.1228,
+                      "script_execution": 0.2202,
+                      "artifact_transfer": 0.2624
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.85,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-8abd59ea-4122-43ef-a581-6b055160805c-c4a3c2da-3ecb-4a6c-af85-885a720fef7b-1",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "audit",
+                  "started_at": "2026-10-10T19:46:44.929252+00:00",
+                  "input_steps": [
+                    "audit"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:46:45.785749+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "344fe51b15f801fb1c1d6e7e9a92cf1638094a9b122e37447c6f97507b3af1a3",
+                  "output_fingerprint": "ff38b0c9d2e8253c3464e0c3d4c307de9e1bd6180adf54575399c761c6fa9126",
+                  "provider_execution": "771c0b6b81c620b484781284ea2c944697c5218e4c4e8c529c3af2bccfe4558a",
+                  "sample_count": 1
+                }
+              ],
+              "attempt": "c4a3c2da-3ecb-4a6c-af85-885a720fef7b",
+              "seconds": 1.752,
+              "started_at": "2026-10-10T19:46:44.037532+00:00",
+              "output_rows": 50,
+              "source_rows": 15000,
+              "stage_seconds": {
+                "measuring_impact": 0.117,
+                "step_1_executing": 0.763,
+                "step_2_executing": 0.761,
+                "verifying_source": 0.045,
+                "step_1_checking_rows": 0.003,
+                "step_2_checking_rows": 0.006,
+                "step_1_preserving_lineage": 0.025,
+                "step_2_preserving_lineage": 0.034
+              },
+              "stage_started_at": "2026-10-10T19:46:45.789330+00:00",
+              "revision_fingerprint": "fb501c2c082b58c17ce1c20b9a944d82ab1a76db3d75d42cac7163986ca7d48e"
+            },
+            "created_at": "2026-10-10T19:46:43.592928+00:00",
+            "updated_at": "2026-10-10T19:46:45.794834+00:00",
+            "completed_at": "2026-10-10T19:46:45.794834+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/8abd59ea-4122-43ef-a581-6b055160805c?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        },
+        {
+          "id": "1b4ae90c-e7bb-45e3-baf8-1c4124c5044a",
+          "mode": "publish",
+          "details": {
+            "id": "1b4ae90c-e7bb-45e3-baf8-1c4124c5044a",
+            "pipeline": "18e03ae6-db34-43ea-87d0-cc364f3ee5c6",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 mixed",
+            "revision": 1,
+            "source_dataset": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+            "source_cell": "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461",
+            "source_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "publish",
+            "parameters": {
+              "required_semantics": ""
+            },
+            "binding": null,
+            "operation": {
+              "id": "3ab62e86-2d9e-450c-ade7-0886aaf56bcd",
+              "kind": "dataset_pipeline",
+              "reference": "1b4ae90c-e7bb-45e3-baf8-1c4124c5044a",
+              "attempt": "65c537dc-89e7-4c91-a951-34555e1aa0d8",
+              "unit": "steps",
+              "facts": {
+                "attempt": "65c537dc-89e7-4c91-a951-34555e1aa0d8",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 15000
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 37,
+              "last_observed_at": "2026-10-10T19:47:10.638585+00:00",
+              "last_heartbeat_at": "2026-10-10T19:47:02.203271+00:00",
+              "last_progress_at": "2026-10-10T19:47:10.638585+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "executing",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:47:01.079661+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": "253cb09a-ee40-430c-878d-d5d06978288e",
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "publish",
+              "rows": 15000,
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Audit supplied decision targets without resolving unknown meaning",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 15000,
+                    "rows_before": 15000,
+                    "rows_removed": 0,
+                    "coverage_after": {
+                      "kind": {
+                        "noul": 2077,
+                        "score": 1009,
+                        "choice": 11914
+                      },
+                      "source": {
+                        "UNLI": 475,
+                        "WANLI": 83,
+                        "logiqa": 62,
+                        "FOL-nli": 84,
+                        "doc-nli": 111,
+                        "medmcqa": 62,
+                        "cosmos_qa": 61,
+                        "glue/stsb": 90,
+                        "cos_e/v1.0": 63,
+                        "head_qa/en": 62,
+                        "mctest-nli": 112,
+                        "ConTRoL-nli": 138,
+                        "sts-companion": 90,
+                        "commonsense_qa": 63,
+                        "IntentGrasp/all": 73,
+                        "spartqa-mchoice": 90,
+                        "wnut_17/wnut_17": 225,
+                        "prm800k_dpo/step": 117,
+                        "sick/relatedness": 74,
+                        "dataset_train_nli": 115,
+                        "dynasent/r1_votes": 111,
+                        "dynasent/r2_votes": 111,
+                        "multilingual/xnli": 84,
+                        "proto_qa/proto_qa": 74,
+                        "wiki_hop/original": 72,
+                        "wikimedqa/medwiki": 75,
+                        "conll2003/ner_tags": 225,
+                        "lex_glue/case_hold": 63,
+                        "cycic_multiplechoice": 63,
+                        "prm800k_dpo/solution": 124,
+                        "tasksource_dpo_pairs": 240,
+                        "scruples/verdict_votes": 75,
+                        "MedQA-USMLE-4-options-hf": 62,
+                        "chaos-mnli-ambiguity/votes": 74,
+                        "multilingual/indic_glue/wstp": 64,
+                        "multilingual/exams/multilingual": 62,
+                        "seahorse_summarization_evaluation": 111,
+                        "summarize_from_feedback/comparisons": 244,
+                        "procedural-typed-decisions/arithmetic": 120,
+                        "procedural-typed-decisions/needle_retrieval": 120,
+                        "procedural-typed-decisions/taxonomy_routing": 120,
+                        "procedural-typed-decisions/record_aggregation": 120,
+                        "procedural-typed-decisions/state_perturbation": 120,
+                        "procedural-typed-decisions/evidence_sufficiency": 120,
+                        "procedural-typed-decisions/policy_applicability": 120,
+                        "procedural-typed-decisions/entity_belief_tracking": 120,
+                        "procedural-typed-decisions/multi_view_adjudication": 120,
+                        "procedural-typed-decisions/policy_under_uncertainty": 120,
+                        "procedural-typed-decisions/event_state_reconstruction": 120,
+                        "procedural-typed-decisions/partial_observation_calibration": 120
+                      }
+                    },
+                    "coverage_before": {
+                      "kind": {
+                        "noul": 2077,
+                        "score": 1009,
+                        "choice": 11914
+                      },
+                      "source": {
+                        "UNLI": 475,
+                        "WANLI": 83,
+                        "logiqa": 62,
+                        "FOL-nli": 84,
+                        "doc-nli": 111,
+                        "medmcqa": 62,
+                        "cosmos_qa": 61,
+                        "glue/stsb": 90,
+                        "cos_e/v1.0": 63,
+                        "head_qa/en": 62,
+                        "mctest-nli": 112,
+                        "ConTRoL-nli": 138,
+                        "sts-companion": 90,
+                        "commonsense_qa": 63,
+                        "IntentGrasp/all": 73,
+                        "spartqa-mchoice": 90,
+                        "wnut_17/wnut_17": 225,
+                        "prm800k_dpo/step": 117,
+                        "sick/relatedness": 74,
+                        "dataset_train_nli": 115,
+                        "dynasent/r1_votes": 111,
+                        "dynasent/r2_votes": 111,
+                        "multilingual/xnli": 84,
+                        "proto_qa/proto_qa": 74,
+                        "wiki_hop/original": 72,
+                        "wikimedqa/medwiki": 75,
+                        "conll2003/ner_tags": 225,
+                        "lex_glue/case_hold": 63,
+                        "cycic_multiplechoice": 63,
+                        "prm800k_dpo/solution": 124,
+                        "tasksource_dpo_pairs": 240,
+                        "scruples/verdict_votes": 75,
+                        "MedQA-USMLE-4-options-hf": 62,
+                        "chaos-mnli-ambiguity/votes": 74,
+                        "multilingual/indic_glue/wstp": 64,
+                        "multilingual/exams/multilingual": 62,
+                        "seahorse_summarization_evaluation": 111,
+                        "summarize_from_feedback/comparisons": 244,
+                        "procedural-typed-decisions/arithmetic": 120,
+                        "procedural-typed-decisions/needle_retrieval": 120,
+                        "procedural-typed-decisions/taxonomy_routing": 120,
+                        "procedural-typed-decisions/record_aggregation": 120,
+                        "procedural-typed-decisions/state_perturbation": 120,
+                        "procedural-typed-decisions/evidence_sufficiency": 120,
+                        "procedural-typed-decisions/policy_applicability": 120,
+                        "procedural-typed-decisions/entity_belief_tracking": 120,
+                        "procedural-typed-decisions/multi_view_adjudication": 120,
+                        "procedural-typed-decisions/policy_under_uncertainty": 120,
+                        "procedural-typed-decisions/event_state_reconstruction": 120,
+                        "procedural-typed-decisions/partial_observation_calibration": 120
+                      }
+                    },
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461",
+                      "rows": 15000,
+                      "step": "source",
+                      "fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 2.3683,
+                    "observed_at": "2026-10-10T19:46:56.677092+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0472,
+                      "input_transfer": 0.5069,
+                      "output_reading": 0.3825,
+                      "container_setup": 0.0887,
+                      "script_execution": 0.9019,
+                      "artifact_transfer": 0.441
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 5.271,
+                  "step_id": "audit",
+                  "container": "overmind-workshop-1b4ae90c-e7bb-45e3-baf8-1c4124c5044a-65c537dc-89e7-4c91-a951-34555e1aa0d8-0",
+                  "exit_code": 0,
+                  "input_rows": 15000,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:46:54.198009+00:00",
+                  "input_cells": [
+                    "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461"
+                  ],
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_cell": "b0991594-f1da-44b0-b67d-e9405c415aaf",
+                  "output_rows": 15000,
+                  "completed_at": "2026-10-10T19:46:59.472149+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+                  "output_fingerprint": "1ab14176cb0e5a2f7a14e2de63226c3016ec851f5c3dd0922ed4c5e722330c65",
+                  "provider_execution": "81b62e342e1264ea5da9a3d3a9bdb58d142064125eae1c5a38069257871038d3"
+                },
+                {
+                  "name": "Preserve full distributions in typed decisions",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 15000,
+                    "rows_before": 15000,
+                    "rows_removed": 0,
+                    "coverage_after": {
+                      "kind": {
+                        "noul": 2077,
+                        "score": 1009,
+                        "choice": 11914
+                      },
+                      "source": {
+                        "UNLI": 475,
+                        "WANLI": 83,
+                        "logiqa": 62,
+                        "FOL-nli": 84,
+                        "doc-nli": 111,
+                        "medmcqa": 62,
+                        "cosmos_qa": 61,
+                        "glue/stsb": 90,
+                        "cos_e/v1.0": 63,
+                        "head_qa/en": 62,
+                        "mctest-nli": 112,
+                        "ConTRoL-nli": 138,
+                        "sts-companion": 90,
+                        "commonsense_qa": 63,
+                        "IntentGrasp/all": 73,
+                        "spartqa-mchoice": 90,
+                        "wnut_17/wnut_17": 225,
+                        "prm800k_dpo/step": 117,
+                        "sick/relatedness": 74,
+                        "dataset_train_nli": 115,
+                        "dynasent/r1_votes": 111,
+                        "dynasent/r2_votes": 111,
+                        "multilingual/xnli": 84,
+                        "proto_qa/proto_qa": 74,
+                        "wiki_hop/original": 72,
+                        "wikimedqa/medwiki": 75,
+                        "conll2003/ner_tags": 225,
+                        "lex_glue/case_hold": 63,
+                        "cycic_multiplechoice": 63,
+                        "prm800k_dpo/solution": 124,
+                        "tasksource_dpo_pairs": 240,
+                        "scruples/verdict_votes": 75,
+                        "MedQA-USMLE-4-options-hf": 62,
+                        "chaos-mnli-ambiguity/votes": 74,
+                        "multilingual/indic_glue/wstp": 64,
+                        "multilingual/exams/multilingual": 62,
+                        "seahorse_summarization_evaluation": 111,
+                        "summarize_from_feedback/comparisons": 244,
+                        "procedural-typed-decisions/arithmetic": 120,
+                        "procedural-typed-decisions/needle_retrieval": 120,
+                        "procedural-typed-decisions/taxonomy_routing": 120,
+                        "procedural-typed-decisions/record_aggregation": 120,
+                        "procedural-typed-decisions/state_perturbation": 120,
+                        "procedural-typed-decisions/evidence_sufficiency": 120,
+                        "procedural-typed-decisions/policy_applicability": 120,
+                        "procedural-typed-decisions/entity_belief_tracking": 120,
+                        "procedural-typed-decisions/multi_view_adjudication": 120,
+                        "procedural-typed-decisions/policy_under_uncertainty": 120,
+                        "procedural-typed-decisions/event_state_reconstruction": 120,
+                        "procedural-typed-decisions/partial_observation_calibration": 120
+                      }
+                    },
+                    "coverage_before": {
+                      "kind": {
+                        "noul": 2077,
+                        "score": 1009,
+                        "choice": 11914
+                      },
+                      "source": {
+                        "UNLI": 475,
+                        "WANLI": 83,
+                        "logiqa": 62,
+                        "FOL-nli": 84,
+                        "doc-nli": 111,
+                        "medmcqa": 62,
+                        "cosmos_qa": 61,
+                        "glue/stsb": 90,
+                        "cos_e/v1.0": 63,
+                        "head_qa/en": 62,
+                        "mctest-nli": 112,
+                        "ConTRoL-nli": 138,
+                        "sts-companion": 90,
+                        "commonsense_qa": 63,
+                        "IntentGrasp/all": 73,
+                        "spartqa-mchoice": 90,
+                        "wnut_17/wnut_17": 225,
+                        "prm800k_dpo/step": 117,
+                        "sick/relatedness": 74,
+                        "dataset_train_nli": 115,
+                        "dynasent/r1_votes": 111,
+                        "dynasent/r2_votes": 111,
+                        "multilingual/xnli": 84,
+                        "proto_qa/proto_qa": 74,
+                        "wiki_hop/original": 72,
+                        "wikimedqa/medwiki": 75,
+                        "conll2003/ner_tags": 225,
+                        "lex_glue/case_hold": 63,
+                        "cycic_multiplechoice": 63,
+                        "prm800k_dpo/solution": 124,
+                        "tasksource_dpo_pairs": 240,
+                        "scruples/verdict_votes": 75,
+                        "MedQA-USMLE-4-options-hf": 62,
+                        "chaos-mnli-ambiguity/votes": 74,
+                        "multilingual/indic_glue/wstp": 64,
+                        "multilingual/exams/multilingual": 62,
+                        "seahorse_summarization_evaluation": 111,
+                        "summarize_from_feedback/comparisons": 244,
+                        "procedural-typed-decisions/arithmetic": 120,
+                        "procedural-typed-decisions/needle_retrieval": 120,
+                        "procedural-typed-decisions/taxonomy_routing": 120,
+                        "procedural-typed-decisions/record_aggregation": 120,
+                        "procedural-typed-decisions/state_perturbation": 120,
+                        "procedural-typed-decisions/evidence_sufficiency": 120,
+                        "procedural-typed-decisions/policy_applicability": 120,
+                        "procedural-typed-decisions/entity_belief_tracking": 120,
+                        "procedural-typed-decisions/multi_view_adjudication": 120,
+                        "procedural-typed-decisions/policy_under_uncertainty": 120,
+                        "procedural-typed-decisions/event_state_reconstruction": 120,
+                        "procedural-typed-decisions/partial_observation_calibration": 120
+                      }
+                    },
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "b0991594-f1da-44b0-b67d-e9405c415aaf",
+                      "rows": 15000,
+                      "step": "audit",
+                      "fingerprint": "1ab14176cb0e5a2f7a14e2de63226c3016ec851f5c3dd0922ed4c5e722330c65"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 2.6037,
+                    "observed_at": "2026-10-10T19:47:02.200492+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.1024,
+                      "input_transfer": 0.5652,
+                      "output_reading": 0.4738,
+                      "container_setup": 0.0864,
+                      "script_execution": 0.8461,
+                      "artifact_transfer": 0.5299
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 6.829,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-1b4ae90c-e7bb-45e3-baf8-1c4124c5044a-65c537dc-89e7-4c91-a951-34555e1aa0d8-1",
+                  "exit_code": 0,
+                  "input_rows": 15000,
+                  "input_step": "audit",
+                  "started_at": "2026-10-10T19:46:59.474090+00:00",
+                  "input_cells": [
+                    "b0991594-f1da-44b0-b67d-e9405c415aaf"
+                  ],
+                  "input_steps": [
+                    "audit"
+                  ],
+                  "output_cell": "253cb09a-ee40-430c-878d-d5d06978288e",
+                  "output_rows": 15000,
+                  "completed_at": "2026-10-10T19:47:06.308699+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "1ab14176cb0e5a2f7a14e2de63226c3016ec851f5c3dd0922ed4c5e722330c65",
+                  "output_fingerprint": "32476ea031b0450b9ce63159a4eb1b9f8cbc336a59b50920c7017af98f4d95ca",
+                  "provider_execution": "8b3112c49640aa7ebda87110a9409badf38bb63b220cf92355e6fb40d0290f9e"
+                }
+              ],
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 15000,
+                "rows_before": 15000,
+                "rows_removed": 0,
+                "coverage_after": {
+                  "kind": {
+                    "noul": 2077,
+                    "score": 1009,
+                    "choice": 11914
+                  },
+                  "source": {
+                    "UNLI": 475,
+                    "WANLI": 83,
+                    "logiqa": 62,
+                    "FOL-nli": 84,
+                    "doc-nli": 111,
+                    "medmcqa": 62,
+                    "cosmos_qa": 61,
+                    "glue/stsb": 90,
+                    "cos_e/v1.0": 63,
+                    "head_qa/en": 62,
+                    "mctest-nli": 112,
+                    "ConTRoL-nli": 138,
+                    "sts-companion": 90,
+                    "commonsense_qa": 63,
+                    "IntentGrasp/all": 73,
+                    "spartqa-mchoice": 90,
+                    "wnut_17/wnut_17": 225,
+                    "prm800k_dpo/step": 117,
+                    "sick/relatedness": 74,
+                    "dataset_train_nli": 115,
+                    "dynasent/r1_votes": 111,
+                    "dynasent/r2_votes": 111,
+                    "multilingual/xnli": 84,
+                    "proto_qa/proto_qa": 74,
+                    "wiki_hop/original": 72,
+                    "wikimedqa/medwiki": 75,
+                    "conll2003/ner_tags": 225,
+                    "lex_glue/case_hold": 63,
+                    "cycic_multiplechoice": 63,
+                    "prm800k_dpo/solution": 124,
+                    "tasksource_dpo_pairs": 240,
+                    "scruples/verdict_votes": 75,
+                    "MedQA-USMLE-4-options-hf": 62,
+                    "chaos-mnli-ambiguity/votes": 74,
+                    "multilingual/indic_glue/wstp": 64,
+                    "multilingual/exams/multilingual": 62,
+                    "seahorse_summarization_evaluation": 111,
+                    "summarize_from_feedback/comparisons": 244,
+                    "procedural-typed-decisions/arithmetic": 120,
+                    "procedural-typed-decisions/needle_retrieval": 120,
+                    "procedural-typed-decisions/taxonomy_routing": 120,
+                    "procedural-typed-decisions/record_aggregation": 120,
+                    "procedural-typed-decisions/state_perturbation": 120,
+                    "procedural-typed-decisions/evidence_sufficiency": 120,
+                    "procedural-typed-decisions/policy_applicability": 120,
+                    "procedural-typed-decisions/entity_belief_tracking": 120,
+                    "procedural-typed-decisions/multi_view_adjudication": 120,
+                    "procedural-typed-decisions/policy_under_uncertainty": 120,
+                    "procedural-typed-decisions/event_state_reconstruction": 120,
+                    "procedural-typed-decisions/partial_observation_calibration": 120
+                  }
+                },
+                "coverage_before": {
+                  "kind": {
+                    "noul": 2077,
+                    "score": 1009,
+                    "choice": 11914
+                  },
+                  "source": {
+                    "UNLI": 475,
+                    "WANLI": 83,
+                    "logiqa": 62,
+                    "FOL-nli": 84,
+                    "doc-nli": 111,
+                    "medmcqa": 62,
+                    "cosmos_qa": 61,
+                    "glue/stsb": 90,
+                    "cos_e/v1.0": 63,
+                    "head_qa/en": 62,
+                    "mctest-nli": 112,
+                    "ConTRoL-nli": 138,
+                    "sts-companion": 90,
+                    "commonsense_qa": 63,
+                    "IntentGrasp/all": 73,
+                    "spartqa-mchoice": 90,
+                    "wnut_17/wnut_17": 225,
+                    "prm800k_dpo/step": 117,
+                    "sick/relatedness": 74,
+                    "dataset_train_nli": 115,
+                    "dynasent/r1_votes": 111,
+                    "dynasent/r2_votes": 111,
+                    "multilingual/xnli": 84,
+                    "proto_qa/proto_qa": 74,
+                    "wiki_hop/original": 72,
+                    "wikimedqa/medwiki": 75,
+                    "conll2003/ner_tags": 225,
+                    "lex_glue/case_hold": 63,
+                    "cycic_multiplechoice": 63,
+                    "prm800k_dpo/solution": 124,
+                    "tasksource_dpo_pairs": 240,
+                    "scruples/verdict_votes": 75,
+                    "MedQA-USMLE-4-options-hf": 62,
+                    "chaos-mnli-ambiguity/votes": 74,
+                    "multilingual/indic_glue/wstp": 64,
+                    "multilingual/exams/multilingual": 62,
+                    "seahorse_summarization_evaluation": 111,
+                    "summarize_from_feedback/comparisons": 244,
+                    "procedural-typed-decisions/arithmetic": 120,
+                    "procedural-typed-decisions/needle_retrieval": 120,
+                    "procedural-typed-decisions/taxonomy_routing": 120,
+                    "procedural-typed-decisions/record_aggregation": 120,
+                    "procedural-typed-decisions/state_perturbation": 120,
+                    "procedural-typed-decisions/evidence_sufficiency": 120,
+                    "procedural-typed-decisions/policy_applicability": 120,
+                    "procedural-typed-decisions/entity_belief_tracking": 120,
+                    "procedural-typed-decisions/multi_view_adjudication": 120,
+                    "procedural-typed-decisions/policy_under_uncertainty": 120,
+                    "procedural-typed-decisions/event_state_reconstruction": 120,
+                    "procedural-typed-decisions/partial_observation_calibration": 120
+                  }
+                },
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "attempt": "65c537dc-89e7-4c91-a951-34555e1aa0d8",
+              "seconds": 16.453,
+              "started_at": "2026-10-10T19:46:54.187139+00:00",
+              "output_rows": 15000,
+              "source_rows": 15000,
+              "stage_seconds": {
+                "publishing": 4.328,
+                "measuring_impact": 2.857,
+                "step_1_executing": 2.783,
+                "step_2_executing": 3.157,
+                "verifying_source": 0.012,
+                "step_1_checking_rows": 0.004,
+                "step_2_checking_rows": 0.004,
+                "step_1_preserving_lineage": 1.259,
+                "step_2_preserving_lineage": 2.046
+              },
+              "semantic_quality": "unmeasured",
+              "stage_started_at": "2026-10-10T19:47:10.636259+00:00",
+              "revision_fingerprint": "fb501c2c082b58c17ce1c20b9a944d82ab1a76db3d75d42cac7163986ca7d48e"
+            },
+            "created_at": "2026-10-10T19:46:53.684943+00:00",
+            "updated_at": "2026-10-10T19:47:10.639750+00:00",
+            "completed_at": "2026-10-10T19:47:10.639750+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/1b4ae90c-e7bb-45e3-baf8-1c4124c5044a?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        }
+      ],
+      "output_cell": "253cb09a-ee40-430c-878d-d5d06978288e",
+      "output_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/mixed-output.jsonl",
+        "dataset_id": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+        "format": "jsonl",
+        "bytes_written": 49083437,
+        "cell": "253cb09a-ee40-430c-878d-d5d06978288e",
+        "version": "1.2",
+        "fingerprint": "32476ea031b0450b9ce63159a4eb1b9f8cbc336a59b50920c7017af98f4d95ca"
+      },
+      "verification": {
+        "verified_rows": 15000,
+        "soft_targets": 1414,
+        "tied_maxima": 33,
+        "blank_states": 149,
+        "choice": 11914,
+        "noul": 2077,
+        "score": 1009
+      },
+      "readiness": {
+        "monitoring": {
+          "version": 1,
+          "mode": "off",
+          "initial": true,
+          "final": true,
+          "loss_sample": 2048,
+          "train_sample": 256,
+          "seed": 42,
+          "interval_steps": null,
+          "target_seconds": 300,
+          "overhead_fraction": 0.1,
+          "max_checks": 12,
+          "generation_every": 3,
+          "generation": null,
+          "selection": "last",
+          "early_stopping": null,
+          "failure_policy": "continue"
+        },
+        "selection": {
+          "train_dataset": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+          "train_cell": "253cb09a-ee40-430c-878d-d5d06978288e",
+          "train_fingerprint": "32476ea031b0450b9ce63159a4eb1b9f8cbc336a59b50920c7017af98f4d95ca",
+          "train_rows": 15000,
+          "validation_dataset": null,
+          "validation_cell": null,
+          "validation_fingerprint": null,
+          "validation_rows": null,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": false,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "95aa03f814ee6037e126990a8f0bb8373861ddb73f4e49abe6c8df76195e8518"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "unspecified_distribution": 15000
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Training format checks passed; task suitability is unmeasured.",
+        "ready": true,
+        "assessment": {
+          "technical": "pass",
+          "task_suitability": "unmeasured",
+          "capability_linked": null,
+          "validation": "disabled"
+        },
+        "missing": [],
+        "warnings": [
+          "training dataset: No current workshop quality review."
+        ],
+        "dataset": {
+          "id": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+          "name": "Decision Workshop acceptance \u00b7 mixed source",
+          "intent": "train",
+          "cell": {
+            "id": "253cb09a-ee40-430c-878d-d5d06978288e",
+            "version": "1.2",
+            "title": "Preserve full distributions in typed decisions",
+            "rows": 15000,
+            "fingerprint": "32476ea031b0450b9ce63159a4eb1b9f8cbc336a59b50920c7017af98f4d95ca",
+            "fits": true,
+            "reason": "",
+            "warnings": [
+              "No current workshop quality review."
+            ]
+          },
+          "validation": {
+            "valid": true,
+            "format": "decision",
+            "num_examples": 15000,
+            "errors": [],
+            "warnings": [],
+            "stats": {
+              "checkpoint": "253cb09a-ee40-430c-878d-d5d06978288e",
+              "total_examples": 15000,
+              "train_examples": 15000,
+              "val_examples": 0,
+              "validation_mode": "off",
+              "split_method": "random",
+              "format": "decision"
+            }
+          }
+        },
+        "capability": null,
+        "eval_dataset": null,
+        "eval_set": null,
+        "overlap_count": null,
+        "recommendations": [],
+        "n_candidates": 29,
+        "catalog": {
+          "compact": [
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-1.7B",
+            "Qwen/Qwen3-0.6B",
+            "Qwen/Qwen2.5-0.5B-Instruct",
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "LiquidAI/LFM2.5-1.2B-Instruct",
+            "LiquidAI/LFM2.5-350M",
+            "LiquidAI/LFM2.5-230M",
+            "fdtn-ai/antares-1b",
+            "fdtn-ai/antares-350m"
+          ],
+          "small": [
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3-8B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "meta-llama/Llama-3.1-8B-Instruct"
+          ],
+          "mid": [
+            "Qwen/Qwen3.6-27B",
+            "Qwen/Qwen3.5-27B",
+            "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "Qwen/Qwen3-14B",
+            "Qwen/Qwen2.5-14B-Instruct"
+          ],
+          "large": [
+            "Qwen/Qwen3.5-35B-A3B",
+            "Qwen/Qwen3-32B",
+            "Qwen/Qwen2.5-72B-Instruct",
+            "Qwen/Qwen2.5-32B-Instruct",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "meta-llama/Llama-3.3-70B-Instruct"
+          ]
+        },
+        "has_tool_calling": false,
+        "task_type": "decision",
+        "task_type_source": "declared_contract",
+        "excluded": [],
+        "recommendation_error": null,
+        "evaluator_readiness": {
+          "ready": false,
+          "eval_set": null,
+          "evaluators": [],
+          "errors": []
+        },
+        "credits": {
+          "required": true,
+          "available": true
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/042818ab-9832-5ef8-a3c9-fe65bb661081?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop acceptance \u00b7 mixed source",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "parent_active_unchanged": true,
+      "unsupported_meaning": {
+        "kind": "dataset_pipeline",
+        "id": "433136f3-5bdd-4204-8abd-32e50a1cc877",
+        "status": "failed",
+        "label": "Dataset transformation",
+        "job_error": "The script failed or exceeded its time limit. Inspect the step's retained diagnostics.",
+        "created_at": "2026-10-10T19:47:13.181867Z",
+        "updated_at": "2026-10-10T19:47:14.480609Z",
+        "completed_at": "2026-10-10T19:47:14.480609Z",
+        "progress": {
+          "mode": "publish",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Audit supplied decision targets without resolving unknown meaning",
+              "error": "The script failed or exceeded its time limit. Inspect the step's retained diagnostics.",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 15000,
+                  "step": "source",
+                  "fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b"
+                }
+              ],
+              "runtime": {
+                "stage": "stopped",
+                "seconds": 1.1158,
+                "observed_at": "2026-10-10T19:47:14.476144+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0396,
+                  "input_transfer": 0.482,
+                  "container_setup": 0.22,
+                  "script_execution": 0.2095,
+                  "artifact_transfer": 0.1647
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "audit",
+              "container": "overmind-workshop-433136f3-5bdd-4204-8abd-32e50a1cc877-a596fd2c-d420-44a5-bea6-c86e6249ee17-0",
+              "exit_code": 1,
+              "input_rows": 15000,
+              "input_step": "source",
+              "started_at": "2026-10-10T19:47:13.249346+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "completed_at": "2026-10-10T19:47:14.480603+00:00",
+              "input_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+              "provider_execution": "cb8557bcfa4e6051824b5c1440abf501871d3b307ead9dd472f03e496d32b255"
+            }
+          ],
+          "attempt": "a596fd2c-d420-44a5-bea6-c86e6249ee17",
+          "seconds": 1.235,
+          "started_at": "2026-10-10T19:47:13.241035+00:00",
+          "source_rows": 15000,
+          "stage_seconds": {
+            "step_1_executing": 1.225,
+            "verifying_source": 0.01
+          },
+          "stage_started_at": "2026-10-10T19:47:13.250955+00:00",
+          "revision_fingerprint": "fb501c2c082b58c17ce1c20b9a944d82ab1a76db3d75d42cac7163986ca7d48e"
+        },
+        "details": {
+          "id": "433136f3-5bdd-4204-8abd-32e50a1cc877",
+          "pipeline": "18e03ae6-db34-43ea-87d0-cc364f3ee5c6",
+          "pipeline_name": "Decision Workshop acceptance \u00b7 mixed",
+          "revision": 1,
+          "source_dataset": "042818ab-9832-5ef8-a3c9-fe65bb661081",
+          "source_cell": "ae3dbf4a-86fe-4ce4-852c-a452b0ce2461",
+          "source_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+          "artifact_cell": null,
+          "artifact_fingerprint": "",
+          "provenance": "",
+          "execution": "isolated_container",
+          "mode": "publish",
+          "parameters": {
+            "required_semantics": "posterior"
+          },
+          "binding": null,
+          "operation": {
+            "id": "77c38246-a7ca-443f-a7f1-bd160a645708",
+            "kind": "dataset_pipeline",
+            "reference": "433136f3-5bdd-4204-8abd-32e50a1cc877",
+            "attempt": "a596fd2c-d420-44a5-bea6-c86e6249ee17",
+            "unit": null,
+            "facts": {
+              "retry_safe": true
+            },
+            "stage": "failed",
+            "total": null,
+            "status": "failed",
+            "completed": null,
+            "event_count": 13,
+            "last_observed_at": "2026-10-10T19:47:14.480980+00:00",
+            "last_heartbeat_at": "2026-10-10T19:47:14.476914+00:00",
+            "last_progress_at": "2026-10-10T19:47:14.480980+00:00",
+            "telemetry": "recorded",
+            "provider": {}
+          },
+          "runner": {
+            "status": "ready",
+            "images": [
+              "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+            ],
+            "last_heartbeat_at": "2026-10-10T19:47:22.917428+00:00",
+            "network": "disabled",
+            "package_max_bytes": 10485760,
+            "action": null
+          },
+          "output_cell": null,
+          "state": "failed",
+          "error": "The script failed or exceeded its time limit. Inspect the step's retained diagnostics.",
+          "result": {
+            "mode": "publish",
+            "stage": "failed",
+            "steps": [
+              {
+                "name": "Audit supplied decision targets without resolving unknown meaning",
+                "error": "The script failed or exceeded its time limit. Inspect the step's retained diagnostics.",
+                "index": 0,
+                "state": "failed",
+                "inputs": [
+                  {
+                    "rows": 15000,
+                    "step": "source",
+                    "fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b"
+                  }
+                ],
+                "runtime": {
+                  "stage": "stopped",
+                  "seconds": 1.1158,
+                  "observed_at": "2026-10-10T19:47:14.476144+00:00",
+                  "stage_seconds": {
+                    "cleanup": 0.0396,
+                    "input_transfer": 0.482,
+                    "container_setup": 0.22,
+                    "script_execution": 0.2095,
+                    "artifact_transfer": 0.1647
+                  },
+                  "cleanup_confirmed": true
+                },
+                "step_id": "audit",
+                "container": "overmind-workshop-433136f3-5bdd-4204-8abd-32e50a1cc877-a596fd2c-d420-44a5-bea6-c86e6249ee17-0",
+                "exit_code": 1,
+                "input_rows": 15000,
+                "input_step": "source",
+                "started_at": "2026-10-10T19:47:13.249346+00:00",
+                "input_steps": [
+                  "source"
+                ],
+                "completed_at": "2026-10-10T19:47:14.480603+00:00",
+                "input_fingerprint": "2a07e5cf9b1762aab5bd508fac12800911fc10c3fb01857fdee96ac2032ef77b",
+                "provider_execution": "cb8557bcfa4e6051824b5c1440abf501871d3b307ead9dd472f03e496d32b255"
+              }
+            ],
+            "attempt": "a596fd2c-d420-44a5-bea6-c86e6249ee17",
+            "seconds": 1.235,
+            "started_at": "2026-10-10T19:47:13.241035+00:00",
+            "source_rows": 15000,
+            "stage_seconds": {
+              "step_1_executing": 1.225,
+              "verifying_source": 0.01
+            },
+            "stage_started_at": "2026-10-10T19:47:13.250955+00:00",
+            "revision_fingerprint": "fb501c2c082b58c17ce1c20b9a944d82ab1a76db3d75d42cac7163986ca7d48e"
+          },
+          "created_at": "2026-10-10T19:47:13.181867+00:00",
+          "updated_at": "2026-10-10T19:47:14.480609+00:00",
+          "completed_at": "2026-10-10T19:47:14.480609+00:00",
+          "poll_after_seconds": null,
+          "queue_seconds": null,
+          "evidence_resource": {
+            "uri": "overmind://jobs/dataset_pipeline/433136f3-5bdd-4204-8abd-32e50a1cc877?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Dataset transformation",
+            "mime_type": "application/json"
+          }
+        },
+        "resource": {
+          "uri": "overmind://jobs/dataset_pipeline/433136f3-5bdd-4204-8abd-32e50a1cc877?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/dataset_pipeline/433136f3-5bdd-4204-8abd-32e50a1cc877?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Dataset transformation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://datasets/042818ab-9832-5ef8-a3c9-fe65bb661081?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Dataset",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://operations/77c38246-a7ca-443f-a7f1-bd160a645708?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Operational timeline",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Dataset transformation: failed."
+      }
+    },
+    "titanic": {
+      "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "source": "034f3f2e-2c0e-4053-910c-7ad9327de5f4",
+      "dataset": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+      "selected": {
+        "id": "fa3eb467-2a08-43ab-a3be-7efc31cd0725",
+        "rows": 891,
+        "title": "Source",
+        "version": "1.0",
+        "dataset_id": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+        "fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642"
+      },
+      "source_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/titanic-source.jsonl",
+        "dataset_id": "e004ec33-2b62-4a98-8b08-e1230090018f",
+        "format": "jsonl",
+        "bytes_written": 451151,
+        "cell": "034f3f2e-2c0e-4053-910c-7ad9327de5f4",
+        "version": "1.0",
+        "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+      },
+      "package": {
+        "id": "2a21d42d-1d75-4fc2-9ff3-22896bd91025",
+        "sha256": "76afe70cad817769abe5d02baaa1f20336a6c70368c2fbec497eb5b327fdb137"
+      },
+      "pipeline": "9fb5a63b-51bd-4ed5-893c-21563ce8f433",
+      "runs": [
+        {
+          "id": "bc7fffe7-cc10-44e2-8211-f915e32c5c38",
+          "mode": "preview",
+          "details": {
+            "id": "bc7fffe7-cc10-44e2-8211-f915e32c5c38",
+            "pipeline": "9fb5a63b-51bd-4ed5-893c-21563ce8f433",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 titanic",
+            "revision": 1,
+            "source_dataset": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+            "source_cell": "fa3eb467-2a08-43ab-a3be-7efc31cd0725",
+            "source_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "preview",
+            "parameters": {},
+            "binding": null,
+            "operation": {
+              "id": "cacbeb8c-9850-42f3-a035-8e8c0db388d4",
+              "kind": "dataset_pipeline",
+              "reference": "bc7fffe7-cc10-44e2-8211-f915e32c5c38",
+              "attempt": "ca7f4419-f9e1-4309-a3b3-3d00367bc86c",
+              "unit": "steps",
+              "facts": {
+                "attempt": "ca7f4419-f9e1-4309-a3b3-3d00367bc86c",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 891
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 32,
+              "last_observed_at": "2026-10-10T19:47:37.138562+00:00",
+              "last_heartbeat_at": "2026-10-10T19:47:37.073358+00:00",
+              "last_progress_at": "2026-10-10T19:47:37.138562+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "ready",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:47:45.067558+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": null,
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "preview",
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Separate passenger evidence from recorded outcome and identifiers",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "source",
+                      "fingerprint": "2d2589598e901ce5d87239ad80ec0286e1342b23ce41620552b8678f2a84dddd"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.6671,
+                    "observed_at": "2026-10-10T19:47:36.284881+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0348,
+                      "input_transfer": 0.066,
+                      "output_reading": 0.0028,
+                      "container_setup": 0.1078,
+                      "script_execution": 0.2138,
+                      "artifact_transfer": 0.2419
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.724,
+                  "step_id": "evidence",
+                  "container": "overmind-workshop-bc7fffe7-cc10-44e2-8211-f915e32c5c38-ca7f4419-f9e1-4309-a3b3-3d00367bc86c-0",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:47:35.614188+00:00",
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:47:36.340615+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "2d2589598e901ce5d87239ad80ec0286e1342b23ce41620552b8678f2a84dddd",
+                  "output_fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5",
+                  "provider_execution": "bc71baa38031fc5b25cde55772f488a1fbfa60dbcc0f9e9f309eff9554905916",
+                  "sample_count": 5
+                },
+                {
+                  "name": "Encode the recorded survival class as a typed decision",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "max_rows": 891,
+                    "min_rows": 891,
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "evidence",
+                      "fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7258,
+                    "observed_at": "2026-10-10T19:47:37.072266+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0337,
+                      "input_transfer": 0.0933,
+                      "output_reading": 0.0033,
+                      "container_setup": 0.1284,
+                      "script_execution": 0.2314,
+                      "artifact_transfer": 0.2357
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.791,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-bc7fffe7-cc10-44e2-8211-f915e32c5c38-ca7f4419-f9e1-4309-a3b3-3d00367bc86c-1",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "evidence",
+                  "started_at": "2026-10-10T19:47:36.341766+00:00",
+                  "input_steps": [
+                    "evidence"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:47:37.136103+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {
+                      "max_rows": 891,
+                      "min_rows": 891
+                    }
+                  },
+                  "input_fingerprint": "afee3d8f645c281a67bc0e3e2ebc7af68929f590d45868414a10bc5c2e652db5",
+                  "output_fingerprint": "18427c1077e19accdce5618e9277c5ed392f1c83f411a4fa8840c2d80426ff6b",
+                  "provider_execution": "1bd88372b6e3fe4704bf5e7346c3b099f299ec5ceabf0365ac194cac00db92d6",
+                  "sample_count": 5
+                }
+              ],
+              "attempt": "ca7f4419-f9e1-4309-a3b3-3d00367bc86c",
+              "seconds": 1.537,
+              "started_at": "2026-10-10T19:47:35.600048+00:00",
+              "output_rows": 50,
+              "source_rows": 891,
+              "stage_seconds": {
+                "measuring_impact": 0.062,
+                "step_1_executing": 0.675,
+                "step_2_executing": 0.737,
+                "verifying_source": 0.014,
+                "step_1_checking_rows": 0.002,
+                "step_2_checking_rows": 0.003,
+                "step_1_preserving_lineage": 0.018,
+                "step_2_preserving_lineage": 0.025
+              },
+              "stage_started_at": "2026-10-10T19:47:37.137475+00:00",
+              "revision_fingerprint": "4b05eb20e0e596dd9d3f2e89e6d935917c1d36597ff165af43d7ac2f07efc086"
+            },
+            "created_at": "2026-10-10T19:47:35.081914+00:00",
+            "updated_at": "2026-10-10T19:47:37.140199+00:00",
+            "completed_at": "2026-10-10T19:47:37.140199+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/bc7fffe7-cc10-44e2-8211-f915e32c5c38?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        },
+        {
+          "id": "e904652c-5959-4d12-bd5b-4cb1b67a25e7",
+          "mode": "publish",
+          "details": {
+            "id": "e904652c-5959-4d12-bd5b-4cb1b67a25e7",
+            "pipeline": "9fb5a63b-51bd-4ed5-893c-21563ce8f433",
+            "pipeline_name": "Decision Workshop acceptance \u00b7 titanic",
+            "revision": 1,
+            "source_dataset": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+            "source_cell": "fa3eb467-2a08-43ab-a3be-7efc31cd0725",
+            "source_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "publish",
+            "parameters": {},
+            "binding": null,
+            "operation": {
+              "id": "901ea83e-ad22-4b27-9f56-2e10ec10488e",
+              "kind": "dataset_pipeline",
+              "reference": "e904652c-5959-4d12-bd5b-4cb1b67a25e7",
+              "attempt": "a51d0994-dd48-4213-8a4e-31a630c36422",
+              "unit": "steps",
+              "facts": {
+                "attempt": "a51d0994-dd48-4213-8a4e-31a630c36422",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 891
+              },
+              "stage": "completed",
+              "total": 2,
+              "status": "complete",
+              "completed": 2,
+              "event_count": 33,
+              "last_observed_at": "2026-10-10T19:47:47.858726+00:00",
+              "last_heartbeat_at": "2026-10-10T19:47:47.315135+00:00",
+              "last_progress_at": "2026-10-10T19:47:47.858726+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "ready",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:47:54.721739+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "publish",
+              "rows": 891,
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Separate passenger evidence from recorded outcome and identifiers",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 891,
+                    "rows_before": 891,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "fa3eb467-2a08-43ab-a3be-7efc31cd0725",
+                      "rows": 891,
+                      "step": "source",
+                      "fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7301,
+                    "observed_at": "2026-10-10T19:47:46.367553+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0403,
+                      "input_transfer": 0.0949,
+                      "output_reading": 0.0118,
+                      "container_setup": 0.1122,
+                      "script_execution": 0.2152,
+                      "artifact_transfer": 0.2557
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.904,
+                  "step_id": "evidence",
+                  "container": "overmind-workshop-e904652c-5959-4d12-bd5b-4cb1b67a25e7-a51d0994-dd48-4213-8a4e-31a630c36422-0",
+                  "exit_code": 0,
+                  "input_rows": 891,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:47:45.628519+00:00",
+                  "input_cells": [
+                    "fa3eb467-2a08-43ab-a3be-7efc31cd0725"
+                  ],
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_cell": "9e9d207c-91e9-4f10-9f24-27902ce54383",
+                  "output_rows": 891,
+                  "completed_at": "2026-10-10T19:47:46.534875+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "8f64021cd6e2143eabcd3a3fa6fc47ddae6be7cd9af6e3d4327f5f31f2edb642",
+                  "output_fingerprint": "230599d932b65e28fb0b4ce7f13b6af7ea74b32c62e28ca4ab6fe27a2da9752b",
+                  "provider_execution": "e000c0a3c6f1188dfcf37f0f805e7ed506ec911c05acafbc8d79023e8ddfe5b8"
+                },
+                {
+                  "name": "Encode the recorded survival class as a typed decision",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "max_rows": 891,
+                    "min_rows": 891,
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 891,
+                    "rows_before": 891,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "9e9d207c-91e9-4f10-9f24-27902ce54383",
+                      "rows": 891,
+                      "step": "evidence",
+                      "fingerprint": "230599d932b65e28fb0b4ce7f13b6af7ea74b32c62e28ca4ab6fe27a2da9752b"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7703,
+                    "observed_at": "2026-10-10T19:47:47.313964+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0388,
+                      "input_transfer": 0.1226,
+                      "output_reading": 0.0148,
+                      "container_setup": 0.1064,
+                      "script_execution": 0.2364,
+                      "artifact_transfer": 0.2512
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 1.001,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-e904652c-5959-4d12-bd5b-4cb1b67a25e7-a51d0994-dd48-4213-8a4e-31a630c36422-1",
+                  "exit_code": 0,
+                  "input_rows": 891,
+                  "input_step": "evidence",
+                  "started_at": "2026-10-10T19:47:46.535069+00:00",
+                  "input_cells": [
+                    "9e9d207c-91e9-4f10-9f24-27902ce54383"
+                  ],
+                  "input_steps": [
+                    "evidence"
+                  ],
+                  "output_cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+                  "output_rows": 891,
+                  "completed_at": "2026-10-10T19:47:47.538239+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "max_rows": 891,
+                      "min_rows": 891,
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "230599d932b65e28fb0b4ce7f13b6af7ea74b32c62e28ca4ab6fe27a2da9752b",
+                  "output_fingerprint": "3318714109691392980aa6c52e4e7cc8f6f188164eaa44d43513005978a1a7a0",
+                  "provider_execution": "0d1f32e9c9c0c21761d10d6f62afea0bc2c93eb13591345b5b565474361618f0"
+                }
+              ],
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 891,
+                "rows_before": 891,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "attempt": "a51d0994-dd48-4213-8a4e-31a630c36422",
+              "seconds": 2.236,
+              "started_at": "2026-10-10T19:47:45.623608+00:00",
+              "output_rows": 891,
+              "source_rows": 891,
+              "stage_seconds": {
+                "publishing": 0.32,
+                "measuring_impact": 0.186,
+                "step_1_executing": 0.756,
+                "step_2_executing": 0.802,
+                "verifying_source": 0.005,
+                "step_1_checking_rows": 0.003,
+                "step_2_checking_rows": 0.004,
+                "step_1_preserving_lineage": 0.07,
+                "step_2_preserving_lineage": 0.089
+              },
+              "semantic_quality": "unmeasured",
+              "stage_started_at": "2026-10-10T19:47:47.857909+00:00",
+              "revision_fingerprint": "4b05eb20e0e596dd9d3f2e89e6d935917c1d36597ff165af43d7ac2f07efc086"
+            },
+            "created_at": "2026-10-10T19:47:45.167833+00:00",
+            "updated_at": "2026-10-10T19:47:47.860032+00:00",
+            "completed_at": "2026-10-10T19:47:47.860032+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/e904652c-5959-4d12-bd5b-4cb1b67a25e7?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        }
+      ],
+      "output_cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+      "output_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/titanic-output.jsonl",
+        "dataset_id": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+        "format": "jsonl",
+        "bytes_written": 1354667,
+        "cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+        "version": "1.2",
+        "fingerprint": "3318714109691392980aa6c52e4e7cc8f6f188164eaa44d43513005978a1a7a0"
+      },
+      "verification": {
+        "verified_rows": 891,
+        "missing_feature_rows": 708
+      },
+      "readiness": {
+        "monitoring": {
+          "version": 1,
+          "mode": "off",
+          "initial": true,
+          "final": true,
+          "loss_sample": 2048,
+          "train_sample": 256,
+          "seed": 42,
+          "interval_steps": null,
+          "target_seconds": 300,
+          "overhead_fraction": 0.1,
+          "max_checks": 12,
+          "generation_every": 3,
+          "generation": null,
+          "selection": "last",
+          "early_stopping": null,
+          "failure_policy": "continue"
+        },
+        "selection": {
+          "train_dataset": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+          "train_cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+          "train_fingerprint": "3318714109691392980aa6c52e4e7cc8f6f188164eaa44d43513005978a1a7a0",
+          "train_rows": 891,
+          "validation_dataset": null,
+          "validation_cell": null,
+          "validation_fingerprint": null,
+          "validation_rows": null,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": false,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "ebd9c1fb7cd2288c9a59dc9a74d7cb04b6678d3bf1fadf5ce383e631ea63606a"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "categorical_gold": 891
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Training format checks passed; task suitability is unmeasured.",
+        "ready": true,
+        "assessment": {
+          "technical": "pass",
+          "task_suitability": "unmeasured",
+          "capability_linked": null,
+          "validation": "disabled"
+        },
+        "missing": [],
+        "warnings": [
+          "training dataset: No current workshop quality review."
+        ],
+        "dataset": {
+          "id": "e4e723e5-8f57-543e-92f6-5e6dd52fd287",
+          "name": "Decision Workshop acceptance \u00b7 Titanic",
+          "intent": "train",
+          "cell": {
+            "id": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+            "version": "1.2",
+            "title": "Encode the recorded survival class as a typed decision",
+            "rows": 891,
+            "fingerprint": "3318714109691392980aa6c52e4e7cc8f6f188164eaa44d43513005978a1a7a0",
+            "fits": true,
+            "reason": "",
+            "warnings": [
+              "No current workshop quality review."
+            ]
+          },
+          "validation": {
+            "valid": true,
+            "format": "decision",
+            "num_examples": 891,
+            "errors": [],
+            "warnings": [],
+            "stats": {
+              "checkpoint": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+              "total_examples": 891,
+              "train_examples": 891,
+              "val_examples": 0,
+              "validation_mode": "off",
+              "split_method": "random",
+              "format": "decision"
+            }
+          }
+        },
+        "capability": null,
+        "eval_dataset": null,
+        "eval_set": null,
+        "overlap_count": null,
+        "recommendations": [],
+        "n_candidates": 29,
+        "catalog": {
+          "compact": [
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-1.7B",
+            "Qwen/Qwen3-0.6B",
+            "Qwen/Qwen2.5-0.5B-Instruct",
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "LiquidAI/LFM2.5-1.2B-Instruct",
+            "LiquidAI/LFM2.5-350M",
+            "LiquidAI/LFM2.5-230M",
+            "fdtn-ai/antares-1b",
+            "fdtn-ai/antares-350m"
+          ],
+          "small": [
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3-8B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "meta-llama/Llama-3.1-8B-Instruct"
+          ],
+          "mid": [
+            "Qwen/Qwen3.6-27B",
+            "Qwen/Qwen3.5-27B",
+            "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "Qwen/Qwen3-14B",
+            "Qwen/Qwen2.5-14B-Instruct"
+          ],
+          "large": [
+            "Qwen/Qwen3.5-35B-A3B",
+            "Qwen/Qwen3-32B",
+            "Qwen/Qwen2.5-72B-Instruct",
+            "Qwen/Qwen2.5-32B-Instruct",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "meta-llama/Llama-3.3-70B-Instruct"
+          ]
+        },
+        "has_tool_calling": false,
+        "task_type": "decision",
+        "task_type_source": "declared_contract",
+        "excluded": [],
+        "recommendation_error": null,
+        "evaluator_readiness": {
+          "ready": false,
+          "eval_set": null,
+          "evaluators": [],
+          "errors": []
+        },
+        "credits": {
+          "required": true,
+          "available": true
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/e4e723e5-8f57-543e-92f6-5e6dd52fd287?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop acceptance \u00b7 Titanic",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "parent_active_unchanged": true,
+      "partition_request": {
+        "summary": "Decision Workshop titanic grouped handoff: queued",
+        "workflow": {
+          "id": "a74a1a6f-5c7f-422e-81c0-2595e200e707",
+          "name": "Decision Workshop titanic grouped handoff",
+          "state": "queued",
+          "kind": "data_partition",
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": 10
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/a74a1a6f-5c7f-422e-81c0-2595e200e707?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop titanic grouped handoff",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "partition": {
+        "kind": "data_partition",
+        "id": "a74a1a6f-5c7f-422e-81c0-2595e200e707",
+        "status": "completed",
+        "label": "Decision Workshop titanic grouped handoff",
+        "job_error": null,
+        "created_at": "2026-10-10T19:47:56.345354Z",
+        "updated_at": "2026-10-10T19:47:56.646392Z",
+        "completed_at": null,
+        "progress": {
+          "id": "a74a1a6f-5c7f-422e-81c0-2595e200e707",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "Decision Workshop titanic grouped handoff",
+          "source_cell": "316f2d3a-c976-4f47-b195-23ab232af0cb",
+          "recipe": {
+            "seed": 42,
+            "group_by": [
+              "Ticket"
+            ],
+            "holdouts": [],
+            "fractions": {
+              "final": 0.1,
+              "train": 0.7,
+              "calibration": 0.1,
+              "development": 0.1
+            },
+            "stratify_by": null
+          },
+          "report": {
+            "counts": {
+              "final": 89,
+              "train": 624,
+              "calibration": 89,
+              "development": 89
+            },
+            "groups": {
+              "final": 81,
+              "train": 342,
+              "calibration": 78,
+              "development": 77
+            },
+            "strata": {
+              "final": {
+                "all": 89
+              },
+              "train": {
+                "all": 624
+              },
+              "calibration": {
+                "all": 89
+              },
+              "development": {
+                "all": 89
+              }
+            },
+            "overlap": {
+              "pretraining": "unknown",
+              "near_duplicates": "not_checked",
+              "content_and_declared_groups": 0
+            },
+            "progress": {
+              "stage": "completed",
+              "total": 891,
+              "completed": 891,
+              "updated_at": "2026-10-10T19:47:56.646189+00:00"
+            },
+            "fingerprint": "3318714109691392980aa6c52e4e7cc8f6f188164eaa44d43513005978a1a7a0",
+            "source_rows": 891,
+            "assignments_sha256": "f1a19f847b23d04660a201eba744fae59671478b23e8226fa9841c2e9ec9cbb1",
+            "duplicates_removed": 0
+          },
+          "state": "completed",
+          "error": "",
+          "members": [
+            {
+              "role": "final",
+              "cell": {
+                "id": "afb962f4-9c21-4a52-bd13-4a13d5c8860f",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "93157bbc1de05643cca49fcbbc513545cea0cfa77495c58de0745fb77039caec",
+                "dataset_id": "fa061bcb-d48f-5fdc-82dc-5484b0e1e6fb"
+              }
+            },
+            {
+              "role": "train",
+              "cell": {
+                "id": "21179bc9-3669-4d65-9a50-95870bc2822a",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 624,
+                "fingerprint": "5fca8d6bd4f6755b30e71e4650780c6a023b4efce56bdcce08aba83f64c7b56b",
+                "dataset_id": "486009a4-c43a-5c20-b0a8-ab908bd17459"
+              }
+            },
+            {
+              "role": "calibration",
+              "cell": {
+                "id": "a3ad4b85-76da-4581-959f-a50787d21413",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "82a2a74a20490ee3668c3df28a3a8836044869331abe4f445797e4b7a2b13daa",
+                "dataset_id": "d3578a67-d1cd-5378-aaf3-cc1eface1921"
+              }
+            },
+            {
+              "role": "development",
+              "cell": {
+                "id": "cb038581-5f06-4a2f-9abe-a0cef022704e",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 89,
+                "fingerprint": "f89fffdce8750d29152834c28ec4f7e4574951de13783152af700947221d0899",
+                "dataset_id": "b4479a79-56b7-5990-866b-6354bdff7a1a"
+              }
+            }
+          ],
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": null,
+          "created_at": "2026-10-10 19:47:56.345354+00:00",
+          "updated_at": "2026-10-10 19:47:56.646392+00:00"
+        },
+        "details": {},
+        "resource": {
+          "uri": "overmind://jobs/data_partition/a74a1a6f-5c7f-422e-81c0-2595e200e707?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Decision Workshop titanic grouped handoff",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/a74a1a6f-5c7f-422e-81c0-2595e200e707?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Decision Workshop titanic grouped handoff",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Decision Workshop titanic grouped handoff: completed."
+      },
+      "partition_verified": {
+        "rows": 891,
+        "groups": 681,
+        "cross_role_groups": 0,
+        "references_verified": true
+      },
+      "preparation_request": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "adaptive",
+            "initial": true,
+            "final": true,
+            "loss_sample": 2048,
+            "train_sample": 256,
+            "seed": 42,
+            "interval_steps": null,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "sample_state": "Modal freezes the resolved training/development samples during transfer, before GPU dispatch; token preparation alone does not select the development split"
+        },
+        "job": {
+          "kind": "training_preparation",
+          "id": "4cc4e2cc-619d-4d15-a66c-d8015cb0771e",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/training_preparation/4cc4e2cc-619d-4d15-a66c-d8015cb0771e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          }
+        },
+        "id": "4cc4e2cc-619d-4d15-a66c-d8015cb0771e",
+        "state": "queued",
+        "report": {},
+        "error": "",
+        "config": {
+          "runtime": {
+            "app": "overmind-sft-07e8a773f7d959be0cef1d5d",
+            "release": "07e8a773f7d959be0cef1d5dff328df1fea81a8377fe14c2c1e5163038868053",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+            "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "model": "Qwen/Qwen3-0.6B",
+          "tokenizer_model": "unsloth/Qwen3-0.6B",
+          "context_length": 4096,
+          "training_type": "lora",
+          "cell": "21179bc9-3669-4d65-9a50-95870bc2822a",
+          "fingerprint": "5fca8d6bd4f6755b30e71e4650780c6a023b4efce56bdcce08aba83f64c7b56b",
+          "validation_cell": "cb038581-5f06-4a2f-9abe-a0cef022704e",
+          "validation_fingerprint": "f89fffdce8750d29152834c28ec4f7e4574951de13783152af700947221d0899",
+          "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+          "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+          "stack": "u2026_10_3_decision"
+        }
+      },
+      "preparation": {
+        "kind": "training_preparation",
+        "id": "4cc4e2cc-619d-4d15-a66c-d8015cb0771e",
+        "status": "ready",
+        "label": "Training preparation",
+        "job_error": null,
+        "created_at": "2026-10-10T19:48:09.419933Z",
+        "updated_at": "2026-10-10T19:48:54.560078Z",
+        "completed_at": "2026-10-10T19:48:54.560078Z",
+        "progress": {
+          "rows": 713,
+          "model": "Qwen/Qwen3-0.6B",
+          "ready": true,
+          "issues": [],
+          "tokens": 130530,
+          "previews": [
+            {
+              "row": 0,
+              "cell": "21179bc9-3669-4d65-9a50-95870bc2822a",
+              "tokens": 189,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                0,
+                1
+              ]
+            },
+            {
+              "row": 1,
+              "cell": "21179bc9-3669-4d65-9a50-95870bc2822a",
+              "tokens": 187,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                0,
+                1
+              ]
+            },
+            {
+              "row": 2,
+              "cell": "21179bc9-3669-4d65-9a50-95870bc2822a",
+              "tokens": 182,
+              "decision_options": 2,
+              "target_semantics": "categorical_gold",
+              "target_provenance": {
+                "field": "Survived",
+                "meaning": "Recorded passenger outcome; 0 did not survive, 1 survived."
+              },
+              "target_probabilities": [
+                1,
+                0
+              ]
+            }
+          ],
+          "renderer": "unsloth_clef",
+          "objective": "decision_cross_entropy",
+          "max_tokens": 198,
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": null,
+            "usage_id": "f89c1e2a8a0b4c8a9f58b44375fa042f",
+            "gpu_count": 0,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 29.877688786999997,
+            "cpu_core_seconds": 239.02151029599997,
+            "memory_gib_seconds": 239.02151029599997
+          },
+          "context_length": 4096,
+          "artifact_sha256": "0ce57448397a9693b73e8779993fc22f518798914bb2eea23a3734e47060b3ae",
+          "incompatible_rows": 0,
+          "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+          "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4",
+          "supervised_decisions": 713
+        },
+        "details": {
+          "cell": "21179bc9-3669-4d65-9a50-95870bc2822a",
+          "model": "Qwen/Qwen3-0.6B",
+          "stack": "u2026_10_3_decision",
+          "runtime": {
+            "app": "overmind-sft-07e8a773f7d959be0cef1d5d",
+            "release": "07e8a773f7d959be0cef1d5dff328df1fea81a8377fe14c2c1e5163038868053",
+            "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+          "data_format": "6e0e443cfe7d540a4541eb79234a5f8dd1d1deeafe08de00da186e51e1f91fa2",
+          "fingerprint": "5fca8d6bd4f6755b30e71e4650780c6a023b4efce56bdcce08aba83f64c7b56b",
+          "training_type": "lora",
+          "context_length": 4096,
+          "validation_cell": "cb038581-5f06-4a2f-9abe-a0cef022704e",
+          "validation_fingerprint": "f89fffdce8750d29152834c28ec4f7e4574951de13783152af700947221d0899",
+          "operation": {
+            "id": "cc2650af-62a9-4a25-aef1-717f387f3e81",
+            "kind": "training_preparation",
+            "reference": "4cc4e2cc-619d-4d15-a66c-d8015cb0771e",
+            "attempt": "2026-10-11T19:48:09.417159+00:00",
+            "unit": "rows",
+            "facts": {
+              "deadline": "2026-10-11T19:48:09.417159+00:00",
+              "provider": "modal",
+              "retry_safe": false,
+              "provider_call_id": "fc-01M4KNQSCEZNPSRBJHRVT0B24C",
+              "source_export_rows": null,
+              "telemetry_available": true
+            },
+            "stage": "ready",
+            "total": 713,
+            "status": "ready",
+            "completed": 713,
+            "event_count": 16,
+            "last_observed_at": "2026-10-10T19:48:54.568825+00:00",
+            "last_heartbeat_at": null,
+            "last_progress_at": "2026-10-10T19:48:54.568825+00:00",
+            "telemetry": "recorded",
+            "provider": {}
+          }
+        },
+        "resource": {
+          "uri": "overmind://jobs/training_preparation/4cc4e2cc-619d-4d15-a66c-d8015cb0771e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Training preparation",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/training_preparation/4cc4e2cc-619d-4d15-a66c-d8015cb0771e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://operations/cc2650af-62a9-4a25-aef1-717f387f3e81?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Operational timeline",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Training preparation: ready."
+      }
+    },
+    "matching": {
+      "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "source": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+      "dataset": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+      "selected": {
+        "id": "9a5a2b8e-d8e3-4442-b082-749e9fdcf918",
+        "rows": 10000,
+        "title": "Source",
+        "version": "1.0",
+        "dataset_id": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+        "fingerprint": "6e38c7b2c50da641c995915b181c76d203610cd2d4ca5af272dc9acd49936eb5"
+      },
+      "source_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/matching-source.jsonl",
+        "dataset_id": "369b56c9-3f77-48a6-8c5c-5aa7f217b602",
+        "format": "jsonl",
+        "bytes_written": 32354952,
+        "cell": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+        "version": "1.0",
+        "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+      },
+      "recipe_reuse": true,
+      "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+      "runs": [
+        {
+          "id": "e6fe386a-f10f-464a-9493-33ed4f98e565",
+          "mode": "preview",
+          "details": {
+            "id": "e6fe386a-f10f-464a-9493-33ed4f98e565",
+            "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+            "pipeline_name": "User journey: matching records to trainable decisions",
+            "revision": 1,
+            "source_dataset": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+            "source_cell": "9a5a2b8e-d8e3-4442-b082-749e9fdcf918",
+            "source_fingerprint": "6e38c7b2c50da641c995915b181c76d203610cd2d4ca5af272dc9acd49936eb5",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "preview",
+            "parameters": {
+              "seed": 42,
+              "sample_groups": 100000
+            },
+            "binding": null,
+            "operation": {
+              "id": "d4f94c71-0003-4aac-948c-bee5278548af",
+              "kind": "dataset_pipeline",
+              "reference": "e6fe386a-f10f-464a-9493-33ed4f98e565",
+              "attempt": "dfbba812-1be5-49c6-bfc3-d66b09a0f938",
+              "unit": "steps",
+              "facts": {
+                "attempt": "dfbba812-1be5-49c6-bfc3-d66b09a0f938",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 10000
+              },
+              "stage": "completed",
+              "total": 4,
+              "status": "complete",
+              "completed": 4,
+              "event_count": 62,
+              "last_observed_at": "2026-10-10T19:49:14.513868+00:00",
+              "last_heartbeat_at": "2026-10-10T19:49:14.411594+00:00",
+              "last_progress_at": "2026-10-10T19:49:14.513868+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "ready",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:49:20.859931+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": null,
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "preview",
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Preserve observations, review flags and connected entity groups",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "source",
+                      "fingerprint": "3a6011b7f3cf2acd4111e26617408c30aaff5c41b32fdc9385eab6d8c82b2cc5"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.6464,
+                    "observed_at": "2026-10-10T19:49:11.840222+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0427,
+                      "input_transfer": 0.0596,
+                      "output_reading": 0.0036,
+                      "container_setup": 0.1004,
+                      "script_execution": 0.2154,
+                      "artifact_transfer": 0.2248
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.719,
+                  "step_id": "audit",
+                  "container": "overmind-workshop-e6fe386a-f10f-464a-9493-33ed4f98e565-dfbba812-1be5-49c6-bfc3-d66b09a0f938-0",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:49:11.190493+00:00",
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:49:11.911575+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "3a6011b7f3cf2acd4111e26617408c30aaff5c41b32fdc9385eab6d8c82b2cc5",
+                  "output_fingerprint": "e82bef39103b1f7adda1a22bb36f591e4574fdca2c87e28b6a1943e9938b4730",
+                  "provider_execution": "08bb10b5ad00d09326dcd6e276023258d8cab8db20d21d9ce4637e4de8745507",
+                  "sample_count": 4
+                },
+                {
+                  "name": "Separate model evidence from identity shortcuts",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "audit",
+                      "fingerprint": "e82bef39103b1f7adda1a22bb36f591e4574fdca2c87e28b6a1943e9938b4730"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7442,
+                    "observed_at": "2026-10-10T19:49:12.663077+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0439,
+                      "input_transfer": 0.0825,
+                      "output_reading": 0.0055,
+                      "container_setup": 0.1399,
+                      "script_execution": 0.2294,
+                      "artifact_transfer": 0.2431
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.831,
+                  "step_id": "inputs",
+                  "container": "overmind-workshop-e6fe386a-f10f-464a-9493-33ed4f98e565-dfbba812-1be5-49c6-bfc3-d66b09a0f938-1",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "audit",
+                  "started_at": "2026-10-10T19:49:11.912801+00:00",
+                  "input_steps": [
+                    "audit"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:49:12.748326+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "e82bef39103b1f7adda1a22bb36f591e4574fdca2c87e28b6a1943e9938b4730",
+                  "output_fingerprint": "c8a049a7597af654dfe91d84eacba1240763b4d3c1a924de5a900dca6ed80421",
+                  "provider_execution": "5b13a0e45f7b036d693b496de08f4c54bb42ef7defbb9783c52eb47868dce8b7",
+                  "sample_count": 4
+                },
+                {
+                  "name": "Preserve supplied categorical judgements as trainable decisions",
+                  "index": 2,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "inputs",
+                      "fingerprint": "c8a049a7597af654dfe91d84eacba1240763b4d3c1a924de5a900dca6ed80421"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7603,
+                    "observed_at": "2026-10-10T19:49:13.517910+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0373,
+                      "input_transfer": 0.0878,
+                      "output_reading": 0.0077,
+                      "container_setup": 0.1375,
+                      "script_execution": 0.2489,
+                      "artifact_transfer": 0.2411
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.863,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-e6fe386a-f10f-464a-9493-33ed4f98e565-dfbba812-1be5-49c6-bfc3-d66b09a0f938-2",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "inputs",
+                  "started_at": "2026-10-10T19:49:12.749812+00:00",
+                  "input_steps": [
+                    "inputs"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:49:13.618506+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "c8a049a7597af654dfe91d84eacba1240763b4d3c1a924de5a900dca6ed80421",
+                  "output_fingerprint": "8c00847645d11f767360452c469596136f3698286059dcddea0eeba63a021f1e",
+                  "provider_execution": "bbb1a940cdf484f5fa2a895ad60e090e70bad8a06a9ecb799b41a5a71ea94870",
+                  "sample_count": 4
+                },
+                {
+                  "name": "Select a reproducible entity-group sample for bounded training",
+                  "index": 3,
+                  "state": "completed",
+                  "checks": {
+                    "min_rows": 50
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 50,
+                    "rows_before": 50,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "rows": 50,
+                      "step": "decisions",
+                      "fingerprint": "8c00847645d11f767360452c469596136f3698286059dcddea0eeba63a021f1e"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 0.7762,
+                    "observed_at": "2026-10-10T19:49:14.406493+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0547,
+                      "input_transfer": 0.0937,
+                      "output_reading": 0.0112,
+                      "container_setup": 0.1425,
+                      "script_execution": 0.2383,
+                      "artifact_transfer": 0.2358
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 0.878,
+                  "step_id": "sample",
+                  "container": "overmind-workshop-e6fe386a-f10f-464a-9493-33ed4f98e565-dfbba812-1be5-49c6-bfc3-d66b09a0f938-3",
+                  "exit_code": 0,
+                  "input_rows": 50,
+                  "input_step": "decisions",
+                  "started_at": "2026-10-10T19:49:13.620470+00:00",
+                  "input_steps": [
+                    "decisions"
+                  ],
+                  "output_rows": 50,
+                  "completed_at": "2026-10-10T19:49:14.505304+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {},
+                    "deferred": {
+                      "min_rows": 50
+                    }
+                  },
+                  "input_fingerprint": "8c00847645d11f767360452c469596136f3698286059dcddea0eeba63a021f1e",
+                  "output_fingerprint": "6a51adc03ef85a7acba9d418fd8727c1fe8a13795760877911563a8c925ca13e",
+                  "provider_execution": "1bd973fba37b5ccd81cea746c699fd2b453ce89e785bd2faf41a20bc93a771f2",
+                  "sample_count": 4
+                }
+              ],
+              "attempt": "dfbba812-1be5-49c6-bfc3-d66b09a0f938",
+              "seconds": 3.375,
+              "started_at": "2026-10-10T19:49:11.133360+00:00",
+              "output_rows": 50,
+              "source_rows": 10000,
+              "stage_seconds": {
+                "measuring_impact": 0.181,
+                "step_1_executing": 0.656,
+                "step_2_executing": 0.761,
+                "step_3_executing": 0.78,
+                "step_4_executing": 0.8,
+                "verifying_source": 0.057,
+                "step_1_checking_rows": 0.003,
+                "step_2_checking_rows": 0.004,
+                "step_3_checking_rows": 0.005,
+                "step_4_checking_rows": 0.006,
+                "step_1_preserving_lineage": 0.023,
+                "step_2_preserving_lineage": 0.028,
+                "step_3_preserving_lineage": 0.036,
+                "step_4_preserving_lineage": 0.035
+              },
+              "stage_started_at": "2026-10-10T19:49:14.508168+00:00",
+              "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+            },
+            "created_at": "2026-10-10T19:49:10.896139+00:00",
+            "updated_at": "2026-10-10T19:49:14.515787+00:00",
+            "completed_at": "2026-10-10T19:49:14.515787+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/e6fe386a-f10f-464a-9493-33ed4f98e565?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        },
+        {
+          "id": "22a6dabc-0d97-4f42-ad44-cc17d3010949",
+          "mode": "publish",
+          "details": {
+            "id": "22a6dabc-0d97-4f42-ad44-cc17d3010949",
+            "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+            "pipeline_name": "User journey: matching records to trainable decisions",
+            "revision": 1,
+            "source_dataset": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+            "source_cell": "9a5a2b8e-d8e3-4442-b082-749e9fdcf918",
+            "source_fingerprint": "6e38c7b2c50da641c995915b181c76d203610cd2d4ca5af272dc9acd49936eb5",
+            "artifact_cell": null,
+            "artifact_fingerprint": "",
+            "provenance": "",
+            "execution": "isolated_container",
+            "mode": "publish",
+            "parameters": {
+              "seed": 42,
+              "sample_groups": 100000
+            },
+            "binding": null,
+            "operation": {
+              "id": "4fb24653-914b-4e98-9ba7-e5f21f6aae1d",
+              "kind": "dataset_pipeline",
+              "reference": "22a6dabc-0d97-4f42-ad44-cc17d3010949",
+              "attempt": "79929012-0215-4953-bd39-f4c95fafb249",
+              "unit": "steps",
+              "facts": {
+                "attempt": "79929012-0215-4953-bd39-f4c95fafb249",
+                "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+                "total_rows": 10000
+              },
+              "stage": "completed",
+              "total": 4,
+              "status": "complete",
+              "completed": 4,
+              "event_count": 73,
+              "last_observed_at": "2026-10-10T19:50:15.743448+00:00",
+              "last_heartbeat_at": "2026-10-10T19:49:54.554548+00:00",
+              "last_progress_at": "2026-10-10T19:50:15.743448+00:00",
+              "telemetry": "recorded",
+              "provider": {}
+            },
+            "runner": {
+              "status": "ready",
+              "images": [
+                "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+              ],
+              "last_heartbeat_at": "2026-10-10T19:50:21.038009+00:00",
+              "network": "disabled",
+              "package_max_bytes": 10485760,
+              "action": null
+            },
+            "output_cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+            "state": "completed",
+            "error": "",
+            "result": {
+              "mode": "publish",
+              "rows": 10000,
+              "stage": "completed",
+              "steps": [
+                {
+                  "name": "Preserve observations, review flags and connected entity groups",
+                  "index": 0,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 10000,
+                    "rows_before": 10000,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "9a5a2b8e-d8e3-4442-b082-749e9fdcf918",
+                      "rows": 10000,
+                      "step": "source",
+                      "fingerprint": "6e38c7b2c50da641c995915b181c76d203610cd2d4ca5af272dc9acd49936eb5"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 2.5274,
+                    "observed_at": "2026-10-10T19:49:24.109099+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0527,
+                      "input_transfer": 0.5921,
+                      "output_reading": 0.5014,
+                      "container_setup": 0.1047,
+                      "script_execution": 0.8478,
+                      "artifact_transfer": 0.4286
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 6.38,
+                  "step_id": "audit",
+                  "container": "overmind-workshop-22a6dabc-0d97-4f42-ad44-cc17d3010949-79929012-0215-4953-bd39-f4c95fafb249-0",
+                  "exit_code": 0,
+                  "input_rows": 10000,
+                  "input_step": "source",
+                  "started_at": "2026-10-10T19:49:21.432564+00:00",
+                  "input_cells": [
+                    "9a5a2b8e-d8e3-4442-b082-749e9fdcf918"
+                  ],
+                  "input_steps": [
+                    "source"
+                  ],
+                  "output_cell": "d1226e39-467b-419d-a1b7-bc3ae5f6d075",
+                  "output_rows": 10000,
+                  "completed_at": "2026-10-10T19:49:27.821707+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "6e38c7b2c50da641c995915b181c76d203610cd2d4ca5af272dc9acd49936eb5",
+                  "output_fingerprint": "7d44379189870f212bcc0b618cb72d7a9206002ce2fda92f1f383d4b6c6742d2",
+                  "provider_execution": "034e5333d00bf33e0a4136c92ab2322ef325165f6e08b36342689efa60dc50b1"
+                },
+                {
+                  "name": "Separate model evidence from identity shortcuts",
+                  "index": 1,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 10000,
+                    "rows_before": 10000,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "d1226e39-467b-419d-a1b7-bc3ae5f6d075",
+                      "rows": 10000,
+                      "step": "audit",
+                      "fingerprint": "7d44379189870f212bcc0b618cb72d7a9206002ce2fda92f1f383d4b6c6742d2"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 3.2442,
+                    "observed_at": "2026-10-10T19:49:31.209158+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.2147,
+                      "input_transfer": 0.6056,
+                      "output_reading": 0.9188,
+                      "container_setup": 0.0989,
+                      "script_execution": 0.8368,
+                      "artifact_transfer": 0.5693
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 8.763,
+                  "step_id": "inputs",
+                  "container": "overmind-workshop-22a6dabc-0d97-4f42-ad44-cc17d3010949-79929012-0215-4953-bd39-f4c95fafb249-1",
+                  "exit_code": 0,
+                  "input_rows": 10000,
+                  "input_step": "audit",
+                  "started_at": "2026-10-10T19:49:27.825643+00:00",
+                  "input_cells": [
+                    "d1226e39-467b-419d-a1b7-bc3ae5f6d075"
+                  ],
+                  "input_steps": [
+                    "audit"
+                  ],
+                  "output_cell": "2fee2435-9678-4d71-a366-7022ed9820f6",
+                  "output_rows": 10000,
+                  "completed_at": "2026-10-10T19:49:36.595446+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "7d44379189870f212bcc0b618cb72d7a9206002ce2fda92f1f383d4b6c6742d2",
+                  "output_fingerprint": "710dd4f04ae7a9e907c33014ce72cc69bc890c1ee5f6ba66fdcc4ddf0f112c63",
+                  "provider_execution": "2eacb4528b37325a8e15d5033ca63f3ae8ad4b7efc5bbfd955775e3515b5a726"
+                },
+                {
+                  "name": "Preserve supplied categorical judgements as trainable decisions",
+                  "index": 2,
+                  "state": "completed",
+                  "checks": {
+                    "preserve_rows": true
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 10000,
+                    "rows_before": 10000,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "2fee2435-9678-4d71-a366-7022ed9820f6",
+                      "rows": 10000,
+                      "step": "inputs",
+                      "fingerprint": "710dd4f04ae7a9e907c33014ce72cc69bc890c1ee5f6ba66fdcc4ddf0f112c63"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 4.777,
+                    "observed_at": "2026-10-10T19:49:41.607369+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.1137,
+                      "input_transfer": 0.9453,
+                      "output_reading": 1.2278,
+                      "container_setup": 0.0989,
+                      "script_execution": 1.4023,
+                      "artifact_transfer": 0.9891
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 12.545,
+                  "step_id": "decisions",
+                  "container": "overmind-workshop-22a6dabc-0d97-4f42-ad44-cc17d3010949-79929012-0215-4953-bd39-f4c95fafb249-2",
+                  "exit_code": 0,
+                  "input_rows": 10000,
+                  "input_step": "inputs",
+                  "started_at": "2026-10-10T19:49:36.601781+00:00",
+                  "input_cells": [
+                    "2fee2435-9678-4d71-a366-7022ed9820f6"
+                  ],
+                  "input_steps": [
+                    "inputs"
+                  ],
+                  "output_cell": "14fd88c0-5a8f-42f7-b8a8-7f567ffd4a41",
+                  "output_rows": 10000,
+                  "completed_at": "2026-10-10T19:49:49.158991+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "preserve_rows": true
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "710dd4f04ae7a9e907c33014ce72cc69bc890c1ee5f6ba66fdcc4ddf0f112c63",
+                  "output_fingerprint": "3e0f9f3e4f42ec4bbee43551eb2a81c43973d62a26380375697c848f72ada3f9",
+                  "provider_execution": "fe8f8cbd28748840482f79c364e825832d01c53918636791bf9af9c7558e53c5"
+                },
+                {
+                  "name": "Select a reproducible entity-group sample for bounded training",
+                  "index": 3,
+                  "state": "completed",
+                  "checks": {
+                    "min_rows": 50
+                  },
+                  "impact": {
+                    "rows_added": 0,
+                    "rows_after": 10000,
+                    "rows_before": 10000,
+                    "rows_removed": 0,
+                    "coverage_after": {},
+                    "coverage_before": {},
+                    "decision_changes": 0,
+                    "identity_preserved": true,
+                    "instruction_changes": 0,
+                    "decision_rows_removed": 0,
+                    "input_evidence_removed": 0
+                  },
+                  "inputs": [
+                    {
+                      "cell": "14fd88c0-5a8f-42f7-b8a8-7f567ffd4a41",
+                      "rows": 10000,
+                      "step": "decisions",
+                      "fingerprint": "3e0f9f3e4f42ec4bbee43551eb2a81c43973d62a26380375697c848f72ada3f9"
+                    }
+                  ],
+                  "runtime": {
+                    "stage": "completed",
+                    "seconds": 5.0369,
+                    "observed_at": "2026-10-10T19:49:54.550255+00:00",
+                    "stage_seconds": {
+                      "cleanup": 0.0962,
+                      "input_transfer": 1.3762,
+                      "output_reading": 1.2183,
+                      "container_setup": 0.1532,
+                      "script_execution": 1.4324,
+                      "artifact_transfer": 0.7606
+                    },
+                    "cleanup_confirmed": true
+                  },
+                  "seconds": 12.942,
+                  "step_id": "sample",
+                  "container": "overmind-workshop-22a6dabc-0d97-4f42-ad44-cc17d3010949-79929012-0215-4953-bd39-f4c95fafb249-3",
+                  "exit_code": 0,
+                  "input_rows": 10000,
+                  "input_step": "decisions",
+                  "started_at": "2026-10-10T19:49:49.168795+00:00",
+                  "input_cells": [
+                    "14fd88c0-5a8f-42f7-b8a8-7f567ffd4a41"
+                  ],
+                  "input_steps": [
+                    "decisions"
+                  ],
+                  "output_cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+                  "output_rows": 10000,
+                  "completed_at": "2026-10-10T19:50:02.126266+00:00",
+                  "check_results": {
+                    "failed": {},
+                    "passed": {
+                      "min_rows": 50
+                    },
+                    "deferred": {}
+                  },
+                  "input_fingerprint": "3e0f9f3e4f42ec4bbee43551eb2a81c43973d62a26380375697c848f72ada3f9",
+                  "output_fingerprint": "ca512d2ad70c720db86915bccea64f8e097dca8aefc52b139a05d59738045e70",
+                  "provider_execution": "017f537258831c36b6e662639dba6fea2864b924538ba06f36a0ebea072b4347"
+                }
+              ],
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 10000,
+                "rows_before": 10000,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "attempt": "79929012-0215-4953-bd39-f4c95fafb249",
+              "seconds": 54.329,
+              "started_at": "2026-10-10T19:49:21.414875+00:00",
+              "output_rows": 10000,
+              "source_rows": 10000,
+              "stage_seconds": {
+                "publishing": 13.614,
+                "measuring_impact": 10.78,
+                "step_1_executing": 3.046,
+                "step_2_executing": 4.016,
+                "step_3_executing": 5.852,
+                "step_4_executing": 6.261,
+                "verifying_source": 0.023,
+                "step_1_checking_rows": 0.002,
+                "step_2_checking_rows": 0.009,
+                "step_3_checking_rows": 0.004,
+                "step_4_checking_rows": 0.005,
+                "step_1_preserving_lineage": 1.72,
+                "step_2_preserving_lineage": 2.443,
+                "step_3_preserving_lineage": 3.266,
+                "step_4_preserving_lineage": 3.283
+              },
+              "semantic_quality": "unmeasured",
+              "stage_started_at": "2026-10-10T19:50:15.739838+00:00",
+              "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+            },
+            "created_at": "2026-10-10T19:49:20.998302+00:00",
+            "updated_at": "2026-10-10T19:50:15.744596+00:00",
+            "completed_at": "2026-10-10T19:50:15.744596+00:00",
+            "poll_after_seconds": null,
+            "queue_seconds": null,
+            "evidence_resource": {
+              "uri": "overmind://jobs/dataset_pipeline/22a6dabc-0d97-4f42-ad44-cc17d3010949?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+              "title": "Dataset transformation",
+              "mime_type": "application/json"
+            }
+          }
+        }
+      ],
+      "output_cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+      "output_export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/decision-workshop-_0s_9cdl/matching-output.jsonl",
+        "dataset_id": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+        "format": "jsonl",
+        "bytes_written": 94477392,
+        "cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+        "version": "1.4",
+        "fingerprint": "ca512d2ad70c720db86915bccea64f8e097dca8aefc52b139a05d59738045e70"
+      },
+      "verification": {
+        "verified_rows": 10000,
+        "positive": 7690,
+        "review_flagged_rows": 123,
+        "negative": 2310
+      },
+      "readiness": {
+        "monitoring": {
+          "version": 1,
+          "mode": "off",
+          "initial": true,
+          "final": true,
+          "loss_sample": 2048,
+          "train_sample": 256,
+          "seed": 42,
+          "interval_steps": null,
+          "target_seconds": 300,
+          "overhead_fraction": 0.1,
+          "max_checks": 12,
+          "generation_every": 3,
+          "generation": null,
+          "selection": "last",
+          "early_stopping": null,
+          "failure_policy": "continue"
+        },
+        "selection": {
+          "train_dataset": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+          "train_cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+          "train_fingerprint": "ca512d2ad70c720db86915bccea64f8e097dca8aefc52b139a05d59738045e70",
+          "train_rows": 10000,
+          "validation_dataset": null,
+          "validation_cell": null,
+          "validation_fingerprint": null,
+          "validation_rows": null,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": false,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "9088ffd2e403148556bc737bae94efd963dcedf85669bfb97dc92c301e87515b"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "categorical_gold": 10000
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Training format checks passed; task suitability is unmeasured.",
+        "ready": true,
+        "assessment": {
+          "technical": "pass",
+          "task_suitability": "unmeasured",
+          "capability_linked": null,
+          "validation": "disabled"
+        },
+        "missing": [],
+        "warnings": [
+          "training dataset: No current workshop quality review."
+        ],
+        "dataset": {
+          "id": "ff8a6988-d45b-5442-9114-cf7076d62f11",
+          "name": "Decision Workshop acceptance \u00b7 entity matching",
+          "intent": "train",
+          "cell": {
+            "id": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+            "version": "1.4",
+            "title": "Select a reproducible entity-group sample for bounded training",
+            "rows": 10000,
+            "fingerprint": "ca512d2ad70c720db86915bccea64f8e097dca8aefc52b139a05d59738045e70",
+            "fits": true,
+            "reason": "",
+            "warnings": [
+              "No current workshop quality review."
+            ]
+          },
+          "validation": {
+            "valid": true,
+            "format": "decision",
+            "num_examples": 10000,
+            "errors": [],
+            "warnings": [],
+            "stats": {
+              "checkpoint": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+              "total_examples": 10000,
+              "train_examples": 10000,
+              "val_examples": 0,
+              "validation_mode": "off",
+              "split_method": "random",
+              "format": "decision"
+            }
+          }
+        },
+        "capability": null,
+        "eval_dataset": null,
+        "eval_set": null,
+        "overlap_count": null,
+        "recommendations": [],
+        "n_candidates": 29,
+        "catalog": {
+          "compact": [
+            "Qwen/Qwen3.5-4B",
+            "Qwen/Qwen3.5-2B",
+            "Qwen/Qwen3.5-0.8B",
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-1.7B",
+            "Qwen/Qwen3-0.6B",
+            "Qwen/Qwen2.5-0.5B-Instruct",
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "LiquidAI/LFM2.5-1.2B-Instruct",
+            "LiquidAI/LFM2.5-350M",
+            "LiquidAI/LFM2.5-230M",
+            "fdtn-ai/antares-1b",
+            "fdtn-ai/antares-350m"
+          ],
+          "small": [
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3-8B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "meta-llama/Llama-3.1-8B-Instruct"
+          ],
+          "mid": [
+            "Qwen/Qwen3.6-27B",
+            "Qwen/Qwen3.5-27B",
+            "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "Qwen/Qwen3-14B",
+            "Qwen/Qwen2.5-14B-Instruct"
+          ],
+          "large": [
+            "Qwen/Qwen3.5-35B-A3B",
+            "Qwen/Qwen3-32B",
+            "Qwen/Qwen2.5-72B-Instruct",
+            "Qwen/Qwen2.5-32B-Instruct",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "meta-llama/Llama-3.3-70B-Instruct"
+          ]
+        },
+        "has_tool_calling": false,
+        "task_type": "decision",
+        "task_type_source": "declared_contract",
+        "excluded": [],
+        "recommendation_error": null,
+        "evaluator_readiness": {
+          "ready": false,
+          "eval_set": null,
+          "evaluators": [],
+          "errors": []
+        },
+        "credits": {
+          "required": true,
+          "available": true
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/ff8a6988-d45b-5442-9114-cf7076d62f11?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+            "title": "Decision Workshop acceptance \u00b7 entity matching",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "parent_active_unchanged": true,
+      "partition_request": {
+        "summary": "Decision Workshop matching grouped handoff: queued",
+        "workflow": {
+          "id": "4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9",
+          "name": "Decision Workshop matching grouped handoff",
+          "state": "queued",
+          "kind": "data_partition",
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": 10
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+            "title": "Decision Workshop matching grouped handoff",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "partition": {
+        "kind": "data_partition",
+        "id": "4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9",
+        "status": "completed",
+        "label": "Decision Workshop matching grouped handoff",
+        "job_error": null,
+        "created_at": "2026-10-10T19:50:25.350950Z",
+        "updated_at": "2026-10-10T19:50:31.757893Z",
+        "completed_at": null,
+        "progress": {
+          "id": "4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9",
+          "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "name": "Decision Workshop matching grouped handoff",
+          "source_cell": "17e2a57b-60fd-4db0-ad65-8cabccec9c80",
+          "recipe": {
+            "seed": 42,
+            "group_by": [
+              "entity_group"
+            ],
+            "holdouts": [],
+            "fractions": {
+              "final": 0.1,
+              "train": 0.7,
+              "calibration": 0.1,
+              "development": 0.1
+            },
+            "stratify_by": null
+          },
+          "report": {
+            "counts": {
+              "final": 1000,
+              "train": 7000,
+              "calibration": 1000,
+              "development": 1000
+            },
+            "groups": {
+              "final": 997,
+              "train": 5967,
+              "calibration": 996,
+              "development": 994
+            },
+            "strata": {
+              "final": {
+                "all": 1000
+              },
+              "train": {
+                "all": 7000
+              },
+              "calibration": {
+                "all": 1000
+              },
+              "development": {
+                "all": 1000
+              }
+            },
+            "overlap": {
+              "pretraining": "unknown",
+              "near_duplicates": "not_checked",
+              "content_and_declared_groups": 0
+            },
+            "progress": {
+              "stage": "completed",
+              "total": 10000,
+              "completed": 10000,
+              "updated_at": "2026-10-10T19:50:31.753080+00:00"
+            },
+            "fingerprint": "ca512d2ad70c720db86915bccea64f8e097dca8aefc52b139a05d59738045e70",
+            "source_rows": 10000,
+            "assignments_sha256": "d56e614fcbda323934bf72aff57500b3be7e88647a4ee7f5c0a925bbb60f2224",
+            "duplicates_removed": 0
+          },
+          "state": "completed",
+          "error": "",
+          "members": [
+            {
+              "role": "final",
+              "cell": {
+                "id": "660cff96-c2c8-4209-a303-40a8bf3954cb",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 1000,
+                "fingerprint": "a543dec2b15c8e3cf8d3716c47258f252d251dfbdcbb2783e71cd5db0a7964cc",
+                "dataset_id": "5abecb99-a036-5dcc-91cb-f34a3c9b45ff"
+              }
+            },
+            {
+              "role": "train",
+              "cell": {
+                "id": "dbe34637-25af-4cef-a6ea-f6064b7b366a",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 7000,
+                "fingerprint": "7571367b681c2d1b209d8073259eb8210393722765b5b56fd4976c1d78503d76",
+                "dataset_id": "b8396037-9ea1-522b-a82b-133d163b1ea2"
+              }
+            },
+            {
+              "role": "calibration",
+              "cell": {
+                "id": "d8cc6ac6-1b3c-4c1e-9fd3-d6793433685f",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 1000,
+                "fingerprint": "19f8f27bd744d05252869bb26a2182d1836e1451c9001b4c7710b7c69881f6ed",
+                "dataset_id": "2cb7c57b-db1c-51bd-ab83-53ff56363915"
+              }
+            },
+            {
+              "role": "development",
+              "cell": {
+                "id": "85663abe-d9b2-4ee2-89d8-9e744502c242",
+                "version": "1.0",
+                "title": "Source",
+                "rows": 1000,
+                "fingerprint": "f48194435b2f797d4efeb5750de01b61905eec63b46a0f62854181d441bf29f8",
+                "dataset_id": "37dd1ec0-7ee2-5040-b056-6fd2782811b7"
+              }
+            }
+          ],
+          "next_actions": [
+            "get_job"
+          ],
+          "action_requirements": {},
+          "input_required": false,
+          "poll_after_seconds": null,
+          "created_at": "2026-10-10 19:50:25.350950+00:00",
+          "updated_at": "2026-10-10 19:50:31.757893+00:00"
+        },
+        "details": {},
+        "resource": {
+          "uri": "overmind://jobs/data_partition/4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Decision Workshop matching grouped handoff",
+          "mimeType": "application/json"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/data_partition/4d5798d4-5b06-4aa3-bf1d-77ac1cb602e9?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+            "title": "Decision Workshop matching grouped handoff",
+            "mimeType": "application/json"
+          }
+        ],
+        "summary": "Decision Workshop matching grouped handoff: completed."
+      },
+      "partition_verified": {
+        "rows": 10000,
+        "groups": 8954,
+        "cross_role_groups": 0,
+        "references_verified": true
+      }
+    }
+  },
+  "catalog": "34475b5fe28db844d7cd7160d052efa7e1ac4803ed07e09d2d4f190d19ce6b2e",
+  "upload_contract": {
+    "uri": "overmind://dataset-upload?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "kind": "dataset_upload",
+    "extensions": [
+      ".csv",
+      ".tsv",
+      ".json",
+      ".jsonl",
+      ".ndjson",
+      ".parquet",
+      ".pdf",
+      ".docx",
+      ".md",
+      ".txt",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".webp"
+    ],
+    "max_bytes": 2147483648,
+    "document_max_bytes": 104857600,
+    "pdf_max_pages": 2000,
+    "max_files": 100,
+    "json_array_max_bytes": 268435456,
+    "limits": "CSV, TSV, JSON, JSONL, NDJSON, and Parquet uploads are capped at 2 GiB. Monolithic JSON arrays are capped at 256 MiB because the parser reads them whole.",
+    "chunk_bytes": 8388608,
+    "command": "overmind dataset upload FILE --project-id PROJECT --json",
+    "pipeline_packages": {
+      "required_for_transformations": true,
+      "upload": "overmind dataset pipeline-upload DIRECTORY_OR_ZIP --project-id PROJECT --json",
+      "download": "overmind dataset pipeline-download PACKAGE --project-id PROJECT --output pipeline.zip --json",
+      "max_bytes": 10485760,
+      "max_files": 100,
+      "manifest": {
+        "version": 1,
+        "runtime": "sha256:<approved immutable image ID>",
+        "parameters": {},
+        "steps": [
+          {
+            "id": "transform",
+            "input": "source",
+            "name": "Transform",
+            "entrypoint": "transform.py",
+            "input_schema": {
+              "text": "string",
+              "source_row": "integer"
+            },
+            "output_schema": {
+              "text": "string",
+              "source_row": "integer"
+            },
+            "checks": {
+              "preserve_rows": true
+            }
+          }
+        ]
+      },
+      "script_arguments": [
+        "input.jsonl",
+        "output.jsonl",
+        "parameters.json"
+      ],
+      "inspectability": "Keep each step's meaningful logic in its entrypoint; reserve helpers for reusable functions. Cell transformation metadata binds exact run/revision/package/entrypoint and distinguishes platform execution from external imports. Inspect every retained file via the package resource (file, offset, limit in characters; next_offset until exhausted). Source reads verify the package and file checksums without executing code.",
+      "starter_script": "import json, sys\n\nwith open(sys.argv[1], encoding='utf-8') as source, open(sys.argv[2], 'w', encoding='utf-8') as output:\n    for line in source:\n        row = json.loads(line)\n        # Author the requested transformation here; retain source_row.\n        output.write(json.dumps(row, ensure_ascii=False) + '\\n')\n",
+      "checks": "preserve_rows and lineage apply in preview and publish. min_rows/max_rows are full-population assertions: preview records them as deferred, publication enforces them. Do not hardcode the first source's size in a reusable recipe unless that size is a real requirement.",
+      "lineage": "Retain source_row or declare all contributing _overmind_parent_rows. Preserve duplicate observations and unknown meaning. Use input=source/earlier step or inputs=[distinct earlier IDs] to concatenate disjoint branches in declared order. Overlapping source_row identities fail rather than being deduplicated. Omitted input means the previous step.",
+      "flow": "Declare stable step IDs. Script conditions cite expression and entrypoint line; scripts implement selection. Every step executes, including empty outputs. Flow exposes nodes, edges, terminal_steps and unconsumed_steps. Converge training branches into the last step's trainable output, retaining unresolved review metadata. A retained script with inputs consumes combined branches. Cycles, overlapping identities and job-level conditional skipping are unsupported.",
+      "runtime": "Inspect inspect_dataset_workbench.runner for approved images and worker freshness. Dependencies are installed in the pinned operator-approved runtime; network and package installation are unavailable during execution. No credentials or host mounts enter script containers.",
+      "next": "Register with save_dataset_pipeline, validate, preview and inspect; publish explicitly. Reuse revisions on compatible sources, or save a derived_from variant. Save bindings paused and enable explicitly."
+    },
+    "ingestion_verification": "Before upload, inspect local record boundaries, fields, value types and expected row count. For JSON wrappers, explicitly select the intended top-level record array; clarify unresolved ambiguity instead of treating the whole wrapper as one row. Preserve original bytes. After landing, compare source count and representative nested values using inspect_dataset and query_dataset. Resolve mismatches before transformation or consumer handoff. State verification coverage: a sample is not a full-file audit, and successful transfer is not proof of correct ingestion.",
+    "readiness": "Run overmind connection check --project-id PROJECT --json from the actual coding environment. It verifies MCP, project access, transfer protocol and read/write access with the same resolved connection. A connected MCP client alone does not establish local transfer readiness.",
+    "recovery": "Re-run the identical CLI command to recover its stable transfer key and resume bytes or the existing publication. Use --request-key for an explicitly new upload or a caller-owned identity. Changed content or recipe under the same explicit key conflicts. get_job(kind=dataset_transfer) inspects the receipt without probing or dispatching; dataset_run reports subsequent extraction. Unknown connection errors do not prove sandbox denial. For confirmed network_permission_denied, request the host's supported scoped permission for the same command; do not change sandbox policy, ask for the file again or open a browser.",
+    "json_selection": "For a JSON object containing a row array under a nonstandard field, pass --json-rows-field FIELD explicitly. The selected top-level field is recorded in extraction metadata; original file bytes and wrapper metadata remain downloadable. No target meaning is inferred.",
+    "written_intent": "Use start_dataset with a brief and the user's explicit intent and capability. Its upload.argv carries exact project/dataset identities; replace FILE with the inspected local path. For a new upload, --brief records the original request.",
+    "existing_dataset": "Use overmind dataset upload FILE --project-id PROJECT --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST source accepts uploads; landing does not start preparation.",
+    "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MiB per document, 2000 pages per PDF). Upload reservations return the file-type byte limit. Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction. get_job(kind=dataset_run) exposes file/stage and measured OCR-page progress under progress.landing.",
+    "pdf_text_recovery": {
+      "trigger": "Pages where the primary native parser returned no text are checked with PDFium before OCR, including selectable Type 3 font layers.",
+      "evidence": "Source extraction.native_text_recovery records engine/version, recovered pages, rows, characters, control_characters and reason. Row extraction methods distinguish pdfium-native-text from tesseract-ocr; page regions remain retained.",
+      "limits": "Encoded text is source evidence, not visual verification. Font-encoding artifacts, reading order and diagram relationships require native-agent inspection; the platform does not normalize their meaning. This recovery does not certify partial omissions on pages where the primary parser returned some text."
+    },
+    "publication_status": "Without --wait, CLI state/state_scope=at_publication describe the saved publication snapshot, not current extraction. Read get_job(kind=dataset_run) for current progress. --wait returns state_scope=observed_after_landing.",
+    "auth": "Account or project API key from --api-key, .overmind/credentials.toml, OVERMIND_API_KEY, or the saved local transfer connection at $XDG_CONFIG_HOME/overmind/connection.toml (default ~/.config/overmind/connection.toml). The saved connection contains an api-key bound to its base-url and must have permissions 0600. MCP authentication alone does not configure CLI authentication. Missing credentials are a local connection error, not a reason to open the Console.",
+    "config": "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, --api-url, or overmind.toml. With no other key, the saved local transfer connection supplies both key and base URL; a different explicitly selected API is rejected.",
+    "flow": "POST /api/dataset-transfers/ with project, request_key, filename, size, sha256 and destination recipe; PUT /api/dataset-transfers/{id}/chunk/?offset= streams bounded bytes; POST /api/dataset-transfers/{id}/complete/ verifies the hash and publishes once. Read the receipt or repeat reservation with the identical key to resume. Publication is separate from landing.",
+    "multiple_files": "The installed CLI transfers one file per command. Upload the first file, then attach each remaining file with --dataset DATASET, waiting for dataset_run to reach idle or error between attachments. Each successful attachment appends an import cell combining the preceding cell's rows with the new file's rows. Page retained sources with inspect_dataset. Atomic multi-file landing (up to 100 files) is supported by REST staging but has no resumable CLI/MCP handoff yet. Managed transfer upload IDs cannot be republished through /api/uploads/ or source.uploads.",
+    "next_mcp_calls": [
+      "get_job(kind=dataset_run, id=dataset_id)"
+    ]
+  },
+  "state": "passed"
+}

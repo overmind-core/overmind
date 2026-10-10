@@ -933,13 +933,17 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         query = TrainingMonitoringQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         data = query.validated_data
-        if ("check" in data) == ("probe" in data):
+        if sum(key in data for key in ("check", "probe", "field")) != 1:
             raise drf_serializers.ValidationError(
-                {"check": "Select either a training check or a frozen probe"}
+                {"check": "Select a training check, frozen probe or retained receipt field"}
             )
         try:
             detail = (
-                training_monitoring.probe_rows(
+                training_monitoring.field_page(
+                    self.get_object(), data["field"], offset=data["offset"], limit=data["limit"]
+                )
+                if "field" in data
+                else training_monitoring.probe_rows(
                     self.get_object(), data["probe"], offset=data["offset"], limit=data["limit"]
                 )
                 if "probe" in data

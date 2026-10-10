@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 from conftest import frozen_dataset
 
-from modal_shared.decisions import decision_line, render_decision
+from modal_shared.decision_encoding import question_schema
+from modal_shared.decisions import REQUEST_FIELDS, decision_line
 from modal_shared.training_data import row_key
 from overbae.models import Project
 from overbae.services.datasets import rows as row_store
@@ -65,7 +66,7 @@ def test_renderer_never_includes_targets_or_provenance():
     row = example()
     row["decision"]["target_probabilities"] = [0.123456789, 0.876543211]
     row["source"] = "secret-gold-provider"
-    prompt = render_decision(row["decision"], ["A", "B"])
+    prompt = str(question_schema({key: row["decision"][key] for key in REQUEST_FIELDS}))
     assert "0.123456789" not in prompt
     assert "secret-gold-provider" not in prompt
     assert "Heads" in prompt and "Tails" in prompt

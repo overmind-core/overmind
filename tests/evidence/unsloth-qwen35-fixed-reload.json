@@ -1,0 +1,7 @@
+{
+  "attention_implementation": "sdpa",
+  "decisions": 32,
+  "max_absolute_error": 2.4563632905483246e-07,
+  "tolerance": 0.0001,
+  "weight_reload": "exact"
+}

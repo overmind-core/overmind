@@ -178,6 +178,7 @@ export interface FinetuningJobsModelsRetrieveRequest {
 export interface FinetuningJobsMonitoringEvidenceRetrieveRequest {
     id: string;
     check?: string;
+    field?: string;
     limit?: number;
     offset?: number;
     probe?: FinetuningJobsMonitoringEvidenceRetrieveProbeEnum;
@@ -186,6 +187,7 @@ export interface FinetuningJobsMonitoringEvidenceRetrieveRequest {
 export interface FinetuningJobsMonitoringRetrieveRequest {
     id: string;
     check?: string;
+    field?: string;
     limit?: number;
     offset?: number;
     probe?: FinetuningJobsMonitoringRetrieveProbeEnum;
@@ -1146,6 +1148,10 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
             queryParameters['check'] = requestParameters['check'];
         }
 
+        if (requestParameters['field'] != null) {
+            queryParameters['field'] = requestParameters['field'];
+        }
+
         if (requestParameters['limit'] != null) {
             queryParameters['limit'] = requestParameters['limit'];
         }
@@ -1215,6 +1221,10 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
 
         if (requestParameters['check'] != null) {
             queryParameters['check'] = requestParameters['check'];
+        }
+
+        if (requestParameters['field'] != null) {
+            queryParameters['field'] = requestParameters['field'];
         }
 
         if (requestParameters['limit'] != null) {

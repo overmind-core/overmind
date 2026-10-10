@@ -1971,6 +1971,7 @@ class ModalRunner(BaseFinetuningRunner):
         )
         preparation = ready_for_job(job, plan.context_length)
         env["TRAINING_OBJECTIVE"] = preparation.config["objective"]
+        env["UNSLOTH_IMAGE"] = preparation.config["stack"]
         if hp.get("checkpoint_policy"):
             env["DECISION_CHECKPOINT_POLICY"] = json.dumps(hp["checkpoint_policy"])
         volume = modal.Volume.from_name("overmind-sft", environment_name=env_name)
@@ -1993,9 +1994,8 @@ class ModalRunner(BaseFinetuningRunner):
 
         # One Function per frozen train stack — see modal_shared.stacks.TRAIN_FUNCTION_NAMES.
         from modal_shared.stacks import train_function_name  # noqa: PLC0415
-        from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
 
-        function_name = train_function_name(get_unsloth_image(job.base_model))
+        function_name = train_function_name(preparation.config["stack"])
         train_fn = modal.Function.from_name(
             self._app_name, function_name, environment_name=env_name
         )

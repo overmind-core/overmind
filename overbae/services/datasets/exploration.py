@@ -15,7 +15,7 @@ from overbae.services.datasets.examples import native_decision
 from overbae.services.datasets.partition import preserve_lineage
 
 logger = logging.getLogger(__name__)
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 
 
 @transaction.atomic
@@ -34,7 +34,7 @@ def request(project, *, source_cell, name, request_key, kind, sampling_request=N
         if (
             prior.source_cell_id != source_cell.pk
             or prior.kind != kind
-            or prior.config != config
+            or prior.config.get("sampling") != config["sampling"]
             or prior.name != name
         ):
             raise InputValidationError("This request key identifies a different exploration")

@@ -1,0 +1,949 @@
+{
+  "status": "superseded_after_cold_recovery_failure",
+  "runs": [
+    {
+      "key": "qwen3",
+      "launch": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3-0.6B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+        "request_key": "unsloth-sst2-qwen3-warmup-retest-20261010"
+      },
+      "receipt": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "970c8a98-8101-4dc5-9640-17605485211e",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/970c8a98-8101-4dc5-9640-17605485211e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "970c8a98-8101-4dc5-9640-17605485211e",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/970c8a98-8101-4dc5-9640-17605485211e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/970c8a98-8101-4dc5-9640-17605485211e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/970c8a98-8101-4dc5-9640-17605485211e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "preparation": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "steps",
+            "initial": true,
+            "final": true,
+            "loss_sample": 257,
+            "train_sample": 64,
+            "seed": 42,
+            "interval_steps": 32,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "sample_state": "Modal freezes the resolved training/development samples during transfer, before GPU dispatch; token preparation alone does not select the development split"
+        },
+        "job": {
+          "kind": "training_preparation",
+          "id": "7210318f-916f-4724-ab88-4fbca9808bbf",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/training_preparation/7210318f-916f-4724-ab88-4fbca9808bbf?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          }
+        },
+        "id": "7210318f-916f-4724-ab88-4fbca9808bbf",
+        "state": "queued",
+        "report": {},
+        "error": "",
+        "config": {
+          "runtime": {
+            "app": "overmind-sft-feafad2ef205145756295004",
+            "release": "feafad2ef205145756295004a78b116a916775740b94b9b6bf718aa688c20752",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+            "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "model": "Qwen/Qwen3-0.6B",
+          "tokenizer_model": "unsloth/Qwen3-0.6B",
+          "context_length": 4096,
+          "training_type": "lora",
+          "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+          "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+          "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "stack": "u2026_10_3_decision"
+        }
+      },
+      "estimate": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "steps",
+            "initial": true,
+            "final": true,
+            "loss_sample": 257,
+            "train_sample": 64,
+            "seed": 42,
+            "interval_steps": 32,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "cost_coverage": "Periodic validation, generation probes and checkpoint storage are not yet measured by this forecast",
+          "overhead_target_is_spend_cap": false
+        },
+        "forecast": {
+          "basis": "unmeasured_recipe",
+          "gpu_type": "H100",
+          "gpu_count": 1,
+          "rate_card": {
+            "status": "current",
+            "rates": {
+              "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+              "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+              "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+              "gpu_hour_cost_l4": 0.8,
+              "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+              "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+              "gpu_hour_cost_a100_40gb": 2.1,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+              "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+              "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+              "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+              "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+              "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+              "mem_gib_hour_cost_sandbox": 0.024,
+              "gpu_hour_cost_l40s": 1.95,
+              "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+              "gpu_hour_cost_h200": 4.54,
+              "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+              "gpu_hour_cost_t4": 0.59,
+              "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+              "gpu_hour_cost_h100": 3.95,
+              "gpu_hour_cost_mi355x": 6.75,
+              "mem_gib_hour_cost": 0.008,
+              "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+              "egress_gib_cost": 0.04,
+              "cpu_hour_cost_sandbox": 0.1419,
+              "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+              "gpu_hour_cost_a100_80gb": 2.5,
+              "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+              "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+              "gpu_hour_cost_b200": 6.25,
+              "volume_storage_gib_month_cost": 0.09,
+              "gpu_hour_cost_a10g": 1.1,
+              "gpu_hour_cost_b300": 7.1,
+              "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+              "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+              "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+              "gpu_hour_cost_rtx6000": 3.03,
+              "cpu_hour_cost": 0.0473
+            },
+            "source": "modal.Workspace.billing.rates",
+            "fetched_at": "2026-10-10T19:00:37.053992+00:00",
+            "cache_seconds": 300
+          },
+          "price_status": "current",
+          "gpu_hour_usd": 3.95,
+          "duration_status": "unmeasured",
+          "estimate_blockers": [
+            "duration_unmeasured"
+          ],
+          "trained_tokens": 749476,
+          "training_seconds": null,
+          "training_gpu_usd": null,
+          "evidence_jobs": [],
+          "evidence": [],
+          "rejected_measurements": {
+            "runtime": 1
+          },
+          "confidence": "unmeasured",
+          "planning_margin": {
+            "lower_multiplier": 0.5,
+            "upper_multiplier": 1.5
+          },
+          "all_in_usd": null,
+          "runtime": {
+            "app": "overmind-sft-feafad2ef205145756295004",
+            "release": "feafad2ef205145756295004a78b116a916775740b94b9b6bf718aa688c20752",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+            "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+            "environment": "overmind-dev"
+          },
+          "measurement_window": "completed_gpu_execution_including_load_validation_and_reload",
+          "token_basis": "source_character_estimate_for_both_requested_and_evidence_workloads",
+          "budget_enforcement": "none",
+          "unpriced_components": [
+            "preparation",
+            "training_cpu_memory",
+            "native_final_calibration",
+            "storage"
+          ],
+          "limitations": [
+            "A completed matching recipe measurement is required before this objective has a calibrated duration or GPU quote."
+          ],
+          "token_estimate": "proportional_to_selected_rows",
+          "selected_training_rows": 2059
+        },
+        "selection": {
+          "train_dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+          "train_cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "train_fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "train_rows": 2059,
+          "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+          "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+          "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+          "validation_rows": 257,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": true,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "096433b6a1d62c054bb030b75f8f5396f898fba00671af1985f550bf598abd98"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "categorical_gold": 2059
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Fine-tuning estimate calculated.",
+        "cost_estimate": null,
+        "time_estimate": {
+          "seconds": null,
+          "human": "Unmeasured recipe"
+        },
+        "trained_tokens": 749476,
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/13897bd0-b262-56ee-b48c-2e697da451a5?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 training/development/calibration \u00b7 content groups \u00b7 train",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "evaluation": {
+        "summary": "Native paired evaluation scheduled after verified checkpoint completion.",
+        "plan": {
+          "id": "f77b250f-f3cc-44ed-b211-52dfdf57c29d",
+          "job": "970c8a98-8101-4dc5-9640-17605485211e",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 qualified runtime",
+          "state": "waiting_for_checkpoint",
+          "config": {
+            "seed": 73491,
+            "suites": {
+              "final": {
+                "cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+                "rows": 872,
+                "dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+                "fingerprint": "2bbfe1dfa2caf7354795e1043ff0acca18d2b140ec1316e105300304d8dee3ba"
+              },
+              "calibration": {
+                "cell": "ad47f675-6b7b-499b-9f31-e481462087ff",
+                "rows": 257,
+                "dataset": "dfb5ed51-9293-594b-affa-4a42902d2e63",
+                "fingerprint": "ae0a384b6c7ef75bde5e5eabbd19912030c6702d2320c48a1f9982e3489e67a9"
+              }
+            },
+            "runtime": {
+              "app": "overmind-decision-eval-ace0292e3920cb556a8826de",
+              "release": "ace0292e3920cb556a8826def782feced5153bef66bcc3cabc3635818c3252d7",
+              "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+              "environment": "overmind-dev"
+            },
+            "baseline": "base",
+            "inference": {
+              "batch_size": 64,
+              "concurrency": 8,
+              "padded_tokens": 32768,
+              "context_length": 8192
+            },
+            "boundaries": {},
+            "participants": [
+              {
+                "job": "970c8a98-8101-4dc5-9640-17605485211e",
+                "key": "base",
+                "kind": "foundation",
+                "name": "Unchanged base",
+                "model": "Qwen/Qwen3-0.6B"
+              },
+              {
+                "job": "970c8a98-8101-4dc5-9640-17605485211e",
+                "key": "candidate",
+                "kind": "trained",
+                "name": "Trained model",
+                "model": "Qwen/Qwen3-0.6B"
+              }
+            ],
+            "temperatures": [],
+            "suite_overlap": null,
+            "logarithm_floor": 1e-12,
+            "bootstrap_samples": 1000,
+            "calibration_method": "clef_temperature_cross_entropy",
+            "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+            "authorization": {
+              "user": "4",
+              "authorized_at": "2026-10-10T19:00:47.468261+00:00",
+              "scope": "saved_participants_and_suites",
+              "configuration_sha256": "c066e610760b11b89f5c600a2f3d29e304c1dcfe1a2526848094689e749cc79f"
+            }
+          },
+          "calls": {},
+          "calibration": {},
+          "results": {},
+          "error": "",
+          "created_at": "2026-10-10T19:00:47.464444+00:00",
+          "updated_at": "2026-10-10T19:00:47.468325+00:00"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/native_evaluation/f77b250f-f3cc-44ed-b211-52dfdf57c29d?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Native evaluation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://finetunes/970c8a98-8101-4dc5-9640-17605485211e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training experiment",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "outcome": {
+        "training_state": "succeeded",
+        "evaluation_state": "completed",
+        "artifact": {
+          "artifact_identity": "d454fe31759f6fb4dfe9e62798717e57478349540c3fac7de786e7d41789437b",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "before": {
+          "accuracy": 0.518348623853211,
+          "brier": 0.49822327837269886,
+          "cross_entropy": 0.691370367136817,
+          "mode_agreement": 0.518348623853211,
+          "top1_reference_mass": 0.518348623853211
+        },
+        "after": {
+          "accuracy": 0.9162844036697247,
+          "brier": 0.14240634964865684,
+          "cross_entropy": 0.28604591287346987,
+          "mode_agreement": 0.9162844036697247,
+          "top1_reference_mass": 0.9162844036697247
+        }
+      }
+    },
+    {
+      "key": "qwen35",
+      "launch": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3.5-0.8B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+        "request_key": "unsloth-sst2-qwen35-warmup-retest-20261010"
+      },
+      "receipt": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/76027261-75c0-4f51-b440-2ec98b80c6c2?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/76027261-75c0-4f51-b440-2ec98b80c6c2?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/76027261-75c0-4f51-b440-2ec98b80c6c2?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/76027261-75c0-4f51-b440-2ec98b80c6c2?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "preparation": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "steps",
+            "initial": true,
+            "final": true,
+            "loss_sample": 257,
+            "train_sample": 64,
+            "seed": 42,
+            "interval_steps": 32,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "sample_state": "Modal freezes the resolved training/development samples during transfer, before GPU dispatch; token preparation alone does not select the development split"
+        },
+        "job": {
+          "kind": "training_preparation",
+          "id": "7b8876cf-8eb1-4a45-97da-16a45191d1d3",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/training_preparation/7b8876cf-8eb1-4a45-97da-16a45191d1d3?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training preparation",
+            "mimeType": "application/json"
+          }
+        },
+        "id": "7b8876cf-8eb1-4a45-97da-16a45191d1d3",
+        "state": "queued",
+        "report": {},
+        "error": "",
+        "config": {
+          "runtime": {
+            "app": "overmind-sft-feafad2ef205145756295004",
+            "release": "feafad2ef205145756295004a78b116a916775740b94b9b6bf718aa688c20752",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+            "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+            "environment": "overmind-dev"
+          },
+          "objective": "decision_cross_entropy",
+          "model": "Qwen/Qwen3.5-0.8B",
+          "tokenizer_model": "unsloth/Qwen3.5-0.8B",
+          "context_length": 4096,
+          "training_type": "lora",
+          "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+          "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+          "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "stack": "u2026_10_3_decision"
+        }
+      },
+      "estimate": {
+        "monitoring": {
+          "policy": {
+            "version": 1,
+            "mode": "steps",
+            "initial": true,
+            "final": true,
+            "loss_sample": 257,
+            "train_sample": 64,
+            "seed": 42,
+            "interval_steps": 32,
+            "target_seconds": 300,
+            "overhead_fraction": 0.1,
+            "max_checks": 12,
+            "generation_every": 3,
+            "generation": null,
+            "selection": "last",
+            "early_stopping": null,
+            "failure_policy": "continue"
+          },
+          "cost_coverage": "Periodic validation, generation probes and checkpoint storage are not yet measured by this forecast",
+          "overhead_target_is_spend_cap": false
+        },
+        "forecast": {
+          "basis": "unmeasured_recipe",
+          "gpu_type": "H100",
+          "gpu_count": 1,
+          "rate_card": {
+            "status": "current",
+            "rates": {
+              "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+              "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+              "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+              "gpu_hour_cost_l4": 0.8,
+              "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+              "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+              "gpu_hour_cost_a100_40gb": 2.1,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+              "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+              "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+              "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+              "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+              "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+              "mem_gib_hour_cost_sandbox": 0.024,
+              "gpu_hour_cost_l40s": 1.95,
+              "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+              "gpu_hour_cost_h200": 4.54,
+              "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+              "gpu_hour_cost_t4": 0.59,
+              "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+              "gpu_hour_cost_h100": 3.95,
+              "gpu_hour_cost_mi355x": 6.75,
+              "mem_gib_hour_cost": 0.008,
+              "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3,
+              "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+              "egress_gib_cost": 0.04,
+              "cpu_hour_cost_sandbox": 0.1419,
+              "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+              "gpu_hour_cost_a100_80gb": 2.5,
+              "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+              "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+              "gpu_hour_cost_b200": 6.25,
+              "volume_storage_gib_month_cost": 0.09,
+              "gpu_hour_cost_a10g": 1.1,
+              "gpu_hour_cost_b300": 7.1,
+              "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+              "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+              "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+              "gpu_hour_cost_rtx6000": 3.03,
+              "cpu_hour_cost": 0.0473
+            },
+            "source": "modal.Workspace.billing.rates",
+            "fetched_at": "2026-10-10T19:00:37.053992+00:00",
+            "cache_seconds": 300
+          },
+          "price_status": "current",
+          "gpu_hour_usd": 3.95,
+          "duration_status": "unmeasured",
+          "estimate_blockers": [
+            "duration_unmeasured"
+          ],
+          "trained_tokens": 749476,
+          "training_seconds": null,
+          "training_gpu_usd": null,
+          "evidence_jobs": [],
+          "evidence": [],
+          "rejected_measurements": {
+            "runtime": 3
+          },
+          "confidence": "unmeasured",
+          "planning_margin": {
+            "lower_multiplier": 0.5,
+            "upper_multiplier": 1.5
+          },
+          "all_in_usd": null,
+          "runtime": {
+            "app": "overmind-sft-feafad2ef205145756295004",
+            "release": "feafad2ef205145756295004a78b116a916775740b94b9b6bf718aa688c20752",
+            "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+            "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+            "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+            "environment": "overmind-dev"
+          },
+          "measurement_window": "completed_gpu_execution_including_load_validation_and_reload",
+          "token_basis": "source_character_estimate_for_both_requested_and_evidence_workloads",
+          "budget_enforcement": "none",
+          "unpriced_components": [
+            "preparation",
+            "training_cpu_memory",
+            "native_final_calibration",
+            "storage"
+          ],
+          "limitations": [
+            "A completed matching recipe measurement is required before this objective has a calibrated duration or GPU quote."
+          ],
+          "token_estimate": "proportional_to_selected_rows",
+          "selected_training_rows": 2059
+        },
+        "selection": {
+          "train_dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+          "train_cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "train_fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "train_rows": 2059,
+          "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+          "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+          "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+          "validation_rows": 257,
+          "eval_dataset": null,
+          "eval_cell": null,
+          "eval_fingerprint": null,
+          "eval_rows": null,
+          "validation_enabled": true,
+          "validation_split_ratio": null,
+          "split_method": null,
+          "eval_set": null,
+          "evaluations": {
+            "eval_model_before": false,
+            "eval_model_after": false,
+            "eval_incumbent_before": false,
+            "eval_incumbent_after": false
+          },
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "fingerprint": "096433b6a1d62c054bb030b75f8f5396f898fba00671af1985f550bf598abd98"
+        },
+        "training_contract": {
+          "objective": "decision_cross_entropy",
+          "inference_contract": "decision",
+          "target": "declared_decision_supervision",
+          "target_semantics": {
+            "categorical_gold": 2059
+          },
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "methods": [
+            "lora"
+          ],
+          "providers": [
+            "modal"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "evaluation": "native_probabilities",
+          "max_gpus": 1,
+          "pre_training_baseline": true
+        },
+        "summary": "Fine-tuning estimate calculated.",
+        "cost_estimate": null,
+        "time_estimate": {
+          "seconds": null,
+          "human": "Unmeasured recipe"
+        },
+        "trained_tokens": 749476,
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/13897bd0-b262-56ee-b48c-2e697da451a5?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 training/development/calibration \u00b7 content groups \u00b7 train",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "evaluation": {
+        "summary": "Native paired evaluation scheduled after verified checkpoint completion.",
+        "plan": {
+          "id": "df14b471-2dbc-45a0-98f9-f430e5419858",
+          "job": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 qualified runtime",
+          "state": "waiting_for_checkpoint",
+          "config": {
+            "seed": 73491,
+            "suites": {
+              "final": {
+                "cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+                "rows": 872,
+                "dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+                "fingerprint": "2bbfe1dfa2caf7354795e1043ff0acca18d2b140ec1316e105300304d8dee3ba"
+              },
+              "calibration": {
+                "cell": "ad47f675-6b7b-499b-9f31-e481462087ff",
+                "rows": 257,
+                "dataset": "dfb5ed51-9293-594b-affa-4a42902d2e63",
+                "fingerprint": "ae0a384b6c7ef75bde5e5eabbd19912030c6702d2320c48a1f9982e3489e67a9"
+              }
+            },
+            "runtime": {
+              "app": "overmind-decision-eval-ace0292e3920cb556a8826de",
+              "release": "ace0292e3920cb556a8826def782feced5153bef66bcc3cabc3635818c3252d7",
+              "training": "4c702cdbdd123d300f59a70863b7480e295046e0a8364b5cda04d0fd6a6c0234",
+              "environment": "overmind-dev"
+            },
+            "baseline": "base",
+            "inference": {
+              "batch_size": 64,
+              "concurrency": 8,
+              "padded_tokens": 32768,
+              "context_length": 8192
+            },
+            "boundaries": {},
+            "participants": [
+              {
+                "job": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+                "key": "base",
+                "kind": "foundation",
+                "name": "Unchanged base",
+                "model": "Qwen/Qwen3.5-0.8B"
+              },
+              {
+                "job": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+                "key": "candidate",
+                "kind": "trained",
+                "name": "Trained model",
+                "model": "Qwen/Qwen3.5-0.8B"
+              }
+            ],
+            "temperatures": [],
+            "suite_overlap": null,
+            "logarithm_floor": 1e-12,
+            "bootstrap_samples": 1000,
+            "calibration_method": "clef_temperature_cross_entropy",
+            "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+            "authorization": {
+              "user": "4",
+              "authorized_at": "2026-10-10T19:00:47.665576+00:00",
+              "scope": "saved_participants_and_suites",
+              "configuration_sha256": "3d84ff3f8f7eaf176053080a6044a1ea0eab192da40fae50756409df8cd477ee"
+            }
+          },
+          "calls": {},
+          "calibration": {},
+          "results": {},
+          "error": "",
+          "created_at": "2026-10-10T19:00:47.664189+00:00",
+          "updated_at": "2026-10-10T19:00:47.665637+00:00"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/native_evaluation/df14b471-2dbc-45a0-98f9-f430e5419858?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Native evaluation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://finetunes/76027261-75c0-4f51-b440-2ec98b80c6c2?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training experiment",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "outcome": {
+        "training_state": "succeeded",
+        "evaluation_state": "completed",
+        "artifact": {
+          "artifact_identity": "33127bb0429ebaf9ebe0adbb4e4388e259e5f4d4d5c879ee24508ffc37185f24",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "before": {
+          "accuracy": 0.4908256880733945,
+          "brier": 0.49957117125653744,
+          "cross_entropy": 0.6927182961902325,
+          "mode_agreement": 0.4908256880733945,
+          "top1_reference_mass": 0.4908256880733945
+        },
+        "after": {
+          "accuracy": 0.908256880733945,
+          "brier": 0.14687818573608563,
+          "cross_entropy": 0.2652036743559548,
+          "mode_agreement": 0.908256880733945,
+          "top1_reference_mass": 0.908256880733945
+        }
+      }
+    }
+  ]
+}

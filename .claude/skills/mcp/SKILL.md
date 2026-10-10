@@ -203,6 +203,12 @@ provider capabilities and unmeasured check costs remain explicit. Cancellation
 records intent first and preserves durable evidence. Evidence responses have a
 128 KiB lossless bound and return an error rather than clipping values. The current
 tool-manifest budget is 80 KiB. Refresh the connected catalogue after deployment.
+Native per-question metrics and assessments have `collections` descriptors in
+check/checkpoint overviews. Pass a descriptor's `field` JSON Pointer with
+`offset`/`limit` for exact retained object entries or array items. Append escaped
+keys or indices to inspect a nested field that exceeds the response limit.
+`field`, `check` and `probe` are mutually exclusive and job-scoped; REST
+monitoring-evidence uses the same field pagination.
 Check `facts.delivery` reports the first valid loss result's collector receipt time
 and check-finish observation time. These are not worker timestamps or user-feedback
 scores; passive inspection never emits another lifecycle analytics event.
@@ -387,3 +393,9 @@ Before shipping an agent-relevant change, verify all applicable items:
 Training experiment changes expose `request_key`, explicit selection and contract receipts in readiness/estimate/start, elapsed time and remaining-time ranges with their recent metric-window evidence in `get_job`, and the generated run record in the finetune resource. `schedule_native_evaluation` is a metered GPU operation with train scope; its paired plan is a `native_evaluation` job/resource. `cancel_dataset` prevents pipeline publication or requests source-landing cancellation; it does not cancel external coding-agent or model-provider execution. Both routes share Console domain services and project scoping.
 
 Dataset inspection uses cell_offset/cell_limit pagination, with active identity separate from the page. Large summaries expose truncation metadata; scripts, audit internals and previews are bounded before transport serialization. Reading a dataset never computes a missing whole-source profile synchronously; an unmeasured profile points to explore_dataset. These limits apply to the dataset resource and named inspection tool.
+
+Contract 6.3.0 adds stored native decision-quality summaries, including applicable same-subset categorical assessments, to training progress. Native training uses the pinned Unsloth decision runtime through the existing preparation, launch, cancellation, records and operational-inspection tools.
+
+Native comparison scoring stores a checksum-bound report receipt and compact metrics; full diagnostic slices remain downloadable. To recover interrupted local work on a paused comparison, pass its local `verify_inputs`, `fit_calibration` or `score` stage to `resume_native_evaluation`. This fences the prior local lease and reuses retained inputs; it does not resubmit provider calls.
+
+A paused native evaluation collector can resume an explicit stage with its exact recorded `call_id`. Missing or different IDs are rejected; recovery fences the interrupted lease and observes the same provider call without a new submission.

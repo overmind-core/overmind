@@ -1,0 +1,8 @@
+{
+  "cpu_gpu_encoder_parity": 12,
+  "first_call_max_error": 0.0,
+  "mean_target_distributions": 2,
+  "option_orders": 12,
+  "preparation_and_overflow": "passed",
+  "weighted_accumulation": "passed"
+}

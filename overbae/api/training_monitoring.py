@@ -5,6 +5,7 @@ class TrainingMonitoringQuerySerializer(serializers.Serializer):
     offset = serializers.IntegerField(default=0, min_value=0)
     limit = serializers.IntegerField(default=25, min_value=1, max_value=100)
     check = serializers.UUIDField(required=False)
+    field = serializers.CharField(required=False, max_length=4096)
     probe = serializers.ChoiceField(
         choices=["development", "training_reference", "generation"], required=False
     )

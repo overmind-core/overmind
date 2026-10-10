@@ -40,6 +40,11 @@ class InspectTrainingProgressInput(MCPModel):
     check: UUID | None = Field(
         default=None, description="Optional check ID for retained example evidence"
     )
+    field: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Retained receipt JSON Pointer from collections; page objects as key/value entries or arrays as items. Append escaped keys or indices to inspect nested values. Exclusive with check/probe.",
+    )
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=25, ge=1, le=100)
 

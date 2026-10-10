@@ -1,0 +1,1032 @@
+{
+  "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+  "endpoint": "http://localhost:8000",
+  "source": {
+    "dataset": "stanfordnlp/sst2",
+    "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb",
+    "files": [
+      {
+        "source": "data/train-00000-of-00001.parquet",
+        "path": "scratch/unsloth-decision/train-00000-of-00001.parquet",
+        "sha256": "c7921283b75a42e685f50edecb96798607ea0fcbfd0739ee8975f22c12d55f09",
+        "bytes": 3110458
+      },
+      {
+        "source": "data/validation-00000-of-00001.parquet",
+        "path": "scratch/unsloth-decision/validation-00000-of-00001.parquet",
+        "sha256": "fb00fe008f6828f86ba2beda8415a4cf5da0c884f21c5f238c87131b5aa19529",
+        "bytes": 72813
+      }
+    ]
+  },
+  "partition": "235f8207-3a02-4b23-b6bf-25ad82c63f2b",
+  "cells": {
+    "train": "1f18c763-7356-4460-a05c-dacae5af56ec",
+    "development": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+    "calibration": "ad47f675-6b7b-499b-9f31-e481462087ff",
+    "final": "12e4279e-a211-414f-9f8d-e93583d5212a"
+  },
+  "rows": {
+    "train": 2059,
+    "development": 257,
+    "calibration": 257,
+    "final": 872
+  },
+  "recipe": {
+    "n_epochs": 2,
+    "max_steps": 256,
+    "batch_size": 16,
+    "context_length": 4096,
+    "learning_rate": 0.0002,
+    "seed": 0,
+    "pre_training_baseline": true,
+    "runtime_limit_seconds": 3600,
+    "training_type": {
+      "type": "Lora",
+      "lora_r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0
+    }
+  },
+  "launches": [
+    {
+      "model": "Qwen/Qwen3-0.6B",
+      "request": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3-0.6B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+        "request_key": "unsloth-sst2-qwen3-training-20261010"
+      },
+      "result": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "b6500866-ed71-4a16-b0ce-20bdc4b4b77f",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3 0.6B"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "b6500866-ed71-4a16-b0ce-20bdc4b4b77f",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3 0.6B"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+            "mimeType": "application/json"
+          }
+        ]
+      }
+    },
+    {
+      "model": "Qwen/Qwen3.5-0.8B",
+      "request": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3.5-0.8B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B",
+        "request_key": "unsloth-sst2-qwen35-training-20261010"
+      },
+      "result": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "9157305b-6b8b-4778-8dbc-cf66c162a785",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/9157305b-6b8b-4778-8dbc-cf66c162a785?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "9157305b-6b8b-4778-8dbc-cf66c162a785",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/9157305b-6b8b-4778-8dbc-cf66c162a785?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/9157305b-6b8b-4778-8dbc-cf66c162a785?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/9157305b-6b8b-4778-8dbc-cf66c162a785?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5 0.8B",
+            "mimeType": "application/json"
+          }
+        ]
+      }
+    }
+  ],
+  "preparations": [
+    {
+      "kind": "training_preparation",
+      "id": "32d79e24-4503-4cc9-8c5c-dffd376dc52f",
+      "status": "ready",
+      "label": "Training preparation",
+      "job_error": null,
+      "created_at": "2026-10-10T17:25:02.453027Z",
+      "updated_at": "2026-10-10T17:26:35.276080Z",
+      "completed_at": "2026-10-10T17:26:35.276080Z",
+      "progress": {
+        "rows": 2316,
+        "model": "Qwen/Qwen3.5-0.8B",
+        "ready": true,
+        "issues": [],
+        "tokens": 305667,
+        "previews": [
+          {
+            "row": 0,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 127,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              1,
+              0
+            ]
+          },
+          {
+            "row": 1,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 130,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              0,
+              1
+            ]
+          },
+          {
+            "row": 2,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 126,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              1,
+              0
+            ]
+          }
+        ],
+        "renderer": "unsloth_clef",
+        "objective": "decision_cross_entropy",
+        "max_tokens": 177,
+        "compute_usage": {
+          "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+          "gpu_type": null,
+          "usage_id": "60de3ff659324abba4afb6eb2c8d90cd",
+          "gpu_count": 0,
+          "limitations": [
+            "Running child resources enter the observation when reaped.",
+            "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+            "Unrelated container processes and provider billing adjustments are not measured."
+          ],
+          "elapsed_seconds": 16.827148272,
+          "cpu_core_seconds": 134.617186176,
+          "memory_gib_seconds": 134.617186176
+        },
+        "context_length": 4096,
+        "artifact_sha256": "e61ec6d60aebec656827aedcbc574ac37ce66dd9adc442e98a154a20168cf0b0",
+        "incompatible_rows": 0,
+        "supervised_tokens": 2316,
+        "vocab_fingerprint": "365c2d8a0c0e72d4bcc5dbc6c2e9330a87dae7ffc77e9fcd9d65739f4d16bfff",
+        "chat_template_sha256": "ea210e5b4997b7b1d3af5ee3ad34e7677ffe38df7469e8d88089789b5a27fae5"
+      },
+      "details": {
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "model": "Qwen/Qwen3.5-0.8B",
+        "stack": "u2026_10_3_decision",
+        "runtime": {
+          "app": "overmind-sft-effaaad1ff8f3bcc4cc63090",
+          "release": "effaaad1ff8f3bcc4cc63090819ed44570e04320cc39fbb4eb6b917f37668621",
+          "training": "7357c92fc01dd2c5f9a8cf2e278ce2926b78eaac2a4c72af25e35f53da467a2a",
+          "processor": "0608158e17cf3782c73f6cfb431995cc300752eb199ad6fad7a03040db90a6f2",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "objective": "decision_cross_entropy",
+        "processor": "0608158e17cf3782c73f6cfb431995cc300752eb199ad6fad7a03040db90a6f2",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+        "training_type": "lora",
+        "context_length": 4096,
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+        "operation": {
+          "id": "45cac149-c28a-4b47-9c3e-f66675a45dce",
+          "kind": "training_preparation",
+          "reference": "32d79e24-4503-4cc9-8c5c-dffd376dc52f",
+          "attempt": "2026-10-11T17:26:05.792339+00:00",
+          "unit": "rows",
+          "facts": {
+            "deadline": "2026-10-11T17:26:05.792339+00:00",
+            "provider": "modal",
+            "retry_safe": false,
+            "provider_call_id": "fc-01M4KDKKQ7X955PA9P00WKY4AN",
+            "source_export_rows": null,
+            "telemetry_available": true
+          },
+          "stage": "ready",
+          "total": 2316,
+          "status": "ready",
+          "completed": 2316,
+          "event_count": 15,
+          "last_observed_at": "2026-10-10T17:26:35.285055+00:00",
+          "last_heartbeat_at": null,
+          "last_progress_at": "2026-10-10T17:26:35.285055+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/training_preparation/32d79e24-4503-4cc9-8c5c-dffd376dc52f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Training preparation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/training_preparation/32d79e24-4503-4cc9-8c5c-dffd376dc52f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Training preparation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/45cac149-c28a-4b47-9c3e-f66675a45dce?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Training preparation: ready."
+    },
+    {
+      "kind": "training_preparation",
+      "id": "30a68144-e069-4caa-b67f-dff52903d127",
+      "status": "ready",
+      "label": "Training preparation",
+      "job_error": null,
+      "created_at": "2026-10-10T17:25:02.583591Z",
+      "updated_at": "2026-10-10T17:26:49.935344Z",
+      "completed_at": "2026-10-10T17:26:49.935344Z",
+      "progress": {
+        "rows": 2316,
+        "model": "Qwen/Qwen3-0.6B",
+        "ready": true,
+        "issues": [],
+        "tokens": 298815,
+        "previews": [
+          {
+            "row": 0,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 124,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              1,
+              0
+            ]
+          },
+          {
+            "row": 1,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 127,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              0,
+              1
+            ]
+          },
+          {
+            "row": 2,
+            "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+            "tokens": 123,
+            "decision_options": 2,
+            "target_semantics": "categorical_gold",
+            "target_provenance": {
+              "field": "label",
+              "dataset": "stanfordnlp/sst2",
+              "mapping": {
+                "0": "negative",
+                "1": "positive"
+              },
+              "meaning": "Published SST-2 sentiment annotation; no relabeling or generated labels.",
+              "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+            },
+            "target_probabilities": [
+              1,
+              0
+            ]
+          }
+        ],
+        "renderer": "unsloth_clef",
+        "objective": "decision_cross_entropy",
+        "max_tokens": 175,
+        "compute_usage": {
+          "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+          "gpu_type": null,
+          "usage_id": "98e34f44409f4c6c907bf4e82b2da811",
+          "gpu_count": 0,
+          "limitations": [
+            "Running child resources enter the observation when reaped.",
+            "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+            "Unrelated container processes and provider billing adjustments are not measured."
+          ],
+          "elapsed_seconds": 20.472599931999998,
+          "cpu_core_seconds": 163.78079945599998,
+          "memory_gib_seconds": 163.78079945599998
+        },
+        "context_length": 4096,
+        "artifact_sha256": "2959ea7e33000a8d75cac079d61b02d37fdefff419e0985b6edbfbeb67565f07",
+        "incompatible_rows": 0,
+        "supervised_tokens": 2316,
+        "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+        "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4"
+      },
+      "details": {
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "model": "Qwen/Qwen3-0.6B",
+        "stack": "u2026_10_3_decision",
+        "runtime": {
+          "app": "overmind-sft-effaaad1ff8f3bcc4cc63090",
+          "release": "effaaad1ff8f3bcc4cc63090819ed44570e04320cc39fbb4eb6b917f37668621",
+          "training": "7357c92fc01dd2c5f9a8cf2e278ce2926b78eaac2a4c72af25e35f53da467a2a",
+          "processor": "0608158e17cf3782c73f6cfb431995cc300752eb199ad6fad7a03040db90a6f2",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "objective": "decision_cross_entropy",
+        "processor": "0608158e17cf3782c73f6cfb431995cc300752eb199ad6fad7a03040db90a6f2",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+        "training_type": "lora",
+        "context_length": 4096,
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+        "operation": {
+          "id": "f21fcd16-4ef5-4940-959c-14face23c757",
+          "kind": "training_preparation",
+          "reference": "30a68144-e069-4caa-b67f-dff52903d127",
+          "attempt": "2026-10-11T17:26:05.884754+00:00",
+          "unit": "rows",
+          "facts": {
+            "deadline": "2026-10-11T17:26:05.884754+00:00",
+            "provider": "modal",
+            "retry_safe": false,
+            "provider_call_id": "fc-01M4KDKKTNJCVQF7Q096TZ44AT",
+            "source_export_rows": null,
+            "telemetry_available": true
+          },
+          "stage": "ready",
+          "total": 2316,
+          "status": "ready",
+          "completed": 2316,
+          "event_count": 16,
+          "last_observed_at": "2026-10-10T17:26:49.942567+00:00",
+          "last_heartbeat_at": null,
+          "last_progress_at": "2026-10-10T17:26:49.942567+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/training_preparation/30a68144-e069-4caa-b67f-dff52903d127?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "Training preparation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/training_preparation/30a68144-e069-4caa-b67f-dff52903d127?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Training preparation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/f21fcd16-4ef5-4940-959c-14face23c757?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Training preparation: ready."
+    }
+  ],
+  "before_evaluation": "d0f31c8c-bb09-4390-8872-733da9f63b00",
+  "idempotency": {
+    "summary": "Fine-tuning job: preparing.",
+    "finetune": {
+      "kind": "finetune_job",
+      "id": "b6500866-ed71-4a16-b0ce-20bdc4b4b77f",
+      "status": "preparing",
+      "resource": {
+        "uri": "overmind://finetunes/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+        "mimeType": "application/json"
+      },
+      "name": "SST-2 \u00b7 Unsloth Qwen3 0.6B"
+    },
+    "job": {
+      "kind": "finetune_job",
+      "id": "b6500866-ed71-4a16-b0ce-20bdc4b4b77f",
+      "status": "preparing",
+      "resource": {
+        "uri": "overmind://jobs/finetune/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+        "mimeType": "application/json"
+      },
+      "name": "SST-2 \u00b7 Unsloth Qwen3 0.6B"
+    },
+    "cell": {
+      "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+      "version": "1.0",
+      "title": "Source",
+      "rows": 2059,
+      "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+      "fits": true,
+      "reason": "",
+      "warnings": [
+        "No current workshop quality review."
+      ]
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://finetunes/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://jobs/finetune/b6500866-ed71-4a16-b0ce-20bdc4b4b77f?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "title": "SST-2 \u00b7 Unsloth Qwen3 0.6B",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "changed_recipe": {
+    "error": {
+      "code": "finetune_invalid",
+      "message": "The fine-tuning request was refused: This launch key already belongs to a different recipe.",
+      "retryable": false,
+      "fields": {
+        "request_key": "This launch key already belongs to a different recipe."
+      }
+    }
+  },
+  "qualification_status": "completed_on_native_normalization_runtime",
+  "after_evaluations": {
+    "Qwen/Qwen3-0.6B": "be480dc1-a0f1-41f4-adf6-0154f4f4cdf9",
+    "Qwen/Qwen3.5-0.8B": "2840b98e-a756-4b28-9a1d-dd8565836849"
+  },
+  "cancellation_job": "5907d62a-d4a3-4063-a704-60f21c5bbbc4",
+  "final_runtime_runs": {
+    "qwen3": {
+      "job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+      "evaluation": "d5c46c15-df3f-47b6-a542-fe294317699b",
+      "base_model": "Qwen/Qwen3-0.6B",
+      "runtime": {
+        "app": "overmind-sft-ebc520f5648151eec275bf69",
+        "release": "ebc520f5648151eec275bf69da99f82d08077a024544a985529de03dd980fa2f",
+        "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+        "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "environment": "overmind-dev"
+      },
+      "status": "succeeded",
+      "artifact": {
+        "artifact_identity": "9fa19bad1542807052475821a1f38e14ffbc7f7b8f1e0f1be5ee1b75d1e5aa1c",
+        "inference_contract": "typed_probabilities",
+        "reload_verification": {
+          "decisions": 32,
+          "tolerance": 0.0001,
+          "weight_reload": "exact",
+          "max_absolute_error": 0.0,
+          "attention_implementation": "sdpa"
+        }
+      },
+      "evaluation_status": "completed",
+      "outcome": {
+        "training_status": "succeeded",
+        "artifact": {
+          "artifact_identity": "9fa19bad1542807052475821a1f38e14ffbc7f7b8f1e0f1be5ee1b75d1e5aa1c",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "provider_run_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c",
+        "monitoring_checks": 10,
+        "recorded_training_usd": 0.2885,
+        "recorded_basis": {
+          "basis": "recorded_worker_gpu_seconds",
+          "cost_usd": 0.2885,
+          "exclusions": [
+            "unreported_worker_time",
+            "image_boot",
+            "idle",
+            "cpu",
+            "memory",
+            "storage",
+            "network"
+          ],
+          "rate_source": "modal.Workspace.billing.rates",
+          "measurements": [
+            {
+              "usd": 0.28847784158541667,
+              "seconds": 262.91651385,
+              "gpu_type": "H100",
+              "usage_id": "59a3835c8efe4bed8a75fe60d591fbc7",
+              "gpu_count": 1,
+              "usd_per_second": 0.0010972222222222223
+            }
+          ],
+          "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00"
+        },
+        "evaluation_status": "completed",
+        "before": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.4982054277561522
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.6913525148266966
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          }
+        },
+        "after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.1521855766839558
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.2834540902443128
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          }
+        },
+        "calibrated_after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.14479507773041803
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.2609286908505589
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          }
+        },
+        "paired_accuracy": {
+          "candidate_minus_baseline": 0.38876146788990823,
+          "decisions": 872,
+          "direction": "higher_is_better",
+          "groups": 872,
+          "interval_95": [
+            0.35206422018348627,
+            0.4266341743119266
+          ]
+        },
+        "coverage": {
+          "expected": 872,
+          "scored": 872,
+          "coverage": 1.0,
+          "incompatible_inputs": 0,
+          "invalid_predictions": 0,
+          "missing_predictions": 0
+        }
+      },
+      "reports": {
+        "training": "unsloth-decision-reports/training-03a02602-b320-42c1-9d0f-11379b0be5cd.json",
+        "evaluation": "unsloth-decision-reports/evaluation-d5c46c15-df3f-47b6-a542-fe294317699b.json"
+      }
+    },
+    "qwen35": {
+      "job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+      "evaluation": "22663bb7-1280-493e-9679-cd9770cb8214",
+      "base_model": "Qwen/Qwen3.5-0.8B",
+      "runtime": {
+        "app": "overmind-sft-ebc520f5648151eec275bf69",
+        "release": "ebc520f5648151eec275bf69da99f82d08077a024544a985529de03dd980fa2f",
+        "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+        "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+        "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+        "environment": "overmind-dev"
+      },
+      "status": "succeeded",
+      "artifact": {
+        "artifact_identity": "b66293acee79db154c1c1f8ccda392649bd02554b99df1ff553f3a16d4f1c969",
+        "inference_contract": "typed_probabilities",
+        "reload_verification": {
+          "decisions": 32,
+          "tolerance": 0.0001,
+          "weight_reload": "exact",
+          "max_absolute_error": 0.0,
+          "attention_implementation": "sdpa"
+        }
+      },
+      "evaluation_status": "completed",
+      "outcome": {
+        "training_status": "succeeded",
+        "artifact": {
+          "artifact_identity": "b66293acee79db154c1c1f8ccda392649bd02554b99df1ff553f3a16d4f1c969",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "provider_run_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6",
+        "monitoring_checks": 10,
+        "recorded_training_usd": 0.4963,
+        "recorded_basis": {
+          "basis": "recorded_worker_gpu_seconds",
+          "cost_usd": 0.4963,
+          "exclusions": [
+            "unreported_worker_time",
+            "image_boot",
+            "idle",
+            "cpu",
+            "memory",
+            "storage",
+            "network"
+          ],
+          "rate_source": "modal.Workspace.billing.rates",
+          "measurements": [
+            {
+              "usd": 0.4962656468874028,
+              "seconds": 452.292741467,
+              "gpu_type": "H100",
+              "usage_id": "ade54086e8c0462a85aa08f7d75d73b7",
+              "gpu_count": 1,
+              "usd_per_second": 0.0010972222222222223
+            }
+          ],
+          "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00"
+        },
+        "evaluation_status": "completed",
+        "before": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.4995728249012163
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.6927199497764284
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          }
+        },
+        "after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.15503431680773724
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.292191666624679
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          }
+        },
+        "calibrated_after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.14878409866250247
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.26747837864392887
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          }
+        },
+        "paired_accuracy": {
+          "candidate_minus_baseline": 0.4151376146788991,
+          "decisions": 872,
+          "direction": "higher_is_better",
+          "groups": 872,
+          "interval_95": [
+            0.3761467889908257,
+            0.4541284403669725
+          ]
+        },
+        "coverage": {
+          "expected": 872,
+          "scored": 872,
+          "coverage": 1.0,
+          "incompatible_inputs": 0,
+          "invalid_predictions": 0,
+          "missing_predictions": 0
+        }
+      },
+      "reports": {
+        "training": "unsloth-decision-reports/training-bce5630c-c13d-49c1-b86f-e72189c8977e.json",
+        "evaluation": "unsloth-decision-reports/evaluation-22663bb7-1280-493e-9679-cd9770cb8214.json"
+      }
+    }
+  },
+  "failed_training_history": [
+    {
+      "job": "9157305b-6b8b-4778-8dbc-cf66c162a785",
+      "state": "failed",
+      "probability_error": 0.00023251771926879883,
+      "evaluation": "2840b98e-a756-4b28-9a1d-dd8565836849"
+    },
+    {
+      "job": "114a1e42-ce5b-4ada-be9b-a01170b4e6c1",
+      "state": "failed",
+      "probability_error": 0.010771095752716064,
+      "evaluation": "6ba1475b-8a4c-4f61-ab87-0a37af2f8f66"
+    },
+    {
+      "job": "2549d645-a677-40cb-8519-996ece6bd4da",
+      "model": "Qwen/Qwen3-0.6B",
+      "reason": "First fresh-process batch differed; second and third evaluations matched exactly without trainer initialization or weight changes.",
+      "max_absolute_error": 0.0009163022041320801,
+      "tolerance": 0.0001
+    }
+  ],
+  "pipeline": {
+    "id": "45368aed-f1f2-43a6-a7ff-b29d9f7a8d55",
+    "package": "6ffb2722-51d5-443a-bf43-81a10fe92dc1",
+    "path": "tests/evidence/unsloth_sst2_pipeline",
+    "parameters": {
+      "seed": 42,
+      "max_groups": 2560,
+      "exclude_final": true,
+      "revision": "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
+    }
+  },
+  "previous_runtime_runs": [
+    {
+      "model": "Qwen/Qwen3.5-0.8B",
+      "job": "fa3f93f1-31eb-40b4-88e1-2432a799e738",
+      "evaluation": "c1caf829-efb7-4808-b486-0f994ba3b6d2",
+      "training_state": "succeeded",
+      "evaluation_state": "completed"
+    },
+    {
+      "model": "Qwen/Qwen3-0.6B",
+      "job": "2549d645-a677-40cb-8519-996ece6bd4da",
+      "evaluation": "e7dd91e2-f243-40c3-840e-f34c907a0481",
+      "training_state": "failed",
+      "evaluation_state": "failed"
+    },
+    {
+      "model": "Qwen/Qwen3-0.6B",
+      "job": "970c8a98-8101-4dc5-9640-17605485211e",
+      "evaluation": "f77b250f-f3cc-44ed-b211-52dfdf57c29d",
+      "training_state": "succeeded",
+      "evaluation_state": "completed"
+    },
+    {
+      "model": "Qwen/Qwen3.5-0.8B",
+      "job": "76027261-75c0-4f51-b440-2ec98b80c6c2",
+      "evaluation": "df14b471-2dbc-45a0-98f9-f430e5419858",
+      "training_state": "succeeded",
+      "evaluation_state": "completed"
+    }
+  ],
+  "backend_verification": {
+    "command": ".venv/bin/pytest -q tests/test_training*.py tests/test_decision*.py tests/test_native*.py tests/test_finetuning*.py tests/test_sft_training_chat_template.py tests/test_mcp_finetuning*.py tests/test_mcp_resources.py tests/test_mcp_catalog.py tests/test_mcp_manifest.py tests/test_mcp_prompts.py tests/test_mcp_workflow_friction.py tests/test_workflow_measurements.py tests/test_mcp_research_journey.py tests/test_operational_progress.py",
+    "passed": 952,
+    "skipped": 2,
+    "skip_reason": "Optional Baseten truss_train and truss.remote.remote_factory packages unavailable",
+    "warnings": 135,
+    "warning_basis": "Local Modal upload fixtures and test JWT secret length",
+    "seconds": 27.83,
+    "log": "/tmp/unsloth-decision-cutover-regression.log"
+  },
+  "final_record": "tests/evidence/unsloth-decision-final.json"
+}

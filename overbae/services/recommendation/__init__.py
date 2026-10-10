@@ -167,8 +167,8 @@ def estimate_for_hyperparams(
     if active_backend() == "modal" and native:
         from overbae.services.training_forecast import forecast
 
-        tokens = selected_tokens * n_epochs
         recipe = {**(hyperparameters or {}), "objective": dataset_objective(selected)}
+        tokens = selected_tokens * int(recipe.get("n_epochs", n_epochs))
         measured = forecast(dataset.project_id, base_model, recipe, tokens=tokens, stats=stats)
         measured["token_estimate"] = "proportional_to_selected_rows"
         measured["selected_training_rows"] = count

@@ -1,0 +1,360 @@
+{
+  "summary": "ready: ready.",
+  "operation": {
+    "id": "cc2650af-62a9-4a25-aef1-717f387f3e81",
+    "kind": "training_preparation",
+    "reference": "4cc4e2cc-619d-4d15-a66c-d8015cb0771e",
+    "attempt": "2026-10-11T19:48:09.417159+00:00",
+    "unit": "rows",
+    "facts": {
+      "deadline": "2026-10-11T19:48:09.417159+00:00",
+      "provider": "modal",
+      "retry_safe": false,
+      "provider_call_id": "fc-01M4KNQSCEZNPSRBJHRVT0B24C",
+      "source_export_rows": null,
+      "telemetry_available": true
+    },
+    "stage": "ready",
+    "total": 713,
+    "status": "ready",
+    "completed": 713,
+    "event_count": 16,
+    "last_observed_at": "2026-10-10T19:48:54.568825+00:00",
+    "last_heartbeat_at": null,
+    "last_progress_at": "2026-10-10T19:48:54.568825+00:00",
+    "telemetry": "recorded",
+    "provider": {},
+    "events": [
+      {
+        "sequence": 1,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:09.448479+00:00",
+        "observed_at": "2026-10-10T19:48:09.448479+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": false
+        },
+        "stage": "starting",
+        "total": null,
+        "status": "starting",
+        "completed": null,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 2,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.158166+00:00",
+        "observed_at": "2026-10-10T19:48:14.158166+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 0,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 3,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.174661+00:00",
+        "observed_at": "2026-10-10T19:48:14.174661+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 71,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 4,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.180972+00:00",
+        "observed_at": "2026-10-10T19:48:14.180972+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 142,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 5,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.187334+00:00",
+        "observed_at": "2026-10-10T19:48:14.187334+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 213,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 6,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.195561+00:00",
+        "observed_at": "2026-10-10T19:48:14.195561+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 284,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 7,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.202816+00:00",
+        "observed_at": "2026-10-10T19:48:14.202816+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 355,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 8,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.209014+00:00",
+        "observed_at": "2026-10-10T19:48:14.209014+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 426,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 9,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.215625+00:00",
+        "observed_at": "2026-10-10T19:48:14.215625+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 497,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 10,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.221193+00:00",
+        "observed_at": "2026-10-10T19:48:14.221193+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 568,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 11,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.227656+00:00",
+        "observed_at": "2026-10-10T19:48:14.227656+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 639,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 12,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.232718+00:00",
+        "observed_at": "2026-10-10T19:48:14.232718+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 710,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 13,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.234237+00:00",
+        "observed_at": "2026-10-10T19:48:14.234237+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "exporting",
+        "total": 713,
+        "status": "starting",
+        "completed": 713,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 14,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:14.236009+00:00",
+        "observed_at": "2026-10-10T19:48:14.236009+00:00",
+        "unit": null,
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": null,
+          "source_export_rows": 713,
+          "telemetry_available": true
+        },
+        "stage": "uploading",
+        "total": null,
+        "status": "starting",
+        "completed": null,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 15,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:16.488431+00:00",
+        "observed_at": "2026-10-10T19:48:16.488431+00:00",
+        "unit": null,
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": "fc-01M4KNQSCEZNPSRBJHRVT0B24C",
+          "source_export_rows": 713,
+          "telemetry_available": true
+        },
+        "stage": "uploading",
+        "total": null,
+        "status": "running",
+        "completed": null,
+        "heartbeat_at": null
+      },
+      {
+        "sequence": 16,
+        "event": "progress",
+        "source_at": "2026-10-10T19:48:54.568825+00:00",
+        "observed_at": "2026-10-10T19:48:54.568825+00:00",
+        "unit": "rows",
+        "facts": {
+          "deadline": "2026-10-11T19:48:09.417159+00:00",
+          "provider": "modal",
+          "retry_safe": false,
+          "provider_call_id": "fc-01M4KNQSCEZNPSRBJHRVT0B24C",
+          "source_export_rows": null,
+          "telemetry_available": true
+        },
+        "stage": "ready",
+        "total": 713,
+        "status": "ready",
+        "completed": 713,
+        "heartbeat_at": null
+      }
+    ],
+    "page": {
+      "has_more": false,
+      "next_cursor": 16,
+      "through_sequence": 16
+    }
+  },
+  "resource": {
+    "uri": "overmind://operations/cc2650af-62a9-4a25-aef1-717f387f3e81?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+    "title": "Operational timeline",
+    "mimeType": "application/json"
+  }
+}

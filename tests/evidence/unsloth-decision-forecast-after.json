@@ -1,0 +1,225 @@
+{
+  "monitoring": {
+    "policy": {
+      "version": 1,
+      "mode": "steps",
+      "initial": true,
+      "final": true,
+      "loss_sample": 257,
+      "train_sample": 64,
+      "seed": 42,
+      "interval_steps": 32,
+      "target_seconds": 300,
+      "overhead_fraction": 0.1,
+      "max_checks": 12,
+      "generation_every": 3,
+      "generation": null,
+      "selection": "last",
+      "early_stopping": null,
+      "failure_policy": "continue"
+    },
+    "cost_coverage": "Periodic validation, generation probes and checkpoint storage are not yet measured by this forecast",
+    "overhead_target_is_spend_cap": false
+  },
+  "forecast": {
+    "basis": "matched_measurements",
+    "gpu_type": "H100",
+    "gpu_count": 1,
+    "rate_card": {
+      "status": "current",
+      "rates": {
+        "gpu_hour_cost_a100_40gb": 2.1,
+        "endpoints_moonshotai_kimi_k3_reasoning_mtok_cost": 15,
+        "endpoints_moonshotai_kimi_k3_prompt_mtok_cost": 3,
+        "endpoints_nvidia_glm_5.2_nvfp4_completion_mtok_cost": 1,
+        "gpu_hour_cost_l4": 0.8,
+        "endpoints_nvidia_glm_5.2_nvfp4_reasoning_mtok_cost": 1,
+        "cpu_hour_cost": 0.0473,
+        "endpoints_zai_org_glm_5.3_flash_prompt_mtok_cost": 0.45,
+        "endpoints_qwen_qwen3.8_2.4t_a95b_reasoning_mtok_cost": 6,
+        "endpoints_nvidia_glm_5.2_nvfp4_prompt_mtok_cost": 1,
+        "gpu_hour_cost_a10g": 1.1,
+        "gpu_hour_cost_b200": 6.25,
+        "endpoints_zai_org_glm_5.3_reasoning_mtok_cost": 4.4,
+        "gpu_hour_cost_mi355x": 6.75,
+        "endpoints_thinkingmachines_inkling_nvfp4_reasoning_mtok_cost": 5,
+        "gpu_hour_cost_l40s": 1.95,
+        "volume_storage_gib_month_cost": 0.09,
+        "gpu_hour_cost_b300": 7.1,
+        "gpu_hour_cost_h200": 4.54,
+        "endpoints_thinkingmachines_inkling_nvfp4_prompt_mtok_cost": 1.2,
+        "endpoints_zai_org_glm_5.3_flash_completion_mtok_cost": 1.5,
+        "endpoints_zai_org_glm_5.3_prompt_mtok_cost": 1.4,
+        "gpu_hour_cost_a100_80gb": 2.5,
+        "mem_gib_hour_cost": 0.008,
+        "endpoints_qwen_qwen3.8_2.4t_a95b_prompt_mtok_cost": 2,
+        "endpoints_qwen_qwen3.8_2.4t_a95b_cached_prompt_mtok_cost": 0.25,
+        "endpoints_nvidia_glm_5.2_nvfp4_cached_prompt_mtok_cost": 1,
+        "endpoints_thinkingmachines_inkling_nvfp4_cached_prompt_mtok_cost": 0.27,
+        "endpoints_zai_org_glm_5.3_cached_prompt_mtok_cost": 0.26,
+        "mem_gib_hour_cost_sandbox": 0.024,
+        "endpoints_thinkingmachines_inkling_nvfp4_completion_mtok_cost": 5,
+        "endpoints_zai_org_glm_5.3_flash_reasoning_mtok_cost": 1.5,
+        "endpoints_moonshotai_kimi_k3_cached_prompt_mtok_cost": 0.3,
+        "endpoints_zai_org_glm_5.3_flash_cached_prompt_mtok_cost": 0.09,
+        "gpu_hour_cost_h100": 3.95,
+        "gpu_hour_cost_rtx6000": 3.03,
+        "gpu_hour_cost_t4": 0.59,
+        "endpoints_qwen_qwen3.8_2.4t_a95b_completion_mtok_cost": 6,
+        "endpoints_moonshotai_kimi_k3_completion_mtok_cost": 15,
+        "egress_gib_cost": 0.04,
+        "endpoints_zai_org_glm_5.3_completion_mtok_cost": 4.4,
+        "cpu_hour_cost_sandbox": 0.1419
+      },
+      "source": "modal.Workspace.billing.rates",
+      "fetched_at": "2026-10-10T18:33:44.483293+00:00",
+      "cache_seconds": 300
+    },
+    "price_status": "current",
+    "gpu_hour_usd": 3.95,
+    "duration_status": "estimated",
+    "estimate_blockers": [],
+    "trained_tokens": 749476,
+    "training_seconds": [
+      178.392123246,
+      535.1763697380001
+    ],
+    "training_gpu_usd": [
+      0.1957,
+      0.5872
+    ],
+    "evidence_jobs": [
+      "fa3f93f1-31eb-40b4-88e1-2432a799e738"
+    ],
+    "evidence": [
+      {
+        "job": "fa3f93f1-31eb-40b4-88e1-2432a799e738",
+        "elapsed_seconds": 356.784246492,
+        "source_estimated_tokens": 749476,
+        "scaled_seconds": 356.784246492
+      }
+    ],
+    "rejected_measurements": {
+      "runtime": 2
+    },
+    "confidence": "low",
+    "planning_margin": {
+      "lower_multiplier": 0.5,
+      "upper_multiplier": 1.5
+    },
+    "all_in_usd": null,
+    "runtime": {
+      "app": "overmind-sft-ce04025798a3784e49242bf2",
+      "release": "ce04025798a3784e49242bf2db5ea76e6a9502cc6576cc1496f5cb02c0e1c208",
+      "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+      "training": "5572f4d1306b031115fd2f6c5fca9ca1242e7dc4e801de063aee46f30dcd83bc",
+      "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+      "environment": "overmind-dev"
+    },
+    "measurement_window": "completed_gpu_execution_including_load_validation_and_reload",
+    "token_basis": "source_character_estimate_for_both_requested_and_evidence_workloads",
+    "budget_enforcement": "none",
+    "unpriced_components": [
+      "preparation",
+      "training_cpu_memory",
+      "native_final_calibration",
+      "storage"
+    ],
+    "limitations": [
+      "Matched model, training/processor identity, hardware, recipe and character-length profile. Completed execution is scaled within 0.5–2x source-estimated workload; validation mix and length tails can still differ.",
+      "Observed range with an explicit planning margin, not a statistical confidence interval or spend cap.",
+      "Queue time and future provider price changes are not bounded."
+    ],
+    "token_estimate": "proportional_to_selected_rows",
+    "selected_training_rows": 2059
+  },
+  "selection": {
+    "train_dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+    "train_cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+    "train_fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+    "train_rows": 2059,
+    "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+    "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+    "validation_fingerprint": "f59157464d52ac1ddd1db326b1ce811138ad0becc16df51fc9bcb23f5452616a",
+    "validation_rows": 257,
+    "eval_dataset": null,
+    "eval_cell": null,
+    "eval_fingerprint": null,
+    "eval_rows": null,
+    "validation_enabled": true,
+    "validation_split_ratio": null,
+    "split_method": null,
+    "eval_set": null,
+    "evaluations": {
+      "eval_model_before": false,
+      "eval_model_after": false,
+      "eval_incumbent_before": false,
+      "eval_incumbent_after": false
+    },
+    "grouping": [
+      "exact_input_content",
+      "declared_case_group",
+      "synthetic_seed"
+    ],
+    "fingerprint": "096433b6a1d62c054bb030b75f8f5396f898fba00671af1985f550bf598abd98"
+  },
+  "training_contract": {
+    "objective": "decision_cross_entropy",
+    "inference_contract": "decision",
+    "target": "declared_decision_supervision",
+    "target_semantics": {
+      "categorical_gold": 2059
+    },
+    "losses": {
+      "distribution": "cross_entropy",
+      "ordinal_mean": "squared_error_of_normalized_expectation"
+    },
+    "methods": [
+      "lora"
+    ],
+    "providers": [
+      "modal"
+    ],
+    "metrics": [
+      "cross_entropy",
+      "brier",
+      "hard_label_accuracy",
+      "expected_score_mae",
+      "coverage"
+    ],
+    "evaluation": "native_probabilities",
+    "max_gpus": 1,
+    "pre_training_baseline": true
+  },
+  "summary": "Fine-tuning estimate calculated.",
+  "cost_estimate": {
+    "usd": 0.5872,
+    "price_per_million_usd": null,
+    "trained_tokens": 749476,
+    "minimum_applied": false
+  },
+  "time_estimate": {
+    "seconds": null,
+    "human": "2–9 min"
+  },
+  "trained_tokens": 749476,
+  "cell": {
+    "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+    "version": "1.0",
+    "title": "Source",
+    "rows": 2059,
+    "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+    "fits": true,
+    "reason": "",
+    "warnings": [
+      "No current workshop quality review."
+    ]
+  },
+  "resource_links": [
+    {
+      "uri": "overmind://datasets/13897bd0-b262-56ee-b48c-2e697da451a5?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+      "title": "SST-2 training/development/calibration · content groups · train",
+      "mimeType": "application/json"
+    }
+  ]
+}

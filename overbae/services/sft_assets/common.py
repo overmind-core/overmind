@@ -291,7 +291,8 @@ class ProgressCallback(TrainerCallback):
         # static later isolates activations for ACTIVATION_BYTES calibration.
         self._vram_static_gb = _vram_gb(torch.cuda.memory_allocated)
         model = kwargs.get("model")
-        cfg = getattr(model, "config", None)
+        cfg = getattr(getattr(model, "encoder", model), "config", None)
+        cfg = getattr(cfg, "text_config", None) or cfg
         self._emit(
             "BT_MEMORY",
             {
@@ -384,6 +385,7 @@ class ProgressCallback(TrainerCallback):
         if "eval_mean_token_accuracy" in metrics:
             record["eval_token_accuracy"] = round(float(metrics["eval_mean_token_accuracy"]), 4)
         for key in (
+            "cross_entropy",
             "argmax_target_agreement",
             "hard_label_accuracy",
             "hard_label_decisions",

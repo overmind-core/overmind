@@ -16,7 +16,7 @@ from modal_shared.decision_artifact import read_artifact
 from modal_shared.images.train import TRAIN_IMAGES
 from modal_shared.preparation import training_fingerprint
 from modal_shared.serving.artifacts import atomic_json, digest_file
-from modal_shared.stacks import TRAIN_U2026_8_18
+from modal_shared.stacks import TRAIN_DECISION
 from modal_shared.training_release import evaluation_identity
 
 RELEASE = (
@@ -30,7 +30,7 @@ app = modal.App(
 )
 volume = modal.Volume.from_name("overmind-sft")
 weights = modal.Volume.from_name("overmind-weights")
-image = TRAIN_IMAGES[TRAIN_U2026_8_18]
+image = TRAIN_IMAGES[TRAIN_DECISION]
 assets = Path("/root/sft_assets")
 
 
@@ -119,13 +119,13 @@ def prediction_environment(directory, model, work, base_only, inference):
             "model_config": {
                 "MODEL_ID": report["foundation"]["hf_model"],
                 "BASE_MODEL_PATH": report["foundation"]["base_path"],
-                "UNSLOTH_IMAGE": TRAIN_U2026_8_18,
+                "UNSLOTH_IMAGE": TRAIN_DECISION,
                 "TRAINING_TYPE": "Lora",
                 "LOAD_IN_4BIT": "0",
             },
         }
     )
-    if training["model_config"]["UNSLOTH_IMAGE"] != TRAIN_U2026_8_18:
+    if training["model_config"]["UNSLOTH_IMAGE"] != TRAIN_DECISION:
         raise ValueError("Decision evaluation requires the qualified training stack")
     shutil.copy2(directory / "preparation.json", work / "preparation.json")
     shutil.copytree(model / "final" if model else directory / "tokenizer", work / "tokenizer")

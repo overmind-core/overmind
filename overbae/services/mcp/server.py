@@ -37,7 +37,7 @@ from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
 
 SERVER_NAME = "overmind-platform"
-SERVER_VERSION = "6.2.1"
+SERVER_VERSION = "6.3.0"
 
 mcp_server = Server(
     SERVER_NAME,

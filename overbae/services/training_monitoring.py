@@ -1,5 +1,8 @@
 import json
+import re
+from copy import deepcopy
 from datetime import UTC, datetime
+from uuid import UUID
 
 import jsonschema
 import modal
@@ -390,6 +393,83 @@ def snapshot(job, *, offset=0, limit=25):
     }
 
 
+def overview(job, *, offset=0, limit=25):
+    detail = deepcopy(snapshot(job, offset=offset, limit=limit))
+    for collection in ("checks", "checkpoints"):
+        for entry in detail[collection]:
+            paths = [("metrics", "categorical_families")]
+            if collection == "checks":
+                assessment = (entry.get("facts") or {}).get("assessment") or {}
+                if assessment.get("source") == "recorded_native_categorical_metrics":
+                    paths.extend(
+                        ("facts", "assessment", key) for key in ("comparisons", "findings")
+                    )
+            for path in paths:
+                parent = entry
+                for segment in path[:-1]:
+                    parent = parent.get(segment) or {}
+                value = parent.get(path[-1])
+                if not isinstance(value, (dict, list)):
+                    continue
+                del parent[path[-1]]
+                entry.setdefault("collections", []).append(
+                    {
+                        "field": f"/{collection}/{entry['id']}/{'/'.join(path)}",
+                        "count": len(value),
+                        "type": "object" if isinstance(value, dict) else "array",
+                        "sha256": fingerprint(value),
+                    }
+                )
+    return detail
+
+
+def field_page(job, field, *, offset=0, limit=25):
+    if not field.startswith("/") or re.search(r"~(?![01])", field):
+        raise ValueError("Expected a retained receipt JSON Pointer")
+    parts = [part.replace("~1", "/").replace("~0", "~") for part in field[1:].split("/")]
+    if len(parts) < 3:
+        raise ValueError("Select a field within a check or checkpoint")
+    collection, identity, name, *segments = parts
+    if collection == "checks" and name in {"metrics", "facts", "coverage", "error"}:
+        receipt = job.validation_runs.filter(pk=UUID(identity)).first()
+        name = "failure" if name == "error" else name
+    elif collection == "checkpoints" and name in {"metrics", "manifest", "verification"}:
+        receipt = job.retained_checkpoints.filter(pk=UUID(identity)).first()
+    else:
+        raise ValueError("Unknown retained receipt field")
+    if receipt is None:
+        raise ValueError("Receipt not found in this job")
+    value = getattr(receipt, name)
+    for segment in segments:
+        if isinstance(value, dict) and segment in value:
+            value = value[segment]
+        elif isinstance(value, list) and re.fullmatch(r"0|[1-9][0-9]*", segment):
+            index = int(segment)
+            if index >= len(value):
+                raise ValueError("Receipt array index is out of range")
+            value = value[index]
+        else:
+            raise ValueError("Receipt field does not exist")
+    if isinstance(value, dict):
+        keys = sorted(value)
+        count, kind = len(keys), "object"
+        items = [{"key": key, "value": value[key]} for key in keys[offset : offset + limit]]
+    elif isinstance(value, list):
+        count, kind = len(value), "array"
+        items = value[offset : offset + limit]
+    else:
+        count, kind = 1, "scalar"
+        items = [value][offset : offset + limit]
+    return {
+        "available": True,
+        "count": count,
+        "items": items,
+        "next_offset": offset + limit if offset + limit < count else None,
+        "sha256": fingerprint(value),
+        "metadata": {"field": field, "type": kind},
+    }
+
+
 def summary(job):
     check = job.validation_runs.order_by("-attempt", "-step", "-created_at").first()
     generated = (
@@ -399,10 +479,45 @@ def summary(job):
         .first()
     )
     selected = job.retained_checkpoints.filter(selected=True).first()
+    decision = (
+        job.validation_runs.filter(metrics__decisions__isnull=False)
+        .exclude(metrics__decisions=None)
+        .order_by("-attempt", "-step", "-created_at")
+        .first()
+    )
     generation = (check.metrics.get("generation") or {}) if check else {}
     return {
         "policy": (job.hyperparameters or {}).get("monitoring"),
         "check_count": job.validation_runs.count(),
+        "latest_decision_check": {
+            "id": str(decision.pk),
+            "state": decision.state,
+            "step": decision.step,
+            "attempt": decision.attempt,
+            "stream": decision.stream,
+            "observed_at": _iso(decision.observed_at),
+            "sample_fingerprint": decision.sample_fingerprint,
+            "metrics": {
+                key: decision.metrics.get(key)
+                for key in (
+                    "eval_loss",
+                    "cross_entropy",
+                    "brier",
+                    "hard_label_accuracy",
+                    "expected_score_mae",
+                    "decisions",
+                    "distribution_decisions",
+                    "mean_decisions",
+                    "hard_label_decisions",
+                )
+            },
+            "coverage": decision.coverage,
+            "assessment": decision.facts.get("assessment"),
+            "findings": decision.facts.get("findings", []),
+            "error": decision.failure,
+        }
+        if decision
+        else None,
         "latest_generation_check": {
             "id": str(generated.pk),
             "state": generated.state,

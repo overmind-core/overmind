@@ -66,6 +66,11 @@ def _comparison(generation, labels):
 
 
 def assessment(job, check):
+    if (job.hyperparameters or {}).get("objective") in {
+        "decision_cross_entropy",
+        "decision_supervised",
+    }:
+        return decision_assessment(job, check)
     policy = (job.hyperparameters or {}).get("monitoring") or {}
     probe = policy.get("generation") or {}
     generation = check.metrics.get("generation")
@@ -141,4 +146,114 @@ def assessment(job, check):
         }
         for item in result["findings"]
     ]
+    return result
+
+
+def decision_assessment(job, check):
+    families = check.metrics.get("categorical_families")
+    if check.state != "completed" or not families:
+        return None
+    policy = (job.hyperparameters or {}).get("monitoring") or {}
+    previous = check.facts.get("assessment")
+    if (
+        previous
+        and previous.get("rule_version") == 2
+        and previous.get("source_receipt_fingerprint") == check.receipt_fingerprint
+    ):
+        return previous
+    observed = timezone.now().isoformat()
+    result = {
+        "source": "recorded_native_categorical_metrics",
+        "rule_version": 2,
+        "source_receipt_fingerprint": check.receipt_fingerprint,
+        "source_observed_at": check.observed_at.isoformat() if check.observed_at else None,
+        "assessed_at": observed,
+        "state": "inconclusive",
+        "comparisons": [],
+        "findings": [],
+        "limitations": [
+            "Same scored development subset within each declared categorical question and option set",
+            "Soft distributions and mean targets do not establish categorical correctness",
+            "No inferred cause, automatic training action or final-benchmark conclusion",
+        ],
+    }
+    try:
+        if fingerprint(policy) != check.policy_fingerprint or not isinstance(families, dict):
+            raise ValueError("Decision policy identity differs")
+        scored = 0
+        for key, family in families.items():
+            if fingerprint({k: family[k] for k in ("question", "kind", "options")}) != key:
+                raise ValueError("Decision family identity differs")
+            labels = family["options"]
+            if not 2 <= len(labels) <= 255 or len(set(labels)) != len(labels):
+                raise ValueError("Invalid decision option set")
+            matrix = family["confusion_matrix"]
+            count = _count(family["scored"])
+            comparison = _comparison(
+                {
+                    "labels": labels,
+                    "expected": family["expected"],
+                    "scored": count,
+                    "technical_errors": 0,
+                    "unscorable": 0,
+                    "invalid_labels": 0,
+                    "per_class": {
+                        label: {"support": n}
+                        for label, n in zip(labels, family["support"], strict=True)
+                    },
+                    "prediction_distribution": dict(zip(labels, family["predicted"], strict=True)),
+                    "confusion_matrix": matrix,
+                    "accuracy": sum(matrix[i][i] for i in range(len(labels))) / count,
+                },
+                labels,
+            )
+            scored += comparison["scored"]
+            result["comparisons"].append({"family_fingerprint": key, **comparison})
+            codes = []
+            if comparison["unpredicted_label_indices"]:
+                codes.append(
+                    (
+                        "represented_labels_not_predicted",
+                        "Some represented categorical options have no predictions",
+                    )
+                )
+            if comparison["correct"] < comparison["majority_correct"]:
+                codes.append(
+                    (
+                        "below_probe_majority_baseline",
+                        "Accuracy is below the majority-option baseline on the same scored decisions",
+                    )
+                )
+            for code, message in codes:
+                result["findings"].append(
+                    {
+                        "id": f"{check.pk}:{key}:{code}:2",
+                        "code": code,
+                        "message": message,
+                        "rule_version": 2,
+                        "state": "observed",
+                        "check_id": str(check.pk),
+                        "step": check.step,
+                        "sample_fingerprint": check.sample_fingerprint,
+                        "family_fingerprint": key,
+                        "assessed_at": observed,
+                        "scope": "scored_development_categorical_decisions",
+                        "action": "none",
+                    }
+                )
+        if (
+            not 0
+            < scored
+            <= _count(check.metrics.get("hard_label_decisions"))
+            <= _count(check.coverage.get("scored"))
+        ):
+            raise ValueError("Decision coverage differs")
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError, ZeroDivisionError):
+        result.update(
+            comparisons=[],
+            findings=[],
+            reason="Decision identities, counts or coverage are missing or inconsistent",
+        )
+        return result
+    result["state"] = "measured"
     return result

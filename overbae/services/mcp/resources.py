@@ -1317,7 +1317,7 @@ def interface_resource():
         else None
     )
     return {
-        "contract_version": "6.2.1",
+        "contract_version": "6.3.0",
         "transfer_protocol_version": 1,
         "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
         "tool_count": len(manifest),

@@ -44,6 +44,39 @@ def call(client, key, name, arguments):
     return result.get("structuredContent") or json.loads(result["content"][0]["text"])
 
 
+@pytest.mark.parametrize("tool", ["derive_dataset", "explore_dataset"])
+def test_exploration_request_recovery_survives_profiler_upgrade(tool):
+    project, _, dataset = workspace()
+    key, _ = APIToken.create_for_user(
+        project.memberships.first().user, project=project, permission=["read", "write"]
+    )
+    arguments = {
+        "name": "Frozen request",
+        "source_cell": str(dataset.active_cell.pk),
+        "request_key": "recover-after-profiler-upgrade",
+    }
+    with (
+        TestClient(create_mcp_application()) as client,
+        patch("overbae.tasks.data_exploration.run.delay"),
+    ):
+        with patch.object(exploration, "PROFILE_VERSION", 1):
+            original = call(client, key, tool, arguments)
+        advance(original["workflow"]["id"])
+        with patch.object(exploration, "PROFILE_VERSION", 2):
+            recovered = call(client, key, tool, arguments)
+            assert recovered["workflow"]["id"] == original["workflow"]["id"]
+            fresh = call(
+                client, key, tool, {**arguments, "request_key": "new-profiler-measurement"}
+            )
+        advance(fresh["workflow"]["id"])
+        measured = call(
+            client, key, "get_job", {"kind": "data_exploration", "id": fresh["workflow"]["id"]}
+        )
+        assert measured["status"] == "completed"
+        if tool == "explore_dataset":
+            assert "reused_from" not in measured["progress"]["report"]
+
+
 def test_training_draft_validation_names_the_recipe_correction_without_log_access(settings):
     settings.FINETUNING_BACKEND = "modal"
     project, _, dataset = workspace()
@@ -518,5 +551,5 @@ def test_account_client_discovers_interface_without_selecting_a_project():
         body = response.json()
         assert "error" not in body, body
         resource = json.loads(body["result"]["contents"][0]["text"])
-        assert resource["contract_version"] == "6.2.1"
+        assert resource["contract_version"] == "6.3.0"
         assert len(resource["catalog_sha256"]) == 64

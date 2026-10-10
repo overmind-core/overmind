@@ -97,12 +97,6 @@ from common import (  # noqa: E402
     rewrite_adapter_base_model,
 )
 from datasets import Dataset  # noqa: E402
-from decision_engine import (  # noqa: E402
-    predict_checkpoint,
-    serve_decisions,
-    verify_checkpoint,
-)
-from decision_engine import train as train_decisions  # noqa: E402
 from pretok import pretok_row  # noqa: E402
 from token_accuracy import TokenAccuracy  # noqa: E402
 from training_monitor import TrainingMonitorCallback  # noqa: E402
@@ -110,7 +104,6 @@ from transformers import AutoTokenizer  # noqa: E402
 from trl import SFTConfig, SFTTrainer  # noqa: E402
 from truncation import refuse_truncation  # noqa: E402
 
-from modal_shared.decisions import DECISION_OBJECTIVES  # noqa: E402
 from modal_shared.training_data import row_key  # noqa: E402
 
 apply_shared_patches()
@@ -479,21 +472,6 @@ def main() -> None:
         _moe_integrations._grouped_mm = _grouped_mm_dtype_safe
     except (ImportError, AttributeError):
         pass  # transformers.integrations.moe not present/shaped this way — no-op
-
-    if os.environ.get("TRAINING_OBJECTIVE") in DECISION_OBJECTIVES:
-        if os.environ.get("DECISION_SERVICE_SOCKET"):
-            serve_decisions(model, _inner_tok)
-            return
-        if os.environ.get("DECISION_INPUTS_PATH"):
-            predict_checkpoint(model, _inner_tok)
-            return
-        if os.environ.get("DECISION_VERIFY_CHECKPOINT") == "1":
-            verify_checkpoint(model, _inner_tok)
-            return
-        emit_stage("loading_training_dataset")
-        train_decisions(model, _inner_tok)
-        rewrite_adapter_base_model(CHECKPOINT_DIR, adapter_base_model)
-        return
 
     emit_stage("loading_training_dataset")
     train_rows = load_jsonl("data.jsonl")

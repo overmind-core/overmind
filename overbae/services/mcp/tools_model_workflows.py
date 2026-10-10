@@ -452,7 +452,7 @@ def register_model_workflow_tools(catalog):
         (
             "resume_native_evaluation",
             "Resume decision comparison",
-            "Resume unfinished collection or saved-response analysis. Reconcile unresolved native submissions with their existing call ID; never replay unknown external submissions.",
+            "Resume unfinished collection or saved-response analysis. On a paused comparison, explicitly select a local verify_inputs, fit_calibration or score stage to retry local work, or supply the exact recorded native call_id to recover an interrupted collector. Reconcile unresolved native submissions with their existing call ID; never replay unknown external submissions.",
             ResumeComparisonInput,
             WorkflowOutput,
             resume_comparison,

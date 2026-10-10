@@ -3,11 +3,13 @@ import json
 import sys
 from pathlib import Path
 
+from decision_tokenizer import encode_record
 from transformers import AutoTokenizer
 
 from modal_shared.decision_artifact import read_artifact
+from modal_shared.decision_encoding import RENDERER
 from modal_shared.decision_inference import prepare_requests
-from modal_shared.decisions import DECISION_OBJECTIVE, RENDERER, codebook
+from modal_shared.decisions import DECISION_OBJECTIVE
 from modal_shared.serving.artifacts import atomic_json, digest_file, read_base_manifest
 
 
@@ -28,7 +30,6 @@ def main(directory, model_directory):
             tokenizer.pad_token = tokenizer.eos_token
         artifact = {
             "identity": "base:" + base["identity"],
-            "codebook": codebook(tokenizer),
             "vocab_fingerprint": hashlib.sha256(
                 json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()
             ).hexdigest(),
@@ -56,8 +57,8 @@ def main(directory, model_directory):
             output,
             failures,
             tokenizer,
-            artifact["codebook"],
             prepared["context_length"],
+            encode_record,
         )
     atomic_json(
         directory / "preparation.json",
@@ -66,7 +67,6 @@ def main(directory, model_directory):
             **request,
             "objective": DECISION_OBJECTIVE,
             "renderer": RENDERER,
-            "codebook": artifact["codebook"],
             "vocab_fingerprint": vocab,
             "chat_template_sha256": hashlib.sha256(
                 str(tokenizer.chat_template).encode()

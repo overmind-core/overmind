@@ -10,13 +10,8 @@ import time
 from itertools import islice
 from pathlib import Path
 
-from modal_shared.decisions import (
-    DECISION_OBJECTIVES,
-    RENDERER,
-    TARGET_FIELDS,
-    DecisionTokenizer,
-    codebook,
-)
+from modal_shared.decision_encoding import RENDERER, DecisionEncoder
+from modal_shared.decisions import DECISION_OBJECTIVES, TARGET_FIELDS
 from modal_shared.preparation import preparation_failure, processor_fingerprint
 from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_data import file_digest, row_key
@@ -34,12 +29,15 @@ def preprocess_rows(
     objective=None,
     output=None,
     row_offset=0,
+    decision_encode=None,
 ):
     artifacts = []
     issues = []
     previews = []
-    book = codebook(tokenizer) if objective in DECISION_OBJECTIVES else None
-    encoder = DecisionTokenizer(tokenizer, book) if book is not None else None
+    native = objective in DECISION_OBJECTIVES
+    if native and decision_encode is None:
+        raise ValueError("Decision preparation requires the pinned Unsloth encoder")
+    encoder = DecisionEncoder(tokenizer, decision_encode) if native else None
     total_tokens = supervised_tokens = longest = incompatible = 0
     count = accepted = 0
 
@@ -53,11 +51,10 @@ def preprocess_rows(
         count += 1
         identity = row.get("source_row", index)
         try:
-            if book is not None:
+            if native:
                 result = encoder.training_row(row)
                 ids = result["input_ids"]
                 total_tokens += len(ids)
-                supervised_tokens += 1
                 longest = max(longest, len(ids))
                 if len(ids) > context_length:
                     raise ValueError(f"{len(ids)} tokens exceeds context length {context_length}")
@@ -69,7 +66,7 @@ def preprocess_rows(
                             "row": identity,
                             "cell": row.get("cell"),
                             "tokens": len(ids),
-                            "decision_options": len(result["option_token_ids"]),
+                            "decision_options": len(result["options"]),
                             **{key: result[key] for key in TARGET_FIELDS if key in result},
                         }
                     )
@@ -117,18 +114,22 @@ def preprocess_rows(
         "ready": bool(accepted) and incompatible == 0,
         "rows": count,
         "tokens": total_tokens,
-        "supervised_tokens": supervised_tokens,
+        **(
+            {"supervised_decisions": accepted}
+            if native
+            else {"supervised_tokens": supervised_tokens}
+        ),
         "max_tokens": longest,
         "incompatible_rows": incompatible,
         "issues": issues,
         "previews": previews,
     }
-    if book is not None:
-        report.update(objective=objective, renderer=RENDERER, codebook=book)
+    if native:
+        report.update(objective=objective, renderer=RENDERER)
     return artifacts, report
 
 
-def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
+def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize, *, decision_encode=None):
     request = json.loads(request_path.read_text())
     output_dir.mkdir(parents=True, exist_ok=True)
     if processor_fingerprint(Path(__file__).parent) != request["processor"]:
@@ -149,7 +150,9 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     source_path = request["rows_path"]
     if file_digest(source_path) != request["rows_sha256"]:
         raise ValueError("The preparation input changed.")
-    report = prepare_shards(request, output_dir, tokenizer, tokenize)
+    report = prepare_shards(
+        request, output_dir, tokenizer, tokenize, decision_encode=decision_encode
+    )
     report["vocab_fingerprint"] = hashlib.sha256(
         json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()
     ).hexdigest()
@@ -166,7 +169,7 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     (output_dir / "report.json").write_text(json.dumps(report, sort_keys=True))
 
 
-def prepare_shards(request, output_dir, tokenizer, tokenize):
+def prepare_shards(request, output_dir, tokenizer, tokenize, *, decision_encode=None):
     identity = hashlib.sha256(
         json.dumps(
             {
@@ -226,6 +229,7 @@ def prepare_shards(request, output_dir, tokenizer, tokenize):
                     objective=request.get("objective"),
                     output=output,
                     row_offset=offset,
+                    decision_encode=decision_encode,
                 )
             temporary.replace(path)
             manifest["shards"].append(
@@ -244,7 +248,9 @@ def prepare_shards(request, output_dir, tokenizer, tokenize):
         for key in (
             "rows",
             "tokens",
-            "supervised_tokens",
+            "supervised_decisions"
+            if request.get("objective") in DECISION_OBJECTIVES
+            else "supervised_tokens",
             "incompatible_rows",
         )
     }
@@ -255,7 +261,7 @@ def prepare_shards(request, output_dir, tokenizer, tokenize):
         previews=[preview for r in reports for preview in r["previews"]][:3],
     )
     if reports and "objective" in reports[0]:
-        report.update({key: reports[0][key] for key in ("objective", "renderer", "codebook")})
+        report.update({key: reports[0][key] for key in ("objective", "renderer")})
     progress("materializing")
     temporary = output_dir / "tokens.partial"
     with temporary.open("wb") as target:

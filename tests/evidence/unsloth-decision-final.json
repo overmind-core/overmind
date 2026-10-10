@@ -1,0 +1,693 @@
+{
+  "idempotency": {
+    "qwen3": {
+      "isError": false,
+      "expected_job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+      "returned_job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+      "status": "succeeded"
+    },
+    "qwen35": {
+      "isError": false,
+      "expected_job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+      "returned_job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+      "status": "succeeded"
+    }
+  },
+  "runtime": {
+    "app": "overmind-sft-ebc520f5648151eec275bf69",
+    "release": "ebc520f5648151eec275bf69da99f82d08077a024544a985529de03dd980fa2f",
+    "processor": "2fbdb5ab5401decfbb20e3695f4031b27a5f98e69ee3e39d5ff63ce7fb1fdc34",
+    "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+    "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+    "environment": "overmind-dev"
+  },
+  "evaluation_runtime": {
+    "app": "overmind-decision-eval-4622f892794f5c987b6748f7",
+    "release": "4622f892794f5c987b6748f7f1bd5aa21f3294140dc2c33c761a93206670b8b9",
+    "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+    "environment": "overmind-dev"
+  },
+  "status": "completed",
+  "runs": {
+    "qwen3": {
+      "preparation": "6e1cca27-38df-4b6e-93bb-a493fefd6b4b",
+      "launch_arguments": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3-0.6B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+        "request_key": "unsloth-sst2-qwen3-native-normalization-20261010"
+      },
+      "launch": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/03a02602-b320-42c1-9d0f-11379b0be5cd?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/03a02602-b320-42c1-9d0f-11379b0be5cd?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/03a02602-b320-42c1-9d0f-11379b0be5cd?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/03a02602-b320-42c1-9d0f-11379b0be5cd?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "evaluation": {
+        "summary": "Native paired evaluation scheduled after verified checkpoint completion.",
+        "plan": {
+          "id": "d5c46c15-df3f-47b6-a542-fe294317699b",
+          "job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "SST-2 \u00b7 Unsloth Qwen3-0.6B \u00b7 native normalization",
+          "state": "waiting_for_checkpoint",
+          "config": {
+            "seed": 73491,
+            "suites": {
+              "final": {
+                "cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+                "rows": 872,
+                "dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+                "fingerprint": "2bbfe1dfa2caf7354795e1043ff0acca18d2b140ec1316e105300304d8dee3ba"
+              },
+              "calibration": {
+                "cell": "ad47f675-6b7b-499b-9f31-e481462087ff",
+                "rows": 257,
+                "dataset": "dfb5ed51-9293-594b-affa-4a42902d2e63",
+                "fingerprint": "ae0a384b6c7ef75bde5e5eabbd19912030c6702d2320c48a1f9982e3489e67a9"
+              }
+            },
+            "runtime": {
+              "app": "overmind-decision-eval-4622f892794f5c987b6748f7",
+              "release": "4622f892794f5c987b6748f7f1bd5aa21f3294140dc2c33c761a93206670b8b9",
+              "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+              "environment": "overmind-dev"
+            },
+            "baseline": "base",
+            "inference": {
+              "batch_size": 64,
+              "concurrency": 8,
+              "padded_tokens": 32768,
+              "context_length": 8192
+            },
+            "boundaries": {},
+            "participants": [
+              {
+                "job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+                "key": "base",
+                "kind": "foundation",
+                "name": "Unchanged base",
+                "model": "Qwen/Qwen3-0.6B"
+              },
+              {
+                "job": "03a02602-b320-42c1-9d0f-11379b0be5cd",
+                "key": "candidate",
+                "kind": "trained",
+                "name": "Trained model",
+                "model": "Qwen/Qwen3-0.6B"
+              }
+            ],
+            "temperatures": [],
+            "suite_overlap": null,
+            "logarithm_floor": 1e-12,
+            "bootstrap_samples": 1000,
+            "calibration_method": "clef_temperature_cross_entropy",
+            "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+            "authorization": {
+              "user": "4",
+              "authorized_at": "2026-10-10T19:20:31.699366+00:00",
+              "scope": "saved_participants_and_suites",
+              "configuration_sha256": "d26040c863023b2ac8e6b583e587c32e751a1f4247fd403cb18e5f5b909f9f2b"
+            }
+          },
+          "calls": {},
+          "calibration": {},
+          "results": {},
+          "error": "",
+          "created_at": "2026-10-10T19:20:31.697656+00:00",
+          "updated_at": "2026-10-10T19:20:31.699432+00:00"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/native_evaluation/d5c46c15-df3f-47b6-a542-fe294317699b?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Native evaluation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://finetunes/03a02602-b320-42c1-9d0f-11379b0be5cd?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training experiment",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "outcome": {
+        "training_status": "succeeded",
+        "artifact": {
+          "artifact_identity": "9fa19bad1542807052475821a1f38e14ffbc7f7b8f1e0f1be5ee1b75d1e5aa1c",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "provider_run_id": "ft-03a02602-b320-42c1-9d0f-11379b0be5cd-a2da1b5c",
+        "monitoring_checks": 10,
+        "recorded_training_usd": 0.2885,
+        "recorded_basis": {
+          "basis": "recorded_worker_gpu_seconds",
+          "cost_usd": 0.2885,
+          "exclusions": [
+            "unreported_worker_time",
+            "image_boot",
+            "idle",
+            "cpu",
+            "memory",
+            "storage",
+            "network"
+          ],
+          "rate_source": "modal.Workspace.billing.rates",
+          "measurements": [
+            {
+              "usd": 0.28847784158541667,
+              "seconds": 262.91651385,
+              "gpu_type": "H100",
+              "usage_id": "59a3835c8efe4bed8a75fe60d591fbc7",
+              "gpu_count": 1,
+              "usd_per_second": 0.0010972222222222223
+            }
+          ],
+          "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00"
+        },
+        "evaluation_status": "completed",
+        "before": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.4982054277561522
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.6913525148266966
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.5194954128440367
+          }
+        },
+        "after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.1521855766839558
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.2834540902443128
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          }
+        },
+        "calibrated_after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.14479507773041803
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.2609286908505589
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.908256880733945
+          }
+        },
+        "paired_accuracy": {
+          "candidate_minus_baseline": 0.38876146788990823,
+          "decisions": 872,
+          "direction": "higher_is_better",
+          "groups": 872,
+          "interval_95": [
+            0.35206422018348627,
+            0.4266341743119266
+          ]
+        },
+        "coverage": {
+          "expected": 872,
+          "scored": 872,
+          "coverage": 1.0,
+          "incompatible_inputs": 0,
+          "invalid_predictions": 0,
+          "missing_predictions": 0
+        }
+      },
+      "reports": {
+        "training": "unsloth-decision-reports/training-03a02602-b320-42c1-9d0f-11379b0be5cd.json",
+        "evaluation": "unsloth-decision-reports/evaluation-d5c46c15-df3f-47b6-a542-fe294317699b.json"
+      }
+    },
+    "qwen35": {
+      "preparation": "224eacd8-c624-4864-91cc-cb71290a459c",
+      "launch_arguments": {
+        "project_id": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+        "dataset": "13897bd0-b262-56ee-b48c-2e697da451a5",
+        "cell": "1f18c763-7356-4460-a05c-dacae5af56ec",
+        "validation_dataset": "ac4e5fc2-e28d-56b4-b7da-e426a7b06923",
+        "validation_cell": "7a01f5ec-5822-4a49-bcea-479b656b43a6",
+        "validation_enabled": true,
+        "eval_model_before": false,
+        "eval_model_after": false,
+        "eval_incumbent_before": false,
+        "eval_incumbent_after": false,
+        "monitoring": {
+          "mode": "steps",
+          "interval_steps": 32,
+          "loss_sample": 257,
+          "train_sample": 64,
+          "initial": true,
+          "final": true,
+          "selection": "last"
+        },
+        "hyperparameters": {
+          "n_epochs": 2,
+          "max_steps": 256,
+          "batch_size": 16,
+          "context_length": 4096,
+          "learning_rate": 0.0002,
+          "seed": 0,
+          "pre_training_baseline": true,
+          "runtime_limit_seconds": 3600,
+          "training_type": {
+            "type": "Lora",
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0
+          }
+        },
+        "base_model": "Qwen/Qwen3.5-0.8B",
+        "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+        "request_key": "unsloth-sst2-qwen35-native-normalization-20261010"
+      },
+      "launch": {
+        "summary": "Fine-tuning job: queued.",
+        "finetune": {
+          "kind": "finetune_job",
+          "id": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://finetunes/bce5630c-c13d-49c1-b86f-e72189c8977e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization"
+        },
+        "job": {
+          "kind": "finetune_job",
+          "id": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+          "status": "queued",
+          "resource": {
+            "uri": "overmind://jobs/finetune/bce5630c-c13d-49c1-b86f-e72189c8977e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization"
+        },
+        "cell": {
+          "id": "1f18c763-7356-4460-a05c-dacae5af56ec",
+          "version": "1.0",
+          "title": "Source",
+          "rows": 2059,
+          "fingerprint": "f2b7037d07f0a6fda193376a588c3ea6ddedb962f5d2d7f9dd002249a44cf279",
+          "fits": true,
+          "reason": "",
+          "warnings": [
+            "No current workshop quality review."
+          ]
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://finetunes/bce5630c-c13d-49c1-b86f-e72189c8977e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://jobs/finetune/bce5630c-c13d-49c1-b86f-e72189c8977e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "evaluation": {
+        "summary": "Native paired evaluation scheduled after verified checkpoint completion.",
+        "plan": {
+          "id": "22663bb7-1280-493e-9679-cd9770cb8214",
+          "job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+          "project": "1e3f3e92-b50d-4590-85ed-97921d132d3c",
+          "name": "SST-2 \u00b7 Unsloth Qwen3.5-0.8B \u00b7 native normalization",
+          "state": "waiting_for_checkpoint",
+          "config": {
+            "seed": 73491,
+            "suites": {
+              "final": {
+                "cell": "12e4279e-a211-414f-9f8d-e93583d5212a",
+                "rows": 872,
+                "dataset": "e9c340b6-aa3e-4b63-9134-72c9acda772a",
+                "fingerprint": "2bbfe1dfa2caf7354795e1043ff0acca18d2b140ec1316e105300304d8dee3ba"
+              },
+              "calibration": {
+                "cell": "ad47f675-6b7b-499b-9f31-e481462087ff",
+                "rows": 257,
+                "dataset": "dfb5ed51-9293-594b-affa-4a42902d2e63",
+                "fingerprint": "ae0a384b6c7ef75bde5e5eabbd19912030c6702d2320c48a1f9982e3489e67a9"
+              }
+            },
+            "runtime": {
+              "app": "overmind-decision-eval-4622f892794f5c987b6748f7",
+              "release": "4622f892794f5c987b6748f7f1bd5aa21f3294140dc2c33c761a93206670b8b9",
+              "training": "96a0e9b4037d1569b666f7e019e76c8e899d82523f35d0ddb8949a0c40603b3d",
+              "environment": "overmind-dev"
+            },
+            "baseline": "base",
+            "inference": {
+              "batch_size": 64,
+              "concurrency": 8,
+              "padded_tokens": 32768,
+              "context_length": 8192
+            },
+            "boundaries": {},
+            "participants": [
+              {
+                "job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+                "key": "base",
+                "kind": "foundation",
+                "name": "Unchanged base",
+                "model": "Qwen/Qwen3.5-0.8B"
+              },
+              {
+                "job": "bce5630c-c13d-49c1-b86f-e72189c8977e",
+                "key": "candidate",
+                "kind": "trained",
+                "name": "Trained model",
+                "model": "Qwen/Qwen3.5-0.8B"
+              }
+            ],
+            "temperatures": [],
+            "suite_overlap": null,
+            "logarithm_floor": 1e-12,
+            "bootstrap_samples": 1000,
+            "calibration_method": "clef_temperature_cross_entropy",
+            "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels.",
+            "authorization": {
+              "user": "4",
+              "authorized_at": "2026-10-10T19:20:33.586983+00:00",
+              "scope": "saved_participants_and_suites",
+              "configuration_sha256": "37855c4efebc474e5fc872283b3a550ab4e22c6fe1abb9a2542c232df965ebb5"
+            }
+          },
+          "calls": {},
+          "calibration": {},
+          "results": {},
+          "error": "",
+          "created_at": "2026-10-10T19:20:33.585541+00:00",
+          "updated_at": "2026-10-10T19:20:33.587045+00:00"
+        },
+        "resource_links": [
+          {
+            "uri": "overmind://jobs/native_evaluation/22663bb7-1280-493e-9679-cd9770cb8214?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Native evaluation",
+            "mimeType": "application/json"
+          },
+          {
+            "uri": "overmind://finetunes/bce5630c-c13d-49c1-b86f-e72189c8977e?project_id=1e3f3e92-b50d-4590-85ed-97921d132d3c",
+            "title": "Training experiment",
+            "mimeType": "application/json"
+          }
+        ]
+      },
+      "outcome": {
+        "training_status": "succeeded",
+        "artifact": {
+          "artifact_identity": "b66293acee79db154c1c1f8ccda392649bd02554b99df1ff553f3a16d4f1c969",
+          "inference_contract": "typed_probabilities",
+          "reload_verification": {
+            "decisions": 32,
+            "tolerance": 0.0001,
+            "weight_reload": "exact",
+            "max_absolute_error": 0.0,
+            "attention_implementation": "sdpa"
+          }
+        },
+        "provider_run_id": "ft-bce5630c-c13d-49c1-b86f-e72189c8977e-b2a701c6",
+        "monitoring_checks": 10,
+        "recorded_training_usd": 0.4963,
+        "recorded_basis": {
+          "basis": "recorded_worker_gpu_seconds",
+          "cost_usd": 0.4963,
+          "exclusions": [
+            "unreported_worker_time",
+            "image_boot",
+            "idle",
+            "cpu",
+            "memory",
+            "storage",
+            "network"
+          ],
+          "rate_source": "modal.Workspace.billing.rates",
+          "measurements": [
+            {
+              "usd": 0.4962656468874028,
+              "seconds": 452.292741467,
+              "gpu_type": "H100",
+              "usage_id": "ade54086e8c0462a85aa08f7d75d73b7",
+              "gpu_count": 1,
+              "usd_per_second": 0.0010972222222222223
+            }
+          ],
+          "rates_fetched_at": "2026-10-10T19:25:30.986942+00:00"
+        },
+        "evaluation_status": "completed",
+        "before": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.4995728249012163
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.6927199497764284
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.4908256880733945
+          }
+        },
+        "after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.15503431680773724
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.292191666624679
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          }
+        },
+        "calibrated_after": {
+          "accuracy": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "brier": {
+            "benchmarks": 1,
+            "mean": 0.14878409866250247
+          },
+          "cross_entropy": {
+            "benchmarks": 1,
+            "mean": 0.26747837864392887
+          },
+          "mode_agreement": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          },
+          "top1_reference_mass": {
+            "benchmarks": 1,
+            "mean": 0.9059633027522935
+          }
+        },
+        "paired_accuracy": {
+          "candidate_minus_baseline": 0.4151376146788991,
+          "decisions": 872,
+          "direction": "higher_is_better",
+          "groups": 872,
+          "interval_95": [
+            0.3761467889908257,
+            0.4541284403669725
+          ]
+        },
+        "coverage": {
+          "expected": 872,
+          "scored": 872,
+          "coverage": 1.0,
+          "incompatible_inputs": 0,
+          "invalid_predictions": 0,
+          "missing_predictions": 0
+        }
+      },
+      "reports": {
+        "training": "unsloth-decision-reports/training-bce5630c-c13d-49c1-b86f-e72189c8977e.json",
+        "evaluation": "unsloth-decision-reports/evaluation-22663bb7-1280-493e-9679-cd9770cb8214.json"
+      }
+    }
+  },
+  "backend_verification": {
+    "command": ".venv/bin/pytest -q tests/test_training*.py tests/test_decision*.py tests/test_native*.py tests/test_finetuning*.py tests/test_sft_training_chat_template.py tests/test_mcp_finetuning*.py tests/test_mcp_resources.py tests/test_mcp_catalog.py tests/test_mcp_manifest.py tests/test_mcp_prompts.py tests/test_mcp_workflow_friction.py tests/test_workflow_measurements.py tests/test_mcp_research_journey.py tests/test_operational_progress.py",
+    "passed": 952,
+    "skipped": 2,
+    "skip_reason": "Optional Baseten truss_train and truss.remote.remote_factory packages unavailable",
+    "warnings": 135,
+    "warning_basis": "Local Modal upload fixtures and test JWT secret length",
+    "seconds": 27.83,
+    "log": "/tmp/unsloth-decision-cutover-regression.log"
+  },
+  "gpu_verification": {
+    "cold_training_and_recovery": {
+      "result": "tests/evidence/unsloth-decision-without-baseline-results.json",
+      "modal_app": "ap-UL3dsWWN3egiwVFMmCuxqQ",
+      "command": "PYTHONPATH=overbae .venv/bin/modal run --env overmind-dev tests/evidence/unsloth_decision_modal.py --skip-baseline",
+      "log": "/tmp/unsloth-decision-native-norm-runtime.log"
+    },
+    "first_call_and_semantics": {
+      "result": "tests/evidence/unsloth-decision-semantics-results.json",
+      "modal_app": "ap-NHIRSO248xWEGYmYm4hf61",
+      "command": "PYTHONPATH=overbae .venv/bin/modal run --env overmind-dev tests/evidence/unsloth_decision_modal.py --semantics-only",
+      "log": "/tmp/unsloth-decision-native-norm-semantics.log"
+    }
+  },
+  "frontend_verification": {
+    "typecheck": "passed",
+    "log": "/tmp/unsloth-decision-frontend-typecheck-final.log",
+    "biome": "passed",
+    "visual_review": "not_performed; no Console browser requested"
+  },
+  "surface_parity": "tests/evidence/unsloth-decision-surface-parity.json",
+  "operational_and_forecast_receipts": "tests/evidence/unsloth-decision-final-observation.json",
+  "completed_at": "2026-10-10T19:33:53.754015Z",
+  "benchmark_limitations": [
+    "One sentiment task and one training seed",
+    "Before models use newly initialized decision heads on unchanged foundations",
+    "Exact/group overlap excluded; paraphrase and pretraining contamination unknown",
+    "Recipe and last-checkpoint selection remained fixed across technical reruns"
+  ],
+  "completion_time_basis": "latest completed evaluation receipt updated_at"
+}

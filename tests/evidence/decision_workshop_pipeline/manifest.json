@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "parameters": {"required_semantics": "string"},
+  "limits": {"seconds": 120, "memory_mb": 512, "scratch_mb": 1024, "cpus": 1},
+  "steps": [
+    {"id": "audit", "input": "source", "name": "Audit supplied decision targets without resolving unknown meaning", "entrypoint": "audit.py", "input_schema": {"state": "string", "question": "string", "kind": "string", "options": "array", "target": "array"}, "output_schema": {"source_row": "integer", "review_flags": "array"}, "checks": {"preserve_rows": true}},
+    {"id": "decisions", "input": "audit", "name": "Preserve full distributions in typed decisions", "entrypoint": "decisions.py", "output_schema": {"source_row": "integer", "decision": "object"}, "checks": {"preserve_rows": true}}
+  ]
+}

@@ -13,9 +13,9 @@ from overbae.services.datasets.profile import profile_records
 CONSUMERS = {
     "decision_training": {
         "reads": ["decision"],
-        "target": "Interpret targets through Workshop exploration and source/user evidence. Record per-family target_meaning and target_evidence in the preparation plan. Unknown meaning stays unknown. Preserve full probability distributions; mean-only ordinal supervision uses target_mean plus an explicit option_values scale. Never invent votes or collapse soft targets to argmax.",
+        "target": "Interpret targets through Workshop exploration and source/user evidence. Record per-family target meaning and evidence in retained transformation code and output metadata; known supervision uses decision.target_semantics and decision.target_provenance. Unknown meaning stays unknown. Preserve full probability distributions, tied maxima and weights; mean-only ordinal supervision uses target_mean plus an explicit option_values scale. Never invent votes or collapse soft targets to argmax. Decision/Jev training consumes typed decisions, not assistant answer messages.",
         "wire": "decision is an object with state (text), question (nonempty text), kind (choice/noul/score), options (2–255 distinct strings), target_probabilities (matching finite probabilities summing to one), and optional positive weight, target_semantics and target_provenance. Alternatively score rows use target_mean, increasing option_values and target_semantics=ordinal_mean, without target_probabilities. Known meanings are categorical_gold, annotator_distribution, posterior, ordinal_histogram, pairwise_preference and teacher_distribution. Preserve annotation counts in target_provenance when known. Flat noul targets expand to No/Yes options (false/true semantic order) and [1-p,p].",
-        "model_specific": "Training renders option codes and applies the selected tokenizer. Keep code tokens out of Workshop data. Preserve source/license/group identities outside decision for auditing and splitting.",
+        "model_specific": "Training uses the pinned Unsloth decision encoder and retains question spans and named-option mappings. Keep model tokens out of Workshop data. Preserve source/license/group identities outside decision for auditing and splitting.",
     },
     "decision_evaluation": {
         "reads": ["input.decision"],

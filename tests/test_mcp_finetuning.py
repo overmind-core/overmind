@@ -1152,6 +1152,75 @@ def test_native_baseline_choice_is_pinned_without_disabling_validation(
     assert resource["record"]["contract"]["pre_training_baseline"] is enabled
 
 
+def test_native_estimate_reuses_completed_launch_with_implicit_packing(settings, monkeypatch):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context(permission=["read", "write"])
+    source = [
+        {
+            "decision": {
+                "state": str(i),
+                "question": "Choose",
+                "kind": "choice",
+                "options": ["A", "B"],
+                "target_probabilities": [0.2, 0.8],
+            }
+        }
+        for i in range(20)
+    ]
+    train = frozen_dataset(context.project, source, contract="train")
+    monkeypatch.setattr(
+        "overbae.tasks.finetuning.run_finetuning.apply_async",
+        Mock(return_value=SimpleNamespace(id="forecast")),
+    )
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    monkeypatch.setattr("overbae.services.training_forecast.hardware", lambda *_: ("H100", 1))
+    arguments = {
+        "dataset": str(train.id),
+        "base_model": "Qwen/Qwen3.5-0.8B",
+        "validation_enabled": False,
+        "hyperparameters": {
+            "n_epochs": 2,
+            "max_steps": 10,
+            "batch_size": 16,
+            "context_length": 4096,
+            "training_type": {"type": "Lora"},
+        },
+    }
+    launch = _call("start_finetune", {**arguments, "request_key": "measured-recipe"}, context)
+    assert not launch.isError, launch.structuredContent
+    job = FinetuningJob.objects.get(pk=launch.structuredContent["job"]["id"])
+    assert job.hyperparameters["packing"] is False
+    job.status = "succeeded"
+    job.provider = "modal"
+    job.effective_configuration = {"gpu_type": "H100", "gpu_count": 1}
+    job.progress = {
+        "trained_steps": 10,
+        "total_steps": 10,
+        "compute_usage": [
+            {
+                "usage_id": "measured-worker",
+                "gpu_type": "H100",
+                "gpu_count": 1,
+                "elapsed_seconds": 200,
+            }
+        ],
+    }
+    job.save()
+    quote = _call("estimate_finetune", arguments, context)
+    assert not quote.isError, quote.structuredContent
+    forecast = quote.structuredContent["forecast"]
+    assert forecast["evidence_jobs"] == [str(job.pk)], forecast["rejected_measurements"]
+    assert forecast["evidence"][0]["scaled_seconds"] == pytest.approx(200)
+    changed = _call(
+        "estimate_finetune",
+        {**arguments, "hyperparameters": {**arguments["hyperparameters"], "max_steps": 5}},
+        context,
+    )
+    assert not changed.isError, changed.structuredContent
+    assert changed.structuredContent["forecast"]["evidence_jobs"] == []
+
+
 @pytest.mark.parametrize("baseline", ["false", 0, None, {}, []])
 def test_native_baseline_rejects_non_boolean_choices(baseline, settings, monkeypatch):
     settings.FINETUNING_BACKEND = "modal"

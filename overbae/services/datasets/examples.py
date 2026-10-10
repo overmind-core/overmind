@@ -137,6 +137,17 @@ def native_decision(record):
         "kind": record["kind"],
         "options": options,
         "target_probabilities": target,
+        **{
+            key: record[key] if key == "target_semantics" else decode(record[key])
+            for key in (
+                "weight",
+                "target_semantics",
+                "target_provenance",
+                "target_mean",
+                "option_values",
+            )
+            if key in record and not missing(record[key])
+        },
     }
 
 
