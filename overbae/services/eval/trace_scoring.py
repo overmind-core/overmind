@@ -23,15 +23,17 @@ from overbae.models import (
     Behaviour,
     Capability,
     EvalSetMember,
+    Evaluator,
     ScoringPass,
     Span,
     TaskExecution,
+    Verdict,
 )
 from overbae.models.traces import is_tool_operation
 from overbae.services.behaviour import binder as behaviour_binder
 from overbae.services.behaviour import ledger as behaviour_ledger
 from overbae.services.behaviour import scoring as behaviour_scoring
-from overbae.services.eval import chatml, composition, dispatch, funnel, normalizer
+from overbae.services.eval import chatml, composition, dispatch, funnel, normalizer, span_script
 from overbae.services.eval import envelope as eval_envelope
 from overbae.services.eval import grounding as eval_grounding
 from overbae.services.eval.eval_set import STRUCTURAL_TRACE_GATES
@@ -932,9 +934,216 @@ def _scoring_members(capability: Capability) -> list[EvalSetMember]:
         m
         for m in members
         if m.evaluator_id
+        and m.evaluator.kind != Evaluator.Kind.SCRIPT
         and (m.evaluator.surface or "any") != "model"
         and m.evaluator.name not in STRUCTURAL_TRACE_GATES
     ]
+
+
+def _script_members(capability: Capability) -> list[EvalSetMember]:
+    eval_set = capability.active_eval_set
+    if eval_set is None:
+        return []
+    return list(
+        eval_set.members.filter(
+            role=EvalSetMember.Role.TRACE_SCORING,
+            enabled=True,
+            evaluator__is_archived=False,
+            evaluator__kind=Evaluator.Kind.SCRIPT,
+        )
+        .select_related("evaluator")
+        .order_by("order", "created_at")
+    )
+
+
+def _span_capability(
+    span: Span,
+    *,
+    unit_capabilities: dict[str, Capability | None],
+    span_to_unit: dict[str, str],
+    trace_capability: Capability,
+) -> Capability:
+    unit_id = span_to_unit.get(span.span_id)
+    if unit_id is not None:
+        capability = unit_capabilities.get(unit_id)
+        if capability is not None:
+            return capability
+    if span.capability_id and span.capability is not None:
+        return span.capability
+    return trace_capability
+
+
+def _score_span_scripts(
+    *,
+    spans: list[Span],
+    project_id: str,
+    unit_capabilities: dict[str, Capability | None],
+    unit_spans_by_id: dict[str, list[Span]],
+    units: list[ResolvedUnit],
+    trace_capability: Capability,
+) -> tuple[dict[str, int], int]:
+    """One sandbox call per trace; each matching span gets its own Verdict."""
+    counts: dict[str, int] = {}
+    if not spans:
+        return counts, 0
+
+    span_to_unit: dict[str, str] = {}
+    for unit in units:
+        for member in unit_spans_by_id.get(unit.unit_span.span_id, unit.member_spans):
+            span_to_unit.setdefault(member.span_id, unit.unit_span.span_id)
+
+    members_by_cap: dict[Any, list[EvalSetMember]] = {}
+    jobs_by_name: dict[str, dict[str, Any]] = {}
+    over_cap = len(spans) > span_script.SPAN_CAP
+    serialized = [span_script.serialize_span(span) for span in spans]
+    by_id = {payload["span_id"]: payload for payload in serialized}
+
+    for span in spans:
+        capability = _span_capability(
+            span,
+            unit_capabilities=unit_capabilities,
+            span_to_unit=span_to_unit,
+            trace_capability=trace_capability,
+        )
+        if capability.pk not in members_by_cap:
+            members_by_cap[capability.pk] = _script_members(capability)
+        for member in members_by_cap[capability.pk]:
+            evaluator = member.evaluator
+            source = str((evaluator.config or {}).get("source") or "")
+            span_filter = (evaluator.config or {}).get("span_filter") or {}
+            payload = by_id[span.span_id]
+            if not span_script.matches_filter(payload, span_filter):
+                continue
+            job = jobs_by_name.setdefault(
+                evaluator.name,
+                {
+                    "name": evaluator.name,
+                    "source": source,
+                    "span_ids": [],
+                    "member": member,
+                    "identifier": span_script.source_identifier(source),
+                },
+            )
+            if over_cap:
+                continue
+            job["span_ids"].append(span.span_id)
+
+    if not jobs_by_name:
+        return counts, 0
+
+    rows: list[dict[str, Any]] = []
+    if over_cap:
+        for job in jobs_by_name.values():
+            member = job["member"]
+            for span in spans:
+                payload = by_id[span.span_id]
+                span_filter = (member.evaluator.config or {}).get("span_filter") or {}
+                if not span_script.matches_filter(payload, span_filter):
+                    continue
+                rows.append(
+                    {
+                        "project_id": project_id,
+                        "evaluator": member.evaluator,
+                        "evaluator_name": member.evaluator.name,
+                        "target_kind": Verdict.TargetKind.SPAN,
+                        "target_id": span.span_id,
+                        "identifier": job["identifier"],
+                        "label": "",
+                        "score": None,
+                        "outcome": Verdict.Outcome.NOT_APPLICABLE,
+                        "explanation": (
+                            f"trace has {len(spans)} spans; script cap is {span_script.SPAN_CAP}"
+                        ),
+                        "unmet": ["cap:span_count"],
+                        "metadata": dispatch.verdict_metadata(
+                            passed=None,
+                            scope=member.evaluator.scope,
+                            grain="unit",
+                        ),
+                        "annotator_kind": Verdict.AnnotatorKind.CODE,
+                        "judge_trace_id": "",
+                        "cost": 0.0,
+                        "latency_ms": None,
+                    }
+                )
+        saved = dispatch.persist_verdicts(rows)
+        for verdict in saved:
+            counts[verdict.outcome] = counts.get(verdict.outcome, 0) + 1
+        return counts, len(saved)
+
+    pending: list[dict[str, Any]] = []
+    for job in jobs_by_name.values():
+        member = job["member"]
+        identifier = job["identifier"]
+        wanted = {member.evaluator.name: identifier}
+        runnable_ids: list[str] = []
+        for span_id in job["span_ids"]:
+            existing = dispatch.fetch_existing(project_id, span_id, wanted)
+            settled = existing.get(member.evaluator.name)
+            if settled is not None and not dispatch.is_skip_verdict(settled):
+                counts[settled.outcome] = counts.get(settled.outcome, 0) + 1
+                continue
+            runnable_ids.append(span_id)
+        if runnable_ids:
+            pending.append(
+                {
+                    "name": job["name"],
+                    "source": job["source"],
+                    "span_ids": runnable_ids,
+                    "member": member,
+                    "identifier": identifier,
+                }
+            )
+
+    if not pending:
+        return counts, 0
+
+    results = span_script.run(
+        [{"name": j["name"], "source": j["source"], "span_ids": j["span_ids"]} for j in pending],
+        serialized,
+    )
+    for job in pending:
+        member = job["member"]
+        for span_id in job["span_ids"]:
+            result = results.get((job["name"], span_id))
+            if result is None:
+                result = span_script.ScriptResult(
+                    outcome="error", explanation="no result from script runner"
+                )
+            score = (
+                float(result.score)
+                if result.outcome == "scored" and isinstance(result.score, (int, float))
+                else None
+            )
+            rows.append(
+                {
+                    "project_id": project_id,
+                    "evaluator": member.evaluator,
+                    "evaluator_name": member.evaluator.name,
+                    "target_kind": Verdict.TargetKind.SPAN,
+                    "target_id": span_id,
+                    "identifier": job["identifier"],
+                    "label": "",
+                    "score": score,
+                    "outcome": result.outcome,
+                    "explanation": result.explanation,
+                    "unmet": [],
+                    "metadata": dispatch.verdict_metadata(
+                        passed=result.passed,
+                        scope=member.evaluator.scope,
+                        grain="unit",
+                    ),
+                    "annotator_kind": Verdict.AnnotatorKind.CODE,
+                    "judge_trace_id": "",
+                    "cost": 0.0,
+                    "latency_ms": None,
+                }
+            )
+
+    saved = dispatch.persist_verdicts(rows)
+    for verdict in saved:
+        counts[verdict.outcome] = counts.get(verdict.outcome, 0) + 1
+    return counts, len(saved)
 
 
 def _capability_scoring(
@@ -1110,7 +1319,12 @@ def score_trace(trace_id: str, project_id: str, *, deadline: float | None = None
         )
         for u in [*units, *run_units]
     }
-    if all(ctx is None for ctx in contexts.values()):
+    has_script_members = any(
+        _script_members(cap)
+        for cap in {c for c in unit_capabilities.values() if c is not None}
+        | ({trace_capability} if trace_capability is not None else set())
+    )
+    if all(ctx is None for ctx in contexts.values()) and not has_script_members:
         if all(cap is None for cap in unit_capabilities.values()):
             reason = "units_unattributed"
         else:
@@ -1121,6 +1335,15 @@ def score_trace(trace_id: str, project_id: str, *, deadline: float | None = None
         project_id=project_id,
         capability=trace_capability,
         trace_id=trace_id,
+    )
+
+    script_counts, script_new = _score_span_scripts(
+        spans=spans,
+        project_id=project_id,
+        unit_capabilities=unit_capabilities,
+        unit_spans_by_id=unit_spans_by_id,
+        units=[*units, *run_units],
+        trace_capability=trace_capability,
     )
 
     if carved.multi_entry:
@@ -1139,9 +1362,23 @@ def score_trace(trace_id: str, project_id: str, *, deadline: float | None = None
             scoring_pass=scoring_pass,
             deadline=deadline,
             turn_slices=carved.turn_slices,
+            script_counts=script_counts,
+            script_new=script_new,
         )
 
     ctx = contexts[root.span_id]
+    if ctx is None:
+        # Script-only eval set: no unit judges, only per-span scripts.
+        _finish_pass(scoring_pass, script_counts, [])
+        if script_new == 0:
+            return {"status": "no_change", "trace_id": trace_id, "members": 0}
+        return {
+            "status": "scored",
+            "trace_id": trace_id,
+            "scored": script_counts.get("scored", 0),
+            "verdicts": script_new,
+        }
+
     execution = executions.get(root.span_id)
     selected = behaviour_scoring.filter_members_for_execution(ctx.members, execution)
     outcome = _score_unit(
@@ -1158,21 +1395,22 @@ def score_trace(trace_id: str, project_id: str, *, deadline: float | None = None
         behaviour_skipped=_behaviour_skipped(ctx.members, selected, execution),
     )
     _score_execution_safe(execution, outcome.block)
+    _merge_counts(outcome.counts, script_counts)
     _finish_pass(scoring_pass, outcome.counts, outcome.costs)
-    if outcome.newly_scored == 0 and not outcome.new_names:
+    if outcome.newly_scored == 0 and not outcome.new_names and script_new == 0:
         return {"status": "no_change", "trace_id": trace_id, "members": len(ctx.members)}
 
     logger.info(
         "Scored trace %s (capability=%s): %d new verdict(s)",
         trace_id,
         ctx.capability.slug,
-        len(outcome.new_names),
+        len(outcome.new_names) + script_new,
     )
     return {
         "status": "scored",
         "trace_id": trace_id,
-        "scored": outcome.counts["scored"],
-        "verdicts": len(outcome.new_names),
+        "scored": outcome.counts.get("scored", 0),
+        "verdicts": len(outcome.new_names) + script_new,
     }
 
 
@@ -1212,14 +1450,16 @@ def _score_multi_entry(
     scoring_pass: ScoringPass,
     deadline: float | None,
     turn_slices: bool,
+    script_counts: dict[str, int] | None = None,
+    script_new: int = 0,
 ) -> dict[str, Any]:
-    new_verdicts_total = 0
+    new_verdicts_total = script_new
     units_scored = 0
     deferred_units = 0
     n_ok = 0
     n_total = len(entry_points)
     unit_executions: list[dict[str, Any]] = []
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = dict(script_counts or {})
     costs: list[float | None] = []
 
     trace_context = _trace_context(spans, root, entry_points, unit_spans_by_id)

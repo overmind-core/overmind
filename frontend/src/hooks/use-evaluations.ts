@@ -9,6 +9,7 @@ import type {
   EvalRunsListStatusEnum,
   EvalSetAddMembersRequestRequest,
   EvalSetRequest,
+  EvaluatorRequest,
   GenerateEvaluatorPromptRequestRequest,
   PaginatedEvalRunListList,
   PatchedEvalSetMemberUpdateRequest,
@@ -90,6 +91,33 @@ export const useAuthorJudgeEvaluatorMutation = (projectId: string | undefined) =
       qc.invalidateQueries({ queryKey: ["evaluators", projectId] });
       qc.invalidateQueries({ queryKey: ["evaluator-catalog", projectId] });
       qc.invalidateQueries({ queryKey: ["eval-sets"] });
+    },
+  });
+};
+
+export const useCreateScriptEvaluatorMutation = (projectId: string | undefined) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { evaluator: EvaluatorRequest; evalSetId?: string }) => {
+      const created = await apiClient.evaluators.evaluatorsCreate({
+        evaluatorRequest: input.evaluator,
+      });
+      if (input.evalSetId) {
+        await apiClient.evalSets.evalSetsMembersCreate({
+          evalSetAddMembersRequestRequest: {
+            evaluatorIds: [created.id],
+            role: "trace_scoring",
+          },
+          id: input.evalSetId,
+        });
+      }
+      return created;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["evaluators", projectId] });
+      qc.invalidateQueries({ queryKey: ["evaluator-catalog", projectId] });
+      qc.invalidateQueries({ queryKey: ["eval-sets"] });
+      qc.invalidateQueries({ queryKey: ["eval-set"] });
     },
   });
 };

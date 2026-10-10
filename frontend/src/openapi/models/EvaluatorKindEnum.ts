@@ -19,6 +19,7 @@
  * * `deterministic` - Deterministic
  * * `statistical` - Statistical
  * * `agentic` - Agentic
+ * * `script` - Script
  * @export
  */
 export const EvaluatorKindEnum = {
@@ -26,7 +27,8 @@ export const EvaluatorKindEnum = {
     trajectory: 'trajectory',
     deterministic: 'deterministic',
     statistical: 'statistical',
-    agentic: 'agentic'
+    agentic: 'agentic',
+    script: 'script'
 } as const;
 export type EvaluatorKindEnum = typeof EvaluatorKindEnum[keyof typeof EvaluatorKindEnum];
 

@@ -208,6 +208,42 @@ function TrajectoryLogic({ config }: { config: Record<string, unknown> }) {
   );
 }
 
+function ScriptLogic({ config }: { config: Record<string, unknown> }) {
+  const source = typeof config.source === "string" ? config.source : "";
+  const spanFilter =
+    config.span_filter && typeof config.span_filter === "object"
+      ? (config.span_filter as Record<string, unknown>)
+      : {};
+  const filters = [
+    typeof spanFilter.span_type === "string" && spanFilter.span_type
+      ? `span_type=${spanFilter.span_type}`
+      : "",
+    typeof spanFilter.operation === "string" && spanFilter.operation
+      ? `operation=${spanFilter.operation}`
+      : "",
+  ].filter(Boolean);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className={cn(PROSE, "text-xs")}>
+        Runs import-free Python <code className="font-mono font-medium">def evaluate(span)</code> on
+        every matching span during trace scoring. No model is involved.
+      </p>
+      {filters.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground">Span filter:</p>
+          <ChipList items={filters} />
+        </div>
+      )}
+      {source && (
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border bg-wash-subtle p-3 font-mono text-xs leading-relaxed text-foreground">
+          {source}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function HowItWorks({ evaluator }: { evaluator: Evaluator }) {
   const kind = evaluator.kind;
   const config = (evaluator.config ?? {}) as Record<string, unknown>;
@@ -217,6 +253,7 @@ function HowItWorks({ evaluator }: { evaluator: Evaluator }) {
       {kind === "deterministic" && <DeterministicLogic config={config} />}
       {kind === "statistical" && <StatisticalLogic config={config} />}
       {kind === "trajectory" && <TrajectoryLogic config={config} />}
+      {kind === "script" && <ScriptLogic config={config} />}
     </Section>
   );
 }

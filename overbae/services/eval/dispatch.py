@@ -260,6 +260,9 @@ def plan_members(
     plan = DispatchPlan()
     for member in members:
         name = member.evaluator.name
+        if member.evaluator.kind == "script":
+            plan.skipped.append(name)
+            continue
         spec = specs[name]
         config = member.evaluator.config or {}
         behaviour_bound = bool(config.get("behaviour"))
@@ -303,6 +306,10 @@ def member_identifier(member: EvalSetMember, spec: EvaluatorSpec) -> str:
     evaluator = member.evaluator
     if evaluator.kind in ("deterministic", "statistical"):
         return ""
+    if evaluator.kind == "script":
+        from overbae.services.eval import span_script  # noqa: PLC0415 — cycle
+
+        return span_script.source_identifier(str((evaluator.config or {}).get("source") or ""))
     digest = _rubric_digest(evaluator)
     if _is_panel_member(member, spec):
         judges = funnel.cross_family_judges(_PANEL_SIZE)
@@ -640,7 +647,7 @@ def verdict_kwargs_from_draft(
         ),
         "annotator_kind": (
             Verdict.AnnotatorKind.CODE
-            if evaluator.kind in ("deterministic", "statistical")
+            if evaluator.kind in ("deterministic", "statistical", "script")
             else Verdict.AnnotatorKind.LLM
         ),
         "judge_trace_id": draft.judge_trace_id or "",

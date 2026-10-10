@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useBehavioursQuery } from "@/hooks/use-behaviours";
 import {
   useAuthorJudgeEvaluatorMutation,
+  useCreateScriptEvaluatorMutation,
   useEditJudgeEvaluatorMutation,
   useEvalSetsQuery,
   useGenerateEvaluatorPromptMutation,
@@ -47,6 +48,11 @@ import type { ApplicableRoleEnum, Evaluator, ScoreTypeD08Enum } from "@/openapi"
 type ScoreType = ScoreTypeD08Enum;
 type AuthoringMode = "manual" | "generate";
 type Role = ApplicableRoleEnum;
+type AuthorKind = "llm_judge" | "script";
+
+const DEFAULT_SCRIPT = `def evaluate(span):
+    return True
+`;
 
 // Generative and trace scoring aren't interoperable — author exactly one.
 const ROLE_OPTIONS: Option[] = [
@@ -111,6 +117,7 @@ export const CreateEvaluatorDialog = ({
   const open = isEdit ? (controlledOpen ?? false) : internalOpen;
 
   const author = useAuthorJudgeEvaluatorMutation(resolvedProjectId);
+  const createScript = useCreateScriptEvaluatorMutation(resolvedProjectId);
   const edit = useEditJudgeEvaluatorMutation(resolvedProjectId);
   const generate = useGenerateEvaluatorPromptMutation();
   const capabilitiesQuery = useProjectCapabilitiesQuery(resolvedProjectId);
@@ -118,6 +125,10 @@ export const CreateEvaluatorDialog = ({
   const behavioursQuery = useBehavioursQuery(open);
   const allBehaviours = behavioursQuery.data?.results ?? [];
 
+  const [authorKind, setAuthorKind] = useState<AuthorKind>("llm_judge");
+  const [scriptSource, setScriptSource] = useState(DEFAULT_SCRIPT);
+  const [spanTypeFilter, setSpanTypeFilter] = useState("");
+  const [operationFilter, setOperationFilter] = useState("");
   const [mode, setMode] = useState<AuthoringMode>("manual");
   const [name, setName] = useState("");
   const [judgeModel, setJudgeModel] = useState("");
@@ -190,6 +201,10 @@ export const CreateEvaluatorDialog = ({
   };
 
   const resetForm = () => {
+    setAuthorKind("llm_judge");
+    setScriptSource(DEFAULT_SCRIPT);
+    setSpanTypeFilter("");
+    setOperationFilter("");
     setMode("manual");
     setName("");
     setJudgeModel("");
@@ -323,10 +338,13 @@ export const CreateEvaluatorDialog = ({
   const cleanCategories = categories.map((c) => c.trim()).filter(Boolean);
   const categoriesValid = scoreType !== "categorical" || cleanCategories.length >= 2;
   const traceScoringTaskValid = applicableRole !== "trace_scoring" || !!taskScope?.behaviourId;
-  const saving = author.isPending || edit.isPending;
+  const isScript = !isEdit && authorKind === "script";
+  const saving = author.isPending || edit.isPending || createScript.isPending;
   const confidenceValid =
     Number.isFinite(decisionConfidence) && decisionConfidence >= 0 && decisionConfidence <= 1;
-  const canSave =
+  const canSaveScript =
+    !!resolvedProjectId && name.trim().length > 0 && scriptSource.trim().length > 0 && !saving;
+  const canSaveJudge =
     !!resolvedProjectId &&
     name.trim().length > 0 &&
     evaluationPrompt.trim().length > 0 &&
@@ -334,20 +352,25 @@ export const CreateEvaluatorDialog = ({
     traceScoringTaskValid &&
     confidenceValid &&
     !saving;
+  const canSave = isScript ? canSaveScript : canSaveJudge;
   // Surfaced next to the Save button so a disabled state is never a silent dead end.
   const saveBlockedReason = saving
     ? ""
     : !name.trim()
       ? "Name this evaluator to save it."
-      : !evaluationPrompt.trim()
-        ? "Write an evaluation prompt to save it."
-        : !categoriesValid
-          ? "Add at least two categories to save it."
-          : !traceScoringTaskValid
-            ? "Select a task to scope this trace-scoring evaluator."
-            : !confidenceValid
-              ? "Confidence must be between 0 and 1."
-              : "";
+      : isScript
+        ? !scriptSource.trim()
+          ? "Write a script with def evaluate(span) to save it."
+          : ""
+        : !evaluationPrompt.trim()
+          ? "Write an evaluation prompt to save it."
+          : !categoriesValid
+            ? "Add at least two categories to save it."
+            : !traceScoringTaskValid
+              ? "Select a task to scope this trace-scoring evaluator."
+              : !confidenceValid
+                ? "Confidence must be between 0 and 1."
+                : "";
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -413,8 +436,34 @@ export const CreateEvaluatorDialog = ({
 
   const handleSave = async () => {
     if (!canSave || !resolvedProjectId) return;
-    const input = buildInput();
     try {
+      if (isScript) {
+        const spanFilter: Record<string, string> = {};
+        if (spanTypeFilter.trim()) spanFilter.span_type = spanTypeFilter.trim();
+        if (operationFilter.trim()) spanFilter.operation = operationFilter.trim();
+        await createScript.mutateAsync({
+          evalSetId: evalSetId || undefined,
+          evaluator: {
+            applicableRoles: ["trace_scoring"],
+            capability: capabilityId || undefined,
+            config: {
+              source: scriptSource,
+              ...(Object.keys(spanFilter).length > 0 ? { span_filter: spanFilter } : {}),
+            },
+            kind: "script",
+            name: name.trim(),
+            project: resolvedProjectId,
+            scope: "step",
+            scoreType: "boolean",
+            surface: "harness",
+          },
+        });
+        toast.success("Evaluator created");
+        resetForm();
+        setOpen(false);
+        return;
+      }
+      const input = buildInput();
       if (isEdit && editEvaluator) {
         await edit.mutateAsync({ id: editEvaluator.id, input });
         toast.success("Evaluator updated");
@@ -436,382 +485,475 @@ export const CreateEvaluatorDialog = ({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit evaluator" : "New evaluator"}</DialogTitle>
           <DialogDescription className="sr-only">
-            Author a runnable LLM-as-a-judge evaluator.
+            {isScript
+              ? "Author an import-free Python script that grades each matching span."
+              : "Author a runnable LLM-as-a-judge evaluator."}
           </DialogDescription>
         </DialogHeader>
 
         <DialogBody className="space-y-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {!isEdit && (
             <div className="space-y-1.5">
-              <Label htmlFor="decision-backend">Decision engine</Label>
+              <Label htmlFor="author-kind">Kind</Label>
               <Select
                 onValueChange={(value) =>
-                  setDecisionBackend(value === "generative" ? "generative" : "jev")
+                  setAuthorKind(value === "script" ? "script" : "llm_judge")
                 }
-                value={decisionBackend}
+                value={authorKind}
               >
-                <SelectTrigger aria-label="Decision engine" id="decision-backend">
+                <SelectTrigger aria-label="Evaluator kind" id="author-kind">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="jev">Jev + generative fallback</SelectItem>
-                  <SelectItem value="generative">Generative</SelectItem>
+                  <SelectItem value="llm_judge">LLM judge</SelectItem>
+                  <SelectItem value="script">Script</SelectItem>
                 </SelectContent>
               </Select>
+              <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                {isScript
+                  ? "Import-free Python def evaluate(span) runs on every matching span during trace scoring."
+                  : "An LLM judges each sample against a rubric."}
+              </p>
             </div>
-            {decisionBackend === "jev" && (
+          )}
+
+          {isScript ? (
+            <>
               <div className="space-y-1.5">
-                <Label htmlFor="decision-confidence">Confidence floor</Label>
+                <Label htmlFor="evaluator-name">Name</Label>
                 <Input
-                  id="decision-confidence"
-                  max={1}
-                  min={0}
-                  onChange={(event) => setDecisionConfidence(event.target.valueAsNumber)}
-                  step={0.05}
-                  type="number"
-                  value={Number.isFinite(decisionConfidence) ? decisionConfidence : ""}
+                  id="evaluator-name"
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Name this evaluator"
+                  value={name}
                 />
               </div>
-            )}
-          </div>
-          {decisionBackend === "jev" && (
-            <p className="text-xs text-muted-foreground">
-              Jev scores bounded checks with generative fallback. Confidence is not measured
-              accuracy.
-            </p>
-          )}
-          {/* Same half/half grid as Capability + Test type, so Model left-aligns with it. */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="evaluator-name">Name</Label>
-              <Input
-                id="evaluator-name"
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Name this evaluator"
-                value={name}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="judge-model">Generative model</Label>
-              <div className="flex items-center gap-2">
-                <Select onValueChange={setJudgeModel} value={judgeModel || defaultJudgeModel}>
-                  <SelectTrigger
-                    aria-label="Select judge model"
-                    className="min-w-0 flex-1"
-                    id="judge-model"
-                    size="default"
-                  >
-                    <SelectValue>
-                      <ModelOptionLabel model={judgeModel || defaultJudgeModel} />
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {judgeModels.map((id) => (
-                      <SelectItem key={id} textValue={modelOptionName(id)} value={id}>
-                        <ModelOptionLabel model={id}>
-                          {id === defaultJudgeModel && (
-                            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                              default
-                            </span>
-                          )}
-                        </ModelOptionLabel>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  disabled={usingDefaultModel}
-                  onClick={() => setJudgeModel("")}
-                  title="Reset to the platform default judge model"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Icon.undo />
-                  Use default
-                </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="capability-tag">Capability (optional)</Label>
+                <SearchableSelect
+                  ariaLabel="Tag this evaluator to a capability"
+                  onChange={(v) => handleCapabilityChange(v === CAPABILITY_NONE ? "" : v)}
+                  options={capabilityOptions}
+                  placeholder="No capability (generic)"
+                  searchPlaceholder="Search capabilities…"
+                  triggerClassName="w-full"
+                  value={capabilityId || CAPABILITY_NONE}
+                />
               </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="capability-tag">Capability (optional)</Label>
-              <SearchableSelect
-                ariaLabel="Tag this evaluator to a capability"
-                onChange={(v) => handleCapabilityChange(v === CAPABILITY_NONE ? "" : v)}
-                options={capabilityOptions}
-                placeholder="No capability (generic)"
-                searchPlaceholder="Search capabilities…"
-                triggerClassName="w-full"
-                value={capabilityId || CAPABILITY_NONE}
-              />
-              <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                {capabilityId
-                  ? "Tagged to this capability — it appears on that capability's eval metrics, and generation is grounded in its context."
-                  : "Leave unset for a generic, project-level evaluator."}
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="applicable-role">Test type</Label>
-              <SearchableSelect
-                ariaLabel="Select test type: generative tests or trace scoring"
-                onChange={(v) => handleApplicableRoleChange(v as Role)}
-                options={ROLE_OPTIONS}
-                searchPlaceholder="Search…"
-                triggerClassName="w-full"
-                value={applicableRole}
-              />
-              <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                {applicableRole === "trace_scoring"
-                  ? "Grades the capability's live traces."
-                  : "Runs when candidate models generate over the dataset (optimiser, backtest, eval runs)."}
-              </p>
-            </div>
-          </div>
-
-          {resolvedProjectId && applicableRole === "trace_scoring" && (
-            <TaskScopePicker
-              allBehaviours={allBehaviours}
-              behavioursLoading={behavioursQuery.isLoading}
-              capabilityId={capabilityId}
-              onCapabilityChange={handleCapabilityChange}
-              onChange={setTaskScope}
-              value={taskScope}
-            />
-          )}
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">Prompt</h3>
-              <div className="inline-flex rounded-md border p-0.5">
-                <button
-                  className={cn(
-                    "rounded-sm px-3 py-1 text-xs font-medium",
-                    mode === "manual"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => setMode("manual")}
-                  type="button"
-                >
-                  Write it yourself
-                </button>
-                <button
-                  className={cn(
-                    "rounded-sm px-3 py-1 text-xs font-medium",
-                    mode === "generate"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => setMode("generate")}
-                  type="button"
-                >
-                  Generate from a description
-                </button>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="span-type-filter">Span type filter</Label>
+                  <Input
+                    id="span-type-filter"
+                    onChange={(e) => setSpanTypeFilter(e.target.value)}
+                    placeholder="e.g. llm_call"
+                    value={spanTypeFilter}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="operation-filter">Operation filter</Label>
+                  <Input
+                    id="operation-filter"
+                    onChange={(e) => setOperationFilter(e.target.value)}
+                    placeholder="Optional"
+                    value={operationFilter}
+                  />
+                </div>
               </div>
-            </div>
-
-            {mode === "generate" && (
-              <div className="min-w-0 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="script-source">Script</Label>
+                <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                  Return True/False, a score in [0, 1], (score, reason), or None to abstain. No
+                  imports. span.parent, span.children, span.siblings, and span.attributes are
+                  available.
+                </p>
                 <Textarea
-                  aria-label="Describe the test you want to create"
-                  className="min-h-40 rounded-md"
-                  id="generate-description"
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the test you want to create"
-                  value={description}
+                  aria-label="Script source"
+                  className="min-h-56 rounded-md font-mono text-xs"
+                  id="script-source"
+                  onChange={(e) => setScriptSource(e.target.value)}
+                  spellCheck={false}
+                  value={scriptSource}
                 />
-                <div className="flex justify-end">
-                  <Button
-                    disabled={!description.trim() || generate.isPending}
-                    onClick={handleGenerate}
-                    type="button"
-                    variant="secondary"
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="decision-backend">Decision engine</Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setDecisionBackend(value === "generative" ? "generative" : "jev")
+                    }
+                    value={decisionBackend}
                   >
-                    {generate.isPending ? (
-                      <>
-                        <Spinner size="sm" /> Generating…
-                      </>
-                    ) : (
-                      "Generate"
-                    )}
-                  </Button>
+                    <SelectTrigger aria-label="Decision engine" id="decision-backend">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jev">Jev + generative fallback</SelectItem>
+                      <SelectItem value="generative">Generative</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            )}
-
-            {mode === "manual" && (
-              <div className="min-w-0 space-y-1.5">
-                <Label htmlFor="evaluation-prompt">Evaluation prompt</Label>
-                <PromptTemplateEditor
-                  id="evaluation-prompt"
-                  onChange={setEvaluationPrompt}
-                  placeholder="Evaluate {{output}} for…"
-                  value={evaluationPrompt}
-                />
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <Label htmlFor="score-type">Score type</Label>
-              <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                Choose whether the evaluator should return a numeric score, a boolean verdict, or
-                one of a fixed set of categories.
-              </p>
-              <SearchableSelect
-                ariaLabel="Select score type"
-                onChange={handleScoreTypeChange}
-                options={SCORE_TYPE_OPTIONS}
-                searchPlaceholder="Search types…"
-                triggerClassName="w-56"
-                value={scoreType}
-              />
-            </div>
-
-            {scoreType === "categorical" && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Categories</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                    Add the allowed category values the model may return. Categories must be
-                    exhaustive. If you need a catch-all outcome (e.g. 'No match'), add it explicitly
-                    as one of the categories.
-                  </p>
-                  <div className="space-y-2">
-                    {categories.map((cat, i) => (
-                      <div className="flex items-center gap-2" key={i}>
-                        <Input
-                          aria-label={`Category ${i + 1}`}
-                          onChange={(e) =>
-                            setCategories((prev) =>
-                              prev.map((c, j) => (j === i ? e.target.value : c))
-                            )
-                          }
-                          placeholder="Category"
-                          value={cat}
-                        />
-                        <Button
-                          aria-label="Remove category"
-                          disabled={categories.length <= 1}
-                          onClick={() => setCategories((prev) => prev.filter((_, j) => j !== i))}
-                          size="icon"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Icon.delete />
-                        </Button>
-                      </div>
-                    ))}
+                {decisionBackend === "jev" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="decision-confidence">Confidence floor</Label>
+                    <Input
+                      id="decision-confidence"
+                      max={1}
+                      min={0}
+                      onChange={(event) => setDecisionConfidence(event.target.valueAsNumber)}
+                      step={0.05}
+                      type="number"
+                      value={Number.isFinite(decisionConfidence) ? decisionConfidence : ""}
+                    />
                   </div>
-                  <Button
-                    onClick={() => setCategories((prev) => [...prev, ""])}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Icon.add /> Add category
-                  </Button>
-                  {!categoriesValid && (
-                    <p className="text-xs text-destructive">
-                      Add at least two categories — they must be exhaustive.
-                    </p>
-                  )}
-                </div>
-
-                <label className="flex items-start gap-2" htmlFor="allow-multiple">
-                  <Checkbox
-                    checked={allowMultiple}
-                    className="mt-0.5"
-                    id="allow-multiple"
-                    onCheckedChange={(c) => handleAllowMultipleChange(c === true)}
-                  />
-                  <span className="space-y-0.5">
-                    <span className="block text-sm font-medium">Allow multiple matches</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Lets the model return more than one category. One score will be created for
-                      each selected match.
-                    </span>
-                  </span>
-                </label>
-
+                )}
+              </div>
+              {decisionBackend === "jev" && (
+                <p className="text-xs text-muted-foreground">
+                  Jev scores bounded checks with generative fallback. Confidence is not measured
+                  accuracy.
+                </p>
+              )}
+              {/* Same half/half grid as Capability + Test type, so Model left-aligns with it. */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="reasoning-prompt-cat">Score reasoning prompt</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
+                  <Label htmlFor="evaluator-name">Name</Label>
                   <Input
-                    id="reasoning-prompt-cat"
-                    onChange={(e) => setReasoningPrompt(e.target.value)}
-                    value={reasoningPrompt}
+                    id="evaluator-name"
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Name this evaluator"
+                    value={name}
                   />
                 </div>
-
                 <div className="space-y-1.5">
-                  <Label htmlFor="selection-prompt">Category selection prompt</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                    Define how the LLM should choose
-                    {allowMultiple ? " the matching categories" : " exactly one category"} from the
-                    list below.
-                  </p>
-                  <Input
-                    id="selection-prompt"
-                    onChange={(e) => setSelectionPrompt(e.target.value)}
-                    value={selectionPrompt}
-                  />
+                  <Label htmlFor="judge-model">Generative model</Label>
+                  <div className="flex items-center gap-2">
+                    <Select onValueChange={setJudgeModel} value={judgeModel || defaultJudgeModel}>
+                      <SelectTrigger
+                        aria-label="Select judge model"
+                        className="min-w-0 flex-1"
+                        id="judge-model"
+                        size="default"
+                      >
+                        <SelectValue>
+                          <ModelOptionLabel model={judgeModel || defaultJudgeModel} />
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {judgeModels.map((id) => (
+                          <SelectItem key={id} textValue={modelOptionName(id)} value={id}>
+                            <ModelOptionLabel model={id}>
+                              {id === defaultJudgeModel && (
+                                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                                  default
+                                </span>
+                              )}
+                            </ModelOptionLabel>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      disabled={usingDefaultModel}
+                      onClick={() => setJudgeModel("")}
+                      title="Reset to the platform default judge model"
+                      type="button"
+                      variant="secondary"
+                    >
+                      <Icon.undo />
+                      Use default
+                    </Button>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {scoreType === "boolean" && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="capability-tag">Capability (optional)</Label>
+                  <SearchableSelect
+                    ariaLabel="Tag this evaluator to a capability"
+                    onChange={(v) => handleCapabilityChange(v === CAPABILITY_NONE ? "" : v)}
+                    options={capabilityOptions}
+                    placeholder="No capability (generic)"
+                    searchPlaceholder="Search capabilities…"
+                    triggerClassName="w-full"
+                    value={capabilityId || CAPABILITY_NONE}
+                  />
+                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                    {capabilityId
+                      ? "Tagged to this capability — it appears on that capability's eval metrics, and generation is grounded in its context."
+                      : "Leave unset for a generic, project-level evaluator."}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="applicable-role">Test type</Label>
+                  <SearchableSelect
+                    ariaLabel="Select test type: generative tests or trace scoring"
+                    onChange={(v) => handleApplicableRoleChange(v as Role)}
+                    options={ROLE_OPTIONS}
+                    searchPlaceholder="Search…"
+                    triggerClassName="w-full"
+                    value={applicableRole}
+                  />
+                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                    {applicableRole === "trace_scoring"
+                      ? "Grades the capability's live traces."
+                      : "Runs when candidate models generate over the dataset (optimiser, backtest, eval runs)."}
+                  </p>
+                </div>
+              </div>
+
+              {resolvedProjectId && applicableRole === "trace_scoring" && (
+                <TaskScopePicker
+                  allBehaviours={allBehaviours}
+                  behavioursLoading={behavioursQuery.isLoading}
+                  capabilityId={capabilityId}
+                  onCapabilityChange={handleCapabilityChange}
+                  onChange={setTaskScope}
+                  value={taskScope}
+                />
+              )}
+
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="reasoning-prompt-bool">Score reasoning prompt</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
-                  <Input
-                    id="reasoning-prompt-bool"
-                    onChange={(e) => setReasoningPrompt(e.target.value)}
-                    value={reasoningPrompt}
-                  />
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold">Prompt</h3>
+                  <div className="inline-flex rounded-md border p-0.5">
+                    <button
+                      className={cn(
+                        "rounded-sm px-3 py-1 text-xs font-medium",
+                        mode === "manual"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setMode("manual")}
+                      type="button"
+                    >
+                      Write it yourself
+                    </button>
+                    <button
+                      className={cn(
+                        "rounded-sm px-3 py-1 text-xs font-medium",
+                        mode === "generate"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setMode("generate")}
+                      type="button"
+                    >
+                      Generate from a description
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="verdict-prompt">Boolean verdict prompt</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                    Define how the LLM should return either true or false based on the evaluation
-                    criteria.
-                  </p>
-                  <Input
-                    id="verdict-prompt"
-                    onChange={(e) => setVerdictPrompt(e.target.value)}
-                    value={verdictPrompt}
-                  />
-                </div>
-              </div>
-            )}
 
-            {scoreType === "numeric" && (
-              <div className="space-y-4">
+                {mode === "generate" && (
+                  <div className="min-w-0 space-y-3">
+                    <Textarea
+                      aria-label="Describe the test you want to create"
+                      className="min-h-40 rounded-md"
+                      id="generate-description"
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Describe the test you want to create"
+                      value={description}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        disabled={!description.trim() || generate.isPending}
+                        onClick={handleGenerate}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {generate.isPending ? (
+                          <>
+                            <Spinner size="sm" /> Generating…
+                          </>
+                        ) : (
+                          "Generate"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {mode === "manual" && (
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="evaluation-prompt">Evaluation prompt</Label>
+                    <PromptTemplateEditor
+                      id="evaluation-prompt"
+                      onChange={setEvaluationPrompt}
+                      placeholder="Evaluate {{output}} for…"
+                      value={evaluationPrompt}
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
-                  <Label htmlFor="reasoning-prompt-num">Score reasoning prompt</Label>
-                  <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
-                  <Input
-                    id="reasoning-prompt-num"
-                    onChange={(e) => setReasoningPrompt(e.target.value)}
-                    value={reasoningPrompt}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="output-prompt">Score output prompt</Label>
+                  <Label htmlFor="score-type">Score type</Label>
                   <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-                    Define how the LLM should return the evaluation score in natural language. Needs
-                    to yield a numeric value.
+                    Choose whether the evaluator should return a numeric score, a boolean verdict,
+                    or one of a fixed set of categories.
                   </p>
-                  <Input
-                    id="output-prompt"
-                    onChange={(e) => setOutputPrompt(e.target.value)}
-                    value={outputPrompt}
+                  <SearchableSelect
+                    ariaLabel="Select score type"
+                    onChange={handleScoreTypeChange}
+                    options={SCORE_TYPE_OPTIONS}
+                    searchPlaceholder="Search types…"
+                    triggerClassName="w-56"
+                    value={scoreType}
                   />
                 </div>
+
+                {scoreType === "categorical" && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Categories</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                        Add the allowed category values the model may return. Categories must be
+                        exhaustive. If you need a catch-all outcome (e.g. 'No match'), add it
+                        explicitly as one of the categories.
+                      </p>
+                      <div className="space-y-2">
+                        {categories.map((cat, i) => (
+                          <div className="flex items-center gap-2" key={i}>
+                            <Input
+                              aria-label={`Category ${i + 1}`}
+                              onChange={(e) =>
+                                setCategories((prev) =>
+                                  prev.map((c, j) => (j === i ? e.target.value : c))
+                                )
+                              }
+                              placeholder="Category"
+                              value={cat}
+                            />
+                            <Button
+                              aria-label="Remove category"
+                              disabled={categories.length <= 1}
+                              onClick={() =>
+                                setCategories((prev) => prev.filter((_, j) => j !== i))
+                              }
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Icon.delete />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        onClick={() => setCategories((prev) => [...prev, ""])}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <Icon.add /> Add category
+                      </Button>
+                      {!categoriesValid && (
+                        <p className="text-xs text-destructive">
+                          Add at least two categories — they must be exhaustive.
+                        </p>
+                      )}
+                    </div>
+
+                    <label className="flex items-start gap-2" htmlFor="allow-multiple">
+                      <Checkbox
+                        checked={allowMultiple}
+                        className="mt-0.5"
+                        id="allow-multiple"
+                        onCheckedChange={(c) => handleAllowMultipleChange(c === true)}
+                      />
+                      <span className="space-y-0.5">
+                        <span className="block text-sm font-medium">Allow multiple matches</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Lets the model return more than one category. One score will be created
+                          for each selected match.
+                        </span>
+                      </span>
+                    </label>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reasoning-prompt-cat">Score reasoning prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
+                      <Input
+                        id="reasoning-prompt-cat"
+                        onChange={(e) => setReasoningPrompt(e.target.value)}
+                        value={reasoningPrompt}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="selection-prompt">Category selection prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                        Define how the LLM should choose
+                        {allowMultiple ? " the matching categories" : " exactly one category"} from
+                        the list below.
+                      </p>
+                      <Input
+                        id="selection-prompt"
+                        onChange={(e) => setSelectionPrompt(e.target.value)}
+                        value={selectionPrompt}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {scoreType === "boolean" && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reasoning-prompt-bool">Score reasoning prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
+                      <Input
+                        id="reasoning-prompt-bool"
+                        onChange={(e) => setReasoningPrompt(e.target.value)}
+                        value={reasoningPrompt}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="verdict-prompt">Boolean verdict prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                        Define how the LLM should return either true or false based on the
+                        evaluation criteria.
+                      </p>
+                      <Input
+                        id="verdict-prompt"
+                        onChange={(e) => setVerdictPrompt(e.target.value)}
+                        value={verdictPrompt}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {scoreType === "numeric" && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reasoning-prompt-num">Score reasoning prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>{REASONING_HELP}</p>
+                      <Input
+                        id="reasoning-prompt-num"
+                        onChange={(e) => setReasoningPrompt(e.target.value)}
+                        value={reasoningPrompt}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="output-prompt">Score output prompt</Label>
+                      <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+                        Define how the LLM should return the evaluation score in natural language.
+                        Needs to yield a numeric value.
+                      </p>
+                      <Input
+                        id="output-prompt"
+                        onChange={(e) => setOutputPrompt(e.target.value)}
+                        value={outputPrompt}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </DialogBody>
 
         <DialogFooter className="flex-col items-stretch gap-2">

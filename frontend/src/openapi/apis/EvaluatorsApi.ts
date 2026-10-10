@@ -921,6 +921,7 @@ export const EvaluatorsCatalogListKindEnum = {
     agentic: 'agentic',
     deterministic: 'deterministic',
     llm_judge: 'llm_judge',
+    script: 'script',
     statistical: 'statistical',
     trajectory: 'trajectory'
 } as const;
@@ -953,6 +954,7 @@ export const EvaluatorsListKindEnum = {
     agentic: 'agentic',
     deterministic: 'deterministic',
     llm_judge: 'llm_judge',
+    script: 'script',
     statistical: 'statistical',
     trajectory: 'trajectory'
 } as const;
@@ -985,6 +987,7 @@ export const EvaluatorsScoreHistoryListKindEnum = {
     agentic: 'agentic',
     deterministic: 'deterministic',
     llm_judge: 'llm_judge',
+    script: 'script',
     statistical: 'statistical',
     trajectory: 'trajectory'
 } as const;

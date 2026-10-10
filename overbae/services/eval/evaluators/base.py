@@ -1094,7 +1094,11 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any] | None = None) -> li
         drafts = per_turn_judge.evaluate(unit, evaluator, ctx)
     else:
         kind = evaluator.kind
-        if kind == "deterministic":
+        if kind == "script":
+            # Per-span scripts run in ``trace_scoring._score_span_scripts``, not
+            # the unit dispatch path.
+            drafts = []
+        elif kind == "deterministic":
             drafts = deterministic.evaluate(unit, evaluator, ctx)
         elif kind == "trajectory":
             drafts = trajectory.evaluate(unit, evaluator, ctx)

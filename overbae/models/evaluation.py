@@ -146,6 +146,7 @@ class Evaluator(models.Model):
         DETERMINISTIC = "deterministic"
         STATISTICAL = "statistical"
         AGENTIC = "agentic"
+        SCRIPT = "script"
 
     class Scope(models.TextChoices):
         FINAL_OUTPUT = "final_output"

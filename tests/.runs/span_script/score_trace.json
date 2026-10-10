@@ -1,0 +1,35 @@
+{
+  "command": "uv run pytest tests/test_span_script.py::test_score_trace_runs_script_per_matching_span -q",
+  "environment": [
+    "django_db",
+    "python3 -I span_script child"
+  ],
+  "fixtures": {
+    "llm": "4d9c88f049e14ff1",
+    "root": "60d86b1a82404a11",
+    "script": "def evaluate(span):\n    if span.span_type == 'llm_call':\n        cost = span.attributes.get('genai.cost', 0)\n        tools = [c for c in span.children if c.span_type == 'tool_call']\n        if span.parent is None:\n            return None\n        if any(s.status_code == 'ERROR' for s in span.siblings):\n            return 0.0, 'sibling errored'\n        return cost < 0.01 and len(tools) <= 3\n    if span.span_type == 'tool_call':\n        return bool(span.parent)\n    return None",
+    "sibling": "289fc0a4298c4a46",
+    "span_filter": {
+      "span_type": "llm_call"
+    },
+    "tool": "e23c33ecdd514c08",
+    "trace_id": "a22904c32ee44f50a101d7204c2b25a0"
+  },
+  "observed": {
+    "first_status": "scored",
+    "llm": {
+      "explanation": "sibling errored",
+      "identifier": "script:263cb3821c3b5251",
+      "outcome": "scored",
+      "score": 0.0
+    },
+    "root_verdict_count": 0,
+    "second_status": "no_change",
+    "sibling": {
+      "explanation": "",
+      "outcome": "scored",
+      "score": 1.0
+    },
+    "tool_verdict_count": 0
+  }
+}
