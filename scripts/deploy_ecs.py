@@ -140,7 +140,7 @@ def describe_service(cluster, service):
     response = aws("ecs", "describe-services", "--cluster", cluster, "--services", service)
     if response.get("failures") or len(response.get("services", [])) != 1:
         raise RuntimeError(
-            f"Service {service!r} is absent. Provision the reviewed landing capacity plan "
+            f"Service {service!r} is absent. Apply it in cloud-platform (Terraform) "
             "before this release; no producer has been deployed."
         )
     return response["services"][0]
@@ -148,12 +148,12 @@ def describe_service(cluster, service):
 
 def register(cluster, service_name, image):
     service = describe_service(cluster, service_name)
-    definition = aws(
-        "ecs",
-        "describe-task-definition",
-        "--task-definition",
-        service["taskDefinition"],
-    )["taskDefinition"]
+    # Terraform (cloud-platform) registers env, secret and role changes as new
+    # revisions without moving the service; the family name resolves to the latest.
+    family = service["taskDefinition"].rsplit("/", 1)[-1].rsplit(":", 1)[0]
+    definition = aws("ecs", "describe-task-definition", "--task-definition", family)[
+        "taskDefinition"
+    ]
     rendered = render_task_definition(
         definition, service=service_name, image=image, cluster=cluster
     )
