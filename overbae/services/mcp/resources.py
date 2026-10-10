@@ -63,6 +63,7 @@ from overbae.services.eval.preload_status import read_eval_preload
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
+from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.context import get_context, project_context
 from overbae.services.mcp.contracts.datasets import (
     next_actions,
@@ -305,8 +306,8 @@ def _checkpoint_download_resource(uri: str) -> dict:
             "Resolve and read the deployment through the existing MCP resource/tool flow, then use "
             "the deployment id supplied by MCP. The CLI does not resolve deployment names."
         ),
-        "auth": "X-Api-Key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
-        "config": "Base URL from OVERMIND_API_URL, --api-url, or overmind.toml; --path selects overmind.toml.",
+        "auth": "X-Api-Key from --api-key, OVERMIND_API_KEY or repository credentials; otherwise use the endpoint-bound account connection in $XDG_CONFIG_HOME/overmind/connection.toml (default ~/.config/overmind/connection.toml).",
+        "config": "Base URL from --api-url, OVERMIND_API_URL, overmind.toml or the saved account connection; --path selects overmind.toml. An endpoint override cannot move saved credentials to another API.",
         "mcp_boundary": (
             "MCP carries deployment metadata and guidance, not checkpoint bytes. The presigned S3 "
             "download URL is used only by the local CLI and must never be exposed to model context."
@@ -318,6 +319,7 @@ def _checkpoint_download_resource(uri: str) -> dict:
         ),
         "output": "Parse the JSON result and report the local path and bytes_written.",
         "overwrite": "The CLI refuses to overwrite an existing local file.",
+        "redirects": "Metadata and artifact redirects are refused; the API key is sent only to the metadata endpoint.",
     }
 
 
@@ -1319,7 +1321,7 @@ def interface_resource():
         else None
     )
     return {
-        "contract_version": "6.3.0",
+        "contract_version": CONTRACT_VERSION,
         "transfer_protocol_version": 1,
         "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
         "tool_count": len(manifest),

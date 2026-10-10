@@ -29,6 +29,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
+from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.auth import MCP_PATH, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import get_context
@@ -39,7 +40,7 @@ from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
 
 SERVER_NAME = "overmind-platform"
-SERVER_VERSION = "6.4.0"
+SERVER_VERSION = CONTRACT_VERSION
 
 mcp_server = Server(
     SERVER_NAME,

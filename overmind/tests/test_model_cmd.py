@@ -73,7 +73,7 @@ def test_download_checkpoint_streams_metadata_and_artifact(tmp_path: Path):
     assert session.calls[0][1] == "https://api.example/api/deployed-models/deployment-1/checkpoints/"
     assert session.calls[0][2]["headers"] == {"X-Api-Key": "api-secret"}
     assert session.calls[1][1] == url
-    assert session.calls[1][2] == {"timeout": 120, "stream": True}
+    assert session.calls[1][2] == {"timeout": 120, "stream": True, "allow_redirects": False}
     assert metadata.closed is True
     assert artifact.closed is True
 

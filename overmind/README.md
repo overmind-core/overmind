@@ -352,6 +352,11 @@ The Console Agent header identifies the repository snapshot behind the capabilit
 
 Run `overmind <command> --help` for full flag documentation.
 
+Checkpoint downloads use the same endpoint-bound account connection as dataset
+transfers when no explicit or repository key is supplied. Metadata and artifact
+redirects are refused; the API key is sent only to the metadata endpoint. Existing
+output files are never overwritten.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE). The Overmind platform that this package talks to is AGPL-3.0, with a commercial licence from Overmind Ltd if you need different terms.
