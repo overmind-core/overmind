@@ -479,3 +479,12 @@ export const useCancelDatasetMutation = (id: string) => {
     onSuccess: () => invalidateDataset(qc, id),
   });
 };
+
+export const useResumeDatasetImportMutation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.datasets.datasetsResumeImportCreate({ id }),
+    onError: (error) => notify.error(error, "Import recovery failed"),
+    onSuccess: () => invalidateDataset(qc, id),
+  });
+};

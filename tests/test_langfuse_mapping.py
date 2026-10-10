@@ -1,6 +1,5 @@
-"""Checks for credential-scoped Langfuse observation → span mapping."""
-
-from types import SimpleNamespace
+import pytest
+from factories import make_connector
 
 from overbae.services.connectors.langfuse.client import LangFuseObservation
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
@@ -12,13 +11,8 @@ from overbae.services.connectors.schema import (
 from overbae.services.connectors.spans import span_id_for
 
 
-def _cred():
-    return SimpleNamespace(
-        id="11111111-1111-1111-1111-111111111111",
-        name="demo",
-        project=SimpleNamespace(id="p", slug="p"),
-        capability_mapping={},
-    )
+def _cred(**fields):
+    return make_connector("langfuse", **fields)
 
 
 def test_same_observation_same_span_id():
@@ -29,11 +23,8 @@ def test_same_observation_same_span_id():
     assert a != c
 
 
-def test_tree_maps_parent_and_entry_point(monkeypatch):
-    monkeypatch.setattr(
-        "overbae.services.connectors.mapping.resolve_capability",
-        lambda *a, **k: None,
-    )
+@pytest.mark.django_db
+def test_tree_maps_parent_and_entry_point():
     tree = [
         LangFuseObservation(
             id="root",
@@ -70,17 +61,11 @@ def test_tree_maps_parent_and_entry_point(monkeypatch):
     assert by_name["supervisor"]["duration_ns"] == 5_000_000_000
 
 
-def test_capability_key_stamped_when_mapping_set(monkeypatch):
-    monkeypatch.setattr(
-        "overbae.services.connectors.mapping.resolve_capability",
-        lambda *a, **k: None,
+@pytest.mark.django_db
+def test_capability_key_stamped_when_mapping_set():
+    cred = _cred(
+        capability_mapping={"source": "observation_name", "names": ["billing"], "assignments": {}}
     )
-    cred = _cred()
-    cred.capability_mapping = {
-        "source": "observation_name",
-        "names": ["billing"],
-        "assignments": {},
-    }
     tree = [
         LangFuseObservation(
             id="root",
@@ -95,9 +80,3 @@ def test_capability_key_stamped_when_mapping_set(monkeypatch):
     ]
     spans = observations_to_span_dicts(tree, credential=cred, conventions=LANGFUSE)
     assert spans[0]["attributes"][CONNECTOR_CAPABILITY_KEY_ATTR] == "billing"
-
-
-if __name__ == "__main__":
-    import pytest
-
-    raise SystemExit(pytest.main([__file__, "-q"]))

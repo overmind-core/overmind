@@ -147,10 +147,10 @@ export interface Dataset {
     readonly preparationPlan: { [key: string]: any; } | null;
     /**
      *
-     * @type {any}
+     * @type {{ [key: string]: any; }}
      * @memberof Dataset
      */
-    readonly operation: any | null;
+    readonly operation: { [key: string]: any; };
     /**
      *
      * @type {DatasetStateEnum}

@@ -1924,6 +1924,7 @@
       "fp8_supported": false,
       "inference": {
         "gpu_type": "L40S",
+        "min_vram_gb": 48,
         "max_model_len": 8192
       },
       "finetuning": {

@@ -48,6 +48,7 @@ from overbae.services import (
     training_monitoring,
 )
 from overbae.services.datasets import paths, pipeline_bindings, pipeline_packages, workbench
+from overbae.services.datasets.imports import status as import_status
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
@@ -771,6 +772,7 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
             "rows": active.rows if active else 0,
             "rows_scope": "active_version",
             "landing": dataset.source_spec.get("landing_progress"),
+            "import": import_status(dataset),
         },
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,

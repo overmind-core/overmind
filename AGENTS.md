@@ -2,20 +2,20 @@
 
 Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference. The platform is AGPL-3.0; `overmind/` is MIT.
 
-This file is the single playbook. Cursor reads it natively; Claude Code reads it through the `@AGENTS.md` import in `CLAUDE.md`. It holds what every task needs; procedures and subsystem maps live in `.claude/skills/`, which both tools load on demand.
+This file is the single playbook. Claude Code, Codex and Cursor all read it natively. It holds what every task needs; procedures and subsystem maps live in `.agents/skills/`, which every tool loads on demand.
 
 ## Branches
 
 - `main` is protected: feature branch → PR, using `.github/PULL_REQUEST_TEMPLATE.md`.
-- `oss` is based on `main` and carries the same backend and frontend plus the in-repo SDK under `overmind/`. Rewriting its history needs a force-push to `origin/oss`; do that only when publishing the rewrite. Never force-push `main`.
-- Root ruff excludes `overmind/`. SDK CI is `.github/workflows/sdk-*.yml`; PyPI publish is tag-gated (`overmind-v*`).
+- The repo is public (`overmind-core/overmind`) and carries the platform plus the MIT SDK under `overmind/`. Never force-push `main`.
+- Root ruff excludes `overmind/`. SDK CI is `.github/workflows/sdk-*.yml`. Every merge to `main` that touches `overmind/` publishes to PyPI, so `sdk-ci` requires a version bump on those PRs.
 
 ## Commands
 
 - Frontend (**Bun**, from `frontend/`): `bun run typecheck`, `bun run lint` (Biome — no ESLint/Prettier), `bun run test` (vitest), `bun run check:all` (design/contrast/controls scripts). Scripts run with `bun`; there is no `node` on this machine.
-- Backend (**uv**): `make test` (parallel pytest), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
+- Backend (**uv**): `make test` (parallel pytest on the compose Postgres), `make test-journeys` (end-to-end journeys in `tests/journeys/` on the live ASGI app, a real Celery worker and compose Redis; outside services are faked at the network), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
 - SDK (**uv**, from `overmind/`): `make -C overmind test`, `make -C overmind lint-check`.
-- CI (`.github/workflows/ci.yml`) runs on `main` and `oss`: platform lint/frontend/test. SDK CI (`sdk-ci.yml`) runs on `overmind/` changes.
+- CI (`.github/workflows/ci.yml`) runs on `main`: platform lint, frontend, test and journeys as parallel jobs; draft PRs skip it. SDK CI (`sdk-ci.yml`) runs on `overmind/` changes.
 - A local deployment already runs via `docker compose` with hot reload — do not start dev servers to verify changes. Celery workers auto-restart via watchmedo; `docker compose restart <worker>` if in doubt.
 - After changing backend API surface: `make generate_api_client` (api-endpoints skill).
 - `pre-commit run --files <changed files>` at the end of any substantial multi-file task, before committing.
@@ -59,7 +59,7 @@ Each line is the invariant; the named skill section carries the mechanics.
 
 - Billing meters platform model/compute spend on the ledger. Remaining-credit 402s, quotas and Stripe apply when `STRIPE_SECRET_KEY` is set. Native-agent model selection and funding belong to the external coding-agent environment. Training, evaluation and serving retain their own billing. Detail: backend-architecture § Auth and tenancy.
 
-- Celery is four workers over five queues: `control` (default, orchestration and beat), `io` + `io_traces` (one threads worker, round-robin), `batch` and `interactive` (prefork). Workers are resource profiles, queues are fairness classes; only prefork enforces `time_limit`, so every time-limited task routes to `batch` or `interactive`. `tests/test_celery_topology.py` enforces both invariants and must stay in sync with `make worker` and docker-compose. Detail: backend-architecture § Celery topology.
+- Celery is five workers over six queues: `control` (default, orchestration and beat), `io` + `io_traces` (one threads worker, round-robin), `batch`, `landing` and `interactive` (prefork). Workers are resource profiles, queues are fairness classes; only prefork enforces `time_limit`, so every time-limited task routes to `batch`, `landing` or `interactive`. Imports have dedicated landing capacity; evaluation generation uses durable, bounded admission with project and run fairness. Workshop pipelines retain queue and execution timestamps in their run receipts; their waiting and occupied slots contribute to batch capacity. Source imports retain fenced attempts and explicit recovery through REST and MCP. `tests/test_celery_topology.py` enforces both invariants and must stay in sync with `make worker` and docker-compose. Detail: backend-architecture § Celery topology.
 
 - Most status transitions use `.filter().update()` — **no Django signals fire** and the in-memory object goes stale. Any side effect a transition needs is wired explicitly at the call site, on a freshly reloaded row. Preserve this pattern.
 
@@ -225,15 +225,21 @@ Instrument voice — state the fact and stop ("9 rows", never "9 rows — small 
 
 ### Naming
 
-Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names — name by behavior. Backend tests live flat: `tests/test_<feature>.py`.
+Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names — name by behavior. Backend tests live flat: `tests/test_<feature>.py`; journeys live in `tests/journeys/test_<promise>.py`.
 
 ## Workflow
 
 - Never write unit tests after you write code.
 - Strongly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of each E2E run, produce a verifiable, repeatable artifact containing the command, inputs or fixtures, environment requirements, and observed results.
 - If a system must be tested in isolation, first write down all the ways it could fail, then write the code. Keep an isolated test only when it catches a concrete failure that existing E2E coverage misses; do not add assertions that merely mirror the implementation, pin incidental source text, or assert tautologies.
+- Tests fake only what we do not own, and only at the network: `tests/fakes` (FakeLLM, FakeModal, the vendor, Stripe and Clerk APIs, `scripted` HTTP). Never patch `overbae.*` except to capture a Celery `.delay`/`.apply_async`, and never import a private `overbae` name; call the public entry point. Each contract has one owning test; a journey owns a customer promise, so a unit test does not repeat it. Do not restate declarations (field lists, constants, `__all__`, prompt prose). The `test-seams` pre-commit hook refuses new seams. Detail: run-tests skill.
 - Stay in the asked scope. Fix the stated thing plus genuine prerequisites; report adjacent findings as a short "found but did not change" list. If the task is much bigger than framed, say so before editing.
 - Simple, self-evident fixes: typecheck + lint is the bar — skip the test suite and say so plainly. When a suite run is warranted: run once, tee to a log, grep the log (run-tests skill).
+- Which tests to run locally (compose Postgres and Redis up):
+  - While editing: the test file for the code (`uv run pytest tests/test_<feature>.py`, seconds) and the journey for its area (`make test-journeys test_args="-k <name>"`, about a minute).
+  - Before a push: `make test` (about 75 s).
+  - When the change crosses ingest, sync, the worker, the gateway, MCP or the Console: `make test-journeys` (about 6 min).
+  - CI runs the platform suites (lint, frontend, test, journeys) on every ready PR, and SDK CI only when `overmind/` or `.github/workflows/sdk-ci.yml` changes, so a local run of everything is not required.
 - A change is finished when every surface reflecting it is updated, not when its own vertical compiles. CI cannot catch this, so walk the list in the pr-etiquette skill before opening a PR: **MCP** (the first-class agent surface: `services/mcp/` — impact classification, catalog, contracts, tools, prompts, resources; mcp skill), **cross-vertical blast radius** (celery routing, the `seed_demo` command, the generated client, this file and the skills), and **docs** (the sibling `overmind-core/docs` repo at `../docs` — open that PR alongside and link the two).
 - Commit messages: short subject + at most one body line. No co-author trailers. Commit and push only when asked; on a sweep branch, one commit per observation.
 - Changing behavior that this file or a skill describes? Update it in the same PR. There is one copy of every rule; keeping it true is part of the change.
@@ -248,11 +254,16 @@ Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names 
 
 ## Guardrails
 
-`.claude/hooks/` holds deterministic guards, wired into Claude Code through `.claude/settings.json` and into Cursor through `.cursor/hooks.json`. A denial names the fix; follow it rather than retrying. Cursor cannot veto a file write, so one rule stays as text there: never hand-edit `frontend/src/openapi/` — `make generate_api_client` rewrites it wholesale.
+`.agents/hooks/` holds deterministic guards. A denial names the fix; follow it rather than retrying.
+
+- Claude Code reads the wiring in `.claude/settings.json`; Cursor reads the same file through its third-party hooks setting (on by default).
+- Codex reads `.codex/hooks.json`; trust the project hooks once with `/hooks`.
+- Skills live in `.agents/skills/` (frontmatter `name` and `description` only); `.claude/skills` is a symlink for Claude Code. Personal skills go in `~/.agents/skills/`.
+- Claude Code reads this file only from v2.1.277 and only when no `CLAUDE.md` or `CLAUDE.local.md` exists. With a `CLAUDE.local.md`, set `/config` → Project instructions → `claude-md-and-agents-md`.
 
 ## Gotchas
 
-- After `uv add`/`uv remove` the venv lacks the dev/test groups (pytest vanishes): `uv sync --group dev --group test`. Under Claude Code the `uv_resync` hook runs it.
+- After `uv add`/`uv remove` the venv lacks the dev/test groups (pytest vanishes): `uv sync --group dev --group test`. The `uv_resync` hook runs it.
 - A new Python dependency reaches a compose worker only when its container is recreated (`docker compose up -d --force-recreate --no-deps <worker>`); a worker started before the image changed keeps the old venv and crashes on import at its next watchmedo restart.
 - `overbae/services/sft_assets/` ships via `add_local_dir`, which bakes it into the image at deploy time — editing `pretok.py`/`train.py` does nothing until `modal deploy overbae/modal/modal_sft_worker.py`. The job runs the old code and fails identically, so it reads as "the fix didn't work".
 - Chat templates disagree on OpenAI wire shape: `content: null` and JSON-string `tool_calls[].function.arguments` either raise or silently render an argument-less call. `pretok.normalize_openai_wire` is the one place that reshapes them — training tool data on a new family means checking it there, not per-family.

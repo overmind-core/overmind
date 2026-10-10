@@ -8,7 +8,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Cell, Dataset
+from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import measure, paths
 
 
@@ -70,12 +70,18 @@ def set_intent(dataset: Dataset, intent: str) -> Dataset:
     return dataset
 
 
+def refuse_deleted_capability(capability):
+    if capability is not None and capability.status == Capability.Status.DELETED:
+        raise DatasetError("That capability was deleted.", code="capability")
+
+
 def set_capability(dataset: Dataset, capability: Any) -> Dataset:
     _refuse_while_busy(dataset)
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the capability is fixed.", code="frozen")
     if capability is not None and capability.project_id != dataset.project_id:
         raise DatasetError("That capability belongs to another project.", code="capability")
+    refuse_deleted_capability(capability)
     if getattr(capability, "id", None) != dataset.capability_id:
         _touch(dataset, capability=capability)
         measure.capability_only(dataset)

@@ -1,49 +1,36 @@
-"""Langfuse adapter: backfill window walk."""
-
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
-from overbae.services.connectors.langfuse import adapter as adapter_module
+import pytest
+import time_machine
+from factories import make_connector
+
 from overbae.services.connectors.langfuse.adapter import LangfuseAdapter
-from overbae.services.connectors.langfuse.client import LangFuseClient, LangFuseObservation
+
+pytestmark = pytest.mark.django_db
 
 _START = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
 
 
-def _cred(*, lookback_days=5, backfill_from=None, backfill_to=None, capability_mapping=None):
-    return SimpleNamespace(
-        name="demo",
-        api_key="pk-lf-key",
-        api_secret="sk-lf-secret",
-        base_url="",
-        api_version="v2",
-        connector_type="langfuse",
-        capability_mapping=capability_mapping or {},
-        project=SimpleNamespace(id="p", slug="p"),
-        active_config=lambda: SimpleNamespace(
-            lookback_days=lookback_days,
-            backfill_from=backfill_from,
-            backfill_to=backfill_to,
-            source_project_id="src",
-            version=1,
-        ),
+@pytest.fixture
+def api(scripted, slept):
+    api = scripted("https://cloud.langfuse.com")
+    api.reply(json_body={"data": [], "meta": {}})
+    return api
+
+
+@pytest.fixture
+def clock():
+    with time_machine.travel(_START, tick=False) as traveller:
+        yield traveller
+
+
+def _adapter(**config) -> LangfuseAdapter:
+    return LangfuseAdapter(
+        make_connector("langfuse", source_project_id="src", api_secret="sk", **config)
     )
 
 
-def _adapter(monkeypatch, *, tick=timedelta(seconds=2)):
-    """Adapter whose clock advances *tick* on every now() call."""
-    clock = {"t": _START}
-
-    def fake_now():
-        clock["t"] += tick
-        return clock["t"]
-
-    monkeypatch.setattr(adapter_module, "timezone", SimpleNamespace(now=fake_now))
-    monkeypatch.setattr(LangFuseClient, "iter_ingest_units", lambda self, **kwargs: iter(()))
-    return LangfuseAdapter(_cred())
-
-
-def _walk(adapter, max_pages=10):
+def _walk(adapter, clock, max_pages=10):
     state: dict = {}
     pages = []
     for _ in range(max_pages):
@@ -52,11 +39,12 @@ def _walk(adapter, max_pages=10):
         if page.done:
             break
         state = page.next_state
+        clock.shift(timedelta(seconds=2))
     return pages
 
 
-def test_backfill_covers_every_window_while_the_clock_moves(monkeypatch):
-    pages = _walk(_adapter(monkeypatch))
+def test_backfill_covers_every_window_while_the_clock_moves(api, clock):
+    pages = _walk(_adapter(lookback_days=5), clock)
 
     assert len(pages) == 5
     assert pages[-1].done is True
@@ -64,106 +52,68 @@ def test_backfill_covers_every_window_while_the_clock_moves(monkeypatch):
         assert later.window_to == earlier.window_from
 
 
-def test_backfill_pins_its_anchor_in_the_cursor(monkeypatch):
-    pages = _walk(_adapter(monkeypatch))
+def test_backfill_pins_its_anchor_in_the_cursor(api, clock):
+    pages = _walk(_adapter(lookback_days=5), clock)
 
     anchor = pages[0].next_state["backfill_anchor"]
     assert all(p.next_state.get("backfill_anchor") == anchor for p in pages[:-1])
     assert pages[0].window_to.isoformat() == anchor
 
 
-def test_backfill_uses_the_configured_bounds(monkeypatch):
+def test_backfill_uses_the_configured_bounds(api):
     start = datetime(2026, 8, 1, 12, tzinfo=UTC)
     end = start + timedelta(days=1)
-    adapter = LangfuseAdapter(_cred(lookback_days=30, backfill_from=start, backfill_to=end))
-    monkeypatch.setattr(LangFuseClient, "iter_ingest_units", lambda self, **kwargs: iter(()))
-
-    page = adapter.fetch_page({})
+    page = _adapter(lookback_days=30, backfill_from=start, backfill_to=end).fetch_page({})
 
     assert page.window_from == start
     assert page.window_to == end
 
 
-def test_count_and_sample_prefer_explicit_bounds(monkeypatch):
-    adapter = LangfuseAdapter(_cred())
+def test_count_and_discovery_prefer_explicit_bounds(api):
+    api.steps.clear()
+    api.reply(json_body={"data": [], "meta": {"totalItems": 7}})
     start = datetime(2026, 8, 1, tzinfo=UTC)
     end = start + timedelta(days=3)
-    count_windows = []
-    sample_windows = []
+    adapter = _adapter()
 
-    monkeypatch.setattr(
-        LangFuseClient,
-        "count",
-        lambda self, *, window: count_windows.append(window) or 7,
-    )
-    monkeypatch.setattr(
-        LangFuseClient,
-        "iter_ingest_units",
-        lambda self, *, windows: sample_windows.append(windows[0]) or iter(()),
-    )
+    adapter.count(lookback_days=30, window_from=start, window_to=end)
+    adapter.sample_units(lookback_days=30, window_from=start, window_to=end)
 
-    assert adapter.count(lookback_days=30, window_from=start, window_to=end) == 7
-    assert adapter.sample_units(lookback_days=30, window_from=start, window_to=end) == []
-    assert count_windows == [adapter_module.TimeWindow(start=start, end=end)]
-    assert sample_windows == [adapter_module.TimeWindow(start=start, end=end)]
+    for call in api.calls:
+        assert call.params["fromStartTime"].startswith("2026-08-01T00:00:00")
+        assert call.params["toStartTime"].startswith("2026-08-04T00:00:00")
 
 
-def test_live_v2_pagination_pins_its_window_and_resumes(monkeypatch):
-    adapter = LangfuseAdapter(_cred(capability_mapping={"source": "metadata", "key": "capability"}))
-    clock = {"t": _START}
-    calls = []
+def test_live_pagination_pins_its_window_and_resumes(api, clock):
+    def observation(oid, trace):
+        return {
+            "id": oid,
+            "traceId": trace,
+            "type": "SPAN",
+            "name": oid,
+            "startTime": _START.isoformat(),
+            "isRootObservation": True,
+        }
 
-    def fake_now():
-        clock["t"] += timedelta(minutes=1)
-        return clock["t"]
+    api.steps.clear()
+    api.reply(json_body={"data": [observation("one", "t1")], "meta": {"cursor": "cursor-1"}})
+    api.reply(json_body={"data": [observation("one", "t1")], "meta": {}})
+    api.reply(json_body={"data": [observation("two", "t2")], "meta": {}})
+    api.reply(json_body={"data": [observation("two", "t2")], "meta": {}})
+    adapter = _adapter(capability_mapping={"source": "metadata", "key": "capability"})
 
-    def fetch_page(self, window, *, cursor, expand_metadata):
-        calls.append((window, cursor, expand_metadata))
-        if cursor is None:
-            return (
-                [
-                    [
-                        LangFuseObservation(
-                            id="one",
-                            trace_id="t1",
-                            parent_observation_id=None,
-                            type="SPAN",
-                            name="one",
-                            start_time=_START.isoformat(),
-                            end_time=None,
-                        )
-                    ]
-                ],
-                "cursor-1",
-            )
-        return (
-            [
-                [
-                    LangFuseObservation(
-                        id="two",
-                        trace_id="t2",
-                        parent_observation_id=None,
-                        type="SPAN",
-                        name="two",
-                        start_time=_START.isoformat(),
-                        end_time=None,
-                    )
-                ]
-            ],
-            None,
-        )
-
-    monkeypatch.setattr(adapter_module, "timezone", SimpleNamespace(now=fake_now))
-    monkeypatch.setattr(LangFuseClient, "fetch_v2_trace_page", fetch_page)
-
+    clock.shift(timedelta(minutes=1))
     first = adapter.fetch_page({"mode": "live", "watermark": _START.isoformat()})
+    clock.shift(timedelta(minutes=1))
     second = adapter.fetch_page(first.next_state)
 
     assert first.done is False
     assert first.next_state["next_cursor"] == "cursor-1"
     assert second.done is True
     assert second.next_state == {"mode": "live", "watermark": first.window_to.isoformat()}
-    assert calls == [
-        (adapter_module.TimeWindow(_START, first.window_to), None, "capability"),
-        (adapter_module.TimeWindow(_START, first.window_to), "cursor-1", "capability"),
-    ]
+    pages = [c.params for c in api.calls if "traceId" not in c.params]
+    assert {(p["fromStartTime"], p["toStartTime"]) for p in pages} == {
+        ("2026-08-19T12:00:00Z", "2026-08-19T12:01:00Z")
+    }
+    assert pages[1]["cursor"] == "cursor-1"
+    assert all(c.params["expandMetadata"] == "capability" for c in api.calls)

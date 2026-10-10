@@ -114,7 +114,8 @@ def test_self_hosted_incumbent_routes_via_gateway(status, url, gateway, ready, s
 
 
 @override_settings(INFERENCE_API_URL=GATEWAY)
-def test_no_incumbent_reports_unavailable_exact_base_route():
+def test_no_incumbent_reports_unavailable_exact_base_route(fake_llm):
+    fake_llm.catalog_payload = []
     job = _job(incumbent="")
     target = _baseline_target(job)
 

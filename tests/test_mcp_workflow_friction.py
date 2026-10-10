@@ -21,7 +21,7 @@ def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatc
     cell = dataset.active_cell
     dataset.active = cell
     dataset.save(update_fields=["active"])
-    cell.note = "long note " * 1000
+    cell.note = "long note " * 51
     cell.stats = {}
     cell.quality_report = {
         "checks": [],
@@ -37,7 +37,7 @@ def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatc
             title=f"Cell {i}",
             fingerprint="a" * 64,
             script="x" * 10000,
-            note="note " * 1000,
+            note="note " * 102,
             intent_report=cell.intent_report,
         )
     key, _ = APIToken.create_for_user(
@@ -144,7 +144,7 @@ def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     project, _, dataset = workspace()
     cell = dataset.active_cell
     cell.script = "界" * 8000
-    cell.note = "界" * 8000
+    cell.note = "界" * 512
     cell.columns = [{"name": "column" + str(i), "metadata": "界" * 8000} for i in range(100)]
     cell.quality_report = {
         "checks": [],

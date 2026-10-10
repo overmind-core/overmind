@@ -546,6 +546,13 @@ def derive_baseten_training_plan(
             notes.append(
                 "packing disabled for Gemma4/Muse/Nemotron 3.5 (hybrid / no gradient checkpointing)"
             )
+    # Train images have no flash-attn varlen. SDPA still crosses packed rows.
+    if packing:
+        from overbae.services.sft_assets.packing import packs_safely  # noqa: PLC0415
+
+        if not packs_safely("sdpa"):
+            packing = False
+            notes.append("packing disabled: SDPA does not isolate packed rows")
     if packing:
         notes.append(f"packing enabled (avg row ≈{avg_row_tokens} tokens ≪ ctx {context_length})")
 

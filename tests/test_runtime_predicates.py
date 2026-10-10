@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from overbae.services.eval import funnel as judging
 from overbae.services.eval import predicates
 from overbae.services.eval.evaluators import judge
 from overbae.services.eval.evaluators.base import EvalUnit, JudgeItem, JudgeResult
@@ -130,7 +129,7 @@ def test_malformed_predicates_exclude_with_named_reason(pred):
     assert reason.startswith("malformed applies_when")
 
 
-def test_filter_checklist_partitions_and_records_reason():
+def test_filter_checklist_partitions_and_records_reason(fake_llm):
     checklist = [
         {"id": "always", "q": "always applies?"},
         {"id": "gated_in", "q": "in?", "applies_when": {"expectation_declared": "currency"}},
@@ -253,22 +252,17 @@ def _unit(final_output: str, runtime: dict | None = None) -> EvalUnit:
     return EvalUnit(trajectory=trajectory)
 
 
-def _patch_judge(monkeypatch, captured: dict, *, score=1.0, items=None):
-    def fake_invoke_judge(prompt, **kwargs):
-        captured["prompt"] = prompt
-        return judging.JudgeOutcome(
-            parsed=JudgeResult(items=items or [], score=score, reasoning="ok"),
-            raw="{}",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="jt",
-        )
+def _patch_judge(fake_llm, captured: dict, *, score=1.0, items=None):
+    def reply(request):
+        captured["prompt"] = request.messages[-1]["content"]
+        return JudgeResult(items=items or [], score=score, reasoning="ok").model_dump_json()
 
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+    fake_llm.on(lambda r: r.schema_name == "JudgeResult", reply)
 
 
-def test_currency_declared_unmet_gated_caps_boolean_score(monkeypatch):
+def test_currency_declared_unmet_gated_caps_boolean_score(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     runtime = {"expectations": [expectation()]}
     drafts = judge.evaluate(_unit("Total: 100.", runtime), _evaluator(), {})
     draft = drafts[0]
@@ -280,9 +274,9 @@ def test_currency_declared_unmet_gated_caps_boolean_score(monkeypatch):
     assert any(s.get("_runtime", {}).get("envelope_present") is True for s in draft.sub_scores)
 
 
-def test_currency_declared_met_passes_through(monkeypatch):
+def test_currency_declared_met_passes_through(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     runtime = {"expectations": [expectation()]}
     drafts = judge.evaluate(_unit("Total: 100 USD.", runtime), _evaluator(), {})
     draft = drafts[0]
@@ -292,10 +286,10 @@ def test_currency_declared_met_passes_through(monkeypatch):
     assert det["verdict"] is True
 
 
-def test_behaviour_outcome_judge_does_not_inherit_envelope_expects(monkeypatch):
+def test_behaviour_outcome_judge_does_not_inherit_envelope_expects(fake_llm):
     captured: dict = {}
     _patch_judge(
-        monkeypatch,
+        fake_llm,
         captured,
         score=1.0,
         items=[JudgeItem(id="serves-running-intent", verdict=True, score=1.0)],
@@ -330,9 +324,9 @@ def test_behaviour_outcome_judge_does_not_inherit_envelope_expects(monkeypatch):
     assert not any(str(s.get("id") or "").startswith("rt_") for s in draft.sub_scores)
 
 
-def test_undeclared_leaves_draft_untouched(monkeypatch):
+def test_undeclared_leaves_draft_untouched(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     drafts = judge.evaluate(_unit("Total: 100."), _evaluator(), {})
     draft = drafts[0]
     assert draft.value == 1.0
@@ -341,9 +335,9 @@ def test_undeclared_leaves_draft_untouched(monkeypatch):
     assert "Runtime declarations" not in captured["prompt"]
 
 
-def test_constraint_expectation_joins_judge_checklist(monkeypatch):
+def test_constraint_expectation_joins_judge_checklist(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     runtime = {
         "expectations": [
             expectation(exp_id="tone", kind="constraint", spec="Be formal.", gate=False)
@@ -353,10 +347,10 @@ def test_constraint_expectation_joins_judge_checklist(monkeypatch):
     assert "(rt_tone) Be formal." in captured["prompt"]
 
 
-def test_gated_synthetic_constraint_uses_existing_gate_mechanism(monkeypatch):
+def test_gated_synthetic_constraint_uses_existing_gate_mechanism(fake_llm):
     captured: dict = {}
     _patch_judge(
-        monkeypatch,
+        fake_llm,
         captured,
         score=1.0,
         items=[JudgeItem(id="quality", verdict=True), JudgeItem(id="rt_tone", verdict=False)],
@@ -370,9 +364,9 @@ def test_gated_synthetic_constraint_uses_existing_gate_mechanism(monkeypatch):
     assert drafts[0].value == 0.0
 
 
-def test_applies_when_excludes_item_from_prompt_with_na_verdict(monkeypatch):
+def test_applies_when_excludes_item_from_prompt_with_na_verdict(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     evaluator = _evaluator(
         checklist=[
             {"id": "quality", "q": "Is the answer helpful?", "weight": 1.0},
@@ -392,9 +386,9 @@ def test_applies_when_excludes_item_from_prompt_with_na_verdict(monkeypatch):
     assert "applies_when" in na["reasoning"]
 
 
-def test_all_items_excluded_returns_not_applicable_without_judge_call(monkeypatch):
+def test_all_items_excluded_returns_not_applicable_without_judge_call(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     evaluator = _evaluator(
         checklist=[
             {
@@ -411,10 +405,10 @@ def test_all_items_excluded_returns_not_applicable_without_judge_call(monkeypatc
     assert drafts[0].sub_scores[0]["id"] == "refund_check"
 
 
-def test_all_items_excluded_skips_orphan_synthetic_constraints(monkeypatch):
+def test_all_items_excluded_skips_orphan_synthetic_constraints(fake_llm):
     """The verdict on a declared constraint belongs to evaluators whose checklist applies."""
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=0.0)
+    _patch_judge(fake_llm, captured, score=0.0)
     evaluator = _evaluator(
         checklist=[
             {
@@ -459,11 +453,11 @@ def test_build_judge_prompt_runtime_section_binding():
     assert '{"tools": "search"}' in prompt
 
 
-def test_evaluator_level_applies_when_false_yields_single_not_applicable(monkeypatch):
+def test_evaluator_level_applies_when_false_yields_single_not_applicable(fake_llm):
     from overbae.services.eval.evaluators import base as eval_base
 
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     evaluator = _evaluator(config={"applies_when": {"expectation_declared": "invoice"}})
     drafts = eval_base.evaluate(_unit("hello", {"context": {"k": "v"}}), evaluator, {})
     assert len(drafts) == 1
@@ -476,11 +470,11 @@ def test_evaluator_level_applies_when_false_yields_single_not_applicable(monkeyp
     assert "prompt" not in captured
 
 
-def test_evaluator_level_applies_when_true_runs_normally(monkeypatch):
+def test_evaluator_level_applies_when_true_runs_normally(fake_llm):
     from overbae.services.eval.evaluators import base as eval_base
 
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     evaluator = _evaluator(config={"applies_when": {"expectation_declared": "invoice"}})
     runtime = {
         "expectations": [expectation(exp_id="invoice", kind="constraint", spec="x", gate=False)]
@@ -490,11 +484,11 @@ def test_evaluator_level_applies_when_true_runs_normally(monkeypatch):
     assert "prompt" in captured
 
 
-def test_evaluator_level_malformed_applies_when_excludes_with_reason(monkeypatch):
+def test_evaluator_level_malformed_applies_when_excludes_with_reason(fake_llm):
     from overbae.services.eval.evaluators import base as eval_base
 
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0)
+    _patch_judge(fake_llm, captured, score=1.0)
     evaluator = _evaluator(config={"applies_when": {"bogus_op": 1}})
     drafts = eval_base.evaluate(_unit("hello"), evaluator, {})
     assert drafts[0].outcome == "not_applicable"
@@ -502,9 +496,9 @@ def test_evaluator_level_malformed_applies_when_excludes_with_reason(monkeypatch
     assert "prompt" not in captured
 
 
-def test_correct_refusal_empty_output_with_declared_expectation_is_not_graded(monkeypatch):
+def test_correct_refusal_empty_output_with_declared_expectation_is_not_graded(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=0.0)
+    _patch_judge(fake_llm, captured, score=0.0)
     runtime = {
         "expectations": [
             expectation(
@@ -522,9 +516,9 @@ def test_correct_refusal_empty_output_with_declared_expectation_is_not_graded(mo
     assert "prompt" not in captured
 
 
-def test_broken_empty_output_without_declarations_keeps_low_provenance_grading(monkeypatch):
+def test_broken_empty_output_without_declarations_keeps_low_provenance_grading(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=0.0)
+    _patch_judge(fake_llm, captured, score=0.0)
     drafts = judge.evaluate(_unit(""), _evaluator(), {})
     assert drafts[0].outcome == "scored"
     assert drafts[0].value == 0.0
@@ -532,9 +526,9 @@ def test_broken_empty_output_without_declarations_keeps_low_provenance_grading(m
     assert "prompt" in captured
 
 
-def test_explicit_empty_container_is_rejection_evidence_not_low_provenance(monkeypatch):
+def test_explicit_empty_container_is_rejection_evidence_not_low_provenance(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     drafts = judge.evaluate(_unit("[]"), _evaluator(), {})
     assert drafts[0].outcome == "scored"
     assert "Low provenance" not in (drafts[0].reasoning or "")
@@ -542,10 +536,10 @@ def test_explicit_empty_container_is_rejection_evidence_not_low_provenance(monke
     assert "rejection decision" in captured["prompt"]
 
 
-def test_empty_output_with_deterministically_failed_expectation_is_genuine_fail(monkeypatch):
+def test_empty_output_with_deterministically_failed_expectation_is_genuine_fail(fake_llm):
     """Brokenness, not refusal: scored at score_min without a judge call."""
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     runtime = {"expectations": [expectation()]}  # gated contains "USD", unmet on ""
     drafts = judge.evaluate(_unit("", runtime), _evaluator(), {})
     assert drafts[0].outcome == "scored"
@@ -555,10 +549,10 @@ def test_empty_output_with_deterministically_failed_expectation_is_genuine_fail(
     assert "prompt" not in captured
 
 
-def test_empty_output_det_failure_scores_numeric_evaluators_consistently(monkeypatch):
+def test_empty_output_det_failure_scores_numeric_evaluators_consistently(fake_llm):
     """Numeric evaluators have no gate cap, so the deterministic verdict must cover them."""
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     runtime = {"expectations": [expectation()]}
     evaluator = _evaluator(score_type="numeric")
     drafts = judge.evaluate(_unit("", runtime), evaluator, {})
@@ -569,9 +563,9 @@ def test_empty_output_det_failure_scores_numeric_evaluators_consistently(monkeyp
     assert det["verdict"] is False
 
 
-def test_nonempty_output_with_declared_expectations_grades_normally(monkeypatch):
+def test_nonempty_output_with_declared_expectations_grades_normally(fake_llm):
     captured: dict = {}
-    _patch_judge(monkeypatch, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
+    _patch_judge(fake_llm, captured, score=1.0, items=[JudgeItem(id="quality", verdict=True)])
     runtime = {
         "expectations": [
             expectation(exp_id="tone", kind="constraint", spec="Be formal.", gate=False)

@@ -1,6 +1,6 @@
 """Eval pipeline fan-out:
 
-    run_eval_run -> chord(group(prepare_sample ...)) -> launch_evaluation
+    run_eval_run -> bounded generation admission -> launch_evaluation
                  -> chord(group(execute_evaluator ...)) -> aggregate_run
 
 ``execute_evaluator`` is idempotent per ``(sample, evaluator)`` so retries never double-write.
@@ -10,18 +10,25 @@ from __future__ import annotations
 
 import logging
 import random
-import uuid
 from typing import Any
 
-from celery import chain, chord, group, shared_task
+from celery import chain, chord, current_app, group, shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.llms import ModelSpec
 from overbae.models import EvalRun, FinetuningJob
 from overbae.services.datasets.examples import matches_reference
-from overbae.services.eval import chatml, evidence, normalizer, ranking, runner
+from overbae.services.eval import (
+    chatml,
+    evidence,
+    generation_admission,
+    normalizer,
+    ranking,
+    runner,
+)
 from overbae.services.eval.comparison import compare_variant_to_baseline
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.evaluators import base as eval_base
@@ -69,6 +76,11 @@ def _fail_run(eval_run_id: str, reason: str) -> int:
             updated_at=now,
         )
     )
+    if flipped:
+        try:
+            revoke_run_tasks(EvalRun.objects.get(pk=eval_run_id))
+        except Exception:
+            logger.exception("failed to revoke terminal evaluation %s", eval_run_id)
     return flipped
 
 
@@ -281,9 +293,11 @@ def run_eval_run(*, eval_run_id: str, **kwargs) -> dict[str, Any]:
 
     # Stamp ``updated_at`` by hand: the pipeline mutates the row via ``QuerySet.update()``,
     # which bypasses ``auto_now``, and the stall watchdog reads this as the start time.
-    EvalRun.objects.filter(pk=run.pk).update(
+    claimed = EvalRun.objects.filter(pk=run.pk, status=EvalRun.Status.PENDING).update(
         status=EvalRun.Status.RUNNING, error="", updated_at=timezone.now()
     )
+    if not claimed:
+        return {"status": "skipped", "reason": "run_already_started_or_terminal"}
 
     try:
         items = _resolve_items(run)
@@ -307,32 +321,36 @@ def run_eval_run(*, eval_run_id: str, **kwargs) -> dict[str, Any]:
         # of inside the first prepare_sample where it blows the time limit.
         _warm_generate_models(variants)
 
-        run_id = str(run.id)
-        # Each prepare_sample's task id is fixed at dispatch and persisted on the sample,
-        # so ``cancel`` can revoke the in-flight task instead of leaking a hung generation.
-        header = []
-        for variant in variants:
-            is_generate = variant.mode == variant.Mode.GENERATE
-            for item in items:
-                sample = EvalSample.objects.create(
+        from overbae.models.eval_generation import EvalGenerationRun
+
+        EvalGenerationRun.objects.filter(run=run).delete()
+        generation_admission.seed_generation(
+            run,
+            (
+                EvalSample(
                     run=run,
                     variant=variant,
                     row_index=item.get("row_index"),
                     source_trace_id=item.get("source_trace_id", ""),
-                    expected=_sample_reference(item, is_generate=is_generate),
+                    expected=_sample_reference(
+                        item, is_generate=variant.mode == variant.Mode.GENERATE
+                    ),
                 )
-                task_id = str(uuid.uuid4())
-                EvalSample.objects.filter(pk=sample.pk).update(celery_task_id=task_id)
-                sig = _link_failure(prepare_sample.s(sample_id=str(sample.id)), run_id)
-                sig.set(task_id=task_id)
-                header.append(sig)
-
-        callback = _link_failure(launch_evaluation.s(eval_run_id=run_id), run_id)
-        chord(group(header))(callback)
-        return {"status": "running", "samples": len(header), "variants": len(variants)}
+                for variant in variants
+                for item in items
+            ),
+        )
+        wake_generation_dispatcher()
+        return {
+            "status": "running",
+            "samples": len(items) * len(variants),
+            "variants": len(variants),
+        }
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_eval_run failed for %s", eval_run_id)
-        EvalRun.objects.filter(pk=run.pk).update(status=_TERMINAL_FAIL, error=str(exc))
+        EvalRun.objects.filter(pk=run.pk).exclude(status__in=generation_admission.TERMINAL).update(
+            status=_TERMINAL_FAIL, error=str(exc)
+        )
         return {"error": str(exc)}
 
 
@@ -474,15 +492,58 @@ def _resolve_items(run) -> list[dict[str, Any]]:
     return items
 
 
-# ``acks_late`` + ``reject_on_worker_lost``: this is a chord header task, so one lost
-# to a worker restart or crash would never decrement the chord counter and the run
-# would hang forever in "scoring". Redelivery is safe — the task is idempotent, it
-# overwrites the sample's trajectory.
-# The time limits are the backstop under the per-request socket timeout: a slow chain
-# or stuck provider raises SoftTimeLimitExceeded (caught below) instead of pinning a
-# worker thread. They are sized for teacher-forced replay, which chains one LLM call
-# per turn and may cold-start a fine-tuned model on Modal. Celery enforces them only
-# under the prefork pool; under ``--pool=threads`` the socket timeout frees the thread.
+GENERATION_WAKEUP_KEY = "eval-generation:wakeup"
+
+
+def wake_generation_dispatcher() -> None:
+    # Every dispatch serialises on the scheduler row lock, so one wakeup per completion
+    # would pin a control thread each. A pending wakeup covers every completion before
+    # it starts; the key's expiry and the 30s tick cover a lost message.
+    try:
+        if not cache.add(GENERATION_WAKEUP_KEY, "1", timeout=30):
+            return
+        try:
+            dispatch_generation.delay()
+        except Exception:
+            cache.delete(GENERATION_WAKEUP_KEY)
+            raise
+    except Exception:
+        logger.exception("generation dispatcher wakeup failed; periodic reconciliation will resume")
+
+
+@shared_task(name="overbae.tasks.eval.dispatch_generation")
+def dispatch_generation():
+    try:
+        cache.delete(GENERATION_WAKEUP_KEY)
+    except Exception:
+        logger.warning("generation wakeup key not cleared; it expires on its own", exc_info=True)
+    with current_app.connection_for_write(
+        connect_timeout=5,
+        transport_options={"socket_connect_timeout": 5, "socket_timeout": 5},
+    ) as connection:
+
+        def publish(sample_id, task_id):
+            prepare_sample.apply_async(
+                kwargs={"sample_id": sample_id},
+                task_id=task_id,
+                connection=connection,
+                retry=False,
+            )
+
+        def publish_scoring(run_id, task_id):
+            launch_evaluation.apply_async(
+                args=(None,),
+                kwargs={"eval_run_id": run_id},
+                task_id=task_id,
+                connection=connection,
+                retry=False,
+            )
+
+        return generation_admission.dispatch_generation(publish, publish_scoring)
+
+
+# A claimed admission is never replayed after a worker loss; reconciliation records
+# an unknown outcome after the hard time limit. Prefork enforces this backstop.
 @shared_task(
     name="overbae.tasks.eval.prepare_sample",
     bind=True,
@@ -495,11 +556,32 @@ def _resolve_items(run) -> list[dict[str, Any]]:
     time_limit=1320,
 )
 def prepare_sample(self, *, sample_id: str, **kwargs) -> str:
+    if not generation_admission.claim_generation(sample_id, self.request.id):
+        return sample_id
+    try:
+        return prepare_sample_body(sample_id=sample_id)
+    except generation_admission.GenerationStoppedError:
+        return sample_id
+    except Exception as exc:
+        from overbae.models import EvalSample
+
+        EvalSample.objects.filter(pk=sample_id).exclude(
+            run__status__in=generation_admission.TERMINAL
+        ).update(error=str(exc))
+        logger.exception("sample preparation failed before generation for %s", sample_id)
+        return sample_id
+    finally:
+        generation_admission.finish_generation(sample_id, self.request.id)
+        wake_generation_dispatcher()
+
+
+def prepare_sample_body(*, sample_id: str) -> str:
     from overbae.models import EvalSample, Span
 
     sample = EvalSample.objects.select_related("variant", "run__dataset", "run__cell").get(
         id=sample_id
     )
+    generation_admission.ensure_run_active(sample.run_id)
     variant = sample.variant
     datapoint = _sample_row(sample)
 
@@ -540,22 +622,28 @@ def prepare_sample(self, *, sample_id: str, **kwargs) -> str:
             raw_tool_spans,
             is_generate=variant.mode == variant.Mode.GENERATE,
         )
-        EvalSample.objects.filter(pk=sample.pk).update(
+        EvalSample.objects.filter(pk=sample.pk).exclude(
+            run__status__in=generation_admission.TERMINAL
+        ).update(
             trajectory=normalized,
             structured=structured,
             degraded=degraded,
             degraded_reason=degraded_reason,
         )
+    except generation_admission.GenerationStoppedError:
+        pass
     except SoftTimeLimitExceeded:
         # Caught, not re-raised, so it bypasses ``autoretry_for``: retrying a timed-out
         # generation re-enters the same hang. The run summary counts the errored sample.
         logger.warning("prepare_sample timed out for %s", sample_id)
-        EvalSample.objects.filter(pk=sample.pk).update(
-            error="generation timed out (exceeded soft_time_limit)"
-        )
+        EvalSample.objects.filter(pk=sample.pk).exclude(
+            run__status__in=generation_admission.TERMINAL
+        ).update(error="generation timed out (exceeded soft_time_limit)")
     except Exception as exc:  # noqa: BLE001
         logger.exception("prepare_sample failed for %s", sample_id)
-        EvalSample.objects.filter(pk=sample.pk).update(error=str(exc))
+        EvalSample.objects.filter(pk=sample.pk).exclude(
+            run__status__in=generation_admission.TERMINAL
+        ).update(error=str(exc))
     finally:
         _record_generation_activity(sample.run_id)
     return sample_id
@@ -859,6 +947,7 @@ def _generate_per_turn(
     first_request: dict[str, Any] = {}
 
     for depth, idx in enumerate(assistant_indices):
+        generation_admission.ensure_run_active(sample.run_id)
         seed = _normalize_seed(messages[:idx])
         if depth == 0:
             first_seed = seed
@@ -1053,6 +1142,7 @@ def _generate_sample(sample) -> dict[str, Any]:
         max_steps=max_steps,
         reasoning_effort=(variant.params or {}).get("reasoning_effort"),
         project_id=str(sample.run.project_id),
+        check_active=lambda: generation_admission.ensure_run_active(sample.run_id),
     )
     # Raise on total failure so prepare_sample records sample.error: evaluators then
     # skip the sample instead of scoring empty output as a genuine result.
@@ -1240,10 +1330,12 @@ def _variant_model(variant) -> tuple[str | None, ModelSpec | None]:
     return (variant.model_name or None), None
 
 
-@shared_task(name="overbae.tasks.eval.launch_evaluation")
-def launch_evaluation(_prepare_results, *, eval_run_id: str, **kwargs) -> dict[str, Any]:
+@shared_task(name="overbae.tasks.eval.launch_evaluation", bind=True)
+def launch_evaluation(self, _prepare_results, *, eval_run_id: str, **kwargs) -> dict[str, Any]:
     from overbae.models import EvalRun
 
+    if not generation_admission.begin_scoring(eval_run_id, self.request.id):
+        return {"status": "skipped", "reason": "terminal_or_duplicate"}
     run = EvalRun.objects.get(id=eval_run_id)
     if run.dataset_id:
         sweep_eval_bindings.delay(dataset_id=str(run.dataset_id))

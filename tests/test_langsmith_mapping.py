@@ -287,7 +287,3 @@ def test_shared_profiler_ranks_langsmith_records_unchanged():
     assert names[0] in {"handler", "researcher"}
     assert names.index("chat") > names.index("researcher")
     assert next(s["parent_name"] for s in shapes if s["name"] == "researcher") == "handler"
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))

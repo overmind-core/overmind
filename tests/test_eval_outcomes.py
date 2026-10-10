@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
+from factories import make_project
 
 from overbae.models import (
     Capability,
@@ -12,7 +13,6 @@ from overbae.models import (
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
@@ -46,12 +46,12 @@ def _evaluator(**overrides):
     return evaluator_stub(**{"name": "Judge", "kind": "llm_judge", **overrides})
 
 
-def test_reference_free_judge_scores_in_upload_mode(monkeypatch):
+def test_reference_free_judge_scores_in_upload_mode(fake_llm):
     # Upload mode means output_synthesized_from_reference.
-    def fake_invoke_judge(prompt, **kwargs):
-        return _judge_outcome({"valid_json": True}, "t1")
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (_judge_outcome({"valid_json": True}, "t1")).parsed.model_dump_json(),
+    )
 
     unit = EvalUnit(
         trajectory={
@@ -71,12 +71,12 @@ def test_reference_free_judge_scores_in_upload_mode(monkeypatch):
     assert drafts[0].outcome == "scored"
 
 
-def test_reference_consuming_judge_runs_in_synthesized_mode(monkeypatch):
+def test_reference_consuming_judge_runs_in_synthesized_mode(fake_llm):
     # Never force-skip an eval the user chose: runnability gating is the setup wizard's job.
-    def fake_invoke_judge(prompt, **kwargs):
-        return _judge_outcome({"matches_reference": True}, "t3")
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (_judge_outcome({"matches_reference": True}, "t3")).parsed.model_dump_json(),
+    )
 
     unit = EvalUnit(
         trajectory={
@@ -100,12 +100,12 @@ def test_reference_consuming_judge_runs_in_synthesized_mode(monkeypatch):
     assert drafts[0].outcome == "scored"
 
 
-def test_judge_guard_does_not_fire_on_genuine_model_output(monkeypatch):
+def test_judge_guard_does_not_fire_on_genuine_model_output(fake_llm):
     # The guard keys on the synthesis flag, not on the over-broad has_expected proxy.
-    def fake_invoke_judge(prompt, **kwargs):
-        return _judge_outcome({"grounded": True, "complete": False}, "t2")
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (_judge_outcome({"grounded": True, "complete": False}, "t2")).parsed.model_dump_json(),
+    )
     unit = EvalUnit(
         trajectory={
             "final_output": "a real generated answer",
@@ -127,16 +127,18 @@ def test_judge_guard_does_not_fire_on_genuine_model_output(monkeypatch):
     assert drafts[0].outcome == "scored"
 
 
-def test_reference_free_trace_judge_scores_in_upload_mode(monkeypatch):
-    def fake_invoke_judge(prompt, **kwargs):
-        return judging.JudgeOutcome(
-            parsed=JudgeResult(items=[], score=0.9, reasoning="valid json"),
-            raw="{}",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="t1",
-        )
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+def test_reference_free_trace_judge_scores_in_upload_mode(fake_llm):
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (
+            judging.JudgeOutcome(
+                parsed=JudgeResult(items=[], score=0.9, reasoning="valid json"),
+                raw="{}",
+                stats={"response_cost": 0.0, "response_ms": 0},
+                judge_trace_id="t1",
+            )
+        ).parsed.model_dump_json(),
+    )
     unit = EvalUnit(
         trajectory={
             "final_output": '{"a": 1}',
@@ -152,16 +154,18 @@ def test_reference_free_trace_judge_scores_in_upload_mode(monkeypatch):
     assert drafts[0].outcome == "scored"
 
 
-def test_reference_consuming_trace_judge_runs_in_synthesized_mode(monkeypatch):
-    def fake_invoke_judge(prompt, **kwargs):
-        return judging.JudgeOutcome(
-            parsed=JudgeResult(items=[], score=1.0, reasoning="match"),
-            raw="{}",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="t3",
-        )
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+def test_reference_consuming_trace_judge_runs_in_synthesized_mode(fake_llm):
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (
+            judging.JudgeOutcome(
+                parsed=JudgeResult(items=[], score=1.0, reasoning="match"),
+                raw="{}",
+                stats={"response_cost": 0.0, "response_ms": 0},
+                judge_trace_id="t3",
+            )
+        ).parsed.model_dump_json(),
+    )
     unit = EvalUnit(
         trajectory={
             "final_output": "the reference answer",
@@ -183,16 +187,18 @@ def test_reference_consuming_trace_judge_runs_in_synthesized_mode(monkeypatch):
     assert drafts[0].outcome == "scored"
 
 
-def test_trace_judge_guard_does_not_fire_on_genuine_model_output(monkeypatch):
-    def fake_invoke_judge(prompt, **kwargs):
-        return judging.JudgeOutcome(
-            parsed=JudgeResult(items=[], score=0.5, reasoning="ok"),
-            raw="{}",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="t2",
-        )
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+def test_trace_judge_guard_does_not_fire_on_genuine_model_output(fake_llm):
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (
+            judging.JudgeOutcome(
+                parsed=JudgeResult(items=[], score=0.5, reasoning="ok"),
+                raw="{}",
+                stats={"response_cost": 0.0, "response_ms": 0},
+                judge_trace_id="t2",
+            )
+        ).parsed.model_dump_json(),
+    )
     unit = EvalUnit(
         trajectory={
             "final_output": "a real generated answer",
@@ -216,10 +222,6 @@ def test_trace_judge_guard_does_not_fire_on_genuine_model_output(monkeypatch):
 pytestmark = pytest.mark.django_db
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _dataset(project) -> Dataset:
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
@@ -234,7 +236,7 @@ def _attach(run, evaluator) -> RunEvaluator:
 
 
 def test_aggregate_run_is_idempotent_no_double_write_or_reflip():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -291,7 +293,7 @@ def test_aggregate_run_is_idempotent_no_double_write_or_reflip():
 
 
 def test_execute_evaluator_contains_reconstruct_failure(monkeypatch):
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -333,7 +335,7 @@ def test_execute_evaluator_contains_reconstruct_failure(monkeypatch):
 
 
 def test_completed_empty_surfaced_when_nothing_scored():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -374,7 +376,7 @@ def test_completed_empty_surfaced_when_nothing_scored():
 
 
 def test_completed_empty_false_when_a_row_scored():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,

@@ -10,6 +10,7 @@ from asgiref.sync import sync_to_async
 from overbae.models import Capability, Dataset
 from overbae.services.datasets import (
     dispatch,
+    imports,
     paths,
     store,
     workbench,
@@ -322,6 +323,15 @@ def _cancel_dataset_sync(payload, context):
     )
 
 
+def _resume_import_sync(payload, context):
+    dataset = _resolve_dataset(context, payload.dataset)
+    try:
+        imports.resume_dataset(dataset)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return mutation_output(dataset, summary="Source import resumed from its retained receipt.")
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -333,6 +343,16 @@ def register_dataset_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "resume_dataset_import",
+            "Resume source import",
+            "Resume a stopped source import using its retained bytes and task identity. Does not prepare data or replay transformations.",
+            InspectDatasetInput,
+            DatasetMutationOutput,
+            _resume_import_sync,
+            False,
+            "job",
+        ),
         (
             "cancel_dataset",
             "Cancel dataset operation",

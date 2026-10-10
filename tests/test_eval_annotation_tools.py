@@ -4,6 +4,7 @@ import asyncio
 import uuid
 
 import pytest
+from factories import make_user
 
 from overbae.models import (
     Annotation,
@@ -21,16 +22,8 @@ from overbae.services.mcp.context import MCPContext
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@example.com",
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-
-
 def _context(project: Project, user: User | None = None) -> MCPContext:
-    owner = user or _user()
+    owner = user or make_user()
     ProjectMembership.objects.create(user=owner, project=project)
     token = APIToken(
         scope={
@@ -85,7 +78,7 @@ def test_missing_sample_id_is_invalid_input():
 def test_annotations_are_project_scoped(monkeypatch):
     sample = _sample()
     other = Project.objects.create(name="Other", slug=f"p-{uuid.uuid4().hex[:8]}")
-    owner = _user()
+    owner = make_user()
     created = _call(
         "annotate_evaluation_sample",
         _context(sample.run.project, user=owner),

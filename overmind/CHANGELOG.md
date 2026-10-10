@@ -6,8 +6,16 @@ entries here cover the SDK surface.
 
 ## Unreleased
 
+### Changed
+
+- `overmind dataset upload` inspects the upload before creating the dataset; the
+  server now refuses an uninspected upload, so older CLI versions must upgrade.
+
 ### Added
 
+- Codex (`.agents/plugins/marketplace.json`) and Cursor (`.cursor-plugin/marketplace.json`)
+  marketplaces at the repository root, so all three clients install the plugin
+  from `overmind-core/overmind`.
 - `overmind dataset upload FILE --split PERCENT [--split-position head|tail|random]`:
   land one file as a train dataset and an eval dataset with disjoint rows; the
   JSON result carries `id` (train) and `eval_id`.
@@ -48,6 +56,12 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- `overmind init --ide cursor` installs skills to `.agents/skills`, shared with
+  Codex, and removes earlier Overmind copies from `.cursor/skills`.
+- `overmind skills sync` replaces each installed skill directory, so files
+  removed from a skill no longer linger.
+- The Claude Code plugin declares its MCP server as `type: http`; it was
+  dropped at load before. The shared plugin MCP file is now `mcp.json`.
 - `overmind init --ide claude` writes the Overmind MCP server to Claude Code's
   local scope (`~/.claude.json`) instead of `.mcp.json`, so sync works in
   repositories that commit `.mcp.json`. It no longer writes

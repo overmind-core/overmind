@@ -262,7 +262,8 @@ class TestPacking:
                 "avg_output_chars": 300,
             },
         )
-        assert packed.packing is True
+        assert packed.packing is False
+        assert any("does not isolate" in n for n in packed.notes)
         assert unpacked.packing is False
 
     def test_native_decisions_keep_independent_sequence_boundaries(self):

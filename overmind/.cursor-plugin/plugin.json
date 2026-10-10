@@ -21,7 +21,7 @@
   ],
   "category": "developer-tools",
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./mcp.json",
   "variables": {
     "type": "object",
     "properties": {

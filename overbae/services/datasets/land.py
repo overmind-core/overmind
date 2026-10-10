@@ -12,6 +12,7 @@ import json
 import logging
 import shutil
 import tempfile
+import uuid
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -86,33 +87,17 @@ def _stamp_source_rows(rows):
         yield row
 
 
-@transaction.atomic
-def commit(
-    dataset: Dataset,
-    landing: Landing,
-    *,
-    user: Any = None,
-    state: str = Dataset.State.IDLE,
-    infer_capability: bool = True,
-) -> Dataset:
-    sources = []
-    for artifact in landing.spec.get("sources", []):
-        staged = artifact.get("staged_path")
-        if staged:
-            destination = paths.source_path(dataset.id, artifact["id"])
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(staged, destination)
-        sources.append({key: value for key, value in artifact.items() if key != "staged_path"})
-    source = dataset.cells.filter(position=0).first()
-    if source is None:
-        source = Cell.objects.create(
-            dataset=dataset,
-            position=0,
-            title="Source",
-            state=Cell.State.QUEUED,
-            created_by=user if getattr(user, "pk", None) else None,
-        )
-    path = paths.cell_path(dataset.id, source.id)
+@dataclass
+class PreparedLanding:
+    dataset_id: Any
+    cell_id: uuid.UUID
+    path: Path
+    dataset_fields: dict[str, Any]
+    cell_fields: dict[str, Any]
+    sources: list[dict]
+
+
+def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True):
     manifest = landing.manifest
     if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
         manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
@@ -123,29 +108,103 @@ def commit(
                 operations.check_cancelled(dataset.id)
             yield row
 
+    path.parent.mkdir(parents=True, exist_ok=True)
     store.write_rows(path, checked_rows(), manifest)
     operations.check_cancelled(dataset.id)
-    fields: dict[str, Any] = {
+    sources = landing.spec.get("sources", [])
+    fields = {
         "source_kind": landing.kind,
         "source_spec": {
             **landing.spec,
-            "sources": sources,
+            "sources": [
+                {key: value for key, value in source.items() if key != "staged_path"}
+                for source in sources
+            ],
             "landed_at": timezone.now().isoformat(),
         },
         "state": state,
         "error": "",
+        "capability_rank": alignment.rank(
+            dataset.project_id, pd.DataFrame.from_records(store.head(path, 500))
+        ),
     }
-    df = pd.DataFrame.from_records(store.head(path, 500))
-    fields["capability_rank"] = alignment.rank(dataset.project_id, df)
-    if infer_capability and dataset.capability_id is None and fields["capability_rank"]:
+    measured = Dataset.objects.select_related("capability").get(pk=dataset.pk)
+    if infer_capability and measured.capability_id is None and fields["capability_rank"]:
         best = fields["capability_rank"][0]
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
-    report = contract.measure_path(path)
-    Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
+            measured.capability_id = best["capability_id"]
+    source = dataset.cells.filter(position=0).first()
+    return PreparedLanding(
+        dataset.pk,
+        source.pk if source else uuid.uuid4(),
+        path,
+        fields,
+        {
+            **measure.describe_frame(measured, path, report=contract.measure_path(path)),
+            "input_fingerprint": "",
+            "seconds": 0.0,
+        },
+        sources,
+    )
+
+
+@transaction.atomic
+def publish(dataset, prepared, *, user=None):
+    if prepared.dataset_id != dataset.pk:
+        raise LandError("The prepared source belongs to another dataset.")
+    locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    operations.check_cancelled(locked.pk)
+    source = locked.cells.filter(position=0).first()
+    if source is not None and source.pk != prepared.cell_id:
+        raise LandError("The source changed before publication.")
+    for artifact in prepared.sources:
+        if artifact.get("staged_path"):
+            destination = paths.source_path(locked.pk, artifact["id"])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(artifact["staged_path"], destination)
+    destination = paths.cell_path(locked.pk, prepared.cell_id)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    prepared.path.replace(destination)
+    if source is None:
+        Cell.objects.create(
+            id=prepared.cell_id,
+            dataset=locked,
+            position=0,
+            title="Source",
+            created_by=user if getattr(user, "pk", None) else None,
+            **prepared.cell_fields,
+        )
+    else:
+        fields = dict(prepared.cell_fields)
+        if source.preparation_plan:
+            fields["preparation_plan"] = {
+                **source.preparation_plan,
+                "result_fingerprint": fields["fingerprint"],
+            }
+        Cell.objects.filter(pk=source.pk).update(**fields)
+    Dataset.objects.filter(pk=locked.pk).update(
+        **prepared.dataset_fields, updated_at=timezone.now()
+    )
     dataset.refresh_from_db()
-    measure.frame(dataset, source, path, report=report, input_fingerprint="", seconds=0.0)
+    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
+
+    maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
+
+
+def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capability=True):
+    parent = paths.dataset_dir(dataset.pk)
+    parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="source-", dir=parent) as directory:
+        prepared = prepare(
+            dataset,
+            landing,
+            path=Path(directory) / "source.parquet",
+            state=state,
+            infer_capability=infer_capability,
+        )
+        return publish(dataset, prepared, user=user)
 
 
 def read_file(

@@ -19,7 +19,7 @@ from modal_shared.shared import (
 )
 from overbae.models import DeployedModel
 from overbae.services.deployed_chat import has_recent_inference
-from overbae.services.deployment import modal_environment
+from overbae.services.deployment import modal_environment, serving_gpu
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def live_worker_stats(deployed: DeployedModel) -> dict:
         lora = bool(deployed.adapter_path)
         path = rel_weights_path(deployed.weights_path)
         cls_name = worker_cls_name(
-            deployed.gpu_type,
+            serving_gpu(deployed),
             serve_image_key(deployed.base_model_id, deployed.model_id),
             enable_lora=lora,
         )

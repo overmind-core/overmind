@@ -73,6 +73,7 @@ if torch.cuda.is_available() and torch.cuda.device_count() > 1:
 # gets the TRL_SRC (pinned) classes; binding first would lock them to the
 # unsloth-patched copies, whose defaults the rest of this module works around.
 from basepath import base_weights_for  # noqa: E402
+from causal_mask import install_training_causal_mask  # noqa: E402
 from common import (  # noqa: E402
     CHECKPOINT_DIR,
     GRAD_ACCUM,
@@ -97,6 +98,7 @@ from common import (  # noqa: E402
     rewrite_adapter_base_model,
 )
 from datasets import Dataset  # noqa: E402
+from packing import sft_collator_flags, use_row_packing  # noqa: E402
 from pretok import pretok_row  # noqa: E402
 from token_accuracy import TokenAccuracy  # noqa: E402
 from training_monitor import TrainingMonitorCallback  # noqa: E402
@@ -107,6 +109,20 @@ from truncation import refuse_truncation  # noqa: E402
 from modal_shared.training_data import row_key  # noqa: E402
 
 apply_shared_patches()
+
+
+def _install_qwen3_causal_mask(model) -> None:
+    try:
+        import unsloth.utils.attention_dispatch as dispatch
+        import xformers.ops.fmha.attn_bias as attn_bias
+    except ImportError:
+        return
+    # Multi-GPU turns xformers off: its bias is built once and does not move with the layer.
+    if not getattr(dispatch, "HAS_XFORMERS", False):
+        return
+    if install_training_causal_mask(model, attn_bias.LowerTriangularMask()):
+        print("Training forward uses the causal mask", flush=True)
+
 
 # unsloth_zoo force-injects `push_to_hub_token` into TrainingArguments.to_dict()
 # on transformers>=5.0, guarding a pop that TRL main now only does for
@@ -220,10 +236,9 @@ LORA_TARGET_MODULES: list[str] = (
     else [m.strip() for m in _lora_targets_raw.split(",") if m.strip()]
 )
 LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "0") == "1" and USE_LORA
-# PER_DEVICE_BATCH is always 1, so the stock padding-free collator has nothing to
-# flatten across; the waste is short rows sitting alone in a MAX_LENGTH step.
-# PACK_ROWS concatenates several pretokenized rows per example, carrying per-row
-# seq_lengths so the collator resets position_ids at each row boundary.
+# PACK_ROWS concatenates several pretokenized rows into one example of at most
+# MAX_LENGTH. TRL packing stays off (sft_collator_flags): its default bfd strategy
+# flattens the micro-batch into one sequence and Unsloth truncates it.
 # Default off: Modal omitted this env and the old default ("1") packed every job
 # to MAX_LENGTH, OOMing Gemma4 12B/26B on flex_attention (no FA2, GC forced off).
 # Honor PACKING too — BasetenRunner sets that name for the stock engine.
@@ -231,29 +246,19 @@ PACK_ROWS = os.getenv("PACK_ROWS", os.getenv("PACKING", "0")) == "1"
 
 
 def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
-    """Greedily concat pretokenized rows into <= max_length packed examples.
+    """Greedily concat pretokenized rows into separate examples of at most max_length.
 
-    The per-example "seq_lengths" is what stops packed rows attending into each
-    other: the padding-free collator resets position_ids at each boundary.
     Rows longer than max_length raise — never truncate user data.
     """
     packed: list[dict] = []
     cur_ids: list[int] = []
     cur_labels: list[int] = []
-    cur_lengths: list[int] = []
 
     def _flush() -> None:
         if cur_ids:
-            packed.append(
-                {
-                    "input_ids": list(cur_ids),
-                    "labels": list(cur_labels),
-                    "seq_lengths": list(cur_lengths),
-                }
-            )
+            packed.append({"input_ids": list(cur_ids), "labels": list(cur_labels)})
         cur_ids.clear()
         cur_labels.clear()
-        cur_lengths.clear()
 
     for i, row in enumerate(rows):
         ids, labels = row["input_ids"], row["labels"]
@@ -263,12 +268,27 @@ def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
             _flush()
         cur_ids.extend(ids)
         cur_labels.extend(labels)
-        cur_lengths.append(n)
     _flush()
     return packed
 
 
-def _build_dataset(tok, rows: list[dict], *, stage="building_training_dataset") -> Dataset | None:
+def _attention_implementation(model) -> str | None:
+    objects = [model]
+    get_base = getattr(model, "get_base_model", None)
+    if get_base is not None:
+        objects.append(get_base())
+    for obj in objects:
+        cfg = getattr(obj, "config", None)
+        for candidate in (cfg, getattr(cfg, "text_config", None) if cfg is not None else None):
+            impl = getattr(candidate, "_attn_implementation", None)
+            if impl:
+                return str(impl)
+    return None
+
+
+def _build_dataset(
+    tok, rows: list[dict], *, pack: bool, stage="building_training_dataset"
+) -> Dataset | None:
     emit_stage(stage, completed=0, total=len(rows), unit="rows")
     out: list[dict] = []
     for i, row in enumerate(rows):
@@ -291,7 +311,7 @@ def _build_dataset(tok, rows: list[dict], *, stage="building_training_dataset") 
             emit_stage(stage, completed=i + 1, total=len(rows), unit="rows")
     if not out:
         return None
-    if PACK_ROWS:
+    if pack:
         packed = _pack_rows(out, MAX_LENGTH)
         print(
             f"Packed {len(out)} rows → {len(packed)} sequences (max_length={MAX_LENGTH})",
@@ -436,6 +456,7 @@ def main() -> None:
             random_state=SEED,
         )
     _hooks.post_load(model, tokenizer, use_lora=USE_LORA)
+    _install_qwen3_causal_mask(model)
     if Path("preparation.json").exists():
         emit_stage("verifying_training_tokenizer")
         prepared = json.loads(Path("preparation.json").read_text())
@@ -480,11 +501,19 @@ def main() -> None:
     if not train_rows:
         raise RuntimeError("data.jsonl is empty — nothing to train on")
 
-    train_ds = _build_dataset(tokenizer, train_rows)
+    _attn = _attention_implementation(model)
+    _pack = use_row_packing(PACK_ROWS, _attn)
+    if PACK_ROWS and not _pack:
+        print(
+            f"Not packing rows: {_attn or 'unspecified'} attention does not isolate documents",
+            flush=True,
+        )
+
+    train_ds = _build_dataset(tokenizer, train_rows, pack=_pack)
     if train_ds is None:
         raise RuntimeError("pretok produced zero usable training rows")
     val_ds = (
-        _build_dataset(tokenizer, val_rows, stage="building_validation_dataset")
+        _build_dataset(tokenizer, val_rows, pack=_pack, stage="building_validation_dataset")
         if val_rows
         else None
     )
@@ -523,14 +552,6 @@ def main() -> None:
         lr_scheduler_type="cosine",
         logging_steps=LOGGING_EVERY,
         max_length=MAX_LENGTH,
-        # Only satisfies TRL's guard that padding_free + numeric max_length needs
-        # packing; _pack_rows does the actual packing, and skip_prepare_dataset
-        # below means TRL's packing code never runs.
-        packing=PACK_ROWS,
-        # Flattens each micro-batch into one sequence via position_ids instead of
-        # padding, resetting at every row boundary from "seq_lengths". Requires
-        # the stock TRL collator — a custom one is rejected when padding_free.
-        padding_free=PACK_ROWS,
         report_to=[],
         seed=SEED,
         save_strategy="no",  # Monitoring owns verified intermediate checkpoints.
@@ -542,6 +563,7 @@ def main() -> None:
         remove_unused_columns=False,
         **_sft_overrides,
         **sft_kwargs,
+        **sft_collator_flags(),
     )
 
     callback = ProgressCallback(RUN_DIR)
@@ -562,9 +584,6 @@ def main() -> None:
         # pretok tokenized with and what eos/pad were fixed on above, so nothing
         # downstream changes.
         processing_class=_inner_tok,
-        # None → TRL's own DataCollatorForLanguageModeling, which turns each
-        # example's "seq_lengths" into position_ids. A custom collator can't do
-        # that reset and TRL rejects one outright when padding_free=True.
         data_collator=None,
         callbacks=[callback, monitoring],
     )

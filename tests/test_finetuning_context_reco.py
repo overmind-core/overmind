@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import json
-import os
 import uuid
 from unittest.mock import patch
 
 import pytest
 from conftest import frozen_dataset
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client, make_user
 
 from overbae.models import (
     Capability,
@@ -31,31 +28,14 @@ from overbae.services.finetuning_pricing import (
 )
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.capability_context import collect_capability_context
-from overbae.tasks.finetuning import _build_training_jsonl
 
 pytestmark = pytest.mark.django_db
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 
 
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@example.com",
-        password="pass",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
 def _setup() -> tuple[User, Project, Capability]:
-    u = _user()
+    u = make_user()
     p = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=u, project=p)
     slug = f"a-{uuid.uuid4().hex[:8]}"
@@ -289,27 +269,12 @@ def test_overlapping_trace_ids_intersects_on_source_trace():
     )
 
 
-def test_build_training_jsonl_preserves_selected_version_rows():
-    _, p, a = _setup()
-    train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2", "t3"])
-
-    path, n = _build_training_jsonl(train.active_cell)
-    try:
-        with open(path, encoding="utf-8") as f:
-            rows = [json.loads(line) for line in f]
-    finally:
-        os.unlink(path)
-    assert n == 3
-    contents = json.dumps(rows)
-    assert all(value in contents for value in ("qt1", "qt2", "qt3"))
-
-
 def test_dataset_overlap_endpoint():
     u, p, a = _setup()
     train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2", "t3"])
     eval_ds = _dataset(p, a, intent="eval", trace_ids=["t3", "t4"])
 
-    r = _auth_client(u).get(
+    r = auth_client(u).get(
         reverse("finetuningjob-dataset-overlap"),
         {"dataset": str(train.id), "eval_dataset": str(eval_ds.id)},
     )
@@ -327,7 +292,7 @@ def test_dataset_overlap_endpoint_scopes_to_user_projects():
     _u2, p2, a2 = _setup()
     foreign_eval = _dataset(p2, a2, intent="eval", trace_ids=["t1"])
 
-    r = _auth_client(u).get(
+    r = auth_client(u).get(
         reverse("finetuningjob-dataset-overlap"),
         {"dataset": str(train.id), "eval_dataset": str(foreign_eval.id)},
     )
@@ -352,7 +317,7 @@ def test_job_create_persists_eval_dataset_and_eval_set():
     )
 
     with patch(CELERY_PATH, return_value=type("R", (), {"id": "task-1"})()):
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-list"),
             {
                 "project": str(p.id),
@@ -379,7 +344,7 @@ def test_job_create_rejects_eval_set_with_no_generative_members():
     eval_set = EvalSet.objects.create(project=p, capability=a, name="empty set")
 
     with patch(CELERY_PATH) as mock_apply:
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-list"),
             {
                 "project": str(p.id),
@@ -405,7 +370,7 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
     eval_set = EvalSet.objects.create(project=p, capability=a, name="Eval set")
 
     with patch(CELERY_PATH) as mock_apply:
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-list"),
             {
                 "project": str(p.id),
@@ -441,7 +406,7 @@ def test_job_create_allows_evaluation_that_may_exceed_serving_context():
     )
     with patch(CELERY_PATH) as submit:
         submit.return_value.id = "context-warning-task"
-        response = _auth_client(u).post(
+        response = auth_client(u).post(
             reverse("finetuningjob-list"),
             {
                 "project": str(project.pk),
@@ -468,7 +433,7 @@ def test_recommendation_warns_without_excluding_models_for_evaluation_context():
         capability=capability,
         contract="eval",
     )
-    response = _auth_client(u).post(
+    response = auth_client(u).post(
         reverse("finetuningjob-recommend"),
         {"dataset_id": str(train.pk), "eval_dataset_id": str(evaluation.pk)},
         format="json",
@@ -489,7 +454,7 @@ def test_recommend_endpoint_answers_the_same_way_twice():
     u, p, a = _setup()
     ds = _dataset(p, a, intent="ft", trace_ids=["t1"])
 
-    client = _auth_client(u)
+    client = auth_client(u)
     payload = {"dataset_id": str(ds.id), "capability_id": str(a.id)}
     first = client.post(reverse("finetuningjob-recommend"), payload, format="json")
     second = client.post(reverse("finetuningjob-recommend"), payload, format="json")
@@ -508,7 +473,7 @@ def test_recommend_endpoint_uses_selected_capability_then_dataset_for_none():
     capability.description = "Generate Python code from requirements."
     capability.save(update_fields=["description"])
     dataset = _dataset(p, capability, intent="train", trace_ids=["code-1"])
-    client = _auth_client(u)
+    client = auth_client(u)
     with patch(
         "overbae.services.codebase.task_type.call_llm",
         return_value=('{"task_type":"code_generation"}', {}),
@@ -558,7 +523,7 @@ def test_estimate_endpoint_scales_with_epochs_and_lora():
     )
     assert find_catalog_model(model["id"]) is not None
 
-    client = _auth_client(u)
+    client = auth_client(u)
     lora_1 = client.post(
         reverse("finetuningjob-estimate"),
         {
@@ -616,7 +581,7 @@ def test_model_defaults_endpoint_derives_dataset_aware_hyperparams():
     version.save(update_fields=["stats"])
 
     model = next(m for ms in tier_models().values() for m in ms)
-    client = _auth_client(u)
+    client = auth_client(u)
     r = client.post(
         reverse("finetuningjob-model-defaults"),
         {"dataset_id": str(ds.id), "base_model": model["id"]},

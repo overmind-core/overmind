@@ -110,6 +110,9 @@ def _write_meta(run_dir: Path, **fields) -> None:
 
 def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_count=1) -> dict:
     meter = ComputeMeter(gpu_type=gpu_type, gpu_count=gpu_count)
+    # Refresh before creating directories on a stale volume mount.
+    sft_vol.reload()
+    weights_vol.reload()
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
@@ -123,7 +126,6 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
         "progress_path": str(run_dir / "progress.json"),
     }
 
-    sft_vol.reload()
     usage_path = run_dir / "compute-usage.json"
     previous_usage = json.loads(usage_path.read_text()) if usage_path.exists() else []
     if native and final_dir.exists():

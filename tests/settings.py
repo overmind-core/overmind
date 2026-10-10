@@ -1,4 +1,4 @@
-"""Django settings for pytest — SQLite (in-memory) so CI/local tests never touch Postgres."""
+"""Django settings for pytest."""
 
 from __future__ import annotations
 
@@ -28,8 +28,12 @@ from overbae.settings import *  # noqa: E402, F403
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "overbae",
+        "USER": os.environ.get("POSTGRES_USER", "overbae"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "overbae"),
+        "HOST": os.environ.get("TEST_POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("TEST_POSTGRES_PORT", "5432"),
     }
 }
 
@@ -45,13 +49,22 @@ STRIPE_SECRET_KEY = "sk_test_billing"
 # ~20s on connect timeout. Celery reads CELERY_BROKER_URL from os.environ above app
 # config, so the env copy is overwritten too. In-memory transport accepts publishes
 # without running task bodies (no ALWAYS_EAGER).
-os.environ["CELERY_BROKER_URL"] = "memory://"
-os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
-CELERY_BROKER_URL = "memory://"
-CELERY_RESULT_BACKEND = "cache+memory://"
+JOURNEY_REDIS_URL = os.environ.get("TEST_REDIS_URL", "")
+CELERY_BROKER_URL = JOURNEY_REDIS_URL or "memory://"
+CELERY_RESULT_BACKEND = JOURNEY_REDIS_URL or "cache+memory://"
+os.environ["CELERY_BROKER_URL"] = CELERY_BROKER_URL
+os.environ["CELERY_RESULT_BACKEND"] = CELERY_RESULT_BACKEND
 
-# Keep the query-embedding cache off Redis in tests.
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": JOURNEY_REDIS_URL.rsplit("/", 1)[0] + "/14",
+        }
+        if JOURNEY_REDIS_URL
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+    )
+}
 
 # PBKDF2 makes every create_user ~80ms; MD5 is fine for hermetic unit tests.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

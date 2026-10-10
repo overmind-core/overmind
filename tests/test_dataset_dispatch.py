@@ -63,7 +63,7 @@ def test_create_dataset_with_two_source_keys_raises():
         )
 
 
-def test_redelivered_landing_fails_both_split_datasets_without_reading_the_source():
+def test_redelivered_unclaimed_import_lands_both_split_datasets_once():
     project = _project()
     train = _dataset(project, state=Dataset.State.LANDING)
     evaluation = _dataset(project, state=Dataset.State.LANDING)
@@ -76,9 +76,9 @@ def test_redelivered_landing_fails_both_split_datasets_without_reading_the_sourc
         )
     finally:
         land_task.pop_request()
-    assert result["status"] == "failed"
+    assert result["status"] == "ok"
     for dataset in (train, evaluation):
         dataset.refresh_from_db()
-        assert dataset.state == Dataset.State.ERROR
-        assert "interrupted" in dataset.error
-        assert dataset.source is None
+        assert dataset.state == Dataset.State.IDLE
+        assert dataset.error == ""
+        assert dataset.source.rows == 1

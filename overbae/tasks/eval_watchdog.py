@@ -27,6 +27,7 @@ EVAL_RUN_STALL_MINUTES = 30
 @with_task_lock(lock_name="eval_watchdog", timeout=900)
 def reap_stalled_eval_runs() -> dict:
     from overbae.models import EvalRun, Score
+    from overbae.services.eval.generation_admission import generation_wait_is_healthy
     from overbae.tasks.eval import _fail_run, aggregate_run
 
     cutoff = timezone.now() - timedelta(minutes=EVAL_RUN_STALL_MINUTES)
@@ -37,6 +38,8 @@ def reap_stalled_eval_runs() -> dict:
     reaped = 0
     finalized = 0
     for run in running:
+        if generation_wait_is_healthy(run.id):
+            continue
         last_score = Score.objects.filter(run=run).aggregate(m=Max("created_at"))["m"]
         last_activity = max(ts for ts in (run.updated_at, last_score) if ts is not None)
         if last_activity >= cutoff:

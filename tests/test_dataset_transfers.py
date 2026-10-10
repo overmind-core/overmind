@@ -5,7 +5,7 @@ import uuid
 import pytest
 from rest_framework.test import APIClient
 
-from overbae.models import APIToken, Dataset, Project, ProjectMembership, User
+from overbae.models import APIToken, Dataset, DatasetImport, Project, ProjectMembership, User
 from overbae.services.datasets import files, paths, store
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -216,6 +216,9 @@ def test_lost_broker_acknowledgement_recovers_without_recreating_dataset(
     first = complete(client, receipt)
     assert first.status_code == 200
     assert first.data["dispatch"] == "pending"
+    saved_import = DatasetImport.objects.get(pk=receipt["id"])
+    assert saved_import.state == "queued" and saved_import.source_manifest
+    assert saved_import.dataset_id == Dataset.objects.get().pk
     monkeypatch.setattr(land, "apply_async", original)
     recovered = complete(client, receipt)
     assert recovered.data["dispatch"] == "acknowledged"
@@ -309,13 +312,13 @@ def test_explicit_json_row_selection_preserves_wrapper_bytes_and_nested_values(t
     ] == original["pairs"]
 
 
-def test_missing_explicit_json_field_fails_landing_without_silently_using_wrapper(transfer_client):
+def test_missing_explicit_json_field_is_refused_before_dataset_publication(transfer_client):
     client, project = transfer_client
     receipt, data = reserve(
         client, project, b'{"metadata":{},"other":[{"a":1}]}', json_rows_field="pairs"
     )
     assert chunk(client, receipt, data).status_code == 200
     response = complete(client, receipt)
-    dataset = Dataset.objects.get(pk=response.data["result"]["id"])
-    assert dataset.state == "error"
-    assert not dataset.cells.exists()
+    assert response.status_code == 409
+    assert "selected JSON rows field" in str(response.data)
+    assert not Dataset.objects.filter(project=project).exists()

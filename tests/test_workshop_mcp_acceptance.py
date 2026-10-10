@@ -745,6 +745,10 @@ def test_document_source_identifiers_survive_bounded_mcp_metadata():
         ).status_code
         == 200
     )
+    inspected = client.post(
+        f"/api/uploads/{identifier}/inspect/", {"size": len(content)}, format="json"
+    )
+    assert inspected.status_code == 200, inspected.data
     response = client.post(
         "/api/datasets/",
         {

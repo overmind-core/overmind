@@ -4,7 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import lifecycle, review, transformation
+from overbae.services.datasets import imports, lifecycle, review, transformation
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
@@ -129,6 +129,7 @@ class CellSerializer(serializers.ModelSerializer):
 
 
 class DatasetSerializer(serializers.ModelSerializer):
+    operation = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
     cells = serializers.SerializerMethodField()
@@ -169,6 +170,12 @@ class DatasetSerializer(serializers.ModelSerializer):
     def _chain(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
         return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
+
+    @extend_schema_field(serializers.DictField())
+    def get_operation(self, obj):
+        if self.context.get("summary"):
+            return obj.operation
+        return {**obj.operation, "source_import": imports.status(obj)}
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_preparation_plan(self, obj):

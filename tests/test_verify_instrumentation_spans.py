@@ -6,12 +6,12 @@ import asyncio
 import uuid
 
 import pytest
+from factories import make_capability, make_project
 
 from overbae.models import (
     APIToken,
     Behaviour,
     BehaviourVersion,
-    Capability,
     EvidenceProfile,
     Project,
     ProjectMembership,
@@ -28,15 +28,6 @@ pytestmark = pytest.mark.django_db(transaction=True)
 SHA = "a" * 40
 
 _GRADE_CLAUSES = {"task", "units", "tool_ops", "provenance", "observations", "delivery"}
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _capability(project, name="A") -> Capability:
-    slug = f"{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}"
-    return Capability.objects.create(project=project, name=name, slug=slug)
 
 
 def _behaviour(capability, key, entry, sequence, grain=Behaviour.Grain.RUN):
@@ -107,8 +98,8 @@ def _call(name: str, context: MCPContext, arguments: dict):
 
 
 def test_happy_path_declared_key_binds():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "invoice-triage", "app.agent.run", ["app.agent.run", "app.agent.emit"])
     trace_id = uuid.uuid4().hex
     root_id = uuid.uuid4().hex[:16]
@@ -156,8 +147,8 @@ def test_happy_path_declared_key_binds():
 
 
 def test_turn_at_entry_can_join_matching_run_contract():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "run-task", "app.agent.run", ["app.agent.run"])
     span = _span_dict(
         span_id=uuid.uuid4().hex[:16],
@@ -177,8 +168,8 @@ def test_turn_at_entry_can_join_matching_run_contract():
 
 
 def test_matching_run_contract_anchor_join_remains_valid():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "run-task", "app.agent.run", ["app.agent.run"])
     span = _span_dict(
         span_id=uuid.uuid4().hex[:16],
@@ -199,8 +190,8 @@ def test_matching_run_contract_anchor_join_remains_valid():
 
 
 def test_wrong_declared_key_fails_even_when_anchors_join():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "run-task", "app.agent.run", ["app.agent.run"])
     span = _span_dict(
         span_id=uuid.uuid4().hex[:16],
@@ -220,8 +211,8 @@ def test_wrong_declared_key_fails_even_when_anchors_join():
 
 
 def test_declared_turn_contract_remains_valid():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(
         capability,
         "turn-task",
@@ -247,8 +238,8 @@ def test_declared_turn_contract_remains_valid():
 
 
 def test_punch_list_names_the_missing_evidence():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     span = _span_dict(span_id=uuid.uuid4().hex[:16], trace_id=uuid.uuid4().hex, name="run")
     result = dry_run.verify_spans(str(project.id), [span], capability=capability)
     punch = {
@@ -261,8 +252,8 @@ def test_punch_list_names_the_missing_evidence():
 
 
 def test_zero_writes():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "invoice-triage", "app.agent.run", ["app.agent.run", "app.agent.emit"])
     trace_id = uuid.uuid4().hex
     root_id = uuid.uuid4().hex[:16]
@@ -291,8 +282,8 @@ def test_zero_writes():
 
 
 def test_malformed_span_reports_error_without_raising():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     spans = [{"trace_id": "no-span-id-or-name"}]
     result = _call(
         "verify_instrumentation",
@@ -308,9 +299,9 @@ def test_malformed_span_reports_error_without_raising():
 
 
 def test_units_resolve_different_capabilities_via_capability_id():
-    project = _project()
-    capability_a = _capability(project, name="Agent A")
-    capability_b = _capability(project, name="Agent B")
+    project = make_project()
+    capability_a = make_capability(project, name="Agent A")
+    capability_b = make_capability(project, name="Agent B")
     trace_a, trace_b = uuid.uuid4().hex, uuid.uuid4().hex
     span_a = _span_dict(
         span_id=uuid.uuid4().hex[:16],
@@ -334,8 +325,8 @@ def test_units_resolve_different_capabilities_via_capability_id():
 
 
 def test_unit_inherits_capability_from_ancestor_span():
-    project = _project()
-    capability = _capability(project, name="Agent A")
+    project = make_project()
+    capability = make_capability(project, name="Agent A")
     trace_id = uuid.uuid4().hex
     root_id = uuid.uuid4().hex[:16]
     turn_id = uuid.uuid4().hex[:16]
@@ -363,8 +354,8 @@ def test_unit_inherits_capability_from_ancestor_span():
 
 
 def test_turn_slices_include_run_surface():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "run-task", "app.agent.run", ["app.agent.run"])
     trace_id = uuid.uuid4().hex
     run_id = uuid.uuid4().hex[:16]
@@ -394,8 +385,8 @@ def test_turn_slices_include_run_surface():
 
 
 def test_turn_slices_omit_unbound_run_surface():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(
         capability,
         "turn-task",
@@ -431,7 +422,7 @@ def test_turn_slices_omit_unbound_run_surface():
 
 
 def test_unit_with_no_resolvable_identity_yields_null_capability():
-    project = _project()
+    project = make_project()
     span = _span_dict(span_id=uuid.uuid4().hex[:16], trace_id=uuid.uuid4().hex, name="run")
     result = dry_run.verify_spans(str(project.id), [span])
     assert result["errors"] == []
@@ -446,8 +437,8 @@ def test_unit_with_no_resolvable_identity_yields_null_capability():
 
 
 def test_sha_read_from_span_attributes_when_resource_attrs_lack_it():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "invoice-triage", "app.agent.run", ["app.agent.run"])
     span = _span_dict(
         span_id=uuid.uuid4().hex[:16],
@@ -466,8 +457,8 @@ def test_sha_read_from_span_attributes_when_resource_attrs_lack_it():
 
 
 def test_sha_drift_dry_run_is_read_only():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "invoice-triage", "app.agent.run", ["app.agent.run"])
     span = _span_dict(
         span_id=uuid.uuid4().hex[:16],

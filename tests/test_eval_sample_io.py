@@ -1,6 +1,5 @@
 import asyncio
 import json
-from copy import deepcopy
 
 import pytest
 from conftest import frozen_dataset
@@ -8,7 +7,7 @@ from mcp.shared.exceptions import McpError
 
 from overbae.api.eval_serializers import EvalSampleSerializer
 from overbae.models import APIToken, EvalRun, EvalSample, EvalVariant, Project, User
-from overbae.services.datasets import rows
+from overbae.services.datasets import paths
 from overbae.services.eval import normalizer, runner
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.mcp.context import MCPContext, bind_context
@@ -31,29 +30,20 @@ def sample():
 
 
 @pytest.mark.parametrize("generate", [runner.run_capability, runner.generate_decision])
-def test_request_capture_includes_injected_system_and_excludes_generated_output(
-    monkeypatch, generate
-):
-    calls = []
-
-    def call(**kwargs):
-        calls.append(deepcopy(kwargs))
-        return "actual answer", {}
-
-    monkeypatch.setattr(runner, "call_llm", call)
+def test_request_capture_includes_injected_system_and_excludes_generated_output(fake_llm, generate):
+    fake_llm.on(lambda r: True, "actual answer")
     result = generate(
         input_messages=[{"role": "user", "content": "evidence"}],
         system_prompt="canonical prompt",
         tool_provider=runner.ReplayToolProvider(),
     )
-    assert result.request["messages"] == calls[0]["messages"]
+    assert result.request["messages"] == fake_llm.requests[0].messages
     assert result.request["messages"][0] == {"role": "system", "content": "canonical prompt"}
     assert len(result.request["messages"]) == 2
     assert result.output_messages[0]["content"] == "actual answer"
 
 
-def test_request_capture_preserves_tool_schema(monkeypatch):
-    monkeypatch.setattr(runner, "call_llm", lambda **_: ("answer", {}))
+def test_request_capture_preserves_tool_schema():
     tools = [{"name": "read_document", "description": "Read", "parameters": {"type": "object"}}]
     provider = runner.ReplayToolProvider(tool_defs=tools)
     result = runner.run_capability(input_messages=[], tool_provider=provider)
@@ -103,11 +93,10 @@ def test_missing_source_is_unavailable_not_inferred_from_assistant_messages(samp
     assert sample_io(sample)["input"] is None
 
 
-def test_changed_pinned_frame_is_not_presented_as_historical_input(sample, monkeypatch):
-    def changed(_cell):
-        raise rows.RowStoreError("Fingerprint mismatch")
-
-    monkeypatch.setattr(rows, "verify", changed)
+def test_changed_pinned_frame_is_not_presented_as_historical_input(sample):
+    cell = sample.run.cell
+    frame = paths.cell_path(cell.dataset_id, cell.id)
+    frame.write_bytes(frame.read_bytes() + b"tampered")
     assert sample_io(sample)["input_source"] == "unavailable"
 
 
@@ -119,12 +108,11 @@ def test_empty_generation_does_not_reuse_an_assistant_turn_from_input():
     assert result["metadata"]["output_start"] == 1
 
 
-def test_request_truncation_is_reported(sample, monkeypatch):
-    monkeypatch.setattr(normalizer, "_MAX_MESSAGE_CHARS", 10)
+def test_request_truncation_is_reported(sample):
     sample.trajectory = normalizer.normalize_generation(
         input_value=[],
         output_messages=[],
-        request={"messages": [{"role": "user", "content": "a" * 50}]},
+        request={"messages": [{"role": "user", "content": "a" * 100_001}]},
     )
     assert sample_io(sample)["truncated"] is True
 

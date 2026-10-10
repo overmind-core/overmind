@@ -151,3 +151,40 @@ def test_makefile_worker_drains_every_routed_queue():
         f"`make worker` does not drain {sorted(orphaned)} — a dev running it would see "
         f"those tasks silently never execute. Add them to its -Q flag. Drains: {sorted(consumed)}"
     )
+
+
+def test_landing_has_dedicated_prefork_capacity():
+    landing_queue = settings.CELERY_TASK_ROUTES["overbae.tasks.datasets.land"]["queue"]
+    bulk_queue = settings.CELERY_TASK_ROUTES["overbae.tasks.eval.prepare_sample"]["queue"]
+    assert landing_queue != bulk_queue, "Evaluation fanout must not queue ahead of source landing"
+    services = _compose_services()
+    dedicated = {
+        name: services[name]
+        for name, queues in _compose_worker_queues().items()
+        if queues == {landing_queue} and "--pool=prefork" in services[name]["command"]
+    }
+    assert dedicated, "Landing needs a process pool that never accepts bulk evaluation work"
+    for service in dedicated.values():
+        assert "--prefetch-multiplier=1" in service["command"]
+        assert "--disable-prefetch" in service["command"]
+    assert any(bulk_queue in queues for queues in _compose_worker_queues().values())
+
+
+def test_new_producers_wait_for_healthy_landing_capacity():
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
+    jobs = workflow["jobs"]
+
+    def prerequisites(name):
+        needs = jobs[name].get("needs", [])
+        needs = [needs] if isinstance(needs, str) else needs
+        return set(needs).union(*(prerequisites(n) for n in needs))
+
+    assert "deploy-landing" in jobs, "Provisioned landing consumers need a deployment gate"
+    assert "migrate" in prerequisites("deploy-landing"), "New workers require the migrated schema"
+    assert "deploy-landing" in prerequisites("deploy-api"), "Publishers must follow ready consumers"
+    assert "deploy-landing" in prerequisites("deploy-workers")
+    landing_steps = jobs["deploy-landing"]["steps"]
+    assert any("deploy_ecs.py" in step.get("run", "") for step in landing_steps)
+    assert any(
+        step.get("env", {}).get("SERVICE") == "celery-landing-worker" for step in landing_steps
+    )

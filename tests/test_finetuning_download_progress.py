@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from overbae.services.finetuning_runner import (
     PollSnapshot,
-    _activity_message,
     filter_activity_logs,
     parse_download_stage,
     progress_from_snapshot,
@@ -36,32 +35,20 @@ def test_parse_download_stage_backward_compatible():
     assert parse_download_stage([]) == ("", None)
 
 
-def test_activity_message_renders_stage_and_drops_download_spam():
-    assert (
-        _activity_message('BT_STAGE {"stage": "downloading_base_model", "model": "Qwen/Q"}')
-        == "Downloading base model (Qwen/Q)…"
-    )
-    assert _activity_message('BT_STAGE {"stage": "model_loaded"}') == (
-        "Base model loaded — starting training"
-    )
-    assert (
-        _activity_message('BT_STAGE {"stage": "loading_model"}') == "Loading base model onto GPU…"
-    )
-    assert (
-        _activity_message('BT_DOWNLOAD {"pct": 42, "downloaded_gb": 11.8, "total_gb": 28.0}')
-        is None
-    )
-
-
 def test_filter_activity_logs_keeps_stage_lines_only():
     logs = _logs(
         'BT_STAGE {"stage": "downloading_base_model", "model": "Qwen"}',
         'BT_DOWNLOAD {"pct": 10, "downloaded_gb": 2.8, "total_gb": 28.0}',
         'BT_DOWNLOAD {"pct": 90, "downloaded_gb": 25.2, "total_gb": 28.0}',
+        'BT_STAGE {"stage": "loading_model"}',
         'BT_STAGE {"stage": "model_loaded"}',
     )
     msgs = [e["message"] for e in filter_activity_logs(logs)]
-    assert msgs == ["Downloading base model (Qwen)…", "Base model loaded — starting training"]
+    assert msgs == [
+        "Downloading base model (Qwen)…",
+        "Loading base model onto GPU…",
+        "Base model loaded — starting training",
+    ]
 
 
 def test_progress_from_snapshot_threads_stage_and_download():

@@ -2294,7 +2294,3 @@ def get_runner(backend: str | None = None, *, job=None) -> BaseFinetuningRunner:
 
         return cls(release=for_job(job)) if job is not None else cls()
     return cls()
-
-
-def register_runner(key: str, cls: type[BaseFinetuningRunner]) -> None:
-    _RUNNER_REGISTRY[key] = cls

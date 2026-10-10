@@ -61,9 +61,14 @@ def cleanup_uploads() -> dict[str, int]:
     root = Path(settings.MEDIA_ROOT) / "uploads"
     if not root.is_dir():
         return {"removed": 0}
+    from overbae.services.datasets.imports import retained_uploads
+
+    retained = retained_uploads()
     cutoff = time.time() - _UPLOAD_MAX_AGE_SECONDS
     removed = 0
     for entry in os.scandir(root):
+        if entry.name in retained:
+            continue
         data = Path(entry.path) / "data"
         try:
             newest = max(entry.stat().st_mtime, data.stat().st_mtime if data.exists() else 0)

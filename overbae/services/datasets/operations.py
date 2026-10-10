@@ -1,7 +1,8 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
-from overbae.models import Dataset
+from overbae.models import Dataset, DatasetImport
 from overbae.services.datasets.lifecycle import DatasetError
 
 
@@ -37,14 +38,38 @@ def check_cancelled(dataset_id):
 
 @transaction.atomic
 def cancel(dataset_id):
+    receipts = list(
+        DatasetImport.objects.select_for_update().filter(
+            Q(dataset_id=dataset_id) | Q(evaluation_id=dataset_id), state__in=["queued", "running"]
+        )
+    )
     dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
+    if receipts:
+        DatasetImport.objects.filter(pk__in=[run.pk for run in receipts]).update(
+            state="cancelled", owner=None, lease_until=None, updated_at=timezone.now()
+        )
+        sibling_ids = {
+            pk
+            for run in receipts
+            for pk in (run.dataset_id, run.evaluation_id)
+            if pk is not None and pk != dataset.pk
+        }
+        for sibling in Dataset.objects.select_for_update().filter(pk__in=sibling_ids):
+            sibling.state = Dataset.State.ERROR
+            sibling.error = "The paired source import was cancelled. Attach a source to retry."
+            sibling.operation = {
+                **sibling.operation,
+                "state": "cancelled",
+                "finished_at": timezone.now().isoformat(),
+            }
+            sibling.save(update_fields=["state", "error", "operation", "updated_at"])
     operation = {
         **dataset.operation,
         "state": "cancelled",
         "cancelled_at": timezone.now().isoformat(),
     }
     fields = {"operation": operation}
-    if dataset.operation.get("state") != "running":
+    if receipts or dataset.operation.get("state") != "running":
         fields.update(state=Dataset.State.IDLE, error="")
     Dataset.objects.filter(pk=dataset_id).update(**fields)
     return operation

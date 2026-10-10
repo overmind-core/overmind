@@ -5,8 +5,8 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Capability, Dataset, DatasetTransfer
-from overbae.services.datasets import dispatch, files
+from overbae.models import Capability, Dataset, DatasetImport, DatasetTransfer
+from overbae.services.datasets import dispatch, files, imports
 from overbae.services.datasets.lifecycle import DatasetError
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,9 @@ def dispatch_landing(transfer_id):
         logger.exception("Dataset transfer landing dispatch unacknowledged: %s", transfer.pk)
         return
     DatasetTransfer.objects.filter(pk=transfer.pk).update(dispatched_at=timezone.now())
+    DatasetImport.objects.filter(pk=transfer.pk, state="queued").update(
+        published_at=timezone.now(), next_publish_at=None
+    )
 
 
 @transaction.atomic
@@ -143,6 +146,9 @@ def complete(transfer):
         raise DatasetError(
             "The received file does not match its declared SHA-256.", code="file_hash_mismatch"
         )
+    files.inspect_upload(
+        str(transfer.upload_id), size=spec["size"], json_rows_field=spec.get("json_rows_field")
+    )
     source = {"upload_id": str(transfer.upload_id), "filename": spec["filename"]}
     if spec.get("json_rows_field"):
         source["json_rows_field"] = spec["json_rows_field"]
@@ -199,6 +205,8 @@ def complete(transfer):
         "attachment_request": attachment_request,
         "split": split,
     }
+    if not attachment_request:
+        imports.queue_landing_receipt(dataset, transfer.pk, transfer.task)
     transfer.state = "published"
     transfer.received = spec["size"]
     transfer.published_at = timezone.now()

@@ -41,7 +41,7 @@ def _init(tmp_path: Path, ide: str, *extra: str) -> None:
 @pytest.mark.parametrize(
     ("ide", "skill_dir", "command_dir"),
     [
-        ("cursor", ".cursor", ".cursor"),
+        ("cursor", ".agents", ".cursor"),
         ("claude", ".claude", None),
         ("opencode", ".opencode", None),
         ("codex", ".agents", None),
@@ -99,8 +99,28 @@ def test_init_writes_cursor_mcp_json(tmp_path, monkeypatch):
     assert cfg["mcpServers"]["overmind"] == {
         "url": "http://localhost:8000/api/mcp/",
     }
-    assert (tmp_path / ".cursor" / "skills" / "overmind" / "SKILL.md").is_file()
-    assert (tmp_path / ".cursor" / "skills" / "overmind" / "references" / "setup.md").is_file()
+    assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
+    assert (tmp_path / ".agents" / "skills" / "overmind" / "references" / "setup.md").is_file()
+
+
+def test_cursor_init_replaces_previous_skill_installs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    legacy = tmp_path / ".cursor" / "skills" / "overmind"
+    legacy.mkdir(parents=True)
+    (legacy / "SKILL.md").write_text("Outdated\n")
+    own = tmp_path / ".cursor" / "skills" / "team-release"
+    own.mkdir(parents=True)
+    (own / "SKILL.md").write_text("Ours\n")
+    removed = tmp_path / ".agents" / "skills" / "overmind" / "references" / "retired.md"
+    removed.parent.mkdir(parents=True)
+    removed.write_text("No longer shipped\n")
+
+    _init(tmp_path, "cursor")
+
+    assert not legacy.exists()
+    assert (own / "SKILL.md").read_text() == "Ours\n"
+    assert not removed.exists()
+    assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
 
 
 def test_codex_local_init_without_url_override(tmp_path, monkeypatch):

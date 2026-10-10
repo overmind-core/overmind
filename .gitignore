@@ -169,7 +169,6 @@ _tool_audit.jsonl
 .cursor/plans/
 .cursor/skills/
 .github/skills/
-.agents/
 .worktrees/
 skills-lock.json
 skills.lock
@@ -185,3 +184,4 @@ trajectory_sdk
 # Claude Code local state
 .claude/settings.local.json
 .impeccable/
+tests/journeys/.runs/

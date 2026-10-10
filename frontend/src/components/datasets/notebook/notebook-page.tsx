@@ -31,6 +31,7 @@ import {
   useDatasetEvents,
   useDatasetQuery,
   usePatchDatasetMutation,
+  useResumeDatasetImportMutation,
 } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
@@ -60,6 +61,7 @@ export function DatasetNotebook({
 
   const patch = usePatchDatasetMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
+  const resumeImport = useResumeDatasetImportMutation(datasetId);
 
   const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
@@ -211,6 +213,18 @@ export function DatasetNotebook({
         <p className="px-4 text-sm text-destructive" role="alert">
           {dataset.error}
         </p>
+      )}
+      {dataset.operation?.source_import?.can_resume === true && (
+        <div className="px-4 py-2">
+          <Button
+            disabled={resumeImport.isPending}
+            onClick={guard(() => resumeImport.mutate())}
+            size="sm"
+            variant="secondary"
+          >
+            Resume import
+          </Button>
+        </div>
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <NotebookControls

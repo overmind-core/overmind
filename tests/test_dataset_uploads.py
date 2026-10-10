@@ -121,6 +121,7 @@ def test_inspection_does_not_expose_parser_or_storage_diagnostics(
     assert private in caplog.text
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("split", [False, True])
 def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_project, split):
     client, project = client_project
@@ -155,6 +156,23 @@ def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_
         )
     assert landed == [f"q{i}" for i in range(15)]
     assert all(not files.upload_data_path(upload_id).exists() for upload_id in ids)
+
+
+@pytest.mark.parametrize("split", [False, True])
+def test_an_upload_lands_only_as_the_file_it_was_inspected_as(client_project, split):
+    client, project = client_project
+    upload_id = _upload("data.jsonl", b'{"input":"one"}\n{"input":"two"}\n')
+    body = {"project": str(project.id), "name": "Strict", "source": {"uploads": [upload_id]}}
+    if split:
+        body.update(eval_percent=50, position="tail")
+    url = "/api/datasets/split/" if split else "/api/datasets/"
+    response = client.post(url, body, format="json")
+    assert response.status_code == 400, response.data
+    assert "inspect" in str(response.data)
+    files.inspect_upload(upload_id, size=files.upload_received(upload_id))
+    files.append_chunk(upload_id, files.upload_received(upload_id), b"[not json\n")
+    assert client.post(url, body, format="json").status_code == 400
+    assert not Dataset.objects.filter(project=project).exists()
 
 
 def test_invalid_multi_file_sources_are_rejected_before_creation(client_project):

@@ -157,6 +157,7 @@ class TrainCanary:
 
 
 TRAIN_CANARIES: tuple[TrainCanary, ...] = (
+    TrainCanary(TRAIN_DECISION, "Qwen/Qwen3-0.6B", "Lora", 0.6, "pr"),
     # Default cutover target (Qwen / Llama / LFM / …).
     TrainCanary(TRAIN_U2026_8_18, "Qwen/Qwen3-0.6B", "Lora", 0.6, "pr"),
     TrainCanary(TRAIN_U2026_8_18, "Qwen/Qwen3-0.6B", "Full", 0.6, "pr"),

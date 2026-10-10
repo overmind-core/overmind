@@ -23,6 +23,7 @@ from modal_shared.context_budget import (
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import WEIGHTS_PATH_HEADER
 from modal_shared.shared import routing_headers as _routing_headers
+from overbae.services.deployment import serving_gpu
 
 
 class InferenceClientError(Exception):
@@ -56,7 +57,11 @@ class InferenceClient:
 
     def _headers_for(self, deployed=None, **routing) -> dict[str, str]:
         headers = dict(self._headers)
-        gpu_type = routing.get("gpu_type") or getattr(deployed, "gpu_type", "") or ""
+        gpu_type = routing.get("gpu_type") or ""
+        if not gpu_type and getattr(deployed, "pk", None):
+            gpu_type = serving_gpu(deployed)
+        elif not gpu_type:
+            gpu_type = getattr(deployed, "gpu_type", "") or ""
         weights_path = routing.get("weights_path") or getattr(deployed, "weights_path", "") or ""
         max_model_len = routing.get("max_model_len")
         if max_model_len is None:

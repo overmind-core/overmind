@@ -337,7 +337,7 @@ def test_trace_resource_preserves_resource_attrs_for_verification():
     trace_id = "3" * 32
     resource_attrs = {"overmind.capability.id": str(uuid.uuid4())}
     Span.objects.create(
-        span_id="resource-attrs-root",
+        span_id="0123456789abcdef",
         trace_id=trace_id,
         project=project,
         name="run",

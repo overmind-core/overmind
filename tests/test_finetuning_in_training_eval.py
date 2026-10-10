@@ -450,7 +450,7 @@ def test_cancel_revokes_related_eval_runs():
     )
     mock_runner = MagicMock()
     with (
-        patch("overbae.services.finetuning_runner.get_runner", return_value=mock_runner),
+        patch("overbae.services.training_cancellation.get_runner", return_value=mock_runner),
         patch("overbae.celery.app"),
         patch("overbae.tasks.eval.revoke_run_tasks", return_value=1) as revoke,
     ):
@@ -617,7 +617,9 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_baseten_baseline_uses_an_already_hosted_base_without_deploying(
     django_capture_on_commit_callbacks,
+    fake_llm,
 ):
+    fake_llm.catalog_payload = []
     _, _, job, _, _ = _setup()
     _basetenify(job)
 
@@ -731,8 +733,9 @@ def _fake_modal(monkeypatch, calls):
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_missing_public_base_route_records_failure_without_provisioning(
-    monkeypatch, django_capture_on_commit_callbacks
+    monkeypatch, django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_payload = []
     from overbae.models import DeployedModel
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
@@ -800,7 +803,10 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks):
+def test_baseten_final_eval_fires_after_ready_deployment(
+    django_capture_on_commit_callbacks, fake_llm
+):
+    fake_llm.catalog_payload = []
     from overbae.models import DeployedModel
 
     _, _, job, _, _ = _setup()

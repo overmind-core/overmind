@@ -521,7 +521,14 @@ class EvalRun(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["project", "-created_at"])]
+        indexes = [
+            models.Index(fields=["project", "-created_at"]),
+            models.Index(
+                fields=["project", "id"],
+                condition=models.Q(status="running"),
+                name="eval_running_project",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"EvalRun {self.name} ({self.status})"

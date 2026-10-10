@@ -13,17 +13,13 @@ from overbae.services.datasets import alignment, contract, store
 from overbae.services.datasets.profile import profile_records
 
 
-def frame(
+def describe_frame(
     dataset: Dataset,
-    cell: Cell,
     path: Path,
     *,
     df: pd.DataFrame | None = None,
     report: dict[str, Any] | None = None,
-    **fields,
-) -> Cell:
-    """``df`` and ``report`` spare a second read and a second measure when the
-    caller already holds them for ``path``."""
+) -> dict:
     report = report or (contract.measure(df) if df is not None else contract.measure_path(path))
     manifest = store.read_manifest(path)
     null_rates = store.null_rates(path)
@@ -33,9 +29,7 @@ def frame(
         else {}
     )
     fingerprint = store.file_sha256(path)
-    if cell.preparation_plan:
-        fields["preparation_plan"] = {**cell.preparation_plan, "result_fingerprint": fingerprint}
-    Cell.objects.filter(pk=cell.pk).update(
+    return dict(
         state=Cell.State.OK,
         error="",
         rows=store.row_count(path),
@@ -48,8 +42,17 @@ def frame(
             "preparation_profile": profile_records(store.iter_rows(path)),
         },
         updated_at=timezone.now(),
-        **fields,
     )
+
+
+def frame(dataset: Dataset, cell: Cell, path: Path, *, df=None, report=None, **fields) -> Cell:
+    measured = describe_frame(dataset, path, df=df, report=report)
+    if cell.preparation_plan:
+        fields["preparation_plan"] = {
+            **cell.preparation_plan,
+            "result_fingerprint": measured["fingerprint"],
+        }
+    Cell.objects.filter(pk=cell.pk).update(**{**measured, **fields})
     cell.refresh_from_db()
     from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
 

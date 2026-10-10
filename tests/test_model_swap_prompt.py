@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
-from rest_framework.test import APIClient
+from factories import auth_client
 
 from overbae.models import (
     Capability,
@@ -63,14 +63,6 @@ def _deploy(project, job, *, model_id=None, status=None) -> DeployedModel:
     return deployed
 
 
-def _auth_client(user) -> APIClient:
-    from rest_framework_simplejwt.tokens import RefreshToken
-
-    c = APIClient()
-    c.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
-    return c
-
-
 def _get(client, job, *, pin=None):
     url = f"/api/finetuning-jobs/{job.id}/model-swap-prompt/"
     if pin is not None:
@@ -91,7 +83,7 @@ def test_model_swap_prompt_returns_alias_payload():
     assert alias in payload["prompt"]
     assert deployed.model_id not in payload["prompt"]
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 200
     body = resp.json()
     assert body["prompt"] == payload["prompt"]
@@ -112,7 +104,7 @@ def test_model_swap_prompt_pin_writes_concrete_id():
     assert payload["pin"] is True
     assert "overmind/" not in payload["prompt"]
 
-    resp = _get(_auth_client(user), job, pin=True)
+    resp = _get(auth_client(user), job, pin=True)
     assert resp.status_code == 200
     assert resp.json()["new_model"] == "ft-abc12345-qwen2-5-14b"
     assert resp.json()["pin"] is True
@@ -122,7 +114,7 @@ def test_model_swap_prompt_rejects_non_succeeded():
     project, user, dataset, capability = _setup()
     job = _make_job(project, dataset, status=FinetuningJob.Status.FAILED, capability=capability)
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 400
     assert "successfully" in resp.json()["detail"].lower()
 
@@ -132,7 +124,7 @@ def test_model_swap_prompt_rejects_unready_deployment():
     job = _make_job(project, dataset, capability=capability)
     _deploy(project, job, model_id="ft-warming", status=DeployedModel.Status.DEPLOYING)
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 400
     assert "not ready" in resp.json()["detail"]
     assert "ft-warming" in resp.json()["detail"]
@@ -142,7 +134,7 @@ def test_model_swap_prompt_rejects_job_with_no_deployment():
     project, user, dataset, capability = _setup()
     job = _make_job(project, dataset, capability=capability)
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 400
     assert "no deployed model" in resp.json()["detail"]
 
@@ -152,7 +144,7 @@ def test_model_swap_prompt_pin_rejects_unready_deployment():
     job = _make_job(project, dataset, capability=capability)
     _deploy(project, job, model_id="ft-warming", status=DeployedModel.Status.DEPLOYING)
 
-    resp = _get(_auth_client(user), job, pin=True)
+    resp = _get(auth_client(user), job, pin=True)
     assert resp.status_code == 400
     assert "not ready" in resp.json()["detail"]
 
@@ -161,7 +153,7 @@ def test_model_swap_prompt_pin_rejects_job_with_no_deployment():
     project, user, dataset, capability = _setup()
     job = _make_job(project, dataset, capability=capability)
 
-    resp = _get(_auth_client(user), job, pin=True)
+    resp = _get(auth_client(user), job, pin=True)
     assert resp.status_code == 400
     assert "no deployed model" in resp.json()["detail"]
 
@@ -172,7 +164,7 @@ def test_model_swap_prompt_rejects_ambiguous_unassigned_job():
     job = _make_job(project, dataset, capability=None)
     _deploy(project, job)
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 400
     assert "several" in resp.json()["detail"]
 
@@ -182,7 +174,7 @@ def test_model_swap_prompt_falls_back_to_sole_capability():
     job = _make_job(project, dataset, capability=None)
     _deploy(project, job)
 
-    resp = _get(_auth_client(user), job)
+    resp = _get(auth_client(user), job)
     assert resp.status_code == 200
     assert resp.json()["capability_id"] == str(capability.id)
     assert resp.json()["new_model"] == f"overmind/{capability.id}"
@@ -192,7 +184,7 @@ def test_self_hosted_prompt_uses_the_request_origin():
     project, user, dataset, capability = _setup()
     job = _make_job(project, dataset, capability=capability)
     _deploy(project, job)
-    response = _auth_client(user).get(
+    response = auth_client(user).get(
         f"/api/finetuning-jobs/{job.id}/model-swap-prompt/", HTTP_HOST="localhost:8000"
     )
     assert response.status_code == 200

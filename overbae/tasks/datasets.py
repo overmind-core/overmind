@@ -130,7 +130,18 @@ def land(
     (``eval_dataset_id``, ``eval_percent``, ``position``) the source is read once and cut
     in two. Landing records evidence and returns to idle without scheduling an agent."""
     from overbae.models import Dataset, User
-    from overbae.services.datasets import attachments, files, operations
+    from overbae.services.datasets import attachments, files, imports, operations
+
+    if not attachment_request:
+        inputs = {
+            "dataset_id": dataset_id,
+            "source": source,
+            "user_id": user_id,
+            "infer_capability": infer_capability,
+        }
+        if split is not None:
+            inputs["split"] = split
+        return imports.execute(self.request.id, inputs)
     from overbae.services.datasets import land as landing
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
@@ -324,6 +335,13 @@ def land(
     return {"status": "ok", "rows": rows}
 
 
+@shared_task(name="overbae.tasks.datasets.reconcile_imports")
+def reconcile_imports():
+    from overbae.services.datasets import imports
+
+    return imports.reconcile()
+
+
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
 def reap_stuck_runs() -> dict[str, Any]:
     """A killed worker never marks its dataset terminal; anything busy for
@@ -331,6 +349,9 @@ def reap_stuck_runs() -> dict[str, Any]:
     from datetime import timedelta
 
     from overbae.models import Dataset, DatasetPipelineRun
+    from overbae.services.datasets import imports
+
+    imports.reconcile()
 
     now = timezone.now()
     from overbae.services.datasets.workbench import expire_runs
@@ -341,15 +362,22 @@ def reap_stuck_runs() -> dict[str, Any]:
     )
     ids: list[Any] = []
     for state, limit in ((Dataset.State.LANDING, LAND_HARD_LIMIT),):
-        stuck = Dataset.objects.filter(
-            state=state, updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
-        ).exclude(pk__in=active_workflows)
-        found = list(stuck.values_list("id", flat=True))
-        Dataset.objects.filter(pk__in=found, state=state).update(
-            state=Dataset.State.ERROR,
-            error="The worker stopped before this finished.",
-            updated_at=now,
+        stuck = (
+            Dataset.objects.filter(
+                state=state, updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
+            )
+            .exclude(pk__in=active_workflows)
+            .filter(import_run__isnull=True, split_imports__isnull=True)
         )
+        with transaction.atomic():
+            found = list(
+                stuck.select_for_update(skip_locked=True, of=("self",)).values_list("id", flat=True)
+            )
+            Dataset.objects.filter(pk__in=found, state=state).update(
+                state=Dataset.State.ERROR,
+                error="The worker stopped before this finished.",
+                updated_at=now,
+            )
         ids += found
     for dataset_id in ids:
         _emit(

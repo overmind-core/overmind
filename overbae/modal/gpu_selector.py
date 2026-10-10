@@ -63,6 +63,13 @@ def _smallest_tier_holding_weights(model_cfg: dict[str, Any], tiers: list[dict[s
     return tiers[-1]["name"]
 
 
+def gpu_vram_gb(gpu_type: str) -> int:
+    for tier in GPU_TIERS:
+        if tier["name"] == gpu_type:
+            return tier["vram_gb"]
+    return 0
+
+
 def select_gpu(
     model_cfg: dict[str, Any],
     max_model_len: int,

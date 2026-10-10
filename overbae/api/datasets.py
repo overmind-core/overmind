@@ -32,6 +32,7 @@ from overbae.services.datasets import (
     dispatch,
     events,
     files,
+    imports,
     lifecycle,
     paths,
     selection,
@@ -73,7 +74,7 @@ _CELL_PARAM = OpenApiParameter(
             OpenApiParameter("search", OpenApiTypes.STR, OpenApiParameter.QUERY),
         ],
     ),
-    retrieve=extend_schema(summary="Get a dataset with its cells and chat"),
+    retrieve=extend_schema(summary="Get a dataset with its cells and source evidence"),
     partial_update=extend_schema(
         summary="Rename a dataset, set its capability or intent (until a version is used), or its active cell"
     ),
@@ -121,16 +122,19 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         body.is_valid(raise_exception=True)
         data = body.validated_data
         project, capability, source = self._create_target(request, data)
-        dataset = dispatch.create_dataset(
-            project=project,
-            user=request.user if request.user.is_authenticated else None,
-            name=data["name"].strip(),
-            source=source,
-            brief=data["brief"],
-            intent=data.get("intent"),
-            capability=capability,
-            infer_capability="capability" not in data,
-        )
+        try:
+            dataset = dispatch.create_dataset(
+                project=project,
+                user=request.user if request.user.is_authenticated else None,
+                name=data["name"].strip(),
+                source=source,
+                brief=data["brief"],
+                intent=data.get("intent"),
+                capability=capability,
+                infer_capability="capability" not in data,
+            )
+        except lifecycle.DatasetError as exc:
+            raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
@@ -199,6 +203,16 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         source = self._source_payload(body.validated_data, dataset.project)
         try:
             dispatch.attach_source(dataset, request.user, source)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetSerializer(dataset).data, status=202)
+
+    @extend_schema(request=None, responses={202: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="resume-import")
+    def resume_import(self, request, id=None):
+        dataset = self.get_object()
+        try:
+            imports.resume_dataset(dataset)
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=202)

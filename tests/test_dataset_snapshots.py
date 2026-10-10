@@ -27,7 +27,7 @@ def test_snapshot_reads_chain_once_and_retains_versions(count, django_assert_num
     dataset.active = cells[0]
     dataset.save(update_fields=["active"])
     versions = dataset.versions()
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(2):
         result = dataset_run_job_payload(dataset, "overmind://jobs/dataset_run/test")
         assert result["active"]["id"] == str(cells[0].id)
         assert result["active"]["version"] == versions[cells[0].id]

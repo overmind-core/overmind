@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
+from factories import classifier_replies
 
-from overbae.services.behaviour import ledger
-from overbae.services.behaviour.ledger import TurnTransition, TurnTransitions
+from overbae.services.behaviour.ledger import TurnTransition
 from overbae.services.behaviour.session_score import compose_session_score
 
 
@@ -113,11 +112,7 @@ def test_rows_without_verdicts_score_none():
 pytestmark = pytest.mark.django_db
 
 
-def _classified(*batches):
-    return [SimpleNamespace(parsed=TurnTransitions(transitions=list(batch))) for batch in batches]
-
-
-def test_refresh_session_score_stamps_rows_from_ledger():
+def test_refresh_session_score_stamps_rows_from_ledger(fake_llm):
     from datetime import UTC, datetime, timedelta
 
     from overbae.models import ConversationEvent, Project, TaskExecution
@@ -149,19 +144,16 @@ def test_refresh_session_score_stamps_rows_from_ledger():
             )
         )
 
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        side_effect=_classified(
-            [
-                TurnTransition(
-                    event="ask_opened", ask_text="create the finetune job", ask_kind="produce"
-                )
-            ],
-            [TurnTransition(event="delivered", ask_id="a1")],
-        ),
-    ):
-        refresh_session_score(rows[-1])
+    classifier_replies(
+        fake_llm,
+        [
+            TurnTransition(
+                event="ask_opened", ask_text="create the finetune job", ask_kind="produce"
+            )
+        ],
+        [TurnTransition(event="delivered", ask_id="a1")],
+    )
+    refresh_session_score(rows[-1])
 
     for row in rows:
         row.refresh_from_db()
@@ -178,15 +170,14 @@ def test_refresh_session_score_stamps_rows_from_ledger():
     before = list(
         ConversationEvent.objects.filter(conversation_id=cid).values_list("pk", flat=True)
     )
-    with mock.patch.object(
-        ledger.judging, "invoke_judge", side_effect=AssertionError("must not re-run")
-    ):
-        refresh_session_score(rows[-1])
+    rerun = classifier_replies(fake_llm, [])
+    refresh_session_score(rows[-1])
     after = list(ConversationEvent.objects.filter(conversation_id=cid).values_list("pk", flat=True))
     assert before == after
+    assert rerun == []
 
 
-def test_refresh_session_score_open_produce_zeroes_all_rows():
+def test_refresh_session_score_open_produce_zeroes_all_rows(fake_llm):
     from datetime import UTC, datetime, timedelta
 
     from overbae.models import Project, TaskExecution
@@ -208,19 +199,16 @@ def test_refresh_session_score_open_produce_zeroes_all_rows():
         )
         for i, ask in enumerate(["create a big sales report", "please create the sales report now"])
     ]
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        side_effect=_classified(
-            [
-                TurnTransition(
-                    event="ask_opened", ask_text="create a big sales report", ask_kind="produce"
-                )
-            ],
-            [TurnTransition(event="ask_reprompted", ask_id="a1")],
-        ),
-    ):
-        refresh_session_score(rows[-1])
+    classifier_replies(
+        fake_llm,
+        [
+            TurnTransition(
+                event="ask_opened", ask_text="create a big sales report", ask_kind="produce"
+            )
+        ],
+        [TurnTransition(event="ask_reprompted", ask_id="a1")],
+    )
+    refresh_session_score(rows[-1])
     for row in rows:
         row.refresh_from_db()
     assert rows[0].session_score == rows[1].session_score == 0.0

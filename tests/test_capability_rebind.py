@@ -4,15 +4,12 @@ or a hand-made capability makes their identity resolvable."""
 import uuid
 
 import pytest
+from factories import make_project
 
-from overbae.models import Capability, Project, Span
+from overbae.models import Capability, Span
 from overbae.tasks.capability_rebind import rebind_unbound_spans
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _span(project, *, name="", attributes=None, capability=None) -> Span:
@@ -29,7 +26,7 @@ def _span(project, *, name="", attributes=None, capability=None) -> Span:
 
 
 def test_backlog_binds_by_id_only_and_is_idempotent():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="Triage", slug="triage")
     by_id = _span(project, attributes={"overmind.capability.id": str(capability.id)})
     by_name = _span(project, attributes={"overmind.capability.name": "Triage"})
@@ -46,7 +43,7 @@ def test_backlog_binds_by_id_only_and_is_idempotent():
 
 
 def test_backlog_stamped_with_a_deleted_identity_stays_unbound():
-    project = _project()
+    project = make_project()
     gone = Capability.objects.create(project=project, name="Old Triage", slug="old-triage")
     span = _span(project, attributes={"overmind.capability.id": str(gone.id)})
     gone.set_status(Capability.Status.DELETED)
@@ -57,7 +54,7 @@ def test_backlog_stamped_with_a_deleted_identity_stays_unbound():
 
 
 def test_leftover_identity_stays_unbound_until_reactivated():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="Judge", slug="judge", status=Capability.Status.LEFTOVER
     )

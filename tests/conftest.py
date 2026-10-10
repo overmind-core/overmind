@@ -1,7 +1,24 @@
-from types import SimpleNamespace
+import ipaddress
+import os
+import socket
+from pathlib import Path
 
 import pytest
-from asgiref.sync import async_to_sync
+from asgiref.sync import SyncToAsync, async_to_sync
+from django.db import connections
+from fakes.clerk import ClerkAPI
+from fakes.http import ScriptedAPI
+from fakes.llm import FakeLLM, Network
+from fakes.modal import FakeModal, ServingBackend, SftBackend
+from fakes.stripe import StripeAPI
+
+
+def pytest_ignore_collect(collection_path, config):
+    if collection_path.name != "journeys" or collection_path.parent != Path(__file__).parent:
+        return None
+    # Journeys share one broker and Redis DB, so xdist workers would run each other's tasks.
+    parallel = hasattr(config, "workerinput") or config.getoption("numprocesses", default=None)
+    return True if parallel or not os.environ.get("TEST_REDIS_URL") else None
 
 
 def drain_stream(response) -> bytes:
@@ -22,42 +39,119 @@ def drain_stream(response) -> bytes:
     return b"".join(async_to_sync(_collect)())
 
 
-@pytest.fixture(autouse=True)
-def _clerk_offline(monkeypatch):
-    """ClerkAuthentication is the first authenticator, so every Bearer request verifies
-    the token against Clerk's remote JWKS over real HTTP; offline runs hang there.
-    Patch the call, not the class, to keep authenticator order and the 401 path intact.
-    """
-    monkeypatch.setattr(
-        "overbae.auth.authenticate_request",
-        lambda request, options: SimpleNamespace(is_signed_in=False),
-    )
+def _loopback(address) -> bool:
+    if not isinstance(address, tuple):
+        return True
+    host = address[0]
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 @pytest.fixture(autouse=True)
-def _offline_model_resolution(monkeypatch):
-    """Model resolution must behave the same with and without real credentials:
-    a developer's real OPENROUTER_API_KEY would let an unmocked judge call
-    reach the provider while CI fails on the missing key. Every test gets the
-    same inert key; tests of the no-key path delete it themselves.
-    """
+def _no_outside_sockets(monkeypatch):
+    connect = socket.socket.connect
+
+    def guarded(sock, address):
+        if not _loopback(address):
+            raise ConnectionRefusedError(f"Tests may not reach {address}.")
+        return connect(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+    for proxy in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.setenv(proxy, "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+
+
+@pytest.fixture(autouse=True)
+def fake_llm():
+    llm = FakeLLM()
+    with Network(llm) as network:
+        llm.network = network
+        yield llm
+    assert not network.refused, f"Unrouted outbound calls: {network.refused}"
+
+
+@pytest.fixture
+def stripe_api(settings, fake_llm) -> StripeAPI:
+    api = StripeAPI()
+    settings.STRIPE_WEBHOOK_SECRET = api.webhook_secret
+    fake_llm.network.vendors.append(api)
+    return api
+
+
+@pytest.fixture
+def scripted(fake_llm):
+    def install(host: str) -> ScriptedAPI:
+        api = ScriptedAPI(host)
+        fake_llm.network.vendors.append(api)
+        return api
+
+    return install
+
+
+@pytest.fixture
+def slept(monkeypatch) -> list[float]:
+    import asyncio
+    import time
+
+    naps: list[float] = []
+    monkeypatch.setattr(time, "sleep", naps.append)
+    original_sleep = asyncio.sleep
+
+    async def async_nap(delay, result=None):
+        if delay > 0:
+            naps.append(float(delay))
+        return await original_sleep(0, result)
+
+    monkeypatch.setattr(asyncio, "sleep", async_nap)
+    return naps
+
+
+@pytest.fixture
+def fake_modal(monkeypatch) -> FakeModal:
+    return FakeModal().install(monkeypatch)
+
+
+@pytest.fixture
+def sft(fake_modal) -> SftBackend:
+    return SftBackend(fake_modal).install()
+
+
+@pytest.fixture
+def serving(fake_modal) -> ServingBackend:
+    return ServingBackend(fake_modal, url="http://inference.test").install()
+
+
+@pytest.fixture(autouse=True)
+def _close_sync_to_async_connections():
+    yield
+    SyncToAsync.single_thread_executor.submit(connections.close_all).result()
+
+
+@pytest.fixture(autouse=True)
+def _clerk_offline(settings):
+    settings.CLERK_API_SECRET_KEY = ""
+
+
+@pytest.fixture
+def clerk(settings, fake_llm) -> ClerkAPI:
+    api = ClerkAPI()
+    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
+    settings.CLERK_AUTHORIZED_PARTIES = ["http://localhost:5173"]
+    fake_llm.network.vendors.append(api)
+    return api
+
+
+@pytest.fixture(autouse=True)
+def _openrouter_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
-    monkeypatch.setattr("overbae.services.llm_context.fetch_model_catalog", lambda: ([], False))
-    monkeypatch.setattr(
-        "overbae.services.eval.context_suggestions.fetch_model_catalog", lambda: ([], False)
-    )
-    from overbae.core.decisions import DecisionError
-
-    def no_decision_network(*args, **kwargs):
-        raise DecisionError("offline_test")
-
-    monkeypatch.setattr("overbae.core.decisions._request", no_decision_network)
-    monkeypatch.setattr(
-        "overbae.services.finetuning_eval.resolve_training_openrouter_slug", lambda _: None
-    )
-    monkeypatch.setattr(
-        "overbae.services.deployment.resolve_training_openrouter_slug", lambda _: None
-    )
+    # The Cursor SDK dials out from a bridge process the socket guard cannot see.
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -106,6 +200,13 @@ TRAIN_ROWS = [
 
 
 @pytest.fixture(autouse=True)
+def _fresh_cache():
+    from django.core.cache import cache
+
+    cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _media_root(settings, tmp_path):
     """Every test writes dataset files under its own tmp dir."""
     settings.MEDIA_ROOT = tmp_path / "media"
@@ -119,7 +220,9 @@ def _inline_dataset_tasks(monkeypatch):
 
     for task in (dataset_tasks.land,):
         monkeypatch.setattr(
-            task, "apply_async", lambda kwargs, _t=task, **_: _t.apply(kwargs=kwargs)
+            task,
+            "apply_async",
+            lambda kwargs, task_id=None, _t=task, **_: _t.apply(kwargs=kwargs, task_id=task_id),
         )
 
 
@@ -254,18 +357,11 @@ def import_version(dataset, records, *, name="Native transformation"):
 
 
 @pytest.fixture(autouse=True)
-def _offline_rubric_compiler(monkeypatch):
-    """Authoring a judge compiles its rubric, so every test that saves one would
-    otherwise reach a provider and wait out the retry budget before falling back.
-    Returns a fixed two-item checklist; the compiler's own tests opt back in.
-    """
-    from overbae.services.eval import rubric_compiler
-
-    monkeypatch.setattr(
-        rubric_compiler,
-        "compile_rubric",
-        lambda rubric_md, **kwargs: {
-            "checklist": [
+def _rubric_compiler(fake_llm):
+    fake_llm.on_json(
+        lambda r: r.schema_name == "_Checklist",
+        lambda r: {
+            "items": [
                 {"id": "criterion_1", "q": "Does the output satisfy the rubric?", "weight": 0.5},
                 {"id": "criterion_2", "q": "Is the output free of errors?", "weight": 0.5},
             ],

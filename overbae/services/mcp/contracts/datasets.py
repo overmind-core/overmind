@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import review, transformation
+from overbae.services.datasets import imports, review, transformation
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -693,6 +693,20 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
 def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
     ds_id = str(dataset.id)
     scoped = {"project_id": str(dataset.project_id)}
+    if dataset.state == Dataset.State.ERROR and not chain:
+        receipt = imports.status(dataset)
+        if receipt and receipt["state"] == "blocked":
+            return (
+                [
+                    NextAction(
+                        tool="resume_dataset_import",
+                        reason="Resume the retained source import.",
+                        arguments={**scoped, "dataset": ds_id},
+                    )
+                ]
+                if receipt["can_resume"]
+                else []
+            )
     if dataset.state in _BUSY:
         pipeline_run = (
             dataset.pipeline_runs.filter(state__in=["queued", "running"])
@@ -786,7 +800,7 @@ def serialize_dataset_detail(
     result = DatasetDetail.model_validate(
         {
             **fields,
-            "operation": _jsonable(dataset.operation),
+            "operation": _jsonable({**dataset.operation, "source_import": imports.status(dataset)}),
             "landing_progress": dataset.source_spec.get("landing_progress"),
             "brief": _clip(dataset.brief, 8000),
             "sources": [

@@ -18,7 +18,9 @@ from .datasets import (
     DataPartitionPlan,
     Dataset,
     DatasetHistory,
+    DatasetImport,
 )
+from .eval_generation import EvalGenerationRun, EvalGenerationScheduler, EvalGenerationWork
 from .evaluation import (
     Annotation,
     EvalRun,
@@ -78,6 +80,10 @@ __all__ = [
     "OperationalEvent",
     "OperationalRun",
     "DatasetHistory",
+    "DatasetImport",
+    "EvalGenerationRun",
+    "EvalGenerationScheduler",
+    "EvalGenerationWork",
     "MCPOAuthClient",
     "MCPOAuthGrant",
     "MCPOAuthToken",

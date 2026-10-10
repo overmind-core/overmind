@@ -35,8 +35,8 @@ POLL_ERROR_LIMIT = 20
 
 @shared_task(bind=True, max_retries=4, queue="io")
 def collect_training_evidence(self, job_id):
-    job = FinetuningJob.objects.get(pk=job_id)
-    if not job.remote_job_id:
+    job = FinetuningJob.objects.filter(pk=job_id).first()
+    if job is None or not job.remote_job_id:
         return
     try:
         snapshot = get_runner(job.provider, job=job).poll(job.remote_job_id)
@@ -45,7 +45,9 @@ def collect_training_evidence(self, job_id):
             return
         summary = training_monitoring.observe(job, payload)
         with transaction.atomic():
-            current = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+            current = FinetuningJob.objects.select_for_update().filter(pk=job.pk).first()
+            if current is None:
+                return
             FinetuningJob.objects.filter(pk=job.pk).update(
                 progress={**(current.progress or {}), "monitoring": summary}
             )

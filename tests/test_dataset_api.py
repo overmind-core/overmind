@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.models import Capability, Dataset, Project, ProjectMembership, Span, User
 from overbae.services.datasets import paths, store, use
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 ROWS = [
     {"question": "q1", "answer": "a1", "tag": "keep"},

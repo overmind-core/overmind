@@ -13,10 +13,10 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Dataset, Project, ProjectMembership, User
-from overbae.services.datasets import ocr, paths, store
+from overbae.services.datasets import events, ocr, paths, store
 from overbae.tasks import datasets as tasks
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
@@ -252,14 +252,14 @@ def test_image_upload_extracts_text_with_upright_evidence_and_original_download(
     upload_id, inspection = upload(client, f"policy.{extension}", content)
     assert inspection["rows"] is None
     progress = []
-    publish = tasks._emit
+    publish = events.publish
 
     def capture(dataset_id, event):
         if event["type"] == "land_progress":
             progress.append((event, Dataset.objects.get(pk=dataset_id).source_spec.copy()))
         publish(dataset_id, event)
 
-    monkeypatch.setattr(tasks, "_emit", capture)
+    monkeypatch.setattr(events, "publish", capture)
     created = client.post(
         "/api/datasets/",
         {"project": str(project.id), "source": {"uploads": [upload_id]}},

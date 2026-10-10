@@ -5,25 +5,15 @@ from datetime import timedelta
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
+from conftest import frozen_dataset
+from database_callbacks import database_callback
 from django.utils import timezone
 
 from overbae.models import EvalRun, EvalSample, EvalVariant, Project
-from overbae.services.datasets.rows import DatasetRow
 from overbae.services.eval import runner
 from overbae.tasks import eval as eval_tasks
 
-
-def _sample():
-    project = Project.objects.create(name="P", slug="generation-progress")
-    run = EvalRun.objects.create(project=project, name="r", status=EvalRun.Status.RUNNING)
-    variant = EvalVariant.objects.create(
-        run=run,
-        label="v",
-        mode="generate",
-        model_name="gpt-5-mini",
-        params={"generation_strategy": "per_assistant_turn", "max_steps": 4},
-    )
-    return EvalSample.objects.create(run=run, variant=variant)
+pytestmark = pytest.mark.django_db
 
 
 def _messages(turns):
@@ -55,138 +45,181 @@ def _messages(turns):
     return messages
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize("turns", [1, 2])
-def test_per_turn_makes_one_decision_without_replaying_tools(monkeypatch, turns):
-    sample = _sample()
-    original = _messages(turns)
-    row = DatasetRow(
-        index=0, input={"messages": original, "tools": [{"name": "search", "parameters": {}}]}
+def _sample(*, turns: int = 2, strategy: str = "per_assistant_turn") -> EvalSample:
+    project = Project.objects.create(name="P", slug="generation-progress")
+    dataset = frozen_dataset(
+        project,
+        [
+            {
+                "input": {
+                    "messages": _messages(turns),
+                    "tools": [{"name": "search", "parameters": {}}],
+                },
+                "expected_output": "result",
+            }
+        ],
     )
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
-    monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
-    calls = []
+    run = EvalRun.objects.create(
+        project=project,
+        name="r",
+        status=EvalRun.Status.RUNNING,
+        dataset=dataset,
+        cell=dataset.active_cell,
+    )
+    variant = EvalVariant.objects.create(
+        run=run,
+        label="v",
+        mode="generate",
+        model_name="gpt-5-mini",
+        params={"generation_strategy": strategy, "max_steps": 4},
+    )
+    return EvalSample.objects.create(run=run, variant=variant, row_index=0)
 
-    def completion(**kwargs):
-        calls.append(kwargs)
-        return json.dumps(
-            {"tool_calls": [{"id": "new", "name": "search", "arguments": {"q": "different"}}]}
-        ), {"response_cost": 0.1, "response_ms": 20}
 
-    def no_replay(*args, **kwargs):
-        pytest.fail("per-turn generation must not execute or replay candidate tools")
+def _decisions(fake_llm) -> list:
+    return [r for r in fake_llm.requests if r.model == "openai/gpt-5-mini"]
 
-    monkeypatch.setattr(runner, "call_llm", completion)
-    monkeypatch.setattr(runner.ReplayToolProvider, "execute", no_replay)
+
+def _prepare(sample: EvalSample) -> EvalSample:
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
     sample.refresh_from_db()
+    return sample
+
+
+@pytest.mark.parametrize("turns", [1, 2])
+def test_per_turn_makes_one_decision_without_replaying_tools(fake_llm, turns):
+    fake_llm.on(
+        lambda r: r.model == "openai/gpt-5-mini",
+        {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "new",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": json.dumps({"q": "different"})},
+                }
+            ],
+        },
+    )
+    sample = _prepare(_sample(turns=turns))
+
+    calls = _decisions(fake_llm)
     assert sample.error == ""
     assert len(calls) == turns
     assert len(sample.structured["per_turn"]) == turns
     assert sample.trajectory["metadata"]["generation_strategy"] == "per_assistant_turn"
     assert sample.trajectory["metadata"]["steps"] == turns
-    assert sample.degraded is False  # a tool decision needs no final answer
-    assert all(not any(m["role"] == "tool" for m in call["messages"]) for call in calls[:1])
+    assert sample.degraded is False
+    assert not any(m["role"] == "tool" for m in calls[0].messages)
     if turns == 2:
-        assert any(m.get("content") == "recorded result 0" for m in calls[1]["messages"])
-        assert not any("different" in json.dumps(m) for m in calls[1]["messages"])
+        assert any(m.get("content") == "recorded result 0" for m in calls[1].messages)
+        assert not any("different" in json.dumps(m) for m in calls[1].messages)
+
+
+def test_single_completion_records_tool_calls_without_executing_them(fake_llm):
+    fake_llm.on(
+        lambda r: r.model == "openai/gpt-5-mini",
+        {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "new",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": json.dumps({"q": "x"})},
+                }
+            ],
+        },
+    )
+    sample = _prepare(_sample(turns=0, strategy="single_completion"))
+
+    calls = _decisions(fake_llm)
+    messages = sample.trajectory["messages"]
+    assert len(calls) == 1
+    assert calls[0].body["tools"]
+    assert messages[-1]["tool_calls"][0]["name"] == "search"
+    assert not any(m.get("role") == "tool" for m in messages)
+
+
+def test_empty_per_turn_generation_is_degraded(fake_llm):
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", "")
+    sample = _prepare(_sample(turns=1))
+    assert sample.degraded is True
+    assert sample.degraded_reason.startswith("no_decisions:")
 
 
 @pytest.mark.parametrize("method", ["run_capability", "generate_decision"])
-def test_generation_does_not_swallow_worker_soft_timeout(monkeypatch, method):
-    def timeout(**kwargs):
-        raise SoftTimeLimitExceeded()
+def test_generation_does_not_swallow_worker_soft_timeout(fake_llm, slept, method):
+    calls = []
 
-    monkeypatch.setattr(runner, "call_llm", timeout)
+    def timeout_once(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise SoftTimeLimitExceeded()
+        return "late answer"
+
+    fake_llm.on(lambda r: True, timeout_once)
     with pytest.raises(SoftTimeLimitExceeded):
         getattr(runner, method)(
             input_messages=[{"role": "user", "content": "q"}],
             tool_provider=runner.ReplayToolProvider(),
+            model="gpt-5-mini",
         )
 
 
-@pytest.mark.django_db
-def test_worker_timeout_stops_remaining_recorded_turns(monkeypatch):
-    sample = _sample()
-    row = DatasetRow(index=0, input={"messages": _messages(2), "tools": [{"name": "search"}]})
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
-    monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
+def test_worker_timeout_stops_the_remaining_recorded_turns(fake_llm):
     calls = []
 
-    def timeout(**kwargs):
-        calls.append(kwargs)
+    def timeout(request):
+        calls.append(request)
         raise SoftTimeLimitExceeded()
 
-    monkeypatch.setattr(runner, "call_llm", timeout)
-    eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
-    sample.refresh_from_db()
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", timeout)
+    sample = _prepare(_sample(turns=2))
     assert len(calls) == 1
     assert sample.error == "generation timed out (exceeded soft_time_limit)"
     assert not sample.trajectory
 
 
-def test_empty_per_turn_generation_is_degraded():
-    degraded, reason = eval_tasks._assess_degradation(
-        {"metadata": {"generation_strategy": "per_assistant_turn"}},
-        {"per_turn": [{"generated": [], "generated_final": ""}]},
-        [],
-        is_generate=True,
-    )
-    assert degraded is True
-    assert reason.startswith("no_decisions:")
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize("failure", [False, True])
-def test_finished_generation_refreshes_run_activity(monkeypatch, failure):
-    sample = _sample()
+def test_finished_generation_refreshes_run_activity(fake_llm, failure):
+    sample = _sample(turns=1, strategy="full")
     old = timezone.now() - timedelta(minutes=35)
     EvalRun.objects.filter(pk=sample.run_id).update(updated_at=old)
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: None)
+    if failure:
+        fake_llm.fail(lambda r: r.model == "openai/gpt-5-mini", 400, "bad request")
+    else:
+        fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", "done")
 
-    def generate(sample):
-        if failure:
-            raise SoftTimeLimitExceeded()
-        return {"messages": [{"role": "assistant", "content": "done"}], "final_output": "done"}
+    sample = _prepare(sample)
 
-    monkeypatch.setattr(eval_tasks, "_generate_sample", generate)
-    eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
-    sample.refresh_from_db()
     sample.run.refresh_from_db()
     assert sample.run.updated_at > old
     assert bool(sample.error) == failure
 
 
-@pytest.mark.django_db
-def test_each_generated_decision_refreshes_activity_before_next_call(monkeypatch):
-    sample = _sample()
+@pytest.mark.django_db(transaction=True)
+def test_each_generated_decision_refreshes_activity_before_next_call(fake_llm):
+    sample = _sample(turns=2)
     old = timezone.now() - timedelta(minutes=35)
     EvalRun.objects.filter(pk=sample.run_id).update(updated_at=old)
-    row = DatasetRow(index=0, input={"messages": _messages(2), "tools": [{"name": "search"}]})
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
-    monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
     seen = []
 
-    def completion(**kwargs):
-        seen.append(EvalRun.objects.get(pk=sample.run_id).updated_at)
-        return "decision", {}
+    def decision(request):
+        seen.append(database_callback(lambda: EvalRun.objects.get(pk=sample.run_id).updated_at))
+        return "decision"
 
-    monkeypatch.setattr(runner, "call_llm", completion)
-    eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", decision)
+    _prepare(sample)
     assert len(seen) == 2
     assert seen[1] > old
 
 
-@pytest.mark.django_db
-def test_late_generation_does_not_touch_terminal_run(monkeypatch):
-    sample = _sample()
+def test_late_generation_does_not_touch_terminal_run(fake_llm):
+    sample = _sample(turns=1, strategy="full")
     old = timezone.now() - timedelta(minutes=35)
     EvalRun.objects.filter(pk=sample.run_id).update(updated_at=old, status=EvalRun.Status.CANCELLED)
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: None)
-    monkeypatch.setattr(
-        eval_tasks, "_generate_sample", lambda sample: {"messages": [], "final_output": "done"}
-    )
-    eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", "done")
+    _prepare(sample)
     sample.run.refresh_from_db()
     assert sample.run.updated_at == old
     assert sample.run.status == EvalRun.Status.CANCELLED

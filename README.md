@@ -16,6 +16,8 @@
 
 **Overmind continuously trains & improves your agents, with data from your production traces**
 
+The SDK and CLI you install (`pip install overmind`) are MIT. The platform behind them is AGPL-3.0 and you can self-host it. Details in [Licence](#licence).
+
 Point it at your agent's codebase and it turns production traces (or any dataset) into a fine-tuned model, benchmarked against the eval metrics you define and served via 1 unified API, with no ML infrastructure to build.
 
 > The weights are yours to download, retrain or roll back.
@@ -227,7 +229,7 @@ ______________________________________________________________________
 
 ## Licence
 
-The platform (`overbae/`, `frontend/`) is [AGPL-3.0](LICENSE). The SDK and CLI (`overmind/`) stay [MIT](overmind/LICENSE). A commercial licence is a paid alternative from Overmind Ltd if you need different terms — [support@overmindlab.ai](mailto:support@overmindlab.ai).
+This repository contains two licences. The platform (`overbae/`, `frontend/`, and everything else outside `overmind/`) is [AGPL-3.0](LICENSE); the root `LICENSE` file is the verbatim AGPL-3.0 text. The SDK, CLI and client libraries under `overmind/` are [MIT](overmind/LICENSE). Copyright (c) 2026 Overmind Ltd. A commercial licence is a paid alternative from Overmind Ltd if you need different terms — [support@overmindlab.ai](mailto:support@overmindlab.ai).
 
 <p align="center">
   <img alt="Overmind" src="frontend/src/assets/overmind-eye-copper.svg" width="96">
