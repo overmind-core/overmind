@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import threading
+import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
+from asgiref.sync import sync_to_async
+from django.db import connection, transaction
 from factories import make_user
 from mcp_fixtures import EXPECTED_TOOL_NAMES
 from starlette.testclient import TestClient
@@ -254,3 +260,71 @@ def test_origin_is_validated_on_initialize():
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "origin_not_allowed"
+
+
+def _hold_token_row(
+    token: APIToken, holder: list[int], locked: threading.Event, release: threading.Event
+) -> None:
+    try:
+        with transaction.atomic():
+            APIToken.objects.select_for_update().get(pk=token.pk)
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                holder.append(cursor.fetchone()[0])
+            locked.set()
+            release.wait(30)
+    finally:
+        connection.close()
+
+
+def _a_request_waits_behind(holder_pid: int) -> bool:
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM pg_stat_activity WHERE %s = ANY(pg_blocking_pids(pid))",
+                    [holder_pid],
+                )
+                if cursor.fetchone():
+                    return True
+            time.sleep(0.05)
+        return False
+    finally:
+        connection.close()
+
+
+@pytest.mark.asyncio
+async def test_a_request_blocked_in_the_database_does_not_hold_up_other_requests():
+    raw_blocked, blocked = await sync_to_async(_token)()
+    raw_free, _ = await sync_to_async(_token)()
+    holder_pid: list[int] = []
+    locked, release = threading.Event(), threading.Event()
+    holder = threading.Thread(target=_hold_token_row, args=(blocked, holder_pid, locked, release))
+    holder.start()
+    assert await asyncio.to_thread(locked.wait, 10)
+
+    app = _application()
+    body = _rpc("ping")
+    headers = {"Accept": "application/json", "Host": "testserver"}
+    try:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client,
+        ):
+            stuck = asyncio.create_task(
+                client.post(MCP_URL, json=body, headers={**headers, "X-Api-Key": raw_blocked})
+            )
+            assert await asyncio.to_thread(_a_request_waits_behind, holder_pid[0])
+            free = await asyncio.wait_for(
+                client.post(MCP_URL, json=body, headers={**headers, "X-Api-Key": raw_free}), 10
+            )
+            assert free.status_code == 200
+            assert not stuck.done()
+            release.set()
+            assert (await asyncio.wait_for(stuck, 10)).status_code == 200
+    finally:
+        release.set()
+        await asyncio.to_thread(holder.join)
