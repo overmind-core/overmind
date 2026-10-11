@@ -7,6 +7,7 @@ import json
 import logging
 
 from django.conf import settings
+from django.db import connections
 from django.db.models import Prefetch
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -535,6 +536,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
         async def event_stream():
             import redis.asyncio as aredis
 
+            # Django closes a request's connection only once the response ends, which for
+            # a stream is minutes away: one held connection per open stream.
+            await sync_to_async(connections.close_all)()
             r = aredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
             pubsub = r.pubsub()
             try:
