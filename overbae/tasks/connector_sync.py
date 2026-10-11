@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import timedelta
 from typing import Any
 
@@ -17,7 +16,6 @@ from overbae.services.span_pricing import stamp_span_cost
 
 logger = logging.getLogger(__name__)
 
-_LEASE_SECONDS = int(os.environ.get("CONNECTOR_LEASE_SECONDS", "600"))
 _BACKOFF_BASE_SECONDS = 30
 # Generous enough that a user reading docs mid-setup never loses their draft.
 _DRAFT_TTL = timedelta(hours=24)
@@ -25,6 +23,9 @@ _BACKOFF_CAP_SECONDS = 3600
 _MAX_SYNC_RETRIES = 12
 _CHUNK_HARD_TIME_LIMIT = 60 * 20
 _CHUNK_SOFT_TIME_LIMIT = 60 * 18
+# A lease that ends before the hard limit lets the poller start a second chunk on
+# the same cursor while the first still runs.
+_LEASE_SECONDS = _CHUNK_HARD_TIME_LIMIT + 120
 
 
 def _match_capabilities_by_name(project, spans: list) -> None:

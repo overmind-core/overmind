@@ -32,7 +32,7 @@ Three constraints set the worker split. Only prefork enforces `time_limit` and `
 
 `io_traces` is a second queue on the io worker, not a second worker: one worker over both round-robins (kombu's redis default), so an unbounded trace-scoring burst cannot queue ahead of user-started eval scoring.
 
-`interactive` sets `--prefetch-multiplier=1`. `batch` and `landing` also disable Redis prefetch so busy processes do not reserve waiting work. Landing workers consume only `landing`; raising bulk concurrency cannot protect import latency when every bulk slot is occupied.
+Every prefork lane (`batch`, `landing`, `interactive`) sets `--prefetch-multiplier=1 --disable-prefetch`, so a busy process never reserves waiting work. A reserved late-ack message stays unacknowledged, and Redis redelivers it after the broker `visibility_timeout` (2 h, above every late-ack time limit; `tests/test_celery_topology.py` holds both). Landing workers consume only `landing`; raising bulk concurrency cannot protect import latency when every bulk slot is occupied.
 
 Evaluation preparation uses `EvalGenerationWork` receipts and a global scheduler row lock. `EVAL_MAX_IN_FLIGHT` bounds admitted provider work (default 12), with `EVAL_MAX_IN_FLIGHT_PER_RUN` (default 2) and least-recently-admitted project/run fairness. Waiting samples remain in Postgres; completion and a 30-second control tick replenish available slots. Completion wakeups coalesce through a cache key, so at most one dispatcher waits on the lock. Failed/cancelled parents cannot claim or continue generation. Lost started attempts become explicit unknown outcomes and are not automatically repeated.
 
