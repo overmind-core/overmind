@@ -11,6 +11,7 @@ import {
 } from "recharts";
 
 import { Card } from "@/components/ui/card";
+import { GraphTooltip } from "@/components/ui/graph-tooltip";
 import { Icon } from "@/components/ui/icons";
 import {
   Select,
@@ -68,37 +69,6 @@ function fmtDateTime(ts: number): string {
     minute: "2-digit",
     month: "short",
   });
-}
-
-interface ChartTooltipProps {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number | null; color: string }>;
-  label?: number;
-}
-
-function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
-  if (!active || !payload?.length) return null;
-  const scored = payload.filter((entry) => entry.value != null);
-  if (scored.length === 0) return null;
-  return (
-    <div className="rounded-sm border border-border bg-background px-3 py-2 text-xs">
-      <p className="mb-1.5 font-medium text-foreground">
-        {label != null ? fmtDateTime(label) : ""}
-      </p>
-      {scored
-        .slice()
-        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
-        .map((entry) => (
-          <div className="flex items-center gap-2" key={entry.name}>
-            <span className="inline-block size-2 rounded-xs" style={{ background: entry.color }} />
-            <span className="text-muted-foreground">{entry.name}</span>
-            <span className="ml-auto font-mono tabular-nums text-foreground">
-              {(entry.value as number).toFixed(1)}
-            </span>
-          </div>
-        ))}
-    </div>
-  );
 }
 
 interface EvalScoreHistoryChartProps {
@@ -215,7 +185,16 @@ export function EvalScoreHistoryChart({ series }: EvalScoreHistoryChartProps) {
               />
               <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} tickLine={false} width={40} />
               <RechartsTooltip
-                content={<ChartTooltip />}
+                content={({ active, payload, label }) => (
+                  <GraphTooltip
+                    active={active}
+                    label={label != null ? fmtDateTime(Number(label)) : undefined}
+                    payload={payload
+                      ?.slice()
+                      .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))}
+                    valueFormatter={(value) => value.toFixed(1)}
+                  />
+                )}
                 cursor={{ stroke: "var(--muted-foreground)", strokeOpacity: 0.3 }}
               />
               {visibleSeries.map((s) => (

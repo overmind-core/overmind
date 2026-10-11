@@ -9,29 +9,12 @@ import {
   YAxis,
 } from "recharts";
 
+import { GraphTooltip } from "@/components/ui/graph-tooltip";
+
 export interface ScorePoint {
   iteration: number;
   /** 0–100, null while unscored. */
   best: number | null;
-}
-
-interface ChartTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number | null }>;
-  label?: number;
-}
-
-function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
-  const value = payload?.[0]?.value;
-  if (!active || value == null) return null;
-  return (
-    <div className="rounded-md border border-border bg-background px-3 py-2 text-xs">
-      <p className="font-medium text-foreground">
-        {label === 0 ? "Baseline" : `Iteration ${label}`}
-      </p>
-      <p className="font-mono tabular-nums text-muted-foreground">{value.toFixed(1)}</p>
-    </div>
-  );
 }
 
 export function OptimizerScoreChart({
@@ -58,7 +41,14 @@ export function OptimizerScoreChart({
           />
           <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} tickLine={false} width={40} />
           <RechartsTooltip
-            content={<ChartTooltip />}
+            content={({ active, payload, label }) => (
+              <GraphTooltip
+                active={active}
+                label={label === 0 ? "Baseline" : `Iteration ${label}`}
+                payload={payload}
+                valueFormatter={(value) => value.toFixed(1)}
+              />
+            )}
             cursor={{ stroke: "var(--muted-foreground)", strokeOpacity: 0.3 }}
           />
           {baseline != null && (

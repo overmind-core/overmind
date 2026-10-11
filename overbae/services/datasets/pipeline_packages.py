@@ -34,7 +34,10 @@ def schema(value):
             or not isinstance(kind, str)
             or kind not in TYPES
         ):
-            raise error("Column contracts require names and supported JSON types.")
+            raise DatasetError(
+                "Column contracts use string, integer, number, boolean, object, array, null or any. Use object for a decision object; json is not a column type.",
+                code="pipeline_column_type",
+            )
     return value
 
 
@@ -91,6 +94,8 @@ def validate_manifest(manifest, files, *, require_runtime=True):
             "input_schema",
             "output_schema",
             "checks",
+            "batch_rows",
+            "consumer",
         }:
             raise error(
                 "Each step needs a name, entrypoint, column contracts and optional row checks."
@@ -106,6 +111,20 @@ def validate_manifest(manifest, files, *, require_runtime=True):
             raise error("Every entrypoint must name a Python file inside the package.")
         schema(step.get("input_schema", {}))
         schema(step.get("output_schema", {}))
+        if "batch_rows" in step and (
+            type(step["batch_rows"]) is not int or not 1 <= step["batch_rows"] <= 100000
+        ):
+            raise error(
+                "batch_rows must be an integer between 1 and 100000. Only declare it for independent row transformations."
+            )
+        if step.get("consumer") not in {
+            None,
+            "decision_train",
+            "decision_eval",
+            "chat_train",
+            "model_eval",
+        }:
+            raise error("Consumer must be decision_train, decision_eval, chat_train or model_eval.")
         checks = step.get("checks", {})
         if not isinstance(checks, dict) or set(checks) - {"min_rows", "max_rows", "preserve_rows"}:
             raise error("Supported checks: min_rows, max_rows, preserve_rows.")

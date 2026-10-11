@@ -1,0 +1,2354 @@
+{
+  "run": "granular-final-20261009",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "name": "mixed-scalars",
+      "bytes": 203,
+      "sha256": "b8640e5f113827f0da12b7f42433ddb9a3c171cd91ecfcd19b4bffeb3319ad8c",
+      "passed": true,
+      "upload_seconds": 0.998,
+      "dataset": "4ea3bd92-74a8-419f-b873-77e9fddef201",
+      "transfer": "1b689e8f-3792-4460-8e7d-580dc4ff8bfb",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 1.02,
+      "cell": "7f082662-896a-439c-878c-f8966ad611f7",
+      "rows": 8,
+      "sources": [
+        {
+          "id": "b8640e5f113827f0da12b7f42433ddb9a3c171cd91ecfcd19b4bffeb3319ad8c",
+          "sha256": "b8640e5f113827f0da12b7f42433ddb9a3c171cd91ecfcd19b4bffeb3319ad8c",
+          "filename": "mixed-scalars.jsonl",
+          "bytes": 203,
+          "rows": 8,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.658
+    },
+    {
+      "name": "large-integers",
+      "bytes": 209,
+      "sha256": "62be445cf1bf24b5195984f62b65becd84030f988646c14e0b2ba65860f04bb1",
+      "passed": true,
+      "upload_seconds": 0.867,
+      "dataset": "d4111b30-2011-4b2f-8707-90eac438d8a6",
+      "transfer": "3b435995-8f08-421b-b58b-1365dd1627bf",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.898,
+      "cell": "9c457d77-d753-4b88-bfed-db110097fc77",
+      "rows": 4,
+      "sources": [
+        {
+          "id": "62be445cf1bf24b5195984f62b65becd84030f988646c14e0b2ba65860f04bb1",
+          "sha256": "62be445cf1bf24b5195984f62b65becd84030f988646c14e0b2ba65860f04bb1",
+          "filename": "large-integers.jsonl",
+          "bytes": 209,
+          "rows": 4,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.577
+    },
+    {
+      "name": "mixed-numeric-precision",
+      "bytes": 64,
+      "sha256": "5ad4010466ffb5062b18a2277d72f51e29b3629f30382e5d65f63e0f31c72469",
+      "passed": true,
+      "upload_seconds": 0.861,
+      "dataset": "ca6d94e2-105a-4afb-915e-e3972857e1c9",
+      "transfer": "32fcfc8d-53bc-4ae9-98eb-6656c8ca3171",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.892,
+      "cell": "65e383a2-cf9d-4285-bad5-a60f74cbeebc",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "5ad4010466ffb5062b18a2277d72f51e29b3629f30382e5d65f63e0f31c72469",
+          "sha256": "5ad4010466ffb5062b18a2277d72f51e29b3629f30382e5d65f63e0f31c72469",
+          "filename": "mixed-numeric-precision.jsonl",
+          "bytes": 64,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.541
+    },
+    {
+      "name": "nullable-integers",
+      "bytes": 64,
+      "sha256": "a668ac6ed01a40b9d1b461550c64a57728e6e13f07908215abfa32a9eaa2390e",
+      "passed": true,
+      "upload_seconds": 0.874,
+      "dataset": "e38e4efd-cc77-4368-b52c-8cafc840a4f8",
+      "transfer": "5bbf1a76-ca07-4fbb-9b87-d26cca6acde6",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.889,
+      "cell": "8c7ea80c-ec8c-4cc7-b59d-b66f2059b29a",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "a668ac6ed01a40b9d1b461550c64a57728e6e13f07908215abfa32a9eaa2390e",
+          "sha256": "a668ac6ed01a40b9d1b461550c64a57728e6e13f07908215abfa32a9eaa2390e",
+          "filename": "nullable-integers.jsonl",
+          "bytes": 64,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.706
+    },
+    {
+      "name": "late-type-change",
+      "bytes": 258977,
+      "sha256": "453d1d7b99b7b99b0ab5efc8667045cab19cdfccda6f9018223a5cbef000a7f7",
+      "passed": true,
+      "upload_seconds": 0.945,
+      "dataset": "0bb5feac-501a-4af5-83ff-7794040574fd",
+      "transfer": "a2bdcb00-4fc2-4cdc-9189-ec6141c4423e",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "rows": 10003,
+            "stage": "publishing",
+            "total": 1,
+            "completed": 1
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 1.991,
+      "cell": "81a849d3-6165-447a-8578-25c9bda77b66",
+      "rows": 10003,
+      "sources": [
+        {
+          "id": "453d1d7b99b7b99b0ab5efc8667045cab19cdfccda6f9018223a5cbef000a7f7",
+          "sha256": "453d1d7b99b7b99b0ab5efc8667045cab19cdfccda6f9018223a5cbef000a7f7",
+          "filename": "late-type-change.jsonl",
+          "bytes": 258977,
+          "rows": 10003,
+          "extraction": {}
+        }
+      ],
+      "seconds": 3.743
+    },
+    {
+      "name": "nested-unicode",
+      "bytes": 150,
+      "sha256": "93d671fc1ecf1b88afa92033e422ca070e1e7852231843bbbd9a8507653be745",
+      "passed": true,
+      "upload_seconds": 0.79,
+      "dataset": "595ed891-289a-4611-acf5-929a05864765",
+      "transfer": "90c039fb-d66d-4d12-86eb-eab2b6cbd3c0",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.818,
+      "cell": "f860ee98-80c5-4d23-a8de-5bf6500d11b9",
+      "rows": 3,
+      "sources": [
+        {
+          "id": "93d671fc1ecf1b88afa92033e422ca070e1e7852231843bbbd9a8507653be745",
+          "sha256": "93d671fc1ecf1b88afa92033e422ca070e1e7852231843bbbd9a8507653be745",
+          "filename": "nested-unicode.jsonl",
+          "bytes": 150,
+          "rows": 3,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.354
+    },
+    {
+      "name": "csv",
+      "bytes": 60,
+      "sha256": "9ed7e82edbd328d17675156faf07b5afa15532f3f755d357f24a73b0b7e5dfc8",
+      "passed": true,
+      "upload_seconds": 0.93,
+      "dataset": "42af6333-bb6e-4838-98b4-eb20a60007b6",
+      "transfer": "d1c787ab-334a-4a59-a94b-fc6121ef558d",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.947,
+      "cell": "1c04bb67-c9ed-48a2-9781-4104eb9ffb84",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "9ed7e82edbd328d17675156faf07b5afa15532f3f755d357f24a73b0b7e5dfc8",
+          "sha256": "9ed7e82edbd328d17675156faf07b5afa15532f3f755d357f24a73b0b7e5dfc8",
+          "filename": "quoted.csv",
+          "bytes": 60,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.552
+    },
+    {
+      "name": "tsv",
+      "bytes": 60,
+      "sha256": "a02b09e4b3348b40f1da04ec879f409317f9536ed1e1a88602c86f4fa7e34397",
+      "passed": true,
+      "upload_seconds": 0.871,
+      "dataset": "b4b148c1-a6b1-42eb-8122-a6f8363cb830",
+      "transfer": "e791ea42-d366-4eea-b4a9-7140e27d00b5",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.896,
+      "cell": "5f92d366-7caf-45ba-9e1c-664bbdf48294",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "a02b09e4b3348b40f1da04ec879f409317f9536ed1e1a88602c86f4fa7e34397",
+          "sha256": "a02b09e4b3348b40f1da04ec879f409317f9536ed1e1a88602c86f4fa7e34397",
+          "filename": "quoted.tsv",
+          "bytes": 60,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.471
+    },
+    {
+      "name": "parquet",
+      "bytes": 1092,
+      "sha256": "454963f1ebb4468012f61b585cc2588d6935d4dfec9c5423c799bcf548fe0415",
+      "passed": true,
+      "upload_seconds": 0.809,
+      "dataset": "e03fa84d-ed4c-49c7-9fb9-f5fb9eb32d98",
+      "transfer": "a00d2116-d800-46c0-b36f-c10a622ab140",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.832,
+      "cell": "2f72f461-a432-4e6d-a239-6bb10c7acae1",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "454963f1ebb4468012f61b585cc2588d6935d4dfec9c5423c799bcf548fe0415",
+          "sha256": "454963f1ebb4468012f61b585cc2588d6935d4dfec9c5423c799bcf548fe0415",
+          "filename": "nested.parquet",
+          "bytes": 1092,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.367
+    },
+    {
+      "name": "gzip-jsonl",
+      "bytes": 108,
+      "sha256": "52cd520cfc819559cd9abc781a253108c79de4631cd1929e7a9852793c349cb2",
+      "passed": true,
+      "upload_seconds": 0.869,
+      "dataset": "bff5bf51-fd8c-47bd-a375-a93fc21ea721",
+      "transfer": "fb71e44c-016a-4eb8-aa20-bb3861c3b3a6",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.901,
+      "cell": "cc3c685c-7440-425d-ab08-9277ec77f49a",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "52cd520cfc819559cd9abc781a253108c79de4631cd1929e7a9852793c349cb2",
+          "sha256": "52cd520cfc819559cd9abc781a253108c79de4631cd1929e7a9852793c349cb2",
+          "filename": "nested.jsonl.gz",
+          "bytes": 108,
+          "rows": 2,
+          "extraction": {}
+        }
+      ],
+      "seconds": 2.667
+    },
+    {
+      "name": "txt",
+      "bytes": 37,
+      "sha256": "ba46925438983816da38cf83aad1a17d19c4962bc4211f20801c854c77d4aa80",
+      "passed": true,
+      "upload_seconds": 0.736,
+      "dataset": "4e910093-f6e2-47e6-b8d1-210fe56ed5f3",
+      "transfer": "216323ab-650a-4bcf-baa5-400355eb584c",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.761,
+      "cell": "58294d95-5a0e-4499-8e2a-6ca43c4ed171",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "ba46925438983816da38cf83aad1a17d19c4962bc4211f20801c854c77d4aa80",
+          "sha256": "ba46925438983816da38cf83aad1a17d19c4962bc4211f20801c854c77d4aa80",
+          "filename": "evidence.txt",
+          "bytes": 37,
+          "rows": 2,
+          "extraction": {
+            "pages": null,
+            "method": "utf8-paragraphs",
+            "version": "1",
+            "limitations": []
+          }
+        }
+      ],
+      "seconds": 2.518
+    },
+    {
+      "name": "md",
+      "bytes": 30,
+      "sha256": "077719a51ea23e88d99592726d4967c0fa8b70fa2e9140ccd2e3d5b6486a02f4",
+      "passed": true,
+      "upload_seconds": 0.983,
+      "dataset": "33bd6ee2-e49c-4b40-baee-dd0b1248916d",
+      "transfer": "98a2fc87-26cc-474f-a8c2-dfeefe1b5dda",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 1.015,
+      "cell": "0b9ddb22-8b27-4bbd-a19a-820c42f78686",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "077719a51ea23e88d99592726d4967c0fa8b70fa2e9140ccd2e3d5b6486a02f4",
+          "sha256": "077719a51ea23e88d99592726d4967c0fa8b70fa2e9140ccd2e3d5b6486a02f4",
+          "filename": "evidence.md",
+          "bytes": 30,
+          "rows": 2,
+          "extraction": {
+            "pages": null,
+            "method": "docling",
+            "version": "2.131.0",
+            "limitations": []
+          }
+        }
+      ],
+      "seconds": 2.669
+    },
+    {
+      "name": "png",
+      "bytes": 8506,
+      "sha256": "457b7638c4e2d2ea797fcad676dbfa744eb14532b7e9a41f37f469ab5649debb",
+      "passed": true,
+      "upload_seconds": 0.774,
+      "dataset": "52d6c897-c97a-4ba6-b0dd-2cc67df9db88",
+      "transfer": "abe66683-ee8f-4081-bbac-bf9d439251df",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.796,
+      "cell": "de7b19cd-44ab-4802-872c-fb2f9092cb5a",
+      "rows": 1,
+      "sources": [
+        {
+          "id": "457b7638c4e2d2ea797fcad676dbfa744eb14532b7e9a41f37f469ab5649debb",
+          "sha256": "457b7638c4e2d2ea797fcad676dbfa744eb14532b7e9a41f37f469ab5649debb",
+          "filename": "scan.png",
+          "bytes": 8506,
+          "rows": 1,
+          "extraction": {
+            "ocr": {
+              "image": {
+                "width": 1200,
+                "height": 300,
+                "ocr_width": 1200,
+                "ocr_height": 300,
+                "coordinate_space": "exif-oriented-pixels",
+                "exif_orientation": 1
+              },
+              "pages": [
+                1
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 1,
+            "method": "tesseract-ocr",
+            "version": "5.3.0",
+            "limitations": [
+              "OCR uses English language data and may misread text.",
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.255
+    },
+    {
+      "name": "jpg",
+      "bytes": 12985,
+      "sha256": "facf765625d35f72d9be94cd320c73c8526f2d3abc71facafbe98ef1f5fd8591",
+      "passed": true,
+      "upload_seconds": 0.78,
+      "dataset": "662d4d87-d203-4041-b325-62c70f90e251",
+      "transfer": "f85916b6-7d25-4bc2-aee9-e2c800548b1d",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.801,
+      "cell": "9b8663b8-3324-45f1-b468-78c03228c6f8",
+      "rows": 1,
+      "sources": [
+        {
+          "id": "facf765625d35f72d9be94cd320c73c8526f2d3abc71facafbe98ef1f5fd8591",
+          "sha256": "facf765625d35f72d9be94cd320c73c8526f2d3abc71facafbe98ef1f5fd8591",
+          "filename": "scan.jpg",
+          "bytes": 12985,
+          "rows": 1,
+          "extraction": {
+            "ocr": {
+              "image": {
+                "width": 1200,
+                "height": 300,
+                "ocr_width": 1200,
+                "ocr_height": 300,
+                "coordinate_space": "exif-oriented-pixels",
+                "exif_orientation": 1
+              },
+              "pages": [
+                1
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 1,
+            "method": "tesseract-ocr",
+            "version": "5.3.0",
+            "limitations": [
+              "OCR uses English language data and may misread text.",
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.471
+    },
+    {
+      "name": "webp",
+      "bytes": 5246,
+      "sha256": "d4b3e2d1f911be3769d8a43425f0aaf3e11b88c14cfbfeb49a71541f279acc45",
+      "passed": true,
+      "upload_seconds": 0.759,
+      "dataset": "43137b84-1021-4187-b22c-17a2e855f48d",
+      "transfer": "53e02c95-3e86-46ad-ae4d-5def27b10deb",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.778,
+      "cell": "b9ff0792-2a1d-4a23-b84f-545b9ee4501c",
+      "rows": 1,
+      "sources": [
+        {
+          "id": "d4b3e2d1f911be3769d8a43425f0aaf3e11b88c14cfbfeb49a71541f279acc45",
+          "sha256": "d4b3e2d1f911be3769d8a43425f0aaf3e11b88c14cfbfeb49a71541f279acc45",
+          "filename": "scan.webp",
+          "bytes": 5246,
+          "rows": 1,
+          "extraction": {
+            "ocr": {
+              "image": {
+                "width": 1200,
+                "height": 300,
+                "ocr_width": 1200,
+                "ocr_height": 300,
+                "coordinate_space": "exif-oriented-pixels",
+                "exif_orientation": 1
+              },
+              "pages": [
+                1
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 1,
+            "method": "tesseract-ocr",
+            "version": "5.3.0",
+            "limitations": [
+              "OCR uses English language data and may misread text.",
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.278
+    },
+    {
+      "name": "duplicate.csv",
+      "bytes": 23,
+      "sha256": "8d0c65c3453363b6bdca930700b766cccf434594b46234c5e464940e76d9f142",
+      "passed": true,
+      "upload_seconds": 0.866,
+      "dataset": "5dfd9f1c-0007-4564-a429-e0446006e8b0",
+      "transfer": "6612c1c5-3556-4ac9-8b53-3682f9c71dec",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "reading",
+            "total": 1,
+            "filename": "duplicate.csv",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.897,
+      "rejection": "Column 'Name' appears twice. Rename one of them.",
+      "seconds": 0.897
+    },
+    {
+      "name": "wide.csv",
+      "bytes": 10,
+      "sha256": "f47a33245cb42a1f42fe4c947d21bda44d5c97eb7cbdacd4112fdd859709cdbf",
+      "passed": true,
+      "upload_seconds": 0.821,
+      "dataset": "62d3a84b-bf90-4110-a40a-dee125398ed4",
+      "transfer": "30e4b1fa-083b-4828-a0b0-c57b129cb3b4",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "reading",
+            "total": 1,
+            "filename": "wide.csv",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.836,
+      "rejection": "Row 2 has 3 cells; the header has 2. Quote a cell that holds the delimiter.",
+      "seconds": 0.836
+    },
+    {
+      "name": "bad.jsonl",
+      "bytes": 17,
+      "sha256": "59b1839cffb2779230e04dc8c248ffec134cb5e56cf46340493642f3fb1d314a",
+      "passed": true,
+      "upload_seconds": 0.839,
+      "dataset": "64dc6a7d-470f-482c-ae45-5aecc13b2e9c",
+      "transfer": "55b0bdbc-13b6-400a-9425-674ba57ff46c",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "reading",
+            "total": 1,
+            "filename": "bad.jsonl",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.871,
+      "rejection": "Line 2 is not valid JSON.",
+      "seconds": 0.871
+    },
+    {
+      "name": "bad-utf8.txt",
+      "bytes": 3,
+      "sha256": "1b287a476f18b576a8b998bf9766048031b262686a25944c7017c9568b63cb58",
+      "passed": true,
+      "upload_seconds": 0.888,
+      "dataset": "49b96550-072b-4956-87ca-4457db70e4c1",
+      "transfer": "6d33118a-6160-481b-9281-f4831b2ab2f3",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "extracting",
+            "total": 1,
+            "filename": "bad-utf8.txt",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.916,
+      "rejection": "The document is not UTF-8. Save it as UTF-8 and upload it again.",
+      "seconds": 0.916
+    },
+    {
+      "name": "wide-row",
+      "bytes": 600019,
+      "sha256": "a7ec99a49b35b8bdd3c3d967c94cd9c1fd836bf3e94b4e118ca94ab46a323ba4",
+      "passed": true,
+      "upload_seconds": 0.851,
+      "dataset": "8619e592-7f53-43a6-889f-226ac9bd1cdd",
+      "transfer": "46479814-0d9a-4753-8990-517769e78c54",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.882,
+      "cell": "37c980c4-f0be-47e2-b976-1ea7337e7d96",
+      "rows": 1,
+      "sources": [
+        {
+          "id": "a7ec99a49b35b8bdd3c3d967c94cd9c1fd836bf3e94b4e118ca94ab46a323ba4",
+          "sha256": "a7ec99a49b35b8bdd3c3d967c94cd9c1fd836bf3e94b4e118ca94ab46a323ba4",
+          "filename": "wide-row.jsonl",
+          "bytes": 600019,
+          "rows": 1,
+          "extraction": {}
+        }
+      ],
+      "wide_query_bytes": 650,
+      "seconds": 2.558
+    },
+    {
+      "name": "rows-10000",
+      "bytes": 688340,
+      "sha256": "7467295fce88c4db6a9409f101686d0fb0e4b73ba2cca7381d100bbf867a6b50",
+      "passed": true,
+      "upload_seconds": 0.758,
+      "dataset": "5c6f0047-b24a-48e2-a0e1-8d5f22ff54f0",
+      "transfer": "5e62b785-93da-4e60-9835-c0853ac3aed5",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "rows": 10000,
+            "stage": "publishing",
+            "total": 1,
+            "completed": 1
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 1.796,
+      "cell": "de2773d8-6b25-4b30-ad35-0ea475848c56",
+      "rows": 10000,
+      "sources": [
+        {
+          "id": "7467295fce88c4db6a9409f101686d0fb0e4b73ba2cca7381d100bbf867a6b50",
+          "sha256": "7467295fce88c4db6a9409f101686d0fb0e4b73ba2cca7381d100bbf867a6b50",
+          "filename": "rows-10000.jsonl",
+          "bytes": 688340,
+          "rows": 10000,
+          "extraction": {}
+        }
+      ],
+      "seconds": 3.415
+    },
+    {
+      "name": "rows-100000",
+      "bytes": 7083340,
+      "sha256": "68bbe372bec2f4e458c041ef498817468e111166eba8655ffe284301dff52331",
+      "passed": true,
+      "upload_seconds": 0.825,
+      "dataset": "6fbd299d-9924-4efe-bcff-696f8a8ad272",
+      "transfer": "e775e877-2b18-4538-93de-b6c93bad92f5",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "rows": 100000,
+            "stage": "publishing",
+            "total": 1,
+            "completed": 1
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 5.921,
+      "cell": "0b4327f4-a54b-42ab-85ad-de08b2361700",
+      "rows": 100000,
+      "sources": [
+        {
+          "id": "68bbe372bec2f4e458c041ef498817468e111166eba8655ffe284301dff52331",
+          "sha256": "68bbe372bec2f4e458c041ef498817468e111166eba8655ffe284301dff52331",
+          "filename": "rows-100000.jsonl",
+          "bytes": 7083340,
+          "rows": 100000,
+          "extraction": {}
+        }
+      ],
+      "seconds": 8.274
+    },
+    {
+      "name": "native-1.pdf",
+      "bytes": 1408,
+      "sha256": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0",
+      "passed": true,
+      "upload_seconds": 0.765,
+      "dataset": "2a03363f-7fe0-40e6-b307-545eeddcacb1",
+      "transfer": "730c88f5-c435-4676-9cb2-948edd490e99",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.802,
+      "cell": "67ccf4cf-c786-429d-ba40-75f6aa086a80",
+      "rows": 2,
+      "sources": [
+        {
+          "id": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0",
+          "sha256": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0",
+          "filename": "native-1.pdf",
+          "bytes": 1408,
+          "rows": 2,
+          "extraction": {
+            "pages": 1,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.314
+    },
+    {
+      "name": "native-10.pdf",
+      "bytes": 5921,
+      "sha256": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8",
+      "passed": true,
+      "upload_seconds": 0.917,
+      "dataset": "b58c76bd-1bee-4f1d-b150-0144f3520631",
+      "transfer": "c950db9f-3ea4-4d73-a4d7-1a23582ee32a",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.95,
+      "cell": "5704b50e-3adc-4b5f-862c-6e92a6dd507b",
+      "rows": 20,
+      "sources": [
+        {
+          "id": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8",
+          "sha256": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8",
+          "filename": "native-10.pdf",
+          "bytes": 5921,
+          "rows": 20,
+          "extraction": {
+            "pages": 10,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.659
+    },
+    {
+      "name": "native-100.pdf",
+      "bytes": 51456,
+      "sha256": "67bfa71b375d82426be89733e8ec2f4efdd056b38b809121224262cfa628111f",
+      "passed": true,
+      "upload_seconds": 0.822,
+      "dataset": "9aaa9d8a-4f91-4ef7-ac3d-7252afd57fdf",
+      "transfer": "65cd760e-2194-4e70-8013-e0ff25551fc9",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.849,
+      "cell": "95f5a0c6-3057-4fbf-af33-5fe75e0664ce",
+      "rows": 200,
+      "sources": [
+        {
+          "id": "67bfa71b375d82426be89733e8ec2f4efdd056b38b809121224262cfa628111f",
+          "sha256": "67bfa71b375d82426be89733e8ec2f4efdd056b38b809121224262cfa628111f",
+          "filename": "native-100.pdf",
+          "bytes": 51456,
+          "rows": 200,
+          "extraction": {
+            "pages": 100,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.519
+    },
+    {
+      "name": "native-500.pdf",
+      "bytes": 254571,
+      "sha256": "63348e7945a432c2f8f5476307022aff99acbfd00bf2c187ca08f4e2518dc526",
+      "passed": true,
+      "upload_seconds": 0.765,
+      "dataset": "672454ab-a0a6-4ae0-be8d-49622f153a64",
+      "transfer": "58e60340-e88a-42f2-a07b-80f9e2885f2b",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.779,
+      "cell": "e17297d4-b38e-41dd-a022-7e3b0e89a58c",
+      "rows": 1000,
+      "sources": [
+        {
+          "id": "63348e7945a432c2f8f5476307022aff99acbfd00bf2c187ca08f4e2518dc526",
+          "sha256": "63348e7945a432c2f8f5476307022aff99acbfd00bf2c187ca08f4e2518dc526",
+          "filename": "native-500.pdf",
+          "bytes": 254571,
+          "rows": 1000,
+          "extraction": {
+            "pages": 500,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.519
+    },
+    {
+      "name": "native-2000.pdf",
+      "bytes": 1023819,
+      "sha256": "93803b1947e078ea244b70d2dde58e28fe8cb8e4fece05e689a43a616a245520",
+      "passed": true,
+      "upload_seconds": 0.812,
+      "dataset": "14acfe1b-8ed0-44df-b2de-21404d9643e1",
+      "transfer": "78c53fc6-f35f-4ed8-885c-c28562054685",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "extracting_native_text",
+            "total": 1,
+            "filename": "native-2000.pdf",
+            "completed": 0,
+            "pages_total": 2000
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 1.842,
+      "cell": "338e5420-fd2a-4fe0-9702-4fe17ba5aaff",
+      "rows": 4000,
+      "sources": [
+        {
+          "id": "93803b1947e078ea244b70d2dde58e28fe8cb8e4fece05e689a43a616a245520",
+          "sha256": "93803b1947e078ea244b70d2dde58e28fe8cb8e4fece05e689a43a616a245520",
+          "filename": "native-2000.pdf",
+          "bytes": 1023819,
+          "rows": 4000,
+          "extraction": {
+            "pages": 2000,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          }
+        }
+      ],
+      "seconds": 3.753
+    },
+    {
+      "name": "native-2001.pdf",
+      "bytes": 1024333,
+      "sha256": "cba2156130836bfc036e19c23031899a87e49395b5b22befebcf792afdd1d698",
+      "passed": true,
+      "upload_seconds": 0.782,
+      "dataset": "9c84acdc-b6ee-489a-8d31-f8a7d4e79d7f",
+      "transfer": "f220d058-2f57-45b6-b7ae-133e9297508e",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "extracting",
+            "total": 1,
+            "filename": "native-2001.pdf",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.811,
+      "rejection": "The PDF has 2001 pages; the limit is 2000. Split it into smaller PDFs.",
+      "seconds": 0.811
+    },
+    {
+      "name": "scanned-1.pdf",
+      "bytes": 29830,
+      "sha256": "1a380dc540d3d8d0b6d3bb7e3e1cf51b72b454c9c14e8f56ae2f793306d94191",
+      "passed": true,
+      "upload_seconds": 0.801,
+      "dataset": "dc138d8b-bc07-416f-825d-5e38939a6189",
+      "transfer": "4a8340ed-045a-471c-93dd-8358b702f3aa",
+      "observed_progress": [
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 0.814,
+      "cell": "bec2b267-62d0-492f-a83d-207c8317ff7b",
+      "rows": 4,
+      "sources": [
+        {
+          "id": "1a380dc540d3d8d0b6d3bb7e3e1cf51b72b454c9c14e8f56ae2f793306d94191",
+          "sha256": "1a380dc540d3d8d0b6d3bb7e3e1cf51b72b454c9c14e8f56ae2f793306d94191",
+          "filename": "scanned-1.pdf",
+          "bytes": 29830,
+          "rows": 4,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 1,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          }
+        }
+      ],
+      "seconds": 2.34
+    },
+    {
+      "name": "scanned-25.pdf",
+      "bytes": 736897,
+      "sha256": "293200ae4d517dd7306890e84cb1e56e6633d9b5e83e06aaab05fa715baa4540",
+      "passed": true,
+      "upload_seconds": 0.787,
+      "dataset": "3598b177-4450-4df4-9cef-dbd7bb0c0de5",
+      "transfer": "a0969d02-be3b-41f3-a6a1-72ea435c8c13",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 1
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 5
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 9
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 14
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 18
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "scanned-25.pdf",
+            "completed": 0,
+            "pages_total": 25,
+            "ocr_pages_total": 25,
+            "ocr_pages_completed": 22
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 6.906,
+      "cell": "277a43e9-e818-4046-a066-89ef2a317c0b",
+      "rows": 100,
+      "sources": [
+        {
+          "id": "293200ae4d517dd7306890e84cb1e56e6633d9b5e83e06aaab05fa715baa4540",
+          "sha256": "293200ae4d517dd7306890e84cb1e56e6633d9b5e83e06aaab05fa715baa4540",
+          "filename": "scanned-25.pdf",
+          "bytes": 736897,
+          "rows": 100,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 25,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          }
+        }
+      ],
+      "seconds": 8.482
+    },
+    {
+      "name": "mixed-30.pdf",
+      "bytes": 597628,
+      "sha256": "ff11e886df8ee0270b61f9e692ff15cd67035ac208d80b4af1b4d3491680ee87",
+      "passed": true,
+      "upload_seconds": 0.86,
+      "dataset": "5dfdd7aa-a340-4bea-86cb-347c6fb1706b",
+      "transfer": "d361cf54-3edc-4bd0-9703-94e520fdba24",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "mixed-30.pdf",
+            "completed": 0,
+            "pages_total": 30,
+            "ocr_pages_total": 20,
+            "ocr_pages_completed": 0
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "mixed-30.pdf",
+            "completed": 0,
+            "pages_total": 30,
+            "ocr_pages_total": 20,
+            "ocr_pages_completed": 5
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "mixed-30.pdf",
+            "completed": 0,
+            "pages_total": 30,
+            "ocr_pages_total": 20,
+            "ocr_pages_completed": 9
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "mixed-30.pdf",
+            "completed": 0,
+            "pages_total": 30,
+            "ocr_pages_total": 20,
+            "ocr_pages_completed": 13
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "mixed-30.pdf",
+            "completed": 0,
+            "pages_total": 30,
+            "ocr_pages_total": 20,
+            "ocr_pages_completed": 17
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 5.965,
+      "cell": "8886d39d-3e00-4866-ad7b-85c8371d4cb5",
+      "rows": 120,
+      "sources": [
+        {
+          "id": "ff11e886df8ee0270b61f9e692ff15cd67035ac208d80b4af1b4d3491680ee87",
+          "sha256": "ff11e886df8ee0270b61f9e692ff15cd67035ac208d80b4af1b4d3491680ee87",
+          "filename": "mixed-30.pdf",
+          "bytes": 597628,
+          "rows": 120,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                2,
+                3,
+                5,
+                6,
+                8,
+                9,
+                11,
+                12,
+                14,
+                15,
+                17,
+                18,
+                20,
+                21,
+                23,
+                24,
+                26,
+                27,
+                29,
+                30
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 30,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          }
+        }
+      ],
+      "seconds": 7.724
+    },
+    {
+      "name": "large-scanned.pdf",
+      "bytes": 38881650,
+      "sha256": "4796ea060d4e67deb600f1e1ec54d4332379126be2de32e4750019c7492342a3",
+      "passed": true,
+      "upload_seconds": 1.193,
+      "dataset": "2d93d84a-b8cd-484a-9dcf-324384f89f61",
+      "transfer": "ef8fbb85-2d1a-44e0-b43f-f7635345970f",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "large-scanned.pdf",
+            "completed": 0,
+            "pages_total": 3,
+            "ocr_pages_total": 3,
+            "ocr_pages_completed": 1
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 2.24,
+      "cell": "0e80e79f-a890-406c-8df3-229c94f88926",
+      "rows": 12,
+      "sources": [
+        {
+          "id": "4796ea060d4e67deb600f1e1ec54d4332379126be2de32e4750019c7492342a3",
+          "sha256": "4796ea060d4e67deb600f1e1ec54d4332379126be2de32e4750019c7492342a3",
+          "filename": "large-scanned.pdf",
+          "bytes": 38881650,
+          "rows": 12,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1,
+                2,
+                3
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 3,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          }
+        }
+      ],
+      "seconds": 4.112
+    },
+    {
+      "name": "near-byte-limit.pdf",
+      "bytes": 103683891,
+      "sha256": "9565c6661df71d2608cf96bb17916a279215d18193596349cc370f4e75eaee8e",
+      "passed": true,
+      "upload_seconds": 1.541,
+      "dataset": "dfdad438-8174-4bcb-b547-a88e62528d98",
+      "transfer": "59108ccd-a3b2-49a8-b7da-dce66b002cff",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "near-byte-limit.pdf",
+            "completed": 0,
+            "pages_total": 8,
+            "ocr_pages_total": 8,
+            "ocr_pages_completed": 0
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "near-byte-limit.pdf",
+            "completed": 0,
+            "pages_total": 8,
+            "ocr_pages_total": 8,
+            "ocr_pages_completed": 4
+          }
+        },
+        {
+          "status": "landing",
+          "landing": {
+            "rows": 32,
+            "stage": "publishing",
+            "total": 1,
+            "completed": 1
+          }
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 4.593,
+      "cell": "1520d98a-930f-4cdc-b251-218adffc8f52",
+      "rows": 32,
+      "sources": [
+        {
+          "id": "9565c6661df71d2608cf96bb17916a279215d18193596349cc370f4e75eaee8e",
+          "sha256": "9565c6661df71d2608cf96bb17916a279215d18193596349cc370f4e75eaee8e",
+          "filename": "near-byte-limit.pdf",
+          "bytes": 103683891,
+          "rows": 32,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 8,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          }
+        }
+      ],
+      "seconds": 6.323
+    },
+    {
+      "name": "over-byte-limit.pdf",
+      "bytes": 116644339,
+      "sha256": "924cbd0185f3cd094435557c14271b52134ad4c2bc5b0e051e3e6ce3a5d3c277",
+      "passed": true,
+      "upload_seconds": 0.857,
+      "rejection": {
+        "error": {
+          "code": "file_too_large",
+          "message": "The file exceeds the server's byte limit for this file type. Read overmind://dataset-upload for the limits; split or reduce the file. No transfer was reserved.",
+          "stage": "reserve",
+          "next_action": "split_or_reduce_file",
+          "transfer": {
+            "request_key": "granular-final-20261009-over-byte-limit.pdf",
+            "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205"
+          }
+        }
+      },
+      "seconds": 0.857
+    },
+    {
+      "name": "encrypted.pdf",
+      "bytes": 1439,
+      "sha256": "67dbbb562f729b3b580be33877b00387e600218227d12203670077a8c964e7d6",
+      "passed": true,
+      "upload_seconds": 0.813,
+      "dataset": "b6b84a2e-d533-4cac-a26d-9e132af7474f",
+      "transfer": "91befbd9-bb4d-4b0d-9519-aa9510fe9379",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "extracting",
+            "total": 1,
+            "filename": "encrypted.pdf",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.845,
+      "rejection": "The PDF could not be read. Check that it is readable and not password protected.",
+      "seconds": 0.845
+    },
+    {
+      "name": "blank.pdf",
+      "bytes": 431,
+      "sha256": "b37a58fb510237b6b60b1e610deecd3eb013ff71836b831faf66958f83affbe3",
+      "passed": true,
+      "upload_seconds": 0.832,
+      "dataset": "07a78570-99d1-407f-8a14-ef199ed0f783",
+      "transfer": "36510df5-bb97-4cac-afd7-83019fdc7af5",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "blank.pdf",
+            "completed": 0,
+            "pages_total": 1,
+            "ocr_pages_total": 1,
+            "ocr_pages_completed": 1
+          }
+        }
+      ],
+      "landing_seconds": 0.847,
+      "rejection": "No text was found after OCR. Check that the document contains legible text.",
+      "seconds": 0.847
+    },
+    {
+      "name": "corrupt.pdf",
+      "bytes": 31,
+      "sha256": "04a660a44a04903692a132d1644f2a29f4f7f3a6bb1e291f25453d8c28f58b6c",
+      "passed": true,
+      "upload_seconds": 0.764,
+      "dataset": "b2b2e8b3-41a3-499c-9da6-4cc04306a79d",
+      "transfer": "f94cccd5-42f7-45b6-a0f5-154671499b1a",
+      "observed_progress": [
+        {
+          "status": "error",
+          "landing": {
+            "stage": "extracting",
+            "total": 1,
+            "filename": "corrupt.pdf",
+            "completed": 0
+          }
+        }
+      ],
+      "landing_seconds": 0.795,
+      "rejection": "The PDF could not be read. Check that it is readable and not password protected.",
+      "seconds": 0.795
+    }
+  ],
+  "calls": [
+    {
+      "tool": "list_projects",
+      "seconds": 0.0868,
+      "structured_bytes": 2734,
+      "wire_bytes": 5798,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.021,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0321,
+      "structured_bytes": 8432,
+      "wire_bytes": 18330,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0435,
+      "structured_bytes": 2870,
+      "wire_bytes": 6506,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0309,
+      "structured_bytes": 1815,
+      "wire_bytes": 4723,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0346,
+      "structured_bytes": 11706,
+      "wire_bytes": 24841,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0444,
+      "structured_bytes": 1761,
+      "wire_bytes": 4179,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0302,
+      "structured_bytes": 1878,
+      "wire_bytes": 4867,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0331,
+      "structured_bytes": 11332,
+      "wire_bytes": 24116,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0428,
+      "structured_bytes": 1081,
+      "wire_bytes": 2776,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0145,
+      "structured_bytes": 1836,
+      "wire_bytes": 4771,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0332,
+      "structured_bytes": 11305,
+      "wire_bytes": 24056,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0442,
+      "structured_bytes": 1063,
+      "wire_bytes": 2734,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0126,
+      "structured_bytes": 1762,
+      "wire_bytes": 4621,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0305,
+      "structured_bytes": 1837,
+      "wire_bytes": 4771,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0189,
+      "structured_bytes": 12262,
+      "wire_bytes": 26053,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0321,
+      "structured_bytes": 3491,
+      "wire_bytes": 7797,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0274,
+      "structured_bytes": 1815,
+      "wire_bytes": 4723,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0336,
+      "structured_bytes": 7902,
+      "wire_bytes": 17256,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0445,
+      "structured_bytes": 1421,
+      "wire_bytes": 3510,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0169,
+      "structured_bytes": 1745,
+      "wire_bytes": 4563,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.036,
+      "structured_bytes": 11157,
+      "wire_bytes": 23808,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0444,
+      "structured_bytes": 1046,
+      "wire_bytes": 2714,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0245,
+      "structured_bytes": 1745,
+      "wire_bytes": 4563,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0369,
+      "structured_bytes": 11157,
+      "wire_bytes": 23808,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0435,
+      "structured_bytes": 1046,
+      "wire_bytes": 2714,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0229,
+      "structured_bytes": 1773,
+      "wire_bytes": 4627,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0348,
+      "structured_bytes": 8390,
+      "wire_bytes": 18365,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0421,
+      "structured_bytes": 1063,
+      "wire_bytes": 2731,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0324,
+      "structured_bytes": 1780,
+      "wire_bytes": 4643,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0339,
+      "structured_bytes": 8395,
+      "wire_bytes": 18376,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0431,
+      "structured_bytes": 1066,
+      "wire_bytes": 2738,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0245,
+      "structured_bytes": 1759,
+      "wire_bytes": 4595,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0356,
+      "structured_bytes": 9395,
+      "wire_bytes": 20516,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0456,
+      "structured_bytes": 1950,
+      "wire_bytes": 4616,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0312,
+      "structured_bytes": 1752,
+      "wire_bytes": 4579,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0186,
+      "structured_bytes": 9346,
+      "wire_bytes": 20348,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0432,
+      "structured_bytes": 1926,
+      "wire_bytes": 4544,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0224,
+      "structured_bytes": 1731,
+      "wire_bytes": 4531,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0363,
+      "structured_bytes": 9107,
+      "wire_bytes": 19939,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0392,
+      "structured_bytes": 1478,
+      "wire_bytes": 3615,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0203,
+      "structured_bytes": 1731,
+      "wire_bytes": 4531,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.034,
+      "structured_bytes": 9108,
+      "wire_bytes": 19941,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0443,
+      "structured_bytes": 1478,
+      "wire_bytes": 3615,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0183,
+      "structured_bytes": 1738,
+      "wire_bytes": 4547,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.03,
+      "structured_bytes": 9113,
+      "wire_bytes": 19950,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0377,
+      "structured_bytes": 1482,
+      "wire_bytes": 3624,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0307,
+      "structured_bytes": 1836,
+      "wire_bytes": 4747,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0149,
+      "structured_bytes": 1823,
+      "wire_bytes": 4711,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0317,
+      "structured_bytes": 1781,
+      "wire_bytes": 4629,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0272,
+      "structured_bytes": 1847,
+      "wire_bytes": 4767,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0311,
+      "structured_bytes": 1773,
+      "wire_bytes": 4627,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0307,
+      "structured_bytes": 8924,
+      "wire_bytes": 21605,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0475,
+      "structured_bytes": 259,
+      "wire_bytes": 650,
+      "is_error": true
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0218,
+      "structured_bytes": 404,
+      "wire_bytes": 1351,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0155,
+      "structured_bytes": 1720,
+      "wire_bytes": 4525,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0199,
+      "structured_bytes": 1795,
+      "wire_bytes": 4675,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0359,
+      "structured_bytes": 9541,
+      "wire_bytes": 20781,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0417,
+      "structured_bytes": 3849,
+      "wire_bytes": 8593,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0143,
+      "structured_bytes": 1728,
+      "wire_bytes": 4543,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0138,
+      "structured_bytes": 1728,
+      "wire_bytes": 4543,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0127,
+      "structured_bytes": 1728,
+      "wire_bytes": 4543,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0121,
+      "structured_bytes": 1728,
+      "wire_bytes": 4543,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0118,
+      "structured_bytes": 1728,
+      "wire_bytes": 4543,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0222,
+      "structured_bytes": 1804,
+      "wire_bytes": 4695,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0319,
+      "structured_bytes": 9610,
+      "wire_bytes": 20926,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0401,
+      "structured_bytes": 3860,
+      "wire_bytes": 8616,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0371,
+      "structured_bytes": 1759,
+      "wire_bytes": 4595,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0181,
+      "structured_bytes": 9726,
+      "wire_bytes": 21259,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0395,
+      "structured_bytes": 2174,
+      "wire_bytes": 5073,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0328,
+      "structured_bytes": 1768,
+      "wire_bytes": 4615,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0328,
+      "structured_bytes": 12371,
+      "wire_bytes": 26990,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0449,
+      "structured_bytes": 9082,
+      "wire_bytes": 19594,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0271,
+      "structured_bytes": 1777,
+      "wire_bytes": 4635,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0218,
+      "structured_bytes": 12399,
+      "wire_bytes": 27047,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0436,
+      "structured_bytes": 9113,
+      "wire_bytes": 19657,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0144,
+      "structured_bytes": 1779,
+      "wire_bytes": 4639,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0319,
+      "structured_bytes": 12415,
+      "wire_bytes": 27079,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0403,
+      "structured_bytes": 9113,
+      "wire_bytes": 19657,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0143,
+      "structured_bytes": 1760,
+      "wire_bytes": 4607,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0135,
+      "structured_bytes": 1786,
+      "wire_bytes": 4655,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.036,
+      "structured_bytes": 12428,
+      "wire_bytes": 27106,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0411,
+      "structured_bytes": 9144,
+      "wire_bytes": 19720,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.029,
+      "structured_bytes": 1877,
+      "wire_bytes": 4833,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0124,
+      "structured_bytes": 1766,
+      "wire_bytes": 4611,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0356,
+      "structured_bytes": 11697,
+      "wire_bytes": 25568,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0374,
+      "structured_bytes": 4234,
+      "wire_bytes": 9410,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0123,
+      "structured_bytes": 1776,
+      "wire_bytes": 4641,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0148,
+      "structured_bytes": 1776,
+      "wire_bytes": 4641,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0123,
+      "structured_bytes": 1776,
+      "wire_bytes": 4641,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0122,
+      "structured_bytes": 1777,
+      "wire_bytes": 4643,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0135,
+      "structured_bytes": 1777,
+      "wire_bytes": 4643,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0127,
+      "structured_bytes": 1777,
+      "wire_bytes": 4643,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0302,
+      "structured_bytes": 1777,
+      "wire_bytes": 4635,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0367,
+      "structured_bytes": 12686,
+      "wire_bytes": 27711,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.047,
+      "structured_bytes": 9926,
+      "wire_bytes": 21383,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0132,
+      "structured_bytes": 1760,
+      "wire_bytes": 4605,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0118,
+      "structured_bytes": 1760,
+      "wire_bytes": 4605,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0127,
+      "structured_bytes": 1760,
+      "wire_bytes": 4605,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.013,
+      "structured_bytes": 1761,
+      "wire_bytes": 4607,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0135,
+      "structured_bytes": 1761,
+      "wire_bytes": 4607,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0306,
+      "structured_bytes": 1763,
+      "wire_bytes": 4603,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0369,
+      "structured_bytes": 12613,
+      "wire_bytes": 27531,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0458,
+      "structured_bytes": 9590,
+      "wire_bytes": 20669,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0125,
+      "structured_bytes": 1798,
+      "wire_bytes": 4691,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0314,
+      "structured_bytes": 1796,
+      "wire_bytes": 4679,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0359,
+      "structured_bytes": 12644,
+      "wire_bytes": 27628,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0456,
+      "structured_bytes": 10019,
+      "wire_bytes": 21572,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0121,
+      "structured_bytes": 1814,
+      "wire_bytes": 4727,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0121,
+      "structured_bytes": 1814,
+      "wire_bytes": 4727,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0123,
+      "structured_bytes": 1738,
+      "wire_bytes": 4567,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0121,
+      "structured_bytes": 1810,
+      "wire_bytes": 4711,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0226,
+      "structured_bytes": 12676,
+      "wire_bytes": 27692,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0463,
+      "structured_bytes": 10081,
+      "wire_bytes": 21698,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0311,
+      "structured_bytes": 1871,
+      "wire_bytes": 4817,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0155,
+      "structured_bytes": 1887,
+      "wire_bytes": 4847,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0309,
+      "structured_bytes": 1855,
+      "wire_bytes": 4781,
+      "is_error": false
+    }
+  ],
+  "success": true,
+  "catalog": "badfe645d13b46fbe9c99ce33c4c1e1324e4c711ff1ccd984d9f793a968add25",
+  "latency": {
+    "get_job": {
+      "count": 59,
+      "median": 0.0155,
+      "p95": 0.0324,
+      "max": 0.0371
+    },
+    "inspect_dataset": {
+      "count": 28,
+      "median": 0.03375,
+      "p95": 0.0369,
+      "max": 0.0369
+    },
+    "list_projects": {
+      "count": 1,
+      "median": 0.0868,
+      "p95": 0.0868,
+      "max": 0.0868
+    },
+    "query_dataset": {
+      "count": 29,
+      "median": 0.0435,
+      "p95": 0.047,
+      "max": 0.0475
+    }
+  }
+}

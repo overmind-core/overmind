@@ -11,13 +11,12 @@ export const Route = createFileRoute("/_auth/datasets/$datasetId/")({
   validateSearch: projectIdSearchSchema.extend({
     /** Exact cell focus carried by run back-links. */
     cell: z.string().optional(),
-    iteration: z.string().optional(),
   }),
 });
 
 function DatasetNotebookPage() {
   const { datasetId } = Route.useParams();
-  const { projectId, cell, iteration } = Route.useSearch();
+  const { projectId, cell } = Route.useSearch();
 
   if (!projectId) {
     return (
@@ -33,7 +32,6 @@ function DatasetNotebookPage() {
       <DatasetNotebook
         cellParam={cell}
         datasetId={datasetId}
-        iteration={iteration}
         key={datasetId}
         projectId={projectId}
       />

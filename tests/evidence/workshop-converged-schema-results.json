@@ -1,0 +1,70 @@
+{
+  "success": true,
+  "dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+  "source": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+  "runs": [
+    {
+      "mode": "preview",
+      "run": "f2953238-9a9f-4baf-925f-991b09df5a24",
+      "seconds": 20.475,
+      "rows": 1000,
+      "branch_rows": [
+        10,
+        990
+      ],
+      "stage_seconds": {
+        "measuring_impact": 1.037,
+        "step_1_executing": 2.809,
+        "step_2_executing": 2.675,
+        "step_3_executing": 2.602,
+        "step_4_executing": 2.804,
+        "step_5_executing": 2.816,
+        "verifying_source": 0.128,
+        "step_1_checking_rows": 0.005,
+        "step_2_checking_rows": 0.004,
+        "step_3_checking_rows": 0.005,
+        "step_4_checking_rows": 0.006,
+        "step_5_checking_rows": 0.01,
+        "step_1_preserving_lineage": 0.181,
+        "step_2_preserving_lineage": 0.171,
+        "step_3_preserving_lineage": 0.049,
+        "step_4_preserving_lineage": 0.193,
+        "step_5_preserving_lineage": 0.231
+      }
+    },
+    {
+      "mode": "publish",
+      "run": "48b540e4-61fa-45be-86e2-f778f32880c5",
+      "seconds": 55.718,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 10.427,
+        "measuring_impact": 9.368,
+        "step_1_executing": 4.584,
+        "step_2_executing": 4.308,
+        "step_3_executing": 3.22,
+        "step_4_executing": 4.545,
+        "step_5_executing": 4.893,
+        "verifying_source": 0.021,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.004,
+        "step_3_checking_rows": 0.006,
+        "step_4_checking_rows": 0.008,
+        "step_5_checking_rows": 0.005,
+        "step_1_preserving_lineage": 1.989,
+        "step_2_preserving_lineage": 1.703,
+        "step_3_preserving_lineage": 0.412,
+        "step_4_preserving_lineage": 1.749,
+        "step_5_preserving_lineage": 2.316
+      },
+      "output_cell": "36fb7d78-c61b-46cc-aa62-72e20167143f"
+    }
+  ],
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-converged-1bukol58",
+  "server_version": "5.4.0",
+  "pipeline": "adc61cd8-a909-46d9-87b3-ada1a58c1237"
+}

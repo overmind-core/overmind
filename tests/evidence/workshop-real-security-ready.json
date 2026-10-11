@@ -1,0 +1,714 @@
+{
+  "run": "security-ready",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "chat",
+      "original_dataset": "d3d6ccc9-80ed-47a0-8168-f309fe6e42f3",
+      "original_cell": "5564b4e1-0efb-4340-8b86-2b802d752403",
+      "source_rows": 900,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".jsonl",
+          "dataset": "aafeb73e-b840-4fc7-954c-dc5617010557",
+          "upload_seconds": 3.862,
+          "preview": {
+            "id": "9079ecdd-dfce-4a8a-b453-22555358d8ff",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.657,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.634,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.658,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.64,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "d6bd187e-6091-4311-aa19-1ff87f41d3b3",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "39cd7704-7b6d-4b8f-93cd-6a9b536bdbaa",
+                "seconds": 2.961,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 0,
+                "output_cell": "b6cca4f7-0f3f-42f8-96e5-a7b56540a2e0",
+                "seconds": 2.652,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "7f95c824-92df-4b19-9411-2476d8640a3f",
+                "seconds": 3.014,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "de11c190-45ac-4625-a034-146d24ee6997",
+                "seconds": 3.344,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "ab848007-8a61-43e0-8473-e3341247070c",
+              "title": "Source",
+              "rows": 900
+            },
+            {
+              "id": "39cd7704-7b6d-4b8f-93cd-6a9b536bdbaa",
+              "title": "Inspect source and retain review evidence",
+              "rows": 900
+            },
+            {
+              "id": "b6cca4f7-0f3f-42f8-96e5-a7b56540a2e0",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "7f95c824-92df-4b19-9411-2476d8640a3f",
+              "title": "Rows without measured flags",
+              "rows": 900
+            },
+            {
+              "id": "de11c190-45ac-4625-a034-146d24ee6997",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 900
+            }
+          ],
+          "seconds": 96.179,
+          "output_rows": 900,
+          "output_sha256": "9aabb3a8d57b203a3f6714672b16f1492cd260d7d4b2b5328e1c73a6ae3e954e",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".jsonl",
+          "dataset": "5c9371a1-2d5d-46c8-8fe1-2f2523ea6aea",
+          "upload_seconds": 3.978,
+          "preview": {
+            "id": "101a4112-2124-4963-a6da-6b7279bfe1b7",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.567,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.593,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.6,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.65,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "4cc255fa-cdbb-4ede-837b-ea465db8d61f",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "8ef3efe3-0383-4feb-82e9-2f1471568753",
+                "seconds": 3.021,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 0,
+                "output_cell": "cc18b93c-5997-4374-b209-c39a9c5fd8d7",
+                "seconds": 2.691,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "2e5bfe1f-39e0-42eb-9a28-a101f80eb5b4",
+                "seconds": 2.998,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "99ce6870-853b-4d24-bba1-38fb0b8439d2",
+                "seconds": 2.973,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "4393a179-681c-441a-aef6-610d35822256",
+              "title": "Source",
+              "rows": 900
+            },
+            {
+              "id": "8ef3efe3-0383-4feb-82e9-2f1471568753",
+              "title": "Inspect source and retain review evidence",
+              "rows": 900
+            },
+            {
+              "id": "cc18b93c-5997-4374-b209-c39a9c5fd8d7",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "2e5bfe1f-39e0-42eb-9a28-a101f80eb5b4",
+              "title": "Rows without measured flags",
+              "rows": 900
+            },
+            {
+              "id": "99ce6870-853b-4d24-bba1-38fb0b8439d2",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 900
+            }
+          ],
+          "seconds": 58.772,
+          "output_rows": 900,
+          "output_sha256": "da3b2c727e1b5bf0cc0ce61652671ec30e51a1c2002594a385520b30e660d135",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 3,
+          "upload_format": ".jsonl",
+          "dataset": "e6d97fc9-0273-422e-8625-f1ba2a84d920",
+          "upload_seconds": 3.942,
+          "preview": {
+            "id": "cddc60a5-80c8-4f66-a0e8-262fc4875b8d",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.603,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.595,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.624,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.591,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "7dc22cbe-0b58-49ea-920b-af953507ebd5",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "40e08853-e2c5-462e-98ad-ac7c340dc869",
+                "seconds": 2.907,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 0,
+                "output_cell": "4a2dd402-d198-4b01-97c4-90376d187d8f",
+                "seconds": 2.679,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "d0502495-b618-423c-8037-ce4552c9d73b",
+                "seconds": 3.012,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 900,
+                "output_rows": 900,
+                "output_cell": "f903a6e2-fcc6-40c3-88b0-48615213b33d",
+                "seconds": 2.946,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "4738a792-ce28-4705-ac12-b0e56f9f2b8f",
+              "title": "Source",
+              "rows": 900
+            },
+            {
+              "id": "40e08853-e2c5-462e-98ad-ac7c340dc869",
+              "title": "Inspect source and retain review evidence",
+              "rows": 900
+            },
+            {
+              "id": "4a2dd402-d198-4b01-97c4-90376d187d8f",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "d0502495-b618-423c-8037-ce4552c9d73b",
+              "title": "Rows without measured flags",
+              "rows": 900
+            },
+            {
+              "id": "f903a6e2-fcc6-40c3-88b0-48615213b33d",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 900
+            }
+          ],
+          "seconds": 63.982,
+          "output_rows": 900,
+          "output_sha256": "bc94d5b49995dff719d35f8ba1f175fe2f65d35445b2227b1c59c8767c0893a7",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-security-ready-5jm527im/chat.jsonl",
+        "dataset_id": "d3d6ccc9-80ed-47a0-8168-f309fe6e42f3",
+        "format": "jsonl",
+        "bytes_written": 3923055,
+        "cell": "5564b4e1-0efb-4340-8b86-2b802d752403",
+        "version": "1.0",
+        "fingerprint": "9969aea9cb233f0eac8aca44785720181bac8a70bed19c09f9715a14674c0451"
+      },
+      "export_seconds": 0.809,
+      "package": "75d1c8c9-70eb-4d13-af62-a013028a9084",
+      "recipe": "0962ba0b-f9ef-471e-9142-1568f63cb70b"
+    }
+  ],
+  "errors": [],
+  "success": true,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "source_origin": "stored synthetic SOC examples",
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-security-ready-5jm527im"
+}

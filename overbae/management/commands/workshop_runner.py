@@ -12,8 +12,11 @@ class Command(BaseCommand):
         parser.add_argument("--once", action="store_true")
 
     def handle(self, *args, **options):
-        while True:
-            pipeline_runner.tick()
-            if options["once"]:
-                return
-            time.sleep(0.5)
+        with pipeline_runner.controller() as owner:
+            while True:
+                with owner.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                pipeline_runner.tick()
+                if options["once"]:
+                    return
+                time.sleep(0.5)

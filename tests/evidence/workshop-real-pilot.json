@@ -1,0 +1,239 @@
+{
+  "run": "pilot",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "pairs",
+      "original_dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+      "original_cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+      "source_rows": 10000,
+      "runs": [
+        {
+          "repeat": 1,
+          "dataset": "86b30aa8-79b5-4573-803d-177f7dca9de5",
+          "upload_seconds": 4.258,
+          "preview": {
+            "id": "c9dc80c0-a1ff-483e-a7fa-6e814f0919c6",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.61,
+                "check_results": null
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.623,
+                "check_results": null
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.609,
+                "check_results": null
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.617,
+                "check_results": null
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.613,
+                "check_results": null
+              }
+            ]
+          },
+          "publish": {
+            "id": "c7c164ba-de84-4d45-b326-57b088cf98dd",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "5317dfd2-04d2-4795-bee7-c4a10373c807",
+                "seconds": 7.472,
+                "check_results": null
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "cac05b45-b5f4-41d8-8d10-f887f0316c41",
+                "seconds": 7.125,
+                "check_results": null
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 119,
+                "output_cell": "fb9b0487-e200-4765-a278-95c2187acc20",
+                "seconds": 3.956,
+                "check_results": null
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 9881,
+                "output_cell": "3834d86c-9530-4128-8a5d-3ca5914283b8",
+                "seconds": 6.678,
+                "check_results": null
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "6b5248b3-bdc2-4bdf-b9da-204427700218",
+                "seconds": 7.984,
+                "check_results": null
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "cffb2167-4376-4ad4-ad02-d1d1ae264969",
+              "title": "Source",
+              "rows": 10000
+            },
+            {
+              "id": "5317dfd2-04d2-4795-bee7-c4a10373c807",
+              "title": "Inspect source and retain review evidence",
+              "rows": 10000
+            },
+            {
+              "id": "cac05b45-b5f4-41d8-8d10-f887f0316c41",
+              "title": "Separate identity shortcuts from model evidence",
+              "rows": 10000
+            },
+            {
+              "id": "fb9b0487-e200-4765-a278-95c2187acc20",
+              "title": "Rows requiring review",
+              "rows": 119
+            },
+            {
+              "id": "3834d86c-9530-4128-8a5d-3ca5914283b8",
+              "title": "Rows without measured flags",
+              "rows": 9881
+            },
+            {
+              "id": "6b5248b3-bdc2-4bdf-b9da-204427700218",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 10000
+            }
+          ],
+          "seconds": 75.0,
+          "output_rows": 10000,
+          "output_sha256": "21e2ab967461019565d8d17cec6b2ec7e52b065ca7548717613561b340685df6",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-pilot-vi7u363_/pairs.jsonl",
+        "dataset_id": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+        "format": "jsonl",
+        "bytes_written": 32354952,
+        "cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+        "version": "1.0",
+        "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+      },
+      "export_seconds": 1.253,
+      "package": "e20f3588-d5e2-41fa-81ed-e884fd61c6c1",
+      "recipe": "0c8b8636-b9c1-4eeb-a86c-ee8393aaf9cc"
+    }
+  ],
+  "errors": [],
+  "success": true,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-pilot-vi7u363_"
+}

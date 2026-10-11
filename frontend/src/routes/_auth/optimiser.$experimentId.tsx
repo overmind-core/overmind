@@ -957,7 +957,7 @@ function OptimiserRunPage() {
         </div>
 
         {(comparison || hybrid) && comparedModels.length > 0 && (
-          <section className="flex flex-col gap-2 border-t border-border/70 pt-3">
+          <section className="-mx-4 flex flex-col gap-2 border-t border-border/70 px-4 pt-3">
             <h3 className="text-xs text-muted-foreground">Selected models</h3>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {comparedModels.map((modelId) => (
@@ -1049,7 +1049,7 @@ function OptimiserRunPage() {
           />
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-border/70 pt-3">
+        <div className="-mx-4 flex flex-col gap-3 border-t border-border/70 px-4 pt-3">
           <div className="flex items-center gap-2">
             <Icon.chart className="size-4 shrink-0 text-muted-foreground" />
             <h3 className="text-xs leading-none">
@@ -1076,7 +1076,7 @@ function OptimiserRunPage() {
           )}
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-3 border-t border-border/70 pt-3 sm:grid-cols-3 lg:grid-cols-5">
+        <dl className="-mx-4 grid grid-cols-2 gap-x-8 gap-y-3 border-t border-border/70 px-4 pt-3 sm:grid-cols-3 lg:grid-cols-5">
           {!comparison && !hybrid && (
             <>
               <div className="flex flex-col gap-1">

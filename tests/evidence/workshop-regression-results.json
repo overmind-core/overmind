@@ -1,0 +1,1000 @@
+{
+  "date_utc": "2026-10-08",
+  "scope": "Workshop MCP only; existing branch and deployment; disposable projects; no paid provider work or UI changes",
+  "branch": "codex/general-decision-training",
+  "environment": [
+    "Existing Docker Compose API, PostgreSQL, Redis and Celery batch worker",
+    "Current checkout SDK copied to an isolated container directory",
+    "Synthetic tests/fixtures/documents for OCR and original-byte checks"
+  ],
+  "reproduction": {
+    "full_command": "docker compose exec -T -e PYTHONPATH=/tmp/workshop-acceptance-sdk.JCMq3C -e DO_NOT_TRACK=1 -e WORKSHOP_ACCEPTANCE_DOCUMENTS=/tmp/workshop-acceptance-sdk.JCMq3C/documents api python manage.py shell < tests/evidence/workshop_mcp_acceptance.py",
+    "targeted_command": "docker compose exec -T -e PYTHONPATH=/tmp/workshop-acceptance-sdk.JCMq3C -e DO_NOT_TRACK=1 -e WORKSHOP_ACCEPTANCE_CASES=trace_and_llm_call_sources,typed_targets_and_stepwise_cells,all_parent_lineage_and_atomic_imports,measured_exploration_and_independent_derivation,partition_contents_holdouts_and_retry,partition_maximum_name_lengths,partition_declared_and_projected_groups,partition_projected_group_aliases,partition_content_column_groups,account_key_mutations_and_resource_links,concurrent_partition_keys_across_sources,catalogue_sampling_and_source_inventory,large_partition_exact_membership api python manage.py shell < tests/evidence/workshop_mcp_acceptance.py",
+    "setup": "Recreate the disposable SDK/document directory using the commands in workshop-mcp-acceptance.md; the original temporary directory is removed after verification.",
+    "backend_command": ".venv/bin/pytest tests/ -n 4 --dist worksteal -q -ra",
+    "full_replay_sha256": "a44372869a9f225636723e69ea542140f9f75050bd5d0665d78f115dc6f7f0b7",
+    "final_replay_sha256": "95d85eb7f912631249e16574067314b0c61a5adef387c49be99ae32ffe341237",
+    "final_code_sha256": {
+      "overbae/services/datasets/partition.py": "b1922bb8eb05ea6e3c85de1a3a9aecf93a081b8b6d2ba511820394d70fd705b3",
+      "overbae/services/datasets/partition_plans.py": "0a795c0e43040fc5985bbfa569ea2cfe4dfff4ed676d5036ba74816f91f52718",
+      "overbae/services/mcp/tools_observability.py": "8318bd26407bbc4924e020113ca122f195a1e8f4efdacd0686c15019a0ef8e2b"
+    }
+  },
+  "coverage": {
+    "latest_scenarios_passed": 28,
+    "latest_scenarios_total": 28,
+    "workshop_tools_successfully_exercised": 16,
+    "supporting_tools_successfully_exercised": 3,
+    "full_run": {
+      "passed": 26,
+      "total": 27
+    },
+    "final_targeted_run": {
+      "passed": 13,
+      "total": 13
+    },
+    "note": "Coverage is the latest result per scenario across the complete replay and focused reruns, not a claim that one final 28-case invocation passed. The full replay's sole failing assertion compared mutable display-version labels; the corrected identity/fingerprint/row-count assertion passed in the final targeted run. The real content-column grouping regression was then fixed and is also covered by the final targeted run.",
+    "billable_usage_records": 0,
+    "backend": {
+      "passed": 4044,
+      "skipped": 15,
+      "seconds": 39.84,
+      "log": "/private/tmp/workshop-regression-completed-backend.log"
+    },
+    "connection": {
+      "server_version": "3.0.0",
+      "catalogue_tools": 61,
+      "new_workshop_tools": 5,
+      "retired_tools": 0,
+      "transport": "Official MCP SDK Streamable HTTP"
+    },
+    "pre_commit": "Passed on final production changes and replay before evidence-only updates"
+  },
+  "latest_case_results": [
+    {
+      "case": "catalogue_auth_and_all_tool_validation",
+      "passed": true,
+      "seconds": 0.341,
+      "catalogue_tools": 61,
+      "workshop_argument_checks": 19,
+      "run": "full"
+    },
+    {
+      "case": "native_authored_semantic_version",
+      "passed": true,
+      "seconds": 0.726,
+      "published_rows": 2,
+      "run": "full"
+    },
+    {
+      "case": "boundaries_isolation_and_failure_preservation",
+      "passed": true,
+      "seconds": 1.865,
+      "run": "full"
+    },
+    {
+      "case": "large_file_pipeline_and_external_import_100000",
+      "passed": true,
+      "seconds": 38.318,
+      "source_rows": 100000,
+      "transformed_rows": 50000,
+      "imported_rows": 50000,
+      "export_bytes": 32944450,
+      "duplicate_retries": 8,
+      "run": "full"
+    },
+    {
+      "case": "large_file_pipeline_and_external_import_1000000",
+      "passed": true,
+      "seconds": 286.142,
+      "source_rows": 1000000,
+      "transformed_rows": 500000,
+      "imported_rows": 500000,
+      "export_bytes": 333944450,
+      "duplicate_retries": 8,
+      "run": "full"
+    },
+    {
+      "case": "exploration_derived_chain_and_grouped_partition",
+      "passed": true,
+      "seconds": 1.562,
+      "run": "full"
+    },
+    {
+      "case": "trace_and_llm_call_sources",
+      "passed": true,
+      "seconds": 2.141,
+      "trace_rows": 20,
+      "call_rows": 20,
+      "split_observations": 40,
+      "filtered_rows": 7,
+      "run": "targeted"
+    },
+    {
+      "case": "typed_targets_and_stepwise_cells",
+      "passed": true,
+      "seconds": 3.871,
+      "typed_decisions": 3,
+      "stepwise_versions": 5,
+      "appended_source_rows": 1,
+      "run": "targeted"
+    },
+    {
+      "case": "operation_values_and_atomic_failures",
+      "passed": true,
+      "seconds": 3.773,
+      "successful_operations": 6,
+      "atomic_failures": 4,
+      "long_value_chars": 12000,
+      "run": "full"
+    },
+    {
+      "case": "concurrent_first_submissions",
+      "passed": true,
+      "seconds": 1.111,
+      "simultaneous_first_requests": 24,
+      "published_versions": 2,
+      "recipes": 1,
+      "run": "full"
+    },
+    {
+      "case": "all_parent_lineage_and_atomic_imports",
+      "passed": true,
+      "seconds": 3.953,
+      "invalid_parent_shapes": 8,
+      "preserved_parents": [
+        0,
+        1,
+        2
+      ],
+      "published_rows": 3,
+      "run": "targeted"
+    },
+    {
+      "case": "published_navigation_and_exact_query_pages",
+      "passed": true,
+      "seconds": 0.604,
+      "query_rows_reconstructed": 205,
+      "listed_datasets": 23,
+      "prompts": 2,
+      "run": "full"
+    },
+    {
+      "case": "measured_exploration_and_independent_derivation",
+      "passed": true,
+      "seconds": 2.501,
+      "whole_source_rows": 1000,
+      "strata": 125,
+      "derived_rows": 1000,
+      "derived_filtered_rows": 8,
+      "run": "targeted"
+    },
+    {
+      "case": "partition_contents_holdouts_and_retry",
+      "passed": true,
+      "seconds": 1.558,
+      "input_observations": 200,
+      "output_observations": 200,
+      "disjoint_roles": 4,
+      "retry_members_unchanged": true,
+      "run": "targeted"
+    },
+    {
+      "case": "complete_history_pagination",
+      "passed": true,
+      "seconds": 34.867,
+      "executed_recipes": 105,
+      "terminal_runs": 105,
+      "readable_cells": 106,
+      "run": "full"
+    },
+    {
+      "case": "every_workshop_tool_authorization",
+      "passed": true,
+      "seconds": 0.382,
+      "read_only_denials": 12,
+      "foreign_project_denials": 18,
+      "foreign_dataset_denials": 8,
+      "run": "full"
+    },
+    {
+      "case": "cancel_running_worker_and_recover",
+      "passed": true,
+      "seconds": 83.929,
+      "cancelled_state_observed": "running",
+      "rows_in_flight": 500000,
+      "replacement_completed": true,
+      "run": "full"
+    },
+    {
+      "case": "tabular_file_upload_transform_export",
+      "passed": true,
+      "seconds": 4.857,
+      "file_formats_round_tripped": 6,
+      "invalid_files_rejected": 3,
+      "run": "full"
+    },
+    {
+      "case": "source_bindings_artifacts_and_metadata",
+      "passed": true,
+      "seconds": 1.634,
+      "stale_foreign_or_ambiguous_imports_rejected": 4,
+      "foreign_source_workflows_rejected": 3,
+      "artifact_retained": true,
+      "frozen_metadata_atomic": true,
+      "removed_tools_rejected": 3,
+      "run": "full"
+    },
+    {
+      "case": "document_and_ocr_evidence_round_trip",
+      "passed": true,
+      "seconds": 6.378,
+      "document_and_image_uploads": 8,
+      "original_bytes_verified": 8,
+      "evidence_after_projection": 8,
+      "run": "full"
+    },
+    {
+      "case": "partition_maximum_name_lengths",
+      "passed": true,
+      "seconds": 1.226,
+      "maximum_length_names": 2,
+      "roles_per_name": 2,
+      "run": "targeted"
+    },
+    {
+      "case": "partition_declared_and_projected_groups",
+      "passed": true,
+      "seconds": 1.889,
+      "field": "cohort",
+      "missing_group_rejected": true,
+      "projected_lineage_groups": 5,
+      "run": "targeted"
+    },
+    {
+      "case": "partition_projected_group_aliases",
+      "passed": true,
+      "seconds": 1.46,
+      "projected_trace_groups": 10,
+      "missing_content_field_rejected": true,
+      "version_label_before_freeze": "1.1",
+      "version_label_after_freeze": "2.0",
+      "selected_identity_and_content_unchanged": true,
+      "run": "targeted"
+    },
+    {
+      "case": "account_key_mutations_and_resource_links",
+      "passed": true,
+      "seconds": 1.849,
+      "authorized_projects": 2,
+      "successful_mutation_workflows": 2,
+      "resource_links_followed": 12,
+      "run": "targeted"
+    },
+    {
+      "case": "concurrent_partition_keys_across_sources",
+      "passed": true,
+      "seconds": 6.468,
+      "concurrent_pairs": 3,
+      "stable_conflicts": 3,
+      "source_rows_each": 10000,
+      "run": "targeted"
+    },
+    {
+      "case": "catalogue_sampling_and_source_inventory",
+      "passed": true,
+      "seconds": 5.522,
+      "native_sample_rows": 25,
+      "sample_strata": 5,
+      "source_files": 12,
+      "mcp_visible_source_files": 10,
+      "rest_visible_source_files": 12,
+      "catalogue_gaps": [
+        "Sampling allocation cannot be published by a deterministic platform recipe; native-client import works",
+        "Source inventory is capped at ten with no MCP paging"
+      ],
+      "run": "targeted"
+    },
+    {
+      "case": "large_partition_exact_membership",
+      "passed": true,
+      "seconds": 19.003,
+      "source_rows": 100000,
+      "exported_rows_verified": 100000,
+      "disjoint_groups": 20000,
+      "role_rows": {
+        "final": 10000,
+        "train": 70000,
+        "calibration": 10000,
+        "development": 10000
+      },
+      "run": "targeted"
+    },
+    {
+      "case": "partition_content_column_groups",
+      "passed": true,
+      "seconds": 1.781,
+      "field": "content",
+      "missing_group_rejected": true,
+      "projected_lineage_groups": 5,
+      "run": "targeted"
+    }
+  ],
+  "runs": {
+    "full": {
+      "log": "/private/tmp/workshop-regression-final-live.log",
+      "results": [
+        {
+          "case": "catalogue_auth_and_all_tool_validation",
+          "passed": true,
+          "seconds": 0.341,
+          "catalogue_tools": 61,
+          "workshop_argument_checks": 19
+        },
+        {
+          "case": "native_authored_semantic_version",
+          "passed": true,
+          "seconds": 0.726,
+          "published_rows": 2
+        },
+        {
+          "case": "boundaries_isolation_and_failure_preservation",
+          "passed": true,
+          "seconds": 1.865
+        },
+        {
+          "progress": "upload",
+          "source_rows": 100000
+        },
+        {
+          "progress": "transform",
+          "source_rows": 100000
+        },
+        {
+          "progress": "upload_external_artifact",
+          "rows": 50000
+        },
+        {
+          "progress": "import_external_artifact",
+          "rows": 50000
+        },
+        {
+          "case": "large_file_pipeline_and_external_import_100000",
+          "passed": true,
+          "seconds": 38.318,
+          "source_rows": 100000,
+          "transformed_rows": 50000,
+          "imported_rows": 50000,
+          "export_bytes": 32944450,
+          "duplicate_retries": 8
+        },
+        {
+          "progress": "upload",
+          "source_rows": 1000000
+        },
+        {
+          "progress": "transform",
+          "source_rows": 1000000
+        },
+        {
+          "progress": "upload_external_artifact",
+          "rows": 500000
+        },
+        {
+          "progress": "import_external_artifact",
+          "rows": 500000
+        },
+        {
+          "case": "large_file_pipeline_and_external_import_1000000",
+          "passed": true,
+          "seconds": 286.142,
+          "source_rows": 1000000,
+          "transformed_rows": 500000,
+          "imported_rows": 500000,
+          "export_bytes": 333944450,
+          "duplicate_retries": 8
+        },
+        {
+          "case": "exploration_derived_chain_and_grouped_partition",
+          "passed": true,
+          "seconds": 1.562
+        },
+        {
+          "case": "trace_and_llm_call_sources",
+          "passed": true,
+          "seconds": 2.095,
+          "trace_rows": 20,
+          "call_rows": 20,
+          "split_observations": 40,
+          "filtered_rows": 7
+        },
+        {
+          "case": "typed_targets_and_stepwise_cells",
+          "passed": true,
+          "seconds": 3.119,
+          "typed_decisions": 3,
+          "stepwise_versions": 5,
+          "appended_source_rows": 1
+        },
+        {
+          "case": "operation_values_and_atomic_failures",
+          "passed": true,
+          "seconds": 3.773,
+          "successful_operations": 6,
+          "atomic_failures": 4,
+          "long_value_chars": 12000
+        },
+        {
+          "case": "concurrent_first_submissions",
+          "passed": true,
+          "seconds": 1.111,
+          "simultaneous_first_requests": 24,
+          "published_versions": 2,
+          "recipes": 1
+        },
+        {
+          "case": "all_parent_lineage_and_atomic_imports",
+          "passed": true,
+          "seconds": 3.611,
+          "invalid_parent_shapes": 8,
+          "preserved_parents": [
+            0,
+            1,
+            2
+          ],
+          "published_rows": 3
+        },
+        {
+          "case": "published_navigation_and_exact_query_pages",
+          "passed": true,
+          "seconds": 0.604,
+          "query_rows_reconstructed": 205,
+          "listed_datasets": 23,
+          "prompts": 2
+        },
+        {
+          "case": "measured_exploration_and_independent_derivation",
+          "passed": true,
+          "seconds": 1.967,
+          "whole_source_rows": 1000,
+          "strata": 125,
+          "derived_rows": 1000,
+          "derived_filtered_rows": 8
+        },
+        {
+          "case": "partition_contents_holdouts_and_retry",
+          "passed": true,
+          "seconds": 1.102,
+          "input_observations": 200,
+          "output_observations": 200,
+          "disjoint_roles": 4,
+          "retry_members_unchanged": true
+        },
+        {
+          "case": "complete_history_pagination",
+          "passed": true,
+          "seconds": 34.867,
+          "executed_recipes": 105,
+          "terminal_runs": 105,
+          "readable_cells": 106
+        },
+        {
+          "case": "every_workshop_tool_authorization",
+          "passed": true,
+          "seconds": 0.382,
+          "read_only_denials": 12,
+          "foreign_project_denials": 18,
+          "foreign_dataset_denials": 8
+        },
+        {
+          "case": "cancel_running_worker_and_recover",
+          "passed": true,
+          "seconds": 83.929,
+          "cancelled_state_observed": "running",
+          "rows_in_flight": 500000,
+          "replacement_completed": true
+        },
+        {
+          "case": "tabular_file_upload_transform_export",
+          "passed": true,
+          "seconds": 4.857,
+          "file_formats_round_tripped": 6,
+          "invalid_files_rejected": 3
+        },
+        {
+          "case": "source_bindings_artifacts_and_metadata",
+          "passed": true,
+          "seconds": 1.634,
+          "stale_foreign_or_ambiguous_imports_rejected": 4,
+          "foreign_source_workflows_rejected": 3,
+          "artifact_retained": true,
+          "frozen_metadata_atomic": true,
+          "removed_tools_rejected": 3
+        },
+        {
+          "case": "document_and_ocr_evidence_round_trip",
+          "passed": true,
+          "seconds": 6.378,
+          "document_and_image_uploads": 8,
+          "original_bytes_verified": 8,
+          "evidence_after_projection": 8
+        },
+        {
+          "case": "partition_maximum_name_lengths",
+          "passed": true,
+          "seconds": 1.041,
+          "maximum_length_names": 2,
+          "roles_per_name": 2
+        },
+        {
+          "case": "partition_declared_and_projected_groups",
+          "passed": true,
+          "seconds": 1.71,
+          "missing_group_rejected": true,
+          "projected_lineage_groups": 5
+        },
+        {
+          "case": "partition_projected_group_aliases",
+          "passed": false,
+          "seconds": 1.343,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1857, in partition_group_aliases\nAssertionError\n"
+        },
+        {
+          "case": "account_key_mutations_and_resource_links",
+          "passed": true,
+          "seconds": 1.548,
+          "authorized_projects": 2,
+          "successful_mutation_workflows": 2,
+          "resource_links_followed": 12
+        },
+        {
+          "case": "concurrent_partition_keys_across_sources",
+          "passed": true,
+          "seconds": 3.664,
+          "concurrent_pairs": 3,
+          "stable_conflicts": 3,
+          "source_rows_each": 10000
+        },
+        {
+          "case": "catalogue_sampling_and_source_inventory",
+          "passed": true,
+          "seconds": 4.767,
+          "native_sample_rows": 25,
+          "sample_strata": 5,
+          "source_files": 12,
+          "mcp_visible_source_files": 10,
+          "rest_visible_source_files": 12,
+          "catalogue_gaps": [
+            "Sampling allocation cannot be published by a deterministic platform recipe; native-client import works",
+            "Source inventory is capped at ten with no MCP paging"
+          ]
+        },
+        {
+          "case": "large_partition_exact_membership",
+          "passed": true,
+          "seconds": 14.779,
+          "source_rows": 100000,
+          "exported_rows_verified": 100000,
+          "disjoint_groups": 20000,
+          "role_rows": {
+            "final": 10000,
+            "train": 70000,
+            "calibration": 10000,
+            "development": 10000
+          }
+        },
+        {
+          "summary": {
+            "passed": 26,
+            "total": 27,
+            "successful_tools": [
+              "cancel_dataset",
+              "create_data_partition",
+              "create_dataset_from_llm_calls",
+              "create_dataset_from_traces",
+              "derive_dataset",
+              "explore_dataset",
+              "get_job",
+              "import_dataset_version",
+              "inspect_dataset",
+              "inspect_dataset_workbench",
+              "list_datasets",
+              "list_model_workflows",
+              "list_projects",
+              "query_dataset",
+              "retry_data_partition",
+              "run_dataset_pipeline",
+              "save_dataset_pipeline",
+              "start_dataset",
+              "update_dataset"
+            ],
+            "successful_tool_calls": {
+              "cancel_dataset": 2,
+              "create_data_partition": 13,
+              "create_dataset_from_llm_calls": 3,
+              "create_dataset_from_traces": 3,
+              "derive_dataset": 2,
+              "explore_dataset": 6,
+              "get_job": 1445,
+              "import_dataset_version": 28,
+              "inspect_dataset": 145,
+              "inspect_dataset_workbench": 10,
+              "list_datasets": 10,
+              "list_model_workflows": 2,
+              "list_projects": 2,
+              "query_dataset": 74,
+              "retry_data_partition": 2,
+              "run_dataset_pipeline": 170,
+              "save_dataset_pipeline": 153,
+              "start_dataset": 3,
+              "update_dataset": 7
+            },
+            "rejected_tool_calls": {
+              "cancel_dataset": 5,
+              "create_data_partition": 7,
+              "create_dataset_from_llm_calls": 7,
+              "create_dataset_from_traces": 6,
+              "derive_dataset": 5,
+              "explore_dataset": 5,
+              "get_job": 2,
+              "import_dataset_version": 12,
+              "inspect_dataset": 6,
+              "inspect_dataset_workbench": 4,
+              "list_datasets": 4,
+              "list_model_workflows": 2,
+              "list_projects": 1,
+              "manage_dataset_workflow": 1,
+              "message_dataset_agent": 1,
+              "query_dataset": 10,
+              "retry_data_partition": 4,
+              "run_dataset": 1,
+              "run_dataset_pipeline": 6,
+              "save_dataset_pipeline": 8,
+              "start_dataset": 4,
+              "update_dataset": 10
+            },
+            "resources_read": [
+              "overmind://dataset-export",
+              "overmind://dataset-upload",
+              "overmind://datasets/5cca8665-fc08-487a-a102-91dc0f8ca78e?project_id=14739812-cab7-4516-8899-454cea951eba",
+              "overmind://datasets/7d1e4394-df0f-4d64-a7ab-7a4e70f70671",
+              "overmind://datasets/a9edfa9b-fe50-43a5-b091-c58ce69f6a1f?project_id=7497a71d-1a88-4c18-b1e4-ae429e4f5edc",
+              "overmind://interface/current",
+              "overmind://jobs/data_exploration/274c772f-8306-431f-a3e8-10d335462979",
+              "overmind://jobs/data_exploration/6fe11615-1712-4fdd-9fbf-71c5200d452f",
+              "overmind://jobs/data_exploration/6fe11615-1712-4fdd-9fbf-71c5200d452f/strata?offset=0&limit=100",
+              "overmind://jobs/data_exploration/6fe11615-1712-4fdd-9fbf-71c5200d452f/strata?offset=100&limit=100",
+              "overmind://jobs/data_exploration/761a44f2-cfff-4cb0-824b-9ce139bcfb32",
+              "overmind://jobs/data_exploration/d2a96564-33f5-4a44-8e94-0c227baf2820",
+              "overmind://jobs/data_partition/0f5a290c-97f6-4b4c-8e50-c176db38cb17",
+              "overmind://jobs/data_partition/2b415cda-4be1-4060-ada4-a1fe6d44008f",
+              "overmind://jobs/data_partition/2efa2746-4939-4465-9750-c1a6d33acf7f",
+              "overmind://jobs/data_partition/56201b60-85a7-474c-930a-1d1e0c8b97c7",
+              "overmind://jobs/data_partition/708510a1-6ea0-4f71-a5f7-19f6b03718d8",
+              "overmind://jobs/data_partition/74de78bb-d9e2-4cab-9b64-496ec18d0f35",
+              "overmind://jobs/data_partition/82ad034c-fe3a-4573-99fa-ad9dee4fcec5",
+              "overmind://jobs/data_partition/df4a6e7c-6786-442c-9cd5-8049972daf13",
+              "overmind://jobs/dataset_pipeline/5839a293-d426-466b-8bd9-f89dac6e3d3d?project_id=14739812-cab7-4516-8899-454cea951eba",
+              "overmind://jobs/dataset_pipeline/d77dba74-ecb6-4228-84c6-fc28204bc184?project_id=7497a71d-1a88-4c18-b1e4-ae429e4f5edc",
+              "overmind://jobs/dataset_pipeline/d8a12ed4-1c7f-4da6-8409-ff33a3368551",
+              "overmind://jobs/dataset_run/5cca8665-fc08-487a-a102-91dc0f8ca78e?project_id=14739812-cab7-4516-8899-454cea951eba",
+              "overmind://jobs/dataset_run/a9edfa9b-fe50-43a5-b091-c58ce69f6a1f?project_id=7497a71d-1a88-4c18-b1e4-ae429e4f5edc"
+            ],
+            "missing_workshop_tools": [],
+            "max_response_bytes": 119917,
+            "billable_usage_records": 0
+          }
+        },
+        {
+          "cleanup": "removed only this replay's two projects and user",
+          "remaining_datasets": 126
+        }
+      ]
+    },
+    "targeted": {
+      "log": "/private/tmp/workshop-regression-final-targeted.log",
+      "results": [
+        {
+          "case": "trace_and_llm_call_sources",
+          "passed": true,
+          "seconds": 2.141,
+          "trace_rows": 20,
+          "call_rows": 20,
+          "split_observations": 40,
+          "filtered_rows": 7
+        },
+        {
+          "case": "typed_targets_and_stepwise_cells",
+          "passed": true,
+          "seconds": 3.871,
+          "typed_decisions": 3,
+          "stepwise_versions": 5,
+          "appended_source_rows": 1
+        },
+        {
+          "case": "all_parent_lineage_and_atomic_imports",
+          "passed": true,
+          "seconds": 3.953,
+          "invalid_parent_shapes": 8,
+          "preserved_parents": [
+            0,
+            1,
+            2
+          ],
+          "published_rows": 3
+        },
+        {
+          "case": "measured_exploration_and_independent_derivation",
+          "passed": true,
+          "seconds": 2.501,
+          "whole_source_rows": 1000,
+          "strata": 125,
+          "derived_rows": 1000,
+          "derived_filtered_rows": 8
+        },
+        {
+          "case": "partition_contents_holdouts_and_retry",
+          "passed": true,
+          "seconds": 1.558,
+          "input_observations": 200,
+          "output_observations": 200,
+          "disjoint_roles": 4,
+          "retry_members_unchanged": true
+        },
+        {
+          "case": "partition_maximum_name_lengths",
+          "passed": true,
+          "seconds": 1.226,
+          "maximum_length_names": 2,
+          "roles_per_name": 2
+        },
+        {
+          "case": "partition_declared_and_projected_groups",
+          "passed": true,
+          "seconds": 1.889,
+          "field": "cohort",
+          "missing_group_rejected": true,
+          "projected_lineage_groups": 5
+        },
+        {
+          "case": "partition_projected_group_aliases",
+          "passed": true,
+          "seconds": 1.46,
+          "projected_trace_groups": 10,
+          "missing_content_field_rejected": true,
+          "version_label_before_freeze": "1.1",
+          "version_label_after_freeze": "2.0",
+          "selected_identity_and_content_unchanged": true
+        },
+        {
+          "case": "partition_content_column_groups",
+          "passed": true,
+          "seconds": 1.781,
+          "field": "content",
+          "missing_group_rejected": true,
+          "projected_lineage_groups": 5
+        },
+        {
+          "case": "account_key_mutations_and_resource_links",
+          "passed": true,
+          "seconds": 1.849,
+          "authorized_projects": 2,
+          "successful_mutation_workflows": 2,
+          "resource_links_followed": 12
+        },
+        {
+          "case": "concurrent_partition_keys_across_sources",
+          "passed": true,
+          "seconds": 6.468,
+          "concurrent_pairs": 3,
+          "stable_conflicts": 3,
+          "source_rows_each": 10000
+        },
+        {
+          "case": "catalogue_sampling_and_source_inventory",
+          "passed": true,
+          "seconds": 5.522,
+          "native_sample_rows": 25,
+          "sample_strata": 5,
+          "source_files": 12,
+          "mcp_visible_source_files": 10,
+          "rest_visible_source_files": 12,
+          "catalogue_gaps": [
+            "Sampling allocation cannot be published by a deterministic platform recipe; native-client import works",
+            "Source inventory is capped at ten with no MCP paging"
+          ]
+        },
+        {
+          "case": "large_partition_exact_membership",
+          "passed": true,
+          "seconds": 19.003,
+          "source_rows": 100000,
+          "exported_rows_verified": 100000,
+          "disjoint_groups": 20000,
+          "role_rows": {
+            "final": 10000,
+            "train": 70000,
+            "calibration": 10000,
+            "development": 10000
+          }
+        },
+        {
+          "summary": {
+            "passed": 13,
+            "total": 13,
+            "successful_tools": [
+              "create_data_partition",
+              "create_dataset_from_llm_calls",
+              "create_dataset_from_traces",
+              "derive_dataset",
+              "explore_dataset",
+              "get_job",
+              "import_dataset_version",
+              "inspect_dataset",
+              "query_dataset",
+              "retry_data_partition",
+              "run_dataset_pipeline",
+              "save_dataset_pipeline",
+              "start_dataset",
+              "update_dataset"
+            ],
+            "successful_tool_calls": {
+              "create_data_partition": 15,
+              "create_dataset_from_llm_calls": 3,
+              "create_dataset_from_traces": 3,
+              "derive_dataset": 1,
+              "explore_dataset": 4,
+              "get_job": 142,
+              "import_dataset_version": 12,
+              "inspect_dataset": 61,
+              "query_dataset": 31,
+              "retry_data_partition": 1,
+              "run_dataset_pipeline": 11,
+              "save_dataset_pipeline": 11,
+              "start_dataset": 2,
+              "update_dataset": 2
+            },
+            "rejected_tool_calls": {
+              "create_data_partition": 3,
+              "create_dataset_from_llm_calls": 4,
+              "create_dataset_from_traces": 3,
+              "derive_dataset": 1,
+              "explore_dataset": 1,
+              "inspect_dataset": 2
+            },
+            "resources_read": [
+              "overmind://datasets/72dcf49a-1533-424a-acf7-df6b323ac087?project_id=4402f8d7-56f6-43ab-861a-80a35001e384",
+              "overmind://datasets/73466db3-78e5-4f84-96fc-23903808a5bf?project_id=f0b74514-466a-4035-9fb6-c48e3f7c6290",
+              "overmind://jobs/data_exploration/166b1f89-1f72-49f2-bdbd-569a3cd5f878",
+              "overmind://jobs/data_exploration/4265390a-6d39-409d-9845-c11236a8f8dd",
+              "overmind://jobs/data_exploration/baf75c38-6f82-4210-ab0e-1e7cd94fe9b6",
+              "overmind://jobs/data_exploration/c713aa8d-4eb0-401f-88b8-39836b1af424",
+              "overmind://jobs/data_exploration/c713aa8d-4eb0-401f-88b8-39836b1af424/strata?offset=0&limit=100",
+              "overmind://jobs/data_exploration/c713aa8d-4eb0-401f-88b8-39836b1af424/strata?offset=100&limit=100",
+              "overmind://jobs/data_partition/1d9cf4e8-0bbd-4d32-90fd-f991602ebb98",
+              "overmind://jobs/data_partition/4d0f23d1-66aa-4895-812e-da8e172c697c",
+              "overmind://jobs/data_partition/5acff837-80c4-42e7-bbe4-a3c118891902",
+              "overmind://jobs/data_partition/84a28b9e-6a17-48e8-b67d-fa59eea335ea",
+              "overmind://jobs/data_partition/9685a447-4955-4e19-ab49-c0283074104e",
+              "overmind://jobs/data_partition/b41aba35-cb21-4679-b2e1-960e1cebcc1a",
+              "overmind://jobs/data_partition/b6ffd88c-150a-4301-9878-da467ce7e7c3",
+              "overmind://jobs/data_partition/c6d1c8c6-88d6-475c-ab51-2bd220719d2d",
+              "overmind://jobs/data_partition/d269df8f-dc54-4c8b-8f8f-fcc062cebb93",
+              "overmind://jobs/data_partition/e1419a03-6575-42c5-930a-12ec3c23574c",
+              "overmind://jobs/data_partition/f4525616-af15-461e-b5fc-098bcab59787",
+              "overmind://jobs/dataset_pipeline/f7bb7017-a622-4e7a-8cba-6483b4d3aa2b?project_id=4402f8d7-56f6-43ab-861a-80a35001e384",
+              "overmind://jobs/dataset_pipeline/f85a856a-c958-4ed1-8778-04c00c4c8b29?project_id=f0b74514-466a-4035-9fb6-c48e3f7c6290",
+              "overmind://jobs/dataset_run/72dcf49a-1533-424a-acf7-df6b323ac087?project_id=4402f8d7-56f6-43ab-861a-80a35001e384",
+              "overmind://jobs/dataset_run/73466db3-78e5-4f84-96fc-23903808a5bf?project_id=f0b74514-466a-4035-9fb6-c48e3f7c6290"
+            ],
+            "missing_workshop_tools": [
+              "cancel_dataset",
+              "inspect_dataset_workbench",
+              "list_datasets",
+              "list_model_workflows",
+              "list_projects"
+            ],
+            "max_response_bytes": 119917,
+            "billable_usage_records": 0
+          }
+        },
+        {
+          "cleanup": "removed only this replay's two projects and user",
+          "remaining_datasets": 126
+        }
+      ]
+    }
+  },
+  "reproduced_failures": [
+    {
+      "case": "partition_maximum_name_lengths",
+      "passed": false,
+      "seconds": 0.446,
+      "error": "('get_job', {'error': {'code': 'invalid_output', 'message': 'The tool returned an invalid result.', 'retryable': False, 'fields': {}}})",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1648, in partition_name_boundary\n  File \"<string>\", line 191, in poll\n  File \"<string>\", line 119, in call\nAssertionError: ('get_job', {'error': {'code': 'invalid_output', 'message': 'The tool returned an invalid result.', 'retryable': False, 'fields': {}}})\n",
+      "run": "first_red"
+    },
+    {
+      "case": "partition_declared_and_projected_groups",
+      "passed": false,
+      "seconds": 0.644,
+      "error": "{'kind': 'data_partition', 'id': '01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'status': 'completed', 'label': 'Declared groups', 'job_error': None, 'created_at': '2026-10-08T23:00:44.703646Z', 'updated_at': '2026-10-08T23:00:44.754986Z', 'completed_at': None, 'progress': {'id': '01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'project': '468714f9-41f8-4aa0-bed5-9b2eede25b6f', 'name': 'Declared groups', 'source_cell': '1cfb76ae-b973-4605-bc08-4acf80e6f2a8', 'recipe': {'seed': 11, 'group_by': ['cohrot'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'counts': {'final': 20, 'train': 20}, 'groups': {'final': 20, 'train': 20}, 'strata': {'final': {'all': 20}, 'train': {'all': 20}}, 'overlap': {'pretraining': 'unknown', 'near_duplicates': 'not_checked', 'content_and_declared_groups': 0}, 'progress': {'stage': 'completed', 'total': 40, 'completed': 40, 'updated_at': '2026-10-08T23:00:44.754912+00:00'}, 'fingerprint': '28533fb3956ccdbbba096ef009580b51dd0dc70cb1f89bcb06dd3009b61a0e64', 'source_rows': 40, 'assignments_sha256': 'f6074d295dfc9a338e3b49bee7ddfa02fa9fe7e2a11996f2522a8de432f02349', 'duplicates_removed': 0}, 'state': 'completed', 'error': '', 'membe",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1675, in partition_declared_groups\n  File \"<string>\", line 193, in poll\nAssertionError: {'kind': 'data_partition', 'id': '01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'status': 'completed', 'label': 'Declared groups', 'job_error': None, 'created_at': '2026-10-08T23:00:44.703646Z', 'updated_at': '2026-10-08T23:00:44.754986Z', 'completed_at': None, 'progress': {'id': '01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'project': '468714f9-41f8-4aa0-bed5-9b2eede25b6f', 'name': 'Declared groups', 'source_cell': '1cfb76ae-b973-4605-bc08-4acf80e6f2a8', 'recipe': {'seed': 11, 'group_by': ['cohrot'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'counts': {'final': 20, 'train': 20}, 'groups': {'final': 20, 'train': 20}, 'strata': {'final': {'all': 20}, 'train': {'all': 20}}, 'overlap': {'pretraining': 'unknown', 'near_duplicates': 'not_checked', 'content_and_declared_groups': 0}, 'progress': {'stage': 'completed', 'total': 40, 'completed': 40, 'updated_at': '2026-10-08T23:00:44.754912+00:00'}, 'fingerprint': '28533fb3956ccdbbba096ef009580b51dd0dc70cb1f89bcb06dd3009b61a0e64', 'source_rows': 40, 'assignments_sha256': 'f6074d295dfc9a338e3b49bee7ddfa02fa9fe7e2a11996f2522a8de432f02349', 'duplicates_removed': 0}, 'state': 'completed', 'error': '', 'members': [{'role': 'final', 'cell': {'id': 'cfb27567-393b-44c6-a4f0-af5ef46e60ae', 'version': '1.0', 'title': 'Source', 'rows': 20, 'fingerprint': 'ecf63f7502ecce76c1ec0c5b1e33772a0b9e5353c87b89c0283d36b49380d114', 'dataset_id': '52a9456b-cf2d-5ff2-81be-3651d9b22dab'}}, {'role': 'train', 'cell': {'id': 'fff7137a-98d5-47bb-87e4-b110934c36a5', 'version': '1.0', 'title': 'Source', 'rows': 20, 'fingerprint': '2393bfc1fca866bffdcff1c8a7000cbf0d781d2e303a388e88056846cd07ba83', 'dataset_id': 'edf4812b-6a35-5be4-8b26-42b737dee66e'}}], 'next_actions': ['get_job'], 'action_requirements': {}, 'input_required': False, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:00:44.703646+00:00', 'updated_at': '2026-10-08 23:00:44.754986+00:00'}, 'details': {}, 'resource': {'uri': 'overmind://jobs/data_partition/01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'title': 'Declared groups', 'mimeType': 'application/json'}, 'resource_links': [{'uri': 'overmind://jobs/data_partition/01e3f4d8-d6c6-46c2-8fdf-20045976815b', 'title': 'Declared groups', 'mimeType': 'application/json'}], 'summary': 'Declared groups: completed.'}\n",
+      "run": "first_red"
+    },
+    {
+      "case": "concurrent_partition_keys_across_sources",
+      "passed": false,
+      "seconds": 2.047,
+      "error": "[{'error': {'code': 'internal_error', 'message': 'The MCP request could not be completed.', 'retryable': False, 'fields': {}}}]",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1827, in concurrent_partition_keys\nAssertionError: [{'error': {'code': 'internal_error', 'message': 'The MCP request could not be completed.', 'retryable': False, 'fields': {}}}]\n",
+      "run": "first_red"
+    },
+    {
+      "case": "partition_maximum_name_lengths",
+      "passed": false,
+      "seconds": 0.649,
+      "error": "{'uri': 'overmind://jobs/data_partition/b2b7f308-137d-47f2-83b5-d90639ebec07', 'kind': 'data_partition', 'id': 'b2b7f308-137d-47f2-83b5-d90639ebec07', 'project': '72b78b5d-fd30-4d2e-bda1-7229def1c0a8', 'name': 'nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn', 'source_cell': '7c7f7f03-8905-4c0a-bf49-4afb6e5e0674', 'recipe': {'seed': 7, 'group_by': [], 'holdouts': [], 'fractions': {'train': 0.5, 'development': 0.5}, 'stratify_by': None}, 'report': {'progress': {'role': 'train', 'stage': 'preparing_member', 'total': 20, 'completed': 0, 'updated_at': '2026-10-08T23:01:33.523919+00:00'}}, 'state': 'failed', 'error': 'value too long for type character varying(255)\\n', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:01:33.502421+00:00', 'updated_at': '2026-10-08 23:01:33.525845+00:00'}",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1652, in partition_name_boundary\nAssertionError: {'uri': 'overmind://jobs/data_partition/b2b7f308-137d-47f2-83b5-d90639ebec07', 'kind': 'data_partition', 'id': 'b2b7f308-137d-47f2-83b5-d90639ebec07', 'project': '72b78b5d-fd30-4d2e-bda1-7229def1c0a8', 'name': 'nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn', 'source_cell': '7c7f7f03-8905-4c0a-bf49-4afb6e5e0674', 'recipe': {'seed': 7, 'group_by': [], 'holdouts': [], 'fractions': {'train': 0.5, 'development': 0.5}, 'stratify_by': None}, 'report': {'progress': {'role': 'train', 'stage': 'preparing_member', 'total': 20, 'completed': 0, 'updated_at': '2026-10-08T23:01:33.523919+00:00'}}, 'state': 'failed', 'error': 'value too long for type character varying(255)\\n', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:01:33.502421+00:00', 'updated_at': '2026-10-08 23:01:33.525845+00:00'}\n",
+      "run": "name_red"
+    },
+    {
+      "case": "partition_projected_group_aliases",
+      "passed": false,
+      "seconds": 0.927,
+      "error": "{'kind': 'data_partition', 'id': 'a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'status': 'failed', 'label': 'Projected trace groups', 'job_error': 'Unknown partition group fields: source_trace_id', 'created_at': '2026-10-08T23:05:13.706626Z', 'updated_at': '2026-10-08T23:05:13.723620Z', 'completed_at': None, 'progress': {'id': 'a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'project': 'f6bf593e-2459-405b-a13f-7cc483836d73', 'name': 'Projected trace groups', 'source_cell': 'fa12c394-2162-4dfd-a8d7-ee8e6889eb40', 'recipe': {'seed': 5, 'group_by': ['source_trace_id'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'progress': {'stage': 'grouping', 'total': 5, 'completed': 0, 'updated_at': '2026-10-08T23:05:13.722263+00:00'}}, 'state': 'failed', 'error': 'Unknown partition group fields: source_trace_id', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:05:13.706626+00:00', 'updated_at': '2026-10-08 23:05:13.723620+00:00'}, 'details': {}, 'resource': {'uri': 'overmind://jobs/data_partition/a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'title': 'Proj",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 1833, in partition_group_aliases\n  File \"<string>\", line 193, in poll\nAssertionError: {'kind': 'data_partition', 'id': 'a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'status': 'failed', 'label': 'Projected trace groups', 'job_error': 'Unknown partition group fields: source_trace_id', 'created_at': '2026-10-08T23:05:13.706626Z', 'updated_at': '2026-10-08T23:05:13.723620Z', 'completed_at': None, 'progress': {'id': 'a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'project': 'f6bf593e-2459-405b-a13f-7cc483836d73', 'name': 'Projected trace groups', 'source_cell': 'fa12c394-2162-4dfd-a8d7-ee8e6889eb40', 'recipe': {'seed': 5, 'group_by': ['source_trace_id'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'progress': {'stage': 'grouping', 'total': 5, 'completed': 0, 'updated_at': '2026-10-08T23:05:13.722263+00:00'}}, 'state': 'failed', 'error': 'Unknown partition group fields: source_trace_id', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:05:13.706626+00:00', 'updated_at': '2026-10-08 23:05:13.723620+00:00'}, 'details': {}, 'resource': {'uri': 'overmind://jobs/data_partition/a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'title': 'Projected trace groups', 'mimeType': 'application/json'}, 'resource_links': [{'uri': 'overmind://jobs/data_partition/a60fb7a6-0c41-4a27-800d-7ca91750d9e8', 'title': 'Projected trace groups', 'mimeType': 'application/json'}], 'summary': 'Projected trace groups: failed.'}\n",
+      "run": "alias_red"
+    },
+    {
+      "case": "partition_content_column_groups",
+      "passed": false,
+      "seconds": 1.548,
+      "error": "{'kind': 'data_partition', 'id': 'af67e54d-119d-43ed-bbd6-b8aace9fca95', 'status': 'failed', 'label': 'Declared groups', 'job_error': 'Unknown partition group fields: content', 'created_at': '2026-10-08T23:16:22.311944Z', 'updated_at': '2026-10-08T23:16:22.329521Z', 'completed_at': None, 'progress': {'id': 'af67e54d-119d-43ed-bbd6-b8aace9fca95', 'project': '0ff9ccdc-cd3c-4fc3-9c80-6938d4ea6f0b', 'name': 'Declared groups', 'source_cell': 'b3a2dc08-3ec1-4af5-b2b0-b24ec3e2e9c4', 'recipe': {'seed': 11, 'group_by': ['content'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'progress': {'stage': 'grouping', 'total': 20, 'completed': 0, 'updated_at': '2026-10-08T23:16:22.328533+00:00'}}, 'state': 'failed', 'error': 'Unknown partition group fields: content', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:16:22.311944+00:00', 'updated_at': '2026-10-08 23:16:22.329521+00:00'}, 'details': {}, 'resource': {'uri': 'overmind://jobs/data_partition/af67e54d-119d-43ed-bbd6-b8aace9fca95', 'title': 'Declared groups', 'mimeType': 'applicati",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 163, in check\n  File \"<string>\", line 2134, in <lambda>\n  File \"<string>\", line 1710, in partition_declared_groups\n  File \"<string>\", line 193, in poll\nAssertionError: {'kind': 'data_partition', 'id': 'af67e54d-119d-43ed-bbd6-b8aace9fca95', 'status': 'failed', 'label': 'Declared groups', 'job_error': 'Unknown partition group fields: content', 'created_at': '2026-10-08T23:16:22.311944Z', 'updated_at': '2026-10-08T23:16:22.329521Z', 'completed_at': None, 'progress': {'id': 'af67e54d-119d-43ed-bbd6-b8aace9fca95', 'project': '0ff9ccdc-cd3c-4fc3-9c80-6938d4ea6f0b', 'name': 'Declared groups', 'source_cell': 'b3a2dc08-3ec1-4af5-b2b0-b24ec3e2e9c4', 'recipe': {'seed': 11, 'group_by': ['content'], 'holdouts': [], 'fractions': {'final': 0.5, 'train': 0.5}, 'stratify_by': None}, 'report': {'progress': {'stage': 'grouping', 'total': 20, 'completed': 0, 'updated_at': '2026-10-08T23:16:22.328533+00:00'}}, 'state': 'failed', 'error': 'Unknown partition group fields: content', 'members': [], 'next_actions': ['retry_data_partition'], 'action_requirements': {}, 'input_required': True, 'poll_after_seconds': None, 'created_at': '2026-10-08 23:16:22.311944+00:00', 'updated_at': '2026-10-08 23:16:22.329521+00:00'}, 'details': {}, 'resource': {'uri': 'overmind://jobs/data_partition/af67e54d-119d-43ed-bbd6-b8aace9fca95', 'title': 'Declared groups', 'mimeType': 'application/json'}, 'resource_links': [{'uri': 'overmind://jobs/data_partition/af67e54d-119d-43ed-bbd6-b8aace9fca95', 'title': 'Declared groups', 'mimeType': 'application/json'}], 'summary': 'Declared groups: failed.'}\n",
+      "run": "content_red"
+    }
+  ],
+  "capability_gaps": [
+    {
+      "gap": "MCP source inventory pagination",
+      "evidence": "Live: 12 stored sources; 10 discoverable through MCP; all 12 through REST"
+    },
+    {
+      "gap": "Structured native execution manifests",
+      "evidence": "Public import contract contains prose attribution, not an executable-recipe/environment manifest"
+    },
+    {
+      "gap": "Structured native assessment and coverage records",
+      "evidence": "No assessment submission input; new run quality remains unmeasured"
+    },
+    {
+      "gap": "Cell-qualified multi-source parent lineage",
+      "evidence": "Import validates parent row IDs against one bound source cell"
+    },
+    {
+      "gap": "Deterministic sample publication",
+      "evidence": "Live: derive sampling argument rejected; native stratified selection/import succeeds"
+    },
+    {
+      "gap": "Exploration and partition cancellation",
+      "evidence": "Public cancellation covers source landing and pipeline publication only"
+    },
+    {
+      "gap": "Query response-byte and execution-time budgets",
+      "evidence": "Code inspection only; 100-row, 512 MB, two-thread bounds do not supply these budgets"
+    }
+  ],
+  "limitations": [
+    "Finite regression matrix, not universal input coverage",
+    "Query response-byte/time hardening was inspected, not stress-proven",
+    "Catalogue gaps above remain unimplemented",
+    "Backend optional-environment tests remain skipped",
+    "No new frontend verification: UI was unchanged"
+  ],
+  "cleanup": {
+    "projects": "Only disposable replay projects/users removed",
+    "remaining_preexisting_datasets": 126
+  }
+}

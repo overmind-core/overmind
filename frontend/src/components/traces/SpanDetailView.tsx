@@ -243,7 +243,7 @@ function ToolParamRow({
   required: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[140px_80px_60px_1fr] gap-x-3 items-baseline py-1.5 border-b border-border/60 last:border-0 text-xs">
+    <div className="-mx-3 grid grid-cols-[140px_80px_60px_1fr] gap-x-3 items-baseline px-3 py-1.5 border-b border-border/60 last:border-0 text-xs">
       <span className="font-mono text-cat-2 truncate">{name}</span>
       <span className="font-mono text-muted-foreground">{schema.type ?? "—"}</span>
       <span>
@@ -558,9 +558,9 @@ function JsonBlock({
     content = <pre className={jsonPre}>{prettyJson}</pre>;
   } else if (messageList) {
     content = (
-      <div className={`divide-y divide-border/70 px-3 font-mono text-xs ${surface}`}>
+      <div className={`divide-y divide-border/70 font-mono text-xs ${surface}`}>
         {messageList.map((msg, idx) => (
-          <div className="py-3" key={idx}>
+          <div className="px-3 py-3" key={idx}>
             <MessageRow msg={msg} />
           </div>
         ))}

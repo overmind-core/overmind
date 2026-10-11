@@ -50,6 +50,13 @@ class Dataset(models.Model):
     capability_rank = models.JSONField(default=list, blank=True)
     intent = models.CharField(max_length=8, choices=Intent.choices, default=Intent.PENDING)
     preparation_plan = models.JSONField(default=dict, blank=True)
+    preparation_pipeline = models.ForeignKey(
+        "overbae.DatasetPipeline",
+        on_delete=models.SET_NULL,
+        related_name="preparations",
+        null=True,
+        blank=True,
+    )
     # The cell consumers read; null means the last cell that ran.
     active = models.ForeignKey(
         "overbae.Cell", on_delete=models.SET_NULL, related_name="+", null=True, blank=True

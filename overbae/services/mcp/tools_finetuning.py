@@ -464,18 +464,22 @@ def _readiness_sync(
         missing.insert(0, f"training dataset — {reason}")
         validation = ValidationResult(False, "unknown", 0, errors=[reason])
     else:
-        validation = validate_dataset(
-            str(dataset.id),
-            cell_id=str(cell.id),
-            validation_enabled=payload.validation_enabled,
-            validation_split_ratio=payload.validation_split_ratio,
-            split_method=payload.split_method,
-            validation_dataset_id=str(selected["validation_dataset"].id)
-            if selected["validation_dataset"]
-            else None,
-            validation_cell_id=str(selected["validation_cell"].id)
-            if selected["validation_cell"]
-            else None,
+        validation = (
+            ValidationResult(**report["validation"])
+            if report.get("validation")
+            else validate_dataset(
+                str(dataset.id),
+                cell_id=str(cell.id),
+                validation_enabled=payload.validation_enabled,
+                validation_split_ratio=payload.validation_split_ratio,
+                split_method=payload.split_method,
+                validation_dataset_id=str(selected["validation_dataset"].id)
+                if selected["validation_dataset"]
+                else None,
+                validation_cell_id=str(selected["validation_cell"].id)
+                if selected["validation_cell"]
+                else None,
+            )
         )
         if not validation.valid:
             missing.insert(

@@ -81,6 +81,8 @@ class WorkbenchPageSerializer(serializers.Serializer):
 
 class WorkbenchSerializer(serializers.Serializer):
     dataset = serializers.UUIDField(allow_null=True)
+    preparation = serializers.DictField(allow_null=True)
+    current_pipeline = serializers.UUIDField(allow_null=True)
     pipelines = PipelineSerializer(many=True)
     runs = PipelineRunSerializer(many=True)
     pipeline_page = WorkbenchPageSerializer()
@@ -176,7 +178,10 @@ class WorkbenchActions:
         body.is_valid(raise_exception=True)
         try:
             pipeline = workbench.save_pipeline(
-                self.get_object().project, request.user, **body.validated_data
+                self.get_object().project,
+                request.user,
+                dataset=self.get_object(),
+                **body.validated_data,
             )
         except DatasetError as exc:
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc

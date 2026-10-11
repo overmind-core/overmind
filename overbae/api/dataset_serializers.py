@@ -128,6 +128,26 @@ class CellSerializer(serializers.ModelSerializer):
         )
 
 
+class PreparationNodeSerializer(serializers.Serializer):
+    cell = CellSerializer()
+    dataset = serializers.UUIDField()
+    dataset_name = serializers.CharField(allow_blank=True)
+    intent = serializers.CharField()
+    role = serializers.CharField(allow_blank=True)
+
+
+class PreparationEdgeSerializer(serializers.Serializer):
+    source = serializers.UUIDField()
+    target = serializers.UUIDField()
+    label = serializers.CharField(allow_blank=True)
+
+
+class DatasetPreparationSerializer(serializers.Serializer):
+    selected = serializers.UUIDField(allow_null=True)
+    nodes = PreparationNodeSerializer(many=True)
+    edges = PreparationEdgeSerializer(many=True)
+
+
 class DatasetSerializer(serializers.ModelSerializer):
     operation = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()

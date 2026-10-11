@@ -318,13 +318,13 @@ function CredentialItem({
 
         {meta.available && (
           <>
-            <div className="grid grid-cols-3 gap-3 border-t border-border/70 pt-3">
+            <div className="-mx-3 grid grid-cols-3 gap-3 border-t border-border/70 px-3 pt-3">
               <Stat label="Traces" value={(credential.totalTracesImported ?? 0).toLocaleString()} />
               <Stat label="Spans" value={(credential.totalSpansImported ?? 0).toLocaleString()} />
               <Stat label="Mapped capabilities" value={mappedCapabilities.toLocaleString()} />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+            <div className="-mx-3 flex flex-wrap items-center gap-2 border-t border-border/70 px-3 pt-3">
               <Button asChild size="sm" variant="secondary">
                 <Link
                   search={{ projectId, service_name__icontains: meta.type }}

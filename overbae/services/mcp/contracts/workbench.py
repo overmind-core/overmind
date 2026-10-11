@@ -186,6 +186,8 @@ class Output(MCPModel):
     project_id: str
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
     dataset: str | None = None
+    preparation: dict[str, Any] | None = None
+    current_pipeline: str | None = None
     pipeline: Pipeline | None = None
     run: Run | None = None
     job: JobReceipt | None = None

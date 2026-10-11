@@ -1,0 +1,56 @@
+{
+  "project": "ad484163-e087-41cd-9acd-1fdb652b3d50",
+  "transport": "MCP SDK Streamable HTTP + local CLI bytes",
+  "results": [
+    {
+      "run": "8dccbdbb-9472-45ed-b15b-97f583da3522",
+      "seconds": 6.101,
+      "state": "completed"
+    },
+    {
+      "run": "0a869b53-b97b-4f08-9c27-30a9d169f878",
+      "seconds": 8.112,
+      "state": "completed"
+    },
+    {
+      "run": "1abce838-6395-499a-857a-89a7de0493f8",
+      "seconds": 14.884,
+      "state": "completed"
+    },
+    {
+      "run": "5ac47ab3-b4ca-431a-9107-f169f07462e7",
+      "seconds": 6.075,
+      "state": "completed"
+    },
+    {
+      "run": "e48a8baf-948c-4392-9979-95530640a842",
+      "seconds": 10.14,
+      "state": "completed"
+    },
+    {
+      "run": "15486552-66f3-435f-b776-35373909f5ba",
+      "seconds": 8.115,
+      "state": "completed"
+    },
+    {
+      "run": "9343c6dd-5fbb-46e5-b61c-6c899d24d9bc",
+      "seconds": 8.108,
+      "state": "completed"
+    },
+    {
+      "run": "7bdcd3c6-9e67-4e67-82a8-5e226f68b4eb",
+      "seconds": 2.048,
+      "state": "completed"
+    }
+  ],
+  "agent_authored_branches": {
+    "rows": [
+      5000,
+      5000
+    ],
+    "structure_retained": true,
+    "source_pinned": true
+  },
+  "automatic_ingestion": "changed source published without a client run request",
+  "success": true
+}

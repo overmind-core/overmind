@@ -64,7 +64,13 @@ def pipeline_upload(
             raise TransferError("Pass --project-id for the package destination.")
         if source.is_dir():
             stream = io.BytesIO()
-            files = sorted(item for item in source.rglob("*") if not item.is_dir())
+            files = sorted(
+                item
+                for item in source.rglob("*")
+                if not item.is_dir()
+                and "__pycache__" not in item.relative_to(source).parts
+                and item.suffix not in {".pyc", ".pyo"}
+            )
             if not 1 <= len(files) <= 100 or any(item.is_symlink() for item in source.rglob("*")):
                 raise TransferError("Use a package directory containing 1–100 regular files and no symlinks.")
             if sum(item.stat().st_size for item in files) > 10 * 1024 * 1024:

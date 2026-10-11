@@ -1,0 +1,262 @@
+{
+  "date": "2026-10-08",
+  "scope": "Data Workshop MCP only; local HTTP API, PostgreSQL, Redis, real Celery workers; no provider jobs",
+  "replay": "tests/evidence/workshop_mcp_acceptance.py",
+  "replay_sha256": "021233c83347931b570280369f6f10a952bd6f8f31700cdaa9e5e39d9b52f5dc",
+  "cases": [
+    {
+      "case": "catalogue_auth_and_all_tool_validation",
+      "passed": true,
+      "seconds": 0.832,
+      "catalogue_tools": 61,
+      "workshop_argument_checks": 19
+    },
+    {
+      "case": "native_authored_semantic_version",
+      "passed": true,
+      "seconds": 0.982,
+      "published_rows": 2
+    },
+    {
+      "case": "boundaries_isolation_and_failure_preservation",
+      "passed": true,
+      "seconds": 2.099
+    },
+    {
+      "case": "large_file_pipeline_and_external_import_100000",
+      "passed": true,
+      "seconds": 41.425,
+      "source_rows": 100000,
+      "transformed_rows": 50000,
+      "imported_rows": 50000,
+      "export_bytes": 32944450,
+      "duplicate_retries": 8
+    },
+    {
+      "case": "large_file_pipeline_and_external_import_1000000",
+      "passed": true,
+      "seconds": 289.753,
+      "source_rows": 1000000,
+      "transformed_rows": 500000,
+      "imported_rows": 500000,
+      "export_bytes": 333944450,
+      "duplicate_retries": 8
+    },
+    {
+      "case": "exploration_derived_chain_and_grouped_partition",
+      "passed": true,
+      "seconds": 1.599
+    },
+    {
+      "case": "trace_and_llm_call_sources",
+      "passed": true,
+      "seconds": 2.233,
+      "trace_rows": 20,
+      "call_rows": 20,
+      "split_observations": 40,
+      "filtered_rows": 7
+    },
+    {
+      "case": "typed_targets_and_stepwise_cells",
+      "passed": true,
+      "seconds": 3.243,
+      "typed_decisions": 3,
+      "stepwise_versions": 5,
+      "appended_source_rows": 1
+    },
+    {
+      "case": "operation_values_and_atomic_failures",
+      "passed": true,
+      "seconds": 3.962,
+      "successful_operations": 6,
+      "atomic_failures": 4,
+      "long_value_chars": 12000
+    },
+    {
+      "case": "concurrent_first_submissions",
+      "passed": true,
+      "seconds": 1.117,
+      "simultaneous_first_requests": 24,
+      "published_versions": 2,
+      "recipes": 1
+    },
+    {
+      "case": "all_parent_lineage_and_atomic_imports",
+      "passed": true,
+      "seconds": 3.728,
+      "invalid_parent_shapes": 8,
+      "preserved_parents": [
+        0,
+        1,
+        2
+      ],
+      "published_rows": 3
+    },
+    {
+      "case": "published_navigation_and_exact_query_pages",
+      "passed": true,
+      "seconds": 0.695,
+      "query_rows_reconstructed": 205,
+      "listed_datasets": 23,
+      "prompts": 2
+    },
+    {
+      "case": "measured_exploration_and_independent_derivation",
+      "passed": true,
+      "seconds": 2.073,
+      "whole_source_rows": 1000,
+      "strata": 125,
+      "derived_rows": 1000,
+      "derived_filtered_rows": 8
+    },
+    {
+      "case": "partition_contents_holdouts_and_retry",
+      "passed": true,
+      "seconds": 1.169,
+      "input_observations": 200,
+      "output_observations": 200,
+      "disjoint_roles": 4,
+      "retry_members_unchanged": true
+    },
+    {
+      "case": "complete_history_pagination",
+      "passed": true,
+      "seconds": 36.189,
+      "executed_recipes": 105,
+      "terminal_runs": 105,
+      "readable_cells": 106
+    },
+    {
+      "case": "every_workshop_tool_authorization",
+      "passed": true,
+      "seconds": 0.392,
+      "read_only_denials": 12,
+      "foreign_project_denials": 18,
+      "foreign_dataset_denials": 8
+    },
+    {
+      "case": "cancel_running_worker_and_recover",
+      "passed": true,
+      "seconds": 86.919,
+      "cancelled_state_observed": "running",
+      "rows_in_flight": 500000,
+      "replacement_completed": true
+    },
+    {
+      "case": "tabular_file_upload_transform_export",
+      "passed": true,
+      "seconds": 4.837,
+      "file_formats_round_tripped": 6,
+      "invalid_files_rejected": 3
+    },
+    {
+      "case": "source_bindings_artifacts_and_metadata",
+      "passed": true,
+      "seconds": 1.845,
+      "stale_foreign_or_ambiguous_imports_rejected": 4,
+      "foreign_source_workflows_rejected": 3,
+      "artifact_retained": true,
+      "frozen_metadata_atomic": true,
+      "removed_tools_rejected": 3
+    },
+    {
+      "case": "document_and_ocr_evidence_round_trip",
+      "passed": true,
+      "seconds": 6.807,
+      "document_and_image_uploads": 8,
+      "original_bytes_verified": 8,
+      "evidence_after_projection": 8
+    }
+  ],
+  "summary": {
+    "passed": 20,
+    "total": 20,
+    "successful_tools": [
+      "cancel_dataset",
+      "create_data_partition",
+      "create_dataset_from_llm_calls",
+      "create_dataset_from_traces",
+      "derive_dataset",
+      "explore_dataset",
+      "get_job",
+      "import_dataset_version",
+      "inspect_dataset",
+      "inspect_dataset_workbench",
+      "list_datasets",
+      "list_model_workflows",
+      "list_projects",
+      "query_dataset",
+      "retry_data_partition",
+      "run_dataset_pipeline",
+      "save_dataset_pipeline",
+      "start_dataset",
+      "update_dataset"
+    ],
+    "successful_tool_calls": {
+      "cancel_dataset": 2,
+      "create_data_partition": 3,
+      "create_dataset_from_llm_calls": 3,
+      "create_dataset_from_traces": 3,
+      "derive_dataset": 2,
+      "explore_dataset": 6,
+      "get_job": 1412,
+      "import_dataset_version": 26,
+      "inspect_dataset": 125,
+      "inspect_dataset_workbench": 10,
+      "list_datasets": 10,
+      "list_model_workflows": 2,
+      "list_projects": 2,
+      "query_dataset": 64,
+      "retry_data_partition": 2,
+      "run_dataset_pipeline": 167,
+      "save_dataset_pipeline": 150,
+      "start_dataset": 1,
+      "update_dataset": 5
+    },
+    "rejected_tool_calls": {
+      "cancel_dataset": 5,
+      "create_data_partition": 7,
+      "create_dataset_from_llm_calls": 7,
+      "create_dataset_from_traces": 6,
+      "derive_dataset": 4,
+      "explore_dataset": 5,
+      "get_job": 2,
+      "import_dataset_version": 12,
+      "inspect_dataset": 4,
+      "inspect_dataset_workbench": 4,
+      "list_datasets": 4,
+      "list_model_workflows": 2,
+      "list_projects": 1,
+      "manage_dataset_workflow": 1,
+      "message_dataset_agent": 1,
+      "query_dataset": 10,
+      "retry_data_partition": 4,
+      "run_dataset": 1,
+      "run_dataset_pipeline": 6,
+      "save_dataset_pipeline": 8,
+      "start_dataset": 4,
+      "update_dataset": 10
+    },
+    "resources_read": [
+      "overmind://dataset-export",
+      "overmind://dataset-upload",
+      "overmind://datasets/dd27cfd6-e5c7-48df-8b5c-3e3372d9b20c",
+      "overmind://interface/current",
+      "overmind://jobs/data_exploration/0df7bbe3-26fe-49e0-9250-5ba610ba7a4c",
+      "overmind://jobs/data_exploration/44359d6a-8d03-4492-b709-137c861ec42f",
+      "overmind://jobs/data_exploration/4b52a0a9-3f75-4005-9f8b-5270d20def63",
+      "overmind://jobs/data_exploration/4b52a0a9-3f75-4005-9f8b-5270d20def63/strata?offset=0&limit=100",
+      "overmind://jobs/data_exploration/4b52a0a9-3f75-4005-9f8b-5270d20def63/strata?offset=100&limit=100",
+      "overmind://jobs/data_exploration/a3e7104b-573a-435e-8469-e73a4174c909",
+      "overmind://jobs/data_partition/ff909bb1-5205-499c-8764-332cffcea265",
+      "overmind://jobs/dataset_pipeline/53818bf5-a498-4a51-9df3-cd596297db6c"
+    ],
+    "missing_workshop_tools": [],
+    "max_response_bytes": 119917,
+    "billable_usage_records": 0
+  },
+  "cleanup": {
+    "cleanup": "removed only this replay's two projects and user",
+    "remaining_datasets": 126
+  }
+}

@@ -6,6 +6,7 @@ import { DefRow, Eyebrow, FtStatusBadge } from "@/components/finetuning/finetuni
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { isTerminalStatus } from "@/components/finetuning/job-snapshot";
 import { TIER_META, userFacingJobError } from "@/components/finetuning/train/model-config";
+import { getModelProviderInfo } from "@/components/model-provider";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -113,7 +114,10 @@ function JobDetail({ jobId, projectId }: { jobId: string; projectId: string }) {
         {hasLiveHistory && liveProgress && (
           <section>
             <Eyebrow>Live metrics</Eyebrow>
-            <LiveMetricsChart progress={liveProgress} />
+            <LiveMetricsChart
+              modelName={getModelProviderInfo(job.baseModel).modelLabel}
+              progress={liveProgress}
+            />
           </section>
         )}
 
@@ -140,7 +144,11 @@ function JobDetail({ jobId, projectId }: { jobId: string; projectId: string }) {
                 )}
               </div>
             ) : (
-              <LossChart data={lossData} height={180} />
+              <LossChart
+                data={lossData}
+                height={180}
+                modelName={getModelProviderInfo(job.baseModel).modelLabel}
+              />
             )}
           </section>
         )}

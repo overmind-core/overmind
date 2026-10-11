@@ -1,0 +1,131 @@
+{
+  "success": true,
+  "dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+  "source": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+  "runs": [
+    {
+      "mode": "preview",
+      "run": "e1e7156d-3681-417c-a920-b5f70ddcc764",
+      "seconds": 20.274,
+      "rows": 1000,
+      "branch_rows": [
+        10,
+        990
+      ],
+      "stage_seconds": {
+        "measuring_impact": 1.015,
+        "step_1_executing": 2.774,
+        "step_2_executing": 2.687,
+        "step_3_executing": 2.588,
+        "step_4_executing": 2.767,
+        "step_5_executing": 2.789,
+        "verifying_source": 0.115,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.004,
+        "step_3_checking_rows": 0.004,
+        "step_4_checking_rows": 0.009,
+        "step_5_checking_rows": 0.009,
+        "step_1_preserving_lineage": 0.184,
+        "step_2_preserving_lineage": 0.182,
+        "step_3_preserving_lineage": 0.052,
+        "step_4_preserving_lineage": 0.185,
+        "step_5_preserving_lineage": 0.23
+      }
+    },
+    {
+      "mode": "publish",
+      "run": "a3e21d15-7c81-4b09-8285-75532b9b0950",
+      "seconds": 55.84,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 10.657,
+        "measuring_impact": 8.737,
+        "step_1_executing": 4.255,
+        "step_2_executing": 4.017,
+        "step_3_executing": 3.148,
+        "step_4_executing": 4.501,
+        "step_5_executing": 4.941,
+        "verifying_source": 0.017,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.003,
+        "step_3_checking_rows": 0.005,
+        "step_4_checking_rows": 0.007,
+        "step_5_checking_rows": 0.006,
+        "step_1_preserving_lineage": 1.843,
+        "step_2_preserving_lineage": 1.605,
+        "step_3_preserving_lineage": 0.384,
+        "step_4_preserving_lineage": 1.765,
+        "step_5_preserving_lineage": 2.382
+      },
+      "output_cell": "717d977d-4af8-4db8-bb04-02aebbbfdb2b"
+    },
+    {
+      "mode": "publish",
+      "run": "2cbdde15-8bc1-4932-a5c7-e7c7e1f8cca7",
+      "seconds": 60.799,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 11.244,
+        "measuring_impact": 10.926,
+        "step_1_executing": 4.834,
+        "step_2_executing": 4.027,
+        "step_3_executing": 3.094,
+        "step_4_executing": 4.464,
+        "step_5_executing": 5.98,
+        "verifying_source": 0.113,
+        "step_1_checking_rows": 0.004,
+        "step_2_checking_rows": 0.003,
+        "step_3_checking_rows": 0.005,
+        "step_4_checking_rows": 0.005,
+        "step_5_checking_rows": 0.024,
+        "step_1_preserving_lineage": 1.791,
+        "step_2_preserving_lineage": 1.706,
+        "step_3_preserving_lineage": 0.361,
+        "step_4_preserving_lineage": 1.856,
+        "step_5_preserving_lineage": 4.179
+      },
+      "output_cell": "a361d089-5a64-4a47-ae09-90e6a4738dda"
+    },
+    {
+      "mode": "publish",
+      "run": "2ed11395-1362-4b3e-8511-b8a8c9859cec",
+      "seconds": 50.525,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 10.715,
+        "measuring_impact": 8.805,
+        "step_1_executing": 4.346,
+        "step_2_executing": 4.155,
+        "step_3_executing": 3.134,
+        "step_4_executing": 4.549,
+        "step_5_executing": 4.851,
+        "verifying_source": 0.016,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.006,
+        "step_3_checking_rows": 0.004,
+        "step_4_checking_rows": 0.006,
+        "step_5_checking_rows": 0.008,
+        "step_1_preserving_lineage": 1.728,
+        "step_2_preserving_lineage": 1.608,
+        "step_3_preserving_lineage": 0.364,
+        "step_4_preserving_lineage": 1.75,
+        "step_5_preserving_lineage": 2.178
+      },
+      "output_cell": "05c5caed-1029-4ae6-8c68-de43af0582ce"
+    }
+  ],
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-converged-sbxmziry",
+  "pipeline": "adc61cd8-a909-46d9-87b3-ada1a58c1237"
+}

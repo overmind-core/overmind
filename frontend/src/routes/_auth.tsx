@@ -6,7 +6,7 @@ import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tansta
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
-import { DatasetVersionChip } from "@/components/datasets/notebook/pipeline-runs";
+import { DatasetProcessDetails } from "@/components/datasets/notebook/pipeline-runs";
 import { WorkshopSidebar } from "@/components/datasets/workshop-sidebar";
 import { CreateAccountDialog } from "@/components/guest/create-account-dialog";
 import { HeaderCredits } from "@/components/header-credits";
@@ -278,7 +278,7 @@ function Breadcrumb() {
           })}
         </nav>
         {leaf?.kind === "datasets" && (
-          <DatasetVersionChip datasetId={leaf.slug} key={leaf.slug} projectId={projectId} />
+          <DatasetProcessDetails datasetId={leaf.slug} key={leaf.slug} />
         )}
       </div>
       <HeaderActions hideProjects={crumbs[1]?.path === "/projects"} />

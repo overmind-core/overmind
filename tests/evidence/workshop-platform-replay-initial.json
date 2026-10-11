@@ -1,0 +1,116 @@
+{
+  "success": false,
+  "endpoint": "http://localhost:8000",
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-platform-replay-8_6zkjzh",
+  "cases": [
+    {
+      "kind": "documents",
+      "original_dataset": "86d0db67-a85e-44e3-a113-63381fe55ef8",
+      "dataset": "684571ad-be58-4b59-a2bb-71f82a3455bf",
+      "recipe": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+      "recipe_fingerprint": "3136ed9d05a0fd061634414b48c569f8ae2646851e1269971e5d417dd5200f56",
+      "source_cell": "f66bc56e-17f7-4ce7-833d-44c9bfaab381",
+      "source_fingerprint": "e353a31466d6a62b8b54ef11cd09be91f5c6d564dd3974c77b16a8ac76711780",
+      "runs": [
+        {
+          "id": "2f32ca5c-3260-4c6d-b126-b322d8a6a954",
+          "mode": "preview",
+          "seconds": 15.173,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "review",
+              "input_rows": 3,
+              "output_rows": 0,
+              "output_cell": null
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 3,
+              "output_rows": 1,
+              "output_cell": null
+            }
+          ]
+        },
+        {
+          "id": "b05e0e3e-84a6-4563-9ec4-fd224e19b38f",
+          "mode": "publish",
+          "seconds": 19.447,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "af6b8050-da4b-4dcf-a1fc-3a506691032e"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 320,
+              "output_rows": 0,
+              "output_cell": "cd42ba26-2ba5-4698-8c91-98890ee098c6"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "da8bb2e0-cde6-491b-bb63-5e35c2934e8c"
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 320,
+              "output_rows": 7,
+              "output_cell": "3df367cd-e2ad-4e98-87a4-332dca8b3260"
+            }
+          ]
+        },
+        {
+          "id": "35bf9ed4-8b84-440b-840a-1031f2b047e4",
+          "mode": "publish",
+          "seconds": 18.588,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "2253455b-f23f-402d-af8e-f2bfb301f565"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 320,
+              "output_rows": 0,
+              "output_cell": "bea98eaa-436c-4208-87a8-541c90833858"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "7bf6ba7f-8749-4145-abe4-16732bb2d801"
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 320,
+              "output_rows": 7,
+              "output_cell": "f7341470-2f8b-46c7-9254-2adaaeceb8ac"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "catalog_sha256": "f132b4f8ad72f324f108b2e4db88c912127eeb3a0eee6b29858acb97ff4c16e4",
+  "error": {
+    "type": "ExceptionGroup",
+    "detail": "unhandled errors in a TaskGroup (1 sub-exception)"
+  }
+}

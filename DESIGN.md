@@ -434,6 +434,13 @@ Detail surfaces built from stacked, header-stripped cards use one padding scale.
 Pick a row in this table before inventing a value. The failure mode is a page
 where every card pads differently and the internal dividers do not line up.
 
+Horizontal section dividers and table row rules span the full inside width of
+their containing card, panel or dialog. Put horizontal padding on the content
+inside each section, not outside the divider. Within an already padded body,
+cancel that inset with matching negative margins and restore it on the section's
+content. Nested bordered surfaces use their own edges; chart axes and separators
+within prose remain local to that content.
+
 | Slot                                     | Padding                                                |
 | ---------------------------------------- | ------------------------------------------------------ |
 | Header strip (single-line label)         | `px-4 py-2.5`, `border-b border-border/60`, muted fill |
@@ -667,12 +674,13 @@ Cells open at full scale; zoom and Fit view are explicit camera controls, not
 changes to cell dimensions. Reset and linked-cell focus return to scale 1, while resize
 preserves the chosen zoom. The Agent trajectory's minimap treatment is available
 through the left-hand controls, hidden initially and remembered in this browser.
-A version chip beside the dataset name selects and restores
-iterations without a separate run bar.
+A Process control beside the dataset name shows current execution facts. The canvas
+shows the selected successful process and its recorded partition outputs. Corrections
+replace that process; there is no repair-history or restore view.
 Live cell arrivals receive a bounded opacity reveal after graph placement; changed
 content or state briefly washes the existing frame with a neutral surface token.
 Cells never move independently of their connectors. Initial load, unchanged
-refreshes, usage metadata and version browsing remain quiet. Reduced motion uses
+refreshes, usage metadata and exact-cell inspection remain quiet. Reduced motion uses
 a shorter, gentler acknowledgement; background/offscreen updates do not replay.
 There is no platform chat or bottom chat composer. Dataset metadata changes use
 shared lifecycle endpoints. The rail on the left groups its controls in a compact,
@@ -723,8 +731,9 @@ is no automatic repair action; transformations are authored by the native coding
 consumers in the primary tint on the right: a train table offers **Train a
 model**; an eval table offers **Run the optimiser** and **Use in a training
 job** (the eval dataset that scores the job); each opens the wizard on its
-page with this version chosen. Any other version that ran shows **Set active**
-as a plain outline on the right. A failed cell prints its traceback under an
+page with the current published dataset selected, without changing its active cell.
+Other cells have no activation control or empty action footer. The Console cannot
+change the active dataset version. A failed cell prints its traceback under an
 **Error** label.
 
 The quality chip shows **Quality passed** or a warning-tinted **Review recommended**.
@@ -735,6 +744,35 @@ preprocessing gate; model-specific preparation runs within the launched job.
 Overlap is advisory in setup.
 Unreadable data, invalid technical formats and incompatible model settings still
 block execution. There is no extra quality-approval step.
+
+Training validation appears as a **Validation loss** graph in the same metrics grid
+and card as loss, learning rate and gradient norm. It plots recorded fixed-sample
+checks by training step. Monitoring tables, timings, examples, checkpoints and
+policy details are not shown in this card; retained records remain available
+through REST and MCP. Missing measurements stay empty rather than becoming zero.
+
+Training metric cards retain their outer frame. The title strip and summary footer
+have full-width dividers; the plot spans the card's inner width without a second
+frame or inset axis gutter. The plot has no margins; endpoint labels overlay it.
+A faint dashed grid follows the numeric axis ticks rather than fixed fractions
+of the frame. Non-negative metrics start
+at zero, with the bottom zero label omitted; only the upper bound and first and
+last steps are labelled. Negative measurements retain their lower bound label.
+Constant and single-point series remain visible. The footer shows three statistics from unaggregated recorded
+measurements: latest, lowest and change from first for loss; latest, highest and
+percentage-point change for accuracy; latest, peak and initial for learning rate;
+latest, peak and average for gradient norm. Terminal runs say **Last recorded**.
+Comparisons show separate model summaries, never pooled statistics. A single
+measurement has no measured change.
+
+Graph tooltips use the shared `GraphTooltip`: the step, epoch, iteration or timestamp
+is above the values. Each series is a full-width split row with its line colour and
+name on the left and its formatted value on the right, without nested row boxes or
+inset gutters. Training series use the model name;
+other graphs retain their evaluator or metric identity. Tooltips use the dark
+popover surface and full-width header divider.
+Pointer clicks on graphs do not add a focus outline. Keyboard focus retains its
+indicator and chart navigation.
 
 ### Motion (system-wide)
 

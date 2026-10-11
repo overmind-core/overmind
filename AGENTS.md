@@ -138,7 +138,9 @@ Each line is the invariant; the named skill section carries the mechanics.
 
 - Data-first projects start from uploaded data and the original task brief; repository scans and capabilities are optional. Saved `DataPartitionPlan` recipes preserve exact content, declared groups, synthetic lineage and duplicate observations across train/development/calibration/final roles. Calibration/final members have eval intent; native inputs and references are projected losslessly for evaluation, and construction exposes stage/count progress. Standalone `NativeEvaluationPlan` comparisons accept foundations, trained artifacts and qualified external probability adapters, with optional frozen calibration before final scoring. `TrainingExperiment` extends job groups with explicit variants, a shared protocol and development-only checkpoint selection. `DecisionPerformanceRun` measures a saved client workload without activation. Console, REST and MCP share these services; completed responses and native call IDs are reused, unresolved submissions are never blindly replayed. Provider aliases, partial cost records and unmeasured hardware fit remain explicit. Detail: backend-architecture § Data-first model workflows.
 
-- Workshop execution uses immutable `DatasetPipeline` recipes and durable `DatasetPipelineRun` receipts. They bind source/output/artifact cells and fingerprints, stable request keys, execution state, impact and producer attribution. `get_job(kind=dataset_pipeline)` and its resource read an exact run. Cancellation prevents publication without claiming remote termination; expired runs fail without automatic replay. External execution is attributed, not independently verified. The cutover archives old conversations, runs and provider receipts in DatasetHistory before dropping the agent tables and fields. Published cells retain their read-only scripts, reviews and frames. No legacy runtime or compatibility endpoints remain. MCP contract 3.0 retires `message_dataset_agent`, `run_dataset` and `manage_dataset_workflow`. Detail: data-workshop skill.
+- Workshop execution uses immutable `DatasetPipeline` recipes and durable `DatasetPipelineRun` receipts. They bind source/output/artifact cells and fingerprints, stable request keys, execution state, impact and producer attribution. `get_job(kind=dataset_pipeline)` and its resource read an exact run. Cancellation prevents publication without claiming remote termination; expired runs fail without automatic replay. A PostgreSQL session lock admits one Workshop controller; startup fails interrupted recipe runs and cleans their containers without replaying scripts. Runner availability heartbeats continue through validation and publication without advancing measured progress. External execution is attributed, not independently verified. The cutover archives old conversations, runs and provider receipts in DatasetHistory before dropping the agent tables and fields. Published cells retain their read-only scripts, reviews and frames. No legacy runtime or compatibility endpoints remain. MCP contract 3.0 retires `message_dataset_agent`, `run_dataset` and `manage_dataset_workflow`. Detail: data-workshop skill.
+
+- `save_dataset_pipeline(dataset=..., package=...)` automatically associates the retained script with its preparation; old request retries never reset that association. Workshop exposes the selected process, execution receipts and publication validation without a preparation-findings feature.
 
 - Workshop handoffs return project-bound upload argv. Absolute min_rows/max_rows checks apply at publication and remain visibly deferred in previews; row preservation, schema and lineage checks apply in both modes. Runs expose queue age, polling interval, terminal time and structured failed checks. Format readiness does not establish task suitability. The native agent inspects the named capability and verifies published output before claiming preparation complete. Detail: data-workshop and mcp skills.
 
@@ -161,7 +163,7 @@ Each line is the invariant; the named skill section carries the mechanics.
 
 - Frontend must use the generated OpenAPI client in `frontend/src/openapi/` — never hand-edit it.
 
-- Dataset storage preserves mixed scalars and precision-sensitive integers as JSON;
+- Dataset storage bounds Parquet staging and DataFrame chunks by bytes and reads small row batches. It preserves mixed scalars and precision-sensitive integers as JSON;
   shared pandas readers must not coerce them again. MCP queries cap JSON output at
   32 KiB and return `query_result_too_large` without clipping values; a configurable
   ten-second default execution deadline returns `query_timeout`. The CLI exports
@@ -183,8 +185,7 @@ Each line is the invariant; the named skill section carries the mechanics.
   retained-script condition citations and a returned `flow` entity. Runtime receipts
   separate those declarations from actual input cells, row counts and fingerprints.
   The Console keeps full-size existing cells at scale 1 on a grid-snapped canvas:
-  progress runs downward; sibling branches align on the same horizontal layer. The title's version
-  chip previews/restores exact cells without replaying scripts. Detail: data-workshop skill.
+  progress runs downward; sibling branches align on the same horizontal layer. The Process control shows current execution facts. Corrections replace the displayed process; there is no repair-history or restore view. The preparation graph follows verified run inputs, partition members and derivations across datasets; exact consumer-pinned cells remain reproducible internally. Detail: data-workshop skill.
   Each entrypoint exposes its meaningful step logic; helpers hold reusable utilities.
   Cells expose receipt-backed transformation attribution and allow inspection of all
   checksum-verified retained package files. External imports remain distinct from

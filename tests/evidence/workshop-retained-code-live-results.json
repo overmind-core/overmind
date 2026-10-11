@@ -1,0 +1,46 @@
+{
+  "endpoint": "http://localhost:8000/api/mcp/",
+  "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+  "source_rows": 200,
+  "contract": "6.0",
+  "catalog_sha256": "6a98e128557ca179c5ae6c71de9d0fcfcbe1c7014535315fc9d65876fae01b85",
+  "package_free_rejection": {
+    "code": "invalid_input",
+    "message": "Tool arguments do not match its schema: arguments",
+    "retryable": false,
+    "fields": {
+      "arguments": "Value error, A retained Python package is required. Author meaningful stages, upload with overmind dataset pipeline-upload, then supply package. Read overmind://dataset-upload."
+    }
+  },
+  "historical_read_only": true,
+  "dataset": "f4d90773-424a-4834-9198-6563f04a0d75",
+  "source_cell": "348bf004-cb0f-4f9a-8b71-e901d58040af",
+  "package": "328fa690-6c54-4b40-811f-9584050e06d5",
+  "pipeline": "3878b510-d325-4515-a0ba-9502f72adac5",
+  "runs": [
+    {
+      "id": "36e9004d-811f-4c21-9b98-044c91cd090a",
+      "mode": "preview",
+      "rows_per_step": [
+        25,
+        25,
+        25
+      ],
+      "seconds": 2.431,
+      "output_cell": null
+    },
+    {
+      "id": "eb310c77-30f4-4bfc-b93d-8518a8ec8d15",
+      "mode": "publish",
+      "rows_per_step": [
+        200,
+        200,
+        200
+      ],
+      "seconds": 2.423,
+      "output_cell": "7f2a4a84-312b-40e2-a726-5b66643e4676"
+    }
+  ],
+  "all_rows_verified": 200,
+  "package_checksum_verified": true
+}

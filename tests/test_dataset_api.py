@@ -168,6 +168,32 @@ def test_rows_carry_diff_marks_against_the_cell_before():
     assert len(marks) == 3
 
 
+def test_row_pages_cross_storage_groups_without_changing_values_or_positions(monkeypatch):
+    monkeypatch.setattr(store, "ROW_GROUP_SIZE", 3)
+    project = _project()
+    client = _client(project)
+    values = [2**63 + 3, None, 0.25, False, "", {"p": [0.2, 0.8]}, [], "tail"]
+    dataset = _create(client, project, rows=[{"value": value} for value in values])
+    url = f"/api/datasets/{dataset.id}/rows/"
+    for offset, limit, sort, direction, indices in [
+        (0, 2, "", "asc", [0, 1]),
+        (2, 4, "", "asc", [2, 3, 4, 5]),
+        (6, 4, "_index", "asc", [6, 7]),
+        (2, 4, "_index", "desc", [5, 4, 3, 2]),
+        (7, 4, "_index", "desc", [0]),
+        (8, 10, "", "asc", []),
+        (20, 10, "_index", "desc", []),
+    ]:
+        response = client.get(
+            url, {"offset": offset, "limit": limit, "sort": sort, "dir": direction}
+        )
+        assert response.status_code == 200, response.content
+        assert response.data["total"] == len(values)
+        assert [r["_index"] for r in response.data["rows"]] == indices
+        assert [r["value"] for r in response.data["rows"]] == [values[i] for i in indices]
+        assert [r["source_row"] for r in response.data["rows"]] == indices
+
+
 def test_export_streams_a_version_raw_without_using_it():
     project = _project()
     client = _client(project)

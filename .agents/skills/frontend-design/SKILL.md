@@ -57,11 +57,11 @@ Reuse Agent trajectory controls and its toggleable, persisted minimap treatment.
 The minimap toggle shares the left-hand control box with the dataset sidebar
 button; there is no cell-search button or cell-selector strip.
 Positions persist per project/dataset in the browser and never
-change execution. A breadcrumb-adjacent version chip replaces the run bar, with
-read-only iteration selection and explicit exact-cell restore. Canvas wrapper
-styles must not redesign cells or the rows grid.
-The default canvas follows the active output's recorded ancestors; All iterations
-reveals history explicitly. Condition chips sit just above destination handles,
+change execution. A breadcrumb-adjacent Process control shows the current run
+during execution and the selected successful process after publication. Canvas
+wrapper styles must not redesign cells or the rows grid. Corrections replace the
+displayed process; there is no repair-history or restore view. Verified source,
+script, derivation and partition dependencies connect related datasets. Condition chips sit just above destination handles,
 with an opaque card surface and input-token border, not on the shared branch rail.
 
 A table fix applied to one codepath silently misses the other:

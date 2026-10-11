@@ -191,6 +191,13 @@ export interface DatasetListFilters {
   pageSize?: number;
 }
 
+export function useDatasetPreparationQuery(datasetId: string, cell?: string) {
+  return useQuery({
+    queryFn: () => apiClient.datasets.datasetsPreparationRetrieve({ cell, id: datasetId }),
+    queryKey: ["datasets", datasetId, "preparation", cell],
+  });
+}
+
 export function useDatasetsQuery(projectId: string | undefined, filters: DatasetListFilters = {}) {
   return useQuery<PaginatedDatasetList>({
     enabled: !!projectId,

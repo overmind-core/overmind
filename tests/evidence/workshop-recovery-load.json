@@ -1,0 +1,2250 @@
+{
+  "run": "recovery-load-20261009",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "file": "native-1.pdf",
+      "sha256": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "9909bcd8-5155-497d-84fa-a33a91eeced8",
+      "cell": {
+        "id": "8fd4231c-11d8-4001-b896-924e18096b5f",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "e66df09a79f1fd730e218a2fe285b56da74cbaf6963b3bd1841b1523362de556",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.115,
+      "error": null
+    },
+    {
+      "file": "corrupt.pdf",
+      "sha256": "04a660a44a04903692a132d1644f2a29f4f7f3a6bb1e291f25453d8c28f58b6c",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "0886c3c4-093c-4683-af74-4cb0a0c2f8d4",
+      "cell": {
+        "id": "8fd4231c-11d8-4001-b896-924e18096b5f",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "e66df09a79f1fd730e218a2fe285b56da74cbaf6963b3bd1841b1523362de556",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.903,
+      "error": "The PDF could not be read. Check that it is readable and not password protected."
+    },
+    {
+      "file": "native-10.pdf",
+      "sha256": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "7ead3170-76d3-432c-a603-3217857dd0ef",
+      "cell": {
+        "id": "23b85d10-3cd7-41ba-8812-2af6ff0cb2d0",
+        "version": "1.1",
+        "title": "Added files",
+        "rows": 22,
+        "fingerprint": "8a69f032827b5a6afe489a46567986253fc3149c93321b6fa58ccec941de48a1",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 2,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 1.441,
+      "error": null
+    },
+    {
+      "file": "batch-02.pdf",
+      "sha256": "f5d781e5cec443801cffac4c46c2197ed7c67fc4d2129f0d90e2a1e893fb2bec",
+      "dataset": "c7067ece-6087-497f-bfa1-f4b58f2a58e6",
+      "transfer": "566f4ead-e7fa-4078-91d3-9f505f904ae1",
+      "cell": {
+        "id": "f296f98c-3560-407e-bd78-c306d898ecf6",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "57e72d70d4acfc178153c5e109b46f90c6fb89ce76e98f8735fc66da36fdad12",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.099,
+      "error": null
+    },
+    {
+      "file": "batch-01.pdf",
+      "sha256": "ed4a79aec138f8e1a05cb0b7799983ecce6d2eaa21507f1892b8cab380c2d194",
+      "dataset": "42abf6d9-5f1b-4db1-9473-5efd7265bd02",
+      "transfer": "93e7d80b-3c1d-441b-9a8d-51ebcea1760f",
+      "cell": {
+        "id": "2787dfd0-bcbe-40cf-a872-7bef93dc6895",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "30d6ce13e0506ab53779dd21052f3a108c03cb33122feeb010bad9a4cab60218",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.105,
+      "error": null
+    },
+    {
+      "file": "batch-03.pdf",
+      "sha256": "c8ba2fe004753f65ae6a28e6912b3e31eaf43202c1239f9234d785e3e3222e29",
+      "dataset": "f30170b4-4a81-4cde-bcdd-34959d503e7a",
+      "transfer": "ade8534c-4bac-444d-9a57-45ccdf5b102e",
+      "cell": {
+        "id": "470c9d5a-8d16-4684-9945-a1e892e6151a",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "4ecd7d32929cfa74cb9a4996dcaba2dc82fc162559ec450f5363912ffcf34e45",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.102,
+      "error": null
+    },
+    {
+      "file": "batch-00.pdf",
+      "sha256": "e44db6095c473f2257c85687402ce14e5c11c2920ecc69b60631829469a0c834",
+      "dataset": "38613761-30e1-462f-aa89-64ed65527fe1",
+      "transfer": "1766d9b0-b5a0-4603-a9dd-e5b524cc48d4",
+      "cell": {
+        "id": "d183bb10-99d8-4d75-8912-3ebbf6c9e6b4",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "5d4d1b69c9b28f797ad13da7d00a18192809ef10b87aefca08a2339fc0986d85",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.11,
+      "error": null
+    },
+    {
+      "file": "batch-07.pdf",
+      "sha256": "f8316e1c300ac292357785fd6a823892b28d0dba70470e043cfadbc43c02b1d8",
+      "dataset": "61a25575-c550-4541-9fff-236d2f5632f3",
+      "transfer": "19053572-7cff-47f3-af3f-3ef00a36c99c",
+      "cell": {
+        "id": "01dba3b1-c4d6-4171-bf76-a59fe479e633",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "662d5931221b42e6679ec30807637cca8dd561227f03ece244d296703ba4f77b",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.286,
+      "error": null
+    },
+    {
+      "file": "batch-04.pdf",
+      "sha256": "ff2c5530c93491a66feb9db51118b3d129d08996b3e0db76e5310faf7660668b",
+      "dataset": "2d71aca3-8596-49e8-873a-56106818a4b2",
+      "transfer": "cf17892c-59a6-4b33-9548-a6b5c23c79df",
+      "cell": {
+        "id": "20489d97-da1b-43ad-afca-acf9114f20e3",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "5813ee4ab60f8d93b5ea4309ca912c374d4d646950dd7a279b4381f3ded22d20",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.295,
+      "error": null
+    },
+    {
+      "file": "batch-06.pdf",
+      "sha256": "db7b26c5a27472b3f5ab9c6ebb62f9cfde26e0badfbe74c769396a41ef8ba80e",
+      "dataset": "bd720751-fb30-4688-9495-94acd761c6b7",
+      "transfer": "63b3e9b9-ae4d-46cd-8d91-df6ef544b04c",
+      "cell": {
+        "id": "1ed16d51-02a5-482e-867e-e616542f5a8e",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "3f11b8a4858ef974f89eca6a6fb0281584fda65eec3d69d26bf9f51b4332b6ac",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.296,
+      "error": null
+    },
+    {
+      "file": "batch-05.pdf",
+      "sha256": "ee7fc293ece124e51d1abfabc85280e93fbd762f3e3bc76e728706d2ca8345a6",
+      "dataset": "1af54892-9a51-4b7b-b78a-a042b20eb285",
+      "transfer": "5171472b-4046-4064-8850-e7a49f4386c8",
+      "cell": {
+        "id": "fe4521a9-b34a-464e-b3ce-e71c108c1a93",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "f1bea61feaf0af21d18eb0ab607a8d9e4a6efb5832398deb91398c99b3f049b8",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.298,
+      "error": null
+    },
+    {
+      "file": "batch-10.pdf",
+      "sha256": "ffbe2a6f1570d0d3f58a1034e72193062d59d19be2747278ba157b12e99fa513",
+      "dataset": "3db5fe07-27e4-474d-a24b-055c28704e6f",
+      "transfer": "a10e386e-5fee-411c-898c-25a174b5d9ea",
+      "cell": {
+        "id": "2070f0f7-fb20-4522-9a36-d6bb0e000960",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "89d67e5ae75e9c217e75a2880f35d697543f002a0a0751bedbf6308883b4a3fb",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.477,
+      "error": null
+    },
+    {
+      "file": "batch-09.pdf",
+      "sha256": "89afe103bdc93d8c5a7e1616579c59f47a6c104419c20d5fe49eed429ad6b25f",
+      "dataset": "81124871-16fa-4aaa-9128-58e0e0298978",
+      "transfer": "dc94cae0-3fca-4c62-86dc-f3c6ce06720d",
+      "cell": {
+        "id": "64a1beb9-c1e6-4165-8086-1b0b5bba56bd",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "9c62bdc8a1adc91ac3a1bfafef615dc46cdb39e611aa6a4b26026aa00d9b387f",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.485,
+      "error": null
+    },
+    {
+      "file": "batch-11.pdf",
+      "sha256": "e7da3650171614cc2de8af71734a49806607747d21434cf6f02526fb49440359",
+      "dataset": "11a51c4f-c198-486c-8308-c660c89cab67",
+      "transfer": "97df1f2a-517c-43d7-87d0-ba9f8c40336c",
+      "cell": {
+        "id": "ddd17c1a-0f0e-485f-b1de-3b16b6ae3380",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "3eb39beb20f8c9d2781b12841f53ad22b13f4073542a72636d86d3e4aea750fd",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.485,
+      "error": null
+    },
+    {
+      "file": "batch-08.pdf",
+      "sha256": "94cfa9635906410deee73805797f66c0f2adf2e1be8bf3aebafe969eccfee1b9",
+      "dataset": "b3942974-1c98-4664-b47b-619ea8ea6a56",
+      "transfer": "96f01902-6aa3-43c4-9c14-e9444afdf719",
+      "cell": {
+        "id": "c8098522-22f7-4d40-a2c4-75ec7c138230",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "c50bdfb904a43113e8f048bc0ea4914412c2cd81b581233f5ae6d55c84aceaeb",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.517,
+      "error": null
+    },
+    {
+      "file": "batch-12.pdf",
+      "sha256": "d3da78b96fe1af1e60cf35f09417cb47e07d27e800abd972cb4945a5a1dcc074",
+      "dataset": "129c744a-b91a-424b-a736-914145fd9b9a",
+      "transfer": "99969573-c3c2-4926-b00f-62645c63c349",
+      "cell": {
+        "id": "ee701449-0a94-475b-9984-fc86e3d6d106",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "03396c7c9837fbe6c079a15295c4ffab98e94734ad1a1eead8e800a2cfa0155a",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.351,
+      "error": null
+    },
+    {
+      "file": "batch-15.pdf",
+      "sha256": "90b261ba0dc6174637ff1ae10e84299c33022247c6bc99db093b1a7e50724922",
+      "dataset": "7e514327-f507-4a09-b679-c44a46407386",
+      "transfer": "050854dd-7ee9-407b-aed8-237fa1b5ba69",
+      "cell": {
+        "id": "93b9fccd-83d0-44f7-a3c4-79e9fe88bea5",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "29e73ce467ef414eabc77cc5dd2684d26cfb932a88a03827bc8468f75b502fc2",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.349,
+      "error": null
+    },
+    {
+      "file": "batch-14.pdf",
+      "sha256": "febe1bbc3be1abb63dd6cfc3a28cae8c5bfe4625569b75472f03f912ed74693c",
+      "dataset": "7e010647-2db8-4612-9b21-e7efad5a498c",
+      "transfer": "df5d6ad5-0802-43c1-bdaa-a7fa21a64064",
+      "cell": {
+        "id": "11f1478b-97f0-479a-bd27-7f2990103d48",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "a92cdeaa92f26ecc6f35520f6822602faf4d30ef2cc7b418b037f171a102f52b",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.356,
+      "error": null
+    },
+    {
+      "file": "batch-13.pdf",
+      "sha256": "1a42b1bfadeb38cbe6c4da4011383fec87838d9098bac36fbf17ef1f76f10529",
+      "dataset": "0649f8f3-3bd0-488b-94e2-cee6fe77a098",
+      "transfer": "55f2ab48-a7e8-40c9-8bb0-68abc05d2315",
+      "cell": {
+        "id": "7308355d-da0a-4b2d-b9fc-e3b38f5e7f3d",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "f9fdd0920bc7325c478be0600c85cfceedc56b393ee78fb089c7db066664ee9d",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.362,
+      "error": null
+    },
+    {
+      "file": "batch-17.pdf",
+      "sha256": "4a15720b0edb0d7701c563fbbc206d3e0bcef0cdf4141ddbcfa2a9b34f1881cf",
+      "dataset": "2c82bbd0-6746-4d7a-86ee-b5d6cd32548c",
+      "transfer": "d52c2ed7-a97b-447e-9a01-0ccd62ea5e91",
+      "cell": {
+        "id": "da18ea99-77df-42a8-8e67-ed7f7178b67d",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "838bf901978007cbf2f6f01e29d4bccb260be743d251080977b0e8788f155436",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.88,
+      "error": null
+    },
+    {
+      "file": "batch-19.pdf",
+      "sha256": "24c236d3c6bc7bfeff41aec4dd48e9234614dd1401653d237aad73c7e49783b8",
+      "dataset": "6433523e-e927-4357-9875-44fb09a301db",
+      "transfer": "21e6c287-05f7-4eb5-8e61-508f102907e8",
+      "cell": {
+        "id": "58a6a8b3-11fa-429d-8594-a7aa48579594",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "82c48808e55cc4b0d881882a239b4d8fa07359daae9b82c9544ec590901d1884",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.275,
+      "error": null
+    },
+    {
+      "file": "batch-16.pdf",
+      "sha256": "229bde203572331591b75e14e2e987d42a6e5b8f474286ef5f861e9ff009e508",
+      "dataset": "7d532500-c3f8-471f-b58b-60eae50ab5cb",
+      "transfer": "d3182f62-0e52-4b22-9b24-f5e36b7bb5d3",
+      "cell": {
+        "id": "d0733d0d-cc69-43c5-bf17-db1f15a8c65a",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "5f1e90cc9add393afd1ac3d353a6fef3742a4292260dd15666141e4985bb3b26",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.285,
+      "error": null
+    },
+    {
+      "file": "batch-18.pdf",
+      "sha256": "a0b3309a151b576bd7703dadfabe85dc7ef59e7296c4af55eb1cad190afa8afd",
+      "dataset": "2672144f-6cff-47bc-8128-995dcc248a4c",
+      "transfer": "06e77ed9-60f3-4897-b089-07cd32cbf819",
+      "cell": {
+        "id": "e2488815-31ea-4b23-ac8d-9c9de7ef702a",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "b44c5c9ecae8d79f600c4e0ec1f76f53a5515834cd4e75fdff229637b6ecde00",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.283,
+      "error": null
+    },
+    {
+      "file": "batch-20.pdf",
+      "sha256": "53009095f5f86d5736e23c47cd904b4e68142b301c168aa4b02f0767bdab2fda",
+      "dataset": "f81ae323-646d-4132-b690-89138b0b4f52",
+      "transfer": "7076c0c8-eb13-4127-85b2-6d8b94c46d53",
+      "cell": {
+        "id": "f99ef180-72ea-45b1-a48d-4a38cb0b54ef",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "b7c943279d04774df8ac0a9f62059187b03168ca0023119b4f39740aa613527f",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 1.016,
+      "error": null
+    },
+    {
+      "file": "batch-22.pdf",
+      "sha256": "6ab30656d55b86c34f1939b955befd2a50b48888bed7887f86b04f7f0d8e0ab3",
+      "dataset": "2b3f847a-62c7-455e-a103-00a27ef95074",
+      "transfer": "e8d78f9d-a4b4-4c90-b32c-faaab9507484",
+      "cell": {
+        "id": "3b295fcf-d61e-468d-bac4-64f5ef84d313",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "77a8507070b9fc4979909ce62924d427cfbd303755bfd7a795cd2bfdb629ebb3",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.956,
+      "error": null
+    },
+    {
+      "file": "batch-21.pdf",
+      "sha256": "37a3dc0c5ec3d6500487c65b42b2cda37d1832c1853f420ce0ada7b4d99bf3d6",
+      "dataset": "3423dddf-3fdd-4880-a12b-98c41b90c8c3",
+      "transfer": "f33acf1f-bbf2-4a6e-bb69-d10123d93eae",
+      "cell": {
+        "id": "4e39dfe7-30e9-4462-8e21-fbd5cc4d4057",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "a4a2ba1e3edba64943f23de449c3887e42ad3c10724c21ac3f702cf2ea7fed9a",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.97,
+      "error": null
+    },
+    {
+      "file": "batch-23.pdf",
+      "sha256": "e7d1f0f63c4d47613131d88848472e4ff592090ae73aa1c10c85ca1fe3260c5a",
+      "dataset": "1ba6dce5-c003-4c17-8c0f-9c0d977e7510",
+      "transfer": "ec386f00-7d38-4b7d-a0c8-0d66f182393c",
+      "cell": {
+        "id": "752e089f-331b-41a2-a4e9-a624c4031172",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "a6a046106e5388db343fa0ec76cbff987430d680812e34dbdd0e88738733bef6",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.95,
+      "error": null
+    },
+    {
+      "file": "batch-24.pdf",
+      "sha256": "dcc24716b9881a5856d22b4c2fff0e2b50bad361d6586f224ac9e18d974a5383",
+      "dataset": "9600315e-e9d1-4ff4-b52f-51e1d01e1c81",
+      "transfer": "7cb34091-432d-45db-8aa0-c17f138dd030",
+      "cell": {
+        "id": "d1f27e2d-e3b8-4ca8-9c42-9b80cc6be51d",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 2,
+        "fingerprint": "fdac877fbfa4ee93a6795ccf5d83572e6a1029a820f7a4e8f4985efde94994b1",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 1,
+        "has_more": false,
+        "next_cursor": null
+      },
+      "seconds": 0.983,
+      "error": null
+    },
+    {
+      "file": "batch-00.pdf",
+      "sha256": "e44db6095c473f2257c85687402ce14e5c11c2920ecc69b60631829469a0c834",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "220eeedd-aec5-4bf3-bd48-50880fee7f11",
+      "cell": {
+        "id": "278eb8f2-6216-48b9-bf37-eefb67a543ce",
+        "version": "1.2",
+        "title": "Added files",
+        "rows": 24,
+        "fingerprint": "1c240f05cbf52f10bde58eb0e2fd021f2d33513005ed51559e403d49851ff76c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 3,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 1.028,
+      "error": null
+    },
+    {
+      "file": "batch-01.pdf",
+      "sha256": "ed4a79aec138f8e1a05cb0b7799983ecce6d2eaa21507f1892b8cab380c2d194",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "d0709419-ef42-4c30-834b-b0e84c77d248",
+      "cell": {
+        "id": "3269d100-3921-4966-8939-16b4224c507e",
+        "version": "1.3",
+        "title": "Added files",
+        "rows": 26,
+        "fingerprint": "611b822229dcf62462f9f9c3d7bb7e76e86cc2256d5330c32c54752f4b91a98c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 4,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.813,
+      "error": null
+    },
+    {
+      "file": "batch-02.pdf",
+      "sha256": "f5d781e5cec443801cffac4c46c2197ed7c67fc4d2129f0d90e2a1e893fb2bec",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "5423ddbe-20e7-4c9f-9aed-c6b2264b6c67",
+      "cell": {
+        "id": "eff2b069-11e4-4c66-97a3-0a5109bfff5d",
+        "version": "1.4",
+        "title": "Added files",
+        "rows": 28,
+        "fingerprint": "492b22eb52e94564bf927473cc61d2f265f658f693131d960c0dd374c4a111e1",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 5,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.924,
+      "error": null
+    },
+    {
+      "file": "batch-03.pdf",
+      "sha256": "c8ba2fe004753f65ae6a28e6912b3e31eaf43202c1239f9234d785e3e3222e29",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "f44986e7-94ee-49b9-bd1f-9a06c2aedc63",
+      "cell": {
+        "id": "fac2206b-218c-4457-a991-13409b2c5f27",
+        "version": "1.5",
+        "title": "Added files",
+        "rows": 30,
+        "fingerprint": "1450cdba5f2c8d4fc75a6f6f3e40af2f1bd14de61cf3fc2569c3769506cbc5d3",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 6,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.814,
+      "error": null
+    },
+    {
+      "file": "batch-04.pdf",
+      "sha256": "ff2c5530c93491a66feb9db51118b3d129d08996b3e0db76e5310faf7660668b",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "1739d98e-fd86-4ad7-a53b-f40fe35a68e5",
+      "cell": {
+        "id": "a9181c21-e56a-4a64-a061-d4cdf923d621",
+        "version": "1.6",
+        "title": "Added files",
+        "rows": 32,
+        "fingerprint": "a92a415c780e2e65c9fdd5a4973afabf6a07e374731952d0b63e002388e7ec87",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 7,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.786,
+      "error": null
+    },
+    {
+      "file": "batch-05.pdf",
+      "sha256": "ee7fc293ece124e51d1abfabc85280e93fbd762f3e3bc76e728706d2ca8345a6",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "750260ca-3923-4912-972a-b8aea1a08555",
+      "cell": {
+        "id": "e2b48d9c-294e-4e9c-a90f-35e3f557d366",
+        "version": "1.7",
+        "title": "Added files",
+        "rows": 34,
+        "fingerprint": "55cb3609883de0e26c30b5634adbad62b5de39fb7a5465eca38100c771bffc2c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 8,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.832,
+      "error": null
+    },
+    {
+      "file": "batch-06.pdf",
+      "sha256": "db7b26c5a27472b3f5ab9c6ebb62f9cfde26e0badfbe74c769396a41ef8ba80e",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "608ac491-b44f-499d-a9fc-a758bd97b6d7",
+      "cell": {
+        "id": "fd839c65-cb6f-40fb-9f39-ba74ca318a55",
+        "version": "1.8",
+        "title": "Added files",
+        "rows": 36,
+        "fingerprint": "69d7e1f04ea6bfe71477e68675f9e4bedf2a1f6e2ca2909e890dfd474c6eda3b",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 9,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.965,
+      "error": null
+    },
+    {
+      "file": "batch-07.pdf",
+      "sha256": "f8316e1c300ac292357785fd6a823892b28d0dba70470e043cfadbc43c02b1d8",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "dc6dedf2-c902-483d-96f5-4f7f87946da1",
+      "cell": {
+        "id": "36e53a55-12be-49d6-8a0e-2d9d4e5a675d",
+        "version": "1.9",
+        "title": "Added files",
+        "rows": 38,
+        "fingerprint": "28724498a2f3c1d15bca6d91c2e0f7cd2d0be0aa3e63577dd1257cd436b1f817",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 10,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.82,
+      "error": null
+    },
+    {
+      "file": "batch-08.pdf",
+      "sha256": "94cfa9635906410deee73805797f66c0f2adf2e1be8bf3aebafe969eccfee1b9",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "66f7ae96-aabb-48b4-a066-63458854326a",
+      "cell": {
+        "id": "28a68c4b-ad15-4841-8136-fbe73cd412d9",
+        "version": "1.10",
+        "title": "Added files",
+        "rows": 40,
+        "fingerprint": "3ba7948f654f063a21403c9dc120b907f8de4db5eb8532f174e972196eab2db8",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 11,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.77,
+      "error": null
+    },
+    {
+      "file": "batch-09.pdf",
+      "sha256": "89afe103bdc93d8c5a7e1616579c59f47a6c104419c20d5fe49eed429ad6b25f",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "93ad2b8c-4beb-45e2-baec-8d5454d24adc",
+      "cell": {
+        "id": "79070b23-8577-4ea3-94c2-1b8e35138fea",
+        "version": "1.11",
+        "title": "Added files",
+        "rows": 42,
+        "fingerprint": "4284937faab5b144769e63ba9640842cc1679b01f1b18fc17e548626139a177e",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 12,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.935,
+      "error": null
+    },
+    {
+      "file": "batch-10.pdf",
+      "sha256": "ffbe2a6f1570d0d3f58a1034e72193062d59d19be2747278ba157b12e99fa513",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "98b13e9d-18b1-43c2-bfc2-2cc7f7c86a6c",
+      "cell": {
+        "id": "ed623b75-4f82-4eee-b3e3-8906fb88bd66",
+        "version": "1.12",
+        "title": "Added files",
+        "rows": 44,
+        "fingerprint": "54268aea8300846253e14674c10482bfa4612ddfbf6cd6bbfada01a8d2d3219a",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 13,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.814,
+      "error": null
+    },
+    {
+      "file": "batch-11.pdf",
+      "sha256": "e7da3650171614cc2de8af71734a49806607747d21434cf6f02526fb49440359",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "ab900e43-b0bd-40a1-baf0-f54c96b7fe1b",
+      "cell": {
+        "id": "6370d39b-0861-43f4-b57b-a6e0aaf29f6f",
+        "version": "1.13",
+        "title": "Added files",
+        "rows": 46,
+        "fingerprint": "4942924dbeaf5903a5e746f8f740611906ff9e2103ab686599572cb6ab4a9a84",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 14,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.835,
+      "error": null
+    },
+    {
+      "file": "batch-12.pdf",
+      "sha256": "d3da78b96fe1af1e60cf35f09417cb47e07d27e800abd972cb4945a5a1dcc074",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "52da451d-e79a-4168-a056-854ab89ab3ae",
+      "cell": {
+        "id": "6b9c497c-0988-4cd7-9a2e-f58a619e56d7",
+        "version": "1.14",
+        "title": "Added files",
+        "rows": 48,
+        "fingerprint": "9fe1ba4a3f9042bfc5f7449a70c8eb12cb050b0934e954cd15710769d9aa3279",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 15,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.856,
+      "error": null
+    },
+    {
+      "file": "batch-13.pdf",
+      "sha256": "1a42b1bfadeb38cbe6c4da4011383fec87838d9098bac36fbf17ef1f76f10529",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "0d37da2a-31bd-4c2d-81ab-16c372118716",
+      "cell": {
+        "id": "c435fc2b-0421-4a75-9ac5-11565da6ee04",
+        "version": "1.15",
+        "title": "Added files",
+        "rows": 50,
+        "fingerprint": "b77b4dc0c1a9344f9e443d4b0b7bb0d99ef1b2953a7d8cfed1f00e1aa5cdeaff",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 16,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.786,
+      "error": null
+    },
+    {
+      "file": "batch-14.pdf",
+      "sha256": "febe1bbc3be1abb63dd6cfc3a28cae8c5bfe4625569b75472f03f912ed74693c",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "6f95f78f-7dec-4c48-8d90-d1fa8f9a33e0",
+      "cell": {
+        "id": "c301b514-7c2f-43ec-90a2-75475ad31388",
+        "version": "1.16",
+        "title": "Added files",
+        "rows": 52,
+        "fingerprint": "0d97280c89cc8f6a08ea02ff2921f3335af3a9bd0043776f8e19a1400a6228a1",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 17,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.746,
+      "error": null
+    },
+    {
+      "file": "batch-15.pdf",
+      "sha256": "90b261ba0dc6174637ff1ae10e84299c33022247c6bc99db093b1a7e50724922",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "7617ac08-dd6b-40fb-96d1-0b0965301b71",
+      "cell": {
+        "id": "cfc2801d-6ae4-486a-887f-20e022ff5e43",
+        "version": "1.17",
+        "title": "Added files",
+        "rows": 54,
+        "fingerprint": "cf1bfc0028c06c91d1258178d73ee1a2e7e9f456e43d8f94ded46dfc738c4982",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 18,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.867,
+      "error": null
+    },
+    {
+      "file": "batch-16.pdf",
+      "sha256": "229bde203572331591b75e14e2e987d42a6e5b8f474286ef5f861e9ff009e508",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "1bea9b09-334b-4d8d-9788-f52414aba4c7",
+      "cell": {
+        "id": "0222b36d-ede7-4772-bc47-95850f1b201d",
+        "version": "1.18",
+        "title": "Added files",
+        "rows": 56,
+        "fingerprint": "3ca6990cd830685ad5696393103a67f9b9f3261c62ab1614dcba7910490db858",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 19,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.836,
+      "error": null
+    },
+    {
+      "file": "batch-17.pdf",
+      "sha256": "4a15720b0edb0d7701c563fbbc206d3e0bcef0cdf4141ddbcfa2a9b34f1881cf",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "0b862255-c6fc-43b7-a8a2-85c622e749db",
+      "cell": {
+        "id": "1747fadd-08f5-4dff-a683-590a63fd652f",
+        "version": "1.19",
+        "title": "Added files",
+        "rows": 58,
+        "fingerprint": "86340e4bb234ff6e4434b07c3a310f314d02de1d4c306b2379380a85e12e5352",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 20,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.893,
+      "error": null
+    },
+    {
+      "file": "batch-18.pdf",
+      "sha256": "a0b3309a151b576bd7703dadfabe85dc7ef59e7296c4af55eb1cad190afa8afd",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "a73e7197-e3e6-4536-946f-b31591107dc6",
+      "cell": {
+        "id": "bfa10107-08b2-4b04-88fc-185a397c484b",
+        "version": "1.20",
+        "title": "Added files",
+        "rows": 60,
+        "fingerprint": "439d8d33ad247d52bd8d784f77af249e5e087d6ccf9944aec5c8723ba17c1759",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 21,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.811,
+      "error": null
+    },
+    {
+      "file": "batch-19.pdf",
+      "sha256": "24c236d3c6bc7bfeff41aec4dd48e9234614dd1401653d237aad73c7e49783b8",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "f934a747-1db3-4cf3-b674-30da7e04f261",
+      "cell": {
+        "id": "2529047c-e158-4fc2-802d-c253f3b60cd6",
+        "version": "1.21",
+        "title": "Added files",
+        "rows": 62,
+        "fingerprint": "60ecf09d999d9c6e2125c290abf1889b3de2cc03d5f6857eba09c71838dd2282",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 22,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.921,
+      "error": null
+    },
+    {
+      "file": "batch-20.pdf",
+      "sha256": "53009095f5f86d5736e23c47cd904b4e68142b301c168aa4b02f0767bdab2fda",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "426439a5-6c1a-4ab2-864f-26b62864cc59",
+      "cell": {
+        "id": "27f1fdf7-3522-4420-b9ee-3558150c5930",
+        "version": "1.22",
+        "title": "Added files",
+        "rows": 64,
+        "fingerprint": "9d8facd35b46501b922fa4d178c51488888bf4c04ff6ecb02d920d416c4b0e43",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 23,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.834,
+      "error": null
+    },
+    {
+      "file": "batch-21.pdf",
+      "sha256": "37a3dc0c5ec3d6500487c65b42b2cda37d1832c1853f420ce0ada7b4d99bf3d6",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "22bd9e08-26b4-4a58-9b9e-6a8f4f1dce13",
+      "cell": {
+        "id": "1d79591e-f251-477a-86fb-e5c443a809cc",
+        "version": "1.23",
+        "title": "Added files",
+        "rows": 66,
+        "fingerprint": "6b25cdf6cb8430d98e366418c181c2633955fc91284c61d0cde48f08f625bd1c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 24,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.869,
+      "error": null
+    },
+    {
+      "file": "batch-22.pdf",
+      "sha256": "6ab30656d55b86c34f1939b955befd2a50b48888bed7887f86b04f7f0d8e0ab3",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "365faeed-922a-4ed7-9a40-8ec45338c31c",
+      "cell": {
+        "id": "386955e0-2579-4242-8420-d760e7db8380",
+        "version": "1.24",
+        "title": "Added files",
+        "rows": 68,
+        "fingerprint": "0f201098efe069ee083ce8097b469ca52ede479f4cc08b53de72bfeb92c15902",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 25,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 0.882,
+      "error": null
+    },
+    {
+      "file": "batch-23.pdf",
+      "sha256": "e7d1f0f63c4d47613131d88848472e4ff592090ae73aa1c10c85ca1fe3260c5a",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "dfcedac8-ef0c-4555-99c9-d26919e7ce31",
+      "cell": {
+        "id": "011cdedd-8c33-4681-ba60-890f560bd222",
+        "version": "1.25",
+        "title": "Added files",
+        "rows": 70,
+        "fingerprint": "92d588b92b1533384c8408a37cf90f0525cf05d21dccb0fef5fc3af0d2fb965c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 26,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 1.01,
+      "error": null
+    },
+    {
+      "file": "batch-24.pdf",
+      "sha256": "dcc24716b9881a5856d22b4c2fff0e2b50bad361d6586f224ac9e18d974a5383",
+      "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+      "transfer": "eda99361-d4a6-48af-999a-4a9df0075cca",
+      "cell": {
+        "id": "a84caf6a-4709-4f58-ace0-dcf4b46683ba",
+        "version": "1.26",
+        "title": "Added files",
+        "rows": 72,
+        "fingerprint": "e4a70d3a05649dadfaa8fe6c868f6a11b62134393804f67a37a39c8e7dbc508c",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": {
+        "limit": 1,
+        "offset": 0,
+        "total": 27,
+        "has_more": true,
+        "next_cursor": "1"
+      },
+      "seconds": 1.119,
+      "error": null
+    }
+  ],
+  "calls": [
+    {
+      "tool": "get_job",
+      "seconds": 0.015,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0139,
+      "wire_bytes": 21257
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.023,
+      "wire_bytes": 4905
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0159,
+      "wire_bytes": 21711
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0263,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0219,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0531,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0409,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0293,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0386,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0367,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0403,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0443,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0593,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0298,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0326,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0269,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0324,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0376,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0403,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0392,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.1484,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0231,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0401,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0408,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0426,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0429,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0308,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0365,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0374,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0431,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0308,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.043,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0438,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0355,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0372,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0603,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0212,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0189,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0232,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.025,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0304,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0291,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.035,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0307,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0208,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0193,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0262,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.029,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0378,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.1654,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0278,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0289,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0305,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0356,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0354,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0279,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.03,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0291,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0325,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0238,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0213,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0359,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0389,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0579,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.1735,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0232,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0339,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0202,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.02,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0184,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0285,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.028,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.034,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0299,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0387,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0367,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.1007,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0555,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0439,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0223,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0184,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0207,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0334,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0251,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0203,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0205,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0343,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0246,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0247,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0266,
+      "wire_bytes": 4595
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0207,
+      "wire_bytes": 21273
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0269,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0423,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.04,
+      "wire_bytes": 1301
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0307,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.024,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0158,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0136,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0169,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0165,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0284,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0223,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0255,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0202,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0281,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0219,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0256,
+      "wire_bytes": 4609
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0201,
+      "wire_bytes": 25977
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0239,
+      "wire_bytes": 4615
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0197,
+      "wire_bytes": 25985
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0136,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.013,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0322,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0243,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0145,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0159,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0236,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0198,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0305,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0196,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0169,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0139,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0136,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.014,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0237,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.018,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0219,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0185,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0219,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0178,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0208,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0169,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0301,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0199,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0215,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0184,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0205,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0175,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0204,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0181,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0295,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0261,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0215,
+      "wire_bytes": 4617
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0232,
+      "wire_bytes": 25991
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0192,
+      "wire_bytes": 28965
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0173,
+      "wire_bytes": 28963
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0198,
+      "wire_bytes": 28965
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0155,
+      "wire_bytes": 28965
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0165,
+      "wire_bytes": 28965
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0206,
+      "wire_bytes": 26267
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0231,
+      "wire_bytes": 42819
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0203,
+      "wire_bytes": 43413
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0194,
+      "wire_bytes": 43435
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0217,
+      "wire_bytes": 43435
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0267,
+      "wire_bytes": 43435
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0157,
+      "wire_bytes": 30805
+    }
+  ],
+  "success": true,
+  "recovery": {
+    "passed": true,
+    "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+    "retained_cell": "8fd4231c-11d8-4001-b896-924e18096b5f"
+  },
+  "parallel": {
+    "files": 25,
+    "concurrency": 4,
+    "seconds": 13.516,
+    "probe_seconds": [
+      0.0531,
+      0.041,
+      0.0293,
+      0.0593,
+      0.0377,
+      0.0404,
+      0.0392,
+      0.1485,
+      0.0232,
+      0.0308,
+      0.0431,
+      0.0439,
+      0.0355,
+      0.0373,
+      0.0603,
+      0.0212,
+      0.0194,
+      0.0262,
+      0.0291,
+      0.0379,
+      0.1655,
+      0.0278,
+      0.0238,
+      0.0213,
+      0.0359,
+      0.039,
+      0.1736,
+      0.034,
+      0.0299,
+      0.0388,
+      0.0368,
+      0.0439,
+      0.0335,
+      0.0343,
+      0.0247,
+      0.0247,
+      0.0269,
+      0.0424,
+      0.0401
+    ]
+  },
+  "quantity": {
+    "passed": true,
+    "dataset": "35992345-f147-48f3-981d-d3a2e4690fd5",
+    "rows": 72,
+    "sources": 27,
+    "cells": 27
+  },
+  "latency": {
+    "query_dataset": {
+      "count": 39,
+      "median": 0.0367,
+      "p95": 0.1654,
+      "max": 0.1735
+    },
+    "inspect_dataset": {
+      "count": 65,
+      "median": 0.0207,
+      "p95": 0.0365,
+      "max": 0.0555
+    },
+    "get_job": {
+      "count": 53,
+      "median": 0.025,
+      "p95": 0.0443,
+      "max": 0.1007
+    }
+  }
+}

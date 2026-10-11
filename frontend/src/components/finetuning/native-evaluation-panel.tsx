@@ -143,9 +143,9 @@ export function NativeEvaluationPanel({
             </div>
           )}
           {slices && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <caption className="pb-2 text-left text-muted-foreground">
+            <div className="-mx-4 overflow-x-auto">
+              <table className="w-full text-left text-xs [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
+                <caption className="px-4 pb-2 text-left text-muted-foreground">
                   {metricView === "raw" ? "Raw" : "Calibrated"} paired metrics · candidate minus
                   base · negative cross entropy and Brier differences are better
                 </caption>

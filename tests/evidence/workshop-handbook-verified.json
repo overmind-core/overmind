@@ -1,0 +1,2299 @@
+{
+  "success": true,
+  "endpoint": "http://localhost:8000",
+  "work": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-handbook-xsq3aoj5",
+  "calls": [
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0138,
+      "wire_bytes": 27179,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0133,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0152,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0131,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0131,
+      "wire_bytes": 5289,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0131,
+      "wire_bytes": 5289,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0138,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0137,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0153,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0137,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0132,
+      "wire_bytes": 5067,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0375,
+      "wire_bytes": 5215,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0245,
+      "wire_bytes": 27529,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0389,
+      "wire_bytes": 27529,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0133,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0145,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0133,
+      "wire_bytes": 5233,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0139,
+      "wire_bytes": 5289,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0129,
+      "wire_bytes": 5289,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0133,
+      "wire_bytes": 5289,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.02,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0134,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0135,
+      "wire_bytes": 5291,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0144,
+      "wire_bytes": 5215,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0151,
+      "wire_bytes": 27529,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0315,
+      "wire_bytes": 27529,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset_workbench",
+      "seconds": 0.033,
+      "wire_bytes": 32722,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "save_dataset_pipeline",
+      "seconds": 0.0303,
+      "wire_bytes": 8330,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "validate_dataset_pipeline",
+      "seconds": 0.0181,
+      "wire_bytes": 8023,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "start_dataset",
+      "seconds": 0.0133,
+      "wire_bytes": 3947,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0213,
+      "wire_bytes": 7224,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0155,
+      "wire_bytes": 7224,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0128,
+      "wire_bytes": 7360,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0151,
+      "wire_bytes": 11490,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0168,
+      "wire_bytes": 23144,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0147,
+      "wire_bytes": 31280,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0127,
+      "wire_bytes": 13086,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0209,
+      "wire_bytes": 7232,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0147,
+      "wire_bytes": 7232,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0115,
+      "wire_bytes": 7366,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0208,
+      "wire_bytes": 10540,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0232,
+      "wire_bytes": 17484,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0388,
+      "wire_bytes": 28700,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0392,
+      "wire_bytes": 35574,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0334,
+      "wire_bytes": 32792,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0396,
+      "wire_bytes": 7224,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0217,
+      "wire_bytes": 7224,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0144,
+      "wire_bytes": 7360,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0367,
+      "wire_bytes": 11514,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0156,
+      "wire_bytes": 23136,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0182,
+      "wire_bytes": 29318,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0392,
+      "wire_bytes": 35578,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0343,
+      "wire_bytes": 32792,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0458,
+      "wire_bytes": 32792,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0201,
+      "wire_bytes": 388,
+      "is_error": true,
+      "expected_error": "source_conflict"
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.028,
+      "wire_bytes": 32792,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "validate_dataset_pipeline",
+      "seconds": 0.0136,
+      "wire_bytes": 8091,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "start_dataset",
+      "seconds": 0.0111,
+      "wire_bytes": 4007,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0185,
+      "wire_bytes": 7237,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0159,
+      "wire_bytes": 7237,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0137,
+      "wire_bytes": 7358,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 4.0086,
+      "wire_bytes": 23142,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0343,
+      "wire_bytes": 31266,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0203,
+      "wire_bytes": 13121,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0222,
+      "wire_bytes": 7245,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0179,
+      "wire_bytes": 7245,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0128,
+      "wire_bytes": 7366,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0183,
+      "wire_bytes": 11512,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0226,
+      "wire_bytes": 22230,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.1243,
+      "wire_bytes": 28706,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.047,
+      "wire_bytes": 35576,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0321,
+      "wire_bytes": 32917,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0383,
+      "wire_bytes": 7237,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0222,
+      "wire_bytes": 7237,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0147,
+      "wire_bytes": 7358,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0354,
+      "wire_bytes": 11512,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0389,
+      "wire_bytes": 23142,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0179,
+      "wire_bytes": 35592,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0254,
+      "wire_bytes": 32917,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0493,
+      "wire_bytes": 32917,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "run_dataset_pipeline",
+      "seconds": 0.0207,
+      "wire_bytes": 388,
+      "is_error": true,
+      "expected_error": "source_conflict"
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.031,
+      "wire_bytes": 32917,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0163,
+      "wire_bytes": 27179,
+      "is_error": false,
+      "expected_error": null
+    },
+    {
+      "tool": "inspect_dataset_workbench",
+      "seconds": 0.0187,
+      "wire_bytes": 32742,
+      "is_error": false,
+      "expected_error": null
+    }
+  ],
+  "runs": [
+    {
+      "label": "reuse",
+      "dataset": "719d01ca-df2e-4ba9-a489-c2b7118ebfd4",
+      "mode": "preview",
+      "run": "a6ec7d51-8005-4105-8112-e568d3d9f737",
+      "seconds": 15.114,
+      "server_seconds": null,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 3,
+          "output_rows": 3,
+          "output_cell": null
+        },
+        {
+          "step_id": "review",
+          "input_rows": 3,
+          "output_rows": 0,
+          "output_cell": null
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 3,
+          "output_rows": 3,
+          "output_cell": null
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 3,
+          "output_rows": 1,
+          "output_cell": null
+        }
+      ]
+    },
+    {
+      "label": "reuse",
+      "dataset": "719d01ca-df2e-4ba9-a489-c2b7118ebfd4",
+      "mode": "publish",
+      "run": "88a4092c-4a76-4ea8-aee3-302f223b2eed",
+      "seconds": 22.587,
+      "server_seconds": 11.712,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "f5fa24f3-5367-44f0-ac62-14c7bbf50aef"
+        },
+        {
+          "step_id": "review",
+          "input_rows": 1381,
+          "output_rows": 0,
+          "output_cell": "a518adab-3053-4a9d-bb8b-cd3154dcf4fb"
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "fdcd7eb3-3047-44f4-9131-4399f7702613"
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 1381,
+          "output_rows": 38,
+          "output_cell": "c14a0c6d-cebd-4920-8c0c-fdcfbc312ae8"
+        }
+      ]
+    },
+    {
+      "label": "reuse",
+      "dataset": "719d01ca-df2e-4ba9-a489-c2b7118ebfd4",
+      "mode": "publish",
+      "run": "ae7487cf-4dc5-4ce1-9683-2ec17bba513a",
+      "seconds": 23.54,
+      "server_seconds": 11.402,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "e0bc5a70-b33f-4c36-b9e4-a81ae788b0d1"
+        },
+        {
+          "step_id": "review",
+          "input_rows": 1381,
+          "output_rows": 0,
+          "output_cell": "c18e16a9-ffff-4061-9488-9db4a158a431"
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "8b30319e-feda-49fd-9a63-9721b26bd684"
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 1381,
+          "output_rows": 38,
+          "output_cell": "ffc5f743-236b-4c15-ac2f-a693260f6095"
+        }
+      ]
+    },
+    {
+      "label": "ocr-branch",
+      "dataset": "2c80b047-5194-4e18-bd64-9b8874b5b778",
+      "mode": "preview",
+      "run": "d8509671-fcc6-4981-9140-b52112784623",
+      "seconds": 14.116,
+      "server_seconds": null,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 3,
+          "output_rows": 3,
+          "output_cell": null
+        },
+        {
+          "step_id": "review",
+          "input_rows": 3,
+          "output_rows": 0,
+          "output_cell": null
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 3,
+          "output_rows": 3,
+          "output_cell": null
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 3,
+          "output_rows": 1,
+          "output_cell": null
+        }
+      ]
+    },
+    {
+      "label": "ocr-branch",
+      "dataset": "2c80b047-5194-4e18-bd64-9b8874b5b778",
+      "mode": "publish",
+      "run": "c2ff1fd2-c9a8-4aac-be22-8c4d72b4af7d",
+      "seconds": 22.625,
+      "server_seconds": 11.72,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "2a076129-8ad6-4f05-8305-674b89e6f28f"
+        },
+        {
+          "step_id": "review",
+          "input_rows": 1381,
+          "output_rows": 81,
+          "output_cell": "3a555b69-9f1a-4f41-9272-21be6391f0bd"
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 1381,
+          "output_rows": 1300,
+          "output_cell": "0d09e281-9308-410e-8c90-4e961a7c022d"
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 1381,
+          "output_rows": 38,
+          "output_cell": "7fb85077-b61d-46a7-9c6a-9c948f1abdc8"
+        }
+      ]
+    },
+    {
+      "label": "ocr-branch",
+      "dataset": "2c80b047-5194-4e18-bd64-9b8874b5b778",
+      "mode": "publish",
+      "run": "73ee0aeb-7478-47f1-9e87-685a0e7e7486",
+      "seconds": 17.705,
+      "server_seconds": 11.615,
+      "steps": [
+        {
+          "step_id": "audit",
+          "input_rows": 1381,
+          "output_rows": 1381,
+          "output_cell": "855b6028-2967-411b-a7a0-4e9be233d190"
+        },
+        {
+          "step_id": "review",
+          "input_rows": 1381,
+          "output_rows": 81,
+          "output_cell": "5153a725-94e5-4015-92cc-2a76a4cdb6a3"
+        },
+        {
+          "step_id": "unflagged",
+          "input_rows": 1381,
+          "output_rows": 1300,
+          "output_cell": "5a3adf39-8ed2-4aa6-a2d2-7d9c9c9966f9"
+        },
+        {
+          "step_id": "pages",
+          "input_rows": 1381,
+          "output_rows": 38,
+          "output_cell": "3285b10a-bece-4ed8-a362-f94d0a25f563"
+        }
+      ]
+    }
+  ],
+  "catalog_sha256": "afd3372b7212b5aaddd837906e47cc8ea5dc05521d3a48c6c729ba65b82a298a",
+  "source": {
+    "dataset": "e459b19b-b26f-493b-828b-b6cb3cc385d7",
+    "id": "fdbb3d33-2dd3-4bb8-91bc-079ab2cedef5",
+    "version": "1.0",
+    "title": "Source",
+    "rows": 1381,
+    "fingerprint": "9e513bc15eb08f34508241e1cea4b2e22f8d2d9b5d2c907df18524fb7d67ff7d",
+    "fits": {
+      "ok": false,
+      "reason": "Data exploration has no training or evaluation format."
+    },
+    "sources": [
+      {
+        "id": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+        "sha256": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+        "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+        "bytes": 20604056,
+        "rows": 1381,
+        "extraction": {
+          "ocr": {
+            "pages": [
+              2,
+              4,
+              5,
+              6,
+              9,
+              12,
+              13,
+              14,
+              18,
+              21,
+              24,
+              25,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              37,
+              39
+            ],
+            "engine": "tesseract",
+            "version": "5.3.0",
+            "languages": [
+              "eng"
+            ]
+          },
+          "pages": 39,
+          "method": "docling-native-pdf+pdfium-native-text+tesseract-ocr",
+          "version": "2.131.0",
+          "limitations": [
+            "Recovered PDF text layers are retained without visual or reading-order verification.",
+            "Reading order and visual table structure are not reconstructed.",
+            "OCR uses English language data and may misread text.",
+            "Pages without extracted text: 2"
+          ],
+          "native_text_recovery": {
+            "pages": [
+              1,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39
+            ],
+            "method": "pdfium-native-text",
+            "version": "5.13.0"
+          }
+        }
+      }
+    ]
+  },
+  "landings": [
+    {
+      "dataset": "42c67cd7-fea6-46d5-a836-028080798616",
+      "transfer": "444ca501-665c-4ff2-85ac-7d2c05c324dc",
+      "seconds": 11.317,
+      "active": {
+        "id": "1baf660d-d6af-45be-92af-eb1301b59e37",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 1381,
+        "fingerprint": "9e513bc15eb08f34508241e1cea4b2e22f8d2d9b5d2c907df18524fb7d67ff7d",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": [
+        {
+          "id": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+          "sha256": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+          "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+          "bytes": 20604056,
+          "rows": 1381,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                2,
+                4,
+                5,
+                6,
+                9,
+                12,
+                13,
+                14,
+                18,
+                21,
+                24,
+                25,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                37,
+                39
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 39,
+            "method": "docling-native-pdf+pdfium-native-text+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Recovered PDF text layers are retained without visual or reading-order verification.",
+              "Recovered text contains non-whitespace control characters; review font-encoding artifacts before use.",
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text.",
+              "Pages without extracted text: 2"
+            ],
+            "native_text_recovery": {
+              "rows": 1300,
+              "pages": [
+                1,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39
+              ],
+              "method": "pdfium-native-text",
+              "reason": "primary_parser_returned_no_text",
+              "version": "5.13.0",
+              "characters": 61990,
+              "control_characters": 57
+            }
+          }
+        }
+      ],
+      "observations": [
+        {
+          "seconds": 1.136,
+          "status": "landing",
+          "landing": {
+            "stage": "extracting_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 2.154,
+          "status": "landing",
+          "landing": {
+            "stage": "extracting_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 3.169,
+          "status": "landing",
+          "landing": {
+            "stage": "recovering_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 4.185,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 4
+          }
+        },
+        {
+          "seconds": 5.198,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 6
+          }
+        },
+        {
+          "seconds": 6.214,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 10
+          }
+        },
+        {
+          "seconds": 7.23,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 13
+          }
+        },
+        {
+          "seconds": 8.247,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 16
+          }
+        },
+        {
+          "seconds": 9.263,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 20
+          }
+        },
+        {
+          "seconds": 10.277,
+          "status": "landing",
+          "landing": {
+            "rows": 1381,
+            "stage": "publishing",
+            "total": 1,
+            "completed": 1
+          }
+        },
+        {
+          "seconds": 11.317,
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "identical_export": true,
+      "idempotent_retry": true
+    },
+    {
+      "dataset": "ff1b2b00-ed30-49ef-96d9-fa7e55920b8a",
+      "transfer": "76a0fdb5-c7bb-45f1-a833-446806d5464b",
+      "seconds": 10.128,
+      "active": {
+        "id": "613b01c6-52ea-4481-8c31-afda8fcb9165",
+        "version": "1.0",
+        "title": "Source",
+        "rows": 1381,
+        "fingerprint": "9e513bc15eb08f34508241e1cea4b2e22f8d2d9b5d2c907df18524fb7d67ff7d",
+        "fits": {
+          "ok": false,
+          "reason": "Data exploration has no training or evaluation format."
+        }
+      },
+      "sources": [
+        {
+          "id": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+          "sha256": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+          "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+          "bytes": 20604056,
+          "rows": 1381,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                2,
+                4,
+                5,
+                6,
+                9,
+                12,
+                13,
+                14,
+                18,
+                21,
+                24,
+                25,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                37,
+                39
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 39,
+            "method": "docling-native-pdf+pdfium-native-text+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Recovered PDF text layers are retained without visual or reading-order verification.",
+              "Recovered text contains non-whitespace control characters; review font-encoding artifacts before use.",
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text.",
+              "Pages without extracted text: 2"
+            ],
+            "native_text_recovery": {
+              "rows": 1300,
+              "pages": [
+                1,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39
+              ],
+              "method": "pdfium-native-text",
+              "reason": "primary_parser_returned_no_text",
+              "version": "5.13.0",
+              "characters": 61990,
+              "control_characters": 57
+            }
+          }
+        }
+      ],
+      "observations": [
+        {
+          "seconds": 0.981,
+          "status": "landing",
+          "landing": {
+            "stage": "extracting_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 1.998,
+          "status": "landing",
+          "landing": {
+            "stage": "extracting_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 3.013,
+          "status": "landing",
+          "landing": {
+            "stage": "recovering_native_text",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39
+          }
+        },
+        {
+          "seconds": 4.029,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 3
+          }
+        },
+        {
+          "seconds": 5.044,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 6
+          }
+        },
+        {
+          "seconds": 6.06,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 9
+          }
+        },
+        {
+          "seconds": 7.081,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 13
+          }
+        },
+        {
+          "seconds": 8.096,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 16
+          }
+        },
+        {
+          "seconds": 9.111,
+          "status": "landing",
+          "landing": {
+            "stage": "ocr",
+            "total": 1,
+            "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+            "completed": 0,
+            "pages_total": 39,
+            "ocr_pages_total": 23,
+            "ocr_pages_completed": 20
+          }
+        },
+        {
+          "seconds": 10.128,
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "identical_export": true,
+      "idempotent_retry": true
+    }
+  ],
+  "landing_pending": {
+    "id": "ff1b2b00-ed30-49ef-96d9-fa7e55920b8a",
+    "state": "landing",
+    "transfer": {
+      "id": "76a0fdb5-c7bb-45f1-a833-446806d5464b",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "request_key": "handbook-verified-20261009-landing-1",
+      "upload_id": "fcb8557e-f511-4c86-8858-194dddae7df4",
+      "filename": "Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+      "sha256": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+      "size": 20604056,
+      "received": 20604056,
+      "state": "published",
+      "staging_available": true,
+      "next_action": "inspect_dataset",
+      "result": {
+        "id": "ff1b2b00-ed30-49ef-96d9-fa7e55920b8a",
+        "state": "landing"
+      },
+      "chunk_bytes": 8388608,
+      "max_bytes": 104857600,
+      "dispatch": "acknowledged",
+      "updated_at": "2026-10-10T02:22:53.426842Z",
+      "published_at": "2026-10-10T02:22:53.426806Z",
+      "resource_uri": "overmind://jobs/dataset_transfer/76a0fdb5-c7bb-45f1-a833-446806d5464b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205"
+    },
+    "connection": {
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "mcp": {
+        "status": "ready",
+        "contract_version": "5.6.1",
+        "catalog_sha256": "afd3372b7212b5aaddd837906e47cc8ea5dc05521d3a48c6c729ba65b82a298a"
+      },
+      "transfer": {
+        "status": "ready",
+        "protocol_version": 1,
+        "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "user_id": "4",
+        "credential_scope": "account",
+        "can_upload": true,
+        "can_export": true,
+        "mcp_url": "http://localhost:8000/api/mcp/"
+      },
+      "scope": "this command's execution environment; not other clients or future sessions"
+    },
+    "next_mcp_actions": [
+      {
+        "tool": "get_job",
+        "arguments": {
+          "kind": "dataset_run",
+          "id": "ff1b2b00-ed30-49ef-96d9-fa7e55920b8a",
+          "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205"
+        }
+      },
+      {
+        "tool": "inspect_dataset",
+        "arguments": {
+          "dataset": "ff1b2b00-ed30-49ef-96d9-fa7e55920b8a",
+          "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205"
+        }
+      }
+    ]
+  },
+  "package_upload": {
+    "id": "6ea069df-db0a-4b44-961d-4fb74e9b5399",
+    "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+    "sha256": "22481878d2c539ab4ae701ceda0ca22c45ebc51e117636ae3b8c089d2269db12",
+    "size": 3436,
+    "manifest": {
+      "version": 1,
+      "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+      "steps": [
+        {
+          "id": "audit",
+          "input": "source",
+          "name": "Inspect source and retain review evidence",
+          "entrypoint": "audit.py",
+          "output_schema": {
+            "source_row": "integer"
+          },
+          "checks": {
+            "preserve_rows": true,
+            "min_rows": 1
+          },
+          "input_schema": {
+            "text": "string",
+            "page": "integer"
+          }
+        },
+        {
+          "id": "review",
+          "input": "audit",
+          "name": "Rows requiring review",
+          "entrypoint": "review.py",
+          "output_schema": {
+            "source_row": "integer"
+          },
+          "checks": {},
+          "condition": {
+            "expression": "row['needs_review']",
+            "line": 3
+          }
+        },
+        {
+          "id": "unflagged",
+          "input": "audit",
+          "name": "Rows without measured flags",
+          "entrypoint": "unflagged.py",
+          "output_schema": {
+            "source_row": "integer"
+          },
+          "checks": {},
+          "condition": {
+            "expression": "not row['needs_review']",
+            "line": 3
+          }
+        },
+        {
+          "id": "pages",
+          "name": "Assemble page evidence without inventing targets",
+          "entrypoint": "pages.py",
+          "output_schema": {
+            "_overmind_parent_rows": "array",
+            "text": "string"
+          },
+          "checks": {},
+          "inputs": [
+            "review",
+            "unflagged"
+          ]
+        }
+      ],
+      "limits": {
+        "seconds": 600,
+        "scratch_mb": 1024,
+        "memory_mb": 1024,
+        "cpus": 1
+      }
+    },
+    "inventory": [
+      {
+        "path": "audit.py",
+        "sha256": "8efe29eb6f68322c61233e564e9dce27228670f779a6be3551f528aa3826cc84",
+        "bytes": 345
+      },
+      {
+        "path": "common.py",
+        "sha256": "48caad022def24b7917f0ecd3bb1df68f2502fc3238ec1460edfb2809559ddca",
+        "bytes": 467
+      },
+      {
+        "path": "manifest.json",
+        "sha256": "eaf93eff68ff8964adbcc284115b146e53ace8e02814a17b6a0a38e78117f059",
+        "bytes": 1126
+      },
+      {
+        "path": "pages.py",
+        "sha256": "992cb7585cb838059862baf0b57a03c71de91d87ce60012c4f579348411b56f5",
+        "bytes": 658
+      },
+      {
+        "path": "review.py",
+        "sha256": "f7e9a60562a26c744cab4c895d030f261bf0497d5252d510fd398c47a84ccfbd",
+        "bytes": 120
+      },
+      {
+        "path": "unflagged.py",
+        "sha256": "5ccc333e1c468c09e96296c6f3c7a1cce7c82ed77122fc47d9677430ed7ff559",
+        "bytes": 124
+      }
+    ],
+    "created_at": "2026-10-10T02:23:06.786020+00:00",
+    "next_action": {
+      "tool": "save_dataset_pipeline",
+      "arguments": {
+        "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "package": "6ea069df-db0a-4b44-961d-4fb74e9b5399"
+      }
+    },
+    "execution": "not_run"
+  },
+  "recipes": [
+    {
+      "id": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+      "pipeline_id": "238fd989-c1ea-40a7-ba8f-f235524826d6",
+      "revision": 1,
+      "parent": null,
+      "derived_from": null,
+      "package": "b0ec95e5-c9f6-4258-8427-1b3b023c9ae2",
+      "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+      "name": "Acceptance documents: evidence and review",
+      "fingerprint": "3136ed9d05a0fd061634414b48c569f8ae2646851e1269971e5d417dd5200f56",
+      "steps": [
+        {
+          "id": "audit",
+          "name": "Inspect source and retain review evidence",
+          "input": "source",
+          "checks": {
+            "min_rows": 1,
+            "preserve_rows": true
+          },
+          "entrypoint": "audit.py",
+          "input_schema": {
+            "page": "integer",
+            "text": "string"
+          },
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "review",
+          "name": "Rows requiring review",
+          "input": "audit",
+          "checks": {},
+          "condition": {
+            "line": 3,
+            "expression": "row['needs_review']"
+          },
+          "entrypoint": "review.py",
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "unflagged",
+          "name": "Rows without measured flags",
+          "input": "audit",
+          "checks": {},
+          "condition": {
+            "line": 3,
+            "expression": "not row['needs_review']"
+          },
+          "entrypoint": "unflagged.py",
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "pages",
+          "name": "Assemble page evidence without inventing targets",
+          "checks": {},
+          "inputs": [
+            "review",
+            "unflagged"
+          ],
+          "entrypoint": "pages.py",
+          "output_schema": {
+            "text": "string",
+            "_overmind_parent_rows": "array"
+          }
+        }
+      ],
+      "flow": {
+        "source": "source",
+        "output": "pages",
+        "nodes": [
+          {
+            "id": "audit",
+            "step": 0,
+            "name": "Inspect source and retain review evidence",
+            "entrypoint": "audit.py",
+            "input": "source",
+            "inputs": [
+              "source"
+            ]
+          },
+          {
+            "id": "review",
+            "step": 1,
+            "name": "Rows requiring review",
+            "entrypoint": "review.py",
+            "input": "audit",
+            "inputs": [
+              "audit"
+            ]
+          },
+          {
+            "id": "unflagged",
+            "step": 2,
+            "name": "Rows without measured flags",
+            "entrypoint": "unflagged.py",
+            "input": "audit",
+            "inputs": [
+              "audit"
+            ]
+          },
+          {
+            "id": "pages",
+            "step": 3,
+            "name": "Assemble page evidence without inventing targets",
+            "entrypoint": "pages.py",
+            "input": null,
+            "inputs": [
+              "review",
+              "unflagged"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "source": "source",
+            "target": "audit",
+            "condition": null
+          },
+          {
+            "source": "audit",
+            "target": "review",
+            "condition": {
+              "line": 3,
+              "expression": "row['needs_review']",
+              "file": "review.py",
+              "evidence": "agent_declared"
+            }
+          },
+          {
+            "source": "audit",
+            "target": "unflagged",
+            "condition": {
+              "line": 3,
+              "expression": "not row['needs_review']",
+              "file": "unflagged.py",
+              "evidence": "agent_declared"
+            }
+          },
+          {
+            "source": "review",
+            "target": "pages",
+            "condition": null
+          },
+          {
+            "source": "unflagged",
+            "target": "pages",
+            "condition": null
+          }
+        ],
+        "terminal_steps": [
+          "pages"
+        ],
+        "unconsumed_steps": [],
+        "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+        "routing": "retained_code",
+        "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+      },
+      "created_at": "2026-10-10T01:09:38.475352+00:00"
+    },
+    {
+      "id": "9e094622-adf6-4756-822c-f8b25f47814d",
+      "pipeline_id": "da187aed-7c11-4379-ac98-514275da42c1",
+      "revision": 1,
+      "parent": null,
+      "derived_from": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+      "package": "6ea069df-db0a-4b44-961d-4fb74e9b5399",
+      "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+      "name": "Handbook: retain native and OCR evidence",
+      "fingerprint": "f2ef22be72d6d8039f027dcd7963b3320c275d257deb2b6f37a0173b4c557d52",
+      "steps": [
+        {
+          "id": "audit",
+          "name": "Inspect source and retain review evidence",
+          "input": "source",
+          "checks": {
+            "min_rows": 1,
+            "preserve_rows": true
+          },
+          "entrypoint": "audit.py",
+          "input_schema": {
+            "page": "integer",
+            "text": "string"
+          },
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "review",
+          "name": "Rows requiring review",
+          "input": "audit",
+          "checks": {},
+          "condition": {
+            "line": 3,
+            "expression": "row['needs_review']"
+          },
+          "entrypoint": "review.py",
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "unflagged",
+          "name": "Rows without measured flags",
+          "input": "audit",
+          "checks": {},
+          "condition": {
+            "line": 3,
+            "expression": "not row['needs_review']"
+          },
+          "entrypoint": "unflagged.py",
+          "output_schema": {
+            "source_row": "integer"
+          }
+        },
+        {
+          "id": "pages",
+          "name": "Assemble page evidence without inventing targets",
+          "checks": {},
+          "inputs": [
+            "review",
+            "unflagged"
+          ],
+          "entrypoint": "pages.py",
+          "output_schema": {
+            "text": "string",
+            "_overmind_parent_rows": "array"
+          }
+        }
+      ],
+      "flow": {
+        "source": "source",
+        "output": "pages",
+        "nodes": [
+          {
+            "id": "audit",
+            "step": 0,
+            "name": "Inspect source and retain review evidence",
+            "entrypoint": "audit.py",
+            "input": "source",
+            "inputs": [
+              "source"
+            ]
+          },
+          {
+            "id": "review",
+            "step": 1,
+            "name": "Rows requiring review",
+            "entrypoint": "review.py",
+            "input": "audit",
+            "inputs": [
+              "audit"
+            ]
+          },
+          {
+            "id": "unflagged",
+            "step": 2,
+            "name": "Rows without measured flags",
+            "entrypoint": "unflagged.py",
+            "input": "audit",
+            "inputs": [
+              "audit"
+            ]
+          },
+          {
+            "id": "pages",
+            "step": 3,
+            "name": "Assemble page evidence without inventing targets",
+            "entrypoint": "pages.py",
+            "input": null,
+            "inputs": [
+              "review",
+              "unflagged"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "source": "source",
+            "target": "audit",
+            "condition": null
+          },
+          {
+            "source": "audit",
+            "target": "review",
+            "condition": {
+              "line": 3,
+              "expression": "row['needs_review']",
+              "file": "review.py",
+              "evidence": "agent_declared"
+            }
+          },
+          {
+            "source": "audit",
+            "target": "unflagged",
+            "condition": {
+              "line": 3,
+              "expression": "not row['needs_review']",
+              "file": "unflagged.py",
+              "evidence": "agent_declared"
+            }
+          },
+          {
+            "source": "review",
+            "target": "pages",
+            "condition": null
+          },
+          {
+            "source": "unflagged",
+            "target": "pages",
+            "condition": null
+          }
+        ],
+        "terminal_steps": [
+          "pages"
+        ],
+        "unconsumed_steps": [],
+        "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+        "routing": "retained_code",
+        "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+      },
+      "created_at": "2026-10-10T02:23:07.091209+00:00"
+    }
+  ],
+  "validation": {
+    "reuse": {
+      "valid": true,
+      "warnings": [],
+      "checks": {
+        "min_rows": "publish_only",
+        "max_rows": "publish_only",
+        "preserve_rows": "preview_and_publish",
+        "lineage": "preview_and_publish"
+      },
+      "execution": "not_run",
+      "missing_columns": [],
+      "schema_coverage": "source_column_presence_only",
+      "semantic_compatibility": "unmeasured",
+      "runtime": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-10T02:23:06.391989+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "pipeline": {
+        "id": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+        "pipeline_id": "238fd989-c1ea-40a7-ba8f-f235524826d6",
+        "revision": 1,
+        "parent": null,
+        "derived_from": null,
+        "package": "b0ec95e5-c9f6-4258-8427-1b3b023c9ae2",
+        "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+        "name": "Acceptance documents: evidence and review",
+        "fingerprint": "3136ed9d05a0fd061634414b48c569f8ae2646851e1269971e5d417dd5200f56",
+        "steps": [
+          {
+            "id": "audit",
+            "name": "Inspect source and retain review evidence",
+            "input": "source",
+            "checks": {
+              "min_rows": 1,
+              "preserve_rows": true
+            },
+            "entrypoint": "audit.py",
+            "input_schema": {
+              "page": "integer",
+              "text": "string"
+            },
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "review",
+            "name": "Rows requiring review",
+            "input": "audit",
+            "checks": {},
+            "condition": {
+              "line": 3,
+              "expression": "row['needs_review']"
+            },
+            "entrypoint": "review.py",
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "unflagged",
+            "name": "Rows without measured flags",
+            "input": "audit",
+            "checks": {},
+            "condition": {
+              "line": 3,
+              "expression": "not row['needs_review']"
+            },
+            "entrypoint": "unflagged.py",
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "pages",
+            "name": "Assemble page evidence without inventing targets",
+            "checks": {},
+            "inputs": [
+              "review",
+              "unflagged"
+            ],
+            "entrypoint": "pages.py",
+            "output_schema": {
+              "text": "string",
+              "_overmind_parent_rows": "array"
+            }
+          }
+        ],
+        "flow": {
+          "source": "source",
+          "output": "pages",
+          "nodes": [
+            {
+              "id": "audit",
+              "step": 0,
+              "name": "Inspect source and retain review evidence",
+              "entrypoint": "audit.py",
+              "input": "source",
+              "inputs": [
+                "source"
+              ]
+            },
+            {
+              "id": "review",
+              "step": 1,
+              "name": "Rows requiring review",
+              "entrypoint": "review.py",
+              "input": "audit",
+              "inputs": [
+                "audit"
+              ]
+            },
+            {
+              "id": "unflagged",
+              "step": 2,
+              "name": "Rows without measured flags",
+              "entrypoint": "unflagged.py",
+              "input": "audit",
+              "inputs": [
+                "audit"
+              ]
+            },
+            {
+              "id": "pages",
+              "step": 3,
+              "name": "Assemble page evidence without inventing targets",
+              "entrypoint": "pages.py",
+              "input": null,
+              "inputs": [
+                "review",
+                "unflagged"
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "source": "source",
+              "target": "audit",
+              "condition": null
+            },
+            {
+              "source": "audit",
+              "target": "review",
+              "condition": {
+                "line": 3,
+                "expression": "row['needs_review']",
+                "file": "review.py",
+                "evidence": "agent_declared"
+              }
+            },
+            {
+              "source": "audit",
+              "target": "unflagged",
+              "condition": {
+                "line": 3,
+                "expression": "not row['needs_review']",
+                "file": "unflagged.py",
+                "evidence": "agent_declared"
+              }
+            },
+            {
+              "source": "review",
+              "target": "pages",
+              "condition": null
+            },
+            {
+              "source": "unflagged",
+              "target": "pages",
+              "condition": null
+            }
+          ],
+          "terminal_steps": [
+            "pages"
+          ],
+          "unconsumed_steps": [],
+          "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+          "routing": "retained_code",
+          "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+        },
+        "created_at": "2026-10-10T01:09:38.475352+00:00"
+      }
+    },
+    "ocr-branch": {
+      "valid": true,
+      "warnings": [],
+      "checks": {
+        "min_rows": "publish_only",
+        "max_rows": "publish_only",
+        "preserve_rows": "preview_and_publish",
+        "lineage": "preview_and_publish"
+      },
+      "execution": "not_run",
+      "missing_columns": [],
+      "schema_coverage": "source_column_presence_only",
+      "semantic_compatibility": "unmeasured",
+      "runtime": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-10T02:24:05.304928+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "pipeline": {
+        "id": "9e094622-adf6-4756-822c-f8b25f47814d",
+        "pipeline_id": "da187aed-7c11-4379-ac98-514275da42c1",
+        "revision": 1,
+        "parent": null,
+        "derived_from": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+        "package": "6ea069df-db0a-4b44-961d-4fb74e9b5399",
+        "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+        "name": "Handbook: retain native and OCR evidence",
+        "fingerprint": "f2ef22be72d6d8039f027dcd7963b3320c275d257deb2b6f37a0173b4c557d52",
+        "steps": [
+          {
+            "id": "audit",
+            "name": "Inspect source and retain review evidence",
+            "input": "source",
+            "checks": {
+              "min_rows": 1,
+              "preserve_rows": true
+            },
+            "entrypoint": "audit.py",
+            "input_schema": {
+              "page": "integer",
+              "text": "string"
+            },
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "review",
+            "name": "Rows requiring review",
+            "input": "audit",
+            "checks": {},
+            "condition": {
+              "line": 3,
+              "expression": "row['needs_review']"
+            },
+            "entrypoint": "review.py",
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "unflagged",
+            "name": "Rows without measured flags",
+            "input": "audit",
+            "checks": {},
+            "condition": {
+              "line": 3,
+              "expression": "not row['needs_review']"
+            },
+            "entrypoint": "unflagged.py",
+            "output_schema": {
+              "source_row": "integer"
+            }
+          },
+          {
+            "id": "pages",
+            "name": "Assemble page evidence without inventing targets",
+            "checks": {},
+            "inputs": [
+              "review",
+              "unflagged"
+            ],
+            "entrypoint": "pages.py",
+            "output_schema": {
+              "text": "string",
+              "_overmind_parent_rows": "array"
+            }
+          }
+        ],
+        "flow": {
+          "source": "source",
+          "output": "pages",
+          "nodes": [
+            {
+              "id": "audit",
+              "step": 0,
+              "name": "Inspect source and retain review evidence",
+              "entrypoint": "audit.py",
+              "input": "source",
+              "inputs": [
+                "source"
+              ]
+            },
+            {
+              "id": "review",
+              "step": 1,
+              "name": "Rows requiring review",
+              "entrypoint": "review.py",
+              "input": "audit",
+              "inputs": [
+                "audit"
+              ]
+            },
+            {
+              "id": "unflagged",
+              "step": 2,
+              "name": "Rows without measured flags",
+              "entrypoint": "unflagged.py",
+              "input": "audit",
+              "inputs": [
+                "audit"
+              ]
+            },
+            {
+              "id": "pages",
+              "step": 3,
+              "name": "Assemble page evidence without inventing targets",
+              "entrypoint": "pages.py",
+              "input": null,
+              "inputs": [
+                "review",
+                "unflagged"
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "source": "source",
+              "target": "audit",
+              "condition": null
+            },
+            {
+              "source": "audit",
+              "target": "review",
+              "condition": {
+                "line": 3,
+                "expression": "row['needs_review']",
+                "file": "review.py",
+                "evidence": "agent_declared"
+              }
+            },
+            {
+              "source": "audit",
+              "target": "unflagged",
+              "condition": {
+                "line": 3,
+                "expression": "not row['needs_review']",
+                "file": "unflagged.py",
+                "evidence": "agent_declared"
+              }
+            },
+            {
+              "source": "review",
+              "target": "pages",
+              "condition": null
+            },
+            {
+              "source": "unflagged",
+              "target": "pages",
+              "condition": null
+            }
+          ],
+          "terminal_steps": [
+            "pages"
+          ],
+          "unconsumed_steps": [],
+          "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+          "routing": "retained_code",
+          "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+        },
+        "created_at": "2026-10-10T02:23:07.091209+00:00"
+      }
+    }
+  },
+  "outputs": {
+    "719d01ca-df2e-4ba9-a489-c2b7118ebfd4": {
+      "cell": "ffc5f743-236b-4c15-ac2f-a693260f6095",
+      "pages": 38,
+      "content_sha256": "830c09df5f3fd30434bf410d7dcf66b9d4a73afc5ca7ce254722b1956b9c7689"
+    },
+    "2c80b047-5194-4e18-bd64-9b8874b5b778": {
+      "cell": "3285b10a-bece-4ed8-a362-f94d0a25f563",
+      "pages": 38,
+      "content_sha256": "830c09df5f3fd30434bf410d7dcf66b9d4a73afc5ca7ce254722b1956b9c7689"
+    }
+  }
+}

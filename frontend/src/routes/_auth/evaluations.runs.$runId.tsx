@@ -408,7 +408,7 @@ function EvalRunDetailPage() {
                 </dl>
               </div>
 
-              <div className="flex flex-wrap items-stretch gap-y-3 border-t border-border/70 pt-3.5">
+              <div className="-mx-4 flex flex-wrap items-stretch gap-y-3 border-t border-border/70 px-4 pt-3.5">
                 {run.capabilityId && (
                   <>
                     <HeaderStat label="Capability">
@@ -456,7 +456,7 @@ function EvalRunDetailPage() {
                 </HeaderStat>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5 border-t border-border/70 pt-3">
+              <div className="-mx-4 flex flex-wrap items-center gap-2.5 border-t border-border/70 px-4 pt-3">
                 <StatusBadge status={runStatus} />
                 <RunElapsed
                   completedAt={run.completedAt}
@@ -587,7 +587,7 @@ function ScoreChip({
 function ItemBreakdown({ items }: { items: ItemRate[] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-1 border-t border-border/60 pt-2">
+    <div className="-mx-4 mt-1 border-t border-border/60 px-4 pt-2">
       <button
         aria-expanded={open}
         className="pixel-label flex w-full items-center gap-1.5 text-left text-xs text-muted-foreground"
@@ -1611,7 +1611,7 @@ function PhaseStepper({
         })}
       </ol>
       {variants.length > 0 && (
-        <div className="mt-4 border-t border-border/70 pt-4">
+        <div className="-mx-4 mt-4 border-t border-border/70 px-4 pt-4">
           <VariantProgressBars variants={variants} />
         </div>
       )}

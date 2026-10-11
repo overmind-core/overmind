@@ -1,0 +1,3992 @@
+{
+  "upload": {
+    "id": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+    "state": "idle",
+    "state_scope": "observed_after_landing",
+    "transfer": {
+      "id": "97f27346-a5c1-4d99-9924-48cdbacd58a5",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "request_key": "kyc-check-audit-20261010-source",
+      "upload_id": "8c3c1f31-76fe-4b45-9668-b79a0b592a55",
+      "filename": "sample_10000.json",
+      "sha256": "fe2f701f6034d3adaa586ef747d3c3855ca10fcbac1de97fa3dd7e487058c521",
+      "size": 42174160,
+      "received": 42174160,
+      "state": "published",
+      "staging_available": true,
+      "next_action": "inspect_dataset",
+      "result": {
+        "id": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "state": "landing"
+      },
+      "chunk_bytes": 8388608,
+      "max_bytes": 2147483648,
+      "dispatch": "acknowledged",
+      "updated_at": "2026-10-11T03:46:47.266707Z",
+      "published_at": "2026-10-11T03:46:47.266649Z",
+      "resource_uri": "overmind://jobs/dataset_transfer/97f27346-a5c1-4d99-9924-48cdbacd58a5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205"
+    },
+    "connection": {
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "mcp": {
+        "status": "ready",
+        "contract_version": "6.6.0",
+        "catalog_sha256": "39e09f1e41d646a867b0bd9f455af2ac7010c1572fb32de51876af54b1c2e9fe"
+      },
+      "transfer": {
+        "status": "ready",
+        "protocol_version": 1,
+        "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "user_id": "4",
+        "credential_scope": "account",
+        "can_upload": true,
+        "can_export": true,
+        "mcp_url": "http://localhost:8000/api/mcp/"
+      },
+      "scope": "this command's execution environment; not other clients or future sessions"
+    },
+    "next_mcp_actions": [
+      {
+        "tool": "get_job",
+        "arguments": {
+          "kind": "dataset_run",
+          "id": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205"
+        }
+      },
+      {
+        "tool": "inspect_dataset",
+        "arguments": {
+          "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205"
+        }
+      }
+    ]
+  },
+  "source_checks": {
+    "summary": "Dataset workbench updated.",
+    "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+    "next_actions": [],
+    "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+    "preparation": null,
+    "preparation_status": {
+      "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+      "cell_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+      "assessment_version": 0,
+      "counts": {
+        "passed": 1,
+        "failed": 1,
+        "unresolved": 0,
+        "not_assessed": 1
+      },
+      "total": 3,
+      "findings": [
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:format",
+          "category": "format",
+          "status": "failed",
+          "summary": "Required data format",
+          "scope": "train",
+          "affected_rows": 10000,
+          "evidence": "no messages column",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "da7d1a5ac8f8270c3417e64f6e516987184254ae83b48dd3f61bfdb32763f021"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:suitability",
+          "category": "task_suitability",
+          "status": "not_assessed",
+          "summary": "Suitability for this task",
+          "scope": "This cell and its intended task",
+          "affected_rows": null,
+          "evidence": "",
+          "attribution": "not_assessed",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "fcc0a89c2926d3bdd6a464a7c2fa4598849b17d73c27dc13ecac8838b7fb1a16"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:execution",
+          "category": "execution",
+          "status": "passed",
+          "summary": "Original data retained",
+          "scope": "This cell",
+          "affected_rows": 10000,
+          "evidence": "Cell fingerprint f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f; execution source.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "90ce64630d753acc2a8d1107bd7e77e2b27915266c8df7aca684e129ba842120"
+        }
+      ],
+      "offset": 0,
+      "next_offset": null
+    },
+    "current_pipeline": null,
+    "pipeline": null,
+    "run": null,
+    "job": null,
+    "pipelines": [],
+    "runs": [],
+    "pipeline_page": null,
+    "run_page": null,
+    "binding_page": null,
+    "binding": null,
+    "bindings": [],
+    "validation": null,
+    "runner": null,
+    "authoring": null,
+    "semantic_quality": "unmeasured",
+    "resource_links": [
+      {
+        "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "KYC matching \u00b7 preparation check audit",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "baseline_checks": {
+    "summary": "Dataset workbench updated.",
+    "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+    "next_actions": [],
+    "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+    "preparation": null,
+    "preparation_status": {
+      "cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+      "cell_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+      "assessment_version": 0,
+      "counts": {
+        "passed": 5,
+        "failed": 0,
+        "unresolved": 0,
+        "not_assessed": 1
+      },
+      "total": 6,
+      "findings": [
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:suitability",
+          "category": "task_suitability",
+          "status": "not_assessed",
+          "summary": "Suitability for this task",
+          "scope": "This cell and its intended task",
+          "affected_rows": null,
+          "evidence": "",
+          "attribution": "not_assessed",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "88fed6bc99fe5880d31297017458a91c3ec94441c8734488f14572961c280393"
+        },
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:check-max_rows",
+          "category": "preservation",
+          "status": "passed",
+          "summary": "Maximum row count",
+          "scope": "This transformation",
+          "affected_rows": 10000,
+          "evidence": "Max rows: 10000; 10000 output rows.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "44184aaec22312ddc93c4316f5aa1fe442c7a1c50f0327048ecbbb518d9ff255"
+        },
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:check-min_rows",
+          "category": "preservation",
+          "status": "passed",
+          "summary": "Minimum row count",
+          "scope": "This transformation",
+          "affected_rows": 10000,
+          "evidence": "Min rows: 1; 10000 output rows.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "6343222700e6db51cbd394f7dbbd678afbcd915bd593c60e09027beabb5ed2c5"
+        },
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:check-preserve_rows",
+          "category": "preservation",
+          "status": "passed",
+          "summary": "Row count preservation",
+          "scope": "This transformation",
+          "affected_rows": 10000,
+          "evidence": "10000 input rows; 10000 output rows. Row count preservation required.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "15e4dc0e251201e50c0b93b8e6edb91de6678e3601899df4c7f0ac342226e21d"
+        },
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:execution",
+          "category": "execution",
+          "status": "passed",
+          "summary": "Transformation completed",
+          "scope": "This cell",
+          "affected_rows": 10000,
+          "evidence": "Cell fingerprint 4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90; execution isolated_container.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "06e1d5ad8fc3f1840a239e327b435ecaa06bd7f232758c40441fb8b67a76d7b7"
+        },
+        {
+          "id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c:format",
+          "category": "format",
+          "status": "passed",
+          "summary": "Required data format",
+          "scope": "train",
+          "affected_rows": 10000,
+          "evidence": "",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "680d93fbe687ed185feb491305c2d52527fb27689d115b955b4fc4e396dc4a81"
+        }
+      ],
+      "offset": 0,
+      "next_offset": null
+    },
+    "current_pipeline": null,
+    "pipeline": null,
+    "run": null,
+    "job": null,
+    "pipelines": [],
+    "runs": [],
+    "pipeline_page": null,
+    "run_page": null,
+    "binding_page": null,
+    "binding": null,
+    "bindings": [],
+    "validation": null,
+    "runner": null,
+    "authoring": null,
+    "semantic_quality": "unmeasured",
+    "resource_links": [
+      {
+        "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "KYC matching \u00b7 preparation check audit",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "baseline_preview": {
+    "kind": "dataset_pipeline",
+    "id": "8a6169ec-b5dd-4c20-b0a3-b7c936ff7025",
+    "status": "completed",
+    "label": "Dataset transformation",
+    "job_error": null,
+    "created_at": "2026-10-11T03:47:22.614132Z",
+    "updated_at": "2026-10-11T03:47:23.937139Z",
+    "completed_at": "2026-10-11T03:47:23.937139Z",
+    "progress": {
+      "mode": "preview",
+      "stage": "completed",
+      "steps": [
+        {
+          "name": "Build KYC screening conversations",
+          "index": 0,
+          "state": "completed",
+          "checks": {
+            "max_rows": 10000,
+            "min_rows": 1,
+            "preserve_rows": true
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 100,
+            "rows_before": 100,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "rows": 100,
+              "step": "source",
+              "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 0.8893,
+            "observed_at": "2026-10-11T03:47:23.802326+00:00",
+            "stage_seconds": {
+              "cleanup": 0.1739,
+              "input_transfer": 0.0912,
+              "output_reading": 0.0059,
+              "container_setup": 0.1076,
+              "script_execution": 0.2194,
+              "artifact_transfer": 0.2913
+            },
+            "cleanup_confirmed": true
+          },
+          "seconds": 1.019,
+          "step_id": "build_kyc_conversations",
+          "container": "overmind-workshop-8a6169ec-b5dd-4c20-b0a3-b7c936ff7025-9352fd80-6321-45a8-b1e3-56c42d995232-0",
+          "exit_code": 0,
+          "input_rows": 100,
+          "input_step": "source",
+          "started_at": "2026-10-11T03:47:22.908764+00:00",
+          "input_steps": [
+            "source"
+          ],
+          "output_rows": 100,
+          "completed_at": "2026-10-11T03:47:23.930299+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "preserve_rows": true
+            },
+            "deferred": {
+              "max_rows": 10000,
+              "min_rows": 1
+            }
+          },
+          "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+          "output_fingerprint": "fc4b366c51578ad28ce6ab168f8a43faea6866171c3ec03c09b2b65ad36dfc80",
+          "provider_execution": "31a39df476909048ec86aa3f243f06305e4968c2091af55fef9ab5ebadcacaa6",
+          "sample_count": 4
+        }
+      ],
+      "attempt": "9352fd80-6321-45a8-b1e3-56c42d995232",
+      "seconds": 1.255,
+      "started_at": "2026-10-11T03:47:22.677702+00:00",
+      "output_rows": 100,
+      "source_rows": 10000,
+      "stage_seconds": {
+        "measuring_impact": 0.083,
+        "step_1_executing": 0.903,
+        "verifying_source": 0.231,
+        "step_1_checking_rows": 0.003,
+        "step_1_preserving_lineage": 0.035
+      },
+      "stage_started_at": "2026-10-11T03:47:23.932254+00:00",
+      "revision_fingerprint": "47874df19d9b92b238ee2cc33109e234df5d44ea32e64e713843d572585de18f"
+    },
+    "details": {
+      "id": "8a6169ec-b5dd-4c20-b0a3-b7c936ff7025",
+      "pipeline": "5759ac6a-9872-4279-a0e8-3aaee08d5d55",
+      "pipeline_name": "KYC matching preparation",
+      "revision": 1,
+      "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+      "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+      "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+      "artifact_cell": null,
+      "artifact_fingerprint": "",
+      "provenance": "",
+      "execution": "isolated_container",
+      "mode": "preview",
+      "parameters": {},
+      "binding": null,
+      "operation": {
+        "id": "4dffbfb3-7a3c-4d0c-b18c-7021b199f879",
+        "kind": "dataset_pipeline",
+        "reference": "8a6169ec-b5dd-4c20-b0a3-b7c936ff7025",
+        "attempt": "9352fd80-6321-45a8-b1e3-56c42d995232",
+        "unit": "steps",
+        "facts": {
+          "attempt": "9352fd80-6321-45a8-b1e3-56c42d995232",
+          "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+          "total_rows": 10000
+        },
+        "stage": "completed",
+        "total": 1,
+        "status": "complete",
+        "completed": 1,
+        "event_count": 17,
+        "last_observed_at": "2026-10-11T03:47:23.935523+00:00",
+        "last_heartbeat_at": "2026-10-11T03:47:23.803486+00:00",
+        "last_progress_at": "2026-10-11T03:47:23.935523+00:00",
+        "telemetry": "recorded",
+        "provider": {}
+      },
+      "runner": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-11T03:47:40.892677+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "output_cell": null,
+      "state": "completed",
+      "error": "",
+      "result": {
+        "mode": "preview",
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Build KYC screening conversations",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "max_rows": 10000,
+              "min_rows": 1,
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.8893,
+              "observed_at": "2026-10-11T03:47:23.802326+00:00",
+              "stage_seconds": {
+                "cleanup": 0.1739,
+                "input_transfer": 0.0912,
+                "output_reading": 0.0059,
+                "container_setup": 0.1076,
+                "script_execution": 0.2194,
+                "artifact_transfer": 0.2913
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 1.019,
+            "step_id": "build_kyc_conversations",
+            "container": "overmind-workshop-8a6169ec-b5dd-4c20-b0a3-b7c936ff7025-9352fd80-6321-45a8-b1e3-56c42d995232-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:47:22.908764+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T03:47:23.930299+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {
+                "max_rows": 10000,
+                "min_rows": 1
+              }
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "output_fingerprint": "fc4b366c51578ad28ce6ab168f8a43faea6866171c3ec03c09b2b65ad36dfc80",
+            "provider_execution": "31a39df476909048ec86aa3f243f06305e4968c2091af55fef9ab5ebadcacaa6",
+            "sample_count": 4
+          }
+        ],
+        "attempt": "9352fd80-6321-45a8-b1e3-56c42d995232",
+        "seconds": 1.255,
+        "started_at": "2026-10-11T03:47:22.677702+00:00",
+        "output_rows": 100,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "measuring_impact": 0.083,
+          "step_1_executing": 0.903,
+          "verifying_source": 0.231,
+          "step_1_checking_rows": 0.003,
+          "step_1_preserving_lineage": 0.035
+        },
+        "stage_started_at": "2026-10-11T03:47:23.932254+00:00",
+        "revision_fingerprint": "47874df19d9b92b238ee2cc33109e234df5d44ea32e64e713843d572585de18f"
+      },
+      "created_at": "2026-10-11T03:47:22.614132+00:00",
+      "updated_at": "2026-10-11T03:47:23.937139+00:00",
+      "completed_at": "2026-10-11T03:47:23.937139+00:00",
+      "poll_after_seconds": null,
+      "queue_seconds": null,
+      "evidence_resource": {
+        "uri": "overmind://jobs/dataset_pipeline/8a6169ec-b5dd-4c20-b0a3-b7c936ff7025?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mime_type": "application/json"
+      }
+    },
+    "resource": {
+      "uri": "overmind://jobs/dataset_pipeline/8a6169ec-b5dd-4c20-b0a3-b7c936ff7025?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "title": "Dataset transformation",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/dataset_pipeline/8a6169ec-b5dd-4c20-b0a3-b7c936ff7025?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://operations/4dffbfb3-7a3c-4d0c-b18c-7021b199f879?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "Dataset transformation: completed."
+  },
+  "baseline_publish": {
+    "kind": "dataset_pipeline",
+    "id": "d36f99cc-2011-464f-af1a-b66f863d36dd",
+    "status": "completed",
+    "label": "Dataset transformation",
+    "job_error": null,
+    "created_at": "2026-10-11T03:48:01.182161Z",
+    "updated_at": "2026-10-11T03:48:08.091616Z",
+    "completed_at": "2026-10-11T03:48:08.091616Z",
+    "progress": {
+      "mode": "publish",
+      "rows": 10000,
+      "stage": "completed",
+      "steps": [
+        {
+          "name": "Build KYC screening conversations",
+          "index": 0,
+          "state": "completed",
+          "checks": {
+            "max_rows": 10000,
+            "min_rows": 1,
+            "preserve_rows": true
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 10000,
+            "rows_before": 10000,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+              "rows": 10000,
+              "step": "source",
+              "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 2.3301,
+            "observed_at": "2026-10-11T03:48:04.057226+00:00",
+            "stage_seconds": {
+              "cleanup": 0.0691,
+              "input_transfer": 0.6117,
+              "output_reading": 0.2515,
+              "container_setup": 0.103,
+              "script_execution": 0.8358,
+              "artifact_transfer": 0.4591
+            },
+            "cleanup_confirmed": true
+          },
+          "seconds": 5.202,
+          "step_id": "build_kyc_conversations",
+          "container": "overmind-workshop-d36f99cc-2011-464f-af1a-b66f863d36dd-163d20a2-2cb7-4056-85bf-d4707d11059d-0",
+          "exit_code": 0,
+          "input_rows": 10000,
+          "input_step": "source",
+          "started_at": "2026-10-11T03:48:01.577270+00:00",
+          "input_cells": [
+            "36523ae9-6675-49aa-9ac8-7d497d47aa6a"
+          ],
+          "input_steps": [
+            "source"
+          ],
+          "output_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+          "output_rows": 10000,
+          "completed_at": "2026-10-11T03:48:06.787471+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "max_rows": 10000,
+              "min_rows": 1,
+              "preserve_rows": true
+            },
+            "deferred": {}
+          },
+          "input_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "output_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+          "provider_execution": "141adeaf39fbf90aee356c84b04b9e4fa2f2d33da987e46f7623b1bb94eb47c8"
+        }
+      ],
+      "impact": {
+        "rows_added": 0,
+        "rows_after": 10000,
+        "rows_before": 10000,
+        "rows_removed": 0,
+        "coverage_after": {},
+        "coverage_before": {},
+        "decision_changes": 0,
+        "identity_preserved": true,
+        "instruction_changes": 0,
+        "decision_rows_removed": 0,
+        "input_evidence_removed": 0
+      },
+      "attempt": "163d20a2-2cb7-4056-85bf-d4707d11059d",
+      "seconds": 6.532,
+      "started_at": "2026-10-11T03:48:01.559982+00:00",
+      "output_rows": 10000,
+      "source_rows": 10000,
+      "stage_seconds": {
+        "publishing": 1.301,
+        "measuring_impact": 1.146,
+        "step_1_executing": 2.734,
+        "verifying_source": 0.022,
+        "step_1_checking_rows": 0.002,
+        "step_1_preserving_lineage": 1.322
+      },
+      "semantic_quality": "unmeasured",
+      "stage_started_at": "2026-10-11T03:48:08.088419+00:00",
+      "revision_fingerprint": "47874df19d9b92b238ee2cc33109e234df5d44ea32e64e713843d572585de18f"
+    },
+    "details": {
+      "id": "d36f99cc-2011-464f-af1a-b66f863d36dd",
+      "pipeline": "5759ac6a-9872-4279-a0e8-3aaee08d5d55",
+      "pipeline_name": "KYC matching preparation",
+      "revision": 1,
+      "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+      "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+      "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+      "artifact_cell": null,
+      "artifact_fingerprint": "",
+      "provenance": "",
+      "execution": "isolated_container",
+      "mode": "publish",
+      "parameters": {},
+      "binding": null,
+      "operation": {
+        "id": "3e0bb81c-fabe-4289-b3fe-67956e9431e2",
+        "kind": "dataset_pipeline",
+        "reference": "d36f99cc-2011-464f-af1a-b66f863d36dd",
+        "attempt": "163d20a2-2cb7-4056-85bf-d4707d11059d",
+        "unit": "steps",
+        "facts": {
+          "attempt": "163d20a2-2cb7-4056-85bf-d4707d11059d",
+          "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+          "total_rows": 10000
+        },
+        "stage": "completed",
+        "total": 1,
+        "status": "complete",
+        "completed": 1,
+        "event_count": 20,
+        "last_observed_at": "2026-10-11T03:48:08.090037+00:00",
+        "last_heartbeat_at": "2026-10-11T03:48:04.058058+00:00",
+        "last_progress_at": "2026-10-11T03:48:08.090037+00:00",
+        "telemetry": "recorded",
+        "provider": {}
+      },
+      "runner": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-11T03:48:12.845258+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "output_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+      "state": "completed",
+      "error": "",
+      "result": {
+        "mode": "publish",
+        "rows": 10000,
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Build KYC screening conversations",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "max_rows": 10000,
+              "min_rows": 1,
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+                "rows": 10000,
+                "step": "source",
+                "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 2.3301,
+              "observed_at": "2026-10-11T03:48:04.057226+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0691,
+                "input_transfer": 0.6117,
+                "output_reading": 0.2515,
+                "container_setup": 0.103,
+                "script_execution": 0.8358,
+                "artifact_transfer": 0.4591
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 5.202,
+            "step_id": "build_kyc_conversations",
+            "container": "overmind-workshop-d36f99cc-2011-464f-af1a-b66f863d36dd-163d20a2-2cb7-4056-85bf-d4707d11059d-0",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:48:01.577270+00:00",
+            "input_cells": [
+              "36523ae9-6675-49aa-9ac8-7d497d47aa6a"
+            ],
+            "input_steps": [
+              "source"
+            ],
+            "output_cell": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+            "output_rows": 10000,
+            "completed_at": "2026-10-11T03:48:06.787471+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "max_rows": 10000,
+                "min_rows": 1,
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+            "output_fingerprint": "4286580d07dba381589ef711178ef18c6036416a7015c648f128d808831cbd90",
+            "provider_execution": "141adeaf39fbf90aee356c84b04b9e4fa2f2d33da987e46f7623b1bb94eb47c8"
+          }
+        ],
+        "impact": {
+          "rows_added": 0,
+          "rows_after": 10000,
+          "rows_before": 10000,
+          "rows_removed": 0,
+          "coverage_after": {},
+          "coverage_before": {},
+          "decision_changes": 0,
+          "identity_preserved": true,
+          "instruction_changes": 0,
+          "decision_rows_removed": 0,
+          "input_evidence_removed": 0
+        },
+        "attempt": "163d20a2-2cb7-4056-85bf-d4707d11059d",
+        "seconds": 6.532,
+        "started_at": "2026-10-11T03:48:01.559982+00:00",
+        "output_rows": 10000,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "publishing": 1.301,
+          "measuring_impact": 1.146,
+          "step_1_executing": 2.734,
+          "verifying_source": 0.022,
+          "step_1_checking_rows": 0.002,
+          "step_1_preserving_lineage": 1.322
+        },
+        "semantic_quality": "unmeasured",
+        "stage_started_at": "2026-10-11T03:48:08.088419+00:00",
+        "revision_fingerprint": "47874df19d9b92b238ee2cc33109e234df5d44ea32e64e713843d572585de18f"
+      },
+      "created_at": "2026-10-11T03:48:01.182161+00:00",
+      "updated_at": "2026-10-11T03:48:08.091616+00:00",
+      "completed_at": "2026-10-11T03:48:08.091616+00:00",
+      "poll_after_seconds": null,
+      "queue_seconds": null,
+      "evidence_resource": {
+        "uri": "overmind://jobs/dataset_pipeline/d36f99cc-2011-464f-af1a-b66f863d36dd?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mime_type": "application/json"
+      }
+    },
+    "resource": {
+      "uri": "overmind://jobs/dataset_pipeline/d36f99cc-2011-464f-af1a-b66f863d36dd?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "title": "Dataset transformation",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/dataset_pipeline/d36f99cc-2011-464f-af1a-b66f863d36dd?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://operations/3e0bb81c-fabe-4289-b3fe-67956e9431e2?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "Dataset transformation: completed."
+  },
+  "execution": {
+    "connection": {
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "console_url": "http://localhost:5173",
+      "identity_basis": "authenticated request endpoint; compare with your intended environment"
+    },
+    "controls_recipe": {
+      "id": "e08d41b8-5072-4b06-a142-84481a1648da",
+      "pipeline_id": "48d58511-54bd-4175-9a87-c397df08fd27",
+      "revision": 1,
+      "parent": null,
+      "derived_from": null,
+      "package": "85c39c23-2aad-4ff5-b476-240787e060c5",
+      "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+      "executable": true,
+      "name": "KYC audit \u00b7 preview fault controls",
+      "fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b",
+      "steps": [
+        {
+          "id": "fault_probe",
+          "name": "Preview-only preparation fault probe",
+          "input": "source",
+          "checks": {
+            "preserve_rows": true
+          },
+          "consumer": "decision_train",
+          "entrypoint": "transform.py",
+          "input_schema": {
+            "left": "object",
+            "right": "object",
+            "judgement": "string"
+          },
+          "output_schema": {
+            "decision": "object",
+            "source_row": "integer"
+          }
+        }
+      ],
+      "flow": {
+        "source": "source",
+        "output": "fault_probe",
+        "nodes": [
+          {
+            "id": "fault_probe",
+            "step": 0,
+            "name": "Preview-only preparation fault probe",
+            "entrypoint": "transform.py",
+            "input": "source",
+            "inputs": [
+              "source"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "source": "source",
+            "target": "fault_probe",
+            "condition": null
+          }
+        ],
+        "terminal_steps": [
+          "fault_probe"
+        ],
+        "unconsumed_steps": [],
+        "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+        "routing": "retained_code",
+        "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+      },
+      "created_at": "2026-10-11T03:50:09.288247+00:00"
+    },
+    "drop": {
+      "kind": "dataset_pipeline",
+      "id": "bd866885-4ff3-4236-8ff5-97cfd86e2ba6",
+      "status": "failed",
+      "label": "Dataset transformation",
+      "job_error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+      "created_at": "2026-10-11T03:50:09.314568Z",
+      "updated_at": "2026-10-11T03:50:10.143592Z",
+      "completed_at": "2026-10-11T03:50:10.143592Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "failed",
+        "steps": [
+          {
+            "name": "Preview-only preparation fault probe",
+            "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+            "index": 0,
+            "state": "failed",
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.714,
+              "observed_at": "2026-10-11T03:50:10.114442+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0397,
+                "input_transfer": 0.098,
+                "output_reading": 0.0068,
+                "container_setup": 0.0985,
+                "script_execution": 0.237,
+                "artifact_transfer": 0.234
+              },
+              "cleanup_confirmed": true
+            },
+            "step_id": "fault_probe",
+            "container": "overmind-workshop-bd866885-4ff3-4236-8ff5-97cfd86e2ba6-fb8f73c9-50e8-4fb5-8b80-dcf0a74d7b2b-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:50:09.396618+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 99,
+            "completed_at": "2026-10-11T03:50:10.143574+00:00",
+            "check_results": {
+              "failed": {
+                "preserve_rows": {
+                  "actual": 99,
+                  "expected": 100
+                }
+              },
+              "passed": {},
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 99,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "provider_execution": "42d06bf076aaf9f9857eb4dbb4f06041cbbaec5c9b23d28b8fe128aab66a4a4f"
+          }
+        ],
+        "attempt": "fb8f73c9-50e8-4fb5-8b80-dcf0a74d7b2b",
+        "seconds": 0.767,
+        "started_at": "2026-10-11T03:50:09.372664+00:00",
+        "output_rows": 99,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "step_1_executing": 0.728,
+          "verifying_source": 0.024,
+          "step_1_validating_consumer": 0.015
+        },
+        "stage_started_at": "2026-10-11T03:50:10.139741+00:00",
+        "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+      },
+      "details": {
+        "id": "bd866885-4ff3-4236-8ff5-97cfd86e2ba6",
+        "pipeline": "e08d41b8-5072-4b06-a142-84481a1648da",
+        "pipeline_name": "KYC audit \u00b7 preview fault controls",
+        "revision": 1,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {
+          "fault": "drop"
+        },
+        "binding": null,
+        "operation": {
+          "id": "e79b127b-c37a-4436-93dd-ab4063c094a6",
+          "kind": "dataset_pipeline",
+          "reference": "bd866885-4ff3-4236-8ff5-97cfd86e2ba6",
+          "attempt": "fb8f73c9-50e8-4fb5-8b80-dcf0a74d7b2b",
+          "unit": null,
+          "facts": {
+            "retry_safe": true
+          },
+          "stage": "failed",
+          "total": null,
+          "status": "failed",
+          "completed": null,
+          "event_count": 16,
+          "last_observed_at": "2026-10-11T03:50:10.143953+00:00",
+          "last_heartbeat_at": "2026-10-11T03:50:10.115289+00:00",
+          "last_progress_at": "2026-10-11T03:50:10.143953+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T03:50:28.001669+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "failed",
+        "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+        "result": {
+          "mode": "preview",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Preview-only preparation fault probe",
+              "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.714,
+                "observed_at": "2026-10-11T03:50:10.114442+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0397,
+                  "input_transfer": 0.098,
+                  "output_reading": 0.0068,
+                  "container_setup": 0.0985,
+                  "script_execution": 0.237,
+                  "artifact_transfer": 0.234
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "fault_probe",
+              "container": "overmind-workshop-bd866885-4ff3-4236-8ff5-97cfd86e2ba6-fb8f73c9-50e8-4fb5-8b80-dcf0a74d7b2b-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T03:50:09.396618+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 99,
+              "completed_at": "2026-10-11T03:50:10.143574+00:00",
+              "check_results": {
+                "failed": {
+                  "preserve_rows": {
+                    "actual": 99,
+                    "expected": 100
+                  }
+                },
+                "passed": {},
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 99,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "provider_execution": "42d06bf076aaf9f9857eb4dbb4f06041cbbaec5c9b23d28b8fe128aab66a4a4f"
+            }
+          ],
+          "attempt": "fb8f73c9-50e8-4fb5-8b80-dcf0a74d7b2b",
+          "seconds": 0.767,
+          "started_at": "2026-10-11T03:50:09.372664+00:00",
+          "output_rows": 99,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "step_1_executing": 0.728,
+            "verifying_source": 0.024,
+            "step_1_validating_consumer": 0.015
+          },
+          "stage_started_at": "2026-10-11T03:50:10.139741+00:00",
+          "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+        },
+        "created_at": "2026-10-11T03:50:09.314568+00:00",
+        "updated_at": "2026-10-11T03:50:10.143592+00:00",
+        "completed_at": "2026-10-11T03:50:10.143592+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/bd866885-4ff3-4236-8ff5-97cfd86e2ba6?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/bd866885-4ff3-4236-8ff5-97cfd86e2ba6?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/bd866885-4ff3-4236-8ff5-97cfd86e2ba6?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/e79b127b-c37a-4436-93dd-ab4063c094a6?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: failed."
+    },
+    "bad_probabilities": {
+      "kind": "dataset_pipeline",
+      "id": "8f12469c-62b9-4f6c-b604-55f72283c9b7",
+      "status": "failed",
+      "label": "Dataset transformation",
+      "job_error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+      "created_at": "2026-10-11T03:50:10.365392Z",
+      "updated_at": "2026-10-11T03:50:11.396476Z",
+      "completed_at": "2026-10-11T03:50:11.396476Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "failed",
+        "steps": [
+          {
+            "name": "Preview-only preparation fault probe",
+            "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+            "index": 0,
+            "state": "failed",
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.6768,
+              "observed_at": "2026-10-11T03:50:11.368746+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0398,
+                "input_transfer": 0.0681,
+                "output_reading": 0.0082,
+                "container_setup": 0.1031,
+                "script_execution": 0.2018,
+                "artifact_transfer": 0.2559
+              },
+              "cleanup_confirmed": true
+            },
+            "step_id": "fault_probe",
+            "container": "overmind-workshop-8f12469c-62b9-4f6c-b604-55f72283c9b7-399c9ba2-d4b4-4d2c-ad58-aa8cedffde50-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:50:10.687979+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "completed_at": "2026-10-11T03:50:11.396470+00:00",
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "provider_execution": "7d74e9e3201e95e207fb22254ca340944e2d51dd069d8d633989b0e3f383ed44"
+          }
+        ],
+        "attempt": "399c9ba2-d4b4-4d2c-ad58-aa8cedffde50",
+        "seconds": 0.712,
+        "started_at": "2026-10-11T03:50:10.668866+00:00",
+        "source_rows": 10000,
+        "stage_seconds": {
+          "step_1_executing": 0.693,
+          "verifying_source": 0.019
+        },
+        "stage_started_at": "2026-10-11T03:50:11.380426+00:00",
+        "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+      },
+      "details": {
+        "id": "8f12469c-62b9-4f6c-b604-55f72283c9b7",
+        "pipeline": "e08d41b8-5072-4b06-a142-84481a1648da",
+        "pipeline_name": "KYC audit \u00b7 preview fault controls",
+        "revision": 1,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {
+          "fault": "bad_probabilities"
+        },
+        "binding": null,
+        "operation": {
+          "id": "f689e6a6-c4d7-493d-b39d-16c1f2acc215",
+          "kind": "dataset_pipeline",
+          "reference": "8f12469c-62b9-4f6c-b604-55f72283c9b7",
+          "attempt": "399c9ba2-d4b4-4d2c-ad58-aa8cedffde50",
+          "unit": null,
+          "facts": {
+            "retry_safe": true
+          },
+          "stage": "failed",
+          "total": null,
+          "status": "failed",
+          "completed": null,
+          "event_count": 15,
+          "last_observed_at": "2026-10-11T03:50:11.397219+00:00",
+          "last_heartbeat_at": "2026-10-11T03:50:11.369790+00:00",
+          "last_progress_at": "2026-10-11T03:50:11.397219+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T03:50:28.001669+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "failed",
+        "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+        "result": {
+          "mode": "preview",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Preview-only preparation fault probe",
+              "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.6768,
+                "observed_at": "2026-10-11T03:50:11.368746+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0398,
+                  "input_transfer": 0.0681,
+                  "output_reading": 0.0082,
+                  "container_setup": 0.1031,
+                  "script_execution": 0.2018,
+                  "artifact_transfer": 0.2559
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "fault_probe",
+              "container": "overmind-workshop-8f12469c-62b9-4f6c-b604-55f72283c9b7-399c9ba2-d4b4-4d2c-ad58-aa8cedffde50-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T03:50:10.687979+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "completed_at": "2026-10-11T03:50:11.396470+00:00",
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "provider_execution": "7d74e9e3201e95e207fb22254ca340944e2d51dd069d8d633989b0e3f383ed44"
+            }
+          ],
+          "attempt": "399c9ba2-d4b4-4d2c-ad58-aa8cedffde50",
+          "seconds": 0.712,
+          "started_at": "2026-10-11T03:50:10.668866+00:00",
+          "source_rows": 10000,
+          "stage_seconds": {
+            "step_1_executing": 0.693,
+            "verifying_source": 0.019
+          },
+          "stage_started_at": "2026-10-11T03:50:11.380426+00:00",
+          "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+        },
+        "created_at": "2026-10-11T03:50:10.365392+00:00",
+        "updated_at": "2026-10-11T03:50:11.396476+00:00",
+        "completed_at": "2026-10-11T03:50:11.396476+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/8f12469c-62b9-4f6c-b604-55f72283c9b7?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/8f12469c-62b9-4f6c-b604-55f72283c9b7?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/8f12469c-62b9-4f6c-b604-55f72283c9b7?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/f689e6a6-c4d7-493d-b39d-16c1f2acc215?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: failed."
+    },
+    "swapped_labels": {
+      "kind": "dataset_pipeline",
+      "id": "19f7b035-54bb-4d4c-980d-32edc6673330",
+      "status": "completed",
+      "label": "Dataset transformation",
+      "job_error": null,
+      "created_at": "2026-10-11T03:50:12.458785Z",
+      "updated_at": "2026-10-11T03:50:13.808066Z",
+      "completed_at": "2026-10-11T03:50:13.808066Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Preview-only preparation fault probe",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.6713,
+              "observed_at": "2026-10-11T03:50:13.692232+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0375,
+                "input_transfer": 0.0971,
+                "output_reading": 0.0065,
+                "container_setup": 0.098,
+                "script_execution": 0.2109,
+                "artifact_transfer": 0.2213
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 0.782,
+            "step_id": "fault_probe",
+            "container": "overmind-workshop-19f7b035-54bb-4d4c-980d-32edc6673330-27e1971c-0080-44f3-ab01-ddc65a5ee8c2-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:50:13.016444+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T03:50:13.800669+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 100,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "output_fingerprint": "e264d9881c815fd0deb9f6213b8beed0a34df1e84076d24c5bbdc042dadf0b45",
+            "provider_execution": "378c4799e419f0415898d2d8ede23113433b5375cba08d5c735088135fb8fc9d",
+            "sample_count": 4
+          }
+        ],
+        "attempt": "27e1971c-0080-44f3-ab01-ddc65a5ee8c2",
+        "seconds": 0.812,
+        "started_at": "2026-10-11T03:50:12.990212+00:00",
+        "output_rows": 100,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "measuring_impact": 0.05,
+          "step_1_executing": 0.685,
+          "verifying_source": 0.026,
+          "step_1_checking_rows": 0.003,
+          "step_1_preserving_lineage": 0.034,
+          "step_1_validating_consumer": 0.014
+        },
+        "stage_started_at": "2026-10-11T03:50:13.802637+00:00",
+        "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+      },
+      "details": {
+        "id": "19f7b035-54bb-4d4c-980d-32edc6673330",
+        "pipeline": "e08d41b8-5072-4b06-a142-84481a1648da",
+        "pipeline_name": "KYC audit \u00b7 preview fault controls",
+        "revision": 1,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {
+          "fault": "swapped_labels"
+        },
+        "binding": null,
+        "operation": {
+          "id": "7cc8f038-a205-42cd-8b0b-88fd863a4b3e",
+          "kind": "dataset_pipeline",
+          "reference": "19f7b035-54bb-4d4c-980d-32edc6673330",
+          "attempt": "27e1971c-0080-44f3-ab01-ddc65a5ee8c2",
+          "unit": "steps",
+          "facts": {
+            "attempt": "27e1971c-0080-44f3-ab01-ddc65a5ee8c2",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 10000
+          },
+          "stage": "completed",
+          "total": 1,
+          "status": "complete",
+          "completed": 1,
+          "event_count": 18,
+          "last_observed_at": "2026-10-11T03:50:13.806202+00:00",
+          "last_heartbeat_at": "2026-10-11T03:50:13.692948+00:00",
+          "last_progress_at": "2026-10-11T03:50:13.806202+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T03:50:28.001669+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "preview",
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Preview-only preparation fault probe",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.6713,
+                "observed_at": "2026-10-11T03:50:13.692232+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0375,
+                  "input_transfer": 0.0971,
+                  "output_reading": 0.0065,
+                  "container_setup": 0.098,
+                  "script_execution": 0.2109,
+                  "artifact_transfer": 0.2213
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 0.782,
+              "step_id": "fault_probe",
+              "container": "overmind-workshop-19f7b035-54bb-4d4c-980d-32edc6673330-27e1971c-0080-44f3-ab01-ddc65a5ee8c2-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T03:50:13.016444+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T03:50:13.800669+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 100,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "output_fingerprint": "e264d9881c815fd0deb9f6213b8beed0a34df1e84076d24c5bbdc042dadf0b45",
+              "provider_execution": "378c4799e419f0415898d2d8ede23113433b5375cba08d5c735088135fb8fc9d",
+              "sample_count": 4
+            }
+          ],
+          "attempt": "27e1971c-0080-44f3-ab01-ddc65a5ee8c2",
+          "seconds": 0.812,
+          "started_at": "2026-10-11T03:50:12.990212+00:00",
+          "output_rows": 100,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "measuring_impact": 0.05,
+            "step_1_executing": 0.685,
+            "verifying_source": 0.026,
+            "step_1_checking_rows": 0.003,
+            "step_1_preserving_lineage": 0.034,
+            "step_1_validating_consumer": 0.014
+          },
+          "stage_started_at": "2026-10-11T03:50:13.802637+00:00",
+          "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+        },
+        "created_at": "2026-10-11T03:50:12.458785+00:00",
+        "updated_at": "2026-10-11T03:50:13.808066+00:00",
+        "completed_at": "2026-10-11T03:50:13.808066+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/19f7b035-54bb-4d4c-980d-32edc6673330?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/19f7b035-54bb-4d4c-980d-32edc6673330?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/19f7b035-54bb-4d4c-980d-32edc6673330?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/7cc8f038-a205-42cd-8b0b-88fd863a4b3e?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: completed."
+    },
+    "swapped_labels_sample_verification": {
+      "samples_checked": 4,
+      "incorrect_targets": 4,
+      "consumer_check": {
+        "rows": 100,
+        "passed": true,
+        "consumer": "decision_train"
+      }
+    },
+    "source_findings": {
+      "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+      "cell_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+      "assessment_version": 2,
+      "counts": {
+        "passed": 1,
+        "failed": 1,
+        "unresolved": 4,
+        "not_assessed": 2
+      },
+      "total": 8,
+      "findings": [
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:format",
+          "category": "format",
+          "status": "failed",
+          "summary": "Required data format",
+          "scope": "train",
+          "affected_rows": 10000,
+          "evidence": "no messages column",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "da7d1a5ac8f8270c3417e64f6e516987184254ae83b48dd3f61bfdb32763f021"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-capability_scope",
+          "category": "task_suitability",
+          "status": "unresolved",
+          "summary": "Entity matching covers only part of the KYC Screener capability.",
+          "scope": "Capability 43d35b0c-dd4b-4d45-b167-2ab657123702 versus supplied targets",
+          "affected_rows": 10000,
+          "evidence": "Capability requires entity-file extraction, firm-rule checks, screening and escalation. Source targets are positive/negative matching judgements; no tool-use trajectories or approval decisions. OpenSanctions documents these as same/different logical entities, https://www.opensanctions.org/docs/opensource/pairs/.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590292+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "977068943230807ece58b4436ce8904e74dd9170abae05acfc7a7374aaf844dc"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-identity_metadata",
+          "category": "shortcut_features",
+          "status": "unresolved",
+          "summary": "Direct entity IDs and referents must stay outside model inputs.",
+          "scope": "Source metadata and old conversation recipe",
+          "affected_rows": 10000,
+          "evidence": "All 10,000 source pairs carry graph IDs and referents; the reproduced baseline includes them in every prompt. 515 positive pairs share the same ID. This is a potential shortcut, not a measured accuracy effect.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590284+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "a841aac716077bd150655df2d03d796eb85a4a8064d68da0ca54aca6a6279046"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-repeated_pairs",
+          "category": "split_policy",
+          "status": "unresolved",
+          "summary": "55 observations repeat an unordered entity-ID pair; keep related rows together.",
+          "scope": "27 repeated unordered ID-pair groups across all 10,000 records",
+          "affected_rows": 55,
+          "evidence": "Exact ID-pair grouping yields 27 groups / 55 rows. This differs from full-record duplicate definitions. Connected IDs/referents must stay together when partitioning; no held-out split is created by this audit.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590296+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "0e4b5539ccd55a248ec07a20fb915d94ff820d4aadbe4103e9da9ba8e42faead"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-same_caption_negatives",
+          "category": "label_review",
+          "status": "unresolved",
+          "summary": "68 negative pairs share a caption; retain them pending label review.",
+          "scope": "All 10,000 original pairs",
+          "affected_rows": 68,
+          "evidence": "Counted negative labels where left.caption equals right.caption. These can be legitimate hard negatives; no relabelling or deletion is justified by caption equality.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590294+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "56762496b83b4f6afde189cc708c8974d21ec9f71f025c42e3d3d1c347eeb44d"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-property_identifiers",
+          "category": "shortcut_features",
+          "status": "not_assessed",
+          "summary": "Identifier-like values remain in entity properties; their effect is unmeasured.",
+          "scope": "Retained caption/schema/properties input projection",
+          "affected_rows": 2759,
+          "evidence": "2,759 rows have a property value equal to an ID/referent in the source, including wikidataId and relationship fields. These may be legitimate evidence. Removing top-level metadata alone does not prove the absence of shortcuts.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590297+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "2adea7f154ef0c8d0fd5d508ee442bfd52798ca5d5ae60e3bcbcfcc5ff1e8c4e"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:suitability",
+          "category": "task_suitability",
+          "status": "not_assessed",
+          "summary": "Suitability for this task",
+          "scope": "This cell and its intended task",
+          "affected_rows": null,
+          "evidence": "",
+          "attribution": "not_assessed",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "fcc0a89c2926d3bdd6a464a7c2fa4598849b17d73c27dc13ecac8838b7fb1a16"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:execution",
+          "category": "execution",
+          "status": "passed",
+          "summary": "Original data retained",
+          "scope": "This cell",
+          "affected_rows": 10000,
+          "evidence": "Cell fingerprint f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f; execution source.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "90ce64630d753acc2a8d1107bd7e77e2b27915266c8df7aca684e129ba842120"
+        }
+      ],
+      "offset": 0,
+      "next_offset": null
+    },
+    "corrected_recipe": {
+      "id": "d037aa86-2736-44e6-8aac-7b9706186737",
+      "pipeline_id": "4f9883c5-71ee-477f-b162-1c5085bac232",
+      "revision": 2,
+      "parent": "5759ac6a-9872-4279-a0e8-3aaee08d5d55",
+      "derived_from": null,
+      "package": "b9adab1d-2c09-458d-8ef6-139b8aca538d",
+      "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+      "executable": true,
+      "name": "KYC matching preparation",
+      "fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0",
+      "steps": [
+        {
+          "id": "audit",
+          "name": "Preserve observations, review flags and connected entity groups",
+          "input": "source",
+          "checks": {
+            "preserve_rows": true
+          },
+          "entrypoint": "audit.py",
+          "input_schema": {
+            "left": "object",
+            "right": "object",
+            "judgement": "string"
+          },
+          "output_schema": {
+            "source_row": "integer",
+            "entity_group": "string"
+          }
+        },
+        {
+          "id": "inputs",
+          "name": "Keep matching evidence; exclude top-level identity metadata",
+          "input": "audit",
+          "checks": {
+            "preserve_rows": true
+          },
+          "entrypoint": "project.py",
+          "output_schema": {
+            "source_row": "integer",
+            "model_evidence": "object"
+          }
+        },
+        {
+          "id": "decisions",
+          "name": "Preserve supplied categorical judgements as trainable decisions",
+          "input": "inputs",
+          "checks": {
+            "preserve_rows": true
+          },
+          "consumer": "decision_train",
+          "entrypoint": "decision.py",
+          "output_schema": {
+            "decision": "object",
+            "source_row": "integer"
+          }
+        }
+      ],
+      "flow": {
+        "source": "source",
+        "output": "decisions",
+        "nodes": [
+          {
+            "id": "audit",
+            "step": 0,
+            "name": "Preserve observations, review flags and connected entity groups",
+            "entrypoint": "audit.py",
+            "input": "source",
+            "inputs": [
+              "source"
+            ]
+          },
+          {
+            "id": "inputs",
+            "step": 1,
+            "name": "Keep matching evidence; exclude top-level identity metadata",
+            "entrypoint": "project.py",
+            "input": "audit",
+            "inputs": [
+              "audit"
+            ]
+          },
+          {
+            "id": "decisions",
+            "step": 2,
+            "name": "Preserve supplied categorical judgements as trainable decisions",
+            "entrypoint": "decision.py",
+            "input": "inputs",
+            "inputs": [
+              "inputs"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "source": "source",
+            "target": "audit",
+            "condition": null
+          },
+          {
+            "source": "audit",
+            "target": "inputs",
+            "condition": null
+          },
+          {
+            "source": "inputs",
+            "target": "decisions",
+            "condition": null
+          }
+        ],
+        "terminal_steps": [
+          "decisions"
+        ],
+        "unconsumed_steps": [],
+        "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+        "routing": "retained_code",
+        "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+      },
+      "created_at": "2026-10-11T03:50:28.166543+00:00"
+    },
+    "corrected-preview": {
+      "kind": "dataset_pipeline",
+      "id": "ac7ad328-4819-40c4-b5a7-53209add5b3b",
+      "status": "completed",
+      "label": "Dataset transformation",
+      "job_error": null,
+      "created_at": "2026-10-11T03:50:28.191641Z",
+      "updated_at": "2026-10-11T03:50:31.170645Z",
+      "completed_at": "2026-10-11T03:50:31.170645Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Preserve observations, review flags and connected entity groups",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.6967,
+              "observed_at": "2026-10-11T03:50:29.293228+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0363,
+                "input_transfer": 0.0957,
+                "output_reading": 0.0055,
+                "container_setup": 0.1096,
+                "script_execution": 0.221,
+                "artifact_transfer": 0.2286
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 0.782,
+            "step_id": "audit",
+            "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:50:28.591969+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T03:50:29.376727+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "output_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+            "provider_execution": "bbee9eabaedbdea0842bbc32adc9171c2b29482098a8a4303c5fd6861cb25579",
+            "sample_count": 4
+          },
+          {
+            "name": "Keep matching evidence; exclude top-level identity metadata",
+            "index": 1,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "audit",
+                "fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.7473,
+              "observed_at": "2026-10-11T03:50:30.134250+00:00",
+              "stage_seconds": {
+                "cleanup": 0.035,
+                "input_transfer": 0.0968,
+                "output_reading": 0.0128,
+                "container_setup": 0.1252,
+                "script_execution": 0.2372,
+                "artifact_transfer": 0.2403
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 0.858,
+            "step_id": "inputs",
+            "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-1",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "audit",
+            "started_at": "2026-10-11T03:50:29.377856+00:00",
+            "input_steps": [
+              "audit"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T03:50:30.242684+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+            "output_fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41",
+            "provider_execution": "4d8272f8e3dbd345bea32d17266677a7b8706d30947804388ca21f72f7ad9b24",
+            "sample_count": 4
+          },
+          {
+            "name": "Preserve supplied categorical judgements as trainable decisions",
+            "index": 2,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "inputs",
+                "fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.7433,
+              "observed_at": "2026-10-11T03:50:30.996998+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0343,
+                "input_transfer": 0.1015,
+                "output_reading": 0.0123,
+                "container_setup": 0.1275,
+                "script_execution": 0.2458,
+                "artifact_transfer": 0.2219
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 0.909,
+            "step_id": "decisions",
+            "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-2",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "inputs",
+            "started_at": "2026-10-11T03:50:30.244053+00:00",
+            "input_steps": [
+              "inputs"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T03:50:31.159820+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 100,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41",
+            "output_fingerprint": "0e97405dfb072ae174dedf40426e8f3902279f0b794d7434843e9f5b49b70cae",
+            "provider_execution": "88346a91b0083839e4acf18ad5505bdcf401c74d65975d975ce5b7ccacbdf9c9",
+            "sample_count": 4
+          }
+        ],
+        "attempt": "3ebd741b-18e4-484c-9150-9efedff4db78",
+        "seconds": 2.603,
+        "started_at": "2026-10-11T03:50:28.559032+00:00",
+        "output_rows": 100,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "measuring_impact": 0.163,
+          "step_1_executing": 0.709,
+          "step_2_executing": 0.772,
+          "step_3_executing": 0.778,
+          "verifying_source": 0.033,
+          "step_1_checking_rows": 0.003,
+          "step_2_checking_rows": 0.004,
+          "step_3_checking_rows": 0.007,
+          "step_1_preserving_lineage": 0.034,
+          "step_2_preserving_lineage": 0.034,
+          "step_3_preserving_lineage": 0.048,
+          "step_3_validating_consumer": 0.02
+        },
+        "stage_started_at": "2026-10-11T03:50:31.162313+00:00",
+        "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+      },
+      "details": {
+        "id": "ac7ad328-4819-40c4-b5a7-53209add5b3b",
+        "pipeline": "d037aa86-2736-44e6-8aac-7b9706186737",
+        "pipeline_name": "KYC matching preparation",
+        "revision": 2,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "51ce25aa-fefc-4b20-95f8-51a775a4032e",
+          "kind": "dataset_pipeline",
+          "reference": "ac7ad328-4819-40c4-b5a7-53209add5b3b",
+          "attempt": "3ebd741b-18e4-484c-9150-9efedff4db78",
+          "unit": "steps",
+          "facts": {
+            "attempt": "3ebd741b-18e4-484c-9150-9efedff4db78",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 10000
+          },
+          "stage": "completed",
+          "total": 3,
+          "status": "complete",
+          "completed": 3,
+          "event_count": 48,
+          "last_observed_at": "2026-10-11T03:50:31.168918+00:00",
+          "last_heartbeat_at": "2026-10-11T03:50:31.002109+00:00",
+          "last_progress_at": "2026-10-11T03:50:31.168918+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T03:50:31.177391+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "preview",
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Preserve observations, review flags and connected entity groups",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.6967,
+                "observed_at": "2026-10-11T03:50:29.293228+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0363,
+                  "input_transfer": 0.0957,
+                  "output_reading": 0.0055,
+                  "container_setup": 0.1096,
+                  "script_execution": 0.221,
+                  "artifact_transfer": 0.2286
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 0.782,
+              "step_id": "audit",
+              "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T03:50:28.591969+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T03:50:29.376727+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "output_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+              "provider_execution": "bbee9eabaedbdea0842bbc32adc9171c2b29482098a8a4303c5fd6861cb25579",
+              "sample_count": 4
+            },
+            {
+              "name": "Keep matching evidence; exclude top-level identity metadata",
+              "index": 1,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "audit",
+                  "fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.7473,
+                "observed_at": "2026-10-11T03:50:30.134250+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.035,
+                  "input_transfer": 0.0968,
+                  "output_reading": 0.0128,
+                  "container_setup": 0.1252,
+                  "script_execution": 0.2372,
+                  "artifact_transfer": 0.2403
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 0.858,
+              "step_id": "inputs",
+              "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-1",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "audit",
+              "started_at": "2026-10-11T03:50:29.377856+00:00",
+              "input_steps": [
+                "audit"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T03:50:30.242684+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+              "output_fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41",
+              "provider_execution": "4d8272f8e3dbd345bea32d17266677a7b8706d30947804388ca21f72f7ad9b24",
+              "sample_count": 4
+            },
+            {
+              "name": "Preserve supplied categorical judgements as trainable decisions",
+              "index": 2,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "inputs",
+                  "fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.7433,
+                "observed_at": "2026-10-11T03:50:30.996998+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0343,
+                  "input_transfer": 0.1015,
+                  "output_reading": 0.0123,
+                  "container_setup": 0.1275,
+                  "script_execution": 0.2458,
+                  "artifact_transfer": 0.2219
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 0.909,
+              "step_id": "decisions",
+              "container": "overmind-workshop-ac7ad328-4819-40c4-b5a7-53209add5b3b-3ebd741b-18e4-484c-9150-9efedff4db78-2",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "inputs",
+              "started_at": "2026-10-11T03:50:30.244053+00:00",
+              "input_steps": [
+                "inputs"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T03:50:31.159820+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 100,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "4165ac33859c43cb9badffabfb3e6eb687bc063ae565bc407fcd02908666db41",
+              "output_fingerprint": "0e97405dfb072ae174dedf40426e8f3902279f0b794d7434843e9f5b49b70cae",
+              "provider_execution": "88346a91b0083839e4acf18ad5505bdcf401c74d65975d975ce5b7ccacbdf9c9",
+              "sample_count": 4
+            }
+          ],
+          "attempt": "3ebd741b-18e4-484c-9150-9efedff4db78",
+          "seconds": 2.603,
+          "started_at": "2026-10-11T03:50:28.559032+00:00",
+          "output_rows": 100,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "measuring_impact": 0.163,
+            "step_1_executing": 0.709,
+            "step_2_executing": 0.772,
+            "step_3_executing": 0.778,
+            "verifying_source": 0.033,
+            "step_1_checking_rows": 0.003,
+            "step_2_checking_rows": 0.004,
+            "step_3_checking_rows": 0.007,
+            "step_1_preserving_lineage": 0.034,
+            "step_2_preserving_lineage": 0.034,
+            "step_3_preserving_lineage": 0.048,
+            "step_3_validating_consumer": 0.02
+          },
+          "stage_started_at": "2026-10-11T03:50:31.162313+00:00",
+          "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+        },
+        "created_at": "2026-10-11T03:50:28.191641+00:00",
+        "updated_at": "2026-10-11T03:50:31.170645+00:00",
+        "completed_at": "2026-10-11T03:50:31.170645+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/ac7ad328-4819-40c4-b5a7-53209add5b3b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/ac7ad328-4819-40c4-b5a7-53209add5b3b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/ac7ad328-4819-40c4-b5a7-53209add5b3b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/51ce25aa-fefc-4b20-95f8-51a775a4032e?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: completed."
+    },
+    "corrected-publish": {
+      "kind": "dataset_pipeline",
+      "id": "630d557e-7281-432d-b002-6d28b1a4aa65",
+      "status": "completed",
+      "label": "Dataset transformation",
+      "job_error": null,
+      "created_at": "2026-10-11T03:50:31.278340Z",
+      "updated_at": "2026-10-11T03:51:07.366795Z",
+      "completed_at": "2026-10-11T03:51:07.366795Z",
+      "progress": {
+        "mode": "publish",
+        "rows": 10000,
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Preserve observations, review flags and connected entity groups",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+                "rows": 10000,
+                "step": "source",
+                "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 2.6403,
+              "observed_at": "2026-10-11T03:50:34.507428+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0546,
+                "input_transfer": 0.5997,
+                "output_reading": 0.6113,
+                "container_setup": 0.0935,
+                "script_execution": 0.832,
+                "artifact_transfer": 0.4492
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 6.669,
+            "step_id": "audit",
+            "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-0",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "source",
+            "started_at": "2026-10-11T03:50:31.734445+00:00",
+            "input_cells": [
+              "36523ae9-6675-49aa-9ac8-7d497d47aa6a"
+            ],
+            "input_steps": [
+              "source"
+            ],
+            "output_cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+            "output_rows": 10000,
+            "completed_at": "2026-10-11T03:50:38.409248+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+            "output_fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f",
+            "provider_execution": "41b102a52155ae38a1f4fc5491569ebb9854db61cfd0d460c636fabc4f18ef91"
+          },
+          {
+            "name": "Keep matching evidence; exclude top-level identity metadata",
+            "index": 1,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+                "rows": 10000,
+                "step": "audit",
+                "fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 3.102,
+              "observed_at": "2026-10-11T03:50:41.652652+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0655,
+                "input_transfer": 0.6365,
+                "output_reading": 0.9256,
+                "container_setup": 0.0963,
+                "script_execution": 0.8252,
+                "artifact_transfer": 0.5528
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 8.655,
+            "step_id": "inputs",
+            "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-1",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "audit",
+            "started_at": "2026-10-11T03:50:38.412977+00:00",
+            "input_cells": [
+              "39d5e0e5-c7c9-4587-ae34-17915fba5526"
+            ],
+            "input_steps": [
+              "audit"
+            ],
+            "output_cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+            "output_rows": 10000,
+            "completed_at": "2026-10-11T03:50:47.076139+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f",
+            "output_fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39",
+            "provider_execution": "e2fff69580bc89d5272dd988e74c1510e7c818ee64424629701c100cf66b6442"
+          },
+          {
+            "name": "Preserve supplied categorical judgements as trainable decisions",
+            "index": 2,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+                "rows": 10000,
+                "step": "inputs",
+                "fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 4.6284,
+              "observed_at": "2026-10-11T03:50:51.945479+00:00",
+              "stage_seconds": {
+                "cleanup": 0.2581,
+                "input_transfer": 1.0279,
+                "output_reading": 1.1275,
+                "container_setup": 0.1256,
+                "script_execution": 1.3646,
+                "artifact_transfer": 0.7247
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 13.071,
+            "step_id": "decisions",
+            "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-2",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "inputs",
+            "started_at": "2026-10-11T03:50:47.081882+00:00",
+            "input_cells": [
+              "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70"
+            ],
+            "input_steps": [
+              "inputs"
+            ],
+            "output_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+            "output_rows": 10000,
+            "completed_at": "2026-10-11T03:51:00.162958+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 10000,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39",
+            "output_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+            "provider_execution": "df3ff6f7aa5c982617841210868e237f43c61d1bdaed62fb5c528a96d6d094e0"
+          }
+        ],
+        "impact": {
+          "rows_added": 0,
+          "rows_after": 10000,
+          "rows_before": 10000,
+          "rows_removed": 0,
+          "coverage_after": {},
+          "coverage_before": {},
+          "decision_changes": 0,
+          "identity_preserved": true,
+          "instruction_changes": 0,
+          "decision_rows_removed": 0,
+          "input_evidence_removed": 0
+        },
+        "attempt": "e19fb578-9e1b-4aed-b408-addcafbb4fbd",
+        "seconds": 35.649,
+        "started_at": "2026-10-11T03:50:31.719529+00:00",
+        "output_rows": 10000,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "publishing": 7.198,
+          "measuring_impact": 7.053,
+          "step_1_executing": 3.234,
+          "step_2_executing": 3.854,
+          "step_3_executing": 5.678,
+          "verifying_source": 0.019,
+          "step_1_checking_rows": 0.003,
+          "step_2_checking_rows": 0.006,
+          "step_3_checking_rows": 0.007,
+          "step_1_preserving_lineage": 1.771,
+          "step_2_preserving_lineage": 2.465,
+          "step_3_preserving_lineage": 3.204,
+          "step_3_validating_consumer": 1.157
+        },
+        "semantic_quality": "unmeasured",
+        "stage_started_at": "2026-10-11T03:51:07.361055+00:00",
+        "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+      },
+      "details": {
+        "id": "630d557e-7281-432d-b002-6d28b1a4aa65",
+        "pipeline": "d037aa86-2736-44e6-8aac-7b9706186737",
+        "pipeline_name": "KYC matching preparation",
+        "revision": 2,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "publish",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "b444d863-ce91-4992-b6c7-23952c389962",
+          "kind": "dataset_pipeline",
+          "reference": "630d557e-7281-432d-b002-6d28b1a4aa65",
+          "attempt": "e19fb578-9e1b-4aed-b408-addcafbb4fbd",
+          "unit": "steps",
+          "facts": {
+            "attempt": "e19fb578-9e1b-4aed-b408-addcafbb4fbd",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 10000
+          },
+          "stage": "completed",
+          "total": 3,
+          "status": "complete",
+          "completed": 3,
+          "event_count": 56,
+          "last_observed_at": "2026-10-11T03:51:07.365282+00:00",
+          "last_heartbeat_at": "2026-10-11T03:50:51.950404+00:00",
+          "last_progress_at": "2026-10-11T03:51:07.365282+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T03:51:07.896086+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "publish",
+          "rows": 10000,
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Preserve observations, review flags and connected entity groups",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 10000,
+                "rows_before": 10000,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+                  "rows": 10000,
+                  "step": "source",
+                  "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 2.6403,
+                "observed_at": "2026-10-11T03:50:34.507428+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0546,
+                  "input_transfer": 0.5997,
+                  "output_reading": 0.6113,
+                  "container_setup": 0.0935,
+                  "script_execution": 0.832,
+                  "artifact_transfer": 0.4492
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 6.669,
+              "step_id": "audit",
+              "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-0",
+              "exit_code": 0,
+              "input_rows": 10000,
+              "input_step": "source",
+              "started_at": "2026-10-11T03:50:31.734445+00:00",
+              "input_cells": [
+                "36523ae9-6675-49aa-9ac8-7d497d47aa6a"
+              ],
+              "input_steps": [
+                "source"
+              ],
+              "output_cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+              "output_rows": 10000,
+              "completed_at": "2026-10-11T03:50:38.409248+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+              "output_fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f",
+              "provider_execution": "41b102a52155ae38a1f4fc5491569ebb9854db61cfd0d460c636fabc4f18ef91"
+            },
+            {
+              "name": "Keep matching evidence; exclude top-level identity metadata",
+              "index": 1,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 10000,
+                "rows_before": 10000,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+                  "rows": 10000,
+                  "step": "audit",
+                  "fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 3.102,
+                "observed_at": "2026-10-11T03:50:41.652652+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0655,
+                  "input_transfer": 0.6365,
+                  "output_reading": 0.9256,
+                  "container_setup": 0.0963,
+                  "script_execution": 0.8252,
+                  "artifact_transfer": 0.5528
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 8.655,
+              "step_id": "inputs",
+              "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-1",
+              "exit_code": 0,
+              "input_rows": 10000,
+              "input_step": "audit",
+              "started_at": "2026-10-11T03:50:38.412977+00:00",
+              "input_cells": [
+                "39d5e0e5-c7c9-4587-ae34-17915fba5526"
+              ],
+              "input_steps": [
+                "audit"
+              ],
+              "output_cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+              "output_rows": 10000,
+              "completed_at": "2026-10-11T03:50:47.076139+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f",
+              "output_fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39",
+              "provider_execution": "e2fff69580bc89d5272dd988e74c1510e7c818ee64424629701c100cf66b6442"
+            },
+            {
+              "name": "Preserve supplied categorical judgements as trainable decisions",
+              "index": 2,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 10000,
+                "rows_before": 10000,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+                  "rows": 10000,
+                  "step": "inputs",
+                  "fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 4.6284,
+                "observed_at": "2026-10-11T03:50:51.945479+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.2581,
+                  "input_transfer": 1.0279,
+                  "output_reading": 1.1275,
+                  "container_setup": 0.1256,
+                  "script_execution": 1.3646,
+                  "artifact_transfer": 0.7247
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 13.071,
+              "step_id": "decisions",
+              "container": "overmind-workshop-630d557e-7281-432d-b002-6d28b1a4aa65-e19fb578-9e1b-4aed-b408-addcafbb4fbd-2",
+              "exit_code": 0,
+              "input_rows": 10000,
+              "input_step": "inputs",
+              "started_at": "2026-10-11T03:50:47.081882+00:00",
+              "input_cells": [
+                "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70"
+              ],
+              "input_steps": [
+                "inputs"
+              ],
+              "output_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+              "output_rows": 10000,
+              "completed_at": "2026-10-11T03:51:00.162958+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 10000,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39",
+              "output_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+              "provider_execution": "df3ff6f7aa5c982617841210868e237f43c61d1bdaed62fb5c528a96d6d094e0"
+            }
+          ],
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 10000,
+            "rows_before": 10000,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "attempt": "e19fb578-9e1b-4aed-b408-addcafbb4fbd",
+          "seconds": 35.649,
+          "started_at": "2026-10-11T03:50:31.719529+00:00",
+          "output_rows": 10000,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "publishing": 7.198,
+            "measuring_impact": 7.053,
+            "step_1_executing": 3.234,
+            "step_2_executing": 3.854,
+            "step_3_executing": 5.678,
+            "verifying_source": 0.019,
+            "step_1_checking_rows": 0.003,
+            "step_2_checking_rows": 0.006,
+            "step_3_checking_rows": 0.007,
+            "step_1_preserving_lineage": 1.771,
+            "step_2_preserving_lineage": 2.465,
+            "step_3_preserving_lineage": 3.204,
+            "step_3_validating_consumer": 1.157
+          },
+          "semantic_quality": "unmeasured",
+          "stage_started_at": "2026-10-11T03:51:07.361055+00:00",
+          "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+        },
+        "created_at": "2026-10-11T03:50:31.278340+00:00",
+        "updated_at": "2026-10-11T03:51:07.366795+00:00",
+        "completed_at": "2026-10-11T03:51:07.366795+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/630d557e-7281-432d-b002-6d28b1a4aa65?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/630d557e-7281-432d-b002-6d28b1a4aa65?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/630d557e-7281-432d-b002-6d28b1a4aa65?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/b444d863-ce91-4992-b6c7-23952c389962?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: completed."
+    },
+    "corrected_checks_before_verification": {
+      "cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+      "cell_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+      "assessment_version": 0,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "unresolved": 4,
+        "not_assessed": 2
+      },
+      "total": 9,
+      "findings": [
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-capability_scope",
+          "category": "task_suitability",
+          "status": "unresolved",
+          "summary": "Entity matching covers only part of the KYC Screener capability.",
+          "scope": "Capability 43d35b0c-dd4b-4d45-b167-2ab657123702 versus supplied targets",
+          "affected_rows": 10000,
+          "evidence": "Capability requires entity-file extraction, firm-rule checks, screening and escalation. Source targets are positive/negative matching judgements; no tool-use trajectories or approval decisions. OpenSanctions documents these as same/different logical entities, https://www.opensanctions.org/docs/opensource/pairs/.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590292+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "977068943230807ece58b4436ce8904e74dd9170abae05acfc7a7374aaf844dc"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-identity_metadata",
+          "category": "shortcut_features",
+          "status": "unresolved",
+          "summary": "Direct entity IDs and referents must stay outside model inputs.",
+          "scope": "Source metadata and old conversation recipe",
+          "affected_rows": 10000,
+          "evidence": "All 10,000 source pairs carry graph IDs and referents; the reproduced baseline includes them in every prompt. 515 positive pairs share the same ID. This is a potential shortcut, not a measured accuracy effect.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590284+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "a841aac716077bd150655df2d03d796eb85a4a8064d68da0ca54aca6a6279046"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-repeated_pairs",
+          "category": "split_policy",
+          "status": "unresolved",
+          "summary": "55 observations repeat an unordered entity-ID pair; keep related rows together.",
+          "scope": "27 repeated unordered ID-pair groups across all 10,000 records",
+          "affected_rows": 55,
+          "evidence": "Exact ID-pair grouping yields 27 groups / 55 rows. This differs from full-record duplicate definitions. Connected IDs/referents must stay together when partitioning; no held-out split is created by this audit.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590296+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "0e4b5539ccd55a248ec07a20fb915d94ff820d4aadbe4103e9da9ba8e42faead"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-same_caption_negatives",
+          "category": "label_review",
+          "status": "unresolved",
+          "summary": "68 negative pairs share a caption; retain them pending label review.",
+          "scope": "All 10,000 original pairs",
+          "affected_rows": 68,
+          "evidence": "Counted negative labels where left.caption equals right.caption. These can be legitimate hard negatives; no relabelling or deletion is justified by caption equality.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590294+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "56762496b83b4f6afde189cc708c8974d21ec9f71f025c42e3d3d1c347eeb44d"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-property_identifiers",
+          "category": "shortcut_features",
+          "status": "not_assessed",
+          "summary": "Identifier-like values remain in entity properties; their effect is unmeasured.",
+          "scope": "Retained caption/schema/properties input projection",
+          "affected_rows": 2759,
+          "evidence": "2,759 rows have a property value equal to an ID/referent in the source, including wikidataId and relationship fields. These may be legitimate evidence. Removing top-level metadata alone does not prove the absence of shortcuts.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590297+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "2adea7f154ef0c8d0fd5d508ee442bfd52798ca5d5ae60e3bcbcfcc5ff1e8c4e"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:suitability",
+          "category": "task_suitability",
+          "status": "not_assessed",
+          "summary": "Suitability for this task",
+          "scope": "This cell and its intended task",
+          "affected_rows": null,
+          "evidence": "",
+          "attribution": "not_assessed",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "c6ca28b8cec1f3043b6d1d0f31032414be2d7868d89241f570f1e7762e7e6cf8"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:check-preserve_rows",
+          "category": "preservation",
+          "status": "passed",
+          "summary": "Row count preservation",
+          "scope": "This transformation",
+          "affected_rows": 10000,
+          "evidence": "10000 input rows; 10000 output rows. Row count preservation required.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "798f941ae74faef801bce8be3691f07b56c980b516ad3ad5195923f54a8c2b29"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:execution",
+          "category": "execution",
+          "status": "passed",
+          "summary": "Transformation completed",
+          "scope": "This cell",
+          "affected_rows": 10000,
+          "evidence": "Cell fingerprint a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a; execution isolated_container.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "613bc253c97e0d7227c86af78b0f56334e74af990ca819403df6a375121fae31"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:format",
+          "category": "format",
+          "status": "passed",
+          "summary": "Required data format",
+          "scope": "decision_train",
+          "affected_rows": 10000,
+          "evidence": "decision_train: 10000 rows checked.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "a1747719a868db55516781f301e9a7283456b7da6525c7c42fd655526b8e3584"
+        }
+      ],
+      "offset": 0,
+      "next_offset": null
+    },
+    "rest_mcp_parity": true
+  },
+  "final": {
+    "verification": {
+      "original_sha256": "fe2f701f6034d3adaa586ef747d3c3855ca10fcbac1de97fa3dd7e487058c521",
+      "prepared_sha256": "6a17e0c7e9626acb863d104609055689ff1fa90af03978f39685bc842c52010c",
+      "original_to_landed_equal_rows": 10000,
+      "source_records_and_lineage_preserved": 10000,
+      "source_label_mapping_verified": 10000,
+      "inputs_without_top_level_identity_metadata": 10000,
+      "entity_groups": 8954,
+      "identity_assignments_verified": 51203,
+      "labels": {
+        "positive": 7690,
+        "negative": 2310
+      },
+      "review_flags": {
+        "repeated_pair_observation": 55,
+        "same_caption_negative": 68
+      },
+      "limitations": [
+        "Checks verify source fidelity, not the truth of the supplied labels.",
+        "Nested property identifiers remain; their generalisation effect is unmeasured.",
+        "No held-out split or model training is performed."
+      ]
+    },
+    "preparation_status": {
+      "cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+      "cell_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+      "assessment_version": 1,
+      "counts": {
+        "passed": 5,
+        "failed": 0,
+        "unresolved": 3,
+        "not_assessed": 2
+      },
+      "total": 10,
+      "findings": [
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-capability_scope",
+          "category": "task_suitability",
+          "status": "unresolved",
+          "summary": "Entity matching covers only part of the KYC Screener capability.",
+          "scope": "Capability 43d35b0c-dd4b-4d45-b167-2ab657123702 versus supplied targets",
+          "affected_rows": 10000,
+          "evidence": "Capability requires entity-file extraction, firm-rule checks, screening and escalation. Source targets are positive/negative matching judgements; no tool-use trajectories or approval decisions. OpenSanctions documents these as same/different logical entities, https://www.opensanctions.org/docs/opensource/pairs/.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590292+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "977068943230807ece58b4436ce8904e74dd9170abae05acfc7a7374aaf844dc"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-repeated_pairs",
+          "category": "split_policy",
+          "status": "unresolved",
+          "summary": "55 observations repeat an unordered entity-ID pair; keep related rows together.",
+          "scope": "27 repeated unordered ID-pair groups across all 10,000 records",
+          "affected_rows": 55,
+          "evidence": "Exact ID-pair grouping yields 27 groups / 55 rows. This differs from full-record duplicate definitions. Connected IDs/referents must stay together when partitioning; no held-out split is created by this audit.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590296+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "0e4b5539ccd55a248ec07a20fb915d94ff820d4aadbe4103e9da9ba8e42faead"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-same_caption_negatives",
+          "category": "label_review",
+          "status": "unresolved",
+          "summary": "68 negative pairs share a caption; retain them pending label review.",
+          "scope": "All 10,000 original pairs",
+          "affected_rows": 68,
+          "evidence": "Counted negative labels where left.caption equals right.caption. These can be legitimate hard negatives; no relabelling or deletion is justified by caption equality.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590294+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "56762496b83b4f6afde189cc708c8974d21ec9f71f025c42e3d3d1c347eeb44d"
+        },
+        {
+          "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-property_identifiers",
+          "category": "shortcut_features",
+          "status": "not_assessed",
+          "summary": "Identifier-like values remain in entity properties; their effect is unmeasured.",
+          "scope": "Retained caption/schema/properties input projection",
+          "affected_rows": 2759,
+          "evidence": "2,759 rows have a property value equal to an ID/referent in the source, including wikidataId and relationship fields. These may be legitimate evidence. Removing top-level metadata alone does not prove the absence of shortcuts.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:50:14.590297+00:00",
+          "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": true,
+          "fingerprint": "2adea7f154ef0c8d0fd5d508ee442bfd52798ca5d5ae60e3bcbcfcc5ff1e8c4e"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:suitability",
+          "category": "task_suitability",
+          "status": "not_assessed",
+          "summary": "Suitability for this task",
+          "scope": "This cell and its intended task",
+          "affected_rows": null,
+          "evidence": "",
+          "attribution": "not_assessed",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "c6ca28b8cec1f3043b6d1d0f31032414be2d7868d89241f570f1e7762e7e6cf8"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:agent-identity_metadata_removed",
+          "category": "shortcut_features",
+          "status": "passed",
+          "summary": "All 10,000 model inputs exclude top-level entity identity metadata.",
+          "scope": "decision.state left/right top-level keys only; nested properties remain unchanged",
+          "affected_rows": 10000,
+          "evidence": "Full export SHA256 6a17e0c7e9626acb863d104609055689ff1fa90af03978f39685bc842c52010c; verify.py checked every original, landed and prepared row. Every model entity has exactly caption, schema and properties. This does not establish absence of other shortcuts.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:52:58.644035+00:00",
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-identity_metadata",
+          "resolution_fingerprint": "a841aac716077bd150655df2d03d796eb85a4a8064d68da0ca54aca6a6279046",
+          "inherited": false,
+          "fingerprint": "293452fb8d8d8f6a0e9feaf3199200d9de3531f5f773be3aaa65f690afadf4fc"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:agent-source_label_fidelity",
+          "category": "label_preservation",
+          "status": "passed",
+          "summary": "All 10,000 decision targets match their supplied source labels.",
+          "scope": "Source judgement to ordered options [negative, positive]; source fidelity, not label truth",
+          "affected_rows": 10000,
+          "evidence": "Full export SHA256 6a17e0c7e9626acb863d104609055689ff1fa90af03978f39685bc842c52010c; verify.py checked every original, landed and prepared row. Preserved 7,690 positive and 2,310 negative labels, 68 same-caption negatives and 55 repeated ID-pair observations.",
+          "attribution": "agent_assessment",
+          "actor": "4",
+          "recorded_at": "2026-10-11T03:52:58.644041+00:00",
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "c40bc21b7f9060df87a2f9d395741d792761a761515aa25322e3de26f287ea06"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:check-preserve_rows",
+          "category": "preservation",
+          "status": "passed",
+          "summary": "Row count preservation",
+          "scope": "This transformation",
+          "affected_rows": 10000,
+          "evidence": "10000 input rows; 10000 output rows. Row count preservation required.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "798f941ae74faef801bce8be3691f07b56c980b516ad3ad5195923f54a8c2b29"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:execution",
+          "category": "execution",
+          "status": "passed",
+          "summary": "Transformation completed",
+          "scope": "This cell",
+          "affected_rows": 10000,
+          "evidence": "Cell fingerprint a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a; execution isolated_container.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "613bc253c97e0d7227c86af78b0f56334e74af990ca819403df6a375121fae31"
+        },
+        {
+          "id": "63806e31-001c-4272-91c5-014db4b7fefb:format",
+          "category": "format",
+          "status": "passed",
+          "summary": "Required data format",
+          "scope": "decision_train",
+          "affected_rows": 10000,
+          "evidence": "decision_train: 10000 rows checked.",
+          "attribution": "recorded_check",
+          "actor": null,
+          "recorded_at": null,
+          "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+          "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+          "resolves": "",
+          "resolution_fingerprint": "",
+          "inherited": false,
+          "fingerprint": "a1747719a868db55516781f301e9a7283456b7da6525c7c42fd655526b8e3584"
+        }
+      ],
+      "offset": 0,
+      "next_offset": null
+    },
+    "all_findings": [
+      {
+        "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-capability_scope",
+        "category": "task_suitability",
+        "status": "unresolved",
+        "summary": "Entity matching covers only part of the KYC Screener capability.",
+        "scope": "Capability 43d35b0c-dd4b-4d45-b167-2ab657123702 versus supplied targets",
+        "affected_rows": 10000,
+        "evidence": "Capability requires entity-file extraction, firm-rule checks, screening and escalation. Source targets are positive/negative matching judgements; no tool-use trajectories or approval decisions. OpenSanctions documents these as same/different logical entities, https://www.opensanctions.org/docs/opensource/pairs/.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:50:14.590292+00:00",
+        "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": true,
+        "fingerprint": "977068943230807ece58b4436ce8904e74dd9170abae05acfc7a7374aaf844dc"
+      },
+      {
+        "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-repeated_pairs",
+        "category": "split_policy",
+        "status": "unresolved",
+        "summary": "55 observations repeat an unordered entity-ID pair; keep related rows together.",
+        "scope": "27 repeated unordered ID-pair groups across all 10,000 records",
+        "affected_rows": 55,
+        "evidence": "Exact ID-pair grouping yields 27 groups / 55 rows. This differs from full-record duplicate definitions. Connected IDs/referents must stay together when partitioning; no held-out split is created by this audit.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:50:14.590296+00:00",
+        "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": true,
+        "fingerprint": "0e4b5539ccd55a248ec07a20fb915d94ff820d4aadbe4103e9da9ba8e42faead"
+      },
+      {
+        "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-same_caption_negatives",
+        "category": "label_review",
+        "status": "unresolved",
+        "summary": "68 negative pairs share a caption; retain them pending label review.",
+        "scope": "All 10,000 original pairs",
+        "affected_rows": 68,
+        "evidence": "Counted negative labels where left.caption equals right.caption. These can be legitimate hard negatives; no relabelling or deletion is justified by caption equality.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:50:14.590294+00:00",
+        "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": true,
+        "fingerprint": "56762496b83b4f6afde189cc708c8974d21ec9f71f025c42e3d3d1c347eeb44d"
+      },
+      {
+        "id": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-property_identifiers",
+        "category": "shortcut_features",
+        "status": "not_assessed",
+        "summary": "Identifier-like values remain in entity properties; their effect is unmeasured.",
+        "scope": "Retained caption/schema/properties input projection",
+        "affected_rows": 2759,
+        "evidence": "2,759 rows have a property value equal to an ID/referent in the source, including wikidataId and relationship fields. These may be legitimate evidence. Removing top-level metadata alone does not prove the absence of shortcuts.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:50:14.590297+00:00",
+        "origin_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": true,
+        "fingerprint": "2adea7f154ef0c8d0fd5d508ee442bfd52798ca5d5ae60e3bcbcfcc5ff1e8c4e"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:suitability",
+        "category": "task_suitability",
+        "status": "not_assessed",
+        "summary": "Suitability for this task",
+        "scope": "This cell and its intended task",
+        "affected_rows": null,
+        "evidence": "",
+        "attribution": "not_assessed",
+        "actor": null,
+        "recorded_at": null,
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": false,
+        "fingerprint": "c6ca28b8cec1f3043b6d1d0f31032414be2d7868d89241f570f1e7762e7e6cf8"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:agent-identity_metadata_removed",
+        "category": "shortcut_features",
+        "status": "passed",
+        "summary": "All 10,000 model inputs exclude top-level entity identity metadata.",
+        "scope": "decision.state left/right top-level keys only; nested properties remain unchanged",
+        "affected_rows": 10000,
+        "evidence": "Full export SHA256 6a17e0c7e9626acb863d104609055689ff1fa90af03978f39685bc842c52010c; verify.py checked every original, landed and prepared row. Every model entity has exactly caption, schema and properties. This does not establish absence of other shortcuts.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:52:58.644035+00:00",
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "36523ae9-6675-49aa-9ac8-7d497d47aa6a:agent-identity_metadata",
+        "resolution_fingerprint": "a841aac716077bd150655df2d03d796eb85a4a8064d68da0ca54aca6a6279046",
+        "inherited": false,
+        "fingerprint": "293452fb8d8d8f6a0e9feaf3199200d9de3531f5f773be3aaa65f690afadf4fc"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:agent-source_label_fidelity",
+        "category": "label_preservation",
+        "status": "passed",
+        "summary": "All 10,000 decision targets match their supplied source labels.",
+        "scope": "Source judgement to ordered options [negative, positive]; source fidelity, not label truth",
+        "affected_rows": 10000,
+        "evidence": "Full export SHA256 6a17e0c7e9626acb863d104609055689ff1fa90af03978f39685bc842c52010c; verify.py checked every original, landed and prepared row. Preserved 7,690 positive and 2,310 negative labels, 68 same-caption negatives and 55 repeated ID-pair observations.",
+        "attribution": "agent_assessment",
+        "actor": "4",
+        "recorded_at": "2026-10-11T03:52:58.644041+00:00",
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": false,
+        "fingerprint": "c40bc21b7f9060df87a2f9d395741d792761a761515aa25322e3de26f287ea06"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:check-preserve_rows",
+        "category": "preservation",
+        "status": "passed",
+        "summary": "Row count preservation",
+        "scope": "This transformation",
+        "affected_rows": 10000,
+        "evidence": "10000 input rows; 10000 output rows. Row count preservation required.",
+        "attribution": "recorded_check",
+        "actor": null,
+        "recorded_at": null,
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": false,
+        "fingerprint": "798f941ae74faef801bce8be3691f07b56c980b516ad3ad5195923f54a8c2b29"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:execution",
+        "category": "execution",
+        "status": "passed",
+        "summary": "Transformation completed",
+        "scope": "This cell",
+        "affected_rows": 10000,
+        "evidence": "Cell fingerprint a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a; execution isolated_container.",
+        "attribution": "recorded_check",
+        "actor": null,
+        "recorded_at": null,
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": false,
+        "fingerprint": "613bc253c97e0d7227c86af78b0f56334e74af990ca819403df6a375121fae31"
+      },
+      {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb:format",
+        "category": "format",
+        "status": "passed",
+        "summary": "Required data format",
+        "scope": "decision_train",
+        "affected_rows": 10000,
+        "evidence": "decision_train: 10000 rows checked.",
+        "attribution": "recorded_check",
+        "actor": null,
+        "recorded_at": null,
+        "origin_cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "origin_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "origin_fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "resolves": "",
+        "resolution_fingerprint": "",
+        "inherited": false,
+        "fingerprint": "a1747719a868db55516781f301e9a7283456b7da6525c7c42fd655526b8e3584"
+      }
+    ],
+    "rest_mcp_parity": true,
+    "specific_resolution_verified": true,
+    "remaining_concerns_preserved": true
+  },
+  "source_profile": {
+    "rows": 10000,
+    "labels": {
+      "positive": 7690,
+      "negative": 2310
+    },
+    "same_id_positive": 515,
+    "same_caption_negative": 68,
+    "repeated_pairs": 27,
+    "repeated_pair_rows": 55,
+    "rows_with_graph_identifiers_in_properties": 2759,
+    "property_fields": {
+      "wikidataId": 3332,
+      "holder": 55,
+      "owner": 27,
+      "successor": 20,
+      "post": 8,
+      "subject": 2,
+      "relative": 2,
+      "person": 2,
+      "issuer": 4,
+      "asset": 2
+    },
+    "schema_pairs": {
+      "Occupancy/Occupancy": 2839,
+      "Succession/Succession": 473,
+      "Person/Person": 3750,
+      "Company/Company": 962,
+      "LegalEntity/LegalEntity": 80,
+      "Organization/Company": 349,
+      "Position/Position": 338,
+      "Company/Organization": 282,
+      "Vessel/Vessel": 98,
+      "Organization/Organization": 442,
+      "UnknownLink/UnknownLink": 6,
+      "LegalEntity/Person": 38,
+      "LegalEntity/Company": 119,
+      "Organization/Person": 3,
+      "Directorship/Directorship": 23,
+      "Family/Family": 33,
+      "CryptoWallet/CryptoWallet": 8,
+      "Organization/LegalEntity": 15,
+      "Company/LegalEntity": 15,
+      "Ownership/Ownership": 30,
+      "LegalEntity/Organization": 58,
+      "Security/Security": 24,
+      "Company/Person": 1,
+      "Person/LegalEntity": 10,
+      "Airplane/Airplane": 3,
+      "Person/Company": 1
+    }
+  },
+  "readiness": {
+    "summary": "Training format checks passed; task suitability is unmeasured.",
+    "ready": true,
+    "assessment": {
+      "technical": "pass",
+      "task_suitability": "unmeasured",
+      "capability_linked": true,
+      "validation": "disabled"
+    },
+    "warnings": [
+      "training dataset: No current workshop quality review.; 10000 of 10000 rows do not match the capability."
+    ],
+    "dataset": {
+      "id": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+      "name": "KYC matching \u00b7 preparation check audit",
+      "intent": "train",
+      "cell": {
+        "id": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "version": "1.4",
+        "title": "Preserve supplied categorical judgements as trainable decisions",
+        "rows": 10000,
+        "fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+        "fits": true,
+        "reason": "",
+        "warnings": [
+          "No current workshop quality review.; 10000 of 10000 rows do not match the capability."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "format": "decision",
+        "num_examples": 10000,
+        "errors": [],
+        "warnings": [],
+        "stats": {
+          "checkpoint": "63806e31-001c-4272-91c5-014db4b7fefb",
+          "total_examples": 10000,
+          "train_examples": 10000,
+          "val_examples": 0,
+          "validation_mode": "off",
+          "split_method": "random",
+          "format": "decision"
+        }
+      }
+    },
+    "training_contract": {
+      "objective": "decision_cross_entropy",
+      "inference_contract": "decision",
+      "target": "declared_decision_supervision",
+      "target_semantics": {
+        "categorical_gold": 10000
+      },
+      "losses": {
+        "distribution": "cross_entropy",
+        "ordinal_mean": "squared_error_of_normalized_expectation"
+      },
+      "methods": [
+        "lora"
+      ],
+      "providers": [
+        "modal"
+      ],
+      "metrics": [
+        "cross_entropy",
+        "brier",
+        "hard_label_accuracy",
+        "expected_score_mae",
+        "coverage"
+      ],
+      "evaluation": "native_probabilities",
+      "max_gpus": 1,
+      "pre_training_baseline": true
+    }
+  },
+  "final_process": {
+    "selected": "63806e31-001c-4272-91c5-014db4b7fefb",
+    "nodes": [
+      {
+        "cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Preserve supplied categorical judgements as trainable decisions",
+        "rows": 10000,
+        "fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a"
+      },
+      {
+        "cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Keep matching evidence; exclude top-level identity metadata",
+        "rows": 10000,
+        "fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39"
+      },
+      {
+        "cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Preserve observations, review flags and connected entity groups",
+        "rows": 10000,
+        "fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f"
+      },
+      {
+        "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Source",
+        "rows": 10000,
+        "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+      }
+    ],
+    "edges": [
+      {
+        "source": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "target": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "label": ""
+      },
+      {
+        "source": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "target": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "label": ""
+      },
+      {
+        "source": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "target": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "label": ""
+      }
+    ]
+  },
+  "packages": {
+    "controls.zip": "a6ac5cc39be1af253f9c640d0763813a47d907823612f3223e76914f20d1b521",
+    "preparation.zip": "4a56dafa786a7e047dbdf48c160ab20b28b1ef40648259db0271214952aed799"
+  },
+  "baseline_input_audit": {
+    "summary": "1 rows.",
+    "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+    "cell_id": "fc383fb3-b1ea-47ac-a99d-c7d55ba1458c",
+    "version": "1.1",
+    "columns": [
+      "total_rows",
+      "inputs_with_referents",
+      "inputs_with_ids",
+      "preserved_labels"
+    ],
+    "rows": [
+      {
+        "total_rows": 10000,
+        "inputs_with_referents": 10000,
+        "inputs_with_ids": 10000,
+        "preserved_labels": 10000
+      }
+    ],
+    "n": 1,
+    "truncated": false,
+    "resource_links": [
+      {
+        "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "KYC matching \u00b7 preparation check audit",
+        "mimeType": "application/json"
+      }
+    ]
+  }
+}

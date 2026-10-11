@@ -1,3 +1,3 @@
 """MCP protocol and catalog services."""
 
-CONTRACT_VERSION = "6.4.0"
+CONTRACT_VERSION = "7.0.0"

@@ -229,13 +229,7 @@ def finetune_prerequisite_report(
         "hint": hint,
         "dataset": dataset.name or str(dataset.id)[:8],
         "capability": capability.slug if capability is not None else None,
-        "validation": {
-            "valid": validation.valid,
-            "errors": validation.errors,
-            "warnings": validation.warnings,
-            "num_examples": validation.num_examples,
-            "format": validation.format,
-        },
+        "validation": validation.as_dict(),
         "eval_dataset": (
             {
                 "name": eval_dataset.name or str(eval_dataset.id)[:8],

@@ -1,0 +1,1132 @@
+{
+  "endpoint": "http://localhost:8000",
+  "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+  "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+  "runs": [
+    {
+      "kind": "dataset_pipeline",
+      "id": "6bd5eab6-6e69-4d99-9917-ba0c01146001",
+      "status": "completed",
+      "label": "Dataset transformation",
+      "job_error": null,
+      "created_at": "2026-10-11T04:10:30.436807Z",
+      "updated_at": "2026-10-11T04:10:34.168177Z",
+      "completed_at": "2026-10-11T04:10:34.168177Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Preserve observations, review flags and connected entity groups",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 1.1353,
+              "observed_at": "2026-10-11T04:10:31.949676+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0336,
+                "input_transfer": 0.109,
+                "output_reading": 0.0057,
+                "container_setup": 0.126,
+                "script_execution": 0.539,
+                "artifact_transfer": 0.3221
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 1.259,
+            "step_id": "audit",
+            "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T04:10:30.803610+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T04:10:32.067630+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "output_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+            "provider_execution": "02ba624ab02decfa93b58276631d537a12722ddce72f925f58a212bd84151797",
+            "sample_count": 4
+          },
+          {
+            "name": "Keep matching evidence; exclude top-level identity metadata",
+            "index": 1,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "audit",
+                "fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.7889,
+              "observed_at": "2026-10-11T04:10:32.880916+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0389,
+                "input_transfer": 0.1045,
+                "output_reading": 0.0084,
+                "container_setup": 0.136,
+                "script_execution": 0.2572,
+                "artifact_transfer": 0.2439
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 0.942,
+            "step_id": "inputs",
+            "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-1",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "audit",
+            "started_at": "2026-10-11T04:10:32.079564+00:00",
+            "input_steps": [
+              "audit"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T04:10:33.026768+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+            "output_fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39",
+            "provider_execution": "b129865963dd8bf53d2bdda00584852b9028d49eb56e97d6ea9196e88ffceacd",
+            "sample_count": 4
+          },
+          {
+            "name": "Preserve supplied categorical judgements as trainable decisions",
+            "index": 2,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "inputs",
+                "fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.8713,
+              "observed_at": "2026-10-11T04:10:33.968925+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0359,
+                "input_transfer": 0.1051,
+                "output_reading": 0.1215,
+                "container_setup": 0.1177,
+                "script_execution": 0.2417,
+                "artifact_transfer": 0.2493
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 1.122,
+            "step_id": "decisions",
+            "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-2",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "inputs",
+            "started_at": "2026-10-11T04:10:33.029636+00:00",
+            "input_steps": [
+              "inputs"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T04:10:34.157444+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 100,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39",
+            "output_fingerprint": "ccc5e5b5faa89ced1a929a39039529c10dc58ba4cf1a4d2d1713e7dfe88380a0",
+            "provider_execution": "787439534e7ab148c1bda254f463da1860da2404aae4c5c4f4ecc0e6aaea737b",
+            "sample_count": 4
+          }
+        ],
+        "attempt": "0a564c3d-8ea3-40c1-bb6a-759ad072115d",
+        "seconds": 3.391,
+        "started_at": "2026-10-11T04:10:30.768732+00:00",
+        "output_rows": 100,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "measuring_impact": 0.227,
+          "step_1_executing": 1.153,
+          "step_2_executing": 0.812,
+          "step_3_executing": 0.961,
+          "verifying_source": 0.035,
+          "step_1_checking_rows": 0.003,
+          "step_2_checking_rows": 0.004,
+          "step_3_checking_rows": 0.005,
+          "step_1_preserving_lineage": 0.045,
+          "step_2_preserving_lineage": 0.05,
+          "step_3_preserving_lineage": 0.062,
+          "step_3_validating_consumer": 0.031
+        },
+        "stage_started_at": "2026-10-11T04:10:34.159967+00:00",
+        "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+      },
+      "details": {
+        "id": "6bd5eab6-6e69-4d99-9917-ba0c01146001",
+        "pipeline": "d037aa86-2736-44e6-8aac-7b9706186737",
+        "pipeline_name": "KYC matching preparation",
+        "revision": 2,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "af9ddcf6-c464-47e3-bd51-80d338c32de2",
+          "kind": "dataset_pipeline",
+          "reference": "6bd5eab6-6e69-4d99-9917-ba0c01146001",
+          "attempt": "0a564c3d-8ea3-40c1-bb6a-759ad072115d",
+          "unit": "steps",
+          "facts": {
+            "attempt": "0a564c3d-8ea3-40c1-bb6a-759ad072115d",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 10000
+          },
+          "stage": "completed",
+          "total": 3,
+          "status": "complete",
+          "completed": 3,
+          "event_count": 49,
+          "last_observed_at": "2026-10-11T04:10:34.165245+00:00",
+          "last_heartbeat_at": "2026-10-11T04:10:33.972242+00:00",
+          "last_progress_at": "2026-10-11T04:10:34.165245+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T04:10:34.172704+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "preview",
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Preserve observations, review flags and connected entity groups",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 1.1353,
+                "observed_at": "2026-10-11T04:10:31.949676+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0336,
+                  "input_transfer": 0.109,
+                  "output_reading": 0.0057,
+                  "container_setup": 0.126,
+                  "script_execution": 0.539,
+                  "artifact_transfer": 0.3221
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 1.259,
+              "step_id": "audit",
+              "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T04:10:30.803610+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T04:10:32.067630+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "output_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+              "provider_execution": "02ba624ab02decfa93b58276631d537a12722ddce72f925f58a212bd84151797",
+              "sample_count": 4
+            },
+            {
+              "name": "Keep matching evidence; exclude top-level identity metadata",
+              "index": 1,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "audit",
+                  "fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.7889,
+                "observed_at": "2026-10-11T04:10:32.880916+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0389,
+                  "input_transfer": 0.1045,
+                  "output_reading": 0.0084,
+                  "container_setup": 0.136,
+                  "script_execution": 0.2572,
+                  "artifact_transfer": 0.2439
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 0.942,
+              "step_id": "inputs",
+              "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-1",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "audit",
+              "started_at": "2026-10-11T04:10:32.079564+00:00",
+              "input_steps": [
+                "audit"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T04:10:33.026768+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "input_fingerprint": "4ed753ad072746bdb120f2a0dc81a8725e31107da6470daae0abefd10533c48e",
+              "output_fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39",
+              "provider_execution": "b129865963dd8bf53d2bdda00584852b9028d49eb56e97d6ea9196e88ffceacd",
+              "sample_count": 4
+            },
+            {
+              "name": "Preserve supplied categorical judgements as trainable decisions",
+              "index": 2,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "inputs",
+                  "fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.8713,
+                "observed_at": "2026-10-11T04:10:33.968925+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0359,
+                  "input_transfer": 0.1051,
+                  "output_reading": 0.1215,
+                  "container_setup": 0.1177,
+                  "script_execution": 0.2417,
+                  "artifact_transfer": 0.2493
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 1.122,
+              "step_id": "decisions",
+              "container": "overmind-workshop-6bd5eab6-6e69-4d99-9917-ba0c01146001-0a564c3d-8ea3-40c1-bb6a-759ad072115d-2",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "inputs",
+              "started_at": "2026-10-11T04:10:33.029636+00:00",
+              "input_steps": [
+                "inputs"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T04:10:34.157444+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 100,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "21566fe0677581aaa8d009c49e7aaf716a748f04f193062a9167fa073527ec39",
+              "output_fingerprint": "ccc5e5b5faa89ced1a929a39039529c10dc58ba4cf1a4d2d1713e7dfe88380a0",
+              "provider_execution": "787439534e7ab148c1bda254f463da1860da2404aae4c5c4f4ecc0e6aaea737b",
+              "sample_count": 4
+            }
+          ],
+          "attempt": "0a564c3d-8ea3-40c1-bb6a-759ad072115d",
+          "seconds": 3.391,
+          "started_at": "2026-10-11T04:10:30.768732+00:00",
+          "output_rows": 100,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "measuring_impact": 0.227,
+            "step_1_executing": 1.153,
+            "step_2_executing": 0.812,
+            "step_3_executing": 0.961,
+            "verifying_source": 0.035,
+            "step_1_checking_rows": 0.003,
+            "step_2_checking_rows": 0.004,
+            "step_3_checking_rows": 0.005,
+            "step_1_preserving_lineage": 0.045,
+            "step_2_preserving_lineage": 0.05,
+            "step_3_preserving_lineage": 0.062,
+            "step_3_validating_consumer": 0.031
+          },
+          "stage_started_at": "2026-10-11T04:10:34.159967+00:00",
+          "revision_fingerprint": "c1b9b6949116f9d2608abc63fc37c813e9bed172a3e2764798d1696725aea8f0"
+        },
+        "created_at": "2026-10-11T04:10:30.436807+00:00",
+        "updated_at": "2026-10-11T04:10:34.168177+00:00",
+        "completed_at": "2026-10-11T04:10:34.168177+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/6bd5eab6-6e69-4d99-9917-ba0c01146001?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/6bd5eab6-6e69-4d99-9917-ba0c01146001?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/6bd5eab6-6e69-4d99-9917-ba0c01146001?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/af9ddcf6-c464-47e3-bd51-80d338c32de2?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: completed."
+    },
+    {
+      "kind": "dataset_pipeline",
+      "id": "5a2b614a-5e61-4704-be5d-e4f3f64f93b5",
+      "status": "failed",
+      "label": "Dataset transformation",
+      "job_error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+      "created_at": "2026-10-11T04:10:34.570262Z",
+      "updated_at": "2026-10-11T04:10:35.429722Z",
+      "completed_at": "2026-10-11T04:10:35.429722Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "failed",
+        "steps": [
+          {
+            "name": "Preview-only preparation fault probe",
+            "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+            "index": 0,
+            "state": "failed",
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.6779,
+              "observed_at": "2026-10-11T04:10:35.405201+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0382,
+                "input_transfer": 0.0805,
+                "output_reading": 0.0066,
+                "container_setup": 0.105,
+                "script_execution": 0.2177,
+                "artifact_transfer": 0.2298
+              },
+              "cleanup_confirmed": true
+            },
+            "step_id": "fault_probe",
+            "container": "overmind-workshop-5a2b614a-5e61-4704-be5d-e4f3f64f93b5-2dcb7c53-3f96-477e-bf80-848f109aa992-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T04:10:34.722373+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 99,
+            "completed_at": "2026-10-11T04:10:35.429718+00:00",
+            "check_results": {
+              "failed": {
+                "preserve_rows": {
+                  "actual": 99,
+                  "expected": 100
+                }
+              },
+              "passed": {},
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 99,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "provider_execution": "ab8debef4d53334441ca43ae3cc4f3d709e545fb7cbc3d484c2360d0fb600e52"
+          }
+        ],
+        "attempt": "2dcb7c53-3f96-477e-bf80-848f109aa992",
+        "seconds": 0.727,
+        "started_at": "2026-10-11T04:10:34.698899+00:00",
+        "output_rows": 99,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "step_1_executing": 0.693,
+          "verifying_source": 0.024,
+          "step_1_validating_consumer": 0.012
+        },
+        "stage_started_at": "2026-10-11T04:10:35.426187+00:00",
+        "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+      },
+      "details": {
+        "id": "5a2b614a-5e61-4704-be5d-e4f3f64f93b5",
+        "pipeline": "e08d41b8-5072-4b06-a142-84481a1648da",
+        "pipeline_name": "KYC audit \u00b7 preview fault controls",
+        "revision": 1,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {
+          "fault": "drop"
+        },
+        "binding": null,
+        "operation": {
+          "id": "695b6de1-2b56-4d6a-98c0-996608970322",
+          "kind": "dataset_pipeline",
+          "reference": "5a2b614a-5e61-4704-be5d-e4f3f64f93b5",
+          "attempt": "2dcb7c53-3f96-477e-bf80-848f109aa992",
+          "unit": null,
+          "facts": {
+            "retry_safe": true
+          },
+          "stage": "failed",
+          "total": null,
+          "status": "failed",
+          "completed": null,
+          "event_count": 16,
+          "last_observed_at": "2026-10-11T04:10:35.430054+00:00",
+          "last_heartbeat_at": "2026-10-11T04:10:35.406038+00:00",
+          "last_progress_at": "2026-10-11T04:10:35.430054+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T04:10:35.433023+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "failed",
+        "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+        "result": {
+          "mode": "preview",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Preview-only preparation fault probe",
+              "error": "Step fault_probe row checks failed: {\"preserve_rows\": {\"expected\": 100, \"actual\": 99}}.",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.6779,
+                "observed_at": "2026-10-11T04:10:35.405201+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0382,
+                  "input_transfer": 0.0805,
+                  "output_reading": 0.0066,
+                  "container_setup": 0.105,
+                  "script_execution": 0.2177,
+                  "artifact_transfer": 0.2298
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "fault_probe",
+              "container": "overmind-workshop-5a2b614a-5e61-4704-be5d-e4f3f64f93b5-2dcb7c53-3f96-477e-bf80-848f109aa992-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T04:10:34.722373+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 99,
+              "completed_at": "2026-10-11T04:10:35.429718+00:00",
+              "check_results": {
+                "failed": {
+                  "preserve_rows": {
+                    "actual": 99,
+                    "expected": 100
+                  }
+                },
+                "passed": {},
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 99,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "provider_execution": "ab8debef4d53334441ca43ae3cc4f3d709e545fb7cbc3d484c2360d0fb600e52"
+            }
+          ],
+          "attempt": "2dcb7c53-3f96-477e-bf80-848f109aa992",
+          "seconds": 0.727,
+          "started_at": "2026-10-11T04:10:34.698899+00:00",
+          "output_rows": 99,
+          "source_rows": 10000,
+          "stage_seconds": {
+            "step_1_executing": 0.693,
+            "verifying_source": 0.024,
+            "step_1_validating_consumer": 0.012
+          },
+          "stage_started_at": "2026-10-11T04:10:35.426187+00:00",
+          "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+        },
+        "created_at": "2026-10-11T04:10:34.570262+00:00",
+        "updated_at": "2026-10-11T04:10:35.429722+00:00",
+        "completed_at": "2026-10-11T04:10:35.429722+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/5a2b614a-5e61-4704-be5d-e4f3f64f93b5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/5a2b614a-5e61-4704-be5d-e4f3f64f93b5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/5a2b614a-5e61-4704-be5d-e4f3f64f93b5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/695b6de1-2b56-4d6a-98c0-996608970322?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: failed."
+    },
+    {
+      "kind": "dataset_pipeline",
+      "id": "d7d20255-b932-47fc-aeaf-1ddeac75d6ee",
+      "status": "failed",
+      "label": "Dataset transformation",
+      "job_error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+      "created_at": "2026-10-11T04:10:35.622531Z",
+      "updated_at": "2026-10-11T04:10:36.696226Z",
+      "completed_at": "2026-10-11T04:10:36.696226Z",
+      "progress": {
+        "mode": "preview",
+        "stage": "failed",
+        "steps": [
+          {
+            "name": "Preview-only preparation fault probe",
+            "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+            "index": 0,
+            "state": "failed",
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.6909,
+              "observed_at": "2026-10-11T04:10:36.671686+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0396,
+                "input_transfer": 0.0656,
+                "output_reading": 0.0076,
+                "container_setup": 0.1105,
+                "script_execution": 0.2187,
+                "artifact_transfer": 0.2489
+              },
+              "cleanup_confirmed": true
+            },
+            "step_id": "fault_probe",
+            "container": "overmind-workshop-d7d20255-b932-47fc-aeaf-1ddeac75d6ee-693ad551-8e7d-4f15-8cdb-cafa2ea322e0-0",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T04:10:35.976842+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "completed_at": "2026-10-11T04:10:36.696219+00:00",
+            "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+            "provider_execution": "dcc31cfcff9c8485941dba087ace333c5812034c4f96d5a077758344e48beaf1"
+          }
+        ],
+        "attempt": "693ad551-8e7d-4f15-8cdb-cafa2ea322e0",
+        "seconds": 0.724,
+        "started_at": "2026-10-11T04:10:35.957400+00:00",
+        "source_rows": 10000,
+        "stage_seconds": {
+          "step_1_executing": 0.704,
+          "verifying_source": 0.02
+        },
+        "stage_started_at": "2026-10-11T04:10:36.681175+00:00",
+        "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+      },
+      "details": {
+        "id": "d7d20255-b932-47fc-aeaf-1ddeac75d6ee",
+        "pipeline": "e08d41b8-5072-4b06-a142-84481a1648da",
+        "pipeline_name": "KYC audit \u00b7 preview fault controls",
+        "revision": 1,
+        "source_dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "source_cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "source_fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {
+          "fault": "bad_probabilities"
+        },
+        "binding": null,
+        "operation": {
+          "id": "415e9d3d-b21e-4cf2-960a-cd0831d5eb3d",
+          "kind": "dataset_pipeline",
+          "reference": "d7d20255-b932-47fc-aeaf-1ddeac75d6ee",
+          "attempt": "693ad551-8e7d-4f15-8cdb-cafa2ea322e0",
+          "unit": null,
+          "facts": {
+            "retry_safe": true
+          },
+          "stage": "failed",
+          "total": null,
+          "status": "failed",
+          "completed": null,
+          "event_count": 15,
+          "last_observed_at": "2026-10-11T04:10:36.696548+00:00",
+          "last_heartbeat_at": "2026-10-11T04:10:36.672562+00:00",
+          "last_progress_at": "2026-10-11T04:10:36.696548+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T04:10:37.207732+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "failed",
+        "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+        "result": {
+          "mode": "preview",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Preview-only preparation fault probe",
+              "error": "decision_train: Example 1: target_probabilities must be finite, normalized and match the options",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8"
+                }
+              ],
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.6909,
+                "observed_at": "2026-10-11T04:10:36.671686+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0396,
+                  "input_transfer": 0.0656,
+                  "output_reading": 0.0076,
+                  "container_setup": 0.1105,
+                  "script_execution": 0.2187,
+                  "artifact_transfer": 0.2489
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "fault_probe",
+              "container": "overmind-workshop-d7d20255-b932-47fc-aeaf-1ddeac75d6ee-693ad551-8e7d-4f15-8cdb-cafa2ea322e0-0",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T04:10:35.976842+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "completed_at": "2026-10-11T04:10:36.696219+00:00",
+              "input_fingerprint": "b52cedae19db737a2cea129e461cf9c048b218ba3ca3e31d6d36ddc774cd63d8",
+              "provider_execution": "dcc31cfcff9c8485941dba087ace333c5812034c4f96d5a077758344e48beaf1"
+            }
+          ],
+          "attempt": "693ad551-8e7d-4f15-8cdb-cafa2ea322e0",
+          "seconds": 0.724,
+          "started_at": "2026-10-11T04:10:35.957400+00:00",
+          "source_rows": 10000,
+          "stage_seconds": {
+            "step_1_executing": 0.704,
+            "verifying_source": 0.02
+          },
+          "stage_started_at": "2026-10-11T04:10:36.681175+00:00",
+          "revision_fingerprint": "1435fa7326089c4d3f171b131fa6569bee79ca19c37efad960bd9d9a09cbc42b"
+        },
+        "created_at": "2026-10-11T04:10:35.622531+00:00",
+        "updated_at": "2026-10-11T04:10:36.696226+00:00",
+        "completed_at": "2026-10-11T04:10:36.696226+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/d7d20255-b932-47fc-aeaf-1ddeac75d6ee?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/d7d20255-b932-47fc-aeaf-1ddeac75d6ee?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/dataset_pipeline/d7d20255-b932-47fc-aeaf-1ddeac75d6ee?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset transformation",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://datasets/7b876858-e8a2-4d60-8361-ecee802e9b90?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Dataset",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/415e9d3d-b21e-4cf2-960a-cd0831d5eb3d?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Dataset transformation: failed."
+    }
+  ],
+  "interface": {
+    "contract_version": "7.0.0",
+    "transfer_protocol_version": 1,
+    "catalog_sha256": "c06bb5e31a8651b4e1d0527c7bc2017e217bbc8d70dec6a9a3fc947a9cfd3674",
+    "tool_count": 70,
+    "training_measurements": {
+      "monitoring": "A frozen monitoring policy controls bounded development checks, generation scoring, checkpoint selection and optional early stopping. inspect_training_progress pages durable checks and exact evidence without invoking workers. cancel_finetune preserves completed evidence and records remote acknowledgement separately. Development metrics are not final benchmarks. Native target distributions and mean-only denominators remain distinct.",
+      "billing": "New Modal training charges use deduplicated worker GPU-time receipts and recorded hardware, never local completion-observation delay. Missing usage remains unmeasured. recorded_basis identifies the retained charge calculation; historical charges without that receipt are not retrospectively relabelled.",
+      "forecast": "Matching duration evidence comes from worker usage receipts, excluding collector delay; estimates and recorded charges are not all-in invoices or spend caps.",
+      "recovery": "The training collector renews a short lease while alive. Reconciliation closes missed terminal operational events from local receipts without another provider call; worker heartbeat timestamps are preserved."
+    },
+    "dataset_transformations": {
+      "progress": "Preview and publication expose aggregate seconds plus per-step runtime stage_seconds for container setup, input transfer, script execution, artifact transfer, output reading and cleanup. A stopped script never reports completed runtime; cleanup_confirmed is separate from publication success.",
+      "parameters": "Package manifest parameters declare types, for example {seed: integer}; run parameters supply values, for example {seed: 42}.",
+      "queries": "Read-only queries have a deployment-configured deadline (default 10 seconds); query_timeout leaves the cell unchanged. Oversized results are rejected during materialization, not clipped.",
+      "inspection": "Cell transformation metadata distinguishes recorded script/operation execution, external imports and unrecorded history. It links the exact run, revision, package checksum and entrypoint. Read all retained package files via dataset-pipeline-packages resources using file/offset/limit character pagination; source reads never execute code.",
+      "prompt": "author-dataset-transformation",
+      "lookup": "inspect_dataset_workbench(pipeline=exact revision ID) returns the recipe and paginated family history; runs and bindings are scoped to that revision",
+      "retained_code": "Every new transformation revision requires an uploaded Python package. Author meaningful staged entrypoints, pipeline-upload, save_dataset_pipeline(dataset=DATASET, package=UUID), validate, preview, publish and verify the exact run/cells. Historical package-free revisions remain readable but cannot execute or bind. External imports are attributed results, not retained transformations.",
+      "branches": "Acyclic forks and fan-in: input selects one parent; inputs concatenates distinct parents in declared order. Nonempty branch schemas must match; overlapping source_row identities or incompatible schemas fail without coercion. Retained scripts implement routing and consume concatenated branch inputs.",
+      "conditions": "Agent-declared expression and retained entrypoint line; never evaluated as code or inferred by the platform",
+      "empty_branches": "All steps execute; zero rows are valid unless row checks reject them",
+      "output": "Last declared step; all published step cells remain selectable",
+      "unsupported": [
+        "overlapping row identities across inputs",
+        "cycles",
+        "job-level conditional skipping",
+        "automatic exclusivity or coverage verification"
+      ],
+      "adaptation": "Reuse the revision for parameters only; new family via derived_from=revision ID for different logic/source contracts; revise a family via pipeline=family ID and expected_revision"
+    },
+    "connection": {
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "console_url": "http://localhost:5173",
+      "identity_basis": "authenticated request endpoint; compare with your intended environment"
+    },
+    "guidance": {
+      "entry": "list_projects; data-only work does not require code scanning or a capability",
+      "source": "Pass exact cell UUIDs and fingerprints. Workshop pipelines publish new versions, including from frozen historical parents.",
+      "workshop": "The native agent authors and explains. Discover reusable project revisions with inspect_dataset_workbench. Register script packages via CLI and save_dataset_pipeline, validate, preview, then run on pinned source cells. Each step publishes a cell atomically. Adapt with derived_from; original revisions remain unchanged. Explicitly enabled bindings rebuild full source snapshots using the pinned revision. Scripts run only in approved isolated containers, never API/Celery Python. Imports remain externally attributed.",
+      "lifecycle": "create saves a draft; prepare verifies inputs; launch is explicit paid authorization",
+      "resume": "Use get_job and next_actions. Saved request keys and provider receipts survive reconnects; unresolved submissions are not replayed.",
+      "recipes": "Use get_model_catalog for supported model-specific context, batch and training-method constraints. Hyperparameters remain a model-dependent extension; stable partition, sampling, inference and workload settings are typed.",
+      "cost": "No implicit spend limit. User constraints bind a reviewed quote; missing cost components stay explicit.",
+      "pause": "Pausing a comparison prevents future submissions. It neither cancels in-flight provider work nor configures an external notification monitor."
+    },
+    "training_runtime": "Pinned per experiment and job; local catalog identity does not certify deployed GPU code",
+    "installed_guidance": "Connected tool schemas are authoritative when installed skills differ",
+    "discovery": "Compare this endpoint and catalog hash with the connection you intend to use. Refresh tools/list when the cached inventory differs; do not silently switch environments."
+  },
+  "existing_data_preserved": {
+    "id": "63806e31-001c-4272-91c5-014db4b7fefb",
+    "version": "1.4",
+    "title": "Preserve supplied categorical judgements as trainable decisions",
+    "rows": 10000,
+    "fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a",
+    "fits": {
+      "ok": true,
+      "reason": ""
+    }
+  },
+  "process": {
+    "selected": "63806e31-001c-4272-91c5-014db4b7fefb",
+    "nodes": [
+      {
+        "cell": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Preserve supplied categorical judgements as trainable decisions",
+        "rows": 10000,
+        "fingerprint": "a0dc75649dd72e9080bdabf2d7c446a75a0c44fa62eabce90bb7a9e0c03ad41a"
+      },
+      {
+        "cell": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Keep matching evidence; exclude top-level identity metadata",
+        "rows": 10000,
+        "fingerprint": "6ac342f1edab8d9e58595e2c9e8b406fd643c0b1f06a2d88bc9c49f26bbeff39"
+      },
+      {
+        "cell": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Preserve observations, review flags and connected entity groups",
+        "rows": 10000,
+        "fingerprint": "594422c48670e229d85a307daea27dd076ea8ff99c08d56cf408bec78e7e442f"
+      },
+      {
+        "cell": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "dataset": "7b876858-e8a2-4d60-8361-ecee802e9b90",
+        "dataset_name": "KYC matching \u00b7 preparation check audit",
+        "intent": "train",
+        "role": "",
+        "title": "Source",
+        "rows": 10000,
+        "fingerprint": "f6498b234e8621cc1b710b0ad2db506520c57be7efd6235199f738eea7623c1f"
+      }
+    ],
+    "edges": [
+      {
+        "source": "36523ae9-6675-49aa-9ac8-7d497d47aa6a",
+        "target": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "label": ""
+      },
+      {
+        "source": "39d5e0e5-c7c9-4587-ae34-17915fba5526",
+        "target": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "label": ""
+      },
+      {
+        "source": "78ee5bb8-d5a8-4ef9-bc43-3365e0f23a70",
+        "target": "63806e31-001c-4272-91c5-014db4b7fefb",
+        "label": ""
+      }
+    ]
+  },
+  "assertions": [
+    "Removed tools absent and rejected",
+    "Removed REST endpoints return 404",
+    "Dataset/cell/workbench payloads omit preparation status",
+    "Existing 10,000-row output and four-cell process preserved",
+    "Automatic retained-script association preserved",
+    "Valid isolated preview completes",
+    "Row-loss and invalid-target publication safeguards remain active",
+    "Previews preserve the selected published output"
+  ]
+}

@@ -385,7 +385,7 @@ function ConversationDetailBody({
         </div>
 
         {focused && (
-          <div className="flex flex-col gap-2 border-t border-border/70 pt-4">
+          <div className="-mx-5 flex flex-col gap-2 border-t border-border/70 px-5 pt-4">
             <span className={SECTION_LABEL}>Turn evidence</span>
             {focusedGate?.rationale && (
               <p className="whitespace-pre-wrap break-words text-sm">{focusedGate.rationale}</p>

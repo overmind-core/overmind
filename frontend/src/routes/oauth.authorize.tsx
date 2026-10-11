@@ -79,7 +79,7 @@ function AuthorizeConnection() {
               </ul>
               <p className="text-muted-foreground">Access continues until revoked.</p>
             </div>
-            <div className="space-y-1 border-t border-border pt-4 text-xs leading-relaxed">
+            <div className="-mx-5 space-y-1 border-t border-border px-5 pt-4 text-xs leading-relaxed sm:-mx-7 sm:px-7">
               <p className="text-muted-foreground">Return address</p>
               <p className="break-all">{details.data.redirectUri}</p>
             </div>

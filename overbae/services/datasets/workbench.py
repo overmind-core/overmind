@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import shutil
 import time
 import uuid
 from datetime import timedelta
@@ -28,8 +29,10 @@ from overbae.services.datasets import (
     measure,
     operations,
     paths,
+    pipeline_execution,
     pipeline_graph,
     pipeline_packages,
+    preparation,
     review,
     rows,
     store,
@@ -67,6 +70,7 @@ def save_pipeline(
     pipeline=None,
     expected_revision=None,
     derived_from=None,
+    dataset=None,
 ):
     if expected_revision is not None and pipeline is None:
         raise DatasetError("expected_revision requires a pipeline family ID.", code="pipeline")
@@ -80,7 +84,10 @@ def save_pipeline(
     if bundle is None:
         raise DatasetError("Package not found in this project.", code="pipeline_package")
     steps = bundle.manifest["steps"]
+    if dataset and dataset.project_id != project.pk:
+        raise DatasetError("Dataset not found in this project.", code="dataset")
     fields = {
+        **({"dataset": str(dataset.pk)} if dataset else {}),
         "name": name,
         "steps": steps,
         "package": str(package or ""),
@@ -119,8 +126,9 @@ def save_pipeline(
             raise DatasetError("Parent revision not found in this project.", code="pipeline")
         if pipeline and derived_from:
             raise DatasetError("Choose a new revision or a derived pipeline.", code="pipeline")
-        return DatasetPipeline.objects.create(
+        saved = DatasetPipeline.objects.create(
             project=project,
+            authoring_dataset_id=dataset.pk if dataset else None,
             name=name,
             request_key=request_key,
             steps=steps,
@@ -132,6 +140,9 @@ def save_pipeline(
             parent=parent,
             derived_from=origin,
         )
+        if dataset:
+            Dataset.objects.filter(pk=dataset.pk).update(preparation_pipeline=saved)
+        return saved
 
 
 def submit(
@@ -261,6 +272,8 @@ def submit(
             )
         if locked.state not in (Dataset.State.IDLE, Dataset.State.ERROR):
             raise DatasetError("The dataset has an operation in progress.", code="busy")
+        if recipe:
+            Dataset.objects.filter(pk=locked.pk).update(preparation_pipeline=recipe)
         run = DatasetPipelineRun.objects.create(
             dataset=locked,
             pipeline=recipe,
@@ -373,6 +386,7 @@ def execute(run_id, *, script_executor=None):
         ).update(
             result=run.result,
             updated_at=timezone.now(),
+            lease_until=timezone.now() + timedelta(seconds=seconds),
         )
         if changed:
             operational_progress.record(
@@ -406,6 +420,11 @@ def execute(run_id, *, script_executor=None):
             recipe = run.pipeline
             expected = digest(
                 {
+                    **(
+                        {"dataset": str(recipe.authoring_dataset_id)}
+                        if recipe.authoring_dataset_id
+                        else {}
+                    ),
                     "name": recipe.name,
                     "steps": recipe.steps,
                     "package": str(recipe.package_id or ""),
@@ -522,7 +541,7 @@ def execute(run_id, *, script_executor=None):
                     store.iter_rows(input_path), step.get("input_schema", {})
                 ):
                     pass
-                records = script_executor(
+                records = pipeline_execution.execute_rows(
                     run,
                     index,
                     input_path,
@@ -530,6 +549,7 @@ def execute(run_id, *, script_executor=None):
                     step,
                     package_files,
                     lambda index=index: progress(f"step_{index + 1}_executing", heartbeat=True),
+                    script_executor,
                 )
                 records = pipeline_packages.check_rows(
                     external_rows(records), step.get("output_schema", {})
@@ -544,6 +564,10 @@ def execute(run_id, *, script_executor=None):
                 )
                 script, manifest = "", None
             store.write_rows(raw, records, manifest)
+            if step.get("consumer"):
+                if not progress(f"step_{index + 1}_validating_consumer"):
+                    return
+                receipt["consumer_check"] = pipeline_execution.check_consumer(raw, step["consumer"])
             count = store.row_count(raw)
             receipt["output_rows"] = count
             checks = step.get("checks", {})
@@ -678,9 +702,8 @@ def execute(run_id, *, script_executor=None):
                         created_by=run.created_by,
                     )
                     destination = paths.cell_path(dataset.pk, cell.pk)
-                    store.write_rows(
-                        destination, store.iter_rows(output), store.read_manifest(output)
-                    )
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(output, destination)
                     report = {
                         "kind": "pipeline" if run.pipeline_id else "external",
                         "status": "accepted",
@@ -963,6 +986,10 @@ def describe(
 
     return {
         **({"pipeline": pipeline_record(selected)} if selected else {}),
+        "current_pipeline": str(dataset.preparation_pipeline_id)
+        if dataset and dataset.preparation_pipeline_id
+        else None,
+        "preparation": preparation.record(preparation.describe(dataset)) if dataset else None,
         "dataset": str(dataset.pk) if dataset else None,
         "pipelines": [
             pipeline_record(p) for p in pipelines[pipeline_offset : pipeline_offset + limit]

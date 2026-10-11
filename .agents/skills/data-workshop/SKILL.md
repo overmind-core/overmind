@@ -23,9 +23,10 @@ examples or resume a platform agent. Chat, mutable-cell and replay endpoints are
 - `services/datasets/versions.py`: version/UUID resolution without importing an agent.
 - The Console landing page is a project dataset table. Rows open the existing
   cells on a grid-snapped flow canvas; the folder button reveals compact,
-  project-scoped navigation. Chat and funding controls are removed. A version chip
-  beside the dataset name selects historical iterations and restores exact cells;
-  its execution details expose revisions, parameters, measured steps and previews.
+  project-scoped navigation. Chat and funding controls are removed. The Process control
+  beside the dataset name exposes current execution facts. Corrections replace the
+  displayed process, with no repair-history or restore view. Exact consumer-pinned
+  inputs remain immutable internally.
   Connections follow recorded parents. Moving cells never changes dependencies.
 
 New revisions require a retained Python package with native-agent-authored stages.
@@ -52,6 +53,8 @@ on publication; preservation, schemas and lineage are checked in both modes.
 Step check_results retain passed/failed/deferred checks with expected/actual counts
 on failure. Static validation warns about undeclared output lineage without claiming
 runtime failure. Run receipts expose queue age, a polling interval and terminal time.
+Runner availability heartbeats continue during validation and publication; they
+do not advance measured progress or certify a stage has completed.
 Bindings start paused, pin a revision and
 parameters, and rebuild full source snapshots, including late trace changes and
 removed matches. Checkpoint and cells commit together. Failed attempts pause on
@@ -238,8 +241,10 @@ The Console preserves full-size cell contents on a 20px grid-snapped flow canvas
 Steps cascade down; sibling branches align side by side on the same horizontal
 layer. Cells open at scale 1; explicit zoom, Fit view and a toggleable minimap
 navigate the graph without changing cell dimensions. Reset and linked-cell focus
-restore scale 1; resizing preserves the chosen zoom. The chip
-beside the dataset name previews/restores exact versions; it replaces the run bar.
+restore scale 1; resizing preserves the chosen zoom. The Process control
+beside the dataset name shows current execution facts. `preparation.py` builds the
+selected successful process from verified run inputs, partition members and
+derivations across datasets; unrelated attempts are not canvas nodes.
 The left-hand box contains dataset navigation and the minimap toggle, without
 cell search or a cell-selector strip.
 
@@ -248,3 +253,40 @@ lookup using `inspect_dataset_workbench(pipeline=REVISION_UUID)`: selected recip
 paged family history and scoped runs/bindings. Stale family updates return
 `revision_conflict`. Branch correctness requires independent member/coverage checks;
 declarations, preview prefixes and successful execution do not establish it.
+
+## Preparation execution and corrections
+
+Upload original source bytes once and pin upstream revisions. Register retained
+transformation code before processing the full data. Do not upload prepared
+outputs as unrelated sources. For corrections, update the same recipe family
+and run the corrected package against the original source; the resulting clean
+process replaces the displayed cells without repair-history or restore controls.
+Consumer-pinned artifacts remain immutable internally. Recipes belong to the
+project; reuse is optional and requires compatible source and target semantics.
+`inspect_dataset_workbench.preparation` exposes the same source-to-output graph
+as the Console, including recorded train/development/calibration/final links.
+
+Column contracts use `object` for a nested decision, never `json`. Declare the
+final step's `consumer` as `decision_train`, `decision_eval`, `chat_train` or
+`model_eval` to validate nested targets in both preview and publication. Preserve
+evidenced semantics and structured provenance; never remove them to pass checks.
+Preview samples a bounded prefix and does not establish coverage of every family.
+
+For row-independent transformations, declare step `batch_rows` (1–100000).
+Consecutive batches execute in separate restricted containers and concatenate in
+source order. Each expanded JSONL input/output must fit half the package's
+`scratch_mb`; each batch has the declared time limit. Global sorting, grouping,
+splitting and deduplication must not use batching. Row checks apply to the combined
+output, publication remains atomic, and progress records completed batches and
+rows. A failed or cancelled batch publishes no partial cells. CLI directory
+packages omit Python bytecode caches; other unsupported files remain errors.
+
+Controller recovery uses a dedicated PostgreSQL session lock. Only its owner may execute queued recipes. On startup it fails interrupted recipe runs and removes their owned containers before accepting new work. Recovery never publishes partial outputs or automatically replays scripts. Each batch clears the previous batch's execution identity and exit code before reporting progress.
+
+Large row stores bound staging and DataFrame chunks to 16 MiB of serialized row data (one larger row remains indivisible), with 256-row Arrow decoding batches. Declared transformation batches stream through temporary Parquet files rather than collecting all rows in memory. Runtime JSONL scratch limits remain separate and enforced.
+
+### Script association and cell comparisons
+
+Keep the existing cell and branch UI. `save_dataset_pipeline(dataset=..., package=...)` automatically retains the script and associates the current revision with its preparation. Registration retries return the old receipt without resetting a newer association. Submission also binds reused project recipes to the dataset; package-free execution remains prohibited. `DatasetPipeline.authoring_dataset_id` retains the request identity independently of dataset deletion.
+
+Grid comparisons use the recorded single input, so corrections do not display discarded attempts as their baseline. Multi-input cells do not invent a single comparison parent.

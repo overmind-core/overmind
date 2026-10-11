@@ -16,7 +16,6 @@ import pickle
 import tempfile
 import threading
 from collections.abc import Iterable
-from itertools import batched
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +29,7 @@ from overbae.services.datasets.statistics import StatisticsUnavailableError, pro
 
 SOURCE_ROW = "source_row"
 ROW_GROUP_SIZE = 10_000
+ROW_GROUP_BYTES = 16 * 1024 * 1024
 _MANIFEST_KEY = b"overmind.columns"
 _ARROW_TYPES = {
     "string": pa.string(),
@@ -204,6 +204,22 @@ def _table_from_columns(columns: dict[str, list[Any]], manifest: list[dict[str, 
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
+def _row_batches(rows, batch_size):
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
+    batch, size = [], 0
+    for row in rows:
+        record = dict(row)
+        encoded_size = len(pickle.dumps(record, protocol=pickle.HIGHEST_PROTOCOL))
+        if batch and (len(batch) >= batch_size or size + encoded_size > ROW_GROUP_BYTES):
+            yield batch
+            batch, size = [], 0
+        batch.append(record)
+        size += encoded_size
+    if batch:
+        yield batch
+
+
 def write_rows(
     path: Path, rows: Iterable[dict[str, Any]], manifest: list[dict[str, str]] | None = None
 ) -> list[dict[str, str]]:
@@ -212,11 +228,12 @@ def write_rows(
     # Infer over every row before writing Arrow's fixed schema, without retaining the corpus.
     with tempfile.TemporaryFile(dir=path.parent) as spool:
         builder = ManifestBuilder()
-        for batch in batched(rows, ROW_GROUP_SIZE, strict=False):
+        for batch in _row_batches(rows, ROW_GROUP_SIZE):
             if manifest is None:
-                for row in batch:
-                    builder.add(row)
-            pickle.dump([dict(row) for row in batch], spool, protocol=pickle.HIGHEST_PROTOCOL)
+                for record in batch:
+                    builder.add(record)
+            pickle.dump(batch, spool, protocol=pickle.HIGHEST_PROTOCOL)
+            del batch
         manifest = manifest if manifest is not None else builder.manifest()
         schema = _table_from_columns({c["name"]: [] for c in manifest}, manifest).schema
         spool.seek(0)
@@ -229,6 +246,7 @@ def write_rows(
                         break
                     columns = {c["name"]: [r.get(c["name"]) for r in batch] for c in manifest}
                     writer.write_table(_table_from_columns(columns, manifest))
+                    del batch, columns
             temporary.replace(path)
         finally:
             temporary.unlink(missing_ok=True)
@@ -319,7 +337,7 @@ def read_frame(path: Path) -> pd.DataFrame:
     return df
 
 
-def iter_rows(path: Path, batch_size: int = ROW_GROUP_SIZE):
+def iter_rows(path: Path, batch_size: int = 256):
     """Decoded dict rows, streaming by row group."""
     manifest = read_manifest(path)
     kinds = {spec["name"]: spec["type"] for spec in manifest}
@@ -331,7 +349,7 @@ def iter_rows(path: Path, batch_size: int = ROW_GROUP_SIZE):
 
 def iter_frames(path: Path, batch_size: int = ROW_GROUP_SIZE):
     manifest = read_manifest(path)
-    for batch in batched(iter_rows(path, batch_size), batch_size, strict=False):
+    for batch in _row_batches(iter_rows(path), batch_size):
         columns = {}
         for spec in manifest:
             values = [row.get(spec["name"]) for row in batch]
@@ -458,6 +476,17 @@ def page(
     """A page of decoded rows plus the matching total. ``_index`` is the row's
     position in the file — the identity consumers pin."""
     manifest = read_manifest(path)
+    if not filters and not search and (not sort or sort == "_index"):
+        total = row_count(path)
+        positions = range(int(offset), min(int(offset) + int(limit), total))
+        indices = (
+            [total - 1 - i for i in positions] if sort and direction == "desc" else list(positions)
+        )
+        rows = [
+            {"_index": index, **row}
+            for index, row in zip(indices, read_rows(path, indices), strict=True)
+        ]
+        return {"rows": rows, "total": total, "columns": manifest}
     kinds = {spec["name"]: spec["type"] for spec in manifest}
     names = set(kinds)
     where, params = _filter_sql(filters or [], names)

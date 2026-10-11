@@ -1,7 +1,5 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { DeltaChip } from "@/components/ui/delta-chip";
 import { Icon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -191,107 +189,5 @@ export function DefRow({
         {value ?? "not yet"}
       </dd>
     </div>
-  );
-}
-
-export function buildConfigChips(
-  hp: Record<string, unknown>,
-  _job: { provider?: string | null }
-): string[] {
-  const chips: string[] = [];
-  if (hp.context_length != null) chips.push(`ctx ${hp.context_length}`);
-  if (hp.batch_size != null) chips.push(`bs ${hp.batch_size}`);
-  if (hp.n_epochs != null) chips.push(`${hp.n_epochs} ep`);
-  if (typeof hp.learning_rate === "number") {
-    chips.push(`lr ${hp.learning_rate.toExponential(1)}`);
-  } else if (hp.learning_rate != null && hp.learning_rate !== "") {
-    chips.push(`lr ${hp.learning_rate}`);
-  }
-  const loraR = hp.lora_r ?? hp.lora_rank;
-  if (loraR != null) chips.push(`lora r${loraR}`);
-  if (hp.lora_alpha != null) chips.push(`α ${hp.lora_alpha}`);
-  if (hp.packing === true) chips.push("Packed");
-  return chips;
-}
-
-export function buildConfigItems(
-  hp: Record<string, unknown>,
-  _job: { provider?: string | null }
-): Array<{ label: string; value: string }> {
-  const items: Array<{ label: string; value: string }> = [];
-  const add = (label: string, value: unknown) => {
-    if (value == null || value === "") return;
-    items.push({ label, value: String(value) });
-  };
-  add("Context length", hp.context_length);
-  add("Batch size", hp.batch_size);
-  add("Epochs", hp.n_epochs);
-  add(
-    "Learning rate",
-    typeof hp.learning_rate === "number" ? hp.learning_rate.toExponential(1) : hp.learning_rate
-  );
-  add("LoRA rank", hp.lora_r ?? hp.lora_rank);
-  add("LoRA alpha", hp.lora_alpha);
-  if (typeof hp.packing === "boolean") add("Packing", hp.packing ? "on" : "off");
-  return items;
-}
-
-function ConfigParamChip({ label }: { label: string }) {
-  return (
-    <Badge
-      className="h-6 shrink-0 gap-1 px-1.5 font-mono leading-none tabular-nums"
-      variant="neutral"
-    >
-      {label}
-    </Badge>
-  );
-}
-
-export function RunConfigDisclosure({
-  chips,
-  items,
-}: {
-  chips: string[];
-  items: Array<{ label: string; value: string }>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  if (chips.length === 0 && items.length === 0) return null;
-  return (
-    <Card className="flex flex-col p-0">
-      <button
-        aria-expanded={expanded}
-        className="flex min-h-11 items-center gap-2 rounded-md px-4 py-2.5 text-left transition-colors hover:bg-wash-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => setExpanded((v) => !v)}
-        type="button"
-      >
-        <Icon.settings className="size-4 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 text-xs font-medium leading-none">Run configuration</span>
-        {!expanded && chips.length > 0 && (
-          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-hidden">
-            {chips.map((c) => (
-              <ConfigParamChip key={c} label={c} />
-            ))}
-          </span>
-        )}
-        <Icon.chevronDown
-          className={cn(
-            "ml-auto size-4 shrink-0 text-muted-foreground transition-transform",
-            expanded && "rotate-180"
-          )}
-        />
-      </button>
-      {expanded && items.length > 0 && (
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border/70 px-4 py-3 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((it) => (
-            <div className="flex flex-col gap-1" key={it.label}>
-              <dt className="text-xs leading-none text-muted-foreground">{it.label}</dt>
-              <dd className="font-mono text-xs font-medium leading-none tabular-nums">
-                {it.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </Card>
   );
 }

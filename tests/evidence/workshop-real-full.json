@@ -1,0 +1,318 @@
+{
+  "run": "full",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "pairs",
+      "original_dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+      "original_cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+      "source_rows": 10000,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".json",
+          "dataset": "3e3f3e3e-aaf8-4cfe-a691-d4f6de497217",
+          "upload_seconds": 4.297,
+          "preview": {
+            "id": "b358d9ff-5fa5-4308-be13-2fb5e0a7cafd",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.631,
+                "check_results": null
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.642,
+                "check_results": null
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.657,
+                "check_results": null
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.636,
+                "check_results": null
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.582,
+                "check_results": null
+              }
+            ]
+          },
+          "publish": {
+            "id": "b3586f06-a487-4c98-ba5c-f223e237e4e0",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "4be8f5e2-8de7-4200-bfde-54217490001e",
+                "seconds": 7.568,
+                "check_results": null
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "99084742-2e34-49ae-811e-71f870da37f3",
+                "seconds": 6.936,
+                "check_results": null
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 119,
+                "output_cell": "90923243-4b5d-46b9-b795-1bba681874c4",
+                "seconds": 3.93,
+                "check_results": null
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 9881,
+                "output_cell": "e725e778-879a-4aff-a0df-0a8633537143",
+                "seconds": 6.672,
+                "check_results": null
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "59e885a5-0a2a-4496-a2ed-c011c6be24cf",
+                "seconds": 7.853,
+                "check_results": null
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "c934dab4-3671-4bb0-8568-856b0164f4d5",
+              "title": "Source",
+              "rows": 10000
+            },
+            {
+              "id": "4be8f5e2-8de7-4200-bfde-54217490001e",
+              "title": "Inspect source and retain review evidence",
+              "rows": 10000
+            },
+            {
+              "id": "99084742-2e34-49ae-811e-71f870da37f3",
+              "title": "Separate identity shortcuts from model evidence",
+              "rows": 10000
+            },
+            {
+              "id": "90923243-4b5d-46b9-b795-1bba681874c4",
+              "title": "Rows requiring review",
+              "rows": 119
+            },
+            {
+              "id": "e725e778-879a-4aff-a0df-0a8633537143",
+              "title": "Rows without measured flags",
+              "rows": 9881
+            },
+            {
+              "id": "59e885a5-0a2a-4496-a2ed-c011c6be24cf",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 10000
+            }
+          ],
+          "seconds": 75.811,
+          "output_rows": 10000,
+          "output_sha256": "081408d94f951a35a30c4235059b41a3828ca82c9803b891a3ff6752d54a815d",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".jsonl",
+          "dataset": "e388252c-1802-4e41-b0b9-297ca5e03771",
+          "upload_seconds": 4.222,
+          "preview": {
+            "id": "9ee3c5ca-d46a-405b-a053-f2b589848431",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.635,
+                "check_results": null
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.602,
+                "check_results": null
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.613,
+                "check_results": null
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.585,
+                "check_results": null
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.592,
+                "check_results": null
+              }
+            ]
+          }
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-full-snfu2nvq/pairs.jsonl",
+        "dataset_id": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+        "format": "jsonl",
+        "bytes_written": 32354952,
+        "cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+        "version": "1.0",
+        "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+      },
+      "export_seconds": 1.204,
+      "package": "e20f3588-d5e2-41fa-81ed-e884fd61c6c1",
+      "recipe": "981e1244-bb55-42fc-9319-4f5fa34411a9"
+    }
+  ],
+  "errors": [],
+  "success": false,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-full-snfu2nvq"
+}

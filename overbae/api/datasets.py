@@ -19,6 +19,7 @@ from overbae.api.dataset_serializers import (
     ColumnStatSerializer,
     DatasetCreateSerializer,
     DatasetPairSerializer,
+    DatasetPreparationSerializer,
     DatasetSerializer,
     DatasetSplitCreateSerializer,
     RowsPageSerializer,
@@ -35,6 +36,7 @@ from overbae.services.datasets import (
     imports,
     lifecycle,
     paths,
+    preparation,
     selection,
     store,
     workbench,
@@ -111,6 +113,21 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), "summary": self.action == "list"}
+
+    @extend_schema(parameters=[_CELL_PARAM], responses={200: DatasetPreparationSerializer})
+    @action(detail=True, methods=["get"], url_path="preparation")
+    def preparation(self, request, id=None):
+        dataset = self.get_object()
+        try:
+            cell = (
+                resolve_cell(dataset, request.query_params["cell"])
+                if request.query_params.get("cell")
+                else dataset.active_cell
+            )
+            process = preparation.describe(dataset, cell=cell)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetPreparationSerializer(process).data)
 
     @extend_schema(
         summary="Create a dataset from a file, pasted rows or traces",
@@ -307,7 +324,7 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         return self._frame(dataset, cell), cell
 
     @extend_schema(
-        summary="A page of rows from a cell's frame, with diff marks against the cell before",
+        summary="A page of rows from a cell's frame, with diff marks against its recorded single input",
         parameters=[
             _CELL_PARAM,
             OpenApiParameter("offset", OpenApiTypes.INT, OpenApiParameter.QUERY),
@@ -357,17 +374,16 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
             raise ValidationError({"detail": str(exc)}) from exc
         marks: dict = {}
         if params.get("diff") not in (None, "", "0", "false") and cell.position > 0:
-            before = (
-                dataset.cells.filter(position__lt=cell.position, state=Cell.State.OK)
-                .order_by("-position")
-                .first()
-            )
+            parents = preparation.input_cells(cell)
+            before = parents[0] if len(parents) == 1 else None
             if before is not None:
                 source_rows = [
                     int(r["source_row"]) for r in page["rows"] if r.get("source_row") is not None
                 ]
-                marks = diff_svc.marks(self._frame(dataset, before), path, source_rows)
-        return Response({**page, "offset": offset, "limit": limit, "marks": marks})
+                marks = diff_svc.marks(self._frame(before.dataset, before), path, source_rows)
+        return Response(
+            RowsPageSerializer({**page, "offset": offset, "limit": limit, "marks": marks}).data
+        )
 
     @extend_schema(summary="One row by index", parameters=[_CELL_PARAM])
     @action(detail=True, methods=["get"], url_path=r"rows/(?P<index>\d+)")

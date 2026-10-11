@@ -20,6 +20,7 @@ import type {
   Dataset,
   DatasetCreateRequest,
   DatasetPair,
+  DatasetPreparation,
   DatasetSplitCreateRequest,
   ImportVersionRequest,
   PaginatedDatasetList,
@@ -43,6 +44,8 @@ import {
     DatasetCreateRequestToJSON,
     DatasetPairFromJSON,
     DatasetPairToJSON,
+    DatasetPreparationFromJSON,
+    DatasetPreparationToJSON,
     DatasetSplitCreateRequestFromJSON,
     DatasetSplitCreateRequestToJSON,
     ImportVersionRequestFromJSON,
@@ -120,6 +123,11 @@ export interface DatasetsPipelineRunsCreateRequest {
 export interface DatasetsPipelinesCreateRequest {
     id: string;
     savePipelineRequest: SavePipelineRequest;
+}
+
+export interface DatasetsPreparationRetrieveRequest {
+    id: string;
+    cell?: string;
 }
 
 export interface DatasetsResumeImportCreateRequest {
@@ -814,6 +822,65 @@ export class DatasetsApi extends runtime.BaseAPI {
 
     /**
      */
+    async datasetsPreparationRetrieveRaw(requestParameters: DatasetsPreparationRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetPreparation>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsPreparationRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['cell'] != null) {
+            queryParameters['cell'] = requestParameters['cell'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/preparation/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetPreparationFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async datasetsPreparationRetrieve(requestParameters: DatasetsPreparationRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetPreparation> {
+        const response = await this.datasetsPreparationRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
     async datasetsResumeImportCreateRaw(requestParameters: DatasetsResumeImportCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Dataset>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
@@ -925,7 +992,7 @@ export class DatasetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A page of rows from a cell\'s frame, with diff marks against the cell before
+     * A page of rows from a cell\'s frame, with diff marks against its recorded single input
      */
     async datasetsRowsRetrieveRaw(requestParameters: DatasetsRowsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RowsPage>> {
         if (requestParameters['id'] == null) {
@@ -1006,7 +1073,7 @@ export class DatasetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A page of rows from a cell\'s frame, with diff marks against the cell before
+     * A page of rows from a cell\'s frame, with diff marks against its recorded single input
      */
     async datasetsRowsRetrieve(requestParameters: DatasetsRowsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RowsPage> {
         const response = await this.datasetsRowsRetrieveRaw(requestParameters, initOverrides);

@@ -450,7 +450,7 @@ function SuiteEvaluatorCard({
               {evaluator.description}
             </p>
           ) : null}
-          <div className="mt-1 border-t border-border/70 pt-2">
+          <div className="-mx-3 mt-1 border-t border-border/70 px-3 pt-2">
             <p className="truncate text-xs font-semibold text-muted-foreground">
               {kind} · {tag}
             </p>
@@ -519,7 +519,7 @@ function EvaluatorCatalogCard({
           ) : (
             <p className="text-xs italic text-muted-foreground/60">No description</p>
           )}
-          <div className="mt-1 border-t border-border/70 pt-2">
+          <div className="-mx-4 mt-1 border-t border-border/70 px-4 pt-2">
             <p className="text-xs font-semibold text-muted-foreground">{meta}</p>
           </div>
         </div>

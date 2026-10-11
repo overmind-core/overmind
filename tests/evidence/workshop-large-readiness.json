@@ -1,0 +1,35 @@
+{
+  "seconds": 46.067,
+  "request": {
+    "project_id": "a279d834-899c-4ac6-888a-157f0c7d9cf8",
+    "dataset": "0b0d60b5-d321-416d-8881-f5934558d337",
+    "cell": "b80a7b3c-27de-4556-9e7b-35202214d5b6",
+    "validation_enabled": false,
+    "eval_model_before": false,
+    "eval_model_after": false
+  },
+  "ready": true,
+  "validation": {
+    "valid": true,
+    "format": "decision",
+    "num_examples": 1034657,
+    "errors": [],
+    "warnings": [],
+    "stats": {
+      "checkpoint": "b80a7b3c-27de-4556-9e7b-35202214d5b6",
+      "total_examples": 1034657,
+      "train_examples": 1034657,
+      "val_examples": 0,
+      "validation_mode": "off",
+      "split_method": "random",
+      "format": "decision"
+    }
+  },
+  "assessment": {
+    "technical": "pass",
+    "task_suitability": "unmeasured",
+    "capability_linked": null,
+    "validation": "disabled"
+  },
+  "missing": []
+}

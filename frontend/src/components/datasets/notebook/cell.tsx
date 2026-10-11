@@ -3,7 +3,6 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Handle, Position, useNodeConnections } from "@xyflow/react";
 
 import { CellScript } from "@/components/datasets/notebook/cell-script";
-import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,6 @@ import type { Cell } from "@/openapi";
 export type UsePurpose = "train" | "train_eval" | "optimise";
 
 export interface CellActions {
-  onActivate: () => void;
   onUse: (purpose: UsePurpose) => void;
   onExport: (fmt: "jsonl" | "csv") => void;
   onIntent: (intent: "train" | "eval") => void;
@@ -147,6 +145,7 @@ type Report = {
   rows_ok?: number;
   /** false when no cell holds text, so no cell could shape the table. */
   fixable?: boolean;
+  format?: string;
 };
 
 interface Check {
@@ -168,7 +167,7 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Tell Overmind in the chat which one the rows are for.",
+      fix: "Select train or eval.",
       found: "train or eval not chosen",
       label: "Intent",
       ok: false,
@@ -179,8 +178,15 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
   const requires =
     intent === "eval"
       ? "an input column with a value on every row; expected_output when a reference exists"
-      : "a messages column: a list of role and content turns on every row";
-  const columns = intent === "eval" ? ["input", "expected_output"] : ["messages"];
+      : shape.format === "decision"
+        ? "a decision column with valid options and targets on every row"
+        : "a messages column: a list of role and content turns on every row";
+  const columns =
+    intent === "eval"
+      ? ["input", "expected_output"]
+      : shape.format === "decision"
+        ? ["decision"]
+        : ["messages"];
   if (!ran)
     return {
       columns,
@@ -436,7 +442,7 @@ function FitChip({
           )}
         </ul>
         {failing && actions && suggestions.length > 0 && (
-          <div className="mt-3 flex flex-col gap-1 border-t border-border/70 pt-2">
+          <div className="-mx-2.5 mt-3 flex flex-col gap-1 border-t border-border/70 px-2.5 pt-2">
             {suggestions.map((item) => {
               const Glyph = Icon[item.icon];
               return (
@@ -670,72 +676,58 @@ export function NotebookCell({
             {tableOpen && (
               <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
             )}
-            <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1 [&>*]:shrink-0">
-              {active ? (
-                <>
-                  <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
-                    <Icon.success className="size-3" />
-                    Active
-                  </span>
-                  <FitChip
-                    actions={editable && !frozen ? actions : undefined}
-                    capabilities={capabilities}
-                    capabilityName={capabilityName}
-                    cell={cell}
-                    intent={intent}
-                  />
-                  <QualityChip cell={cell} />
-                  <span className="flex-1" />
-                  {intent === "train" && (
+            {active && (
+              <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1 [&>*]:shrink-0">
+                <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
+                  <Icon.success className="size-3" />
+                  Active
+                </span>
+                <FitChip
+                  actions={editable && !frozen ? actions : undefined}
+                  capabilities={capabilities}
+                  capabilityName={capabilityName}
+                  cell={cell}
+                  intent={intent}
+                />
+                <span className="flex-1" />
+                {intent === "train" && (
+                  <Button
+                    className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                    disabled={!fit.ok}
+                    onClick={() => actions.onUse("train")}
+                    size="xs"
+                    variant="outline"
+                  >
+                    <Icon.training />
+                    Train a model
+                  </Button>
+                )}
+                {intent === "eval" && (
+                  <>
                     <Button
                       className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
                       disabled={!fit.ok}
-                      onClick={() => actions.onUse("train")}
+                      onClick={() => actions.onUse("optimise")}
+                      size="xs"
+                      variant="outline"
+                    >
+                      <Icon.optimiser />
+                      Run the optimiser
+                    </Button>
+                    <Button
+                      className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                      disabled={!fit.ok}
+                      onClick={() => actions.onUse("train_eval")}
                       size="xs"
                       variant="outline"
                     >
                       <Icon.training />
-                      Train a model
+                      Use in a training job
                     </Button>
-                  )}
-                  {intent === "eval" && (
-                    <>
-                      <Button
-                        className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                        disabled={!fit.ok}
-                        onClick={() => actions.onUse("optimise")}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Icon.optimiser />
-                        Run the optimiser
-                      </Button>
-                      <Button
-                        className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                        disabled={!fit.ok}
-                        onClick={() => actions.onUse("train_eval")}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Icon.training />
-                        Use in a training job
-                      </Button>
-                    </>
-                  )}
-                </>
-              ) : (
-                <Button
-                  className="ml-auto"
-                  disabled={!editable}
-                  onClick={actions.onActivate}
-                  size="xs"
-                  variant="outline"
-                >
-                  <Icon.pin />
-                  Set active
-                </Button>
-              )}
-            </footer>
+                  </>
+                )}
+              </footer>
+            )}
           </div>
         ) : null}
       </div>

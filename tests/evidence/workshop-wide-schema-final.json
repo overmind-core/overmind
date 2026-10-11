@@ -1,0 +1,132 @@
+{
+  "run": "granular-wide-schema-20261009",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "name": "wide-schema",
+      "bytes": 3199,
+      "sha256": "648f8a48e8b23488f9d9e91ca1f799759c690ff33811701084fc4e32420ab381",
+      "passed": true,
+      "upload_seconds": 1.108,
+      "dataset": "8dd44227-f0c1-49f8-86a5-384e686c8ee1",
+      "transfer": "06517a6f-1008-4375-8c12-66ea139e7c80",
+      "observed_progress": [
+        {
+          "status": "landing",
+          "landing": null
+        },
+        {
+          "status": "idle",
+          "landing": null
+        }
+      ],
+      "landing_seconds": 5.268,
+      "cell": "7be3c0ec-0069-4b8d-ad2c-a187966b8ee9",
+      "rows": 1,
+      "sources": [
+        {
+          "id": "648f8a48e8b23488f9d9e91ca1f799759c690ff33811701084fc4e32420ab381",
+          "sha256": "648f8a48e8b23488f9d9e91ca1f799759c690ff33811701084fc4e32420ab381",
+          "filename": "wide-schema.jsonl",
+          "bytes": 3199,
+          "rows": 1,
+          "extraction": {}
+        }
+      ],
+      "seconds": 6.954
+    }
+  ],
+  "calls": [
+    {
+      "tool": "list_projects",
+      "seconds": 0.1462,
+      "structured_bytes": 2734,
+      "wire_bytes": 5798,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0209,
+      "structured_bytes": 1672,
+      "wire_bytes": 4421,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.053,
+      "structured_bytes": 1672,
+      "wire_bytes": 4421,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0161,
+      "structured_bytes": 1672,
+      "wire_bytes": 4421,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0304,
+      "structured_bytes": 1672,
+      "wire_bytes": 4421,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0301,
+      "structured_bytes": 1794,
+      "wire_bytes": 4675,
+      "is_error": false
+    },
+    {
+      "tool": "inspect_dataset",
+      "seconds": 0.0252,
+      "structured_bytes": 15594,
+      "wire_bytes": 33896,
+      "is_error": false
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0638,
+      "structured_bytes": 235,
+      "wire_bytes": 602,
+      "is_error": true
+    },
+    {
+      "tool": "query_dataset",
+      "seconds": 0.0205,
+      "structured_bytes": 428,
+      "wire_bytes": 1406,
+      "is_error": false
+    }
+  ],
+  "success": true,
+  "catalog": "5b6dcf23bdb7103d2c4e14ee9d0e51990c332f2f1354fa9c4cc4973acbaf4625",
+  "latency": {
+    "get_job": {
+      "count": 5,
+      "median": 0.0301,
+      "p95": 0.053,
+      "max": 0.053
+    },
+    "inspect_dataset": {
+      "count": 1,
+      "median": 0.0252,
+      "p95": 0.0252,
+      "max": 0.0252
+    },
+    "list_projects": {
+      "count": 1,
+      "median": 0.1462,
+      "p95": 0.1462,
+      "max": 0.1462
+    },
+    "query_dataset": {
+      "count": 2,
+      "median": 0.04215,
+      "p95": 0.0638,
+      "max": 0.0638
+    }
+  }
+}

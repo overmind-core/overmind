@@ -185,7 +185,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 {isPending ? "Sending…" : "Submit feedback"}
               </Button>
 
-              <Separator />
+              <Separator className="-mx-5 data-[orientation=horizontal]:w-auto" />
 
               <a
                 className="flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -205,7 +205,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 <Icon.close />
                 Close
               </Button>
-              <Separator />
+              <Separator className="-mx-5 data-[orientation=horizontal]:w-auto" />
               <a
                 className="flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                 href={DISCORD_URL}

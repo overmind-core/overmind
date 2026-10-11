@@ -1,0 +1,412 @@
+{
+  "endpoint": "http://localhost:8000/api/mcp/",
+  "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+  "dataset": "119c8558-3bf7-5bb7-80de-a08393543f4c",
+  "source": {
+    "cell": "138c21b7-8ad6-431b-b859-dae9bd169e61",
+    "fingerprint": "bbcfc9af3f5f6a8b5aaf83080fb7aed0f2f770fe369342c4a8d1d13125b9bf98",
+    "rows": 224003
+  },
+  "active": {
+    "id": "f7e2e943-5fc8-4a19-a14f-ee916dfd1cf6",
+    "version": "1.7",
+    "title": "Construct supervised user and assistant turns",
+    "rows": 224003,
+    "fingerprint": "5e17ce4cec8c86c222bd01d7ebb277519a9dca66d18f1f8ea19903760c1ec33c",
+    "fits": {
+      "ok": true,
+      "reason": ""
+    }
+  },
+  "pipeline": {
+    "id": "7390916b-2b58-4ec6-9b0d-4fa5848683cc",
+    "pipeline_id": "249a9204-fc5e-4042-90b6-2525a0006a0f",
+    "revision": 3,
+    "parent": "d667443c-0e93-441d-acaf-72f5177520f4",
+    "derived_from": null,
+    "package": "328fa690-6c54-4b40-811f-9584050e06d5",
+    "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+    "name": "KYC SFT · retained staged Python",
+    "fingerprint": "941dcc628af54a51e9e803a8952ab36fad6fd357e286ffac4dd22fb36e99186e",
+    "steps": [
+      {
+        "id": "validate",
+        "name": "Validate supplied text, labels and row identity",
+        "input": "source",
+        "checks": {
+          "preserve_rows": true
+        },
+        "entrypoint": "validate.py",
+        "input_schema": {
+          "tokens": "string",
+          "source_row": "integer",
+          "kyc_risk_bucket": "string"
+        },
+        "output_schema": {
+          "tokens": "string",
+          "source_row": "integer",
+          "kyc_risk_bucket": "string"
+        }
+      },
+      {
+        "id": "project",
+        "name": "Project existing evidence and risk-bucket targets",
+        "input": "validate",
+        "checks": {
+          "preserve_rows": true
+        },
+        "entrypoint": "project.py",
+        "output_schema": {
+          "answer": "string",
+          "question": "string",
+          "source_row": "integer"
+        }
+      },
+      {
+        "id": "messages",
+        "name": "Construct supervised user and assistant turns",
+        "input": "project",
+        "checks": {
+          "preserve_rows": true
+        },
+        "entrypoint": "messages.py",
+        "output_schema": {
+          "answer": "string",
+          "messages": "array",
+          "question": "string",
+          "source_row": "integer"
+        }
+      }
+    ],
+    "flow": {
+      "source": "source",
+      "output": "messages",
+      "nodes": [
+        {
+          "id": "validate",
+          "step": 0,
+          "name": "Validate supplied text, labels and row identity",
+          "entrypoint": "validate.py",
+          "input": "source",
+          "inputs": [
+            "source"
+          ]
+        },
+        {
+          "id": "project",
+          "step": 1,
+          "name": "Project existing evidence and risk-bucket targets",
+          "entrypoint": "project.py",
+          "input": "validate",
+          "inputs": [
+            "validate"
+          ]
+        },
+        {
+          "id": "messages",
+          "step": 2,
+          "name": "Construct supervised user and assistant turns",
+          "entrypoint": "messages.py",
+          "input": "project",
+          "inputs": [
+            "project"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "source": "source",
+          "target": "validate",
+          "condition": null
+        },
+        {
+          "source": "validate",
+          "target": "project",
+          "condition": null
+        },
+        {
+          "source": "project",
+          "target": "messages",
+          "condition": null
+        }
+      ],
+      "terminal_steps": [
+        "messages"
+      ],
+      "unconsumed_steps": [],
+      "input_semantics": "Multiple inputs concatenate in declared order. Nonempty branches must have matching data columns/types; incompatible schemas and overlapping source_row identities are rejected, never coerced or deduplicated.",
+      "routing": "retained_code",
+      "condition_semantics": "Labels describe code; labels are never evaluated as code. Each step executes against its declared input."
+    },
+    "created_at": "2026-10-10T05:05:05.221903+00:00"
+  },
+  "failed_attempt": {
+    "id": "e7eeb393-c0eb-48cd-8f04-8a3b8875f237",
+    "error": "Container artifact transfer failed with exit code 137.",
+    "result": {
+      "mode": "publish",
+      "stage": "failed",
+      "steps": [
+        {
+          "name": "Validate supplied text, labels and row identity",
+          "error": "Container artifact transfer failed with exit code 137.",
+          "index": 0,
+          "state": "failed",
+          "inputs": [
+            {
+              "rows": 224003,
+              "step": "source",
+              "fingerprint": "bbcfc9af3f5f6a8b5aaf83080fb7aed0f2f770fe369342c4a8d1d13125b9bf98"
+            }
+          ],
+          "runtime": {
+            "stage": "stopped",
+            "seconds": 8.2709,
+            "observed_at": "2026-10-10T05:04:11.420415+00:00",
+            "stage_seconds": {
+              "cleanup": 0.2439,
+              "input_transfer": 7.4324,
+              "container_setup": 0.1057,
+              "script_execution": 0.4265,
+              "artifact_transfer": 0.0624
+            },
+            "cleanup_confirmed": true
+          },
+          "step_id": "validate",
+          "container": "overmind-workshop-e7eeb393-c0eb-48cd-8f04-8a3b8875f237-fb8b4485-37ae-4b3f-b18a-b6ee05fddea7-0",
+          "input_rows": 224003,
+          "input_step": "source",
+          "started_at": "2026-10-10T05:04:00.777863+00:00",
+          "input_steps": [
+            "source"
+          ],
+          "completed_at": "2026-10-10T05:04:11.425964+00:00",
+          "input_fingerprint": "bbcfc9af3f5f6a8b5aaf83080fb7aed0f2f770fe369342c4a8d1d13125b9bf98",
+          "provider_execution": "2d9e9fb03e210de383616304c102653430e65f6cde0c5e994818633f3b5d4ea0"
+        }
+      ],
+      "attempt": "fb8b4485-37ae-4b3f-b18a-b6ee05fddea7",
+      "seconds": 10.685,
+      "started_at": "2026-10-10T05:04:00.735345+00:00",
+      "source_rows": 224003,
+      "stage_seconds": {
+        "step_1_executing": 10.623,
+        "verifying_source": 0.061
+      },
+      "stage_started_at": "2026-10-10T05:04:00.796566+00:00",
+      "revision_fingerprint": "5a3dcc490e58a9da2c5f073f967cace9ddfad2b593796a2820162739ed156871"
+    },
+    "active_unchanged": {
+      "id": "a2a88e32-88a3-477c-9795-e1bfa712c0f9",
+      "version": "1.4",
+      "title": "conversation",
+      "rows": 224003,
+      "fingerprint": "82bfffc0cc982c7e207e9cd2743a7a6b9a02cbd20ba7896a15281747302e926b",
+      "fits": {
+        "ok": true,
+        "reason": ""
+      }
+    }
+  },
+  "completed_attempt": {
+    "id": "162dee74-e75f-4392-930a-5846accd533a",
+    "status": "completed",
+    "completed_at": "2026-10-10T05:09:16.770605Z",
+    "execution": "isolated_container",
+    "seconds": 232.98,
+    "stage_seconds": {
+      "publishing": 72.695,
+      "measuring_impact": 48.61,
+      "step_1_executing": 27.865,
+      "step_2_executing": 16.467,
+      "step_3_executing": 10.6,
+      "verifying_source": 0.059,
+      "step_1_checking_rows": 0.002,
+      "step_2_checking_rows": 0.004,
+      "step_3_checking_rows": 0.004,
+      "step_1_preserving_lineage": 25.64,
+      "step_2_preserving_lineage": 19.265,
+      "step_3_preserving_lineage": 11.768
+    },
+    "steps": [
+      {
+        "step": "validate",
+        "input_rows": 224003,
+        "output_rows": 224003,
+        "input_cells": [
+          "138c21b7-8ad6-431b-b859-dae9bd169e61"
+        ],
+        "output_cell": "285c7666-4253-4c62-96cb-d10921b8bbd7",
+        "checks": {
+          "failed": {},
+          "passed": {
+            "preserve_rows": true
+          },
+          "deferred": {}
+        },
+        "runtime": {
+          "stage": "completed",
+          "seconds": 22.2403,
+          "observed_at": "2026-10-10T05:05:48.149013+00:00",
+          "stage_seconds": {
+            "cleanup": 0.2725,
+            "input_transfer": 7.6773,
+            "output_reading": 7.4708,
+            "container_setup": 0.0916,
+            "script_execution": 3.9218,
+            "artifact_transfer": 2.8063
+          },
+          "cleanup_confirmed": true
+        }
+      },
+      {
+        "step": "project",
+        "input_rows": 224003,
+        "output_rows": 224003,
+        "input_cells": [
+          "285c7666-4253-4c62-96cb-d10921b8bbd7"
+        ],
+        "output_cell": "c0870d4f-0078-461a-a197-05484d944f02",
+        "checks": {
+          "failed": {},
+          "passed": {
+            "preserve_rows": true
+          },
+          "deferred": {}
+        },
+        "runtime": {
+          "stage": "completed",
+          "seconds": 14.1466,
+          "observed_at": "2026-10-10T05:06:56.126784+00:00",
+          "stage_seconds": {
+            "cleanup": 0.226,
+            "input_transfer": 7.7466,
+            "output_reading": 1.9546,
+            "container_setup": 0.1684,
+            "script_execution": 2.8649,
+            "artifact_transfer": 1.1861
+          },
+          "cleanup_confirmed": true
+        }
+      },
+      {
+        "step": "messages",
+        "input_rows": 224003,
+        "output_rows": 224003,
+        "input_cells": [
+          "c0870d4f-0078-461a-a197-05484d944f02"
+        ],
+        "output_cell": "f7e2e943-5fc8-4a19-a14f-ee916dfd1cf6",
+        "checks": {
+          "failed": {},
+          "passed": {
+            "preserve_rows": true
+          },
+          "deferred": {}
+        },
+        "runtime": {
+          "stage": "completed",
+          "seconds": 9.0437,
+          "observed_at": "2026-10-10T05:07:40.786710+00:00",
+          "stage_seconds": {
+            "cleanup": 0.0833,
+            "input_transfer": 2.766,
+            "output_reading": 2.7163,
+            "container_setup": 0.1686,
+            "script_execution": 1.9254,
+            "artifact_transfer": 1.3841
+          },
+          "cleanup_confirmed": true
+        }
+      }
+    ]
+  },
+  "cells": [
+    {
+      "id": "285c7666-4253-4c62-96cb-d10921b8bbd7",
+      "version": "1.5",
+      "title": "Validate supplied text, labels and row identity",
+      "rows": 224003,
+      "fingerprint": "598ec364fd120e50c4555cb71f94908b868f63fda643d6e4787edcee31164478",
+      "transformation": {
+        "execution": "isolated_container",
+        "run": "162dee74-e75f-4392-930a-5846accd533a",
+        "pipeline": "7390916b-2b58-4ec6-9b0d-4fa5848683cc",
+        "revision": 3,
+        "package": "328fa690-6c54-4b40-811f-9584050e06d5",
+        "package_sha256": "4851185695fefd7ac1862e65c9c439f26a15fd82b6c0b80d70aa2d2ee890f2c2",
+        "entrypoint": "validate.py",
+        "provenance": ""
+      }
+    },
+    {
+      "id": "c0870d4f-0078-461a-a197-05484d944f02",
+      "version": "1.6",
+      "title": "Project existing evidence and risk-bucket targets",
+      "rows": 224003,
+      "fingerprint": "a6b4b651ea2a64da031d294b8d7c100158dda14044dbe918507c7b67a8888809",
+      "transformation": {
+        "execution": "isolated_container",
+        "run": "162dee74-e75f-4392-930a-5846accd533a",
+        "pipeline": "7390916b-2b58-4ec6-9b0d-4fa5848683cc",
+        "revision": 3,
+        "package": "328fa690-6c54-4b40-811f-9584050e06d5",
+        "package_sha256": "4851185695fefd7ac1862e65c9c439f26a15fd82b6c0b80d70aa2d2ee890f2c2",
+        "entrypoint": "project.py",
+        "provenance": ""
+      }
+    },
+    {
+      "id": "f7e2e943-5fc8-4a19-a14f-ee916dfd1cf6",
+      "version": "1.7",
+      "title": "Construct supervised user and assistant turns",
+      "rows": 224003,
+      "fingerprint": "5e17ce4cec8c86c222bd01d7ebb277519a9dca66d18f1f8ea19903760c1ec33c",
+      "transformation": {
+        "execution": "isolated_container",
+        "run": "162dee74-e75f-4392-930a-5846accd533a",
+        "pipeline": "7390916b-2b58-4ec6-9b0d-4fa5848683cc",
+        "revision": 3,
+        "package": "328fa690-6c54-4b40-811f-9584050e06d5",
+        "package_sha256": "4851185695fefd7ac1862e65c9c439f26a15fd82b6c0b80d70aa2d2ee890f2c2",
+        "entrypoint": "messages.py",
+        "provenance": ""
+      }
+    }
+  ],
+  "queries": {
+    "validate": [
+      {
+        "rows": 224003,
+        "identities": 224003,
+        "first_identity": 0,
+        "last_identity": 224002
+      }
+    ],
+    "project": [
+      {
+        "answer": "enhanced",
+        "rows": 93835
+      },
+      {
+        "answer": "high_risk",
+        "rows": 75092
+      },
+      {
+        "answer": "prohibited",
+        "rows": 18363
+      },
+      {
+        "answer": "standard",
+        "rows": 36713
+      }
+    ],
+    "messages": [
+      {
+        "rows": 224003,
+        "identities": 224003,
+        "malformed_conversations": "0"
+      }
+    ]
+  }
+}

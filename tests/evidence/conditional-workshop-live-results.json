@@ -1,0 +1,131 @@
+{
+  "project": "cdae0049-eff6-42d3-8be3-7b0862ccc25b",
+  "transport": "local Streamable HTTP MCP + CLI bytes",
+  "runs": [
+    {
+      "experiment": "preview",
+      "id": "712b1e5a-18ab-4d43-b579-8dd5a44e7abe",
+      "status": "completed",
+      "seconds": 12.238,
+      "rows": [
+        100,
+        40,
+        10,
+        60
+      ]
+    },
+    {
+      "experiment": "boundary-10000",
+      "id": "4e8fc5c5-fc11-41ce-bbe9-e407acc0194f",
+      "status": "completed",
+      "seconds": 18.243,
+      "rows": [
+        10000,
+        4000,
+        1000,
+        6000
+      ]
+    },
+    {
+      "experiment": "empty-branches",
+      "id": "189e1ed6-a4d8-44a3-8235-2e3ea59980fe",
+      "status": "completed",
+      "seconds": 16.222,
+      "rows": [
+        10000,
+        0,
+        0,
+        10000
+      ]
+    },
+    {
+      "experiment": "adapted-reordered",
+      "id": "f2fc6e1c-ae02-4a3c-a209-1306b4703d5f",
+      "status": "completed",
+      "seconds": 12.209,
+      "rows": [
+        100,
+        60,
+        40,
+        10
+      ]
+    },
+    {
+      "experiment": "strict-boundary",
+      "id": "ffe521d7-993a-4174-be98-964def97b764",
+      "status": "completed",
+      "seconds": 20.264,
+      "rows": [
+        10000,
+        2000,
+        1000,
+        8000
+      ]
+    },
+    {
+      "experiment": "original-after-revision-100000",
+      "id": "d0855a8d-20f4-4fcc-92b9-7d5e964fc6f5",
+      "status": "completed",
+      "seconds": 56.662,
+      "rows": [
+        100000,
+        40000,
+        10000,
+        60000
+      ]
+    },
+    {
+      "experiment": "downstream-failure",
+      "id": "bf6fb2d3-3f86-40ef-9176-2d4d29cc9747",
+      "status": "failed",
+      "seconds": 12.152,
+      "rows": [
+        10000,
+        4000,
+        null
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "run": "4e8fc5c5-fc11-41ce-bbe9-e407acc0194f",
+      "exact_members": 10000,
+      "content_preserved": true,
+      "partition_verified_by_test": true
+    },
+    {
+      "run": "189e1ed6-a4d8-44a3-8235-2e3ea59980fe",
+      "exact_members": 10000,
+      "content_preserved": true,
+      "partition_verified_by_test": true
+    },
+    {
+      "fresh_client_paginated_retrieval": true,
+      "download_matches": true
+    },
+    {
+      "run": "f2fc6e1c-ae02-4a3c-a209-1306b4703d5f",
+      "exact_members": 100,
+      "content_preserved": true,
+      "partition_verified_by_test": true
+    },
+    {
+      "run": "ffe521d7-993a-4174-be98-964def97b764",
+      "exact_members": 10000,
+      "content_preserved": true,
+      "partition_verified_by_test": true
+    },
+    {
+      "run": "d0855a8d-20f4-4fcc-92b9-7d5e964fc6f5",
+      "exact_members": 100000,
+      "content_preserved": true,
+      "partition_verified_by_test": true
+    },
+    {
+      "invalid_graphs_rejected": 5,
+      "failed_run_preserves_cells": true,
+      "revision_conflict_distinct": true
+    }
+  ],
+  "success": true
+}

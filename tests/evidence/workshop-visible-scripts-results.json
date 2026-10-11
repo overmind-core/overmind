@@ -1,0 +1,101 @@
+{
+  "success": true,
+  "dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+  "source": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+  "runs": [
+    {
+      "mode": "preview",
+      "run": "d1895f72-c56a-4063-b8e9-f3034224c761",
+      "seconds": 20.404,
+      "rows": 1000,
+      "branch_rows": [
+        10,
+        990
+      ],
+      "stage_seconds": {
+        "measuring_impact": 0.808,
+        "step_1_executing": 2.726,
+        "step_2_executing": 2.666,
+        "step_3_executing": 2.586,
+        "step_4_executing": 2.814,
+        "step_5_executing": 2.699,
+        "verifying_source": 0.122,
+        "step_1_checking_rows": 0.004,
+        "step_2_checking_rows": 0.004,
+        "step_3_checking_rows": 0.005,
+        "step_4_checking_rows": 0.005,
+        "step_5_checking_rows": 0.009,
+        "step_1_preserving_lineage": 0.174,
+        "step_2_preserving_lineage": 0.171,
+        "step_3_preserving_lineage": 0.055,
+        "step_4_preserving_lineage": 0.148,
+        "step_5_preserving_lineage": 0.191
+      }
+    },
+    {
+      "mode": "publish",
+      "run": "8ea4a1a5-bc6f-4e8d-aac7-2075f1bb51f5",
+      "seconds": 50.592,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 8.849,
+        "measuring_impact": 7.643,
+        "step_1_executing": 4.173,
+        "step_2_executing": 4.069,
+        "step_3_executing": 3.112,
+        "step_4_executing": 3.959,
+        "step_5_executing": 4.47,
+        "verifying_source": 0.021,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.006,
+        "step_3_checking_rows": 0.004,
+        "step_4_checking_rows": 0.008,
+        "step_5_checking_rows": 0.009,
+        "step_1_preserving_lineage": 2.325,
+        "step_2_preserving_lineage": 1.595,
+        "step_3_preserving_lineage": 0.367,
+        "step_4_preserving_lineage": 1.443,
+        "step_5_preserving_lineage": 1.731
+      },
+      "output_cell": "df8d3976-47f0-4309-a0c9-fa5cd4a5a067"
+    },
+    {
+      "mode": "publish",
+      "run": "5a9721ba-685d-40e0-a7fd-a6373d00c015",
+      "seconds": 46.114,
+      "rows": 10000,
+      "branch_rows": [
+        119,
+        9881
+      ],
+      "stage_seconds": {
+        "publishing": 10.92,
+        "measuring_impact": 7.317,
+        "step_1_executing": 4.244,
+        "step_2_executing": 4.011,
+        "step_3_executing": 3.106,
+        "step_4_executing": 3.994,
+        "step_5_executing": 4.521,
+        "verifying_source": 0.015,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.005,
+        "step_3_checking_rows": 0.004,
+        "step_4_checking_rows": 0.006,
+        "step_5_checking_rows": 0.008,
+        "step_1_preserving_lineage": 1.769,
+        "step_2_preserving_lineage": 1.587,
+        "step_3_preserving_lineage": 0.364,
+        "step_4_preserving_lineage": 1.449,
+        "step_5_preserving_lineage": 1.765
+      },
+      "output_cell": "7892ba81-dd38-403c-8236-a6cd4033e6fb"
+    }
+  ],
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-converged-rdc4_7jq",
+  "server_version": "5.5.0",
+  "pipeline": "08f8c60a-e3e6-4493-bb5c-2d42cc9e2a40"
+}

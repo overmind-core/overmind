@@ -20,6 +20,9 @@ vi.mock("@/client", () => ({
   default: {
     capabilities: { capabilitiesList: vi.fn(() => Promise.resolve({ results: [] })) },
     datasets: {
+      datasetsPreparationRetrieve: vi.fn(() =>
+        Promise.resolve({ edges: [], nodes: [], selected: null })
+      ),
       datasetsResumeImportCreate: state.retry,
       datasetsRetrieve: vi.fn(() => Promise.resolve(state.dataset)),
       datasetsWorkbenchRetrieve: vi.fn(() => Promise.resolve({ runPage: {}, runs: [] })),

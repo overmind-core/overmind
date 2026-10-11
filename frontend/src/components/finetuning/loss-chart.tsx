@@ -9,10 +9,13 @@ import {
   YAxis,
 } from "recharts";
 
+import { recordedPoints } from "@/components/finetuning/metric-summary";
+import { GraphTooltip } from "@/components/ui/graph-tooltip";
 import type { LossCurveData } from "@/hooks/use-finetuning";
 import { seriesColor } from "@/lib/colors";
 
 interface LossChartProps {
+  modelName: string;
   data: LossCurveData;
   height?: number;
 }
@@ -129,33 +132,7 @@ function formatTick(v: number): string {
 const TRAIN_COLOR = seriesColor(0);
 const VALID_COLOR = seriesColor(1);
 
-function CustomTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number | null; color: string }>;
-  label?: number;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-md border border-border bg-background px-3 py-2 text-xs">
-      <p className="mb-1 font-medium text-muted-foreground">Step {label}</p>
-      {payload.map((entry) =>
-        entry.value != null ? (
-          <div className="flex items-center gap-2" key={entry.name}>
-            <span className="inline-block h-2 w-2 rounded-xs" style={{ background: entry.color }} />
-            <span className="text-muted-foreground">{entry.name}</span>
-            <span className="ml-auto font-mono tabular-nums">{entry.value.toFixed(4)}</span>
-          </div>
-        ) : null
-      )}
-    </div>
-  );
-}
-
-export function LossChart({ data, height = 200 }: LossChartProps) {
+export function LossChart({ data, height = 200, modelName }: LossChartProps) {
   const raw = buildChartData(data);
   const points = bucketChartPoints(raw, strideFor(raw.length));
   const validSeries = data.valid_loss?.length ? data.valid_loss : (data.eval_loss ?? []);
@@ -183,7 +160,16 @@ export function LossChart({ data, height = 200 }: LossChartProps) {
           tickLine={false}
           width={48}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip
+          content={({ active, payload, label }) => (
+            <GraphTooltip
+              active={active}
+              label={`${data.epochs?.length ? "Epoch" : "Step"} ${label}`}
+              nameFormatter={(name) => `${modelName} · ${name}`}
+              payload={payload}
+            />
+          )}
+        />
         {hasValid && (
           <Legend
             formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>}
@@ -247,82 +233,90 @@ export function MultiSeriesChart({
   valueFormatter = (v) => v.toFixed(4),
   xLabel = "step",
 }: MultiSeriesChartProps) {
-  const drawn = series.filter((s) => s.points.length > 0);
+  const drawn = series
+    .map((item) => ({ ...item, points: recordedPoints(item.points) }))
+    .filter((item) => item.points.length > 0);
   if (drawn.length === 0) return null;
 
-  // One shared stride, so every experiment's buckets land on common steps.
+  // One shared stride keeps experiment buckets on common steps.
   const stride = strideFor(Math.max(...drawn.map((s) => s.points.length)));
   const rowsByStep = new Map<number, Record<string, number | null>>();
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
   for (const s of drawn) {
     for (const p of bucketPoints(s.points, stride)) {
       const row = rowsByStep.get(p.step) ?? { step: p.step };
       row[s.id] = p.value;
       rowsByStep.set(p.step, row);
+      low = Math.min(low, p.value);
+      high = Math.max(high, p.value);
     }
   }
   const rows = [...rowsByStep.values()].sort((a, b) => (a.step as number) - (b.step as number));
+  const firstStep = rows[0].step as number;
+  const lastStep = rows[rows.length - 1].step as number;
+  const lowerBound = Math.min(0, low);
+  const upperBound = low === 0 && high === 0 ? 1 : Math.max(0, high);
+  const labelClass =
+    "pointer-events-none absolute left-3 bg-card/90 px-1 font-mono text-xs tabular-nums text-muted-foreground";
 
   return (
-    <ResponsiveContainer height={height} width="100%">
-      <LineChart data={rows} margin={{ bottom: 0, left: -8, right: 4, top: 4 }}>
-        <CartesianGrid className="stroke-border/50" strokeDasharray="3 3" />
-        <XAxis
-          dataKey="step"
-          height={20}
-          tick={{ fontSize: 10 }}
-          tickLine={false}
-          {...stepAxisProps(rows.map((r) => r.step as number))}
-        />
-        <YAxis
-          domain={["auto", "auto"]}
-          tick={{ fontSize: 10 }}
-          tickFormatter={(v) => (typeof v === "number" ? formatTick(v) : String(v))}
-          tickLine={false}
-          width={48}
-        />
-        <Tooltip
-          content={({ active, payload, label }) => {
-            if (!active || !payload?.length) return null;
-            return (
-              <div className="rounded-md border border-border bg-background px-3 py-2 text-xs">
-                <p className="mb-1 font-medium capitalize text-muted-foreground">
-                  {xLabel} {label}
-                </p>
-                {payload.map((entry) =>
-                  entry.value != null ? (
-                    <div className="flex items-center gap-2" key={String(entry.dataKey)}>
-                      <span
-                        className="inline-block h-2 w-2 rounded-xs"
-                        style={{ background: entry.color }}
-                      />
-                      <span className="max-w-[180px] truncate text-muted-foreground">
-                        {entry.name}
-                      </span>
-                      <span className="ml-auto pl-3 font-mono tabular-nums">
-                        {typeof entry.value === "number" ? valueFormatter(entry.value) : "—"}
-                      </span>
-                    </div>
-                  ) : null
-                )}
-              </div>
-            );
-          }}
-        />
-        {drawn.map((s) => (
-          <Line
-            connectNulls
-            dataKey={s.id}
-            dot={s.points.length <= 12}
-            isAnimationActive={false}
-            key={s.id}
-            name={s.name}
-            stroke={s.color}
-            strokeWidth={1.5}
-            type="monotone"
+    <div className="relative min-w-0">
+      <ResponsiveContainer height={height} width="100%">
+        <LineChart data={rows} margin={{ bottom: 0, left: 0, right: 0, top: 0 }}>
+          <CartesianGrid
+            className="stroke-border/60"
+            strokeDasharray="3 3"
+            syncWithTicks
+            vertical={firstStep !== lastStep}
           />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
+          <XAxis
+            {...stepAxisProps(rows.map((row) => row.step as number))}
+            dataKey="step"
+            domain={firstStep === lastStep ? [firstStep - 1, lastStep + 1] : [firstStep, lastStep]}
+            hide
+            interval={0}
+            type="number"
+          />
+          <YAxis domain={[lowerBound, upperBound]} hide interval={0} tickCount={5} />
+          <Tooltip
+            content={({ active, payload, label }) => (
+              <GraphTooltip
+                active={active}
+                label={`${xLabel} ${label}`}
+                payload={payload}
+                valueFormatter={valueFormatter}
+              />
+            )}
+          />
+          {drawn.map((s) => (
+            <Line
+              connectNulls
+              dataKey={s.id}
+              dot={s.points.length === 1 ? { fill: s.color, r: 3, strokeWidth: 0 } : false}
+              isAnimationActive={false}
+              key={s.id}
+              name={s.name}
+              stroke={s.color}
+              strokeWidth={1.5}
+              type="linear"
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <span className={`${labelClass} top-2`}>{formatTick(upperBound)}</span>
+      {lowerBound < 0 && <span className={`${labelClass} bottom-8`}>{formatTick(lowerBound)}</span>}
+      <div className="pointer-events-none absolute inset-x-3 bottom-2 flex justify-between font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="bg-card/90 px-1">
+          {xLabel} {firstStep.toLocaleString()}
+        </span>
+        {lastStep !== firstStep && (
+          <span className="bg-card/90 px-1">
+            {xLabel} {lastStep.toLocaleString()}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -343,58 +337,12 @@ export function MetricSeriesChart({
   valueFormatter = (v) => v.toFixed(4),
   xLabel = "step",
 }: MetricSeriesChartProps) {
-  if (data.length === 0) return null;
-  const points = bucketPoints(data, strideFor(data.length));
-
   return (
-    <ResponsiveContainer height={height} width="100%">
-      <LineChart data={points} margin={{ bottom: 0, left: -8, right: 4, top: 4 }}>
-        <CartesianGrid className="stroke-border/50" strokeDasharray="3 3" />
-        <XAxis
-          dataKey="step"
-          height={20}
-          tick={{ fontSize: 10 }}
-          tickLine={false}
-          {...stepAxisProps(points.map((p) => p.step))}
-        />
-        <YAxis
-          domain={["auto", "auto"]}
-          tick={{ fontSize: 10 }}
-          tickFormatter={(v) => (typeof v === "number" ? formatTick(v) : String(v))}
-          tickLine={false}
-          width={48}
-        />
-        <Tooltip
-          content={({ active, payload, label }) => {
-            if (!active || !payload?.length) return null;
-            const v = payload[0]?.value;
-            return (
-              <div className="rounded-md border border-border bg-background px-3 py-2 text-xs">
-                <p className="mb-1 font-medium capitalize text-muted-foreground">
-                  {xLabel} {label}
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-xs" style={{ background: color }} />
-                  <span className="text-muted-foreground">{name}</span>
-                  <span className="ml-auto font-mono tabular-nums">
-                    {typeof v === "number" ? valueFormatter(v) : "—"}
-                  </span>
-                </div>
-              </div>
-            );
-          }}
-        />
-        <Line
-          connectNulls
-          dataKey="value"
-          dot={points.length <= 12}
-          isAnimationActive={false}
-          name={name}
-          stroke={color}
-          strokeWidth={1.5}
-          type="monotone"
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <MultiSeriesChart
+      height={height}
+      series={[{ color, id: "value", name, points: data }]}
+      valueFormatter={valueFormatter}
+      xLabel={xLabel}
+    />
   );
 }

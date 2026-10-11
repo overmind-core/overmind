@@ -1,0 +1,1656 @@
+{
+  "date": "2026-10-08",
+  "scope": "PDF-focused local Workshop regression; not a fresh full-catalogue replay or a user-delight study",
+  "production_changes": false,
+  "latest_case_count": 20,
+  "latest_functional_pass_count": 20,
+  "aggregation_note": "Latest results across the initial 19-case run, corrected nine-case rerun and added mixed-batch case. Not one 20/20 invocation. MCP metadata/progress gaps remain.",
+  "test_corrections": [
+    "Read get_job.job_error instead of error.",
+    "Verify complete extraction metadata through REST and record MCP truncation as an unresolved gap; do not call this full MCP discovery success."
+  ],
+  "scripts": {
+    "tests/evidence/workshop_mcp_acceptance.py": "dbc073ac13afa6ca9dba69529a566539d5fb99de2c0881c161eb2d6164884594",
+    "tests/evidence/workshop_pdf_fixtures.py": "99bcd4783c131649e0053c85a4d9b2f678378a7c20e1ad92684c7683f5fe5599"
+  },
+  "fixtures": [
+    {
+      "filename": "native-1.pdf",
+      "pages": 1,
+      "kind": "native",
+      "expected": "idle",
+      "marker": "Native evidence",
+      "bytes": 1408,
+      "sha256": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0"
+    },
+    {
+      "filename": "native-10.pdf",
+      "pages": 10,
+      "kind": "native",
+      "expected": "idle",
+      "marker": "Native evidence",
+      "bytes": 5921,
+      "sha256": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8"
+    },
+    {
+      "filename": "native-100.pdf",
+      "pages": 100,
+      "kind": "native",
+      "expected": "idle",
+      "marker": "Native evidence",
+      "bytes": 51456,
+      "sha256": "67bfa71b375d82426be89733e8ec2f4efdd056b38b809121224262cfa628111f"
+    },
+    {
+      "filename": "native-500.pdf",
+      "pages": 500,
+      "kind": "native",
+      "expected": "idle",
+      "marker": "Native evidence",
+      "bytes": 254571,
+      "sha256": "63348e7945a432c2f8f5476307022aff99acbfd00bf2c187ca08f4e2518dc526"
+    },
+    {
+      "filename": "native-2000.pdf",
+      "pages": 2000,
+      "kind": "native",
+      "expected": "idle",
+      "marker": "Native evidence",
+      "bytes": 1023819,
+      "sha256": "93803b1947e078ea244b70d2dde58e28fe8cb8e4fece05e689a43a616a245520"
+    },
+    {
+      "filename": "native-2001.pdf",
+      "pages": 2001,
+      "kind": "native",
+      "expected": "error",
+      "marker": "Native evidence",
+      "bytes": 1024333,
+      "sha256": "cba2156130836bfc036e19c23031899a87e49395b5b22befebcf792afdd1d698"
+    },
+    {
+      "filename": "scanned-1.pdf",
+      "pages": 1,
+      "kind": "scanned",
+      "expected": "idle",
+      "marker": null,
+      "bytes": 29830,
+      "sha256": "1a380dc540d3d8d0b6d3bb7e3e1cf51b72b454c9c14e8f56ae2f793306d94191"
+    },
+    {
+      "filename": "scanned-25.pdf",
+      "pages": 25,
+      "kind": "scanned",
+      "expected": "idle",
+      "marker": null,
+      "bytes": 736897,
+      "sha256": "293200ae4d517dd7306890e84cb1e56e6633d9b5e83e06aaab05fa715baa4540"
+    },
+    {
+      "filename": "mixed-30.pdf",
+      "pages": 30,
+      "kind": "mixed",
+      "expected": "idle",
+      "marker": null,
+      "bytes": 597628,
+      "sha256": "ff11e886df8ee0270b61f9e692ff15cd67035ac208d80b4af1b4d3491680ee87"
+    },
+    {
+      "filename": "large-scanned.pdf",
+      "pages": 3,
+      "kind": "scanned",
+      "expected": "idle",
+      "marker": null,
+      "bytes": 38881650,
+      "sha256": "4796ea060d4e67deb600f1e1ec54d4332379126be2de32e4750019c7492342a3"
+    },
+    {
+      "filename": "over-byte-limit.pdf",
+      "pages": 9,
+      "kind": "scanned",
+      "expected": "error",
+      "marker": null,
+      "bytes": 116644339,
+      "sha256": "924cbd0185f3cd094435557c14271b52134ad4c2bc5b0e051e3e6ce3a5d3c277"
+    },
+    {
+      "filename": "encrypted.pdf",
+      "pages": 1,
+      "kind": "encrypted",
+      "expected": "error",
+      "marker": null,
+      "bytes": 1439,
+      "sha256": "67dbbb562f729b3b580be33877b00387e600218227d12203670077a8c964e7d6"
+    },
+    {
+      "filename": "blank.pdf",
+      "pages": 1,
+      "kind": "blank",
+      "expected": "error",
+      "marker": null,
+      "bytes": 431,
+      "sha256": "b37a58fb510237b6b60b1e610deecd3eb013ff71836b831faf66958f83affbe3"
+    },
+    {
+      "filename": "corrupt.pdf",
+      "pages": null,
+      "kind": "corrupt",
+      "expected": "error",
+      "marker": null,
+      "bytes": 31,
+      "sha256": "04a660a44a04903692a132d1644f2a29f4f7f3a6bb1e291f25453d8c28f58b6c"
+    },
+    {
+      "filename": "batch-00.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 00",
+      "bytes": 1411,
+      "sha256": "e44db6095c473f2257c85687402ce14e5c11c2920ecc69b60631829469a0c834"
+    },
+    {
+      "filename": "batch-01.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 01",
+      "bytes": 1410,
+      "sha256": "ed4a79aec138f8e1a05cb0b7799983ecce6d2eaa21507f1892b8cab380c2d194"
+    },
+    {
+      "filename": "batch-02.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 02",
+      "bytes": 1410,
+      "sha256": "f5d781e5cec443801cffac4c46c2197ed7c67fc4d2129f0d90e2a1e893fb2bec"
+    },
+    {
+      "filename": "batch-03.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 03",
+      "bytes": 1411,
+      "sha256": "c8ba2fe004753f65ae6a28e6912b3e31eaf43202c1239f9234d785e3e3222e29"
+    },
+    {
+      "filename": "batch-04.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 04",
+      "bytes": 1410,
+      "sha256": "ff2c5530c93491a66feb9db51118b3d129d08996b3e0db76e5310faf7660668b"
+    },
+    {
+      "filename": "batch-05.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 05",
+      "bytes": 1411,
+      "sha256": "ee7fc293ece124e51d1abfabc85280e93fbd762f3e3bc76e728706d2ca8345a6"
+    },
+    {
+      "filename": "batch-06.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 06",
+      "bytes": 1410,
+      "sha256": "db7b26c5a27472b3f5ab9c6ebb62f9cfde26e0badfbe74c769396a41ef8ba80e"
+    },
+    {
+      "filename": "batch-07.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 07",
+      "bytes": 1411,
+      "sha256": "f8316e1c300ac292357785fd6a823892b28d0dba70470e043cfadbc43c02b1d8"
+    },
+    {
+      "filename": "batch-08.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 08",
+      "bytes": 1411,
+      "sha256": "94cfa9635906410deee73805797f66c0f2adf2e1be8bf3aebafe969eccfee1b9"
+    },
+    {
+      "filename": "batch-09.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 09",
+      "bytes": 1411,
+      "sha256": "89afe103bdc93d8c5a7e1616579c59f47a6c104419c20d5fe49eed429ad6b25f"
+    },
+    {
+      "filename": "batch-10.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 10",
+      "bytes": 1410,
+      "sha256": "ffbe2a6f1570d0d3f58a1034e72193062d59d19be2747278ba157b12e99fa513"
+    },
+    {
+      "filename": "batch-11.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 11",
+      "bytes": 1410,
+      "sha256": "e7da3650171614cc2de8af71734a49806607747d21434cf6f02526fb49440359"
+    },
+    {
+      "filename": "batch-12.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 12",
+      "bytes": 1410,
+      "sha256": "d3da78b96fe1af1e60cf35f09417cb47e07d27e800abd972cb4945a5a1dcc074"
+    },
+    {
+      "filename": "batch-13.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 13",
+      "bytes": 1411,
+      "sha256": "1a42b1bfadeb38cbe6c4da4011383fec87838d9098bac36fbf17ef1f76f10529"
+    },
+    {
+      "filename": "batch-14.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 14",
+      "bytes": 1411,
+      "sha256": "febe1bbc3be1abb63dd6cfc3a28cae8c5bfe4625569b75472f03f912ed74693c"
+    },
+    {
+      "filename": "batch-15.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 15",
+      "bytes": 1411,
+      "sha256": "90b261ba0dc6174637ff1ae10e84299c33022247c6bc99db093b1a7e50724922"
+    },
+    {
+      "filename": "batch-16.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 16",
+      "bytes": 1411,
+      "sha256": "229bde203572331591b75e14e2e987d42a6e5b8f474286ef5f861e9ff009e508"
+    },
+    {
+      "filename": "batch-17.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 17",
+      "bytes": 1411,
+      "sha256": "4a15720b0edb0d7701c563fbbc206d3e0bcef0cdf4141ddbcfa2a9b34f1881cf"
+    },
+    {
+      "filename": "batch-18.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 18",
+      "bytes": 1411,
+      "sha256": "a0b3309a151b576bd7703dadfabe85dc7ef59e7296c4af55eb1cad190afa8afd"
+    },
+    {
+      "filename": "batch-19.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 19",
+      "bytes": 1411,
+      "sha256": "24c236d3c6bc7bfeff41aec4dd48e9234614dd1401653d237aad73c7e49783b8"
+    },
+    {
+      "filename": "batch-20.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 20",
+      "bytes": 1410,
+      "sha256": "53009095f5f86d5736e23c47cd904b4e68142b301c168aa4b02f0767bdab2fda"
+    },
+    {
+      "filename": "batch-21.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 21",
+      "bytes": 1410,
+      "sha256": "37a3dc0c5ec3d6500487c65b42b2cda37d1832c1853f420ce0ada7b4d99bf3d6"
+    },
+    {
+      "filename": "batch-22.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 22",
+      "bytes": 1411,
+      "sha256": "6ab30656d55b86c34f1939b955befd2a50b48888bed7887f86b04f7f0d8e0ab3"
+    },
+    {
+      "filename": "batch-23.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 23",
+      "bytes": 1411,
+      "sha256": "e7d1f0f63c4d47613131d88848472e4ff592090ae73aa1c10c85ca1fe3260c5a"
+    },
+    {
+      "filename": "batch-24.pdf",
+      "pages": 1,
+      "kind": "batch",
+      "expected": "idle",
+      "marker": "Batch document 24",
+      "bytes": 1410,
+      "sha256": "dcc24716b9881a5856d22b4c2fff0e2b50bad361d6586f224ac9e18d974a5383"
+    }
+  ],
+  "focused_tests": {
+    "passed": 61,
+    "seconds": 7.3,
+    "warnings": 64,
+    "log": "/private/tmp/workshop-pdf-focused-tests.log"
+  },
+  "runs": [
+    {
+      "log": "/private/tmp/workshop-pdf-replay.log",
+      "sha256": "b95d79b75a5b70c12500dfbf9698f8cb31835b86076993c575a8798f3930b859",
+      "cases": [
+        {
+          "case": "pdf_native-1",
+          "passed": true,
+          "seconds": 1.015,
+          "filename": "native-1.pdf",
+          "pages": 1,
+          "kind": "native",
+          "expected": "idle",
+          "marker": "Native evidence",
+          "bytes": 1408,
+          "sha256": "eb8b2113434526fbc02bbaf42e7c9021fa42ca3c1ad6ba632a5cf143c5e29df0",
+          "landing_seconds": 0.552,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.019,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.552,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 2
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 0.62,
+          "rows": 2,
+          "pages_with_evidence": 1,
+          "extraction": {
+            "pages": 1,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          },
+          "original_bytes_and_prior_cell_verified": true,
+          "semantic_quality": "unmeasured"
+        },
+        {
+          "case": "pdf_native-10",
+          "passed": true,
+          "seconds": 0.95,
+          "filename": "native-10.pdf",
+          "pages": 10,
+          "kind": "native",
+          "expected": "idle",
+          "marker": "Native evidence",
+          "bytes": 5921,
+          "sha256": "5f41b19940af54060d7661f88d7a233e5d01faf46f28c89981135909c69ff5b8",
+          "landing_seconds": 0.542,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.542,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 20
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 0.592,
+          "rows": 20,
+          "pages_with_evidence": 10,
+          "extraction": {
+            "pages": 10,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          },
+          "original_bytes_and_prior_cell_verified": true,
+          "semantic_quality": "unmeasured"
+        },
+        {
+          "case": "pdf_native-100",
+          "passed": true,
+          "seconds": 1.13,
+          "filename": "native-100.pdf",
+          "pages": 100,
+          "kind": "native",
+          "expected": "idle",
+          "marker": "Native evidence",
+          "bytes": 51456,
+          "sha256": "67bfa71b375d82426be89733e8ec2f4efdd056b38b809121224262cfa628111f",
+          "landing_seconds": 0.539,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.539,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 200
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 0.587,
+          "rows": 200,
+          "pages_with_evidence": 100,
+          "extraction": {
+            "pages": 100,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          },
+          "original_bytes_and_prior_cell_verified": true,
+          "semantic_quality": "unmeasured"
+        },
+        {
+          "case": "pdf_native-500",
+          "passed": true,
+          "seconds": 1.761,
+          "filename": "native-500.pdf",
+          "pages": 500,
+          "kind": "native",
+          "expected": "idle",
+          "marker": "Native evidence",
+          "bytes": 254571,
+          "sha256": "63348e7945a432c2f8f5476307022aff99acbfd00bf2c187ca08f4e2518dc526",
+          "landing_seconds": 0.539,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.539,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 1000
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 0.59,
+          "rows": 1000,
+          "pages_with_evidence": 500,
+          "extraction": {
+            "pages": 500,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          },
+          "original_bytes_and_prior_cell_verified": true,
+          "semantic_quality": "unmeasured"
+        },
+        {
+          "case": "pdf_native-2000",
+          "passed": true,
+          "seconds": 4.617,
+          "filename": "native-2000.pdf",
+          "pages": 2000,
+          "kind": "native",
+          "expected": "idle",
+          "marker": "Native evidence",
+          "bytes": 1023819,
+          "sha256": "93803b1947e078ea244b70d2dde58e28fe8cb8e4fece05e689a43a616a245520",
+          "landing_seconds": 1.037,
+          "polls": 3,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 1.037,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 4000
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 1.082,
+          "rows": 4000,
+          "pages_with_evidence": 2000,
+          "extraction": {
+            "pages": 2000,
+            "method": "docling-native-pdf",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed."
+            ]
+          },
+          "original_bytes_and_prior_cell_verified": true,
+          "semantic_quality": "unmeasured"
+        },
+        {
+          "case": "pdf_native-2001",
+          "passed": false,
+          "seconds": 0.59,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1622, in pdf_case\nAssertionError\n"
+        },
+        {
+          "case": "pdf_scanned-1",
+          "passed": false,
+          "seconds": 0.617,
+          "error": "'pages'",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1651, in pdf_case\nKeyError: 'pages'\n"
+        },
+        {
+          "case": "pdf_scanned-25",
+          "passed": false,
+          "seconds": 8.634,
+          "error": "'pages'",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1651, in pdf_case\nKeyError: 'pages'\n"
+        },
+        {
+          "case": "pdf_mixed-30",
+          "passed": false,
+          "seconds": 5.271,
+          "error": "'pages'",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1651, in pdf_case\nKeyError: 'pages'\n"
+        },
+        {
+          "case": "pdf_large-scanned",
+          "passed": false,
+          "seconds": 1.236,
+          "error": "'pages'",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1651, in pdf_case\nKeyError: 'pages'\n"
+        },
+        {
+          "case": "pdf_over-byte-limit",
+          "passed": false,
+          "seconds": 0.404,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1622, in pdf_case\nAssertionError\n"
+        },
+        {
+          "case": "pdf_encrypted",
+          "passed": false,
+          "seconds": 0.607,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1622, in pdf_case\nAssertionError\n"
+        },
+        {
+          "case": "pdf_blank",
+          "passed": false,
+          "seconds": 0.599,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1622, in pdf_case\nAssertionError\n"
+        },
+        {
+          "case": "pdf_corrupt",
+          "passed": false,
+          "seconds": 0.605,
+          "error": "",
+          "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 164, in check\n  File \"<string>\", line 2352, in <lambda>\n  File \"<string>\", line 1622, in pdf_case\nAssertionError\n"
+        },
+        {
+          "case": "pdf_batch_10",
+          "passed": true,
+          "seconds": 0.815,
+          "landing_seconds": 0.551,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "batch-00.pdf",
+                "completed": 0
+              }
+            },
+            {
+              "seconds": 0.551,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 20
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "uploaded_files": 10,
+          "unique_document_contents": 10,
+          "original_downloads_verified": 10,
+          "rows": 20,
+          "mcp_sources_visible": 10,
+          "mcp_sources_total": 10,
+          "catalogue_gap": null
+        },
+        {
+          "case": "pdf_batch_25",
+          "passed": true,
+          "seconds": 1.133,
+          "landing_seconds": 0.549,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.01,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 25,
+                "filename": "batch-00.pdf",
+                "completed": 0
+              }
+            },
+            {
+              "seconds": 0.549,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 50
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "uploaded_files": 25,
+          "unique_document_contents": 25,
+          "original_downloads_verified": 25,
+          "rows": 50,
+          "mcp_sources_visible": 10,
+          "mcp_sources_total": 25,
+          "catalogue_gap": "source pagination absent"
+        },
+        {
+          "case": "pdf_batch_100",
+          "passed": true,
+          "seconds": 3.266,
+          "landing_seconds": 1.049,
+          "polls": 3,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 100,
+                "filename": "batch-00.pdf",
+                "completed": 0
+              }
+            },
+            {
+              "seconds": 0.521,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 100,
+                "filename": "batch-12.pdf",
+                "completed": 87
+              }
+            },
+            {
+              "seconds": 1.049,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 200
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "uploaded_files": 100,
+          "unique_document_contents": 25,
+          "original_downloads_verified": 100,
+          "rows": 200,
+          "mcp_sources_visible": 10,
+          "mcp_sources_total": 100,
+          "catalogue_gap": "source pagination absent"
+        },
+        {
+          "case": "pdf_atomic_batch_recovery",
+          "passed": true,
+          "seconds": 1.898,
+          "failed_attempt": {
+            "landing_seconds": 0.533,
+            "polls": 2,
+            "observations": [
+              {
+                "seconds": 0.01,
+                "status": "landing",
+                "mcp_progress": {
+                  "cells": {
+                    "ok": 1
+                  },
+                  "rows": 2
+                },
+                "stored_landing_progress": {
+                  "stage": "extracting",
+                  "total": 3,
+                  "filename": "batch-00.pdf",
+                  "completed": 0
+                }
+              },
+              {
+                "seconds": 0.533,
+                "status": "error",
+                "mcp_progress": {
+                  "cells": {
+                    "ok": 1
+                  },
+                  "rows": 2
+                },
+                "stored_landing_progress": {
+                  "stage": "extracting",
+                  "total": 3,
+                  "filename": "corrupt.pdf",
+                  "completed": 1
+                }
+              }
+            ],
+            "error": null
+          },
+          "previous_cell_preserved": true,
+          "recovered_sources": 3
+        },
+        {
+          "case": "pdf_batch_limit_101",
+          "passed": true,
+          "seconds": 1.23,
+          "files": 101,
+          "rejected_without_dataset": true,
+          "error": {
+            "source": {
+              "uploads": [
+                "Ensure this field has no more than 100 elements."
+              ]
+            }
+          }
+        }
+      ],
+      "summary": {
+        "passed": 10,
+        "total": 19,
+        "successful_tools": [
+          "get_job",
+          "inspect_dataset",
+          "query_dataset",
+          "run_dataset_pipeline",
+          "save_dataset_pipeline"
+        ],
+        "successful_tool_calls": {
+          "get_job": 79,
+          "inspect_dataset": 21,
+          "query_dataset": 185,
+          "run_dataset_pipeline": 5,
+          "save_dataset_pipeline": 5
+        },
+        "rejected_tool_calls": {},
+        "resources_read": [
+          "overmind://jobs/dataset_pipeline/2187e93b-06ec-45e1-a84b-0e425c6b01fb",
+          "overmind://jobs/dataset_pipeline/673c6079-9f00-4faa-a622-be65c75da4d8",
+          "overmind://jobs/dataset_pipeline/9b60488c-695e-448b-aa33-318b3b2ad823",
+          "overmind://jobs/dataset_pipeline/b5a65163-97b3-417a-9676-f326f6053a2b",
+          "overmind://jobs/dataset_pipeline/c0f69d62-54d4-4572-97fe-1e0327817caf"
+        ],
+        "missing_workshop_tools": [
+          "cancel_dataset",
+          "create_data_partition",
+          "create_dataset_from_llm_calls",
+          "create_dataset_from_traces",
+          "derive_dataset",
+          "explore_dataset",
+          "import_dataset_version",
+          "inspect_dataset_workbench",
+          "list_datasets",
+          "list_model_workflows",
+          "list_projects",
+          "retry_data_partition",
+          "start_dataset",
+          "update_dataset"
+        ],
+        "max_response_bytes": 209454,
+        "billable_usage_records": 0
+      },
+      "cleanup": {
+        "cleanup": "removed only this replay's two projects and user",
+        "remaining_datasets": 126
+      }
+    },
+    {
+      "log": "/private/tmp/workshop-pdf-targeted.log",
+      "sha256": "bc2d5b4604fd16d09e17cf78e133a8a0927fecee6b54ccdffdd64066fe8922f6",
+      "cases": [
+        {
+          "case": "pdf_native-2001",
+          "passed": true,
+          "seconds": 1.358,
+          "filename": "native-2001.pdf",
+          "pages": 2001,
+          "kind": "native",
+          "expected": "error",
+          "marker": "Native evidence",
+          "bytes": 1024333,
+          "sha256": "cba2156130836bfc036e19c23031899a87e49395b5b22befebcf792afdd1d698",
+          "landing_seconds": 0.561,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.027,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.561,
+              "status": "error",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": "The document could not be extracted. Check that it is readable and not password protected.",
+          "source_to_ready_seconds": 0.67,
+          "recovered_with_valid_source": true
+        },
+        {
+          "case": "pdf_scanned-1",
+          "passed": true,
+          "seconds": 1.02,
+          "filename": "scanned-1.pdf",
+          "pages": 1,
+          "kind": "scanned",
+          "expected": "idle",
+          "marker": null,
+          "bytes": 29830,
+          "sha256": "1a380dc540d3d8d0b6d3bb7e3e1cf51b72b454c9c14e8f56ae2f793306d94191",
+          "landing_seconds": 0.54,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.01,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.54,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 4
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 0.593,
+          "rows": 4,
+          "pages_with_evidence": 1,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 1,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          },
+          "mcp_extraction": {
+            "truncated": true,
+            "ocr": {
+              "truncated": true
+            }
+          },
+          "catalogue_gap": "extraction page count absent from MCP summary",
+          "semantic_quality": "unmeasured",
+          "original_bytes_and_prior_cell_verified": true
+        },
+        {
+          "case": "pdf_scanned-25",
+          "passed": true,
+          "seconds": 7.311,
+          "filename": "scanned-25.pdf",
+          "pages": 25,
+          "kind": "scanned",
+          "expected": "idle",
+          "marker": null,
+          "bytes": 736897,
+          "sha256": "293200ae4d517dd7306890e84cb1e56e6633d9b5e83e06aaab05fa715baa4540",
+          "landing_seconds": 6.715,
+          "polls": 14,
+          "observations": [
+            {
+              "seconds": 0.014,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 6.715,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 100
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 6.779,
+          "rows": 100,
+          "pages_with_evidence": 25,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 25,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          },
+          "mcp_extraction": {
+            "truncated": true,
+            "ocr": {
+              "truncated": true
+            }
+          },
+          "catalogue_gap": "extraction page count absent from MCP summary",
+          "semantic_quality": "unmeasured",
+          "original_bytes_and_prior_cell_verified": true
+        },
+        {
+          "case": "pdf_mixed-30",
+          "passed": true,
+          "seconds": 5.662,
+          "filename": "mixed-30.pdf",
+          "pages": 30,
+          "kind": "mixed",
+          "expected": "idle",
+          "marker": null,
+          "bytes": 597628,
+          "sha256": "ff11e886df8ee0270b61f9e692ff15cd67035ac208d80b4af1b4d3491680ee87",
+          "landing_seconds": 5.152,
+          "polls": 11,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 5.152,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 120
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 5.2,
+          "rows": 120,
+          "pages_with_evidence": 30,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                2,
+                3,
+                5,
+                6,
+                8,
+                9,
+                11,
+                12,
+                14,
+                15,
+                17,
+                18,
+                20,
+                21,
+                23,
+                24,
+                26,
+                27,
+                29,
+                30
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 30,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          },
+          "mcp_extraction": {
+            "truncated": true,
+            "ocr": {
+              "truncated": true
+            }
+          },
+          "catalogue_gap": "extraction page count absent from MCP summary",
+          "semantic_quality": "unmeasured",
+          "original_bytes_and_prior_cell_verified": true
+        },
+        {
+          "case": "pdf_large-scanned",
+          "passed": true,
+          "seconds": 1.698,
+          "filename": "large-scanned.pdf",
+          "pages": 3,
+          "kind": "scanned",
+          "expected": "idle",
+          "marker": null,
+          "bytes": 38881650,
+          "sha256": "4796ea060d4e67deb600f1e1ec54d4332379126be2de32e4750019c7492342a3",
+          "landing_seconds": 1.056,
+          "polls": 3,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 1.056,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 12
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "source_to_ready_seconds": 1.197,
+          "rows": 12,
+          "pages_with_evidence": 3,
+          "extraction": {
+            "ocr": {
+              "pages": [
+                1,
+                2,
+                3
+              ],
+              "engine": "tesseract",
+              "version": "5.3.0",
+              "languages": [
+                "eng"
+              ]
+            },
+            "pages": 3,
+            "method": "docling-native-pdf+tesseract-ocr",
+            "version": "2.131.0",
+            "limitations": [
+              "Reading order and visual table structure are not reconstructed.",
+              "OCR uses English language data and may misread text."
+            ]
+          },
+          "mcp_extraction": {
+            "truncated": true,
+            "ocr": {
+              "truncated": true
+            }
+          },
+          "catalogue_gap": "extraction page count absent from MCP summary",
+          "semantic_quality": "unmeasured",
+          "original_bytes_and_prior_cell_verified": true
+        },
+        {
+          "case": "pdf_over-byte-limit",
+          "passed": true,
+          "seconds": 1.077,
+          "filename": "over-byte-limit.pdf",
+          "pages": 9,
+          "kind": "scanned",
+          "expected": "error",
+          "marker": null,
+          "bytes": 116644339,
+          "sha256": "924cbd0185f3cd094435557c14271b52134ad4c2bc5b0e051e3e6ce3a5d3c277",
+          "landing_seconds": 0.016,
+          "polls": 1,
+          "observations": [
+            {
+              "seconds": 0.016,
+              "status": "error",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": "Documents are capped at 100 MB.",
+          "source_to_ready_seconds": 0.336,
+          "recovered_with_valid_source": true
+        },
+        {
+          "case": "pdf_encrypted",
+          "passed": true,
+          "seconds": 1.15,
+          "filename": "encrypted.pdf",
+          "pages": 1,
+          "kind": "encrypted",
+          "expected": "error",
+          "marker": null,
+          "bytes": 1439,
+          "sha256": "67dbbb562f729b3b580be33877b00387e600218227d12203670077a8c964e7d6",
+          "landing_seconds": 0.519,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.519,
+              "status": "error",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": "The document could not be extracted. Check that it is readable and not password protected.",
+          "source_to_ready_seconds": 0.562,
+          "recovered_with_valid_source": true
+        },
+        {
+          "case": "pdf_blank",
+          "passed": true,
+          "seconds": 1.189,
+          "filename": "blank.pdf",
+          "pages": 1,
+          "kind": "blank",
+          "expected": "error",
+          "marker": null,
+          "bytes": 431,
+          "sha256": "b37a58fb510237b6b60b1e610deecd3eb013ff71836b831faf66958f83affbe3",
+          "landing_seconds": 0.537,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.537,
+              "status": "error",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": "No text was found after OCR. Check that the document contains legible text.",
+          "source_to_ready_seconds": 0.59,
+          "recovered_with_valid_source": true
+        },
+        {
+          "case": "pdf_corrupt",
+          "passed": true,
+          "seconds": 1.192,
+          "filename": "corrupt.pdf",
+          "pages": null,
+          "kind": "corrupt",
+          "expected": "error",
+          "marker": null,
+          "bytes": 31,
+          "sha256": "04a660a44a04903692a132d1644f2a29f4f7f3a6bb1e291f25453d8c28f58b6c",
+          "landing_seconds": 0.538,
+          "polls": 2,
+          "observations": [
+            {
+              "seconds": 0.009,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.538,
+              "status": "error",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": "The document could not be extracted. Check that it is readable and not password protected.",
+          "source_to_ready_seconds": 0.591,
+          "recovered_with_valid_source": true
+        }
+      ],
+      "summary": {
+        "passed": 9,
+        "total": 9,
+        "successful_tools": [
+          "get_job",
+          "inspect_dataset",
+          "query_dataset",
+          "run_dataset_pipeline",
+          "save_dataset_pipeline"
+        ],
+        "successful_tool_calls": {
+          "get_job": 57,
+          "inspect_dataset": 14,
+          "query_dataset": 18,
+          "run_dataset_pipeline": 4,
+          "save_dataset_pipeline": 4
+        },
+        "rejected_tool_calls": {},
+        "resources_read": [
+          "overmind://jobs/dataset_pipeline/2f5294ff-b135-4510-9c51-e7b7b9af2782",
+          "overmind://jobs/dataset_pipeline/cd6b992b-56a7-4184-8c86-90d940db7050",
+          "overmind://jobs/dataset_pipeline/dbbd0abd-7c80-4ea8-a1b2-013f17e3a066",
+          "overmind://jobs/dataset_pipeline/fb95eb29-fd60-45fc-9fbb-12dbe79955ae"
+        ],
+        "missing_workshop_tools": [
+          "cancel_dataset",
+          "create_data_partition",
+          "create_dataset_from_llm_calls",
+          "create_dataset_from_traces",
+          "derive_dataset",
+          "explore_dataset",
+          "import_dataset_version",
+          "inspect_dataset_workbench",
+          "list_datasets",
+          "list_model_workflows",
+          "list_projects",
+          "retry_data_partition",
+          "start_dataset",
+          "update_dataset"
+        ],
+        "max_response_bytes": 223713,
+        "billable_usage_records": 0
+      },
+      "cleanup": {
+        "cleanup": "removed only this replay's two projects and user",
+        "remaining_datasets": 126
+      }
+    },
+    {
+      "log": "/private/tmp/workshop-pdf-mixed-batch.log",
+      "sha256": "4aaf8f9e39ee07949ceacc037ab42ebb7c6108ac08e0b550a86b3fcde8bed37d",
+      "cases": [
+        {
+          "case": "pdf_mixed_batch",
+          "passed": true,
+          "seconds": 19.282,
+          "landing_seconds": 13.877,
+          "polls": 28,
+          "observations": [
+            {
+              "seconds": 0.015,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": null
+            },
+            {
+              "seconds": 0.528,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "native-2000.pdf",
+                "completed": 4
+              }
+            },
+            {
+              "seconds": 1.043,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "scanned-1.pdf",
+                "completed": 5
+              }
+            },
+            {
+              "seconds": 1.557,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "scanned-25.pdf",
+                "completed": 6
+              }
+            },
+            {
+              "seconds": 7.714,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "mixed-30.pdf",
+                "completed": 7
+              }
+            },
+            {
+              "seconds": 12.318,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "extracting",
+                "total": 10,
+                "filename": "large-scanned.pdf",
+                "completed": 8
+              }
+            },
+            {
+              "seconds": 13.343,
+              "status": "landing",
+              "mcp_progress": {
+                "cells": {},
+                "rows": 0
+              },
+              "stored_landing_progress": {
+                "stage": "merging",
+                "total": 10,
+                "completed": 10
+              }
+            },
+            {
+              "seconds": 13.877,
+              "status": "idle",
+              "mcp_progress": {
+                "cells": {
+                  "ok": 1
+                },
+                "rows": 5460
+              },
+              "stored_landing_progress": null
+            }
+          ],
+          "error": null,
+          "files": 10,
+          "pages": 2671,
+          "bytes": 41584591,
+          "rows": 5460,
+          "per_document_page_identity_and_transformed_evidence_verified": true
+        }
+      ],
+      "summary": {
+        "passed": 1,
+        "total": 1,
+        "successful_tools": [
+          "get_job",
+          "inspect_dataset",
+          "query_dataset",
+          "run_dataset_pipeline",
+          "save_dataset_pipeline"
+        ],
+        "successful_tool_calls": {
+          "get_job": 33,
+          "inspect_dataset": 1,
+          "query_dataset": 165,
+          "run_dataset_pipeline": 1,
+          "save_dataset_pipeline": 1
+        },
+        "rejected_tool_calls": {},
+        "resources_read": [],
+        "missing_workshop_tools": [
+          "cancel_dataset",
+          "create_data_partition",
+          "create_dataset_from_llm_calls",
+          "create_dataset_from_traces",
+          "derive_dataset",
+          "explore_dataset",
+          "import_dataset_version",
+          "inspect_dataset_workbench",
+          "list_datasets",
+          "list_model_workflows",
+          "list_projects",
+          "retry_data_partition",
+          "start_dataset",
+          "update_dataset"
+        ],
+        "max_response_bytes": 221121,
+        "billable_usage_records": 0
+      },
+      "cleanup": {
+        "cleanup": "removed only this replay's two projects and user",
+        "remaining_datasets": 126
+      }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateTime } from "@/components/ui/datetime";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GraphTooltip } from "@/components/ui/graph-tooltip";
 import { Icon } from "@/components/ui/icons";
 import { SectionCard } from "@/components/ui/section-card";
 import {
@@ -408,18 +409,14 @@ function PerformanceChart({
                 width={48}
               />
               <Tooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  color: "var(--foreground)",
-                  fontSize: 12,
-                }}
-                formatter={(value, name) => [
-                  format(typeof value === "number" ? value : null),
-                  name,
-                ]}
-                labelFormatter={(value) => new Date(Number(value)).toLocaleString()}
+                content={({ active, payload, label }) => (
+                  <GraphTooltip
+                    active={active}
+                    label={label != null ? new Date(Number(label)).toLocaleString() : undefined}
+                    payload={payload}
+                    valueFormatter={format}
+                  />
+                )}
               />
               {series.map((item) => (
                 <Line

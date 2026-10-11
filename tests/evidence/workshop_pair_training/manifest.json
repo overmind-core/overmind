@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "parameters": {"seed": "integer", "sample_groups": "integer"},
+  "limits": {"seconds": 120, "memory_mb": 512, "scratch_mb": 1024, "cpus": 1},
+  "steps": [
+    {"id": "audit", "input": "source", "name": "Preserve observations, review flags and connected entity groups", "entrypoint": "audit.py", "input_schema": {"left": "object", "right": "object", "judgement": "string"}, "output_schema": {"source_row": "integer", "entity_group": "string"}, "checks": {"preserve_rows": true}},
+    {"id": "inputs", "input": "audit", "name": "Separate model evidence from identity shortcuts", "entrypoint": "project.py", "output_schema": {"source_row": "integer", "model_evidence": "object"}, "checks": {"preserve_rows": true}},
+    {"id": "decisions", "input": "inputs", "name": "Preserve supplied categorical judgements as trainable decisions", "entrypoint": "decision.py", "output_schema": {"source_row": "integer", "decision": "object"}, "checks": {"preserve_rows": true}},
+    {"id": "sample", "input": "decisions", "name": "Select a reproducible entity-group sample for bounded training", "entrypoint": "sample.py", "output_schema": {"source_row": "integer", "decision": "object", "entity_group": "string"}, "checks": {"min_rows": 50}}
+  ]
+}

@@ -465,7 +465,7 @@ export function RowsGrid({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto border-t border-border/70">
+      <div className="nowheel min-h-0 flex-1 overflow-auto border-t border-border/70">
         {rowsQuery.isPending ? (
           <div className="flex flex-col gap-1.5 p-2">
             <Skeleton className="h-5 w-full" />

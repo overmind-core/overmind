@@ -1,22 +1,10 @@
-import { useState } from "react";
-
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Spinner } from "@/components/ui/spinner";
-import {
-  activeCellOf,
-  cellsOf,
-  isBusy,
-  useDatasetQuery,
-  usePatchDatasetMutation,
-} from "@/hooks/use-datasets";
-import { useGuestGate } from "@/hooks/use-guest-gate";
-import { cn } from "@/lib/utils";
+import { activeCellOf, useDatasetQuery } from "@/hooks/use-datasets";
 import type { PipelineRun, Workbench } from "@/openapi";
 
 export function usePipelineRuns(datasetId: string) {
@@ -36,119 +24,32 @@ export function usePipelineRuns(datasetId: string) {
   });
 }
 
-export function DatasetVersionChip({
-  datasetId,
-  projectId,
-}: {
-  datasetId: string;
-  projectId?: string;
-}) {
-  const [open, setOpen] = useState(false);
+export function DatasetProcessDetails({ datasetId }: { datasetId: string }) {
   const query = usePipelineRuns(datasetId);
   const { data: dataset } = useDatasetQuery(datasetId);
-  const patch = usePatchDatasetMutation(datasetId);
-  const guard = useGuestGate();
-  const navigate = useNavigate();
-  const iteration = useRouterState({
-    select: (state) => (state.location.search as { iteration?: string }).iteration,
-  });
-  const cells = cellsOf(dataset);
   const active = activeCellOf(dataset);
-  const selected = cells.find((cell) => cell.id === iteration) ?? active;
   const runs = query.data?.pages.flatMap((page) => page.runs) ?? [];
-  const run = runs.find(
-    (item) =>
-      item.outputCell === selected?.id ||
-      (Array.isArray(item.result.steps) &&
-        item.result.steps.some((step) => step.output_cell === selected?.id))
-  );
-  const show = (id?: string) => {
-    void navigate({
-      params: { datasetId },
-      replace: true,
-      search: { iteration: id, projectId },
-      to: "/datasets/$datasetId",
-    });
-    setOpen(false);
-  };
-  if (!dataset || !selected) return null;
+  const latest = runs[0];
+  const run =
+    latest && (latest.state !== "completed" || !active)
+      ? latest
+      : runs.find((item) => item.outputCell === active?.id);
+  if (!active && !run) return null;
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover>
       <PopoverTrigger asChild>
-        <Button
-          aria-label={`Dataset versions, ${selected.version}`}
-          className="shrink-0 gap-1 font-mono"
-          size="xs"
-          variant="outline"
-        >
-          {selected.version}
-          <Icon.chevronDown className="size-3" />
+        <Button aria-label="Preparation details" size="xs" variant="outline">
+          Process <Icon.chevronDown className="size-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        aria-label="Dataset versions"
-        className="w-[min(24rem,calc(100vw-2rem))] p-2 font-sans"
-      >
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-sm">Versions</span>
-          <Button
-            onClick={() => show(iteration === "all" ? undefined : "all")}
-            size="xs"
-            variant="secondary"
-          >
-            {iteration === "all" ? "Current output" : "All iterations"}
-          </Button>
-        </div>
-        <div className="max-h-60 overflow-y-auto">
-          {[...cells]
-            .reverse()
-            .filter((cell) => cell.state === "ok")
-            .map((cell) => (
-              <button
-                aria-pressed={selected.id === cell.id}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent focus-visible:outline focus-visible:outline-ring",
-                  selected.id === cell.id && "bg-accent"
-                )}
-                key={cell.id}
-                onClick={() => show(cell.id)}
-                type="button"
-              >
-                <span className="shrink-0 font-mono">{cell.version}</span>
-                <span className="min-w-0 flex-1 truncate">{cell.title}</span>
-                {cell.id === active?.id && <span className="text-muted-foreground">Active</span>}
-              </button>
-            ))}
-        </div>
-        {selected.id !== active?.id && (
-          <div className="mt-2 border-t border-border/70 pt-2">
-            <Button
-              disabled={patch.isPending || isBusy(dataset)}
-              onClick={guard(() =>
-                patch.mutate({ active: selected.id }, { onSuccess: () => show() })
-              )}
-              size="sm"
-              variant="secondary"
-            >
-              {patch.isPending && <Spinner size="sm" />}Restore {selected.version}
-            </Button>
-          </div>
-        )}
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-3 font-sans">
+        <p className="text-sm">
+          {active ? `${active.title} · ${active.rows.toLocaleString()} rows` : run?.pipelineName}
+        </p>
         {run && <RunFacts run={run} />}
         {query.isError && (
           <Button onClick={() => void query.refetch()} size="xs" variant="secondary">
             Retry run details
-          </Button>
-        )}
-        {query.hasNextPage && (
-          <Button
-            disabled={query.isFetchingNextPage}
-            onClick={() => void query.fetchNextPage()}
-            size="xs"
-            variant="secondary"
-          >
-            Older run details
           </Button>
         )}
       </PopoverContent>
@@ -168,7 +69,7 @@ function RunFacts({ run }: { run: PipelineRun }) {
       {run.runner?.status === "unavailable" && ["queued", "running"].includes(run.state) && (
         <p role="status">Runner observations unavailable.</p>
       )}
-      <details>
+      <details open={["queued", "running", "failed"].includes(run.state)}>
         <summary className="cursor-pointer text-muted-foreground">Execution details</summary>
         <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           <dt>Transformation</dt>
@@ -195,6 +96,15 @@ function RunFacts({ run }: { run: PipelineRun }) {
               <li key={String(step.index ?? index)}>
                 {index + 1}. {String(step.name)} · {String(step.state)} ·{" "}
                 {String(step.input_rows ?? "—")} → {String(step.output_rows ?? "—")} rows
+                {step.batches && (
+                  <>
+                    {" "}
+                    · {String(step.batches.completed)}/{String(step.batches.total)} batches
+                  </>
+                )}
+                {step.consumer_check?.passed && (
+                  <> · {String(step.consumer_check.consumer)} validated</>
+                )}
               </li>
             ))}
           </ol>

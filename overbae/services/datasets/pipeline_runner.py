@@ -7,15 +7,17 @@ import struct
 import tarfile
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import quote
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import close_old_connections
+from django.db import close_old_connections, connection
 from django.utils import timezone
 
 from overbae.models import DatasetPipelineRun, DatasetPipelineRunner
+from overbae.services.datasets import heartbeat as worker_heartbeat
 from overbae.services.datasets import pipeline_bindings, store, workbench
 
 logger = logging.getLogger(__name__)
@@ -197,6 +199,29 @@ def heartbeat(status="ready"):
     )
 
 
+@contextmanager
+def controller():
+    # A dedicated session keeps ownership across close_old_connections and releases it on process death.
+    owner = connection.copy()
+    lock = int.from_bytes(b"workshop", "big")
+    try:
+        with owner.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", [lock])
+            if not cursor.fetchone()[0]:
+                raise RuntimeUnavailableError("A Workshop controller is already running.")
+        for run_id in DatasetPipelineRun.objects.filter(
+            state="running", pipeline__isnull=False
+        ).values_list("pk", flat=True):
+            workbench.fail(
+                run_id,
+                "The execution controller stopped. No output was published. "
+                "Inspect the retained diagnostics and submit a new request key to retry.",
+            )
+        yield owner
+    finally:
+        owner.close()
+
+
 def execute_script(run, index, source, directory, step, files, progress):
     engine = DockerEngine()
     receipt = run.result["steps"][index]
@@ -241,6 +266,8 @@ def execute_script(run, index, source, directory, step, files, progress):
         **manifest.get("limits", {}),
     }
     name = f"overmind-workshop-{run.pk}-{run.attempt}-{index}"
+    if batch := receipt.get("batches", {}).get("current"):
+        name += f"-batch-{batch}"
     existing = engine.inspect(name)
     if existing:
         raise RuntimeUnavailableError(
@@ -318,7 +345,8 @@ def execute_script(run, index, source, directory, step, files, progress):
                         )
                         if incoming.tell() > scratch // 2:
                             raise RuntimeUnavailableError(
-                                "The source exceeds half the declared scratch space; increase the package limit."
+                                "The input exceeds half the declared scratch space. Increase the "
+                                "package limit, or declare batch_rows for a row-independent step."
                             )
                     entry = tarfile.TarInfo("input.jsonl")
                     entry.size, entry.mode, entry.uid, entry.gid = (
@@ -441,11 +469,6 @@ def tick():
     except RuntimeUnavailableError:
         heartbeat("unavailable")
         return
-    pipeline_bindings.tick()
-    for run in DatasetPipelineRun.objects.filter(state="queued", pipeline__isnull=False).order_by(
-        "created_at"
-    )[:1]:
-        workbench.execute(run.pk, script_executor=execute_script)
     for run in DatasetPipelineRun.objects.filter(
         state__in=["failed", "cancelled"], container_id__startswith="overmind-workshop-"
     )[:20]:
@@ -458,3 +481,14 @@ def tick():
         except RuntimeUnavailableError:
             logger.exception("Container termination remains unconfirmed for run %s", run.pk)
     workbench.expire_runs()
+    pipeline_bindings.tick()
+    for run in DatasetPipelineRun.objects.filter(state="queued", pipeline__isnull=False).order_by(
+        "created_at"
+    )[:1]:
+        heartbeat("executing")
+        beat = worker_heartbeat.start(lambda: heartbeat("executing"))
+        try:
+            workbench.execute(run.pk, script_executor=execute_script)
+        finally:
+            beat.set()
+            heartbeat()

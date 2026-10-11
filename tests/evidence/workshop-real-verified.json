@@ -1,0 +1,2791 @@
+{
+  "run": "verified",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "pairs",
+      "original_dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+      "original_cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+      "source_rows": 10000,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".json",
+          "dataset": "6ab3fb22-5281-4258-becc-5bd2f93d341b",
+          "upload_seconds": 4.363,
+          "preview": {
+            "id": "116496c3-56ba-44ec-86a9-76f054be3831",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.584,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.629,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.616,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.632,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.56,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "24d3ed1e-b6cf-4e1e-866b-1c9db3e18d36",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "3081375c-eb11-4ea0-80e5-845c71501d34",
+                "seconds": 7.414,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "cf71a456-9a2d-4d7e-bea2-215f53488c5d",
+                "seconds": 6.983,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 119,
+                "output_cell": "028257fa-562c-4cd3-aab7-889b808280a6",
+                "seconds": 3.883,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 9881,
+                "output_cell": "af64f929-cd97-4376-9331-a811af16d09f",
+                "seconds": 6.635,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "5b40cb4d-0693-422a-a2cf-d6e60d7c5009",
+                "seconds": 7.927,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "0ef1bb63-1ce2-410b-afe0-75f9c6da4453",
+              "title": "Source",
+              "rows": 10000
+            },
+            {
+              "id": "3081375c-eb11-4ea0-80e5-845c71501d34",
+              "title": "Inspect source and retain review evidence",
+              "rows": 10000
+            },
+            {
+              "id": "cf71a456-9a2d-4d7e-bea2-215f53488c5d",
+              "title": "Separate identity shortcuts from model evidence",
+              "rows": 10000
+            },
+            {
+              "id": "028257fa-562c-4cd3-aab7-889b808280a6",
+              "title": "Rows requiring review",
+              "rows": 119
+            },
+            {
+              "id": "af64f929-cd97-4376-9331-a811af16d09f",
+              "title": "Rows without measured flags",
+              "rows": 9881
+            },
+            {
+              "id": "5b40cb4d-0693-422a-a2cf-d6e60d7c5009",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 10000
+            }
+          ],
+          "seconds": 74.851,
+          "output_rows": 10000,
+          "output_sha256": "8b7594aae4ae0624fc3a1b993b5769533087aaf51218657d2ff4aacaffae23bd",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".jsonl",
+          "dataset": "40920e97-d208-4e44-ab6f-eeafd8ffc450",
+          "upload_seconds": 4.094,
+          "preview": {
+            "id": "61cf7d65-a2d1-4065-a840-957c3bbd0f0d",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.605,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.662,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.624,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.641,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.678,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "91d58ec0-c1cd-4994-910f-978036b57293",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "54705cf5-7087-4bb9-aac2-0f6d1c68f96c",
+                "seconds": 7.382,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "b0e658c0-fb56-4677-82f2-79fd999f282c",
+                "seconds": 7.036,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 119,
+                "output_cell": "20739ac5-d8bb-4f17-b647-719d47ccbb6d",
+                "seconds": 3.963,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 9881,
+                "output_cell": "c8c3b94a-f19f-4b7c-bfbc-1e2eb5b01305",
+                "seconds": 6.759,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "5dd45274-ad90-4b08-8c10-ab6ea9625377",
+                "seconds": 7.816,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "62745875-b80b-4eec-8275-c4d6dd513a22",
+              "title": "Source",
+              "rows": 10000
+            },
+            {
+              "id": "54705cf5-7087-4bb9-aac2-0f6d1c68f96c",
+              "title": "Inspect source and retain review evidence",
+              "rows": 10000
+            },
+            {
+              "id": "b0e658c0-fb56-4677-82f2-79fd999f282c",
+              "title": "Separate identity shortcuts from model evidence",
+              "rows": 10000
+            },
+            {
+              "id": "20739ac5-d8bb-4f17-b647-719d47ccbb6d",
+              "title": "Rows requiring review",
+              "rows": 119
+            },
+            {
+              "id": "c8c3b94a-f19f-4b7c-bfbc-1e2eb5b01305",
+              "title": "Rows without measured flags",
+              "rows": 9881
+            },
+            {
+              "id": "5dd45274-ad90-4b08-8c10-ab6ea9625377",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 10000
+            }
+          ],
+          "seconds": 84.649,
+          "output_rows": 10000,
+          "output_sha256": "0a9af04b90cc419f3d6d7f842a178a8c991a95e1b966efae6a3b416e4489dd95",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 3,
+          "upload_format": ".jsonl",
+          "dataset": "3c60ef0f-ce36-4db5-96d2-41806135a99f",
+          "upload_seconds": 4.031,
+          "preview": {
+            "id": "04751a4e-ecd0-4c5c-a355-24c30fd1d196",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.622,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.597,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.571,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.58,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.613,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "b3da1a7d-8b22-4011-8d4a-3c994d350d42",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_preserving_lineage"
+              },
+              {
+                "state": "running",
+                "stage": "step_5_executing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "running",
+                "stage": "publishing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "6158bc58-51c8-40f1-b8ed-a386b8934cbd",
+                "seconds": 7.566,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "features",
+                "input_step": "audit",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "4886d3b9-bef6-475f-a5cb-8c2d167e5569",
+                "seconds": 7.535,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 119,
+                "output_cell": "9a3da2cb-10e3-4f44-b024-c0b53d50b67f",
+                "seconds": 3.988,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 9881,
+                "output_cell": "43ed1889-1960-4417-a155-49670bdd5db8",
+                "seconds": 6.78,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "features",
+                "input_rows": 10000,
+                "output_rows": 10000,
+                "output_cell": "c79c0d10-5e68-4d07-95f6-f07426affcc7",
+                "seconds": 7.871,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "39acc0d6-3db6-423c-982e-aa3d23a133dc",
+              "title": "Source",
+              "rows": 10000
+            },
+            {
+              "id": "6158bc58-51c8-40f1-b8ed-a386b8934cbd",
+              "title": "Inspect source and retain review evidence",
+              "rows": 10000
+            },
+            {
+              "id": "4886d3b9-bef6-475f-a5cb-8c2d167e5569",
+              "title": "Separate identity shortcuts from model evidence",
+              "rows": 10000
+            },
+            {
+              "id": "9a3da2cb-10e3-4f44-b024-c0b53d50b67f",
+              "title": "Rows requiring review",
+              "rows": 119
+            },
+            {
+              "id": "43ed1889-1960-4417-a155-49670bdd5db8",
+              "title": "Rows without measured flags",
+              "rows": 9881
+            },
+            {
+              "id": "c79c0d10-5e68-4d07-95f6-f07426affcc7",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 10000
+            }
+          ],
+          "seconds": 110.543,
+          "output_rows": 10000,
+          "output_sha256": "ef98ade45441c86bb82f2d1a6448ae466c3ba2fef3867a35f3a979518dd2facf",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-verified-f39rd9y3/pairs.jsonl",
+        "dataset_id": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+        "format": "jsonl",
+        "bytes_written": 32354952,
+        "cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+        "version": "1.0",
+        "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+      },
+      "export_seconds": 1.385,
+      "package": "e20f3588-d5e2-41fa-81ed-e884fd61c6c1",
+      "recipe": "02e410b3-a9eb-4380-aee6-f00810888e81"
+    },
+    {
+      "kind": "documents",
+      "original_dataset": "a14e5398-f0a4-4e97-b80c-8575d6c2b318",
+      "original_cell": "96b430a0-088b-4c81-b76b-10ec3f484450",
+      "source_rows": 320,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".jsonl",
+          "dataset": "e0c2e342-9aff-4bc3-a3e7-61fa3e139531",
+          "upload_seconds": 3.872,
+          "preview": {
+            "id": "4a15ad9a-1a59-4b56-be6f-eb301a77abbe",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.554,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.597,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.595,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 1,
+                "output_cell": null,
+                "seconds": 2.621,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "602d06aa-e81d-45e6-b04f-ccaf775c9fa9",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "d2372a49-5682-45f8-887b-02e1bbe37664",
+                "seconds": 2.772,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 0,
+                "output_cell": "731dd627-cde9-4591-b291-d8e0c3124189",
+                "seconds": 2.714,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "392088f7-ab82-4322-bade-f10ad3aa257e",
+                "seconds": 2.722,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 7,
+                "output_cell": "b5e5e20d-79aa-4c7f-8073-5c747ed2ae2c",
+                "seconds": 2.637,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "eb7fb414-7adc-4c6a-821c-d1248343d37c",
+              "title": "Source",
+              "rows": 320
+            },
+            {
+              "id": "d2372a49-5682-45f8-887b-02e1bbe37664",
+              "title": "Inspect source and retain review evidence",
+              "rows": 320
+            },
+            {
+              "id": "731dd627-cde9-4591-b291-d8e0c3124189",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "392088f7-ab82-4322-bade-f10ad3aa257e",
+              "title": "Rows without measured flags",
+              "rows": 320
+            },
+            {
+              "id": "b5e5e20d-79aa-4c7f-8073-5c747ed2ae2c",
+              "title": "Assemble page evidence without inventing targets",
+              "rows": 7
+            }
+          ],
+          "seconds": 61.838,
+          "output_rows": 7,
+          "output_sha256": "711f2730c5d6ff46fe28aee8328cf17fd6c67a312ce0650cf46480b1bf1ea7f0",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".jsonl",
+          "dataset": "7bcff9d8-c779-41ea-a2bf-18cf531654ca",
+          "upload_seconds": 3.883,
+          "preview": {
+            "id": "43af74e1-2a08-4b9c-be2a-9047cbf2dfb4",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.601,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.611,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.626,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 1,
+                "output_cell": null,
+                "seconds": 2.627,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "e775419a-74e8-4825-bdb5-6abb1e18eb61",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "0e5b7362-cc54-45e0-b6fd-cac153600d5c",
+                "seconds": 2.659,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 0,
+                "output_cell": "87181531-2a0f-48db-8d5c-2a9448673e5a",
+                "seconds": 2.61,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "14f8505e-118e-4481-a546-5ec355d673cb",
+                "seconds": 2.648,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 7,
+                "output_cell": "a9ccdbf3-f7a8-43b2-9049-c18cf10702e8",
+                "seconds": 2.597,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "4c80c9fc-92bb-4676-8e71-c95ac22d236f",
+              "title": "Source",
+              "rows": 320
+            },
+            {
+              "id": "0e5b7362-cc54-45e0-b6fd-cac153600d5c",
+              "title": "Inspect source and retain review evidence",
+              "rows": 320
+            },
+            {
+              "id": "87181531-2a0f-48db-8d5c-2a9448673e5a",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "14f8505e-118e-4481-a546-5ec355d673cb",
+              "title": "Rows without measured flags",
+              "rows": 320
+            },
+            {
+              "id": "a9ccdbf3-f7a8-43b2-9049-c18cf10702e8",
+              "title": "Assemble page evidence without inventing targets",
+              "rows": 7
+            }
+          ],
+          "seconds": 64.345,
+          "output_rows": 7,
+          "output_sha256": "e5b2247f5a6558ff76f43cb74b027f153de557126d54430f4d2c186a2ef34407",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 3,
+          "upload_format": ".jsonl",
+          "dataset": "45b7ac73-e609-49c9-abc4-0baf8de01afc",
+          "upload_seconds": 3.938,
+          "preview": {
+            "id": "9a7979c6-6c9e-4c13-895a-a3ddcb632d95",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.536,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.591,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.622,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 1,
+                "output_cell": null,
+                "seconds": 2.637,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "22f331e5-59df-47af-8f46-83e94fb22a2d",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "60906cd4-c4db-4a2b-978d-a0a354c80ad9",
+                "seconds": 2.602,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 0,
+                "output_cell": "f6612474-78e1-47f3-b55a-666d0bcca9ca",
+                "seconds": 2.638,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "cc5a83f5-d88d-4cdf-a3bd-8e3247e01f1b",
+                "seconds": 2.707,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 7,
+                "output_cell": "0fa93790-0248-4fd9-a16d-a846f9bed36d",
+                "seconds": 2.648,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "3e4efe1c-1f15-4efb-babe-516b710ee46d",
+              "title": "Source",
+              "rows": 320
+            },
+            {
+              "id": "60906cd4-c4db-4a2b-978d-a0a354c80ad9",
+              "title": "Inspect source and retain review evidence",
+              "rows": 320
+            },
+            {
+              "id": "f6612474-78e1-47f3-b55a-666d0bcca9ca",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "cc5a83f5-d88d-4cdf-a3bd-8e3247e01f1b",
+              "title": "Rows without measured flags",
+              "rows": 320
+            },
+            {
+              "id": "0fa93790-0248-4fd9-a16d-a846f9bed36d",
+              "title": "Assemble page evidence without inventing targets",
+              "rows": 7
+            }
+          ],
+          "seconds": 62.848,
+          "output_rows": 7,
+          "output_sha256": "272246486a15abb3a9ba053d28f7fe32789a53542c1e34aaf3cfa343f0b698ba",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-verified-f39rd9y3/documents.jsonl",
+        "dataset_id": "a14e5398-f0a4-4e97-b80c-8575d6c2b318",
+        "format": "jsonl",
+        "bytes_written": 348771,
+        "cell": "96b430a0-088b-4c81-b76b-10ec3f484450",
+        "version": "1.0",
+        "fingerprint": "c3cfae28ceb06a1fd888f95e6073de6d4349102395f128aae9759a0e86d87384"
+      },
+      "export_seconds": 0.669,
+      "package": "64cf3ac1-bc80-4e99-8b0b-a0b9e5b29959",
+      "recipe": "cd7e3f71-9c07-4fdb-af30-6bae1737475a"
+    },
+    {
+      "kind": "tabular",
+      "original_dataset": "7def7ef9-1ece-4335-ab31-0cf0df18705c",
+      "original_cell": "b7aa0c70-da36-4f5e-af46-583e5bfcdff5",
+      "source_rows": 891,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".csv",
+          "dataset": "61958781-ef04-4bf2-8b94-7238f2994901",
+          "upload_seconds": 11.845,
+          "preview": {
+            "id": "a4a061d7-55f9-4419-90bf-883c7e4f879a",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.594,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.606,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.607,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.589,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "96cbc551-a34f-4c75-8d79-c19d0ef22a1f",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "d3a5cbe4-78ea-4414-aacc-6d7614f2972e",
+                "seconds": 2.68,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 0,
+                "output_cell": "26b9dede-257a-42b6-8847-0a74e4fae6c1",
+                "seconds": 2.61,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "c19da135-4600-4617-a641-a77cfd003362",
+                "seconds": 2.728,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "00b1b971-55dd-474f-9418-a751eba0d4f0",
+                "seconds": 2.735,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "6cd3fca4-903b-4576-9d15-250559a78e65",
+              "title": "Source",
+              "rows": 891
+            },
+            {
+              "id": "d3a5cbe4-78ea-4414-aacc-6d7614f2972e",
+              "title": "Inspect source and retain review evidence",
+              "rows": 891
+            },
+            {
+              "id": "26b9dede-257a-42b6-8847-0a74e4fae6c1",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "c19da135-4600-4617-a641-a77cfd003362",
+              "title": "Rows without measured flags",
+              "rows": 891
+            },
+            {
+              "id": "00b1b971-55dd-474f-9418-a751eba0d4f0",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 891
+            }
+          ],
+          "seconds": 46.414,
+          "output_rows": 891,
+          "output_sha256": "43aa1fa46bc147aedc913f71650e37da41e388113676f2447c30fe627e057618",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".csv",
+          "dataset": "eafe117c-fc0c-4c0a-b709-2b5e15fbfa9b",
+          "upload_seconds": 4.934,
+          "preview": {
+            "id": "16a8428c-e22e-4291-9afd-2cdeb0e09372",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.549,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.61,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.603,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.609,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "6e821836-819e-4aa4-8349-dd889ae50cab",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "0474e474-dfb6-446d-bb6e-52488e0ae86b",
+                "seconds": 2.674,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 0,
+                "output_cell": "135b42b4-ad55-4cd7-a147-f44765f23e41",
+                "seconds": 2.617,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "5d27bdc4-6f19-49a4-8e6b-7b7d43fc9241",
+                "seconds": 2.77,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "5f8af665-1026-4067-b00b-916e31c12c1f",
+                "seconds": 2.767,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "86f15ce1-4209-4fec-bcfd-2a5bcf45fc06",
+              "title": "Source",
+              "rows": 891
+            },
+            {
+              "id": "0474e474-dfb6-446d-bb6e-52488e0ae86b",
+              "title": "Inspect source and retain review evidence",
+              "rows": 891
+            },
+            {
+              "id": "135b42b4-ad55-4cd7-a147-f44765f23e41",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "5d27bdc4-6f19-49a4-8e6b-7b7d43fc9241",
+              "title": "Rows without measured flags",
+              "rows": 891
+            },
+            {
+              "id": "5f8af665-1026-4067-b00b-916e31c12c1f",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 891
+            }
+          ],
+          "seconds": 40.652,
+          "output_rows": 891,
+          "output_sha256": "26355212b2df2c4e9c7b118adcbb1c4185d353450f9eda8ebbc87b837637ddcb",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 3,
+          "upload_format": ".csv",
+          "dataset": "aaa07c4e-6cb3-4a8f-b784-1b01130993ff",
+          "upload_seconds": 4.09,
+          "preview": {
+            "id": "e1f9c59e-f3ae-4825-bd45-460274f07302",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.608,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.654,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.616,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.63,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "f4836c31-3637-447d-a5c2-ada00171fddd",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "a31c483b-65a7-4ef1-bac7-cbbb2168a8f9",
+                "seconds": 2.685,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 0,
+                "output_cell": "762f5454-f874-4832-8fa5-e4cbc95f6a92",
+                "seconds": 2.623,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "0a477870-02bd-494b-ba7d-269950a8603a",
+                "seconds": 2.799,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "cffe9dce-5d77-47a5-89ec-f09b057d3aca",
+                "seconds": 2.753,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "31ea527d-e1cc-4390-b0ec-cbb93f90d719",
+              "title": "Source",
+              "rows": 891
+            },
+            {
+              "id": "a31c483b-65a7-4ef1-bac7-cbbb2168a8f9",
+              "title": "Inspect source and retain review evidence",
+              "rows": 891
+            },
+            {
+              "id": "762f5454-f874-4832-8fa5-e4cbc95f6a92",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "0a477870-02bd-494b-ba7d-269950a8603a",
+              "title": "Rows without measured flags",
+              "rows": 891
+            },
+            {
+              "id": "cffe9dce-5d77-47a5-89ec-f09b057d3aca",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 891
+            }
+          ],
+          "seconds": 49.853,
+          "output_rows": 891,
+          "output_sha256": "38777f24477a642bf041ea144bad13f092523aec14819c901bc98b1595a4cd7f",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-verified-f39rd9y3/tabular.jsonl",
+        "dataset_id": "7def7ef9-1ece-4335-ab31-0cf0df18705c",
+        "format": "jsonl",
+        "bytes_written": 330976,
+        "cell": "b7aa0c70-da36-4f5e-af46-583e5bfcdff5",
+        "version": "1.0",
+        "fingerprint": "aa1f902c5ea70f3e229f1f9cace6bff7da0c8cf39eadf5faa0c6cf4624ba5327"
+      },
+      "export_seconds": 0.793,
+      "package": "0e6d4ed0-c71c-4ae0-8162-a17a7b6f5f1b",
+      "recipe": "77686ff5-c3e1-48b4-a2e7-a07288dfc64a"
+    },
+    {
+      "kind": "chat",
+      "original_dataset": "425a415c-7cc8-4175-83cc-049abb5cd6c7",
+      "original_cell": "8922f0e7-a480-4aa4-aa3b-4483ae691d65",
+      "source_rows": 1000,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".jsonl",
+          "dataset": "87b6fa9e-18c6-44ef-9321-fd3f1f853961",
+          "upload_seconds": 4.273,
+          "preview": {
+            "id": "e44fb610-53d7-4249-a3db-cc1b21b5fbb5",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.562,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.561,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.6,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.621,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "f1f7d630-25ef-4f95-be51-863a31e7cdb4",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "71abdc5c-69cb-45cf-b9d3-db481e6494c3",
+                "seconds": 3.055,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 0,
+                "output_cell": "bc245329-c617-44b7-ba98-007cc5b9c8da",
+                "seconds": 2.746,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "6e164a61-ceae-4c5c-b64b-489f641ab489",
+                "seconds": 2.95,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "3988f16b-8f13-455f-b110-c3445762ce6a",
+                "seconds": 2.965,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "1009a80e-1d94-4b39-8bdd-c17777059315",
+              "title": "Source",
+              "rows": 1000
+            },
+            {
+              "id": "71abdc5c-69cb-45cf-b9d3-db481e6494c3",
+              "title": "Inspect source and retain review evidence",
+              "rows": 1000
+            },
+            {
+              "id": "bc245329-c617-44b7-ba98-007cc5b9c8da",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "6e164a61-ceae-4c5c-b64b-489f641ab489",
+              "title": "Rows without measured flags",
+              "rows": 1000
+            },
+            {
+              "id": "3988f16b-8f13-455f-b110-c3445762ce6a",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 1000
+            }
+          ],
+          "seconds": 44.491,
+          "output_rows": 1000,
+          "output_sha256": "ac2f22b0997df7720e77e08e456b4bb4707efda015d25acdc6aab346fbe72681",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 2,
+          "upload_format": ".jsonl",
+          "dataset": "c9df3043-17f5-48ac-8309-9eff96773d70",
+          "upload_seconds": 3.94,
+          "preview": {
+            "id": "e6766fbf-203b-402e-ba08-8791c40301ac",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.56,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.612,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.638,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.636,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "ca122510-ee2f-475c-9d07-186207c00468",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "4319f9cf-97c7-4d1f-8a47-07aae971b432",
+                "seconds": 2.904,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 0,
+                "output_cell": "a9efac3f-f7cf-4452-ae9e-61e889216767",
+                "seconds": 2.705,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "69325063-8157-4eae-82fe-1364dc44b23d",
+                "seconds": 3.114,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "33b6812a-f90f-418d-a2e0-db547a13f81f",
+                "seconds": 2.987,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "a53e0200-c593-45ea-8c62-8cb97b5f7135",
+              "title": "Source",
+              "rows": 1000
+            },
+            {
+              "id": "4319f9cf-97c7-4d1f-8a47-07aae971b432",
+              "title": "Inspect source and retain review evidence",
+              "rows": 1000
+            },
+            {
+              "id": "a9efac3f-f7cf-4452-ae9e-61e889216767",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "69325063-8157-4eae-82fe-1364dc44b23d",
+              "title": "Rows without measured flags",
+              "rows": 1000
+            },
+            {
+              "id": "33b6812a-f90f-418d-a2e0-db547a13f81f",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 1000
+            }
+          ],
+          "seconds": 42.6,
+          "output_rows": 1000,
+          "output_sha256": "eb2ecf4ca16ed50ba5ba5b8d24a8558f3f5815ff33dbd236cf10e6a25d20d088",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        },
+        {
+          "repeat": 3,
+          "upload_format": ".jsonl",
+          "dataset": "06616bc3-bda6-492b-91d7-3e360257c739",
+          "upload_seconds": 3.962,
+          "preview": {
+            "id": "d86a25c9-63f0-47e0-8772-cb7de6f742be",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.594,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.675,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.607,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.621,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "014947b6-a612-4fc7-9070-6495dfc79e47",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "3d778c56-ee74-405d-853d-2e68c0d20bd3",
+                "seconds": 2.853,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 0,
+                "output_cell": "fc9033c3-2686-4e8a-b860-796f59d4f323",
+                "seconds": 2.675,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "eabbdac0-f8f9-41c1-b8a0-3c577a2cd792",
+                "seconds": 2.92,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "61f9304f-c1d5-4a74-a0b0-35c3c0f03f1a",
+                "seconds": 2.907,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "c5b52c12-1469-4fd1-ba38-af810eec9bef",
+              "title": "Source",
+              "rows": 1000
+            },
+            {
+              "id": "3d778c56-ee74-405d-853d-2e68c0d20bd3",
+              "title": "Inspect source and retain review evidence",
+              "rows": 1000
+            },
+            {
+              "id": "fc9033c3-2686-4e8a-b860-796f59d4f323",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "eabbdac0-f8f9-41c1-b8a0-3c577a2cd792",
+              "title": "Rows without measured flags",
+              "rows": 1000
+            },
+            {
+              "id": "61f9304f-c1d5-4a74-a0b0-35c3c0f03f1a",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 1000
+            }
+          ],
+          "seconds": 42.579,
+          "output_rows": 1000,
+          "output_sha256": "93b617c6b2a4b8d220c8953a2f77d1698a808d510079b339aaebb4b3e0245256",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-verified-f39rd9y3/chat.jsonl",
+        "dataset_id": "425a415c-7cc8-4175-83cc-049abb5cd6c7",
+        "format": "jsonl",
+        "bytes_written": 3284370,
+        "cell": "8922f0e7-a480-4aa4-aa3b-4483ae691d65",
+        "version": "1.0",
+        "fingerprint": "8b7fe3a8b2f6ded5992be775f6073efc6a474c3c110a443f15ccad6aa772bee2"
+      },
+      "export_seconds": 1.257,
+      "package": "00c89f69-b194-45c1-96b8-a1037f9e2415",
+      "recipe": "db568459-e281-4ef1-974b-85ba338c53b0"
+    }
+  ],
+  "errors": [],
+  "success": true,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-verified-f39rd9y3"
+}

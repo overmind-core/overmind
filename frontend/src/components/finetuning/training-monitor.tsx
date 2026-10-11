@@ -1,9 +1,10 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { type Query, useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import apiClient from "@/client";
+import { EntityRef } from "@/components/entity-ref";
 import { DevelopmentMonitor } from "@/components/finetuning/development-monitor";
 import {
   groupEvaluationDisplayRows,
@@ -17,16 +18,12 @@ import {
   MultiSeriesChart,
 } from "@/components/finetuning/finetuning-charts";
 import {
-  buildConfigChips,
-  buildConfigItems,
   DeltaChip,
   experimentColor,
   FtStatusBadge,
   HeaderStat,
-  HelpTip,
   METRIC_HELP,
   ProgressBar,
-  RunConfigDisclosure,
 } from "@/components/finetuning/finetuning-chrome";
 import {
   buildExperimentSnapshot,
@@ -42,10 +39,14 @@ import {
 } from "@/components/finetuning/judge-eval-table";
 import type { MetricPoint, MetricSeries } from "@/components/finetuning/loss-chart";
 import { liveSeriesPoints } from "@/components/finetuning/loss-series";
+import type { MetricKind } from "@/components/finetuning/metric-summary";
 import { ModelLiveAction } from "@/components/finetuning/model-live-action";
+import { MonitorChartCard } from "@/components/finetuning/monitor-chart-card";
 import { NativeEvaluationPanel } from "@/components/finetuning/native-evaluation-panel";
+import { RunConfiguration } from "@/components/finetuning/run-configuration";
 import { StageProgress } from "@/components/finetuning/stage-progress";
 import { scrubInfraLeak, userFacingJobError } from "@/components/finetuning/train/model-config";
+import { getModelProviderInfo } from "@/components/model-provider";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -250,8 +251,13 @@ export function TrainingMonitorPanel({
     snapshots.map((s) => ({
       color: s.color,
       id: s.job.id,
-      name: experimentLabel(s.job),
+      name:
+        getModelProviderInfo(s.job.baseModel).modelLabel +
+        (snapshots.filter((other) => other.job.baseModel === s.job.baseModel).length > 1
+          ? ` · ${experimentLabel(s.job)}`
+          : ""),
       points: pick(s),
+      terminal: s.terminal,
     }));
   const trainLossPointsOf = (s: ExperimentSnapshot): MetricPoint[] =>
     s.trainPoints
@@ -269,16 +275,15 @@ export function TrainingMonitorPanel({
   const gradSeries = seriesOf((s) => s.gradPoints);
   const accSeries = seriesOf(accTrainPoints);
   const hasPoints = (series: MetricSeries[]) => series.some((s) => s.points.length > 0);
+  const summaryFor = (kind: MetricKind, series: MetricSeries[]) => ({
+    kind,
+    series: focus ? series.filter((item) => item.id === focus.job.id) : series,
+    terminal: focus?.terminal ?? snapshots.every((snapshot) => snapshot.terminal),
+  });
 
   const datasetName =
     datasetsQuery.data?.results?.find((d) => d.id === job.dataset)?.name ??
     (job.dataset ? `${job.dataset.slice(0, 8)}…` : "—");
-
-  // BasetenRunner.submit persists the derived plan back onto job.hyperparameters,
-  // so these are the trained-with values, never "auto".
-  const hp = (job.hyperparameters ?? {}) as Record<string, unknown>;
-  const configChips = buildConfigChips(hp, job);
-  const configItems = buildConfigItems(hp, job);
 
   return (
     <div className="flex flex-col gap-5 pb-6">
@@ -315,8 +320,14 @@ export function TrainingMonitorPanel({
           <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
             <div className="flex items-baseline gap-2">
               <dt className="text-muted-foreground">Dataset</dt>
-              <dd className="max-w-[240px] truncate font-medium" title={job.dataset}>
-                {datasetName}
+              <dd className="max-w-[240px]">
+                <EntityRef
+                  className="text-xs"
+                  id={job.dataset}
+                  kind="dataset"
+                  name={datasetName}
+                  projectId={projectId}
+                />
               </dd>
             </div>
             <div className="flex items-baseline gap-2">
@@ -362,16 +373,25 @@ export function TrainingMonitorPanel({
       )}
 
       {/* Focus mode only: per-experiment configs differ in All mode. */}
-      {focus && <RunConfigDisclosure chips={configChips} items={configItems} />}
+      {focus && (
+        <RunConfiguration
+          datasetNames={
+            new Map(datasetsQuery.data?.results?.map((dataset) => [dataset.id, dataset.name]))
+          }
+          job={job}
+          projectId={projectId}
+        />
+      )}
 
       <div className="flex flex-col gap-2">
         <h3 className="text-xs text-muted-foreground">Metrics</h3>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
           <MonitorChartCard
             emptyHint="No train loss from provider yet"
             help={METRIC_HELP.loss}
             isLoading={metricsLoading}
             subtitle={isAll ? "train · one line per experiment" : "train loss · per step"}
+            summary={summaryFor("loss", lossSeries)}
             title="Loss"
           >
             {isAll ? (
@@ -383,16 +403,26 @@ export function TrainingMonitorPanel({
                 color={seriesColor(0)}
                 data={trainLossPointsOf(focus)}
                 height={180}
-                name="train loss"
+                name={getModelProviderInfo(focus.job.baseModel).modelLabel}
               />
             ) : null}
           </MonitorChartCard>
+
+          {focus && (
+            <DevelopmentMonitor
+              jobId={focus.job.id}
+              key={focus.job.id}
+              modelName={getModelProviderInfo(focus.job.baseModel).modelLabel}
+              status={focus.job.status}
+            />
+          )}
 
           <MonitorChartCard
             emptyHint="No learning-rate series from provider yet"
             help={METRIC_HELP.learningRate}
             isLoading={metricsLoading}
             subtitle="schedule over steps"
+            summary={summaryFor("learningRate", lrSeries)}
             title="Learning rate"
           >
             {isAll ? (
@@ -408,7 +438,7 @@ export function TrainingMonitorPanel({
                 color={seriesColor(1)}
                 data={focus.lrPoints}
                 height={180}
-                name="learning rate"
+                name={getModelProviderInfo(focus.job.baseModel).modelLabel}
                 valueFormatter={(v) => v.toExponential(2)}
               />
             ) : null}
@@ -422,6 +452,7 @@ export function TrainingMonitorPanel({
               subtitle={
                 isAll ? "train · one line per experiment" : "train token accuracy · per step"
               }
+              summary={summaryFor("accuracy", accSeries)}
               title="Token accuracy"
             >
               {isAll ? (
@@ -433,7 +464,7 @@ export function TrainingMonitorPanel({
                   color={seriesColor(2)}
                   data={accTrainPoints(focus)}
                   height={180}
-                  name="train accuracy"
+                  name={getModelProviderInfo(focus.job.baseModel).modelLabel}
                   valueFormatter={pct}
                 />
               ) : null}
@@ -445,6 +476,7 @@ export function TrainingMonitorPanel({
             help={METRIC_HELP.gradNorm}
             isLoading={metricsLoading}
             subtitle="gradient norm · per step"
+            summary={summaryFor("gradient", gradSeries)}
             title="Grad norm"
           >
             {isAll ? (
@@ -456,7 +488,7 @@ export function TrainingMonitorPanel({
                 color={seriesColor(3)}
                 data={focus.gradPoints}
                 height={180}
-                name="grad norm"
+                name={getModelProviderInfo(focus.job.baseModel).modelLabel}
               />
             ) : null}
           </MonitorChartCard>
@@ -477,7 +509,11 @@ export function TrainingMonitorPanel({
               }
               title="Class metrics"
             >
-              {focusClassMetrics ? <ClassMetricsTable metrics={focusClassMetrics.metrics} /> : null}
+              {focusClassMetrics ? (
+                <div className="[&_td:first-child]:pl-3 [&_td:last-child]:pr-3 [&_th:first-child]:pl-3 [&_th:last-child]:pr-3">
+                  <ClassMetricsTable metrics={focusClassMetrics.metrics} />
+                </div>
+              ) : null}
             </MonitorChartCard>
           )}
 
@@ -520,9 +556,6 @@ export function TrainingMonitorPanel({
         </div>
       </div>
 
-      {focus && (
-        <DevelopmentMonitor jobId={focus.job.id} key={focus.job.id} status={focus.job.status} />
-      )}
       {snapshots
         .filter((s) => isNativeJob(s.job))
         .map((s) => (
@@ -621,8 +654,14 @@ function ExperimentRunCard({
           {showIdentityMeta && datasetName != null && (
             <div className="flex items-baseline gap-2">
               <dt className="text-muted-foreground">Dataset</dt>
-              <dd className="max-w-[240px] truncate font-medium" title={job.dataset}>
-                {datasetName}
+              <dd className="max-w-[240px]">
+                <EntityRef
+                  className="text-xs"
+                  id={job.dataset}
+                  kind="dataset"
+                  name={datasetName}
+                  projectId={projectId}
+                />
               </dd>
             </div>
           )}
@@ -654,7 +693,7 @@ function ExperimentRunCard({
         </dl>
       </div>
 
-      <div className="flex flex-wrap items-stretch border-t border-border/70 pt-3.5">
+      <div className="-mx-4 flex flex-wrap items-stretch border-t border-border/70 px-4 pt-3.5">
         <HeaderStat label="Current loss" primary>
           {currentLoss != null ? currentLoss.toFixed(4) : "—"}
         </HeaderStat>
@@ -742,7 +781,6 @@ function ExperimentRunCard({
           decisions.
         </p>
       )}
-      <RunDiagnostics projectId={projectId} snapshot={snapshot} />
       <RunActivity projectId={projectId} snapshot={snapshot} />
     </Card>
   );
@@ -827,7 +865,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
   const deployedModelId = snapshot.job.deployedModelId;
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-border/70 pt-3">
+    <div className="-mx-4 flex flex-col gap-1.5 border-t border-border/70 px-4 pt-3">
       {/* flex-wrap: the action cluster alone is wider than a ~340px card. */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
         <FtStatusBadge
@@ -977,154 +1015,8 @@ function ExperimentChip({
   );
 }
 
-function MonitorChartCard({
-  title,
-  subtitle,
-  children,
-  emptyHint,
-  help,
-  isLoading,
-  className,
-}: {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-  emptyHint: string;
-  help: string;
-  isLoading?: boolean;
-  className?: string;
-}) {
-  const hasContent = children != null && children !== false && children !== true;
-  return (
-    <Card className={cn("flex flex-col gap-2 p-3", className)}>
-      <div className="flex items-center gap-2">
-        <Icon.chart className="size-4 shrink-0 text-muted-foreground" />
-        <h3 className="text-xs leading-none">{title}</h3>
-        {subtitle && (
-          <span className="truncate text-xs leading-none text-muted-foreground">{subtitle}</span>
-        )}
-        <span className="ml-auto flex shrink-0 items-center">
-          <HelpTip label={title} text={help} />
-        </span>
-      </div>
-      {isLoading ? (
-        <Skeleton className="h-40" />
-      ) : hasContent ? (
-        children
-      ) : (
-        <div className="flex h-40 items-center justify-center text-center text-sm text-muted-foreground">
-          {emptyHint}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 function isNativeJob(job: FinetuningJobList): boolean {
   return ["decision_cross_entropy", "decision_supervised"].includes(
     String((job.trainingContract as Record<string, unknown> | undefined)?.objective)
-  );
-}
-
-function RunDiagnostics({
-  snapshot,
-  projectId,
-}: {
-  snapshot: ExperimentSnapshot;
-  projectId: string;
-}) {
-  const { job } = snapshot;
-  const recordQuery = useFinetuningJobQuery(job.id);
-  const record = recordQuery.data?.record;
-  const downloadRecord = () => {
-    if (!record) return;
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(record, null, 2)], { type: "application/json" })
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `training-${job.id}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  const detail = snapshot.liveProgress?.diagnostics;
-  const heartbeat = detail?.heartbeat_at;
-  const age = heartbeat == null ? null : Math.max(0, Math.round(Date.now() / 1000 - heartbeat));
-  const datasetUrl = `/datasets/${encodeURIComponent(job.dataset)}?projectId=${encodeURIComponent(projectId)}${job.cell ? `&cell=${encodeURIComponent(job.cell)}` : ""}`;
-  return (
-    <details className="border-t border-border/70 pt-3 text-xs">
-      <summary className="cursor-pointer text-foreground focus-visible:outline focus-visible:outline-ring">
-        Run evidence
-      </summary>
-      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div>
-          <dt className="text-muted-foreground">Selected data</dt>
-          <dd>
-            <a className="underline underline-offset-2" href={datasetUrl}>
-              Open dataset{job.cell ? ` · ${job.cell.slice(0, 8)}` : ""}
-            </a>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Last worker heartbeat</dt>
-          <dd>{age == null ? "Not reported" : `${formatElapsed(age)} ago`}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Provider attempt</dt>
-          <dd>
-            {detail?.attempt ?? "Not reported"}
-            {detail?.attempt_started_at
-              ? ` · ${formatElapsed(Math.max(0, Date.now() / 1000 - detail.attempt_started_at))} elapsed`
-              : ""}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Latest checkpoint</dt>
-          <dd>
-            {detail?.checkpoint_step == null
-              ? "Not reported"
-              : `Step ${detail.checkpoint_step.toLocaleString()}`}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Verified continuation</dt>
-          <dd>
-            {detail?.restored_step == null
-              ? "Not reported"
-              : `Restored step ${detail.restored_step.toLocaleString()}`}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Recorded training cost</dt>
-          <dd>
-            {jobCostUsd(job) == null ? "Pending" : <CreditsAmount usd={jobCostUsd(job) ?? 0} />}
-            {job.provider === "modal" && " · GPU only"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">All-in cost</dt>
-          <dd>Awaiting complete preparation, training and evaluation charges</dd>
-        </div>
-      </dl>
-      <Button
-        className="mt-3"
-        disabled={!record}
-        onClick={downloadRecord}
-        size="sm"
-        variant="outline"
-      >
-        Download run record
-      </Button>
-      {record && (
-        <details className="mt-3">
-          <summary className="cursor-pointer focus-visible:outline focus-visible:outline-ring">
-            Requested and effective configuration
-          </summary>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs">
-            {JSON.stringify({ effective: record.effective, requested: record.requested }, null, 2)}
-          </pre>
-        </details>
-      )}
-    </details>
   );
 }

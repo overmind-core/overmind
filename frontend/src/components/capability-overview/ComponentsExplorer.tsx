@@ -65,8 +65,8 @@ function RailRow({ entry }: { entry: ComponentEntry }) {
 
 function ArgumentsTable({ args }: { args: CapabilityFlowToolArgument[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+    <div className="-mx-4 overflow-x-auto">
+      <table className="w-full text-xs [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
         <thead>
           <tr className="pixel-label border-b border-border/60 text-left text-xs text-muted-foreground">
             <th className="py-1.5 pr-4 font-medium">Name</th>

@@ -1,0 +1,1316 @@
+{
+  "endpoint": "http://localhost:8000",
+  "project": "a279d834-899c-4ac6-888a-157f0c7d9cf8",
+  "runs": [
+    {
+      "kind": "dataset_pipeline",
+      "id": "23441d17-cea1-4a3c-bc62-ceb650f7d9e2",
+      "status": "failed",
+      "progress": {
+        "mode": "preview",
+        "stage": "failed",
+        "steps": [
+          {
+            "name": "Build survival decision examples",
+            "error": "decision_train: Example 2: target_probabilities must be finite, normalized and match the options",
+            "index": 0,
+            "state": "failed",
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98"
+              }
+            ],
+            "batches": {
+              "total": 1,
+              "current": 1,
+              "completed": 1,
+              "input_rows": 100,
+              "output_rows": 100
+            },
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.7601,
+              "observed_at": "2026-10-11T02:11:13.376481+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0645,
+                "input_transfer": 0.0775,
+                "output_reading": 0.0058,
+                "container_setup": 0.1148,
+                "script_execution": 0.2298,
+                "artifact_transfer": 0.2678
+              },
+              "cleanup_confirmed": true
+            },
+            "step_id": "decision_examples",
+            "container": "overmind-workshop-23441d17-cea1-4a3c-bc62-ceb650f7d9e2-5adcaf9b-17ec-461e-9a92-25071db8836c-0-batch-1",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T02:11:12.608268+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "completed_at": "2026-10-11T02:11:13.402381+00:00",
+            "input_fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98",
+            "provider_execution": "d00c6ae19fb09d5200f60eeb91ea5d7b8cf4bba8f48498570e1b7b189fd933ee"
+          }
+        ],
+        "attempt": "5adcaf9b-17ec-461e-9a92-25071db8836c",
+        "seconds": 0.79,
+        "started_at": "2026-10-11T02:11:12.598016+00:00",
+        "source_rows": 891,
+        "stage_seconds": {
+          "step_1_executing": 0.78,
+          "verifying_source": 0.01
+        },
+        "stage_started_at": "2026-10-11T02:11:13.387669+00:00",
+        "revision_fingerprint": "b6632b32650a976be1634b5df9a994dec87a5894724ccba629ff58a4fac68c24"
+      },
+      "details": {
+        "id": "23441d17-cea1-4a3c-bc62-ceb650f7d9e2",
+        "pipeline": "a0f1ab88-b0c2-46e5-bb7a-57c3c9e3e7db",
+        "pipeline_name": "Titanic survival preparation",
+        "revision": 1,
+        "source_dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+        "source_cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "source_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "e587d2fa-499d-40c0-a6ec-c05a1f41414d",
+          "kind": "dataset_pipeline",
+          "reference": "23441d17-cea1-4a3c-bc62-ceb650f7d9e2",
+          "attempt": "5adcaf9b-17ec-461e-9a92-25071db8836c",
+          "unit": null,
+          "facts": {
+            "retry_safe": true
+          },
+          "stage": "failed",
+          "total": null,
+          "status": "failed",
+          "completed": null,
+          "event_count": 17,
+          "last_observed_at": "2026-10-11T02:11:13.402802+00:00",
+          "last_heartbeat_at": "2026-10-11T02:11:13.382607+00:00",
+          "last_progress_at": "2026-10-11T02:11:13.402802+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T02:11:13.921397+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "failed",
+        "error": "decision_train: Example 2: target_probabilities must be finite, normalized and match the options",
+        "result": {
+          "mode": "preview",
+          "stage": "failed",
+          "steps": [
+            {
+              "name": "Build survival decision examples",
+              "error": "decision_train: Example 2: target_probabilities must be finite, normalized and match the options",
+              "index": 0,
+              "state": "failed",
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98"
+                }
+              ],
+              "batches": {
+                "total": 1,
+                "current": 1,
+                "completed": 1,
+                "input_rows": 100,
+                "output_rows": 100
+              },
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.7601,
+                "observed_at": "2026-10-11T02:11:13.376481+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0645,
+                  "input_transfer": 0.0775,
+                  "output_reading": 0.0058,
+                  "container_setup": 0.1148,
+                  "script_execution": 0.2298,
+                  "artifact_transfer": 0.2678
+                },
+                "cleanup_confirmed": true
+              },
+              "step_id": "decision_examples",
+              "container": "overmind-workshop-23441d17-cea1-4a3c-bc62-ceb650f7d9e2-5adcaf9b-17ec-461e-9a92-25071db8836c-0-batch-1",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T02:11:12.608268+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "completed_at": "2026-10-11T02:11:13.402381+00:00",
+              "input_fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98",
+              "provider_execution": "d00c6ae19fb09d5200f60eeb91ea5d7b8cf4bba8f48498570e1b7b189fd933ee"
+            }
+          ],
+          "attempt": "5adcaf9b-17ec-461e-9a92-25071db8836c",
+          "seconds": 0.79,
+          "started_at": "2026-10-11T02:11:12.598016+00:00",
+          "source_rows": 891,
+          "stage_seconds": {
+            "step_1_executing": 0.78,
+            "verifying_source": 0.01
+          },
+          "stage_started_at": "2026-10-11T02:11:13.387669+00:00",
+          "revision_fingerprint": "b6632b32650a976be1634b5df9a994dec87a5894724ccba629ff58a4fac68c24"
+        },
+        "created_at": "2026-10-11T02:11:12.082906+00:00",
+        "updated_at": "2026-10-11T02:11:13.402388+00:00",
+        "completed_at": "2026-10-11T02:11:13.402388+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/23441d17-cea1-4a3c-bc62-ceb650f7d9e2?project_id=a279d834-899c-4ac6-888a-157f0c7d9cf8",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      }
+    },
+    {
+      "kind": "dataset_pipeline",
+      "id": "25612dd4-f64f-49f0-b44b-de795d5c99a7",
+      "status": "completed",
+      "progress": {
+        "mode": "preview",
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Build survival decision examples",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 100,
+              "rows_before": 100,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "rows": 100,
+                "step": "source",
+                "fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98"
+              }
+            ],
+            "batches": {
+              "total": 1,
+              "current": 1,
+              "completed": 1,
+              "input_rows": 100,
+              "output_rows": 100
+            },
+            "runtime": {
+              "stage": "completed",
+              "seconds": 1.0752,
+              "observed_at": "2026-10-11T02:11:16.071927+00:00",
+              "stage_seconds": {
+                "cleanup": 0.1286,
+                "input_transfer": 0.0898,
+                "output_reading": 0.0105,
+                "container_setup": 0.1624,
+                "script_execution": 0.2295,
+                "artifact_transfer": 0.4545
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 1.171,
+            "step_id": "decision_examples",
+            "container": "overmind-workshop-25612dd4-f64f-49f0-b44b-de795d5c99a7-c4f46d2f-0859-43e1-beda-41b4ac8405d1-0-batch-1",
+            "exit_code": 0,
+            "input_rows": 100,
+            "input_step": "source",
+            "started_at": "2026-10-11T02:11:14.982501+00:00",
+            "input_steps": [
+              "source"
+            ],
+            "output_rows": 100,
+            "completed_at": "2026-10-11T02:11:16.160247+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 100,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98",
+            "output_fingerprint": "c981b767eb2510c520b227c0f747c8d4f23afcc42e3d01b349497d2e09180633",
+            "provider_execution": "6ce91135e9d7007baff63d2b7f25d5c2fbfc81f62184744f5da57a6ef627e1ab",
+            "sample_count": 5
+          }
+        ],
+        "attempt": "c4f46d2f-0859-43e1-beda-41b4ac8405d1",
+        "seconds": 1.188,
+        "started_at": "2026-10-11T02:11:14.973846+00:00",
+        "output_rows": 100,
+        "source_rows": 891,
+        "stage_seconds": {
+          "measuring_impact": 0.034,
+          "step_1_executing": 1.099,
+          "verifying_source": 0.009,
+          "step_1_checking_rows": 0.006,
+          "step_1_preserving_lineage": 0.022,
+          "step_1_validating_consumer": 0.017
+        },
+        "stage_started_at": "2026-10-11T02:11:16.161945+00:00",
+        "revision_fingerprint": "f0718646fe9bbe91c5f0f6604f7a587c42850228742f63df3003fc3b8d586149"
+      },
+      "details": {
+        "id": "25612dd4-f64f-49f0-b44b-de795d5c99a7",
+        "pipeline": "6d0ee0ae-013a-4b6d-bc90-2bc1a58ac0e6",
+        "pipeline_name": "Titanic survival preparation",
+        "revision": 2,
+        "source_dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+        "source_cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "source_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "preview",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "72549650-6dd8-4fcf-9af1-97d43f110dbb",
+          "kind": "dataset_pipeline",
+          "reference": "25612dd4-f64f-49f0-b44b-de795d5c99a7",
+          "attempt": "c4f46d2f-0859-43e1-beda-41b4ac8405d1",
+          "unit": "steps",
+          "facts": {
+            "attempt": "c4f46d2f-0859-43e1-beda-41b4ac8405d1",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 891
+          },
+          "stage": "completed",
+          "total": 1,
+          "status": "complete",
+          "completed": 1,
+          "event_count": 20,
+          "last_observed_at": "2026-10-11T02:11:16.163331+00:00",
+          "last_heartbeat_at": "2026-10-11T02:11:16.077596+00:00",
+          "last_progress_at": "2026-10-11T02:11:16.163331+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T02:11:16.678233+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": null,
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "preview",
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Build survival decision examples",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 100,
+                "rows_before": 100,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "rows": 100,
+                  "step": "source",
+                  "fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98"
+                }
+              ],
+              "batches": {
+                "total": 1,
+                "current": 1,
+                "completed": 1,
+                "input_rows": 100,
+                "output_rows": 100
+              },
+              "runtime": {
+                "stage": "completed",
+                "seconds": 1.0752,
+                "observed_at": "2026-10-11T02:11:16.071927+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.1286,
+                  "input_transfer": 0.0898,
+                  "output_reading": 0.0105,
+                  "container_setup": 0.1624,
+                  "script_execution": 0.2295,
+                  "artifact_transfer": 0.4545
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 1.171,
+              "step_id": "decision_examples",
+              "container": "overmind-workshop-25612dd4-f64f-49f0-b44b-de795d5c99a7-c4f46d2f-0859-43e1-beda-41b4ac8405d1-0-batch-1",
+              "exit_code": 0,
+              "input_rows": 100,
+              "input_step": "source",
+              "started_at": "2026-10-11T02:11:14.982501+00:00",
+              "input_steps": [
+                "source"
+              ],
+              "output_rows": 100,
+              "completed_at": "2026-10-11T02:11:16.160247+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 100,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "7962b7ebd538735728f72b77be167bd03c3eddf3c1e8050acf87775569b28e98",
+              "output_fingerprint": "c981b767eb2510c520b227c0f747c8d4f23afcc42e3d01b349497d2e09180633",
+              "provider_execution": "6ce91135e9d7007baff63d2b7f25d5c2fbfc81f62184744f5da57a6ef627e1ab",
+              "sample_count": 5
+            }
+          ],
+          "attempt": "c4f46d2f-0859-43e1-beda-41b4ac8405d1",
+          "seconds": 1.188,
+          "started_at": "2026-10-11T02:11:14.973846+00:00",
+          "output_rows": 100,
+          "source_rows": 891,
+          "stage_seconds": {
+            "measuring_impact": 0.034,
+            "step_1_executing": 1.099,
+            "verifying_source": 0.009,
+            "step_1_checking_rows": 0.006,
+            "step_1_preserving_lineage": 0.022,
+            "step_1_validating_consumer": 0.017
+          },
+          "stage_started_at": "2026-10-11T02:11:16.161945+00:00",
+          "revision_fingerprint": "f0718646fe9bbe91c5f0f6604f7a587c42850228742f63df3003fc3b8d586149"
+        },
+        "created_at": "2026-10-11T02:11:14.912280+00:00",
+        "updated_at": "2026-10-11T02:11:16.165933+00:00",
+        "completed_at": "2026-10-11T02:11:16.165933+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/25612dd4-f64f-49f0-b44b-de795d5c99a7?project_id=a279d834-899c-4ac6-888a-157f0c7d9cf8",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      }
+    },
+    {
+      "kind": "dataset_pipeline",
+      "id": "d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4",
+      "status": "completed",
+      "progress": {
+        "mode": "publish",
+        "rows": 891,
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Build survival decision examples",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 891,
+              "rows_before": 891,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+                "rows": 891,
+                "step": "source",
+                "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+              }
+            ],
+            "batches": {
+              "total": 5,
+              "current": 5,
+              "completed": 5,
+              "input_rows": 891,
+              "output_rows": 891
+            },
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.7959,
+              "observed_at": "2026-10-11T02:11:22.274034+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0414,
+                "input_transfer": 0.1012,
+                "output_reading": 0.0032,
+                "container_setup": 0.1529,
+                "script_execution": 0.2462,
+                "artifact_transfer": 0.251
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 5.253,
+            "step_id": "decision_examples",
+            "container": "overmind-workshop-d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4-86be9711-bddc-44a5-bf9b-58dcb0206f1b-0-batch-5",
+            "exit_code": 0,
+            "input_rows": 891,
+            "input_step": "source",
+            "started_at": "2026-10-11T02:11:17.210586+00:00",
+            "input_cells": [
+              "292a84b5-975a-4252-bb4b-f873619c8af7"
+            ],
+            "input_steps": [
+              "source"
+            ],
+            "output_cell": "3eb9c5fa-b649-4247-9a69-097619422d8b",
+            "output_rows": 891,
+            "completed_at": "2026-10-11T02:11:22.465901+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 891,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+            "output_fingerprint": "9d10bd2196cb5ad90e1bc1d83d073d79b570d6b637ca2cb58b2e29c015f14617",
+            "provider_execution": "22ceb41721f32ceb409f52c8cd0f3b6f9d61b86f2fbbdaf2c15a64d3a63725ea"
+          }
+        ],
+        "impact": {
+          "rows_added": 0,
+          "rows_after": 891,
+          "rows_before": 891,
+          "rows_removed": 0,
+          "coverage_after": {},
+          "coverage_before": {},
+          "decision_changes": 0,
+          "identity_preserved": true,
+          "instruction_changes": 0,
+          "decision_rows_removed": 0,
+          "input_evidence_removed": 0
+        },
+        "attempt": "86be9711-bddc-44a5-bf9b-58dcb0206f1b",
+        "seconds": 5.342,
+        "started_at": "2026-10-11T02:11:17.206224+00:00",
+        "output_rows": 891,
+        "source_rows": 891,
+        "stage_seconds": {
+          "publishing": 0.079,
+          "measuring_impact": 0.074,
+          "step_1_executing": 5.085,
+          "verifying_source": 0.004,
+          "step_1_checking_rows": 0.004,
+          "step_1_preserving_lineage": 0.068,
+          "step_1_validating_consumer": 0.024
+        },
+        "semantic_quality": "unmeasured",
+        "stage_started_at": "2026-10-11T02:11:22.545331+00:00",
+        "revision_fingerprint": "f0718646fe9bbe91c5f0f6604f7a587c42850228742f63df3003fc3b8d586149"
+      },
+      "details": {
+        "id": "d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4",
+        "pipeline": "6d0ee0ae-013a-4b6d-bc90-2bc1a58ac0e6",
+        "pipeline_name": "Titanic survival preparation",
+        "revision": 2,
+        "source_dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+        "source_cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "source_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "publish",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "1940d245-3dae-465a-8160-97c857641bc9",
+          "kind": "dataset_pipeline",
+          "reference": "d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4",
+          "attempt": "86be9711-bddc-44a5-bf9b-58dcb0206f1b",
+          "unit": "steps",
+          "facts": {
+            "attempt": "86be9711-bddc-44a5-bf9b-58dcb0206f1b",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 891
+          },
+          "stage": "completed",
+          "total": 1,
+          "status": "complete",
+          "completed": 1,
+          "event_count": 74,
+          "last_observed_at": "2026-10-11T02:11:22.546301+00:00",
+          "last_heartbeat_at": "2026-10-11T02:11:22.278719+00:00",
+          "last_progress_at": "2026-10-11T02:11:22.546301+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T02:11:23.067104+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": "3eb9c5fa-b649-4247-9a69-097619422d8b",
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "publish",
+          "rows": 891,
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Build survival decision examples",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 891,
+                "rows_before": 891,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+                  "rows": 891,
+                  "step": "source",
+                  "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+                }
+              ],
+              "batches": {
+                "total": 5,
+                "current": 5,
+                "completed": 5,
+                "input_rows": 891,
+                "output_rows": 891
+              },
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.7959,
+                "observed_at": "2026-10-11T02:11:22.274034+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0414,
+                  "input_transfer": 0.1012,
+                  "output_reading": 0.0032,
+                  "container_setup": 0.1529,
+                  "script_execution": 0.2462,
+                  "artifact_transfer": 0.251
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 5.253,
+              "step_id": "decision_examples",
+              "container": "overmind-workshop-d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4-86be9711-bddc-44a5-bf9b-58dcb0206f1b-0-batch-5",
+              "exit_code": 0,
+              "input_rows": 891,
+              "input_step": "source",
+              "started_at": "2026-10-11T02:11:17.210586+00:00",
+              "input_cells": [
+                "292a84b5-975a-4252-bb4b-f873619c8af7"
+              ],
+              "input_steps": [
+                "source"
+              ],
+              "output_cell": "3eb9c5fa-b649-4247-9a69-097619422d8b",
+              "output_rows": 891,
+              "completed_at": "2026-10-11T02:11:22.465901+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 891,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+              "output_fingerprint": "9d10bd2196cb5ad90e1bc1d83d073d79b570d6b637ca2cb58b2e29c015f14617",
+              "provider_execution": "22ceb41721f32ceb409f52c8cd0f3b6f9d61b86f2fbbdaf2c15a64d3a63725ea"
+            }
+          ],
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 891,
+            "rows_before": 891,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "attempt": "86be9711-bddc-44a5-bf9b-58dcb0206f1b",
+          "seconds": 5.342,
+          "started_at": "2026-10-11T02:11:17.206224+00:00",
+          "output_rows": 891,
+          "source_rows": 891,
+          "stage_seconds": {
+            "publishing": 0.079,
+            "measuring_impact": 0.074,
+            "step_1_executing": 5.085,
+            "verifying_source": 0.004,
+            "step_1_checking_rows": 0.004,
+            "step_1_preserving_lineage": 0.068,
+            "step_1_validating_consumer": 0.024
+          },
+          "semantic_quality": "unmeasured",
+          "stage_started_at": "2026-10-11T02:11:22.545331+00:00",
+          "revision_fingerprint": "f0718646fe9bbe91c5f0f6604f7a587c42850228742f63df3003fc3b8d586149"
+        },
+        "created_at": "2026-10-11T02:11:16.994514+00:00",
+        "updated_at": "2026-10-11T02:11:22.547763+00:00",
+        "completed_at": "2026-10-11T02:11:22.547763+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/d3fe2fbe-b36a-4e67-9000-2a58e4f79aa4?project_id=a279d834-899c-4ac6-888a-157f0c7d9cf8",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      }
+    },
+    {
+      "kind": "dataset_pipeline",
+      "id": "cf8dc656-43a1-4320-9436-0a02baf94a3a",
+      "status": "completed",
+      "progress": {
+        "mode": "publish",
+        "rows": 891,
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Build survival decision examples",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 891,
+              "rows_before": 891,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+                "rows": 891,
+                "step": "source",
+                "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+              }
+            ],
+            "batches": {
+              "total": 5,
+              "current": 5,
+              "completed": 5,
+              "input_rows": 891,
+              "output_rows": 891
+            },
+            "runtime": {
+              "stage": "completed",
+              "seconds": 0.8155,
+              "observed_at": "2026-10-11T02:11:29.066443+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0389,
+                "input_transfer": 0.1128,
+                "output_reading": 0.0031,
+                "container_setup": 0.1764,
+                "script_execution": 0.2327,
+                "artifact_transfer": 0.2515
+              },
+              "cleanup_confirmed": true
+            },
+            "seconds": 4.568,
+            "step_id": "decision_examples",
+            "container": "overmind-workshop-cf8dc656-43a1-4320-9436-0a02baf94a3a-018dcddd-94c1-483e-bdc5-a7d2fd7fe087-0-batch-5",
+            "exit_code": 0,
+            "input_rows": 891,
+            "input_step": "source",
+            "started_at": "2026-10-11T02:11:24.676099+00:00",
+            "input_cells": [
+              "292a84b5-975a-4252-bb4b-f873619c8af7"
+            ],
+            "input_steps": [
+              "source"
+            ],
+            "output_cell": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+            "output_rows": 891,
+            "completed_at": "2026-10-11T02:11:29.247717+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "consumer_check": {
+              "rows": 891,
+              "passed": true,
+              "consumer": "decision_train"
+            },
+            "input_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+            "output_fingerprint": "0f53e7fe75e32422a73d6df07838ca6a608b97f304e377afd769bb891ee60a5c",
+            "provider_execution": "eefaa4b281a727389ebcbdb788c3724f8e950bf3b25f53bdd2f89071c2862ba0"
+          }
+        ],
+        "impact": {
+          "rows_added": 0,
+          "rows_after": 891,
+          "rows_before": 891,
+          "rows_removed": 0,
+          "coverage_after": {},
+          "coverage_before": {},
+          "decision_changes": 0,
+          "identity_preserved": true,
+          "instruction_changes": 0,
+          "decision_rows_removed": 0,
+          "input_evidence_removed": 0
+        },
+        "attempt": "018dcddd-94c1-483e-bdc5-a7d2fd7fe087",
+        "seconds": 4.66,
+        "started_at": "2026-10-11T02:11:24.669901+00:00",
+        "output_rows": 891,
+        "source_rows": 891,
+        "stage_seconds": {
+          "publishing": 0.081,
+          "measuring_impact": 0.069,
+          "step_1_executing": 4.402,
+          "verifying_source": 0.006,
+          "step_1_checking_rows": 0.003,
+          "step_1_preserving_lineage": 0.069,
+          "step_1_validating_consumer": 0.025
+        },
+        "semantic_quality": "unmeasured",
+        "stage_started_at": "2026-10-11T02:11:29.328720+00:00",
+        "revision_fingerprint": "9f8c1ea8b4c171dd6095a86cb38d3a104735de0c3a6ac691ff2a9bb642fe1a14"
+      },
+      "details": {
+        "id": "cf8dc656-43a1-4320-9436-0a02baf94a3a",
+        "pipeline": "775c8def-f561-4fb5-a72e-892f643bd6c8",
+        "pipeline_name": "Titanic survival preparation",
+        "revision": 3,
+        "source_dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+        "source_cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "source_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+        "artifact_cell": null,
+        "artifact_fingerprint": "",
+        "provenance": "",
+        "execution": "isolated_container",
+        "mode": "publish",
+        "parameters": {},
+        "binding": null,
+        "operation": {
+          "id": "a492fd4b-71b3-44ac-a638-3c6757f9e970",
+          "kind": "dataset_pipeline",
+          "reference": "cf8dc656-43a1-4320-9436-0a02baf94a3a",
+          "attempt": "018dcddd-94c1-483e-bdc5-a7d2fd7fe087",
+          "unit": "steps",
+          "facts": {
+            "attempt": "018dcddd-94c1-483e-bdc5-a7d2fd7fe087",
+            "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+            "total_rows": 891
+          },
+          "stage": "completed",
+          "total": 1,
+          "status": "complete",
+          "completed": 1,
+          "event_count": 73,
+          "last_observed_at": "2026-10-11T02:11:29.329328+00:00",
+          "last_heartbeat_at": "2026-10-11T02:11:29.071146+00:00",
+          "last_progress_at": "2026-10-11T02:11:29.329328+00:00",
+          "telemetry": "recorded",
+          "provider": {}
+        },
+        "runner": {
+          "status": "ready",
+          "images": [
+            "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+          ],
+          "last_heartbeat_at": "2026-10-11T02:11:30.365008+00:00",
+          "network": "disabled",
+          "package_max_bytes": 10485760,
+          "action": null
+        },
+        "output_cell": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "state": "completed",
+        "error": "",
+        "result": {
+          "mode": "publish",
+          "rows": 891,
+          "stage": "completed",
+          "steps": [
+            {
+              "name": "Build survival decision examples",
+              "index": 0,
+              "state": "completed",
+              "checks": {
+                "preserve_rows": true
+              },
+              "impact": {
+                "rows_added": 0,
+                "rows_after": 891,
+                "rows_before": 891,
+                "rows_removed": 0,
+                "coverage_after": {},
+                "coverage_before": {},
+                "decision_changes": 0,
+                "identity_preserved": true,
+                "instruction_changes": 0,
+                "decision_rows_removed": 0,
+                "input_evidence_removed": 0
+              },
+              "inputs": [
+                {
+                  "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+                  "rows": 891,
+                  "step": "source",
+                  "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+                }
+              ],
+              "batches": {
+                "total": 5,
+                "current": 5,
+                "completed": 5,
+                "input_rows": 891,
+                "output_rows": 891
+              },
+              "runtime": {
+                "stage": "completed",
+                "seconds": 0.8155,
+                "observed_at": "2026-10-11T02:11:29.066443+00:00",
+                "stage_seconds": {
+                  "cleanup": 0.0389,
+                  "input_transfer": 0.1128,
+                  "output_reading": 0.0031,
+                  "container_setup": 0.1764,
+                  "script_execution": 0.2327,
+                  "artifact_transfer": 0.2515
+                },
+                "cleanup_confirmed": true
+              },
+              "seconds": 4.568,
+              "step_id": "decision_examples",
+              "container": "overmind-workshop-cf8dc656-43a1-4320-9436-0a02baf94a3a-018dcddd-94c1-483e-bdc5-a7d2fd7fe087-0-batch-5",
+              "exit_code": 0,
+              "input_rows": 891,
+              "input_step": "source",
+              "started_at": "2026-10-11T02:11:24.676099+00:00",
+              "input_cells": [
+                "292a84b5-975a-4252-bb4b-f873619c8af7"
+              ],
+              "input_steps": [
+                "source"
+              ],
+              "output_cell": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+              "output_rows": 891,
+              "completed_at": "2026-10-11T02:11:29.247717+00:00",
+              "check_results": {
+                "failed": {},
+                "passed": {
+                  "preserve_rows": true
+                },
+                "deferred": {}
+              },
+              "consumer_check": {
+                "rows": 891,
+                "passed": true,
+                "consumer": "decision_train"
+              },
+              "input_fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398",
+              "output_fingerprint": "0f53e7fe75e32422a73d6df07838ca6a608b97f304e377afd769bb891ee60a5c",
+              "provider_execution": "eefaa4b281a727389ebcbdb788c3724f8e950bf3b25f53bdd2f89071c2862ba0"
+            }
+          ],
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 891,
+            "rows_before": 891,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "attempt": "018dcddd-94c1-483e-bdc5-a7d2fd7fe087",
+          "seconds": 4.66,
+          "started_at": "2026-10-11T02:11:24.669901+00:00",
+          "output_rows": 891,
+          "source_rows": 891,
+          "stage_seconds": {
+            "publishing": 0.081,
+            "measuring_impact": 0.069,
+            "step_1_executing": 4.402,
+            "verifying_source": 0.006,
+            "step_1_checking_rows": 0.003,
+            "step_1_preserving_lineage": 0.069,
+            "step_1_validating_consumer": 0.025
+          },
+          "semantic_quality": "unmeasured",
+          "stage_started_at": "2026-10-11T02:11:29.328720+00:00",
+          "revision_fingerprint": "9f8c1ea8b4c171dd6095a86cb38d3a104735de0c3a6ac691ff2a9bb642fe1a14"
+        },
+        "created_at": "2026-10-11T02:11:24.338671+00:00",
+        "updated_at": "2026-10-11T02:11:29.330732+00:00",
+        "completed_at": "2026-10-11T02:11:29.330732+00:00",
+        "poll_after_seconds": null,
+        "queue_seconds": null,
+        "evidence_resource": {
+          "uri": "overmind://jobs/dataset_pipeline/cf8dc656-43a1-4320-9436-0a02baf94a3a?project_id=a279d834-899c-4ac6-888a-157f0c7d9cf8",
+          "title": "Dataset transformation",
+          "mime_type": "application/json"
+        }
+      }
+    },
+    {
+      "kind": "data_partition",
+      "id": "2ba5250f-8bf3-465c-af63-63e1a08965ba",
+      "status": "completed",
+      "progress": {
+        "id": "2ba5250f-8bf3-465c-af63-63e1a08965ba",
+        "project": "a279d834-899c-4ac6-888a-157f0c7d9cf8",
+        "name": "Titanic verified holdouts",
+        "source_cell": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "recipe": {
+          "seed": 17,
+          "group_by": [],
+          "holdouts": [],
+          "fractions": {
+            "final": 0.1,
+            "train": 0.7,
+            "calibration": 0.05,
+            "development": 0.15
+          },
+          "stratify_by": "survived_label"
+        },
+        "report": {
+          "counts": {
+            "final": 89,
+            "train": 625,
+            "calibration": 44,
+            "development": 133
+          },
+          "groups": {
+            "final": 89,
+            "train": 609,
+            "calibration": 44,
+            "development": 133
+          },
+          "strata": {
+            "final": {
+              "0": 55,
+              "1": 34
+            },
+            "train": {
+              "0": 385,
+              "1": 240
+            },
+            "calibration": {
+              "0": 27,
+              "1": 17
+            },
+            "development": {
+              "0": 82,
+              "1": 51
+            }
+          },
+          "overlap": {
+            "pretraining": "unknown",
+            "near_duplicates": "not_checked",
+            "content_and_declared_groups": 0
+          },
+          "progress": {
+            "stage": "completed",
+            "total": 891,
+            "completed": 891,
+            "updated_at": "2026-10-11T02:11:30.832666+00:00"
+          },
+          "fingerprint": "0f53e7fe75e32422a73d6df07838ca6a608b97f304e377afd769bb891ee60a5c",
+          "source_rows": 891,
+          "assignments_sha256": "964eb413f7a6a29160b52fac87a91a5b466a21680be2e4636c8ee81855945d4e",
+          "duplicates_removed": 0
+        },
+        "state": "completed",
+        "error": "",
+        "members": [
+          {
+            "role": "final",
+            "cell": {
+              "id": "68b9c411-0a58-42f8-84b4-9e590c191b97",
+              "version": "1.0",
+              "title": "Source",
+              "rows": 89,
+              "fingerprint": "4720a38b03a4afe53c8681a029dc48b8f1426da70f98fce7e342b881819f4e8c",
+              "dataset_id": "4a52809b-84be-5b9c-ad0a-7a13730948c2"
+            }
+          },
+          {
+            "role": "train",
+            "cell": {
+              "id": "c6818f19-2237-448f-807c-cb6d9b1d6e3c",
+              "version": "1.0",
+              "title": "Source",
+              "rows": 625,
+              "fingerprint": "83caf1f12397a5fd697207b59ee1adb079994519f4543c2bf4f4bafd6491b0e0",
+              "dataset_id": "820a4850-edff-57c4-b0f0-049c6ea6438e"
+            }
+          },
+          {
+            "role": "calibration",
+            "cell": {
+              "id": "e7e628dd-cb9c-4cd8-8610-14adb3f64233",
+              "version": "1.0",
+              "title": "Source",
+              "rows": 44,
+              "fingerprint": "3ae74a10eb982adbdded05f4536ba79b503a74c4ed7d330e73327b23cf3736cc",
+              "dataset_id": "c7592003-21de-5f9d-b9e3-571820b69d34"
+            }
+          },
+          {
+            "role": "development",
+            "cell": {
+              "id": "5ef81a75-443b-4f81-82b1-6fc4439d0881",
+              "version": "1.0",
+              "title": "Source",
+              "rows": 133,
+              "fingerprint": "507b682527156b9ecd785ddb24b82757c51a7e4cf1946f60434beb7a94fa0c4d",
+              "dataset_id": "36fa4593-7df1-5e12-8fd4-bcabffbca7be"
+            }
+          }
+        ],
+        "next_actions": [
+          "get_job"
+        ],
+        "action_requirements": {},
+        "input_required": false,
+        "poll_after_seconds": null,
+        "created_at": "2026-10-11 02:11:30.498961+00:00",
+        "updated_at": "2026-10-11 02:11:30.832871+00:00"
+      },
+      "details": {}
+    }
+  ],
+  "checks": [
+    "invalid nested target fails preview",
+    "stable request key does not replay",
+    "891 real rows published through five isolated batches",
+    "corrected process replaces prior cells",
+    "all four partitions expose source and retained transformation",
+    "REST and MCP process graphs agree"
+  ],
+  "dataset": "ed19e18c-e150-41c8-b501-fda917fb4a9e",
+  "source": {
+    "dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+    "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+    "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+  },
+  "partition_receipt": {
+    "summary": "Titanic verified holdouts: queued",
+    "workflow": {
+      "id": "2ba5250f-8bf3-465c-af63-63e1a08965ba",
+      "name": "Titanic verified holdouts",
+      "state": "queued",
+      "kind": "data_partition",
+      "next_actions": [
+        "get_job"
+      ],
+      "action_requirements": {},
+      "input_required": false,
+      "poll_after_seconds": 10
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/data_partition/2ba5250f-8bf3-465c-af63-63e1a08965ba?project_id=a279d834-899c-4ac6-888a-157f0c7d9cf8",
+        "title": "Titanic verified holdouts",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "preparation": {
+    "selected": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+    "nodes": [
+      {
+        "cell": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "dataset": "ed19e18c-e150-41c8-b501-fda917fb4a9e",
+        "dataset_name": "Titanic preparation verification",
+        "intent": "train",
+        "role": "",
+        "title": "Build survival decision examples",
+        "rows": 891,
+        "fingerprint": "0f53e7fe75e32422a73d6df07838ca6a608b97f304e377afd769bb891ee60a5c"
+      },
+      {
+        "cell": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "dataset": "74788292-a65c-43d6-9524-a87d0ab1af03",
+        "dataset_name": "Titanic survival decision data",
+        "intent": "train",
+        "role": "",
+        "title": "Source",
+        "rows": 891,
+        "fingerprint": "4a64ed57a829ac65a470eba6c4696ecf91461f36c93f05a66dedcd3ea6459398"
+      },
+      {
+        "cell": "68b9c411-0a58-42f8-84b4-9e590c191b97",
+        "dataset": "4a52809b-84be-5b9c-ad0a-7a13730948c2",
+        "dataset_name": "Titanic verified holdouts \u00b7 final",
+        "intent": "eval",
+        "role": "final",
+        "title": "Source",
+        "rows": 89,
+        "fingerprint": "4720a38b03a4afe53c8681a029dc48b8f1426da70f98fce7e342b881819f4e8c"
+      },
+      {
+        "cell": "c6818f19-2237-448f-807c-cb6d9b1d6e3c",
+        "dataset": "820a4850-edff-57c4-b0f0-049c6ea6438e",
+        "dataset_name": "Titanic verified holdouts \u00b7 train",
+        "intent": "train",
+        "role": "train",
+        "title": "Source",
+        "rows": 625,
+        "fingerprint": "83caf1f12397a5fd697207b59ee1adb079994519f4543c2bf4f4bafd6491b0e0"
+      },
+      {
+        "cell": "e7e628dd-cb9c-4cd8-8610-14adb3f64233",
+        "dataset": "c7592003-21de-5f9d-b9e3-571820b69d34",
+        "dataset_name": "Titanic verified holdouts \u00b7 calibration",
+        "intent": "eval",
+        "role": "calibration",
+        "title": "Source",
+        "rows": 44,
+        "fingerprint": "3ae74a10eb982adbdded05f4536ba79b503a74c4ed7d330e73327b23cf3736cc"
+      },
+      {
+        "cell": "5ef81a75-443b-4f81-82b1-6fc4439d0881",
+        "dataset": "36fa4593-7df1-5e12-8fd4-bcabffbca7be",
+        "dataset_name": "Titanic verified holdouts \u00b7 development",
+        "intent": "train",
+        "role": "development",
+        "title": "Source",
+        "rows": 133,
+        "fingerprint": "507b682527156b9ecd785ddb24b82757c51a7e4cf1946f60434beb7a94fa0c4d"
+      }
+    ],
+    "edges": [
+      {
+        "source": "292a84b5-975a-4252-bb4b-f873619c8af7",
+        "target": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "label": ""
+      },
+      {
+        "source": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "target": "68b9c411-0a58-42f8-84b4-9e590c191b97",
+        "label": "final"
+      },
+      {
+        "source": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "target": "c6818f19-2237-448f-807c-cb6d9b1d6e3c",
+        "label": "train"
+      },
+      {
+        "source": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "target": "e7e628dd-cb9c-4cd8-8610-14adb3f64233",
+        "label": "calibration"
+      },
+      {
+        "source": "ae40f6f6-7246-43c8-8dc7-6581b91b3ba7",
+        "target": "5ef81a75-443b-4f81-82b1-6fc4439d0881",
+        "label": "development"
+      }
+    ]
+  },
+  "url": "http://localhost:5173/datasets/ed19e18c-e150-41c8-b501-fda917fb4a9e?projectId=a279d834-899c-4ac6-888a-157f0c7d9cf8"
+}

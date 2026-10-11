@@ -30,7 +30,7 @@ def invoke(name, payload, context):
             result = workbench.describe(dataset, project=context.project, **args)
         elif name == "save_dataset_pipeline":
             result["pipeline"] = workbench.pipeline_record(
-                workbench.save_pipeline(context.project, context.user, **args)
+                workbench.save_pipeline(context.project, context.user, dataset=dataset, **args)
             )
         elif name == "validate_dataset_pipeline":
             result["validation"] = workbench.validate_pipeline(context.project, **args)
@@ -172,7 +172,7 @@ def register_workbench_tools(catalog):
             "save_dataset_pipeline",
             SaveInput,
             False,
-            "Register an immutable reusable revision without execution. A retained Python package is mandatory: author meaningful staged scripts, upload with overmind dataset pipeline-upload (see overmind://dataset-upload), and supply its package UUID. Package-free step definitions are rejected. Historical package-free revisions are read-only. Give steps id and input (source or earlier step), or inputs=[earlier IDs] for fan-in. Inputs concatenate in order; overlapping source_row identities fail. Last step is output; flow.unconsumed_steps identifies disconnected deliverables. Script conditions cite expression and entrypoint line; flow declarations are distinct from execution facts. Revise with pipeline family ID and expected_revision; adapt with derived_from revision ID. Changed request-key content conflicts.",
+            "Retain a transformation without execution. Supply dataset to give its current script a persistent home automatically; saving a correction replaces that association. No user retention decision is needed. A retained Python package is mandatory: author meaningful staged scripts, upload with overmind dataset pipeline-upload (see overmind://dataset-upload), and supply its package UUID. Package-free step definitions are rejected. Historical package-free revisions are read-only. Give steps id and input (source or earlier step), or inputs=[earlier IDs] for fan-in. Inputs concatenate in order; overlapping source_row identities fail. Last step is output; flow.unconsumed_steps identifies disconnected deliverables. Script conditions cite expression and entrypoint line; flow declarations are distinct from execution facts. Revise with pipeline family ID and expected_revision; adapt with derived_from revision ID. Changed request-key content conflicts.",
         ),
         (
             "run_dataset_pipeline",

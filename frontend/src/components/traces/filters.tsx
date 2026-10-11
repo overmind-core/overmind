@@ -478,7 +478,7 @@ export function TracesFilters({
               </div>
 
               {working.length > 0 && (
-                <div className="border-t border-border/70 pt-2">
+                <div className="-mx-3 border-t border-border/70 px-3 pt-2">
                   <Button className="text-xs" onClick={clearAll} size="sm" variant="secondary">
                     <Icon.close />
                     Clear filters

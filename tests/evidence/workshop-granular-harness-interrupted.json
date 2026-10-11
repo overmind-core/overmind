@@ -1,0 +1,377 @@
+{
+  "run": "granular-baseline-20261009",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "name": "mixed-scalars",
+      "bytes": 203,
+      "sha256": "b8640e5f113827f0da12b7f42433ddb9a3c171cd91ecfcd19b4bffeb3319ad8c",
+      "passed": false,
+      "upload_seconds": 0.989,
+      "dataset": "391c507f-37cd-4256-b32f-3a13276d3311",
+      "transfer": "8497650b-bdcb-4192-9875-fe1b28477f99",
+      "seconds": 52.042
+    }
+  ],
+  "calls": [
+    {
+      "tool": "list_projects",
+      "seconds": 0.0743,
+      "structured_bytes": 2734,
+      "wire_bytes": 5798,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0319,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0326,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0296,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0314,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0338,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0319,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0297,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0314,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0329,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0161,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0317,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0315,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.031,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0304,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0325,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0342,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.03,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0342,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0144,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.031,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0359,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0303,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0308,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0295,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.014,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0201,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0338,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0291,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0333,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0171,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0252,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0329,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0306,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0294,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.026,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.033,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0315,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0308,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0316,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0331,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0338,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0313,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0324,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.031,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0333,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0318,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0307,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0156,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.033,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    },
+    {
+      "tool": "get_job",
+      "seconds": 0.0154,
+      "structured_bytes": 1808,
+      "wire_bytes": 4707,
+      "is_error": false
+    }
+  ],
+  "success": false,
+  "catalog": "f132b4f8ad72f324f108b2e4db88c912127eeb3a0eee6b29858acb97ff4c16e4"
+}

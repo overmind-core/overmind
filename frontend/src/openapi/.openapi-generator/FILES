@@ -129,6 +129,7 @@ models/Dataset.ts
 models/DatasetCreateRequest.ts
 models/DatasetOverlapResponse.ts
 models/DatasetPair.ts
+models/DatasetPreparation.ts
 models/DatasetReadiness.ts
 models/DatasetSourceKindEnum.ts
 models/DatasetSplitCreateRequest.ts
@@ -333,6 +334,8 @@ models/PlanUsage.ts
 models/PlanUsageUnit.ts
 models/PositionEnum.ts
 models/PostResultsRequest.ts
+models/PreparationEdge.ts
+models/PreparationNode.ts
 models/Project.ts
 models/ProjectInvite.ts
 models/ProjectInviteCreateRequest.ts

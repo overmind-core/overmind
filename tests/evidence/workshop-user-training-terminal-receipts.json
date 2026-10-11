@@ -1,0 +1,1590 @@
+{
+  "final_checks": {
+    "training_request_replay": {
+      "request_key": "user-journey-billing-receipt-20261009",
+      "returned_job": "bb803a90-2e4e-44e7-81c5-02a9cdfbd077",
+      "returned_status": "succeeded",
+      "same_job": true
+    },
+    "estimate_preserves_disabled_pre_training_baseline": true,
+    "independent_export_verifier_passed": true,
+    "scoped_pre_commit_passed": true,
+    "sdk_ruff_check_and_format_passed": true
+  },
+  "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+  "environment": "http://localhost:8000",
+  "contract_version": "5.7",
+  "training": [
+    {
+      "id": "1df88ade-4951-45fd-abe9-90f1dfd7ba5c",
+      "status": "succeeded",
+      "created_at": "2026-10-10 03:34:22.221899+00:00",
+      "completed_at": "2026-10-10 03:37:02.432640+00:00",
+      "requested": {
+        "runtime": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "contract": {
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "target": "declared_decision_supervision",
+          "methods": [
+            "lora"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "max_gpus": 1,
+          "objective": "decision_cross_entropy",
+          "providers": [
+            "modal"
+          ],
+          "evaluation": "native_probabilities",
+          "target_semantics": {
+            "categorical_gold": 324
+          },
+          "inference_contract": "decision",
+          "pre_training_baseline": true
+        },
+        "selection": {
+          "eval_set": null,
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "eval_cell": null,
+          "eval_rows": null,
+          "train_cell": "3c0119d4-a729-4384-877b-2b5f8115d207",
+          "train_rows": 324,
+          "evaluations": {
+            "eval_model_after": false,
+            "eval_model_before": false,
+            "eval_incumbent_after": false,
+            "eval_incumbent_before": false
+          },
+          "fingerprint": "0fa6bd544220181ce2ce846f961af9d44f38964f6ad26a8c2d2bf0d4edd45950",
+          "eval_dataset": null,
+          "split_method": null,
+          "train_dataset": "473acbd5-73df-554b-b8ce-15512a648e96",
+          "validation_cell": "da28b792-9e91-4f10-8606-a2fbfd3eeaaa",
+          "validation_rows": 60,
+          "eval_fingerprint": null,
+          "train_fingerprint": "9628d2c752a91ade1781e5d4440380a540054fdf20f8fb2e2ca32c242720d5ca",
+          "validation_dataset": "f86a67db-9bcf-59fa-9346-43d18bd35896",
+          "validation_enabled": true,
+          "validation_fingerprint": "d87f42fbaf60b3e8b241793f05f8f11669fa022fece50df19f45d791d8bcbd43",
+          "validation_split_ratio": null
+        },
+        "fingerprint": "1293160eaa6021f0f2f99d246f4b6b143ab268638390a493d1efc7d86f6b17f0",
+        "configuration": {
+          "base_model": "Qwen/Qwen3-0.6B",
+          "split_method": "random",
+          "baseline_model": "",
+          "hyperparameters": {
+            "seed": 42,
+            "packing": false,
+            "n_epochs": 1,
+            "max_steps": 24,
+            "objective": "decision_cross_entropy",
+            "batch_size": 2,
+            "learning_rate": 0.0001,
+            "training_type": {
+              "type": "Lora",
+              "lora_r": 8,
+              "lora_alpha": 16,
+              "lora_dropout": 0
+            },
+            "context_length": 8192,
+            "runtime_profile": {
+              "max_steps": 24,
+              "max_seconds": 1200
+            },
+            "pre_training_baseline": true,
+            "gradient_accumulation_steps": 8
+          },
+          "eval_judge_model": "",
+          "eval_model_after": false,
+          "eval_model_before": false,
+          "validation_enabled": true,
+          "eval_incumbent_after": false,
+          "eval_incumbent_before": false,
+          "validation_split_ratio": 0.2
+        },
+        "accepted_findings": []
+      },
+      "effective": {
+        "release": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "gpu_type": "H100",
+        "gpu_count": 1,
+        "parameters": {
+          "SEED": "42",
+          "LORA_R": "8",
+          "N_EPOCHS": "1",
+          "MAX_STEPS": "24",
+          "PACK_ROWS": "0",
+          "GRAD_ACCUM": "1",
+          "LORA_ALPHA": "16",
+          "MAX_LENGTH": "8192",
+          "LORA_DROPOUT": "0.0",
+          "WARMUP_RATIO": "0.05",
+          "WEIGHT_DECAY": "0.01",
+          "LEARNING_RATE": "0.0001",
+          "TRAINING_TYPE": "Lora",
+          "PER_DEVICE_BATCH": "2",
+          "LORA_TARGET_MODULES": "all-linear",
+          "DECISION_PRE_TRAINING_BASELINE": "1"
+        },
+        "environment": "overmind-dev"
+      },
+      "request_key": "user-journey-pairs-training-20261009",
+      "artifact": {
+        "artifact_identity": "2720e51e5902db6c6eb0d6e695344c6bc6e1c1c5dfc4916233cf6fcec25c72ff",
+        "inference_contract": "typed_probabilities",
+        "reload_verification": {
+          "decisions": 64,
+          "tolerance": 0.0001,
+          "max_absolute_error": 0
+        }
+      },
+      "timing": {
+        "created_at": "2026-10-10T03:34:22.221899+00:00",
+        "training_started_at": "2026-10-10T03:34:35.769512+00:00",
+        "elapsed_seconds": 146,
+        "training_remaining_range_seconds": null,
+        "estimate_basis": "recent_step_window; elapsed-time average with 0.8–1.3 planning margin, widened by observed step-time quantiles; training steps only, excludes final validation/reload; not confidence bounds",
+        "eta_scope": "training_only"
+      },
+      "cost": {
+        "recorded_training_usd": 0.1609,
+        "recorded_at": "2026-10-10T03:37:02.448152+00:00",
+        "coverage": "training_gpu",
+        "training_compute": {
+          "estimated_usd": 0.003395201821511123,
+          "known_estimate_usd": 0.003395201821511123,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.0007349894444444444,
+            "memory": 0.0026602123770666786
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": true,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "preparation_compute": {
+          "estimated_usd": 0.0034525865260304446,
+          "known_estimate_usd": 0.0034525865260304446,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.0029531165041815554,
+            "memory": 0.0004994700218488889
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": false,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "recorded_plus_estimated_usd": 0.16774778834754156,
+        "unreported_components": [
+          "evaluation_and_inference_reported_separately",
+          "storage",
+          "network",
+          "local_orchestration",
+          "provider_billing_adjustments"
+        ],
+        "all_in_actual_usd": null,
+        "budget_enforcement": "none"
+      },
+      "progress": {
+        "trained_steps": 24,
+        "total_steps": 24,
+        "compute_usage": [
+          {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": "H100",
+            "usage_id": "85768a265292460c965eb12105147868",
+            "gpu_count": 1,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 128.438635546,
+            "cpu_core_seconds": 55.94,
+            "memory_gib_seconds": 1197.0955696800054
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2dc4fed-9cfe-4353-9f23-4703e275406e",
+      "status": "succeeded",
+      "created_at": "2026-10-10 03:37:45.368656+00:00",
+      "completed_at": "2026-10-10 03:45:23.094131+00:00",
+      "requested": {
+        "runtime": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "contract": {
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "target": "declared_decision_supervision",
+          "methods": [
+            "lora"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "max_gpus": 1,
+          "objective": "decision_cross_entropy",
+          "providers": [
+            "modal"
+          ],
+          "evaluation": "native_probabilities",
+          "target_semantics": {
+            "categorical_gold": 324
+          },
+          "inference_contract": "decision",
+          "pre_training_baseline": true
+        },
+        "selection": {
+          "eval_set": null,
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "eval_cell": null,
+          "eval_rows": null,
+          "train_cell": "3c0119d4-a729-4384-877b-2b5f8115d207",
+          "train_rows": 324,
+          "evaluations": {
+            "eval_model_after": false,
+            "eval_model_before": false,
+            "eval_incumbent_after": false,
+            "eval_incumbent_before": false
+          },
+          "fingerprint": "0fa6bd544220181ce2ce846f961af9d44f38964f6ad26a8c2d2bf0d4edd45950",
+          "eval_dataset": null,
+          "split_method": null,
+          "train_dataset": "473acbd5-73df-554b-b8ce-15512a648e96",
+          "validation_cell": "da28b792-9e91-4f10-8606-a2fbfd3eeaaa",
+          "validation_rows": 60,
+          "eval_fingerprint": null,
+          "train_fingerprint": "9628d2c752a91ade1781e5d4440380a540054fdf20f8fb2e2ca32c242720d5ca",
+          "validation_dataset": "f86a67db-9bcf-59fa-9346-43d18bd35896",
+          "validation_enabled": true,
+          "validation_fingerprint": "d87f42fbaf60b3e8b241793f05f8f11669fa022fece50df19f45d791d8bcbd43",
+          "validation_split_ratio": null
+        },
+        "fingerprint": "61fd28729b0ea4b824756b828bf2a5a56752055385788f4f3e9773ca40e43a2a",
+        "configuration": {
+          "base_model": "Qwen/Qwen3-0.6B",
+          "split_method": "random",
+          "baseline_model": "",
+          "hyperparameters": {
+            "seed": 42,
+            "packing": false,
+            "n_epochs": 1,
+            "max_steps": 24,
+            "objective": "decision_cross_entropy",
+            "batch_size": 16,
+            "learning_rate": 0.0001,
+            "training_type": {
+              "type": "Lora",
+              "lora_r": 8,
+              "lora_alpha": 16,
+              "lora_dropout": 0
+            },
+            "context_length": 8192,
+            "runtime_profile": {
+              "max_steps": 24,
+              "max_seconds": 1200
+            },
+            "pre_training_baseline": true
+          },
+          "eval_judge_model": "",
+          "eval_model_after": false,
+          "eval_model_before": false,
+          "validation_enabled": true,
+          "eval_incumbent_after": false,
+          "eval_incumbent_before": false,
+          "validation_split_ratio": 0.2
+        },
+        "accepted_findings": []
+      },
+      "effective": {
+        "release": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "gpu_type": "H100",
+        "gpu_count": 1,
+        "parameters": {
+          "SEED": "42",
+          "LORA_R": "8",
+          "N_EPOCHS": "1",
+          "MAX_STEPS": "24",
+          "PACK_ROWS": "0",
+          "GRAD_ACCUM": "1",
+          "LORA_ALPHA": "16",
+          "MAX_LENGTH": "8192",
+          "LORA_DROPOUT": "0.0",
+          "WARMUP_RATIO": "0.05",
+          "WEIGHT_DECAY": "0.01",
+          "LEARNING_RATE": "0.0001",
+          "TRAINING_TYPE": "Lora",
+          "PER_DEVICE_BATCH": "16",
+          "LORA_TARGET_MODULES": "all-linear",
+          "DECISION_PRE_TRAINING_BASELINE": "1"
+        },
+        "environment": "overmind-dev"
+      },
+      "request_key": "user-journey-pairs-training-batch16-20261009",
+      "artifact": {
+        "artifact_identity": "04bce893427f9ec4f1602c66c4801911f7efdb07cd7d01afce6c3e8199b3c2eb",
+        "inference_contract": "typed_probabilities",
+        "reload_verification": {
+          "decisions": 64,
+          "tolerance": 0.0001,
+          "max_absolute_error": 0
+        }
+      },
+      "timing": {
+        "created_at": "2026-10-10T03:37:45.368656+00:00",
+        "training_started_at": "2026-10-10T03:37:54.991783+00:00",
+        "elapsed_seconds": 448,
+        "training_remaining_range_seconds": null,
+        "estimate_basis": "recent_step_window; elapsed-time average with 0.8–1.3 planning margin, widened by observed step-time quantiles; training steps only, excludes final validation/reload; not confidence bounds",
+        "eta_scope": "training_only"
+      },
+      "cost": {
+        "recorded_training_usd": 0.4917,
+        "recorded_at": "2026-10-10T03:45:23.103876+00:00",
+        "coverage": "training_gpu",
+        "training_compute": {
+          "estimated_usd": 0.0035994393832614845,
+          "known_estimate_usd": 0.0035994393832614845,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.0007353836111111112,
+            "memory": 0.0028640557721503735
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": true,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "preparation_compute": {
+          "estimated_usd": 0.0034525865260304446,
+          "known_estimate_usd": 0.0034525865260304446,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.0029531165041815554,
+            "memory": 0.0004994700218488889
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": false,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "recorded_plus_estimated_usd": 0.49875202590929196,
+        "unreported_components": [
+          "evaluation_and_inference_reported_separately",
+          "storage",
+          "network",
+          "local_orchestration",
+          "provider_billing_adjustments"
+        ],
+        "all_in_actual_usd": null,
+        "budget_enforcement": "none"
+      },
+      "progress": {
+        "trained_steps": 21,
+        "total_steps": 21,
+        "compute_usage": [
+          {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": "H100",
+            "usage_id": "933b651c540d4b7baedf5e9aa7fbb9d3",
+            "gpu_count": 1,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 127.38092084300001,
+            "cpu_core_seconds": 55.970000000000006,
+            "memory_gib_seconds": 1288.825097467668
+          }
+        ]
+      }
+    },
+    {
+      "id": "bb803a90-2e4e-44e7-81c5-02a9cdfbd077",
+      "status": "succeeded",
+      "created_at": "2026-10-10 04:00:25.739493+00:00",
+      "completed_at": "2026-10-10 04:03:06.347316+00:00",
+      "requested": {
+        "runtime": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "contract": {
+          "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation"
+          },
+          "target": "declared_decision_supervision",
+          "methods": [
+            "lora"
+          ],
+          "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage"
+          ],
+          "max_gpus": 1,
+          "objective": "decision_cross_entropy",
+          "providers": [
+            "modal"
+          ],
+          "evaluation": "native_probabilities",
+          "target_semantics": {
+            "categorical_gold": 324
+          },
+          "inference_contract": "decision",
+          "pre_training_baseline": false
+        },
+        "selection": {
+          "eval_set": null,
+          "grouping": [
+            "exact_input_content",
+            "declared_case_group",
+            "synthetic_seed"
+          ],
+          "eval_cell": null,
+          "eval_rows": null,
+          "train_cell": "3c0119d4-a729-4384-877b-2b5f8115d207",
+          "train_rows": 324,
+          "evaluations": {
+            "eval_model_after": false,
+            "eval_model_before": false,
+            "eval_incumbent_after": false,
+            "eval_incumbent_before": false
+          },
+          "fingerprint": "0fa6bd544220181ce2ce846f961af9d44f38964f6ad26a8c2d2bf0d4edd45950",
+          "eval_dataset": null,
+          "split_method": null,
+          "train_dataset": "473acbd5-73df-554b-b8ce-15512a648e96",
+          "validation_cell": "da28b792-9e91-4f10-8606-a2fbfd3eeaaa",
+          "validation_rows": 60,
+          "eval_fingerprint": null,
+          "train_fingerprint": "9628d2c752a91ade1781e5d4440380a540054fdf20f8fb2e2ca32c242720d5ca",
+          "validation_dataset": "f86a67db-9bcf-59fa-9346-43d18bd35896",
+          "validation_enabled": true,
+          "validation_fingerprint": "d87f42fbaf60b3e8b241793f05f8f11669fa022fece50df19f45d791d8bcbd43",
+          "validation_split_ratio": null
+        },
+        "fingerprint": "bab2d30066d80b76d278bac3fcbb7c8c05156835c12345a8650f5261ca5d6e04",
+        "configuration": {
+          "base_model": "Qwen/Qwen3-0.6B",
+          "split_method": "random",
+          "baseline_model": "",
+          "hyperparameters": {
+            "seed": 42,
+            "packing": false,
+            "n_epochs": 1,
+            "max_steps": 1,
+            "objective": "decision_cross_entropy",
+            "batch_size": 16,
+            "learning_rate": 0.0001,
+            "training_type": {
+              "type": "Lora",
+              "lora_r": 8,
+              "lora_alpha": 16,
+              "lora_dropout": 0
+            },
+            "context_length": 8192,
+            "runtime_profile": {
+              "max_steps": 1,
+              "max_seconds": 300
+            },
+            "pre_training_baseline": false
+          },
+          "eval_judge_model": "",
+          "eval_model_after": false,
+          "eval_model_before": false,
+          "validation_enabled": true,
+          "eval_incumbent_after": false,
+          "eval_incumbent_before": false,
+          "validation_split_ratio": 0.2
+        },
+        "accepted_findings": []
+      },
+      "effective": {
+        "release": {
+          "app": "overmind-sft-66bc1f229aae558da782ab9c",
+          "release": "66bc1f229aae558da782ab9cc01e74f76e0caf74d5e127d9e97ef112708216c6",
+          "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+          "processor": "d7db26b48ce21fe7d7e9efe14a7123de467c7fec86585ab0821afead15ff8011",
+          "data_format": "65ae664d519609658eb2aa21ed28ceab1883bd356f2fa4203ae2ccb4af0829e6",
+          "environment": "overmind-dev"
+        },
+        "gpu_type": "H100",
+        "gpu_count": 1,
+        "parameters": {
+          "SEED": "42",
+          "LORA_R": "8",
+          "N_EPOCHS": "1",
+          "MAX_STEPS": "1",
+          "PACK_ROWS": "0",
+          "GRAD_ACCUM": "1",
+          "LORA_ALPHA": "16",
+          "MAX_LENGTH": "8192",
+          "LORA_DROPOUT": "0.0",
+          "WARMUP_RATIO": "0.05",
+          "WEIGHT_DECAY": "0.01",
+          "LEARNING_RATE": "0.0001",
+          "TRAINING_TYPE": "Lora",
+          "PER_DEVICE_BATCH": "16",
+          "LORA_TARGET_MODULES": "all-linear",
+          "DECISION_PRE_TRAINING_BASELINE": "0"
+        },
+        "environment": "overmind-dev"
+      },
+      "request_key": "user-journey-billing-receipt-20261009",
+      "artifact": {
+        "artifact_identity": "8c00584695311cf265f72c46c218b1692bc774afd1c60641ddbcf0f07c7b99ce",
+        "inference_contract": "typed_probabilities",
+        "reload_verification": {
+          "decisions": 64,
+          "tolerance": 0.0001,
+          "max_absolute_error": 0
+        }
+      },
+      "timing": {
+        "created_at": "2026-10-10T04:00:25.739493+00:00",
+        "training_started_at": "2026-10-10T04:00:37.513633+00:00",
+        "elapsed_seconds": 148,
+        "training_remaining_range_seconds": null,
+        "estimate_basis": "recent_step_window; elapsed-time average with 0.8–1.3 planning margin, widened by observed step-time quantiles; training steps only, excludes final validation/reload; not confidence bounds",
+        "eta_scope": "training_only"
+      },
+      "cost": {
+        "recorded_training_usd": 0.1389,
+        "recorded_at": "2026-10-10T04:03:06.582352+00:00",
+        "recorded_basis": {
+          "basis": "recorded_worker_gpu_seconds",
+          "cost_usd": 0.1389,
+          "exclusions": [
+            "unreported_worker_time",
+            "image_boot",
+            "idle",
+            "cpu",
+            "memory",
+            "storage",
+            "network"
+          ],
+          "rate_source": "modal.Workspace.billing.rates",
+          "measurements": [
+            {
+              "usd": 0.138930597254875,
+              "seconds": 126.620291169,
+              "gpu_type": "H100",
+              "usage_id": "9b20254c2274446ba5256f5e84f61726",
+              "gpu_count": 1,
+              "usd_per_second": 0.0010972222222222223
+            }
+          ],
+          "rates_fetched_at": "2026-10-10T04:03:06.567393+00:00"
+        },
+        "coverage": "training_gpu",
+        "training_compute": {
+          "estimated_usd": 0.0033905796596814274,
+          "known_estimate_usd": 0.0033905796596814274,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.00056464375,
+            "memory": 0.0028259359096814273
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": true,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "preparation_compute": {
+          "estimated_usd": 0.0034525865260304446,
+          "known_estimate_usd": 0.0034525865260304446,
+          "components_usd": {
+            "gpu": 0,
+            "cpu": 0.0029531165041815554,
+            "memory": 0.0004994700218488889
+          },
+          "unique_measurements": 1,
+          "unmeasured_components": [],
+          "gpu_covered_by_ledger": false,
+          "all_in_actual_usd": null,
+          "basis": "worker wall time, reserved/observed CPU and peak memory proxies; cumulative worker observations counted once",
+          "exclusions": [
+            "image_boot",
+            "post_measurement_idle",
+            "storage",
+            "network",
+            "local_orchestration",
+            "provider_discounts_or_premiums",
+            "attempts_without_receipts"
+          ]
+        },
+        "recorded_plus_estimated_usd": 0.14574316618571187,
+        "unreported_components": [
+          "evaluation_and_inference_reported_separately",
+          "storage",
+          "network",
+          "local_orchestration",
+          "provider_billing_adjustments"
+        ],
+        "all_in_actual_usd": null,
+        "budget_enforcement": "none"
+      },
+      "progress": {
+        "trained_steps": 1,
+        "total_steps": 1,
+        "compute_usage": [
+          {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": "H100",
+            "usage_id": "9b20254c2274446ba5256f5e84f61726",
+            "gpu_count": 1,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 126.620291169,
+            "cpu_core_seconds": 42.975,
+            "memory_gib_seconds": 1271.6711593566422
+          }
+        ]
+      }
+    }
+  ],
+  "comparison": {
+    "id": "5a8d85ab-9f63-4562-bec6-1532ad8b1a62",
+    "status": "completed",
+    "config": {
+      "seed": 42,
+      "suites": {
+        "final": {
+          "cell": "ad37a595-6312-4887-b599-3e5d8e69e831",
+          "rows": 20,
+          "dataset": "5c6f37d2-990e-5b59-8a8b-599a3b3405be",
+          "fingerprint": "abfc7b58d27d12ef8fdf45380783ccbb86635aefa70bfb3a5a7e0fb6d06a0853"
+        }
+      },
+      "runtime": {
+        "app": "overmind-decision-eval-3609bba4ab6de31ab716fd19",
+        "release": "3609bba4ab6de31ab716fd19b79c7e0d38b7bf0eacea3315e2ffc8175e5150d8",
+        "training": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b",
+        "environment": "overmind-dev"
+      },
+      "baseline": "base",
+      "inference": {
+        "batch_size": 4,
+        "concurrency": 1,
+        "padded_tokens": 32768,
+        "context_length": 8192
+      },
+      "boundaries": {
+        "candidate": {
+          "final": {
+            "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+            "examples": [],
+            "train_total": 324,
+            "overlap_count": 0,
+            "near_duplicate_check": "not_checked"
+          }
+        }
+      },
+      "participants": [
+        {
+          "key": "base",
+          "kind": "foundation",
+          "name": "Unchanged Qwen 0.6B",
+          "model": "Qwen/Qwen3-0.6B",
+          "hf_model": "unsloth/Qwen3-0.6B"
+        },
+        {
+          "job": "a2dc4fed-9cfe-4353-9f23-4703e275406e",
+          "key": "candidate",
+          "kind": "trained",
+          "name": "Verified batch-16 checkpoint",
+          "model": "Qwen/Qwen3-0.6B"
+        }
+      ],
+      "temperatures": [],
+      "suite_overlap": null,
+      "logarithm_floor": 1e-12,
+      "bootstrap_samples": 200,
+      "calibration_method": null,
+      "contamination_limits": "Exact input and declared grouping matches only; paraphrase and pretraining contamination remain unknown. Findings do not change suites or labels."
+    },
+    "calls": {
+      "score": {
+        "state": "completed",
+        "observed_at": "2026-10-10T03:48:29.924571+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": 0.023178,
+        "observation_active_seconds": 0.03762766699946951
+      },
+      "final_base": {
+        "id": "fc-01M4HYRC9DJ1ZMESAAK7V9MQP6",
+        "state": "completed",
+        "observed_at": "2026-10-10T03:48:26.340990+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": 3.377366,
+        "observation_active_seconds": 3.365112253002735,
+        "receipt": {
+          "base_only": true,
+          "decisions": 20,
+          "input_sha256": "3b34063a96a900138e0dbb2a748f3fc75c80ce0e88a5afa3b5dc823ff1d3b8c7",
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": "H100",
+            "usage_id": "be1671ee9b284eeb8cd94ad177b822d5",
+            "gpu_count": 1,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 51.511342784,
+            "cpu_core_seconds": 22.895000000000003,
+            "memory_gib_seconds": 427.7690985115088
+          },
+          "artifact_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+          "predictions_sha256": "c679a87017390f354bdea50abb13f90e9c6d84bcb2f56de923995848a94fc798",
+          "runtime_fingerprint": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b"
+        }
+      },
+      "final_prepare": {
+        "id": "fc-01M4HYQ20TQ5K4MQ4Y7BQR0P4Y",
+        "state": "completed",
+        "observed_at": "2026-10-10T03:47:23.632061+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": 9.644795,
+        "observation_active_seconds": 5.077087458997994,
+        "receipt": {
+          "renderer": "option_codes_json",
+          "objective": "decision_cross_entropy",
+          "foundation": {
+            "key": "base",
+            "kind": "foundation",
+            "name": "Unchanged Qwen 0.6B",
+            "model": "Qwen/Qwen3-0.6B",
+            "hf_model": "unsloth/Qwen3-0.6B",
+            "base_path": "/weights/.base_models/unsloth--Qwen3-0.6B",
+            "base_identity": "6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36"
+          },
+          "max_tokens": 1198,
+          "input_sha256": "3b34063a96a900138e0dbb2a748f3fc75c80ce0e88a5afa3b5dc823ff1d3b8c7",
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": null,
+            "usage_id": "743e6b57eb19439889b4286a30722d83",
+            "gpu_count": 0,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 27.588605901,
+            "cpu_core_seconds": 220.708847208,
+            "memory_gib_seconds": 220.708847208
+          },
+          "context_length": 8192,
+          "failures_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "ready_decisions": 20,
+          "failed_decisions": 0,
+          "artifact_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+          "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+          "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4"
+        }
+      },
+      "verify_inputs": {
+        "state": "completed",
+        "observed_at": "2026-10-10T03:46:19.997083+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": null,
+        "observation_active_seconds": 0.0317997500023921,
+        "receipt": {
+          "boundaries": {
+            "candidate": {
+              "final": {
+                "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+                "examples": [],
+                "train_total": 324,
+                "overlap_count": 0,
+                "near_duplicate_check": "not_checked"
+              }
+            }
+          },
+          "suite_overlap": null
+        }
+      },
+      "final_candidate": {
+        "id": "fc-01M4HYRG3NR0S1T79J9FSRZNVY",
+        "state": "completed",
+        "observed_at": "2026-10-10T03:48:29.845714+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": 15.018872,
+        "observation_active_seconds": 1.8741763740035822,
+        "receipt": {
+          "base_only": false,
+          "decisions": 20,
+          "input_sha256": "3b34063a96a900138e0dbb2a748f3fc75c80ce0e88a5afa3b5dc823ff1d3b8c7",
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": "H100",
+            "usage_id": "040fd692f6c240e68b13caeef40d5455",
+            "gpu_count": 1,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 51.811606098,
+            "cpu_core_seconds": 22.665000000000003,
+            "memory_gib_seconds": 430.2673387814578
+          },
+          "artifact_identity": "04bce893427f9ec4f1602c66c4801911f7efdb07cd7d01afce6c3e8199b3c2eb",
+          "predictions_sha256": "3ad49ed459deab22766bcfde9b02e827ea26bd11ef7a222dab5aa918facab7ac",
+          "runtime_fingerprint": "9e1cec4cdaba0ba4184bb579de9a8802f61e96d760fc58c450ded8aeeebc997b"
+        }
+      },
+      "final_prepare_candidate": {
+        "id": "fc-01M4HYQ2YPAQGGQ2GEN3KCP96M",
+        "state": "completed",
+        "observed_at": "2026-10-10T03:47:27.747565+00:00",
+        "timing_scope": "local stage execution and provider observation; native provider compute duration is separate",
+        "last_queue_wait_seconds": 15.016537,
+        "observation_active_seconds": 2.4237363750035,
+        "receipt": {
+          "renderer": "option_codes_json",
+          "objective": "decision_cross_entropy",
+          "max_tokens": 1198,
+          "input_sha256": "3b34063a96a900138e0dbb2a748f3fc75c80ce0e88a5afa3b5dc823ff1d3b8c7",
+          "compute_usage": {
+            "basis": "cumulative worker window; CPU max(reserved, process plus finished-child CPU time/2), memory max(reserved, sum of process and finished-child peaks) times elapsed; estimates, not provider meters",
+            "gpu_type": null,
+            "usage_id": "d4576a16b858495dbd76bb2d721d6d68",
+            "gpu_count": 0,
+            "limitations": [
+              "Running child resources enter the observation when reaped.",
+              "Warm-container memory peaks can precede this call; summed peaks need not overlap.",
+              "Unrelated container processes and provider billing adjustments are not measured."
+            ],
+            "elapsed_seconds": 30.261270997,
+            "cpu_core_seconds": 242.090167976,
+            "memory_gib_seconds": 242.090167976
+          },
+          "context_length": 8192,
+          "failures_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "ready_decisions": 20,
+          "failed_decisions": 0,
+          "artifact_identity": "04bce893427f9ec4f1602c66c4801911f7efdb07cd7d01afce6c3e8199b3c2eb",
+          "vocab_fingerprint": "3ec3c124e02b7ace235364350c04b8fc38d34b182aad914fc45430fa925c0f3f",
+          "chat_template_sha256": "5da44855ab7e0641774d5ed0ff0b4f89671d01df7d316e54d06557a962211cb4"
+        }
+      }
+    },
+    "comparisons": {
+      "base": {
+        "raw": {
+          "bootstrap": {
+            "seed": 42,
+            "method": "paired differences; resample shared groups within each benchmark",
+            "samples": 200
+          },
+          "paired_sha256": "c71498e15fdf727fb1128288dfd4131e5636df00540c70acb2d7943f936b7d31",
+          "macro_across_benchmarks": {
+            "brier": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0
+            },
+            "accuracy": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0
+            },
+            "cross_entropy": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0
+            },
+            "mode_agreement": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0
+            },
+            "top1_reference_mass": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0
+            }
+          },
+          "benchmark_count": 1,
+          "baseline": {
+            "bootstrap": {
+              "seed": 42,
+              "method": "resample groups with replacement within each benchmark",
+              "samples": 200
+            },
+            "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+            "predictions_sha256": "f3664722b1b4819af6f26d41f4b4053bb03c7a4bc9c2670ce0d681c767739ace",
+            "suite_manifest_sha256": "3cf5ddb680a55c42162fced185e07bf689626c48160a9901943562cddb0faef6",
+            "macro_across_benchmarks": {
+              "brier": {
+                "mean": 0.9933325882034809,
+                "benchmarks": 1
+              },
+              "accuracy": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "cross_entropy": {
+                "mean": 1.3117256703431328,
+                "benchmarks": 1
+              },
+              "mode_agreement": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "top1_reference_mass": {
+                "mean": 0.15,
+                "benchmarks": 1
+              }
+            },
+            "coverage": {
+              "expected": 20,
+              "scored": 20,
+              "missing_predictions": 0,
+              "invalid_predictions": 0,
+              "incompatible_inputs": 0,
+              "fraction": 1
+            }
+          },
+          "candidate": {
+            "bootstrap": {
+              "seed": 42,
+              "method": "resample groups with replacement within each benchmark",
+              "samples": 200
+            },
+            "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+            "predictions_sha256": "f3664722b1b4819af6f26d41f4b4053bb03c7a4bc9c2670ce0d681c767739ace",
+            "suite_manifest_sha256": "3cf5ddb680a55c42162fced185e07bf689626c48160a9901943562cddb0faef6",
+            "macro_across_benchmarks": {
+              "brier": {
+                "mean": 0.9933325882034809,
+                "benchmarks": 1
+              },
+              "accuracy": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "cross_entropy": {
+                "mean": 1.3117256703431328,
+                "benchmarks": 1
+              },
+              "mode_agreement": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "top1_reference_mass": {
+                "mean": 0.15,
+                "benchmarks": 1
+              }
+            },
+            "coverage": {
+              "expected": 20,
+              "scored": 20,
+              "missing_predictions": 0,
+              "invalid_predictions": 0,
+              "incompatible_inputs": 0,
+              "fraction": 1
+            }
+          },
+          "paired_coverage": {
+            "expected": 20,
+            "paired_decisions": 20,
+            "baseline_only": 0,
+            "candidate_only": 0
+          }
+        }
+      },
+      "candidate": {
+        "raw": {
+          "bootstrap": {
+            "seed": 42,
+            "method": "paired differences; resample shared groups within each benchmark",
+            "samples": 200
+          },
+          "paired_sha256": "f0916830da790fdd7d7e534990a2b1e2fae3aa317af820fdb1bfa54553992942",
+          "macro_across_benchmarks": {
+            "brier": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": -0.07323184826849796
+            },
+            "accuracy": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0.1
+            },
+            "cross_entropy": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": -0.07495057114966704
+            },
+            "mode_agreement": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0.1
+            },
+            "top1_reference_mass": {
+              "benchmarks": 1,
+              "candidate_minus_baseline": 0.1
+            }
+          },
+          "benchmark_count": 1,
+          "baseline": {
+            "bootstrap": {
+              "seed": 42,
+              "method": "resample groups with replacement within each benchmark",
+              "samples": 200
+            },
+            "model_identity": "base:6193931d9be1f4bfc884940e9514cdc5b19355d45dd682c69683ad956782ef36",
+            "predictions_sha256": "f3664722b1b4819af6f26d41f4b4053bb03c7a4bc9c2670ce0d681c767739ace",
+            "suite_manifest_sha256": "3cf5ddb680a55c42162fced185e07bf689626c48160a9901943562cddb0faef6",
+            "macro_across_benchmarks": {
+              "brier": {
+                "mean": 0.9933325882034809,
+                "benchmarks": 1
+              },
+              "accuracy": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "cross_entropy": {
+                "mean": 1.3117256703431328,
+                "benchmarks": 1
+              },
+              "mode_agreement": {
+                "mean": 0.15,
+                "benchmarks": 1
+              },
+              "top1_reference_mass": {
+                "mean": 0.15,
+                "benchmarks": 1
+              }
+            },
+            "coverage": {
+              "expected": 20,
+              "scored": 20,
+              "missing_predictions": 0,
+              "invalid_predictions": 0,
+              "incompatible_inputs": 0,
+              "fraction": 1
+            }
+          },
+          "candidate": {
+            "bootstrap": {
+              "seed": 42,
+              "method": "resample groups with replacement within each benchmark",
+              "samples": 200
+            },
+            "model_identity": "04bce893427f9ec4f1602c66c4801911f7efdb07cd7d01afce6c3e8199b3c2eb",
+            "predictions_sha256": "f59feb75a8d87e3e3d4759f4c426b2b9b94359778dfb9f3905ff0b7b0de74a7e",
+            "suite_manifest_sha256": "3cf5ddb680a55c42162fced185e07bf689626c48160a9901943562cddb0faef6",
+            "macro_across_benchmarks": {
+              "brier": {
+                "mean": 0.920100739934983,
+                "benchmarks": 1
+              },
+              "accuracy": {
+                "mean": 0.25,
+                "benchmarks": 1
+              },
+              "cross_entropy": {
+                "mean": 1.2367750991934658,
+                "benchmarks": 1
+              },
+              "mode_agreement": {
+                "mean": 0.25,
+                "benchmarks": 1
+              },
+              "top1_reference_mass": {
+                "mean": 0.25,
+                "benchmarks": 1
+              }
+            },
+            "coverage": {
+              "expected": 20,
+              "scored": 20,
+              "missing_predictions": 0,
+              "invalid_predictions": 0,
+              "incompatible_inputs": 0,
+              "fraction": 1
+            }
+          },
+          "paired_coverage": {
+            "expected": 20,
+            "paired_decisions": 20,
+            "baseline_only": 0,
+            "candidate_only": 0
+          }
+        }
+      }
+    },
+    "cost_estimates": {
+      "base": {
+        "estimated_usd": 0.0611611359820818,
+        "components_usd": {
+          "cpu": 0.003200683881371778,
+          "gpu": 0.056519389999111116,
+          "memory": 0.0014410621015989084
+        },
+        "exclusions": [
+          "image_boot",
+          "post_measurement_idle",
+          "storage",
+          "network",
+          "local_orchestration",
+          "provider_discounts_or_premiums",
+          "attempts_without_receipts"
+        ]
+      },
+      "candidate": {
+        "estimated_usd": 0.061821562107340126,
+        "components_usd": {
+          "cpu": 0.0034785887347957784,
+          "gpu": 0.05684884557975,
+          "memory": 0.0014941277927943506
+        },
+        "exclusions": [
+          "image_boot",
+          "post_measurement_idle",
+          "storage",
+          "network",
+          "local_orchestration",
+          "provider_discounts_or_premiums",
+          "attempts_without_receipts"
+        ]
+      }
+    }
+  },
+  "final_label_distribution": [
+    {
+      "judgement": "negative",
+      "rows": 4
+    },
+    {
+      "judgement": "positive",
+      "rows": 16
+    }
+  ],
+  "billing_validation": {
+    "expected_cost": 0.1389,
+    "actual_cost": 0.1389,
+    "passed": true,
+    "operational_timeline": {
+      "id": "380b7b3f-752d-4ac5-92a7-437821d86593",
+      "kind": "finetune_job",
+      "reference": "bb803a90-2e4e-44e7-81c5-02a9cdfbd077",
+      "attempt": "ft-bb803a90-2e4e-44e7-81c5-02a9cdfbd077-ff27203d:fc-01M4HZGK0WVN54YB3CM475SDYW",
+      "unit": "steps",
+      "facts": {
+        "attempt": 1,
+        "provider": "modal",
+        "provider_call_id": "ft-bb803a90-2e4e-44e7-81c5-02a9cdfbd077-ff27203d:fc-01M4HZGK0WVN54YB3CM475SDYW",
+        "telemetry_available": true
+      },
+      "stage": "succeeded",
+      "total": 1,
+      "status": "succeeded",
+      "completed": 1,
+      "event_count": 12,
+      "last_observed_at": "2026-10-10T04:03:06.357757+00:00",
+      "last_heartbeat_at": "2026-10-10T04:02:45.214855+00:00",
+      "last_progress_at": "2026-10-10T04:03:06.347316+00:00",
+      "telemetry": "recorded",
+      "provider": {}
+    }
+  },
+  "binding": [
+    {
+      "id": "33c354c0-c9b8-4b50-86f7-bc3c26ec0321",
+      "dataset": "f8fecbd9-3be0-536f-b81e-c84014a0e2c0",
+      "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+      "source_dataset": "369b56c9-3f77-48a6-8c5c-5aa7f217b602",
+      "trace_source": {},
+      "parameters": {
+        "seed": 42,
+        "sample_groups": 384
+      },
+      "trigger": "manual",
+      "interval_seconds": 60,
+      "enabled": false,
+      "version": 1,
+      "checkpoint": "39ffc92b8004151ed06b3f5dfbc6e4aaaa87f763c82246786a30abf9945f8987",
+      "max_runs": 1,
+      "runs_started": 1,
+      "max_source_rows": 20000,
+      "error": "",
+      "last_checked_at": "2026-10-10T03:43:59.962750+00:00",
+      "next_check_at": "2026-10-10T03:44:59.962755+00:00",
+      "execution_semantics": "full_snapshot_rebuild",
+      "revision_adoption": "explicit_rebuild"
+    }
+  ],
+  "binding_limit_response": {
+    "error": {
+      "code": "dataset_invalid",
+      "message": "The binding reached its authorized run limit.",
+      "retryable": false,
+      "fields": {}
+    }
+  },
+  "cancelled_publication": {
+    "kind": "dataset_pipeline",
+    "id": "c8d0b478-6040-4799-960e-153c492c4a14",
+    "status": "cancelled",
+    "label": "Dataset transformation",
+    "job_error": null,
+    "created_at": "2026-10-10T03:55:25.246902Z",
+    "updated_at": "2026-10-10T03:55:25.270170Z",
+    "completed_at": "2026-10-10T03:55:25.270170Z",
+    "progress": {
+      "stage": "waiting_for_runner",
+      "source_rows": 404,
+      "source_columns": [
+        {
+          "name": "left",
+          "type": "json",
+          "null_rate": 0
+        },
+        {
+          "name": "right",
+          "type": "json",
+          "null_rate": 0
+        },
+        {
+          "name": "judgement",
+          "type": "string",
+          "null_rate": 0
+        },
+        {
+          "name": "source_row",
+          "type": "integer",
+          "null_rate": 0
+        },
+        {
+          "name": "pair_identity",
+          "type": "string",
+          "null_rate": 0
+        },
+        {
+          "name": "entity_group",
+          "type": "string",
+          "null_rate": 0
+        },
+        {
+          "name": "review_flags",
+          "type": "json",
+          "null_rate": 0
+        },
+        {
+          "name": "model_evidence",
+          "type": "json",
+          "null_rate": 0
+        },
+        {
+          "name": "input_policy",
+          "type": "string",
+          "null_rate": 0
+        },
+        {
+          "name": "decision",
+          "type": "json",
+          "null_rate": 0
+        },
+        {
+          "name": "sample_scope",
+          "type": "string",
+          "null_rate": 0
+        },
+        {
+          "name": "_overmind_provenance",
+          "type": "json",
+          "null_rate": 0
+        }
+      ],
+      "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+    },
+    "details": {
+      "id": "c8d0b478-6040-4799-960e-153c492c4a14",
+      "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+      "pipeline_name": "User journey: matching records to trainable decisions",
+      "revision": 1,
+      "source_dataset": "f8fecbd9-3be0-536f-b81e-c84014a0e2c0",
+      "source_cell": "dcee9c00-25ed-4369-b312-5e042f4e9885",
+      "source_fingerprint": "c3118fab106e93de9cc95661b8dcf28b0a98f15f81aaf2eda20053c1d2b1c556",
+      "artifact_cell": null,
+      "artifact_fingerprint": "",
+      "provenance": "",
+      "execution": "isolated_container",
+      "mode": "publish",
+      "parameters": {
+        "seed": 42,
+        "sample_groups": 384
+      },
+      "binding": null,
+      "operation": {
+        "id": "39e57bc7-8315-4e8b-8454-2fb77defa64b",
+        "kind": "dataset_pipeline",
+        "reference": "c8d0b478-6040-4799-960e-153c492c4a14",
+        "attempt": "b30862e0-be0e-4dbf-9835-e61385720a69",
+        "unit": null,
+        "facts": {
+          "retry_safe": false
+        },
+        "stage": "publication_cancelled",
+        "total": null,
+        "status": "cancelled",
+        "completed": null,
+        "event_count": 1,
+        "last_observed_at": "2026-10-10T03:55:25.270751+00:00",
+        "last_heartbeat_at": null,
+        "last_progress_at": "2026-10-10T03:55:25.270751+00:00",
+        "telemetry": "recorded",
+        "provider": {}
+      },
+      "runner": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-10T03:55:59.210524+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "output_cell": null,
+      "state": "cancelled",
+      "error": "",
+      "result": {
+        "stage": "waiting_for_runner",
+        "source_rows": 404,
+        "source_columns": [
+          {
+            "name": "left",
+            "type": "json",
+            "null_rate": 0
+          },
+          {
+            "name": "right",
+            "type": "json",
+            "null_rate": 0
+          },
+          {
+            "name": "judgement",
+            "type": "string",
+            "null_rate": 0
+          },
+          {
+            "name": "source_row",
+            "type": "integer",
+            "null_rate": 0
+          },
+          {
+            "name": "pair_identity",
+            "type": "string",
+            "null_rate": 0
+          },
+          {
+            "name": "entity_group",
+            "type": "string",
+            "null_rate": 0
+          },
+          {
+            "name": "review_flags",
+            "type": "json",
+            "null_rate": 0
+          },
+          {
+            "name": "model_evidence",
+            "type": "json",
+            "null_rate": 0
+          },
+          {
+            "name": "input_policy",
+            "type": "string",
+            "null_rate": 0
+          },
+          {
+            "name": "decision",
+            "type": "json",
+            "null_rate": 0
+          },
+          {
+            "name": "sample_scope",
+            "type": "string",
+            "null_rate": 0
+          },
+          {
+            "name": "_overmind_provenance",
+            "type": "json",
+            "null_rate": 0
+          }
+        ],
+        "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+      },
+      "created_at": "2026-10-10T03:55:25.246902+00:00",
+      "updated_at": "2026-10-10T03:55:25.270170+00:00",
+      "completed_at": "2026-10-10T03:55:25.270170+00:00",
+      "poll_after_seconds": null,
+      "queue_seconds": null,
+      "evidence_resource": {
+        "uri": "overmind://jobs/dataset_pipeline/c8d0b478-6040-4799-960e-153c492c4a14?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mime_type": "application/json"
+      }
+    },
+    "resource": {
+      "uri": "overmind://jobs/dataset_pipeline/c8d0b478-6040-4799-960e-153c492c4a14?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "title": "Dataset transformation",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/dataset_pipeline/c8d0b478-6040-4799-960e-153c492c4a14?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://datasets/f8fecbd9-3be0-536f-b81e-c84014a0e2c0?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://operations/39e57bc7-8315-4e8b-8454-2fb77defa64b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "Dataset transformation: cancelled."
+  },
+  "restored_active": {
+    "id": "8b2e5829-b34e-4ff6-87c9-f26da417968e",
+    "version": "1.4",
+    "title": "Select a reproducible entity-group sample for bounded training",
+    "rows": 404,
+    "fingerprint": "a60298be5b27f218d7e371383e7f3bed56d22e1cf2e1c53c25b1bd2a0b50e15c",
+    "fits": {
+      "ok": true,
+      "reason": ""
+    }
+  },
+  "cost_summary": {
+    "recorded_training_gpu_usd": 0.7915000000000001,
+    "training_cpu_memory_estimate_usd": 0.010385220864454035,
+    "shared_preparation_estimate_usd": 0.0034525865260304446,
+    "evaluation_estimate_usd": 0.12298269808942193,
+    "recorded_plus_estimated_usd": 0.9283205054799065,
+    "all_in_invoice_usd": null,
+    "historical_charge_discrepancy": "First two charges use the old collector-elapsed basis. They remain unchanged and are not relabelled as worker-metered costs.",
+    "budget_usd": 100
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "checks": [
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/Board paper",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/empty",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/thesis",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/Gameboy",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/devday",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/ChatGPT/Launch Video",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/Biomni",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "57f98b96-b009-40fe-942f-c54f9d2f8fdd",
+      "credential_scope": "project"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/website",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/paper-qa",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "0720140f-d852-45bb-b063-c3a9710f82aa",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/vigil",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "76d44e4f-ad38-4769-acee-33b105a233e2",
+      "credential_scope": "project"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/wazuh",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "2108a311-4967-4af2-8ccc-9223b5822a63",
+      "credential_scope": "project"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/financial-services",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/overmind",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    },
+    {
+      "workspace": "/Users/tyleredwards/Documents/GitHub/platform",
+      "mcp_url": "http://localhost:8000/api/mcp/",
+      "mcp_authenticated": true,
+      "ready": true,
+      "api_url": "http://localhost:8000",
+      "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "credential_scope": "account"
+    }
+  ],
+  "summary": {
+    "workspaces_passed": 15,
+    "hosted_plugin_enabled": false,
+    "injected_credentials": false
+  }
+}

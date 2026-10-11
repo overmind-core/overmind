@@ -185,3 +185,15 @@ trajectory_sdk
 .claude/settings.local.json
 .impeccable/
 tests/journeys/.runs/
+
+# Local dataset preparation workspaces and installed copies of SDK skills
+/scratch/
+/data_preparation/
+/.agents/skills/overmind/
+/.agents/skills/overmind-*/
+
+# Generated evidence retained locally; compact receipts and summaries are tracked
+/tests/evidence/decision-benchmarks-results.json
+/tests/evidence/decision-benchmarks-reports/boolq.json.gz
+/tests/evidence/mcp-prep-training-ux-audit-2026-10-08.json
+/tests/evidence/mcp-prep-training-ux-audit-2026-10-08-continuation.json

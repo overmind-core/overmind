@@ -1,0 +1,18 @@
+{
+  "run": "security",
+  "endpoint": "http://localhost:8000",
+  "cases": [],
+  "errors": [
+    {
+      "type": "ExceptionGroup",
+      "detail": "unhandled errors in a TaskGroup (1 sub-exception)"
+    }
+  ],
+  "success": false,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-security-a8xxopto"
+}

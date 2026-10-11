@@ -241,7 +241,10 @@ export function EvidencePanel({
           )}
         </div>
         <CollapsibleContent>
-          <EvidenceTable className="mt-3" rows={evidence} />
+          <EvidenceTable
+            className="-mx-3 mt-3 [&>p]:px-3 [&_td:first-child]:pl-3 [&_td:last-child]:pr-3 [&_th:first-child]:pl-3 [&_th:last-child]:pr-3"
+            rows={evidence}
+          />
         </CollapsibleContent>
       </Collapsible>
     </div>

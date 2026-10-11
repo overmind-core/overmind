@@ -49,6 +49,18 @@ export interface Workbench {
     dataset: string | null;
     /**
      *
+     * @type {{ [key: string]: any; }}
+     * @memberof Workbench
+     */
+    preparation: { [key: string]: any; } | null;
+    /**
+     *
+     * @type {string}
+     * @memberof Workbench
+     */
+    currentPipeline: string | null;
+    /**
+     *
      * @type {Array<Pipeline>}
      * @memberof Workbench
      */
@@ -108,6 +120,8 @@ export interface Workbench {
  */
 export function instanceOfWorkbench(value: object): value is Workbench {
     if (!('dataset' in value) || value['dataset'] === undefined) return false;
+    if (!('preparation' in value) || value['preparation'] === undefined) return false;
+    if (!('currentPipeline' in value) || value['currentPipeline'] === undefined) return false;
     if (!('pipelines' in value) || value['pipelines'] === undefined) return false;
     if (!('runs' in value) || value['runs'] === undefined) return false;
     if (!('pipelinePage' in value) || value['pipelinePage'] === undefined) return false;
@@ -131,6 +145,8 @@ export function WorkbenchFromJSONTyped(json: any, ignoreDiscriminator: boolean):
     return {
 
         'dataset': json['dataset'],
+        'preparation': json['preparation'],
+        'currentPipeline': json['current_pipeline'],
         'pipelines': ((json['pipelines'] as Array<any>).map(PipelineFromJSON)),
         'runs': ((json['runs'] as Array<any>).map(PipelineRunFromJSON)),
         'pipelinePage': WorkbenchPageFromJSON(json['pipeline_page']),
@@ -155,6 +171,8 @@ export function WorkbenchToJSONTyped(value?: Workbench | null, ignoreDiscriminat
     return {
 
         'dataset': value['dataset'],
+        'preparation': value['preparation'],
+        'current_pipeline': value['currentPipeline'],
         'pipelines': ((value['pipelines'] as Array<any>).map(PipelineToJSON)),
         'runs': ((value['runs'] as Array<any>).map(PipelineRunToJSON)),
         'pipeline_page': WorkbenchPageToJSON(value['pipelinePage']),

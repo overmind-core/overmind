@@ -1,256 +1,95 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { DevelopmentMonitor } from "./development-monitor";
 
-const mocks = vi.hoisted(() => ({ evidence: vi.fn(), summary: vi.fn(), track: vi.fn() }));
+const mocks = vi.hoisted(() => ({ summary: vi.fn() }));
 vi.mock("@/client", () => ({
-  default: {
-    finetuningJobs: {
-      finetuningJobsMonitoringEvidenceRetrieve: mocks.evidence,
-      finetuningJobsMonitoringRetrieve: mocks.summary,
-    },
-  },
+  default: { finetuningJobs: { finetuningJobsMonitoringRetrieve: mocks.summary } },
 }));
-vi.mock("@/analytics", () => ({ trackEvent: mocks.track }));
-vi.mock("./finetuning-charts", () => ({ MetricSeriesChart: () => null }));
+vi.mock("./finetuning-charts", () => ({
+  MetricSeriesChart: ({ data }: { data: { step: number; value: number }[] }) => (
+    <output aria-label="Validation points">{JSON.stringify(data)}</output>
+  ),
+}));
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 function show() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <DevelopmentMonitor jobId="job" status="cancelled" />
+      <TooltipProvider>
+        <DevelopmentMonitor jobId="job" modelName="Qwen3 0.6B" status="cancelled" />
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }
 
-it("keeps cancelled-run evidence readable and separates failures from zero quality", async () => {
-  mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [
-      {
-        coverage: { expected: 4, scored: 4 },
-        error: {},
-        evidenceAvailable: true,
-        facts: {},
-        id: "valid",
-        key: "1:development:2",
-        metrics: { eval_loss: 0.4, generation: { accuracy: 0, coverage: 1 } },
-        state: "completed",
-        step: 2,
-        stream: "development",
-      },
-      {
-        coverage: { expected: 4, scored: 0 },
-        error: { message: "Checkpoint write failed" },
-        evidenceAvailable: false,
-        facts: {},
-        id: "failed",
-        key: "1:development:4",
-        metrics: {},
-        state: "failed",
-        step: 4,
-        stream: "development",
-      },
-    ],
-    count: 2,
-    current: {
-      collection: { error: "Retained examples temporarily unavailable", state: "unavailable" },
-      monitoring_seconds: 15,
-      optimizer_seconds: 120,
-      schedule: { next_step: 7 },
-    },
-    limitations: [],
-    nextOffset: null,
-  });
-  mocks.evidence.mockResolvedValue({
-    available: true,
-    count: 1,
-    items: [
-      { input: "private input", output: "no", reference: "yes", row: 0, status: "completed" },
-    ],
-    nextOffset: null,
-  });
+it("loads later checks without mixing final-population loss or invalid measurements into the curve", async () => {
+  mocks.summary
+    .mockResolvedValueOnce({
+      checks: [
+        { metrics: { eval_loss: 0.7 }, state: "completed", step: 0, stream: "development" },
+        { metrics: {}, state: "failed", step: 5, stream: "development" },
+        { metrics: { eval_loss: null }, state: "completed", step: 6, stream: "development" },
+        { metrics: { eval_loss: Number.NaN }, state: "completed", step: 7, stream: "development" },
+        { metrics: { eval_loss: 0.1 }, state: "running", step: 8, stream: "development" },
+      ],
+      nextOffset: 5,
+    })
+    .mockResolvedValueOnce({
+      checks: [
+        { metrics: { eval_loss: 0.4 }, state: "completed", step: 10, stream: "development" },
+        { metrics: { eval_loss: 0.2 }, state: "completed", step: 10, stream: "final_development" },
+      ],
+      nextOffset: null,
+    });
   show();
-  expect(await screen.findByText("Checkpoint write failed")).toBeTruthy();
-  expect(screen.getByText("Step 7")).toBeTruthy();
-  expect(screen.getByText("Retained examples temporarily unavailable")).toBeTruthy();
-  expect(screen.getByText("0.0%")).toBeTruthy();
-  expect(screen.getAllByText("Not measured").length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole("button", { name: "Inspect step 2" }));
-  expect(await screen.findByText("private input")).toBeTruthy();
-  expect(mocks.evidence).toHaveBeenCalledWith({ check: "valid", id: "job", limit: 10, offset: 0 });
-  expect(JSON.stringify(mocks.track.mock.calls)).not.toContain("private input");
+  expect((await screen.findByLabelText("Validation points")).textContent).toBe(
+    JSON.stringify([
+      { step: 0, value: 0.7 },
+      { step: 10, value: 0.4 },
+    ])
+  );
+  expect(mocks.summary).toHaveBeenNthCalledWith(
+    2,
+    { id: "job", limit: 100, offset: 5 },
+    expect.objectContaining({ signal: expect.any(AbortSignal) })
+  );
 });
 
-it("does not claim historical runs have monitoring evidence", async () => {
+it("renders a single recorded measurement including zero loss", async () => {
   mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [],
-    count: 0,
-    limitations: [],
+    checks: [{ metrics: { eval_loss: 0 }, state: "completed", step: 0, stream: "development" }],
     nextOffset: null,
-    policy: null,
   });
   show();
-  expect(await screen.findByText("No development checks recorded.")).toBeTruthy();
-  expect(mocks.evidence).not.toHaveBeenCalled();
+  expect((await screen.findByLabelText("Validation points")).textContent).toBe(
+    JSON.stringify([{ step: 0, value: 0 }])
+  );
 });
 
-it("shows class coverage and paired changes without treating missing classes as perfect", async () => {
-  mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [
-      {
-        coverage: {},
-        error: {},
-        evidenceAvailable: false,
-        facts: {},
-        id: "check",
-        metrics: {
-          generation: {
-            confusion_matrix: [
-              [3, 1],
-              [0, 0],
-            ],
-            labels: ["yes", "no"],
-            per_class: {
-              no: { f1: null, precision: 0, recall: null, support: 0 },
-              yes: { f1: 0.857, precision: 1, recall: 0.75, support: 4 },
-            },
-            unrepresented_labels: ["no"],
-          },
-          paired_generation: {
-            delta: 0.25,
-            groups: 3,
-            improved: 2,
-            interval_95: [-0.25, 0.75],
-            paired: 4,
-            regressed: 1,
-            unpaired: 1,
-          },
-        },
-        state: "completed",
-        step: 2,
-        stream: "development",
-      },
-    ],
-    count: 1,
-    nextOffset: null,
-  });
+it("leaves missing validation unmeasured", async () => {
+  mocks.summary.mockResolvedValue({ checks: [], nextOffset: null });
   show();
-  fireEvent.click(await screen.findByRole("button", { name: "Inspect step 2" }));
-  expect(screen.getByRole("table", { name: "Development class metrics" })).toBeTruthy();
-  expect(screen.getByRole("region", { name: "Development confusion matrix" })).toBeTruthy();
-  expect(screen.getByText("Unrepresented labels: no")).toBeTruthy();
-  expect(screen.getByText("2 improved · 1 regressed · 4 paired · 1 unpaired")).toBeTruthy();
+  expect(await screen.findByText("No validation loss recorded")).toBeTruthy();
+  expect(screen.queryByLabelText("Validation points")).toBeNull();
 });
 
-it("pages frozen sample identities through the passive evidence endpoint", async () => {
-  mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [],
-    count: 0,
-    nextOffset: null,
-    probes: { development: { actual_rows: 26, population_rows: 100 } },
-  });
-  mocks.evidence.mockResolvedValue({
-    available: true,
-    count: 26,
-    items: [{ index: 3, sha256: "row-fingerprint" }],
-    nextOffset: 25,
-  });
+it("reports a failed history request rather than displaying an empty or partial curve", async () => {
+  mocks.summary
+    .mockResolvedValueOnce({
+      checks: [{ metrics: { eval_loss: 0.7 }, state: "completed", step: 0, stream: "development" }],
+      nextOffset: 1,
+    })
+    .mockRejectedValueOnce(new Error("Validation history unavailable"));
   show();
-  fireEvent.click(await screen.findByRole("button", { name: "Inspect development sample" }));
-  expect(await screen.findByText(/row-fingerprint/)).toBeTruthy();
-  expect(mocks.evidence).toHaveBeenCalledWith({
-    id: "job",
-    limit: 25,
-    offset: 0,
-    probe: "development",
-  });
-});
-
-it("keeps native distribution and ordinal measurements distinct", async () => {
-  mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [
-      {
-        coverage: {},
-        error: {},
-        evidenceAvailable: true,
-        facts: {},
-        id: "native",
-        metrics: {
-          brier: 0.15,
-          distribution_decisions: 4,
-          eval_loss: 0.3,
-          expected_score_mae: 0.25,
-          hard_label_accuracy: null,
-          mean_decisions: 3,
-        },
-        state: "completed",
-        step: 2,
-        stream: "development",
-      },
-    ],
-    count: 1,
-    nextOffset: null,
-  });
-  mocks.evidence.mockResolvedValue({
-    available: true,
-    count: 1,
-    items: [
-      {
-        option_values: [0, 1],
-        probabilities: [0.25, 0.75],
-        status: "completed",
-        target_mean: 0,
-        weight: 2,
-      },
-    ],
-    nextOffset: null,
-  });
-  show();
-  fireEvent.click(await screen.findByRole("button", { name: "Inspect step 2" }));
-  expect(screen.getByText("Brier · 4 distributions")).toBeTruthy();
-  expect(screen.getByText("Expected-score MAE · 3 means")).toBeTruthy();
-  expect(screen.getByText("0.1500")).toBeTruthy();
-  expect(screen.getByText("0.2500")).toBeTruthy();
-  expect(await screen.findByText("Probabilities")).toBeTruthy();
-  expect(screen.getByText("Target mean")).toBeTruthy();
-  expect(screen.queryByText("Not recorded")).toBeNull();
-});
-
-it.each([
-  "exact_match",
-  "json_schema",
-  "json_fields",
-])("presents %s contract pass rates without calling them accuracy", async (kind) => {
-  mocks.summary.mockResolvedValue({
-    checkpoints: [],
-    checks: [
-      {
-        evidenceAvailable: false,
-        id: "schema",
-        metrics: { generation: { coverage: 1, pass_rate: 0.75 } },
-        state: "completed",
-        step: 2,
-        stream: "development",
-      },
-    ],
-    count: 1,
-    nextOffset: null,
-    policy: { generation: { kind } },
-  });
-  show();
-  expect(await screen.findByText("Contract pass rate")).toBeTruthy();
-  expect(screen.getByText("75.0%")).toBeTruthy();
-  expect(screen.queryByText("Generated accuracy")).toBeNull();
+  expect(await screen.findByText("Validation history unavailable")).toBeTruthy();
+  expect(screen.queryByLabelText("Validation points")).toBeNull();
 });

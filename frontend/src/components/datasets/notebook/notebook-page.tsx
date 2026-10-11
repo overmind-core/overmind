@@ -7,8 +7,6 @@ import { NotebookControls } from "@/components/datasets/notebook/canvas-controls
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { CellFlow } from "@/components/datasets/notebook/cell-flow";
 import { useCellMotion } from "@/components/datasets/notebook/cell-motion";
-import { cellConnections, iterationCells } from "@/components/datasets/notebook/flow";
-import { usePipelineRuns } from "@/components/datasets/notebook/pipeline-runs";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
 import {
   extractionStatus,
@@ -19,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   activeCellOf,
-  cellsOf,
   type DatasetEvent,
   datasetDisplayName,
   downloadExport,
@@ -29,6 +26,7 @@ import {
   rankOf,
   useCancelDatasetMutation,
   useDatasetEvents,
+  useDatasetPreparationQuery,
   useDatasetQuery,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
@@ -43,19 +41,17 @@ export function DatasetNotebook({
   datasetId,
   projectId,
   cellParam,
-  iteration,
 }: {
   datasetId: string;
   projectId: string;
   cellParam?: string;
-  iteration?: string;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const guard = useGuestGate();
   const datasetQuery = useDatasetQuery(datasetId);
   const dataset = datasetQuery.data;
-  const runsQuery = usePipelineRuns(datasetId);
+  const preparationQuery = useDatasetPreparationQuery(datasetId, cellParam);
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const capabilities = capabilitiesQuery.data?.results ?? [];
 
@@ -82,20 +78,21 @@ export function DatasetNotebook({
     if (meta.live) refresh();
   });
 
-  const allCells = useMemo(() => cellsOf(dataset), [dataset]);
+  const nodes = preparationQuery.data?.nodes;
+  const cells = useMemo(() => nodes?.map((node) => node.cell) ?? [], [nodes]);
   const active = activeCellOf(dataset);
-  const displayedIteration =
-    iteration === "all" ? undefined : (iteration ?? cellParam ?? active?.id);
   const edges = useMemo(
-    () => cellConnections(allCells, runsQuery.data?.pages.flatMap((page) => page.runs) ?? []),
-    [allCells, runsQuery.data]
-  );
-  const cells = useMemo(
-    () => iterationCells(allCells, edges, displayedIteration),
-    [allCells, edges, displayedIteration]
+    () =>
+      (preparationQuery.data?.edges ?? []).map((edge) => ({
+        ...edge,
+        id: `${edge.source}:${edge.target}`,
+        style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
+        type: "cell",
+      })),
+    [preparationQuery.data]
   );
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
-  const { motions, complete } = useCellMotion(dataset ? allCells : undefined, visibleIds);
+  const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
@@ -105,35 +102,31 @@ export function DatasetNotebook({
     setFocus((previous) => ({ id, request: (previous?.request ?? 0) + 1 }));
   }, []);
   useEffect(() => {
-    const id = iteration ?? cellParam;
+    const id = cellParam;
     if (id) scrollTo(id);
-  }, [cellParam, iteration, scrollTo]);
+  }, [cellParam, scrollTo]);
 
   const handOff = useCallback(
-    (cell: Cell, purpose: UsePurpose) => {
-      const go = () => {
-        const capabilityId = dataset?.capability ?? undefined;
-        if (purpose === "train") {
-          void navigate({
-            search: { capabilityId, datasetId, projectId, train: true },
-            to: "/training",
-          });
-        } else if (purpose === "train_eval") {
-          void navigate({
-            search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
-            to: "/training",
-          });
-        } else {
-          void navigate({
-            search: { capabilityId, datasetId, optimize: true, projectId },
-            to: "/optimiser",
-          });
-        }
-      };
-      if (dataset?.active !== cell.id) patch.mutate({ active: cell.id }, { onSuccess: go });
-      else go();
+    (purpose: UsePurpose) => {
+      const capabilityId = dataset?.capability ?? undefined;
+      if (purpose === "train") {
+        void navigate({
+          search: { capabilityId, datasetId, projectId, train: true },
+          to: "/training",
+        });
+      } else if (purpose === "train_eval") {
+        void navigate({
+          search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
+          to: "/training",
+        });
+      } else {
+        void navigate({
+          search: { capabilityId, datasetId, optimize: true, projectId },
+          to: "/optimiser",
+        });
+      }
     },
-    [dataset?.active, dataset?.capability, datasetId, navigate, patch, projectId]
+    [dataset?.capability, datasetId, navigate, projectId]
   );
 
   if (datasetQuery.isPending) {
@@ -162,36 +155,55 @@ export function DatasetNotebook({
     ...capabilities.map((c) => ({ id: c.id, name: c.name })),
   ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
 
-  const renderCell = (cell: Cell) => (
-    <NotebookCell
-      actions={{
-        onActivate: guard(() => patch.mutate({ active: cell.id })),
-        onCapability: guard((id: string | null) => patch.mutate({ capability: id })),
-        onExport: (fmt) =>
-          void downloadExport(
-            datasetId,
-            cell.id,
-            fmt,
-            `${datasetDisplayName(dataset)}-${cell.version || "source"}`
-          ).catch((e) => notify.error(e, "Export failed")),
-        onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
-        onUse: guard((purpose: UsePurpose) => handOff(cell, purpose)),
-      }}
-      active={cell.id === active?.id}
-      capabilities={capabilityChoices}
-      capabilityName={dataset.capabilityName ?? ""}
-      cell={cell}
-      datasetId={datasetId}
-      editable={editable}
-      intent={intent}
-      key={cell.id}
-      onSelect={() => setSelectedId(cell.id)}
-      selected={cell.id === selectedId}
-      sourceDetails={
-        <SourceDetails datasetId={datasetId} kind={dataset.sourceKind} spec={dataset.sourceSpec} />
-      }
-    />
-  );
+  const renderCell = (cell: Cell) => {
+    const node = nodes?.find((node) => node.cell.id === cell.id);
+    const owner = node?.dataset ?? datasetId;
+    const local = owner === datasetId;
+    return (
+      <div>
+        {node && (node.role || !local) && (
+          <div className="mb-2 text-sm text-muted-foreground">
+            <Link params={{ datasetId: owner }} search={{ projectId }} to="/datasets/$datasetId">
+              {node.role || node.datasetName}
+            </Link>
+          </div>
+        )}
+        <NotebookCell
+          actions={{
+            onCapability: guard((id: string | null) => patch.mutate({ capability: id })),
+            onExport: (fmt) =>
+              void downloadExport(
+                owner,
+                cell.id,
+                fmt,
+                `${datasetDisplayName(dataset)}-${cell.version || "source"}`
+              ).catch((e) => notify.error(e, "Export failed")),
+            onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
+            onUse: guard(handOff),
+          }}
+          active={cell.id === active?.id}
+          capabilities={capabilityChoices}
+          capabilityName={dataset.capabilityName ?? ""}
+          cell={cell}
+          datasetId={owner}
+          editable={editable && local}
+          intent={node?.intent ?? intent}
+          key={cell.id}
+          onSelect={() => setSelectedId(cell.id)}
+          selected={cell.id === selectedId}
+          sourceDetails={
+            local ? (
+              <SourceDetails
+                datasetId={datasetId}
+                kind={dataset.sourceKind}
+                spec={dataset.sourceSpec}
+              />
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -209,6 +221,14 @@ export function DatasetNotebook({
         </div>
       )}
       <ContaminationReport spec={dataset.sourceSpec} />
+      {preparationQuery.isError && (
+        <p className="px-4 text-sm text-destructive" role="alert">
+          Preparation could not be loaded.
+          <Button onClick={() => void preparationQuery.refetch()} size="sm" variant="secondary">
+            Retry
+          </Button>
+        </p>
+      )}
       {dataset.error && (
         <p className="px-4 text-sm text-destructive" role="alert">
           {dataset.error}
@@ -231,7 +251,9 @@ export function DatasetNotebook({
           onToggleMinimap={cells.length ? () => setShowMinimap(!showMinimap) : undefined}
           showMinimap={showMinimap}
         />
-        {cells.length === 0 ? (
+        {preparationQuery.isPending ? (
+          <Spinner />
+        ) : cells.length === 0 ? (
           <div className="overflow-y-auto pl-10">
             <SourceLanding
               brief={dataset.brief ?? ""}

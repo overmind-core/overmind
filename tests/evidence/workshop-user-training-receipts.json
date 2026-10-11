@@ -1,0 +1,991 @@
+{
+  "project_id": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+  "dataset": "369b56c9-3f77-48a6-8c5c-5aa7f217b602",
+  "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+  "publication": {
+    "kind": "dataset_pipeline",
+    "id": "6104928b-376b-4b29-9c59-ec04fb38ae8b",
+    "status": "completed",
+    "label": "Dataset transformation",
+    "job_error": null,
+    "created_at": "2026-10-10T03:30:58.181002Z",
+    "updated_at": "2026-10-10T03:31:38.685833Z",
+    "completed_at": "2026-10-10T03:31:38.685833Z",
+    "progress": {
+      "mode": "publish",
+      "rows": 404,
+      "stage": "completed",
+      "steps": [
+        {
+          "name": "Preserve observations, review flags and connected entity groups",
+          "index": 0,
+          "state": "completed",
+          "checks": {
+            "preserve_rows": true
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 10000,
+            "rows_before": 10000,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "cell": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+              "rows": 10000,
+              "step": "source",
+              "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 2.4255,
+            "observed_at": "2026-10-10T03:31:00.876481+00:00",
+            "stage_seconds": {
+              "cleanup": 0.0565,
+              "input_transfer": 0.5577,
+              "output_reading": 0.4772,
+              "container_setup": 0.0968,
+              "script_execution": 0.8263,
+              "artifact_transfer": 0.4109
+            }
+          },
+          "seconds": 6.177,
+          "step_id": "audit",
+          "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-0",
+          "exit_code": 0,
+          "input_rows": 10000,
+          "input_step": "source",
+          "started_at": "2026-10-10T03:30:58.310783+00:00",
+          "input_cells": [
+            "1e6be2d8-1c31-48e3-b30e-c7ca400710dc"
+          ],
+          "input_steps": [
+            "source"
+          ],
+          "output_cell": "19272094-b3d7-4911-b056-9c60096704e2",
+          "output_rows": 10000,
+          "completed_at": "2026-10-10T03:31:04.494148+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "preserve_rows": true
+            },
+            "deferred": {}
+          },
+          "input_fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab",
+          "output_fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb",
+          "provider_execution": "9f72f2c3f6fc449baf436cdfa5405ad9f1f89881521eace78441661ae8833e9b"
+        },
+        {
+          "name": "Separate model evidence from identity shortcuts",
+          "index": 1,
+          "state": "completed",
+          "checks": {
+            "preserve_rows": true
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 10000,
+            "rows_before": 10000,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "cell": "19272094-b3d7-4911-b056-9c60096704e2",
+              "rows": 10000,
+              "step": "audit",
+              "fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 3.0432,
+            "observed_at": "2026-10-10T03:31:07.676595+00:00",
+            "stage_seconds": {
+              "cleanup": 0.067,
+              "input_transfer": 0.5915,
+              "output_reading": 0.8701,
+              "container_setup": 0.1,
+              "script_execution": 0.85,
+              "artifact_transfer": 0.5646
+            }
+          },
+          "seconds": 8.478,
+          "step_id": "inputs",
+          "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-1",
+          "exit_code": 0,
+          "input_rows": 10000,
+          "input_step": "audit",
+          "started_at": "2026-10-10T03:31:04.498111+00:00",
+          "input_cells": [
+            "19272094-b3d7-4911-b056-9c60096704e2"
+          ],
+          "input_steps": [
+            "audit"
+          ],
+          "output_cell": "b6a48277-52b8-48ce-ad1a-38d38e6d6008",
+          "output_rows": 10000,
+          "completed_at": "2026-10-10T03:31:12.983500+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "preserve_rows": true
+            },
+            "deferred": {}
+          },
+          "input_fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb",
+          "output_fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2",
+          "provider_execution": "33ec8a45ee6566d095387ee58924081eb37038e39ded3a34f20511147a7dec07"
+        },
+        {
+          "name": "Preserve supplied categorical judgements as trainable decisions",
+          "index": 2,
+          "state": "completed",
+          "checks": {
+            "preserve_rows": true
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 10000,
+            "rows_before": 10000,
+            "rows_removed": 0,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 0,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "cell": "b6a48277-52b8-48ce-ad1a-38d38e6d6008",
+              "rows": 10000,
+              "step": "inputs",
+              "fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 3.8635,
+            "observed_at": "2026-10-10T03:31:17.071884+00:00",
+            "stage_seconds": {
+              "cleanup": 0.0974,
+              "input_transfer": 0.9242,
+              "output_reading": 1.1354,
+              "container_setup": 0.1245,
+              "script_execution": 0.8801,
+              "artifact_transfer": 0.7019
+            }
+          },
+          "seconds": 11.507,
+          "step_id": "decisions",
+          "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-2",
+          "exit_code": 0,
+          "input_rows": 10000,
+          "input_step": "inputs",
+          "started_at": "2026-10-10T03:31:12.989863+00:00",
+          "input_cells": [
+            "b6a48277-52b8-48ce-ad1a-38d38e6d6008"
+          ],
+          "input_steps": [
+            "inputs"
+          ],
+          "output_cell": "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2",
+          "output_rows": 10000,
+          "completed_at": "2026-10-10T03:31:24.507299+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "preserve_rows": true
+            },
+            "deferred": {}
+          },
+          "input_fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2",
+          "output_fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255",
+          "provider_execution": "1e79e6811c26f5f34afd05fdbb639b670e4752efdc787fccca8f28dd1d4fd905"
+        },
+        {
+          "name": "Select a reproducible entity-group sample for bounded training",
+          "index": 3,
+          "state": "completed",
+          "checks": {
+            "min_rows": 50
+          },
+          "impact": {
+            "rows_added": 0,
+            "rows_after": 404,
+            "rows_before": 10000,
+            "rows_removed": 9596,
+            "coverage_after": {},
+            "coverage_before": {},
+            "decision_changes": 0,
+            "identity_preserved": true,
+            "instruction_changes": 0,
+            "decision_rows_removed": 9596,
+            "input_evidence_removed": 0
+          },
+          "inputs": [
+            {
+              "cell": "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2",
+              "rows": 10000,
+              "step": "decisions",
+              "fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255"
+            }
+          ],
+          "runtime": {
+            "stage": "completed",
+            "seconds": 2.5807,
+            "observed_at": "2026-10-10T03:31:27.395557+00:00",
+            "stage_seconds": {
+              "cleanup": 0.0397,
+              "input_transfer": 1.2759,
+              "output_reading": 0.0275,
+              "container_setup": 0.1212,
+              "script_execution": 0.8617,
+              "artifact_transfer": 0.2547
+            }
+          },
+          "seconds": 4.956,
+          "step_id": "sample",
+          "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-3",
+          "exit_code": 0,
+          "input_rows": 10000,
+          "input_step": "decisions",
+          "started_at": "2026-10-10T03:31:24.516987+00:00",
+          "input_cells": [
+            "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2"
+          ],
+          "input_steps": [
+            "decisions"
+          ],
+          "output_cell": "8de529f5-9d5b-45eb-96ef-5186462549f5",
+          "output_rows": 404,
+          "completed_at": "2026-10-10T03:31:29.487381+00:00",
+          "check_results": {
+            "failed": {},
+            "passed": {
+              "min_rows": 50
+            },
+            "deferred": {}
+          },
+          "input_fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255",
+          "output_fingerprint": "39ffc92b8004151ed06b3f5dfbc6e4aaaa87f763c82246786a30abf9945f8987",
+          "provider_execution": "18358e81dfc748615c74b3409f11a36a6dfd511c59e9c02a03bc8ed7bc7a9d54"
+        }
+      ],
+      "impact": {
+        "rows_added": 0,
+        "rows_after": 404,
+        "rows_before": 10000,
+        "rows_removed": 9596,
+        "coverage_after": {},
+        "coverage_before": {},
+        "decision_changes": 0,
+        "identity_preserved": true,
+        "instruction_changes": 0,
+        "decision_rows_removed": 9596,
+        "input_evidence_removed": 0
+      },
+      "attempt": "027d56cf-9890-4619-9e79-a80b00b6adca",
+      "seconds": 40.386,
+      "started_at": "2026-10-10T03:30:58.299594+00:00",
+      "output_rows": 404,
+      "source_rows": 10000,
+      "stage_seconds": {
+        "publishing": 9.192,
+        "measuring_impact": 8.166,
+        "step_1_executing": 2.923,
+        "step_2_executing": 3.792,
+        "step_3_executing": 4.905,
+        "step_4_executing": 2.918,
+        "verifying_source": 0.015,
+        "step_1_checking_rows": 0.003,
+        "step_2_checking_rows": 0.003,
+        "step_3_checking_rows": 0.005,
+        "step_4_checking_rows": 0.007,
+        "step_1_preserving_lineage": 1.792,
+        "step_2_preserving_lineage": 2.477,
+        "step_3_preserving_lineage": 3.266,
+        "step_4_preserving_lineage": 0.917
+      },
+      "semantic_quality": "unmeasured",
+      "stage_started_at": "2026-10-10T03:31:38.678975+00:00",
+      "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+    },
+    "details": {
+      "id": "6104928b-376b-4b29-9c59-ec04fb38ae8b",
+      "pipeline": "4b3ad974-0c1c-4868-a962-753811d4bc81",
+      "pipeline_name": "User journey: matching records to trainable decisions",
+      "revision": 1,
+      "source_dataset": "369b56c9-3f77-48a6-8c5c-5aa7f217b602",
+      "source_cell": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+      "source_fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab",
+      "artifact_cell": null,
+      "artifact_fingerprint": "",
+      "provenance": "",
+      "execution": "isolated_container",
+      "mode": "publish",
+      "parameters": {
+        "seed": 42,
+        "sample_groups": 384
+      },
+      "binding": null,
+      "operation": {
+        "id": "3c64b36b-4c91-425f-bef4-5fece4099a3c",
+        "kind": "dataset_pipeline",
+        "reference": "6104928b-376b-4b29-9c59-ec04fb38ae8b",
+        "attempt": "027d56cf-9890-4619-9e79-a80b00b6adca",
+        "unit": "steps",
+        "facts": {
+          "attempt": "027d56cf-9890-4619-9e79-a80b00b6adca",
+          "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+          "total_rows": 10000
+        },
+        "stage": "completed",
+        "total": 4,
+        "status": "complete",
+        "completed": 4,
+        "event_count": 71,
+        "last_observed_at": "2026-10-10T03:31:38.684214+00:00",
+        "last_heartbeat_at": "2026-10-10T03:31:27.399477+00:00",
+        "last_progress_at": "2026-10-10T03:31:38.684214+00:00",
+        "telemetry": "recorded",
+        "provider": {}
+      },
+      "runner": {
+        "status": "ready",
+        "images": [
+          "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea"
+        ],
+        "last_heartbeat_at": "2026-10-10T03:31:42.906048+00:00",
+        "network": "disabled",
+        "package_max_bytes": 10485760,
+        "action": null
+      },
+      "output_cell": "8de529f5-9d5b-45eb-96ef-5186462549f5",
+      "state": "completed",
+      "error": "",
+      "result": {
+        "mode": "publish",
+        "rows": 404,
+        "stage": "completed",
+        "steps": [
+          {
+            "name": "Preserve observations, review flags and connected entity groups",
+            "index": 0,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+                "rows": 10000,
+                "step": "source",
+                "fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 2.4255,
+              "observed_at": "2026-10-10T03:31:00.876481+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0565,
+                "input_transfer": 0.5577,
+                "output_reading": 0.4772,
+                "container_setup": 0.0968,
+                "script_execution": 0.8263,
+                "artifact_transfer": 0.4109
+              }
+            },
+            "seconds": 6.177,
+            "step_id": "audit",
+            "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-0",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "source",
+            "started_at": "2026-10-10T03:30:58.310783+00:00",
+            "input_cells": [
+              "1e6be2d8-1c31-48e3-b30e-c7ca400710dc"
+            ],
+            "input_steps": [
+              "source"
+            ],
+            "output_cell": "19272094-b3d7-4911-b056-9c60096704e2",
+            "output_rows": 10000,
+            "completed_at": "2026-10-10T03:31:04.494148+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "46fdca74f75a2eb35c1f1b49cafe84e250249d265e2a91b502b5b6c510e266ab",
+            "output_fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb",
+            "provider_execution": "9f72f2c3f6fc449baf436cdfa5405ad9f1f89881521eace78441661ae8833e9b"
+          },
+          {
+            "name": "Separate model evidence from identity shortcuts",
+            "index": 1,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "19272094-b3d7-4911-b056-9c60096704e2",
+                "rows": 10000,
+                "step": "audit",
+                "fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 3.0432,
+              "observed_at": "2026-10-10T03:31:07.676595+00:00",
+              "stage_seconds": {
+                "cleanup": 0.067,
+                "input_transfer": 0.5915,
+                "output_reading": 0.8701,
+                "container_setup": 0.1,
+                "script_execution": 0.85,
+                "artifact_transfer": 0.5646
+              }
+            },
+            "seconds": 8.478,
+            "step_id": "inputs",
+            "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-1",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "audit",
+            "started_at": "2026-10-10T03:31:04.498111+00:00",
+            "input_cells": [
+              "19272094-b3d7-4911-b056-9c60096704e2"
+            ],
+            "input_steps": [
+              "audit"
+            ],
+            "output_cell": "b6a48277-52b8-48ce-ad1a-38d38e6d6008",
+            "output_rows": 10000,
+            "completed_at": "2026-10-10T03:31:12.983500+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "df740ae42d99c4e7b15aef9addbf2b317fb0192303dd46c8b0da309a708c14cb",
+            "output_fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2",
+            "provider_execution": "33ec8a45ee6566d095387ee58924081eb37038e39ded3a34f20511147a7dec07"
+          },
+          {
+            "name": "Preserve supplied categorical judgements as trainable decisions",
+            "index": 2,
+            "state": "completed",
+            "checks": {
+              "preserve_rows": true
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 10000,
+              "rows_before": 10000,
+              "rows_removed": 0,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 0,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "b6a48277-52b8-48ce-ad1a-38d38e6d6008",
+                "rows": 10000,
+                "step": "inputs",
+                "fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 3.8635,
+              "observed_at": "2026-10-10T03:31:17.071884+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0974,
+                "input_transfer": 0.9242,
+                "output_reading": 1.1354,
+                "container_setup": 0.1245,
+                "script_execution": 0.8801,
+                "artifact_transfer": 0.7019
+              }
+            },
+            "seconds": 11.507,
+            "step_id": "decisions",
+            "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-2",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "inputs",
+            "started_at": "2026-10-10T03:31:12.989863+00:00",
+            "input_cells": [
+              "b6a48277-52b8-48ce-ad1a-38d38e6d6008"
+            ],
+            "input_steps": [
+              "inputs"
+            ],
+            "output_cell": "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2",
+            "output_rows": 10000,
+            "completed_at": "2026-10-10T03:31:24.507299+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "preserve_rows": true
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "14bbf97132f01cb39c1eccc02c55beef6a16eac66c05a044484291060ba0e1d2",
+            "output_fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255",
+            "provider_execution": "1e79e6811c26f5f34afd05fdbb639b670e4752efdc787fccca8f28dd1d4fd905"
+          },
+          {
+            "name": "Select a reproducible entity-group sample for bounded training",
+            "index": 3,
+            "state": "completed",
+            "checks": {
+              "min_rows": 50
+            },
+            "impact": {
+              "rows_added": 0,
+              "rows_after": 404,
+              "rows_before": 10000,
+              "rows_removed": 9596,
+              "coverage_after": {},
+              "coverage_before": {},
+              "decision_changes": 0,
+              "identity_preserved": true,
+              "instruction_changes": 0,
+              "decision_rows_removed": 9596,
+              "input_evidence_removed": 0
+            },
+            "inputs": [
+              {
+                "cell": "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2",
+                "rows": 10000,
+                "step": "decisions",
+                "fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255"
+              }
+            ],
+            "runtime": {
+              "stage": "completed",
+              "seconds": 2.5807,
+              "observed_at": "2026-10-10T03:31:27.395557+00:00",
+              "stage_seconds": {
+                "cleanup": 0.0397,
+                "input_transfer": 1.2759,
+                "output_reading": 0.0275,
+                "container_setup": 0.1212,
+                "script_execution": 0.8617,
+                "artifact_transfer": 0.2547
+              }
+            },
+            "seconds": 4.956,
+            "step_id": "sample",
+            "container": "overmind-workshop-6104928b-376b-4b29-9c59-ec04fb38ae8b-027d56cf-9890-4619-9e79-a80b00b6adca-3",
+            "exit_code": 0,
+            "input_rows": 10000,
+            "input_step": "decisions",
+            "started_at": "2026-10-10T03:31:24.516987+00:00",
+            "input_cells": [
+              "89bbe6eb-f7d3-40ed-82a4-9a761d8e2ad2"
+            ],
+            "input_steps": [
+              "decisions"
+            ],
+            "output_cell": "8de529f5-9d5b-45eb-96ef-5186462549f5",
+            "output_rows": 404,
+            "completed_at": "2026-10-10T03:31:29.487381+00:00",
+            "check_results": {
+              "failed": {},
+              "passed": {
+                "min_rows": 50
+              },
+              "deferred": {}
+            },
+            "input_fingerprint": "9f7ed020b8455104f17a404ad061e0579c3f7213a8e038cb3ef8967d6b128255",
+            "output_fingerprint": "39ffc92b8004151ed06b3f5dfbc6e4aaaa87f763c82246786a30abf9945f8987",
+            "provider_execution": "18358e81dfc748615c74b3409f11a36a6dfd511c59e9c02a03bc8ed7bc7a9d54"
+          }
+        ],
+        "impact": {
+          "rows_added": 0,
+          "rows_after": 404,
+          "rows_before": 10000,
+          "rows_removed": 9596,
+          "coverage_after": {},
+          "coverage_before": {},
+          "decision_changes": 0,
+          "identity_preserved": true,
+          "instruction_changes": 0,
+          "decision_rows_removed": 9596,
+          "input_evidence_removed": 0
+        },
+        "attempt": "027d56cf-9890-4619-9e79-a80b00b6adca",
+        "seconds": 40.386,
+        "started_at": "2026-10-10T03:30:58.299594+00:00",
+        "output_rows": 404,
+        "source_rows": 10000,
+        "stage_seconds": {
+          "publishing": 9.192,
+          "measuring_impact": 8.166,
+          "step_1_executing": 2.923,
+          "step_2_executing": 3.792,
+          "step_3_executing": 4.905,
+          "step_4_executing": 2.918,
+          "verifying_source": 0.015,
+          "step_1_checking_rows": 0.003,
+          "step_2_checking_rows": 0.003,
+          "step_3_checking_rows": 0.005,
+          "step_4_checking_rows": 0.007,
+          "step_1_preserving_lineage": 1.792,
+          "step_2_preserving_lineage": 2.477,
+          "step_3_preserving_lineage": 3.266,
+          "step_4_preserving_lineage": 0.917
+        },
+        "semantic_quality": "unmeasured",
+        "stage_started_at": "2026-10-10T03:31:38.678975+00:00",
+        "revision_fingerprint": "285ac9324a82af4ae46c0a0c48a26726d54263ae8c6dc07e4f954bb1f14581ed"
+      },
+      "created_at": "2026-10-10T03:30:58.181002+00:00",
+      "updated_at": "2026-10-10T03:31:38.685833+00:00",
+      "completed_at": "2026-10-10T03:31:38.685833+00:00",
+      "poll_after_seconds": null,
+      "queue_seconds": null,
+      "evidence_resource": {
+        "uri": "overmind://jobs/dataset_pipeline/6104928b-376b-4b29-9c59-ec04fb38ae8b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mime_type": "application/json"
+      }
+    },
+    "resource": {
+      "uri": "overmind://jobs/dataset_pipeline/6104928b-376b-4b29-9c59-ec04fb38ae8b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "title": "Dataset transformation",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/dataset_pipeline/6104928b-376b-4b29-9c59-ec04fb38ae8b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://datasets/369b56c9-3f77-48a6-8c5c-5aa7f217b602?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Dataset",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://operations/3c64b36b-4c91-425f-bef4-5fece4099a3c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "Dataset transformation: completed."
+  },
+  "partition": {
+    "kind": "data_partition",
+    "id": "925cda60-3d7f-4d0a-ad25-a3fa1bae4352",
+    "status": "completed",
+    "label": "User journey: entity-disjoint matching splits",
+    "job_error": null,
+    "created_at": "2026-10-10T03:31:43.445888Z",
+    "updated_at": "2026-10-10T03:31:43.824141Z",
+    "completed_at": null,
+    "progress": {
+      "id": "925cda60-3d7f-4d0a-ad25-a3fa1bae4352",
+      "project": "e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "name": "User journey: entity-disjoint matching splits",
+      "source_cell": "8de529f5-9d5b-45eb-96ef-5186462549f5",
+      "recipe": {
+        "seed": 42,
+        "group_by": [
+          "entity_group"
+        ],
+        "holdouts": [],
+        "fractions": {
+          "final": 0.05,
+          "train": 0.8,
+          "development": 0.15
+        },
+        "stratify_by": "judgement"
+      },
+      "report": {
+        "counts": {
+          "final": 20,
+          "train": 324,
+          "development": 60
+        },
+        "groups": {
+          "final": 20,
+          "train": 306,
+          "development": 58
+        },
+        "strata": {
+          "final": {
+            "\"negative\"": 4,
+            "\"positive\"": 16
+          },
+          "train": {
+            "\"negative\"": 65,
+            "\"positive\"": 259
+          },
+          "development": {
+            "\"negative\"": 12,
+            "\"positive\"": 48
+          }
+        },
+        "overlap": {
+          "pretraining": "unknown",
+          "near_duplicates": "not_checked",
+          "content_and_declared_groups": 0
+        },
+        "progress": {
+          "stage": "completed",
+          "total": 404,
+          "completed": 404,
+          "updated_at": "2026-10-10T03:31:43.823571+00:00"
+        },
+        "fingerprint": "39ffc92b8004151ed06b3f5dfbc6e4aaaa87f763c82246786a30abf9945f8987",
+        "source_rows": 404,
+        "assignments_sha256": "284c9a13717a0948e7d416f368729500eb1e4968eabb7dbf621d1b6a552a5b68",
+        "duplicates_removed": 0
+      },
+      "state": "completed",
+      "error": "",
+      "members": [
+        {
+          "role": "final",
+          "cell": {
+            "id": "ad37a595-6312-4887-b599-3e5d8e69e831",
+            "version": "1.0",
+            "title": "Source",
+            "rows": 20,
+            "fingerprint": "abfc7b58d27d12ef8fdf45380783ccbb86635aefa70bfb3a5a7e0fb6d06a0853",
+            "dataset_id": "5c6f37d2-990e-5b59-8a8b-599a3b3405be"
+          }
+        },
+        {
+          "role": "train",
+          "cell": {
+            "id": "3c0119d4-a729-4384-877b-2b5f8115d207",
+            "version": "1.0",
+            "title": "Source",
+            "rows": 324,
+            "fingerprint": "9628d2c752a91ade1781e5d4440380a540054fdf20f8fb2e2ca32c242720d5ca",
+            "dataset_id": "473acbd5-73df-554b-b8ce-15512a648e96"
+          }
+        },
+        {
+          "role": "development",
+          "cell": {
+            "id": "da28b792-9e91-4f10-8606-a2fbfd3eeaaa",
+            "version": "1.0",
+            "title": "Source",
+            "rows": 60,
+            "fingerprint": "d87f42fbaf60b3e8b241793f05f8f11669fa022fece50df19f45d791d8bcbd43",
+            "dataset_id": "f86a67db-9bcf-59fa-9346-43d18bd35896"
+          }
+        }
+      ],
+      "next_actions": [
+        "get_job"
+      ],
+      "action_requirements": {},
+      "input_required": false,
+      "poll_after_seconds": null,
+      "created_at": "2026-10-10 03:31:43.445888+00:00",
+      "updated_at": "2026-10-10 03:31:43.824141+00:00"
+    },
+    "details": {},
+    "resource": {
+      "uri": "overmind://jobs/data_partition/925cda60-3d7f-4d0a-ad25-a3fa1bae4352?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+      "title": "User journey: entity-disjoint matching splits",
+      "mimeType": "application/json"
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://jobs/data_partition/925cda60-3d7f-4d0a-ad25-a3fa1bae4352?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "User journey: entity-disjoint matching splits",
+        "mimeType": "application/json"
+      }
+    ],
+    "summary": "User journey: entity-disjoint matching splits: completed."
+  },
+  "training_launch": {
+    "summary": "Fine-tuning job queued.",
+    "finetune": {
+      "kind": "finetune_job",
+      "id": "1df88ade-4951-45fd-abe9-90f1dfd7ba5c",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://finetunes/1df88ade-4951-45fd-abe9-90f1dfd7ba5c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "User journey: bounded matching-model training",
+        "mimeType": "application/json"
+      },
+      "name": "User journey: bounded matching-model training"
+    },
+    "job": {
+      "kind": "finetune_job",
+      "id": "1df88ade-4951-45fd-abe9-90f1dfd7ba5c",
+      "status": "queued",
+      "resource": {
+        "uri": "overmind://jobs/finetune/1df88ade-4951-45fd-abe9-90f1dfd7ba5c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "User journey: bounded matching-model training",
+        "mimeType": "application/json"
+      },
+      "name": "User journey: bounded matching-model training"
+    },
+    "cell": {
+      "id": "3c0119d4-a729-4384-877b-2b5f8115d207",
+      "version": "1.0",
+      "title": "Source",
+      "rows": 324,
+      "fingerprint": "9628d2c752a91ade1781e5d4440380a540054fdf20f8fb2e2ca32c242720d5ca",
+      "fits": true,
+      "reason": "",
+      "warnings": [
+        "No current workshop quality review."
+      ]
+    },
+    "resource_links": [
+      {
+        "uri": "overmind://finetunes/1df88ade-4951-45fd-abe9-90f1dfd7ba5c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "User journey: bounded matching-model training",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "overmind://jobs/finetune/1df88ade-4951-45fd-abe9-90f1dfd7ba5c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "User journey: bounded matching-model training",
+        "mimeType": "application/json"
+      }
+    ]
+  },
+  "query_load": [
+    {
+      "tool": "inspect_dataset",
+      "scenario": "concurrent",
+      "seconds": 0.093,
+      "isError": false,
+      "active": "8de529f5-9d5b-45eb-96ef-5186462549f5"
+    },
+    {
+      "tool": "inspect_dataset",
+      "scenario": "concurrent",
+      "seconds": 0.054,
+      "isError": false,
+      "active": "8de529f5-9d5b-45eb-96ef-5186462549f5"
+    },
+    {
+      "tool": "inspect_dataset",
+      "scenario": "concurrent",
+      "seconds": 0.056,
+      "isError": false,
+      "active": "8de529f5-9d5b-45eb-96ef-5186462549f5"
+    },
+    {
+      "tool": "inspect_dataset",
+      "scenario": "concurrent",
+      "seconds": 0.055,
+      "isError": false,
+      "active": "8de529f5-9d5b-45eb-96ef-5186462549f5"
+    },
+    {
+      "tool": "inspect_dataset",
+      "scenario": "concurrent",
+      "seconds": 0.048,
+      "isError": false,
+      "active": "8de529f5-9d5b-45eb-96ef-5186462549f5"
+    },
+    {
+      "tool": "query_dataset",
+      "scenario": "deadline",
+      "seconds": 10.081,
+      "result": {
+        "error": {
+          "code": "query_timeout",
+          "message": "The query exceeded 10 seconds. Narrow the query or export the cell.",
+          "retryable": false,
+          "fields": {}
+        }
+      }
+    },
+    {
+      "tool": "query_dataset",
+      "scenario": "post_timeout",
+      "result": {
+        "summary": "1 rows.",
+        "dataset": "369b56c9-3f77-48a6-8c5c-5aa7f217b602",
+        "cell_id": "1e6be2d8-1c31-48e3-b30e-c7ca400710dc",
+        "version": "1.0",
+        "columns": [
+          "rows"
+        ],
+        "rows": [
+          {
+            "rows": 10000
+          }
+        ],
+        "n": 1,
+        "truncated": false,
+        "resource_links": [
+          {
+            "uri": "overmind://datasets/369b56c9-3f77-48a6-8c5c-5aa7f217b602?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+            "title": "sample_10000.json",
+            "mimeType": "application/json"
+          }
+        ]
+      }
+    }
+  ]
+}

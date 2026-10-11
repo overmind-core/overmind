@@ -242,3 +242,34 @@ The Console opens with a project dataset table. Selecting a row opens its
 step-by-step cells; the folder button reveals compact project dataset navigation.
 There is no Workshop chat. Author through MCP. Local exports use
 `overmind://dataset-export`.
+
+## Preparation execution and corrections
+
+Upload original source bytes once and pin upstream revisions. Register retained
+transformation code before processing the full data. Do not upload prepared
+outputs as unrelated sources. For corrections, update the same recipe family
+and run the corrected package against the original source; the resulting clean
+process replaces the displayed cells without repair-history or restore controls.
+Consumer-pinned artifacts remain immutable internally. Recipes belong to the
+project; reuse is optional and requires compatible source and target semantics.
+`inspect_dataset_workbench.preparation` exposes the same source-to-output graph
+as the Console, including recorded train/development/calibration/final links.
+
+Column contracts use `object` for a nested decision, never `json`. Declare the
+final step's `consumer` as `decision_train`, `decision_eval`, `chat_train` or
+`model_eval` to validate nested targets in both preview and publication. Preserve
+evidenced semantics and structured provenance; never remove them to pass checks.
+Preview samples a bounded prefix and does not establish coverage of every family.
+
+For row-independent transformations, declare step `batch_rows` (1–100000).
+Consecutive batches execute in separate restricted containers and concatenate in
+source order. Each expanded JSONL input/output must fit half the package's
+`scratch_mb`; each batch has the declared time limit. Global sorting, grouping,
+splitting and deduplication must not use batching. Row checks apply to the combined
+output, publication remains atomic, and progress records completed batches and
+rows. A failed or cancelled batch publishes no partial cells. CLI directory
+packages omit Python bytecode caches; other unsupported files remain errors.
+
+### Automatic script retention
+
+Retain the transformation with `save_dataset_pipeline(dataset=..., package=...)`; the dataset keeps its current script automatically. Never ask the user whether to keep or make it reusable. Submit corrected code against the same preparation; the canvas displays the current process. Retain scoped uncertainties and supporting evidence in the script and output. Keep unknown meaning unknown; successful execution and valid formatting do not establish semantic correctness.

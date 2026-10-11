@@ -2,7 +2,13 @@
 import type { ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
+import { act, cleanup, render as renderComponent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
@@ -15,6 +21,11 @@ import type { FinetuningJobList } from "@/openapi";
 const CAPABILITY_ID = "00000000-0000-4000-8000-000000000010";
 const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 const SERVING_ID = "ft:job-a:9f3c";
+
+function render(children: ReactNode) {
+  const router = createRouter({ history: createMemoryHistory(), routeTree: createRootRoute() });
+  return renderComponent(<RouterContextProvider router={router}>{children}</RouterContextProvider>);
+}
 
 /** This run's deployment is the oldest of 30, so no default-sized project page
  *  can contain it. */

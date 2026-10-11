@@ -1,0 +1,727 @@
+{
+  "pdf": "/Users/tyleredwards/Downloads/Lakera_Handbook_AI_Security_for_Product_Teams-.pdf",
+  "sha256": "8afd9328403fa5aa139ae44c8da8140ced77471e3404396bf9b5e97f2280f93a",
+  "rows": 1381,
+  "pages": [
+    {
+      "page": 1,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 41,
+      "extracted_chars": 39,
+      "rows": 3,
+      "methods": {
+        "pdfium-native-text": 3
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 2,
+      "size": [
+        134.0,
+        16.145294189453125
+      ],
+      "native_chars": 0,
+      "extracted_chars": 0,
+      "rows": 0,
+      "methods": {},
+      "native_token_coverage": 0.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 3,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2186,
+      "extracted_chars": 2129,
+      "rows": 45,
+      "methods": {
+        "pdfium-native-text": 45
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 4,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2055,
+      "extracted_chars": 2016,
+      "rows": 39,
+      "methods": {
+        "pdfium-native-text": 39
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 5,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1519,
+      "extracted_chars": 1488,
+      "rows": 32,
+      "methods": {
+        "pdfium-native-text": 32
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 6,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1566,
+      "extracted_chars": 1543,
+      "rows": 24,
+      "methods": {
+        "pdfium-native-text": 24
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 7,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2819,
+      "extracted_chars": 2726,
+      "rows": 84,
+      "methods": {
+        "pdfium-native-text": 84
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 8,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1758,
+      "extracted_chars": 1727,
+      "rows": 32,
+      "methods": {
+        "pdfium-native-text": 32
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 9,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1308,
+      "extracted_chars": 1491,
+      "rows": 33,
+      "methods": {
+        "pdfium-native-text": 28,
+        "tesseract-ocr": 5
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        24.95,
+        96.14,
+        96.56,
+        87.21,
+        96.37
+      ]
+    },
+    {
+      "page": 10,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1723,
+      "extracted_chars": 1680,
+      "rows": 33,
+      "methods": {
+        "pdfium-native-text": 33
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 11,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 3785,
+      "extracted_chars": 3713,
+      "rows": 70,
+      "methods": {
+        "pdfium-native-text": 70
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 12,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2151,
+      "extracted_chars": 2094,
+      "rows": 51,
+      "methods": {
+        "pdfium-native-text": 51
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 13,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 666,
+      "extracted_chars": 1051,
+      "rows": 22,
+      "methods": {
+        "pdfium-native-text": 12,
+        "tesseract-ocr": 10
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        66.62,
+        86.8,
+        70.65,
+        62.37,
+        73.2,
+        77.03,
+        65.26,
+        63.32,
+        96.64,
+        96.69
+      ]
+    },
+    {
+      "page": 14,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2029,
+      "extracted_chars": 1997,
+      "rows": 30,
+      "methods": {
+        "pdfium-native-text": 30
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 15,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2042,
+      "extracted_chars": 2001,
+      "rows": 32,
+      "methods": {
+        "pdfium-native-text": 32
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 16,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2118,
+      "extracted_chars": 2071,
+      "rows": 37,
+      "methods": {
+        "pdfium-native-text": 37
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 17,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1583,
+      "extracted_chars": 1554,
+      "rows": 26,
+      "methods": {
+        "pdfium-native-text": 26
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 18,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1448,
+      "extracted_chars": 1427,
+      "rows": 45,
+      "methods": {
+        "pdfium-native-text": 42,
+        "tesseract-ocr": 3
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        59.56,
+        46.98,
+        44.26
+      ]
+    },
+    {
+      "page": 19,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1480,
+      "extracted_chars": 1453,
+      "rows": 28,
+      "methods": {
+        "pdfium-native-text": 28
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 20,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1168,
+      "extracted_chars": 1148,
+      "rows": 21,
+      "methods": {
+        "pdfium-native-text": 21
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 21,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2157,
+      "extracted_chars": 2118,
+      "rows": 40,
+      "methods": {
+        "pdfium-native-text": 40
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 22,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2266,
+      "extracted_chars": 2231,
+      "rows": 37,
+      "methods": {
+        "pdfium-native-text": 37
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 23,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1767,
+      "extracted_chars": 1740,
+      "rows": 28,
+      "methods": {
+        "pdfium-native-text": 28
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 24,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1666,
+      "extracted_chars": 1642,
+      "rows": 25,
+      "methods": {
+        "pdfium-native-text": 25
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 25,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1448,
+      "extracted_chars": 1562,
+      "rows": 27,
+      "methods": {
+        "pdfium-native-text": 21,
+        "tesseract-ocr": 6
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        1.3,
+        42.32,
+        96.09,
+        96.25,
+        95.89,
+        81.62
+      ]
+    },
+    {
+      "page": 26,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 2459,
+      "extracted_chars": 2403,
+      "rows": 55,
+      "methods": {
+        "pdfium-native-text": 55
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 27,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 546,
+      "extracted_chars": 649,
+      "rows": 20,
+      "methods": {
+        "pdfium-native-text": 10,
+        "tesseract-ocr": 10
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        85.62,
+        73.26,
+        95.39,
+        64.3,
+        55.93,
+        12.78,
+        91.06,
+        90.24,
+        72.7,
+        54.91
+      ]
+    },
+    {
+      "page": 28,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1979,
+      "extracted_chars": 1950,
+      "rows": 30,
+      "methods": {
+        "pdfium-native-text": 30
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 29,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1562,
+      "extracted_chars": 2121,
+      "rows": 75,
+      "methods": {
+        "pdfium-native-text": 36,
+        "tesseract-ocr": 39
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        38.83,
+        82.99,
+        96.42,
+        92.4,
+        86.11,
+        96.3,
+        96.51,
+        50.03,
+        96.89,
+        95.93,
+        96.23,
+        96.62,
+        96.29,
+        95.56,
+        96.89,
+        96.86,
+        50.34,
+        85.82,
+        96.69,
+        96.27,
+        69.72,
+        96.92,
+        96.62,
+        54.66,
+        88.0,
+        96.44,
+        94.71,
+        85.36,
+        96.67,
+        96.88,
+        52.29,
+        96.66,
+        96.42,
+        96.7,
+        94.7,
+        96.26,
+        96.89,
+        96.56,
+        96.75
+      ]
+    },
+    {
+      "page": 30,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1806,
+      "extracted_chars": 1733,
+      "rows": 74,
+      "methods": {
+        "pdfium-native-text": 74
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 31,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1367,
+      "extracted_chars": 1423,
+      "rows": 24,
+      "methods": {
+        "pdfium-native-text": 17,
+        "tesseract-ocr": 7
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        6.08,
+        41.02,
+        31.42,
+        83.5,
+        37.46,
+        32.82,
+        4.86
+      ]
+    },
+    {
+      "page": 32,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1543,
+      "extracted_chars": 1511,
+      "rows": 32,
+      "methods": {
+        "pdfium-native-text": 32
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 33,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1525,
+      "extracted_chars": 1478,
+      "rows": 48,
+      "methods": {
+        "pdfium-native-text": 48
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 34,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1671,
+      "extracted_chars": 1630,
+      "rows": 43,
+      "methods": {
+        "pdfium-native-text": 43
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 35,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1952,
+      "extracted_chars": 1921,
+      "rows": 32,
+      "methods": {
+        "pdfium-native-text": 32
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 36,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1414,
+      "extracted_chars": 1389,
+      "rows": 26,
+      "methods": {
+        "pdfium-native-text": 26
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 37,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1821,
+      "extracted_chars": 1843,
+      "rows": 34,
+      "methods": {
+        "pdfium-native-text": 33,
+        "tesseract-ocr": 1
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": [
+        0.0
+      ]
+    },
+    {
+      "page": 38,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1158,
+      "extracted_chars": 1137,
+      "rows": 22,
+      "methods": {
+        "pdfium-native-text": 22
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    },
+    {
+      "page": 39,
+      "size": [
+        595.0,
+        842.0
+      ],
+      "native_chars": 1035,
+      "extracted_chars": 1013,
+      "rows": 22,
+      "methods": {
+        "pdfium-native-text": 22
+      },
+      "native_token_coverage": 1.0,
+      "missing_native_tokens": {},
+      "ocr_confidence": []
+    }
+  ],
+  "scope": "All extracted row/page evidence and bounding boxes; native token comparison is diagnostic, not reading-order or OCR semantic certification. Visually inspect selected pages separately."
+}

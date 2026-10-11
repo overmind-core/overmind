@@ -151,7 +151,7 @@ navigation code but are no longer used to stage access.
   steps progress downward, sibling branches align side by side on the same layer,
   with elbow connections from recorded lineage. Zoom, Fit view and a toggleable
   minimap navigate the graph without changing cell dimensions; Reset and linked-cell
-  focus return to scale 1. A version chip beside the name selects and restores iterations.
+  focus return to scale 1. The Process control shows the current execution facts. Corrections replace the displayed process; there is no repair-history or restore view. Recorded partition links keep train, development, calibration and final outputs connected to their source and scripts.
   The left-hand box groups the minimap toggle with the folder button for project
   dataset navigation; cell search and the cell-selector strip are removed.
   Platform-agent chat and the prompt-style landing are removed.
@@ -306,3 +306,5 @@ No formal conformance standard has been set for this product — that decision i
 open. Two constraints hold in the current implementation and future work must
 preserve them: the Console ships a **single dark theme**, independent of stored
 or operating-system preferences, and motion **respects `prefers-reduced-motion`**.
+
+Script retention is automatic; the native agent owns preparation and repairs. Workshop cells show retained data and scripts, while execution receipts record publication validation.

@@ -79,6 +79,11 @@ code {
 }
 
 @layer components {
+  /* Recharts SVGs receive a browser focus outline even after pointer clicks. */
+  .recharts-surface:focus:not(:focus-visible) {
+    outline: none;
+  }
+
   .page-wrapper {
     @apply space-y-6 pb-8;
   }

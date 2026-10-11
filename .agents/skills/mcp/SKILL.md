@@ -407,3 +407,12 @@ Contract 6.4.0 adds `resume_dataset_import` for stopped source imports. Dataset
 inspection and dataset-run jobs expose the saved source-import state and retry
 availability. Recovery shares the REST and Console service and never starts an
 autonomous preparation agent.
+
+Contract 6.5.0 adds the shared `preparation` graph to Workshop inspection and
+manifest guidance for explicit row batching and consumer validation. Corrections
+replace the displayed process; there is no repair-history/restore UI. Source
+transfer and package bytes are CLI-guided; execution, validation and lineage
+inspection are MCP-ready. MCP readiness reuses its prerequisite validation result
+instead of scanning the full training/validation population twice.
+
+Contract 7.0.0 removes the preparation-findings tools and status fields. Workshop continues to expose retained scripts, the selected process, execution receipts and publication validation. Dataset-scoped pipeline saves automatically retain the current script association; retrying older receipts does not restore it.

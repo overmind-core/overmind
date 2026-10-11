@@ -173,7 +173,7 @@ function ModelDetailPage() {
                   <DateTime value={model.deployedAt ?? model.createdAt} />
                 </LineageField>
               </div>
-              <div className="space-y-3 border-t border-border/70 pt-4">
+              <div className="-mx-4 space-y-3 border-t border-border/70 px-4 pt-4">
                 <p className="text-sm font-medium">Weights & checkpoints</p>
                 <WeightsContent
                   checkpoints={checkpoints}
@@ -391,7 +391,7 @@ function Disclosure({
 
 function DangerZone({ id, modelId }: { id: string; modelId: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 pt-4">
+    <div className="-mx-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 px-4 pt-4">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">Delete deployment</p>
         <p className={cn(PROSE, "text-xs leading-snug text-muted-foreground")}>

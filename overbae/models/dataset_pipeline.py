@@ -22,6 +22,7 @@ class DatasetPipeline(models.Model):
     )
     name = models.CharField(max_length=255)
     request_key = models.CharField(max_length=128)
+    authoring_dataset_id = models.UUIDField(null=True, blank=True)
     fingerprint = models.CharField(max_length=64)
     steps = models.JSONField(default=list)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)

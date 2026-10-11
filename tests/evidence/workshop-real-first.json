@@ -1,0 +1,26 @@
+{
+  "run": "first",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "pairs",
+      "original_dataset": "dece0a89-ab26-4293-aa3a-b292d3a278c9",
+      "original_cell": "c13a1cd1-b095-4c7d-b1fd-c4d298a748ac",
+      "source_rows": 10000,
+      "runs": []
+    }
+  ],
+  "errors": [
+    {
+      "type": "ExceptionGroup",
+      "detail": "unhandled errors in a TaskGroup (1 sub-exception)"
+    }
+  ],
+  "success": false,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.3.0",
+    "catalog_sha256": "da009ed883c984666d95db16eaee97f25df0b2eb13cdbfd0dd69f0320e0c4c7d"
+  },
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-first-teij_fet"
+}

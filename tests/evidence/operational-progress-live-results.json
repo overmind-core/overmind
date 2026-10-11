@@ -1,0 +1,832 @@
+{
+  "first": {
+    "is_error": false,
+    "result": {
+      "kind": "inference_request",
+      "id": "d627623b-da84-486b-a46d-68f6dbef44c5",
+      "status": "succeeded",
+      "label": "Inference request",
+      "job_error": null,
+      "created_at": "2026-10-09T03:40:49.200993Z",
+      "updated_at": "2026-10-09T03:45:38.879240Z",
+      "completed_at": "2026-10-09T03:45:38.732998Z",
+      "progress": null,
+      "details": {
+        "id": "d627623b-da84-486b-a46d-68f6dbef44c5",
+        "status": "succeeded",
+        "request_key": "operational-receipt-20261008-cold-01",
+        "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+        "provider_call_id": "fc-01M4FBZRKAQB6RQCK21QQ6GCVW",
+        "result": {
+          "usage": {
+            "total_tokens": 19,
+            "prompt_tokens": 16,
+            "completion_tokens": 3,
+            "prompt_tokens_details": null,
+            "completion_tokens_details": null
+          },
+          "content": "READY.",
+          "truncated": false,
+          "latency_ms": 252648.29933900002,
+          "finish_reason": "stop",
+          "content_clipped": false,
+          "content_characters": 6
+        },
+        "error_code": null,
+        "deadline": "2026-10-09T04:30:49.199915+00:00",
+        "retry_safe": false,
+        "is_cold": true,
+        "operation": {
+          "id": "b3ec9400-0b17-405e-a294-39a16230034b",
+          "kind": "inference_request",
+          "reference": "d627623b-da84-486b-a46d-68f6dbef44c5",
+          "attempt": "d627623b-da84-486b-a46d-68f6dbef44c5",
+          "unit": null,
+          "facts": {
+            "deadline": "2026-10-09T04:30:49.199915+00:00",
+            "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+            "provider": "modal",
+            "error_code": null,
+            "retry_safe": false,
+            "provider_call_id": "fc-01M4FBZRKAQB6RQCK21QQ6GCVW"
+          },
+          "stage": "succeeded",
+          "total": null,
+          "status": "succeeded",
+          "completed": null,
+          "event_count": 23,
+          "last_observed_at": "2026-10-09T03:45:38.882688+00:00",
+          "last_heartbeat_at": null,
+          "last_progress_at": "2026-10-09T03:45:38.882688+00:00",
+          "telemetry": "recorded",
+          "provider": {
+            "call": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FBZS68QWA9QW345XTWKFHR",
+                "elapsed_seconds": 252.272590654
+              },
+              "scope": "operation",
+              "stage": "completed",
+              "total": null,
+              "cursor": {
+                "writer": "86f22fb4292e4c95a8879ceb65708072",
+                "dropped": 0,
+                "sequence": 3,
+                "history_gap": false,
+                "available_through": 3
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:45:10.493205+00:00",
+              "observed_at": "2026-10-09T03:45:39.373907+00:00",
+              "provider_call_id": "fc-01M4FBZRKAQB6RQCK21QQ6GCVW"
+            },
+            "pool": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR",
+                "base_identity": "3b53342623cc24eac424d0c81dda5d5612830674fa4099b2d146be5cc9b92715"
+              },
+              "scope": "shared_pool",
+              "stage": "engine_ready",
+              "total": null,
+              "cursor": {
+                "writer": "5798020041394af99c2bffaeaebe18c5",
+                "dropped": 0,
+                "sequence": 7,
+                "history_gap": false,
+                "available_through": 7
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:45:08.145606+00:00",
+              "observed_at": "2026-10-09T03:45:39.907126+00:00",
+              "provider_call_id": null
+            },
+            "request": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR",
+                "error_code": null
+              },
+              "scope": "operation",
+              "stage": "response_received",
+              "total": null,
+              "cursor": {
+                "writer": "d6771496b44443018809afef657820ab",
+                "dropped": 0,
+                "sequence": 5,
+                "history_gap": false,
+                "available_through": 5
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:45:10.339320+00:00",
+              "observed_at": "2026-10-09T03:45:39.705673+00:00",
+              "provider_call_id": "fc-01M4FBZRKAQB6RQCK21QQ6GCVW"
+            },
+            "call_graph": {
+              "calls": [
+                {
+                  "status": "PENDING",
+                  "function": "inference_request",
+                  "worker_id": "",
+                  "provider_call_id": "fc-01M4FBZRKAQB6RQCK21QQ6GCVW",
+                  "provider_input_id": "in-01M4FBZRKGN920CG63XW9WTVSW"
+                },
+                {
+                  "status": "PENDING",
+                  "function": "L4_vllm_lora.*",
+                  "worker_id": "",
+                  "provider_call_id": "fc-01M4FBZXEACK17TGZ6CD17KB6A",
+                  "provider_input_id": "in-01M4FBZXEG163PY8AD00ZMQSBG"
+                }
+              ],
+              "total": 2,
+              "truncated": false,
+              "observed_at": "2026-10-09T03:45:09.172454+00:00"
+            }
+          }
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/inference_request/d627623b-da84-486b-a46d-68f6dbef44c5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Inference request",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/inference_request/d627623b-da84-486b-a46d-68f6dbef44c5?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Inference request",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/b3ec9400-0b17-405e-a294-39a16230034b?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Inference request: succeeded."
+    }
+  },
+  "second": {
+    "is_error": false,
+    "result": {
+      "kind": "inference_request",
+      "id": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+      "status": "succeeded",
+      "label": "Inference request",
+      "job_error": null,
+      "created_at": "2026-10-09T03:51:06.918776Z",
+      "updated_at": "2026-10-09T03:55:43.089511Z",
+      "completed_at": "2026-10-09T03:55:42.968667Z",
+      "progress": null,
+      "details": {
+        "id": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+        "status": "succeeded",
+        "request_key": "operational-receipt-20261008-final-02",
+        "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+        "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB",
+        "result": {
+          "usage": {
+            "total_tokens": 19,
+            "prompt_tokens": 16,
+            "completion_tokens": 3,
+            "prompt_tokens_details": null,
+            "completion_tokens_details": null
+          },
+          "content": "READY.",
+          "truncated": false,
+          "latency_ms": 248043.591654,
+          "finish_reason": "stop",
+          "content_clipped": false,
+          "content_characters": 6
+        },
+        "error_code": null,
+        "deadline": "2026-10-09T04:41:06.918253+00:00",
+        "retry_safe": false,
+        "is_cold": true,
+        "operation": {
+          "id": "6f923254-289c-411f-abf2-f91c7e28246c",
+          "kind": "inference_request",
+          "reference": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+          "attempt": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+          "unit": null,
+          "facts": {
+            "deadline": "2026-10-09T04:41:06.918253+00:00",
+            "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+            "provider": "modal",
+            "error_code": null,
+            "retry_safe": false,
+            "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+          },
+          "stage": "succeeded",
+          "total": null,
+          "status": "succeeded",
+          "completed": null,
+          "event_count": 45,
+          "last_observed_at": "2026-10-09T03:55:43.091539+00:00",
+          "last_heartbeat_at": null,
+          "last_progress_at": "2026-10-09T03:55:43.091539+00:00",
+          "telemetry": "recorded",
+          "provider": {
+            "call": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FCJHNF6MB0AEB973K5PF4R",
+                "elapsed_seconds": 247.559357282
+              },
+              "scope": "operation",
+              "stage": "completed",
+              "total": null,
+              "cursor": {
+                "writer": "fe5c16a77b1c434d8ecba8c478e028c4",
+                "dropped": 0,
+                "has_more": false,
+                "sequence": 3,
+                "history_gap": false,
+                "missing_events": 0,
+                "available_through": 3,
+                "publication_failures": null
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:55:20.373519+00:00",
+              "observed_at": "2026-10-09T03:55:43.449269+00:00",
+              "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+            },
+            "pool": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+                "base_identity": "3b53342623cc24eac424d0c81dda5d5612830674fa4099b2d146be5cc9b92715"
+              },
+              "scope": "shared_pool",
+              "stage": "engine_ready",
+              "total": null,
+              "cursor": {
+                "writer": "fc8154da118d40d3a0db9f1c024f3627",
+                "dropped": 0,
+                "has_more": false,
+                "sequence": 7,
+                "history_gap": false,
+                "missing_events": 0,
+                "available_through": 7,
+                "publication_failures": null
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:55:18.215948+00:00",
+              "observed_at": "2026-10-09T03:55:44.315314+00:00",
+              "provider_call_id": null,
+              "last_heartbeat_at": "2026-10-09T03:53:57.603185+00:00"
+            },
+            "request": {
+              "unit": null,
+              "facts": {
+                "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+                "error_code": null
+              },
+              "scope": "operation",
+              "stage": "response_received",
+              "total": null,
+              "cursor": {
+                "writer": "720f25427df94f598c3177f741a8f428",
+                "dropped": 0,
+                "has_more": false,
+                "sequence": 5,
+                "history_gap": false,
+                "missing_events": 0,
+                "available_through": 5,
+                "publication_failures": null
+              },
+              "available": true,
+              "completed": null,
+              "source_at": "2026-10-09T03:55:20.179837+00:00",
+              "observed_at": "2026-10-09T03:55:43.891118+00:00",
+              "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+            },
+            "call_graph": {
+              "calls": [
+                {
+                  "status": "PENDING",
+                  "function": "inference_request",
+                  "worker_id": "",
+                  "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB",
+                  "provider_input_id": "in-01M4FCJHANA770D3ZHHWXC3ZKN"
+                },
+                {
+                  "status": "PENDING",
+                  "function": "L4_vllm_lora.*",
+                  "worker_id": "",
+                  "provider_call_id": "fc-01M4FCJNMTD85QAQ97H9S34HB0",
+                  "provider_input_id": "in-01M4FCJNN1PVVRKF7421126T7R"
+                }
+              ],
+              "total": 2,
+              "truncated": false,
+              "observed_at": "2026-10-09T03:55:13.354789+00:00"
+            }
+          }
+        }
+      },
+      "resource": {
+        "uri": "overmind://jobs/inference_request/e83bb840-e03f-4e5b-9f17-782b6a26b889?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Inference request",
+        "mimeType": "application/json"
+      },
+      "resource_links": [
+        {
+          "uri": "overmind://jobs/inference_request/e83bb840-e03f-4e5b-9f17-782b6a26b889?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Inference request",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "overmind://operations/6f923254-289c-411f-abf2-f91c7e28246c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+          "title": "Operational timeline",
+          "mimeType": "application/json"
+        }
+      ],
+      "summary": "Inference request: succeeded."
+    }
+  },
+  "page_one": {
+    "is_error": false,
+    "result": {
+      "summary": "succeeded: succeeded.",
+      "operation": {
+        "id": "6f923254-289c-411f-abf2-f91c7e28246c",
+        "kind": "inference_request",
+        "reference": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+        "attempt": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+        "unit": null,
+        "facts": {
+          "deadline": "2026-10-09T04:41:06.918253+00:00",
+          "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+          "provider": "modal",
+          "error_code": null,
+          "retry_safe": false,
+          "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+        },
+        "stage": "succeeded",
+        "total": null,
+        "status": "succeeded",
+        "completed": null,
+        "event_count": 45,
+        "last_observed_at": "2026-10-09T03:55:43.091539+00:00",
+        "last_heartbeat_at": null,
+        "last_progress_at": "2026-10-09T03:55:43.091539+00:00",
+        "telemetry": "recorded",
+        "provider": {
+          "call": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJHNF6MB0AEB973K5PF4R",
+              "elapsed_seconds": 247.559357282
+            },
+            "scope": "operation",
+            "stage": "completed",
+            "total": null,
+            "cursor": {
+              "writer": "fe5c16a77b1c434d8ecba8c478e028c4",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 3,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 3,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:20.373519+00:00",
+            "observed_at": "2026-10-09T03:55:43.449269+00:00",
+            "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+          },
+          "pool": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+              "base_identity": "3b53342623cc24eac424d0c81dda5d5612830674fa4099b2d146be5cc9b92715"
+            },
+            "scope": "shared_pool",
+            "stage": "engine_ready",
+            "total": null,
+            "cursor": {
+              "writer": "fc8154da118d40d3a0db9f1c024f3627",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 7,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 7,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:18.215948+00:00",
+            "observed_at": "2026-10-09T03:55:44.315314+00:00",
+            "provider_call_id": null,
+            "last_heartbeat_at": "2026-10-09T03:53:57.603185+00:00"
+          },
+          "request": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+              "error_code": null
+            },
+            "scope": "operation",
+            "stage": "response_received",
+            "total": null,
+            "cursor": {
+              "writer": "720f25427df94f598c3177f741a8f428",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 5,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 5,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:20.179837+00:00",
+            "observed_at": "2026-10-09T03:55:43.891118+00:00",
+            "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+          },
+          "call_graph": {
+            "calls": [
+              {
+                "status": "PENDING",
+                "function": "inference_request",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB",
+                "provider_input_id": "in-01M4FCJHANA770D3ZHHWXC3ZKN"
+              },
+              {
+                "status": "PENDING",
+                "function": "L4_vllm_lora.*",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJNMTD85QAQ97H9S34HB0",
+                "provider_input_id": "in-01M4FCJNN1PVVRKF7421126T7R"
+              }
+            ],
+            "total": 2,
+            "truncated": false,
+            "observed_at": "2026-10-09T03:55:13.354789+00:00"
+          }
+        },
+        "events": [
+          {
+            "sequence": 1,
+            "event": "progress",
+            "source_at": "2026-10-09T03:51:06.919340+00:00",
+            "observed_at": "2026-10-09T03:51:06.919340+00:00",
+            "unit": null,
+            "facts": {
+              "deadline": "2026-10-09T04:41:06.918253+00:00",
+              "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+              "provider": "modal",
+              "error_code": null,
+              "retry_safe": false,
+              "provider_call_id": null
+            },
+            "stage": "queued",
+            "total": null,
+            "status": "queued",
+            "completed": null,
+            "heartbeat_at": null
+          },
+          {
+            "sequence": 2,
+            "event": "progress",
+            "source_at": "2026-10-09T03:51:09.467375+00:00",
+            "observed_at": "2026-10-09T03:51:09.467375+00:00",
+            "unit": null,
+            "facts": {
+              "deadline": "2026-10-09T04:41:06.918253+00:00",
+              "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+              "provider": "modal",
+              "error_code": null,
+              "retry_safe": false,
+              "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+            },
+            "stage": "running",
+            "total": null,
+            "status": "running",
+            "completed": null,
+            "heartbeat_at": null
+          },
+          {
+            "sequence": 3,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:03.774281+00:00",
+            "observed_at": "2026-10-09T03:51:10.493648+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR"
+            },
+            "scope": "shared_pool",
+            "stage": "refreshing_volumes",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 4,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:04.369729+00:00",
+            "observed_at": "2026-10-09T03:51:10.494268+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR"
+            },
+            "scope": "shared_pool",
+            "stage": "allocating_weight_memory",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 5,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:06.075326+00:00",
+            "observed_at": "2026-10-09T03:51:10.494645+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR"
+            },
+            "scope": "shared_pool",
+            "stage": "restoring_weights",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          }
+        ],
+        "page": {
+          "has_more": true,
+          "next_cursor": 5,
+          "through_sequence": 45
+        }
+      },
+      "resource": {
+        "uri": "overmind://operations/6f923254-289c-411f-abf2-f91c7e28246c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    }
+  },
+  "page_two": {
+    "is_error": false,
+    "result": {
+      "summary": "succeeded: succeeded.",
+      "operation": {
+        "id": "6f923254-289c-411f-abf2-f91c7e28246c",
+        "kind": "inference_request",
+        "reference": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+        "attempt": "e83bb840-e03f-4e5b-9f17-782b6a26b889",
+        "unit": null,
+        "facts": {
+          "deadline": "2026-10-09T04:41:06.918253+00:00",
+          "model_id": "ft-2a04ad10-qwen3-5-0-8b",
+          "provider": "modal",
+          "error_code": null,
+          "retry_safe": false,
+          "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+        },
+        "stage": "succeeded",
+        "total": null,
+        "status": "succeeded",
+        "completed": null,
+        "event_count": 45,
+        "last_observed_at": "2026-10-09T03:55:43.091539+00:00",
+        "last_heartbeat_at": null,
+        "last_progress_at": "2026-10-09T03:55:43.091539+00:00",
+        "telemetry": "recorded",
+        "provider": {
+          "call": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJHNF6MB0AEB973K5PF4R",
+              "elapsed_seconds": 247.559357282
+            },
+            "scope": "operation",
+            "stage": "completed",
+            "total": null,
+            "cursor": {
+              "writer": "fe5c16a77b1c434d8ecba8c478e028c4",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 3,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 3,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:20.373519+00:00",
+            "observed_at": "2026-10-09T03:55:43.449269+00:00",
+            "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+          },
+          "pool": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+              "base_identity": "3b53342623cc24eac424d0c81dda5d5612830674fa4099b2d146be5cc9b92715"
+            },
+            "scope": "shared_pool",
+            "stage": "engine_ready",
+            "total": null,
+            "cursor": {
+              "writer": "fc8154da118d40d3a0db9f1c024f3627",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 7,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 7,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:18.215948+00:00",
+            "observed_at": "2026-10-09T03:55:44.315314+00:00",
+            "provider_call_id": null,
+            "last_heartbeat_at": "2026-10-09T03:53:57.603185+00:00"
+          },
+          "request": {
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FCJQGB9085W4NESM1FYDER",
+              "error_code": null
+            },
+            "scope": "operation",
+            "stage": "response_received",
+            "total": null,
+            "cursor": {
+              "writer": "720f25427df94f598c3177f741a8f428",
+              "dropped": 0,
+              "has_more": false,
+              "sequence": 5,
+              "history_gap": false,
+              "missing_events": 0,
+              "available_through": 5,
+              "publication_failures": null
+            },
+            "available": true,
+            "completed": null,
+            "source_at": "2026-10-09T03:55:20.179837+00:00",
+            "observed_at": "2026-10-09T03:55:43.891118+00:00",
+            "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB"
+          },
+          "call_graph": {
+            "calls": [
+              {
+                "status": "PENDING",
+                "function": "inference_request",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB",
+                "provider_input_id": "in-01M4FCJHANA770D3ZHHWXC3ZKN"
+              },
+              {
+                "status": "PENDING",
+                "function": "L4_vllm_lora.*",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJNMTD85QAQ97H9S34HB0",
+                "provider_input_id": "in-01M4FCJNN1PVVRKF7421126T7R"
+              }
+            ],
+            "total": 2,
+            "truncated": false,
+            "observed_at": "2026-10-09T03:55:13.354789+00:00"
+          }
+        },
+        "events": [
+          {
+            "sequence": 6,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:07.498990+00:00",
+            "observed_at": "2026-10-09T03:51:10.494943+00:00",
+            "unit": "bytes",
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR",
+              "parameters": 401
+            },
+            "scope": "shared_pool",
+            "stage": "restored_weights",
+            "total": 1705972416,
+            "completed": 1705972416,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 7,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:07.581327+00:00",
+            "observed_at": "2026-10-09T03:51:10.495239+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR"
+            },
+            "scope": "shared_pool",
+            "stage": "allocating_kv_cache",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 8,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:08.063792+00:00",
+            "observed_at": "2026-10-09T03:51:10.495507+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR"
+            },
+            "scope": "shared_pool",
+            "stage": "checking_engine_health",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 9,
+            "event": "provider",
+            "source_at": "2026-10-09T03:45:08.145606+00:00",
+            "observed_at": "2026-10-09T03:51:10.495839+00:00",
+            "unit": null,
+            "facts": {
+              "worker_id": "ta-01M4FBZXPYCF5JV2FJMSRJA5HR",
+              "base_identity": "3b53342623cc24eac424d0c81dda5d5612830674fa4099b2d146be5cc9b92715"
+            },
+            "scope": "shared_pool",
+            "stage": "engine_ready",
+            "total": null,
+            "completed": null,
+            "provider_call_id": null
+          },
+          {
+            "sequence": 10,
+            "event": "provider_graph",
+            "source_at": "2026-10-09T03:51:39.167913+00:00",
+            "observed_at": "2026-10-09T03:51:39.167913+00:00",
+            "calls": [
+              {
+                "status": "PENDING",
+                "function": "inference_request",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJHAC4C9TZVNMH1TAPWNB",
+                "provider_input_id": "in-01M4FCJHANA770D3ZHHWXC3ZKN"
+              },
+              {
+                "status": "PENDING",
+                "function": "L4_vllm_lora.*",
+                "worker_id": "",
+                "provider_call_id": "fc-01M4FCJNMTD85QAQ97H9S34HB0",
+                "provider_input_id": "in-01M4FCJNN1PVVRKF7421126T7R"
+              }
+            ],
+            "total": 2,
+            "truncated": false
+          }
+        ],
+        "page": {
+          "has_more": true,
+          "next_cursor": 10,
+          "through_sequence": 45
+        }
+      },
+      "resource": {
+        "uri": "overmind://operations/6f923254-289c-411f-abf2-f91c7e28246c?project_id=e18b29b5-915d-45a7-80cd-77ffe6559205",
+        "title": "Operational timeline",
+        "mimeType": "application/json"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "contract_version": "4.0.0",
+      "catalog_sha256": "f10e929da7db95e89a3a5c9e81f5ad3625c266d7b4f41ac44fef6bb6c3311c01",
+      "tool_count": 62,
+      "connection": {
+        "mcp_url": "http://localhost:8000/api/mcp/",
+        "console_url": "http://localhost:5173",
+        "identity_basis": "authenticated request endpoint; compare with your intended environment"
+      },
+      "guidance": {
+        "entry": "list_projects; data-only work does not require code scanning or a capability",
+        "source": "Pass exact cell UUIDs and fingerprints. Workshop pipelines publish new versions, including from frozen historical parents.",
+        "workshop": "The calling agent owns planning, authoring and semantic work. Save immutable recipes with save_dataset_pipeline; run_dataset_pipeline executes deterministic operations. import_dataset_version accepts externally authored rows with validated parent identities. inspect_dataset_workbench returns receipts. No internal Workshop agent or remote arbitrary Python execution.",
+        "lifecycle": "create saves a draft; prepare verifies inputs; launch is explicit paid authorization",
+        "resume": "Use get_job and next_actions. Saved request keys and provider receipts survive reconnects; unresolved submissions are not replayed.",
+        "recipes": "Use get_model_catalog for supported model-specific context, batch and training-method constraints. Hyperparameters remain a model-dependent extension; stable partition, sampling, inference and workload settings are typed.",
+        "cost": "No implicit spend limit. User constraints bind a reviewed quote; missing cost components stay explicit.",
+        "pause": "Pausing a comparison prevents future submissions. It neither cancels in-flight provider work nor configures an external notification monitor."
+      },
+      "training_runtime": "Pinned per experiment and job; local catalog identity does not certify deployed GPU code",
+      "installed_guidance": "Connected tool schemas are authoritative when installed skills differ",
+      "discovery": "Compare this endpoint and catalog hash with the connection you intend to use. Refresh tools/list when the cached inventory differs; do not silently switch environments."
+    }
+  ]
+}

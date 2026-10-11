@@ -1,0 +1,8 @@
+{
+  "rows": 2048,
+  "text_bytes_per_row": 262152,
+  "peak_rss_mib": 723.17,
+  "seconds": 0.97,
+  "limit_mib": 768,
+  "passed": true
+}

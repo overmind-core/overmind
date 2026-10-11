@@ -1,0 +1,47 @@
+{
+  "scope": "Read-only native MCP inspection after one unexplained 6.6124s outlier; timings use the tool-call boundary, unlike the HTTP harness.",
+  "calls": [
+    {
+      "dataset": "189f6598-bd05-4cee-a753-1cb21b41ff89",
+      "repeat": 0,
+      "seconds": 0.041,
+      "is_error": false,
+      "rows": 2
+    },
+    {
+      "dataset": "189f6598-bd05-4cee-a753-1cb21b41ff89",
+      "repeat": 1,
+      "seconds": 0.028,
+      "is_error": false,
+      "rows": 2
+    },
+    {
+      "dataset": "189f6598-bd05-4cee-a753-1cb21b41ff89",
+      "repeat": 2,
+      "seconds": 0.024,
+      "is_error": false,
+      "rows": 2
+    },
+    {
+      "dataset": "42c67cd7-fea6-46d5-a836-028080798616",
+      "repeat": 0,
+      "seconds": 0.022,
+      "is_error": false,
+      "rows": 1381
+    },
+    {
+      "dataset": "42c67cd7-fea6-46d5-a836-028080798616",
+      "repeat": 1,
+      "seconds": 0.023,
+      "is_error": false,
+      "rows": 1381
+    },
+    {
+      "dataset": "42c67cd7-fea6-46d5-a836-028080798616",
+      "repeat": 2,
+      "seconds": 0.023,
+      "is_error": false,
+      "rows": 1381
+    }
+  ]
+}

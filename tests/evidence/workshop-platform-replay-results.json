@@ -1,0 +1,341 @@
+{
+  "success": true,
+  "endpoint": "http://localhost:8000",
+  "artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-platform-replay-5ksven8d",
+  "cases": [
+    {
+      "kind": "documents",
+      "original_dataset": "86d0db67-a85e-44e3-a113-63381fe55ef8",
+      "dataset": "af6cdfd5-d4a2-4f1b-bae2-a5a5b4654635",
+      "recipe": "25b7e82f-af5a-478e-9ad1-ce0d9be78008",
+      "recipe_fingerprint": "3136ed9d05a0fd061634414b48c569f8ae2646851e1269971e5d417dd5200f56",
+      "source_cell": "f66bc56e-17f7-4ce7-833d-44c9bfaab381",
+      "source_fingerprint": "e353a31466d6a62b8b54ef11cd09be91f5c6d564dd3974c77b16a8ac76711780",
+      "runs": [
+        {
+          "id": "8049c151-e497-4499-bba5-c7aa59c8ef7a",
+          "mode": "preview",
+          "seconds": 15.164,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "review",
+              "input_rows": 3,
+              "output_rows": 0,
+              "output_cell": null
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 3,
+              "output_rows": 1,
+              "output_cell": null
+            }
+          ]
+        },
+        {
+          "id": "cc4e8220-691d-4e02-b2bd-fc410a39922c",
+          "mode": "publish",
+          "seconds": 18.64,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "2071a9d7-8814-484d-8be8-bc732f16978c"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 320,
+              "output_rows": 0,
+              "output_cell": "2a78e39e-958f-4756-b505-cdf8a0acf2f0"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "c227c53e-9228-490a-ad6f-2bc6c6826b70"
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 320,
+              "output_rows": 7,
+              "output_cell": "48e58e96-c9d0-4404-b0a2-517efb34b695"
+            }
+          ]
+        },
+        {
+          "id": "452075fa-3b3b-4e8f-84bb-4f0ec708ff48",
+          "mode": "publish",
+          "seconds": 18.447,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "8e663a11-2b0a-4a63-9279-9ff4cbed3308"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 320,
+              "output_rows": 0,
+              "output_cell": "552a9437-ad6d-44e8-a5a8-24aed82ed554"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 320,
+              "output_rows": 320,
+              "output_cell": "c831ca0e-f16b-4b1f-8891-8b9d157d1bed"
+            },
+            {
+              "step_id": "pages",
+              "input_rows": 320,
+              "output_rows": 7,
+              "output_cell": "6944b383-cb1d-4c7a-b69b-001bac1219bd"
+            }
+          ]
+        }
+      ],
+      "original_unchanged": true,
+      "output_user_values_sha256": {
+        "audit": "20c9e81378758e685daa25e8f134f2b2433bfc41c8a6b31873d786cef36ffa47",
+        "review": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "unflagged": "20c9e81378758e685daa25e8f134f2b2433bfc41c8a6b31873d786cef36ffa47",
+        "pages": "e28ded99fc3d4fff5d4a7bb8ae757c9b5cd662b0f20b2ba6be0fa458d730e5a0"
+      }
+    },
+    {
+      "kind": "tabular",
+      "original_dataset": "9fcbba7f-cb63-4024-af85-a1629fe3fb7b",
+      "dataset": "e8fcac7c-c566-4552-a923-39fdbb6fc8a0",
+      "recipe": "70e8ef55-dbf6-411f-9cd3-1976cfb0959c",
+      "recipe_fingerprint": "6beea98a63c0882fa0b2fa264d46a910d30a7525aa55326ffd0cc745d9805b26",
+      "source_cell": "c685c2b6-b61b-48f0-88b3-f17214a6c449",
+      "source_fingerprint": "6c254f8db509f720d680cb80ea89bcc5d5679d79db0533536e53eb45d9f44b8d",
+      "runs": [
+        {
+          "id": "1bb70c64-f3f2-4654-9d23-b93a9b1fcc33",
+          "mode": "preview",
+          "seconds": 15.134,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "review",
+              "input_rows": 3,
+              "output_rows": 0,
+              "output_cell": null
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            }
+          ]
+        },
+        {
+          "id": "a1c52d08-c1d1-4fef-9e20-2a5bbba36034",
+          "mode": "publish",
+          "seconds": 20.011,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "0fed3d66-2f01-4fb2-8eb5-88b0e5ef42ae"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 891,
+              "output_rows": 0,
+              "output_cell": "2619564c-c9e8-4252-b449-0c3e6de8d702"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "ada0d9bd-82ee-4862-afa8-635d621824f5"
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "e9dfd247-0ef3-43d2-b0ce-022d49a34401"
+            }
+          ]
+        },
+        {
+          "id": "5cb705cd-8d6a-440d-93b3-1a40632ecbda",
+          "mode": "publish",
+          "seconds": 24.332,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "ed3b82c6-7e8f-4bb8-9e9a-93121cd3ca7f"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 891,
+              "output_rows": 0,
+              "output_cell": "997197c6-84dc-4b60-98a1-4d03810c2b9a"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "6ab1ca94-a98f-4664-a864-0560e56d1ca0"
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 891,
+              "output_rows": 891,
+              "output_cell": "b6718950-65f1-44e7-9201-7d6377dd3410"
+            }
+          ]
+        }
+      ],
+      "original_unchanged": true,
+      "output_user_values_sha256": {
+        "audit": "ab6470796d219e40f889f199fc2e89098b169fe2410403409186e365eab753c9",
+        "review": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "unflagged": "ab6470796d219e40f889f199fc2e89098b169fe2410403409186e365eab753c9",
+        "messages": "c59e6dd5b0fc0388c858549746ad5da289d71e82a3af16393cfdee706fd5c397"
+      }
+    },
+    {
+      "kind": "chat",
+      "original_dataset": "756952d6-41d9-42a3-8683-e84884c2152a",
+      "dataset": "047bd9dd-79b9-408f-b40b-682231185baa",
+      "recipe": "1596b96a-6c58-458c-b3ae-701208093713",
+      "recipe_fingerprint": "d9aa41f470c27ddc7c97777708894dcfdc682ab76de8417d6ac841ed5796882b",
+      "source_cell": "af929aaa-29e5-4bcc-a58c-86ce9131df2a",
+      "source_fingerprint": "960aa2aea4bfa833042c9f1b7b6b3d8db8e386c90d138b1081d4a88ac158b89d",
+      "runs": [
+        {
+          "id": "3d5093d1-b5a7-4570-a7ae-4dc6844fa00f",
+          "mode": "preview",
+          "seconds": 15.17,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "review",
+              "input_rows": 3,
+              "output_rows": 0,
+              "output_cell": null
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 3,
+              "output_rows": 3,
+              "output_cell": null
+            }
+          ]
+        },
+        {
+          "id": "2825b6b5-b1cf-4f73-b522-4cb58aa6b0af",
+          "mode": "publish",
+          "seconds": 19.452,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "d7fee8b5-568a-4cde-a715-18f891683d21"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 1000,
+              "output_rows": 0,
+              "output_cell": "9175b0a6-c982-476e-b8a9-58bc1343448e"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "b2bc9ef9-6cfe-447b-89a7-13417956abe3"
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "01dab3d3-b4e4-467e-a244-97319862b9bb"
+            }
+          ]
+        },
+        {
+          "id": "5a46e4c8-0b0e-4660-ac68-7ae0fa294984",
+          "mode": "publish",
+          "seconds": 25.109,
+          "steps": [
+            {
+              "step_id": "audit",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "4cb5cae6-a062-4c4e-a8ca-179df15d3cfe"
+            },
+            {
+              "step_id": "review",
+              "input_rows": 1000,
+              "output_rows": 0,
+              "output_cell": "dc9ed4ca-1900-4a41-bc3d-9020d987e4bb"
+            },
+            {
+              "step_id": "unflagged",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "468616b9-7d48-4119-a7c7-43cbe6178537"
+            },
+            {
+              "step_id": "messages",
+              "input_rows": 1000,
+              "output_rows": 1000,
+              "output_cell": "f889329c-ff94-4494-81e6-6d9e26726bec"
+            }
+          ]
+        }
+      ],
+      "original_unchanged": true,
+      "output_user_values_sha256": {
+        "audit": "1f2bc6761cfdda1eaa73b3cdff04e7c5fe642b8f64a007687caf6a3efacf0496",
+        "review": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "unflagged": "1f2bc6761cfdda1eaa73b3cdff04e7c5fe642b8f64a007687caf6a3efacf0496",
+        "messages": "1f2bc6761cfdda1eaa73b3cdff04e7c5fe642b8f64a007687caf6a3efacf0496"
+      }
+    }
+  ],
+  "catalog_sha256": "f132b4f8ad72f324f108b2e4db88c912127eeb3a0eee6b29858acb97ff4c16e4"
+}

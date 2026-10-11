@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { GraphTooltip } from "@/components/ui/graph-tooltip";
 import { seriesColor } from "@/lib/colors";
 import type { FinetuningProgress } from "@/lib/finetuning-progress";
 
@@ -18,40 +19,6 @@ const EVAL_COLOR = seriesColor(1);
 const TRAIN_ACC_COLOR = seriesColor(2);
 const EVAL_ACC_COLOR = seriesColor(3);
 const LR_COLOR = seriesColor(4);
-
-function MiniTooltip({
-  active,
-  payload,
-  label,
-  xLabel = "step",
-  formatValue = (v: number) => v.toFixed(4),
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number | null; color: string }>;
-  label?: number | string;
-  xLabel?: string;
-  formatValue?: (v: number) => string;
-}) {
-  if (!active || !payload?.length) return null;
-  const entries = payload.filter((e) => e.value != null);
-  if (!entries.length) return null;
-  return (
-    <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs">
-      <p className="mb-1 font-medium text-muted-foreground">
-        {xLabel} {label}
-      </p>
-      {entries.map((entry) => (
-        <div className="flex items-center gap-2" key={entry.name}>
-          <span className="inline-block size-2 rounded-xs" style={{ background: entry.color }} />
-          <span className="text-muted-foreground">{entry.name}</span>
-          <span className="ml-auto font-mono tabular-nums">
-            {formatValue(entry.value as number)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function MiniChart({
   title,
@@ -105,10 +72,11 @@ function SharedAxes({ xLabel = "step" }: { xLabel?: string }) {
 }
 
 interface LiveMetricsChartProps {
+  modelName: string;
   progress: FinetuningProgress;
 }
 
-export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
+export function LiveMetricsChart({ progress, modelName }: LiveMetricsChartProps) {
   const trainHistory = progress.metrics_history ?? [];
   const evalHistory = progress.eval_history ?? [];
 
@@ -191,7 +159,17 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
                 x={s}
               />
             ))}
-            <Tooltip content={<MiniTooltip formatValue={(v) => v.toFixed(4)} xLabel="step" />} />
+            <Tooltip
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`step ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => v.toFixed(4)}
+                />
+              )}
+            />
             <Line {...SHARED_LINE_PROPS} dataKey="value" name="train loss" stroke={TRAIN_COLOR} />
           </LineChart>
         </MiniChart>
@@ -201,7 +179,17 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
         <MiniChart subtitle="per eval checkpoint" title="Val loss">
           <LineChart data={stepEvalLoss} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes />
-            <Tooltip content={<MiniTooltip formatValue={(v) => v.toFixed(4)} xLabel="step" />} />
+            <Tooltip
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`step ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => v.toFixed(4)}
+                />
+              )}
+            />
             <Line
               {...SHARED_LINE_PROPS}
               dataKey="value"
@@ -225,7 +213,15 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
               />
             ))}
             <Tooltip
-              content={<MiniTooltip formatValue={(v) => `${v.toFixed(1)}%`} xLabel="step" />}
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`step ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => `${v.toFixed(1)}%`}
+                />
+              )}
             />
             <Line
               {...SHARED_LINE_PROPS}
@@ -242,7 +238,15 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
           <LineChart data={stepEvalAcc} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes />
             <Tooltip
-              content={<MiniTooltip formatValue={(v) => `${v.toFixed(1)}%`} xLabel="step" />}
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`step ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => `${v.toFixed(1)}%`}
+                />
+              )}
             />
             <Line
               {...SHARED_LINE_PROPS}
@@ -260,7 +264,15 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
           <LineChart data={stepLr} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes />
             <Tooltip
-              content={<MiniTooltip formatValue={(v) => v.toExponential(3)} xLabel="step" />}
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`step ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => v.toExponential(3)}
+                />
+              )}
             />
             <Line {...SHARED_LINE_PROPS} dataKey="value" name="lr" stroke={LR_COLOR} />
           </LineChart>
@@ -271,7 +283,17 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
         <MiniChart subtitle="epoch avg" title="Train loss (epoch)">
           <LineChart data={epochTrainLoss} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes xLabel="epoch" />
-            <Tooltip content={<MiniTooltip formatValue={(v) => v.toFixed(4)} xLabel="epoch" />} />
+            <Tooltip
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`epoch ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => v.toFixed(4)}
+                />
+              )}
+            />
             <Line
               {...SHARED_LINE_PROPS}
               dataKey="value"
@@ -287,7 +309,17 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
         <MiniChart subtitle="per epoch" title="Val loss (epoch)">
           <LineChart data={epochEvalLoss} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes xLabel="epoch" />
-            <Tooltip content={<MiniTooltip formatValue={(v) => v.toFixed(4)} xLabel="epoch" />} />
+            <Tooltip
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`epoch ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => v.toFixed(4)}
+                />
+              )}
+            />
             <Line
               {...SHARED_LINE_PROPS}
               dataKey="value"
@@ -304,7 +336,15 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
           <LineChart data={epochTrainAcc} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes xLabel="epoch" />
             <Tooltip
-              content={<MiniTooltip formatValue={(v) => `${v.toFixed(1)}%`} xLabel="epoch" />}
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`epoch ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => `${v.toFixed(1)}%`}
+                />
+              )}
             />
             <Line
               {...SHARED_LINE_PROPS}
@@ -322,7 +362,15 @@ export function LiveMetricsChart({ progress }: LiveMetricsChartProps) {
           <LineChart data={epochEvalAcc} margin={{ bottom: 0, left: 0, right: 8, top: 4 }}>
             <SharedAxes xLabel="epoch" />
             <Tooltip
-              content={<MiniTooltip formatValue={(v) => `${v.toFixed(1)}%`} xLabel="epoch" />}
+              content={({ active, payload, label }) => (
+                <GraphTooltip
+                  active={active}
+                  label={`epoch ${label}`}
+                  nameFormatter={() => modelName}
+                  payload={payload}
+                  valueFormatter={(v) => `${v.toFixed(1)}%`}
+                />
+              )}
             />
             <Line
               {...SHARED_LINE_PROPS}

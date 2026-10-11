@@ -530,7 +530,7 @@ export function TimeRangeButton({
             )
           )}
         </div>
-        <div className="mt-3 border-t border-border/70 pt-3">
+        <div className="-mx-3 mt-3 border-t border-border/70 px-3 pt-3">
           <p className="text-xs font-medium text-muted-foreground">Custom range</p>
           <div className="mt-1.5 grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1 text-xs">

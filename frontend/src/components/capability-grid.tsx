@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TITLE } from "@/lib/typography";
+import { LABEL } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { CapabilityList } from "@/openapi";
 
@@ -47,7 +47,7 @@ function MetricRow({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2.5 py-1.5">
+    <div className="flex min-w-0 items-center gap-2.5 px-5 py-1.5">
       <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
         {icon}
       </span>
@@ -73,7 +73,12 @@ function CapabilityCard({ capability }: { capability: CapabilityList }) {
     // bg-card would give them no separation from.
     <div className="flex h-full w-full min-w-0 cursor-pointer flex-col rounded-md border border-border bg-wash-subtle px-5 pb-4 pt-4 transition-all hover:border-[var(--accent-warm)] hover:bg-wash-raised">
       <div className="mb-1.5 flex items-start justify-between gap-2">
-        <h3 className={cn(TITLE.card, "min-w-0 flex-1 truncate capitalize text-foreground")}>
+        <h3
+          className={cn(
+            LABEL.pixel,
+            "min-w-0 flex-1 truncate text-lg font-medium capitalize leading-6 text-foreground"
+          )}
+        >
           {capability.name}
         </h3>
         {capability.observed ? (
@@ -87,7 +92,7 @@ function CapabilityCard({ capability }: { capability: CapabilityList }) {
         {capability.slug}
       </p>
 
-      <div className="mt-auto min-w-0 divide-y divide-border/70">
+      <div className="-mx-5 mt-auto min-w-0 divide-y divide-border/70">
         {capability.model && (
           <MetricRow icon={<Icon.model className="size-3" />} label="Model">
             <span className="ml-auto flex min-w-0 items-center gap-1.5">

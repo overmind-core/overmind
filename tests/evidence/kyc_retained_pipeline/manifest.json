@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "runtime": "sha256:0a0764841fcc41e7bb73a8cae6afe3ecd4237ac4edc2d2de023cfe57b6b1d0ea",
+  "parameters": {},
+  "limits": {"seconds": 600, "memory_mb": 2048, "scratch_mb": 4096, "cpus": 1},
+  "steps": [
+    {
+      "id": "validate",
+      "input": "source",
+      "name": "Validate supplied text, labels and row identity",
+      "entrypoint": "validate.py",
+      "input_schema": {"tokens": "string", "kyc_risk_bucket": "string", "source_row": "integer"},
+      "output_schema": {"tokens": "string", "kyc_risk_bucket": "string", "source_row": "integer"},
+      "checks": {"preserve_rows": true}
+    },
+    {
+      "id": "project",
+      "input": "validate",
+      "name": "Project existing evidence and risk-bucket targets",
+      "entrypoint": "project.py",
+      "output_schema": {"question": "string", "answer": "string", "source_row": "integer"},
+      "checks": {"preserve_rows": true}
+    },
+    {
+      "id": "messages",
+      "input": "project",
+      "name": "Construct supervised user and assistant turns",
+      "entrypoint": "messages.py",
+      "output_schema": {"question": "string", "answer": "string", "messages": "array", "source_row": "integer"},
+      "checks": {"preserve_rows": true}
+    }
+  ]
+}

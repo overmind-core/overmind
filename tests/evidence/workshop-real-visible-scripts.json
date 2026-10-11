@@ -1,0 +1,679 @@
+{
+  "run": "visible-scripts",
+  "endpoint": "http://localhost:8000",
+  "cases": [
+    {
+      "kind": "documents",
+      "original_dataset": "a14e5398-f0a4-4e97-b80c-8575d6c2b318",
+      "original_cell": "96b430a0-088b-4c81-b76b-10ec3f484450",
+      "source_rows": 320,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".jsonl",
+          "dataset": "86d0db67-a85e-44e3-a113-63381fe55ef8",
+          "upload_seconds": 3.905,
+          "preview": {
+            "id": "b01d3015-28ff-40be-bf33-c1cdbfca359b",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.596,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.603,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.578,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": null,
+                "input_rows": 3,
+                "output_rows": 1,
+                "output_cell": null,
+                "seconds": 2.641,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "d818a12c-477f-4791-9b9a-8fdb091c6446",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "e1065ecd-05ea-4f1f-b3f5-a705cb1a5a91",
+                "seconds": 2.621,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 0,
+                "output_cell": "29cb32dd-86a0-4011-a927-ac570cb3a5a9",
+                "seconds": 2.615,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 320,
+                "output_rows": 320,
+                "output_cell": "2859d121-dd16-4cfe-a820-9239a9e975d9",
+                "seconds": 2.643,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "pages",
+                "input_step": null,
+                "input_rows": 320,
+                "output_rows": 7,
+                "output_cell": "a5d2517b-2113-4f39-904c-05faa3adc936",
+                "seconds": 2.619,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "f66bc56e-17f7-4ce7-833d-44c9bfaab381",
+              "title": "Source",
+              "rows": 320
+            },
+            {
+              "id": "e1065ecd-05ea-4f1f-b3f5-a705cb1a5a91",
+              "title": "Inspect source and retain review evidence",
+              "rows": 320
+            },
+            {
+              "id": "29cb32dd-86a0-4011-a927-ac570cb3a5a9",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "2859d121-dd16-4cfe-a820-9239a9e975d9",
+              "title": "Rows without measured flags",
+              "rows": 320
+            },
+            {
+              "id": "a5d2517b-2113-4f39-904c-05faa3adc936",
+              "title": "Assemble page evidence without inventing targets",
+              "rows": 7
+            }
+          ],
+          "seconds": 37.228,
+          "output_rows": 7,
+          "output_sha256": "1ca73c0e719558e8990e2f220a34f7803a4408b67dd6139d12c23fcfb203a173",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-visible-scripts-dmj648lq/documents.jsonl",
+        "dataset_id": "a14e5398-f0a4-4e97-b80c-8575d6c2b318",
+        "format": "jsonl",
+        "bytes_written": 348771,
+        "cell": "96b430a0-088b-4c81-b76b-10ec3f484450",
+        "version": "1.0",
+        "fingerprint": "c3cfae28ceb06a1fd888f95e6073de6d4349102395f128aae9759a0e86d87384"
+      },
+      "export_seconds": 0.761,
+      "package": "b0ec95e5-c9f6-4258-8427-1b3b023c9ae2",
+      "recipe": "25b7e82f-af5a-478e-9ad1-ce0d9be78008"
+    },
+    {
+      "kind": "tabular",
+      "original_dataset": "7def7ef9-1ece-4335-ab31-0cf0df18705c",
+      "original_cell": "b7aa0c70-da36-4f5e-af46-583e5bfcdff5",
+      "source_rows": 891,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".csv",
+          "dataset": "9fcbba7f-cb63-4024-af85-a1629fe3fb7b",
+          "upload_seconds": 3.936,
+          "preview": {
+            "id": "247ca33a-4665-48eb-b3f1-d19af647977a",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "running",
+                "stage": "measuring_impact"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.591,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.613,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.594,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": null,
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.654,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "43826276-c5cb-4369-8b22-b4b75c27660b",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_4_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "70dc2253-3c51-4908-8d2d-851e5792fb80",
+                "seconds": 2.72,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 0,
+                "output_cell": "feee71da-7e31-4ad1-802e-19286735d306",
+                "seconds": 2.564,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "d8983004-0c0a-4a71-915e-953a80265d08",
+                "seconds": 2.915,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": null,
+                "input_rows": 891,
+                "output_rows": 891,
+                "output_cell": "d6b9af86-79d4-4227-b729-19c5a1a6a9d4",
+                "seconds": 2.68,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "c685c2b6-b61b-48f0-88b3-f17214a6c449",
+              "title": "Source",
+              "rows": 891
+            },
+            {
+              "id": "70dc2253-3c51-4908-8d2d-851e5792fb80",
+              "title": "Inspect source and retain review evidence",
+              "rows": 891
+            },
+            {
+              "id": "feee71da-7e31-4ad1-802e-19286735d306",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "d8983004-0c0a-4a71-915e-953a80265d08",
+              "title": "Rows without measured flags",
+              "rows": 891
+            },
+            {
+              "id": "d6b9af86-79d4-4227-b729-19c5a1a6a9d4",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 891
+            }
+          ],
+          "seconds": 48.645,
+          "output_rows": 891,
+          "output_sha256": "af3ae2af7e6c0fecab670d5591fe9dd2ea8af1285e783eea9ef4b42498065e61",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-visible-scripts-dmj648lq/tabular.jsonl",
+        "dataset_id": "7def7ef9-1ece-4335-ab31-0cf0df18705c",
+        "format": "jsonl",
+        "bytes_written": 330976,
+        "cell": "b7aa0c70-da36-4f5e-af46-583e5bfcdff5",
+        "version": "1.0",
+        "fingerprint": "aa1f902c5ea70f3e229f1f9cace6bff7da0c8cf39eadf5faa0c6cf4624ba5327"
+      },
+      "export_seconds": 0.772,
+      "package": "f640d95e-f9f8-4b61-999a-dfadce0fb630",
+      "recipe": "70e8ef55-dbf6-411f-9cd3-1976cfb0959c"
+    },
+    {
+      "kind": "chat",
+      "original_dataset": "425a415c-7cc8-4175-83cc-049abb5cd6c7",
+      "original_cell": "8922f0e7-a480-4aa4-aa3b-4483ae691d65",
+      "source_rows": 1000,
+      "runs": [
+        {
+          "repeat": 1,
+          "upload_format": ".jsonl",
+          "dataset": "756952d6-41d9-42a3-8683-e84884c2152a",
+          "upload_seconds": 3.877,
+          "preview": {
+            "id": "b4aa78d1-fcad-47dc-9377-2ebd755906fd",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_2_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.662,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 0,
+                "output_cell": null,
+                "seconds": 2.671,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.701,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": null,
+                "input_rows": 3,
+                "output_rows": 3,
+                "output_cell": null,
+                "seconds": 2.741,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "preserve_rows": true
+                  },
+                  "deferred": {
+                    "min_rows": 1
+                  }
+                }
+              }
+            ]
+          },
+          "publish": {
+            "id": "b82a3a28-9997-467e-b3b6-02231f56ddd8",
+            "observed": [
+              {
+                "state": "queued",
+                "stage": "waiting_for_runner"
+              },
+              {
+                "state": "running",
+                "stage": "step_1_executing"
+              },
+              {
+                "state": "running",
+                "stage": "step_3_executing"
+              },
+              {
+                "state": "completed",
+                "stage": "completed"
+              }
+            ],
+            "steps": [
+              {
+                "step_id": "audit",
+                "input_step": "source",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "f07ea136-ab43-4f6a-acbf-f7de2c99a2bb",
+                "seconds": 2.845,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "review",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 0,
+                "output_cell": "780dd5f5-1b9a-4826-b1db-7d481d0304b8",
+                "seconds": 2.697,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "unflagged",
+                "input_step": "audit",
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "518fc139-4f7f-44e3-8792-5ac565c58004",
+                "seconds": 2.936,
+                "check_results": {
+                  "failed": {},
+                  "passed": {},
+                  "deferred": {}
+                }
+              },
+              {
+                "step_id": "messages",
+                "input_step": null,
+                "input_rows": 1000,
+                "output_rows": 1000,
+                "output_cell": "305c5523-e8fd-4109-8bf5-545fe5ee6447",
+                "seconds": 3.125,
+                "check_results": {
+                  "failed": {},
+                  "passed": {
+                    "min_rows": 1,
+                    "preserve_rows": true
+                  },
+                  "deferred": {}
+                }
+              }
+            ]
+          },
+          "cells": [
+            {
+              "id": "af929aaa-29e5-4bcc-a58c-86ce9131df2a",
+              "title": "Source",
+              "rows": 1000
+            },
+            {
+              "id": "f07ea136-ab43-4f6a-acbf-f7de2c99a2bb",
+              "title": "Inspect source and retain review evidence",
+              "rows": 1000
+            },
+            {
+              "id": "780dd5f5-1b9a-4826-b1db-7d481d0304b8",
+              "title": "Rows requiring review",
+              "rows": 0
+            },
+            {
+              "id": "518fc139-4f7f-44e3-8792-5ac565c58004",
+              "title": "Rows without measured flags",
+              "rows": 1000
+            },
+            {
+              "id": "305c5523-e8fd-4109-8bf5-545fe5ee6447",
+              "title": "Prepare model inputs; retain all observations",
+              "rows": 1000
+            }
+          ],
+          "seconds": 37.392,
+          "output_rows": 1000,
+          "output_sha256": "e1d11b0c1e98e69c7654b12be1315a2d1acb282be2b26ce79f3475c619b9cc15",
+          "coverage": "Every row; labels/messages, identity groups, branch membership/disjointness and complete source coverage"
+        }
+      ],
+      "export": {
+        "path": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-visible-scripts-dmj648lq/chat.jsonl",
+        "dataset_id": "425a415c-7cc8-4175-83cc-049abb5cd6c7",
+        "format": "jsonl",
+        "bytes_written": 3284370,
+        "cell": "8922f0e7-a480-4aa4-aa3b-4483ae691d65",
+        "version": "1.0",
+        "fingerprint": "8b7fe3a8b2f6ded5992be775f6073efc6a474c3c110a443f15ccad6aa772bee2"
+      },
+      "export_seconds": 0.818,
+      "package": "7bf2a9cb-f515-44d2-8d24-cd02c1f4f354",
+      "recipe": "1596b96a-6c58-458c-b3ae-701208093713"
+    }
+  ],
+  "errors": [],
+  "success": true,
+  "coverage": "Actual local MCP and installed CLI; deterministic replay, not independent fresh-agent conversations",
+  "interface": {
+    "contract_version": "5.5.0",
+    "catalog_sha256": "3e4badc061866fd41c846b0b102e8610d5176940a48f44d8016bef86e291c069"
+  },
+  "source_origin": "existing user-supplied datasets",
+  "local_artifacts": "/var/folders/3n/lp8nf2hd2c73dbbnn8r380rc0000gn/T/workshop-real-visible-scripts-dmj648lq"
+}

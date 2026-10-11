@@ -57,6 +57,10 @@ def request_json(client, method, url, *, stage, **kwargs):
         ) from None
     if not 200 <= response.status_code < 300:
         known_errors = {
+            "pipeline_column_type": (
+                "Column contracts use string, integer, number, boolean, object, array, null or any. Use object for a decision object; json is not a column type.",
+                "correct_manifest_column_types",
+            ),
             "pipeline_parameters": (
                 'Manifest parameters declare types, for example {"seed": "integer"}. '
                 'Supply values such as {"seed": 42} in run_dataset_pipeline(parameters=...).',
