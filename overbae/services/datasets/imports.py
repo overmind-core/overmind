@@ -67,9 +67,12 @@ def _source_inputs(inputs):
     manifest = []
     for value in _uploads(inputs["source"]):
         upload_id = str(uuid.UUID(str(value)))
-        path = files.upload_data_path(upload_id)
         filename = files.upload_filename(upload_id)
-        if not filename or not path.is_file():
+        try:
+            stat = files.stored_stat(files.upload_data_path(upload_id))
+        except OSError:
+            stat = None
+        if not filename or stat is None:
             raise DatasetError(
                 "The source upload is missing. Upload it again.", code="source_missing"
             )
@@ -79,7 +82,6 @@ def _source_inputs(inputs):
                 "before creating a dataset from it.",
                 code="upload_not_inspected",
             )
-        stat = path.stat()
         manifest.append(
             {
                 "upload_id": upload_id,
@@ -364,12 +366,12 @@ def _requeue(run):
 
 def validate_sources(run):
     for source in run.source_manifest:
-        path = files.upload_data_path(source["upload_id"])
-        if not path.is_file():
+        try:
+            stat = files.stored_stat(files.upload_data_path(source["upload_id"]))
+        except OSError as exc:
             raise DatasetError(
                 "The saved upload is missing. Upload it again.", code="source_missing"
-            )
-        stat = path.stat()
+            ) from exc
         if stat.st_size != source["bytes"] or stat.st_mtime_ns != source["mtime_ns"]:
             raise DatasetError(
                 "The saved upload changed after it was queued.", code="source_changed"

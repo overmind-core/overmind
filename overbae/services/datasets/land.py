@@ -186,7 +186,9 @@ def read_uploads(upload_ids: list[str]) -> Landing:
         if not filename or not path.exists():
             raise LandError("An upload has expired. Start it again.")
         part = read_file(path, filename=filename)
-        sources.append({"filename": filename, "bytes": path.stat().st_size, "rows": len(part.rows)})
+        sources.append(
+            {"filename": filename, "bytes": files.stored_stat(path).st_size, "rows": len(part.rows)}
+        )
         rows.extend(part.rows)
     return read_rows(rows, spec={"files": sources})
 

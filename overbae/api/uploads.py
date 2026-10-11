@@ -54,7 +54,7 @@ class UploadViewSet(viewsets.ViewSet):
     through the router, so an action-level parser silently reverts elsewhere."""
 
     parser_classes = [JSONParser, OctetStreamParser]
-    lookup_value_regex = "[0-9a-f-]{36}"
+    lookup_value_regex = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
     @extend_schema(
         summary="Validate an uploaded file and count its rows",

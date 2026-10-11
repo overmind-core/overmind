@@ -81,6 +81,19 @@ def test_inspection_requires_the_complete_upload():
         files.inspect_upload(upload_id, size=10)
 
 
+def test_a_retried_chunk_rewrites_the_bytes_an_interrupted_attempt_stored():
+    content = b'{"input":"one"}\n{"input":"two"}\n'
+    upload_id, _ = files.begin_upload("data.jsonl")
+    files.append_chunk(upload_id, 0, content[:20])
+    assert files.append_chunk(upload_id, 0, content) == len(content)
+    assert files.append_chunk(upload_id, 0, content) == len(content)
+    assert files.inspect_upload(upload_id, size=len(content))["rows"] == 2
+    with pytest.raises(files.FileError, match="stored"):
+        files.append_chunk(upload_id, len(content) + 1, b"{}\n")
+    with pytest.raises(files.FileError, match="negative"):
+        files.append_chunk(upload_id, -1, b"{}\n")
+
+
 def test_inspection_endpoint_counts_rows_and_reports_validation_errors(client_project):
     client, _ = client_project
     reserved = client.post("/api/uploads/", {"filename": "data.csv"}, format="json")
