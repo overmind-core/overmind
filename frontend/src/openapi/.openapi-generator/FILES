@@ -76,13 +76,6 @@ models/CapabilityRequest.ts
 models/CapabilityStatusEnum.ts
 models/CatalogModel.ts
 models/Cell.ts
-models/CellCreateRequest.ts
-models/CellStateEnum.ts
-models/ChatRequest.ts
-models/ChatTurn.ts
-models/ChatTurnRequest.ts
-models/ChatTurnRoleEnum.ts
-models/ChatTurnStatusEnum.ts
 models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts
@@ -135,7 +128,6 @@ models/DecisionPolicyRequest.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts
-models/Detail.ts
 models/EvalJudgeModelEnum.ts
 models/EvalRun.ts
 models/EvalRunDataSourceEnum.ts
@@ -178,11 +170,14 @@ models/EvaluatorScoreHistory.ts
 models/EvaluatorScoreHistoryPoint.ts
 models/EventTypeEnum.ts
 models/EvidenceRequirementEnum.ts
+models/Execution.ts
 models/ExecutionConflict.ts
 models/ExecutionFlow.ts
 models/ExecutionFlowStep.ts
 models/ExecutionFlowTerminal.ts
 models/ExecutionIntent.ts
+models/ExecutionModeEnum.ts
+models/ExecutionStateEnum.ts
 models/ExecutionTaskState.ts
 models/ExecutionTool.ts
 models/FeedbackCreate.ts
@@ -278,7 +273,6 @@ models/PaginatedSessionList.ts
 models/PaginatedTaskExecutionListList.ts
 models/PaginatedVerdictList.ts
 models/PatchedCapabilityRequest.ts
-models/PatchedCellWriteRequest.ts
 models/PatchedConnectorCredentialRequest.ts
 models/PatchedDatasetRequest.ts
 models/PatchedEvalRunRequest.ts

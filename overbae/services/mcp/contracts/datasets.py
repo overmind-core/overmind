@@ -9,10 +9,9 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
-from django.db.models import Q
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
-from overbae.models import Cell, Dataset, DatasetImport, Execution
+from overbae.models import Cell, Dataset, Execution
 from overbae.services.datasets import executions, imports, paths, store, workshop
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
@@ -598,16 +597,6 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
     return None
 
 
-def _blocked_attempts(dataset) -> int | None:
-    return (
-        DatasetImport.objects.filter(
-            Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
-        )
-        .values_list("attempts", flat=True)
-        .first()
-    )
-
-
 def next_actions(dataset, active: Cell | None) -> list[NextAction]:
     """The one answer to "what now" for a dataset. Every suggestion satisfies
     the named tool's schema as given."""
@@ -621,8 +610,7 @@ def next_actions(dataset, active: Cell | None) -> list[NextAction]:
             )
         ]
     if dataset.state == Dataset.State.ERROR:
-        attempts = _blocked_attempts(dataset)
-        if attempts is not None and attempts < imports.MAX_ATTEMPTS:
+        if imports.resumable_imports(dataset.pk).exists():
             return [
                 NextAction(
                     tool="resume_dataset_import",

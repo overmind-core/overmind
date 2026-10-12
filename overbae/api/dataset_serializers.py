@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from overbae.models import Cell, Dataset, Execution
 from overbae.services.datasets import review
+from overbae.services.datasets.imports import resumable_imports
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
 
@@ -56,6 +57,8 @@ class DatasetSerializer(serializers.ModelSerializer):
     active_version = serializers.SerializerMethodField()
     rows = serializers.SerializerMethodField()
     readiness = serializers.SerializerMethodField()
+    running = serializers.SerializerMethodField()
+    import_blocked = serializers.SerializerMethodField()
     expected_active = serializers.PrimaryKeyRelatedField(
         queryset=Cell.objects.all(),
         write_only=True,
@@ -82,6 +85,8 @@ class DatasetSerializer(serializers.ModelSerializer):
             "readiness",
             "state",
             "error",
+            "running",
+            "import_blocked",
             "cells",
             "created_by",
             "created_at",
@@ -111,6 +116,18 @@ class DatasetSerializer(serializers.ModelSerializer):
             return []
         return CellSerializer(self._versions(obj), many=True, context={"intent": obj.intent}).data
 
+    def get_running(self, obj) -> int:
+        if hasattr(obj, "running_count"):
+            return obj.running_count
+        return obj.executions.filter(
+            state__in=[Execution.State.QUEUED, Execution.State.RUNNING]
+        ).count()
+
+    def get_import_blocked(self, obj) -> bool:
+        if hasattr(obj, "import_blocked"):
+            return obj.import_blocked
+        return resumable_imports(obj.pk).exists()
+
     def get_active_version(self, obj) -> str:
         cell = self._active(obj)
         return cell.label if cell else ""
@@ -137,6 +154,7 @@ class DatasetSerializer(serializers.ModelSerializer):
 
 class ExecutionSerializer(serializers.ModelSerializer):
     error = serializers.SerializerMethodField()
+    script_head = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
     cell = serializers.SerializerMethodField()
     created_by = serializers.SerializerMethodField()
@@ -150,6 +168,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
             "state",
             "transient",
             "error",
+            "script_head",
             "parent",
             "cell",
             "queued_at",
@@ -162,6 +181,11 @@ class ExecutionSerializer(serializers.ModelSerializer):
 
     def get_error(self, obj) -> str:
         return obj.error[:300]
+
+    def get_script_head(self, obj) -> str:
+        if obj.mode == Execution.Mode.SYNTHETIC:
+            return ""
+        return next((line for line in obj.script.splitlines() if line.strip()), "")[:120]
 
     def get_parent(self, obj) -> str | None:
         return obj.parent.label if obj.parent_id else None

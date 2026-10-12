@@ -33,24 +33,6 @@ export interface DatasetReadiness {
     formatReason: string;
     /**
      *
-     * @type {boolean}
-     * @memberof DatasetReadiness
-     */
-    qualityReviewed: boolean;
-    /**
-     *
-     * @type {boolean}
-     * @memberof DatasetReadiness
-     */
-    qualityPassed: boolean;
-    /**
-     *
-     * @type {string}
-     * @memberof DatasetReadiness
-     */
-    qualityReason: string;
-    /**
-     *
      * @type {string}
      * @memberof DatasetReadiness
      */
@@ -63,9 +45,6 @@ export interface DatasetReadiness {
 export function instanceOfDatasetReadiness(value: object): value is DatasetReadiness {
     if (!('formatValid' in value) || value['formatValid'] === undefined) return false;
     if (!('formatReason' in value) || value['formatReason'] === undefined) return false;
-    if (!('qualityReviewed' in value) || value['qualityReviewed'] === undefined) return false;
-    if (!('qualityPassed' in value) || value['qualityPassed'] === undefined) return false;
-    if (!('qualityReason' in value) || value['qualityReason'] === undefined) return false;
     if (!('trainingConfiguration' in value) || value['trainingConfiguration'] === undefined) return false;
     return true;
 }
@@ -82,9 +61,6 @@ export function DatasetReadinessFromJSONTyped(json: any, ignoreDiscriminator: bo
 
         'formatValid': json['format_valid'],
         'formatReason': json['format_reason'],
-        'qualityReviewed': json['quality_reviewed'],
-        'qualityPassed': json['quality_passed'],
-        'qualityReason': json['quality_reason'],
         'trainingConfiguration': json['training_configuration'],
     };
 }
@@ -102,9 +78,6 @@ export function DatasetReadinessToJSONTyped(value?: DatasetReadiness | null, ign
 
         'format_valid': value['formatValid'],
         'format_reason': value['formatReason'],
-        'quality_reviewed': value['qualityReviewed'],
-        'quality_passed': value['qualityPassed'],
-        'quality_reason': value['qualityReason'],
         'training_configuration': value['trainingConfiguration'],
     };
 }

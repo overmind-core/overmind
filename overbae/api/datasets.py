@@ -8,7 +8,7 @@ import logging
 
 from django.conf import settings
 from django.db import connections
-from django.db.models import Prefetch
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -29,12 +29,13 @@ from overbae.api.dataset_serializers import (
     RowsPageSerializer,
 )
 from overbae.api.scoping import project_ids_for
-from overbae.models import Capability, Cell, Dataset, Project
+from overbae.models import Capability, Cell, Dataset, DatasetImport, Execution, Project
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     dispatch,
     events,
     files,
+    imports,
     lifecycle,
     paths,
     selection,
@@ -97,6 +98,21 @@ class DatasetViewSet(viewsets.ModelViewSet):
             )
             .select_related("capability")
             .prefetch_related(Prefetch("cells", queryset=Cell.objects.order_by("position")))
+            .annotate(
+                running_count=Count(
+                    "executions",
+                    filter=Q(
+                        executions__state__in=[Execution.State.QUEUED, Execution.State.RUNNING]
+                    ),
+                ),
+                import_blocked=Exists(
+                    DatasetImport.objects.filter(
+                        Q(dataset_id=OuterRef("pk")) | Q(evaluation_id=OuterRef("pk")),
+                        state=DatasetImport.State.BLOCKED,
+                        attempts__lt=imports.MAX_ATTEMPTS,
+                    )
+                ),
+            )
         )
         if self.action != "list":
             return qs

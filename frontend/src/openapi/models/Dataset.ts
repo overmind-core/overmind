@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { ChatTurn } from './ChatTurn';
-import {
-    ChatTurnFromJSON,
-    ChatTurnFromJSONTyped,
-    ChatTurnToJSON,
-    ChatTurnToJSONTyped,
-} from './ChatTurn';
 import type { DatasetSourceKindEnum } from './DatasetSourceKindEnum';
 import {
     DatasetSourceKindEnumFromJSON,
@@ -154,16 +147,22 @@ export interface Dataset {
     readonly error: string;
     /**
      *
+     * @type {number}
+     * @memberof Dataset
+     */
+    readonly running: number;
+    /**
+     *
+     * @type {boolean}
+     * @memberof Dataset
+     */
+    readonly importBlocked: boolean;
+    /**
+     *
      * @type {Array<Cell>}
      * @memberof Dataset
      */
     readonly cells: Array<Cell>;
-    /**
-     *
-     * @type {Array<ChatTurn>}
-     * @memberof Dataset
-     */
-    readonly chat: Array<ChatTurn>;
     /**
      *
      * @type {number}
@@ -202,8 +201,9 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
+    if (!('running' in value) || value['running'] === undefined) return false;
+    if (!('importBlocked' in value) || value['importBlocked'] === undefined) return false;
     if (!('cells' in value) || value['cells'] === undefined) return false;
-    if (!('chat' in value) || value['chat'] === undefined) return false;
     if (!('createdBy' in value) || value['createdBy'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
@@ -235,8 +235,9 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'readiness': DatasetReadinessFromJSON(json['readiness']),
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
+        'running': json['running'],
+        'importBlocked': json['import_blocked'],
         'cells': ((json['cells'] as Array<any>).map(CellFromJSON)),
-        'chat': ((json['chat'] as Array<any>).map(ChatTurnFromJSON)),
         'createdBy': json['created_by'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
@@ -247,7 +248,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'state'|'error'|'running'|'import_blocked'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

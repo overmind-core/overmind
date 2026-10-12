@@ -321,6 +321,15 @@ def fail(claimed, error, *, code="import_failed"):
         _block(run, code, error)
 
 
+def resumable_imports(dataset_id):
+    """Blocked imports of this dataset (or its split) that may still be retried."""
+    return DatasetImport.objects.filter(
+        Q(dataset_id=dataset_id) | Q(evaluation_id=dataset_id),
+        state=DatasetImport.State.BLOCKED,
+        attempts__lt=MAX_ATTEMPTS,
+    )
+
+
 @transaction.atomic
 def resume(run_id):
     run = DatasetImport.objects.select_for_update().get(pk=run_id)
