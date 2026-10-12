@@ -86,6 +86,8 @@ export class DecisionModelsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Runs the catalog model as published. No training job is required. Accepts choice, noul, and score questions.
+     * Score a published decision checkpoint
      */
     async decisionModelsSystemoneCreateRaw(requestParameters: DecisionModelsSystemoneCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DecisionSystemOneResponse>> {
         if (requestParameters['modelId'] == null) {
@@ -144,6 +146,8 @@ export class DecisionModelsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Runs the catalog model as published. No training job is required. Accepts choice, noul, and score questions.
+     * Score a published decision checkpoint
      */
     async decisionModelsSystemoneCreate(requestParameters: DecisionModelsSystemoneCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DecisionSystemOneResponse> {
         const response = await this.decisionModelsSystemoneCreateRaw(requestParameters, initOverrides);
