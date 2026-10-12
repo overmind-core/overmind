@@ -7,11 +7,11 @@ import pytest
 from overbae.models import Dataset, Project
 from overbae.services.datasets import contract, land, lifecycle, review, rows, store
 from overbae.services.datasets.context import workshop_context
-from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.notebook import agent
 from overbae.services.datasets.notebook import run as notebook_run
 from overbae.services.datasets.profile import profile_records
 from overbae.services.finetuning_validator import row_to_finetuning_line, validate_rows
+from sandbox.examples import prepare_examples
 
 
 def example(prompt="Extract fields", **extra):

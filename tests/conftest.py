@@ -1,8 +1,13 @@
 import ipaddress
 import os
+import secrets
 import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections
@@ -65,6 +70,43 @@ def _no_outside_sockets(monkeypatch):
         monkeypatch.setenv(proxy, "http://127.0.0.1:9")
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+
+
+@pytest.fixture(scope="session")
+def sandbox_server():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    url, token = f"http://127.0.0.1:{port}", secrets.token_hex(16)
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "SANDBOX_TOKEN": token,
+        "SANDBOX_ALLOW_SHARED_UID": "1",
+    }
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            if httpx.get(f"{url}/health", timeout=1).status_code == 200:
+                break
+        except httpx.TransportError:
+            pass
+        if proc.poll() is not None or time.monotonic() > deadline:
+            proc.kill()
+            raise RuntimeError("The test sandbox did not start.")
+        time.sleep(0.1)
+    yield url, token
+    proc.terminate()
+    proc.wait(timeout=10)
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(settings, sandbox_server):
+    settings.SANDBOX_URL, settings.SANDBOX_TOKEN = sandbox_server
 
 
 @pytest.fixture(autouse=True)

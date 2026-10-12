@@ -1,16 +1,22 @@
-.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker check-migrations
+.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker sandbox check-migrations
 
 install-hooks:
 	uv run pre-commit install
 
 # Local celery worker (macOS). --pool=solo because forking after the httpx Modal
 # warmup copies locked mDNS/getaddrinfo state into the child and SIGSEGVs. Solo
-# is concurrency 1, so a long workshop turn blocks everything else locally.
+# is concurrency 1, so a long landing or script run blocks everything else locally.
 # -Q lists every queue: this one process stands in for the whole compose fleet.
+# Data Workshop scripts need `make sandbox` running and SANDBOX_URL=http://127.0.0.1:8080
+# with the same SANDBOX_TOKEN in .env.
 worker:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES TOGETHER_API_KEY=placeholder-local-dev \
 		uv run celery -A overbae worker -l info --pool=solo -n local@%h \
 		-Q control,io,io_traces,batch,landing,interactive
+
+# Runs scripts as your own user: no isolation, local development only.
+sandbox:
+	SANDBOX_ALLOW_SHARED_UID=1 uv run --env-file .env python -m sandbox --host 127.0.0.1
 
 lint-format:
 	$(MAKE) --no-print-directory -j2 lint-backend lint-frontend

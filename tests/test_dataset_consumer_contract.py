@@ -8,12 +8,12 @@ from conftest import frozen_dataset
 
 from overbae.models import Capability, Dataset, EvalRun, EvalVariant, Project
 from overbae.services.datasets import alignment, contract, land, paths, review, rows, store, use
-from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.notebook import agent
 from overbae.services.datasets.partition import contamination_keys, split_rows
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.sampling import select_rows
 from overbae.tasks.eval import _resolve_items, _sample_reference, _seed_from_datapoint
+from sandbox.examples import prepare_examples
 
 
 def example(index=1, mode="extraction"):

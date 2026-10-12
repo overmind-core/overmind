@@ -14,10 +14,10 @@ import re
 from collections import Counter
 from typing import Any
 
-from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.store import Frame
 from overbae.services.datasets.text import approx_tokens
 from overbae.services.finetuning_tool_validation import tool_schema_errors
+from sandbox.examples import identifier_only, normalize_record
 
 TRAIN = "train"
 EVAL = "eval"

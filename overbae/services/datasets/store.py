@@ -16,7 +16,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from overbae.services.datasets.tables import (
+from sandbox.tables import (
     ARROW_TYPES,
     ManifestBuilder,
     TableWriter,
@@ -27,9 +27,9 @@ from overbae.services.datasets.tables import (
     read_manifest,
     union_kind,
 )
-from overbae.services.datasets.tables import SOURCE_ROW as SOURCE_ROW
-from overbae.services.datasets.tables import json_dumps as json_dumps
-from overbae.services.datasets.tables import write_frame as write_frame
+from sandbox.tables import SOURCE_ROW as SOURCE_ROW
+from sandbox.tables import json_dumps as json_dumps
+from sandbox.tables import write_frame as write_frame
 
 # DuckDB defaults to 80% of the machine for each connection.
 DUCKDB_MEMORY = "512MB"

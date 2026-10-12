@@ -12,6 +12,7 @@ on:
     paths:
       - "Dockerfile"
       - "overbae/**"
+      - "sandbox/**"
       - "docker/**"
       - "scripts/deploy_ecs.py"
       - "pyproject.toml"
@@ -111,9 +112,27 @@ jobs:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
         run: python scripts/deploy_ecs.py migrate
 
-  deploy-landing:
+  # Landing and interactive workers send scripts and documents to the sandbox.
+  deploy-sandbox:
     runs-on: ubuntu-latest
     needs: [build-and-push, migrate]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-sandbox
+      - name: Deploy the script sandbox
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: sandbox
+        run: python scripts/deploy_ecs.py deploy
+
+  deploy-landing:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate, deploy-sandbox]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4

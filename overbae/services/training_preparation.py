@@ -25,7 +25,6 @@ from overbae.modal.model_registry import (
 from overbae.modal.training_type import training_context_length, training_enabled
 from overbae.models import TrainingPreparation
 from overbae.services import finetuning_tool_validation, finetuning_validator
-from overbae.services.datasets import examples
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
@@ -33,6 +32,7 @@ from overbae.services.finetuning_policy import (
     estimated_training_context_length,
 )
 from overbae.services.finetuning_validator import row_to_finetuning_line
+from sandbox import examples
 
 
 def processor_fingerprint():

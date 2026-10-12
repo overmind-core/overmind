@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from contextlib import suppress
 
-from overbae.services.datasets.examples import input_objects
+from sandbox.examples import input_objects
 
 _IDENTITY = {"source_row", "trace_id", "source_trace_id", "conversation_id", "_overmind_provenance"}
 _OUTPUT = {"output", "expected_output", "answer", "response", "completion", "label", "score"}

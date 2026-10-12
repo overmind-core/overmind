@@ -33,8 +33,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_SYSTEM_PYTHON=1
 
 COPY pyproject.toml uv.lock README.md ./
-RUN mkdir -p overbae modal_shared \
-    && touch overbae/__init__.py modal_shared/__init__.py
+RUN mkdir -p overbae modal_shared sandbox \
+    && touch overbae/__init__.py modal_shared/__init__.py sandbox/__init__.py
 
 RUN uv sync --frozen --no-dev --no-editable
 
@@ -53,6 +53,7 @@ RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         libpq5 ca-certificates libcurl4 libssl3 zlib1g libexpat1 \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd \
     && apt-get install -y --only-upgrade \
         libssh2-1 perl-base libcurl4 libexpat1 libacl1 libattr1 \
     && apt-get clean \
@@ -72,6 +73,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md ./
 COPY overbae ./overbae/
 COPY modal_shared ./modal_shared/
+COPY sandbox ./sandbox/
 COPY manage.py ./
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/worker_entrypoint.sh /usr/local/bin/worker-entrypoint.sh
@@ -87,6 +89,10 @@ RUN uv pip install --python /code/.venv --no-deps . \
 RUN python -m ensurepip --upgrade \
     && python -m pip install truss --quiet \
     && python -m pip install "watchfiles>=0.21" --quiet
+
+RUN TIKTOKEN_CACHE_DIR=/opt/sandbox/tiktoken python -c \
+        "import tiktoken; [tiktoken.get_encoding(n) for n in ('cl100k_base', 'o200k_base')]" \
+    && chmod -R a+rX,go-w /opt/sandbox
 
 RUN python manage.py collectstatic --noinput 2>/dev/null || true
 

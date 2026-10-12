@@ -31,9 +31,9 @@ from overbae.services.datasets import (
     paths,
     selection,
     store,
-    tables,
 )
 from overbae.services.datasets.partition import preserve_lineage, split_positions
+from sandbox import tables
 
 logger = logging.getLogger(__name__)
 

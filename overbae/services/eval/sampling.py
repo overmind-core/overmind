@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 
 from overbae.services.datasets import rows
-from overbae.services.datasets.examples import input_objects
+from sandbox.examples import input_objects
 
 
 def select_rows(cell, *, limit: int | None, fraction: float = 1.0):

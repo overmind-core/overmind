@@ -20,7 +20,8 @@ from pathlib import Path
 
 from django.conf import settings
 
-from overbae.services.datasets import examples, store, tables
+from overbae.services.datasets import store
+from sandbox import examples, tables
 from overbae.services.datasets.notebook import libraries
 
 _FORBIDDEN_CALLS = frozenset(

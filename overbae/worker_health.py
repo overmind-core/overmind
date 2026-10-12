@@ -11,7 +11,7 @@ from overbae.celery import app
 
 QUEUE_TASKS = {
     "landing": "overbae.tasks.datasets.land",
-    "interactive": "overbae.tasks.datasets.turn",
+    "interactive": "overbae.tasks.datasets.execute",
 }
 
 

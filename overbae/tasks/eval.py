@@ -20,7 +20,6 @@ from django.utils import timezone
 
 from overbae.core.llms import ModelSpec
 from overbae.models import EvalRun, FinetuningJob
-from overbae.services.datasets.examples import matches_reference
 from overbae.services.eval import (
     chatml,
     evidence,
@@ -34,6 +33,7 @@ from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.evaluators import base as eval_base
 from overbae.services.eval.evaluators import statistical
 from overbae.services.eval.sampling import select_rows
+from sandbox.examples import matches_reference
 
 logger = logging.getLogger(__name__)
 

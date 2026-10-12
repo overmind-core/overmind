@@ -13,8 +13,8 @@ from typing import Any
 from jsonschema import Draft202012Validator, SchemaError
 from referencing.exceptions import Unresolvable
 
-from overbae.services.datasets.examples import messages as example_messages
 from overbae.services.datasets.store import Frame
+from sandbox.examples import messages as example_messages
 
 
 def _missing(value: Any) -> bool:

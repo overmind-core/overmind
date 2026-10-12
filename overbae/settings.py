@@ -422,8 +422,9 @@ QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
 EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
 EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
 DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "3600"))
-# Memory the workshop's cells share on one host; 0 is 60% of the host's memory.
-WORKSHOP_SANDBOX_MEMORY_BYTES = int(os.environ.get("WORKSHOP_SANDBOX_MEMORY_BYTES", "0"))
+SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
+SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
+WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "4"))
 
 CELERY_TASK_ROUTES = {
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
@@ -675,7 +676,9 @@ INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")
 INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 _REQUIRED_KEYS = {
-    "OPENROUTER_API_KEY": "judges, evals, trace scoring and the Data Workshop",
+    "OPENROUTER_API_KEY": "judges, evals and trace scoring",
+    "SANDBOX_URL": "the Data Workshop script sandbox",
+    "SANDBOX_TOKEN": "the Data Workshop script sandbox",
     "MODAL_TOKEN_ID": "Modal training and serving workers",
     "MODAL_TOKEN_SECRET": "Modal training and serving workers",
     "INFERENCE_API_URL": "the Modal serving endpoint",

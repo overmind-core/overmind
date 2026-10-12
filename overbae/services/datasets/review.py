@@ -15,12 +15,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import paths, rows, store, tables
+from overbae.services.datasets import paths, rows, store
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.contract import public_intent
-from overbae.services.datasets.examples import identifier_only, instructions, messages
 from overbae.services.datasets.notebook import runner
 from overbae.services.datasets.partition import preserve_lineage
+from sandbox import tables
+from sandbox.examples import identifier_only, instructions, messages
 
 PROVENANCE_COLUMN = "_overmind_provenance"
 REQUIRED_CHECKS = {

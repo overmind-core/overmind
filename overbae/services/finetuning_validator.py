@@ -17,9 +17,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from overbae.services.datasets.contract import training_line
-from overbae.services.datasets.examples import normalize_record
 from overbae.services.datasets.text import approx_tokens
 from overbae.services.finetuning_tool_validation import ToolCallingCheck
+from sandbox.examples import normalize_record
 
 logger = logging.getLogger(__name__)
 
