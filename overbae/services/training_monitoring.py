@@ -1,6 +1,5 @@
 import json
 import re
-from copy import deepcopy
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -394,7 +393,7 @@ def snapshot(job, *, offset=0, limit=25):
 
 
 def overview(job, *, offset=0, limit=25):
-    detail = deepcopy(snapshot(job, offset=offset, limit=limit))
+    detail = snapshot(job, offset=offset, limit=limit)
     for collection in ("checks", "checkpoints"):
         for entry in detail[collection]:
             paths = [("metrics", "categorical_families")]

@@ -99,13 +99,6 @@ def _verify_sync(
     )
 
 
-def _async_handler(function):
-    async def handler(payload, context):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
-
-
 def register_instrumentation_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
@@ -142,5 +135,5 @@ def register_instrumentation_tools(catalog) -> None:
                 cost_class="free",
                 async_mode="sync",
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

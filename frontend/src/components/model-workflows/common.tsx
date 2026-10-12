@@ -128,27 +128,3 @@ export function useVersions(projectId: string) {
     queryKey: ["workflow-versions", projectId],
   });
 }
-export function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-export function SavedEvidence({
-  value,
-  label = "Saved protocol and evidence",
-}: {
-  value: unknown;
-  label?: string;
-}) {
-  return (
-    <details className="rounded-md border border-border px-3 py-2 text-sm">
-      <summary className="cursor-pointer">{label}</summary>
-      <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    </details>
-  );
-}

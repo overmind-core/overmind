@@ -25,7 +25,6 @@ from overbae.services.eval.trace_scoring import (
 
 _SPAN_CAP = 2000
 _REASONING_SNIPPET = 300
-_RATIONALE_MAX = 300
 
 
 def _rate(numerator: int, denominator: int) -> float | None:
@@ -70,26 +69,6 @@ def display_verdicts(project_id: Any, span_ids: Iterable[str]) -> dict[str, list
     out: dict[str, list[Verdict]] = defaultdict(list)
     for (target_id, _), verdict in sorted(latest.items()):
         out[target_id].append(verdict)
-    return out
-
-
-def compact_verdict_scores(
-    verdicts: Iterable[Verdict], *, include_rationale: bool = False
-) -> dict[str, dict[str, Any]]:
-    """Trim verdict rows for LLM tool payloads, keyed by evaluator name."""
-    out: dict[str, dict[str, Any]] = {}
-    for verdict in verdicts:
-        compact: dict[str, Any] = {
-            "score": verdict.score,
-            "passed": verdict_passed(verdict),
-            "outcome": verdict.outcome,
-        }
-        if include_rationale:
-            rationale = str(verdict.explanation or "")
-            if len(rationale) > _RATIONALE_MAX:
-                rationale = f"{rationale[: _RATIONALE_MAX - 1].rstrip()}…"
-            compact["rationale"] = rationale
-        out[verdict.evaluator_name] = compact
     return out
 
 

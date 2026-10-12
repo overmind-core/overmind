@@ -17,8 +17,7 @@ from overbae.models import (
     User,
 )
 from overbae.services import native_evaluation, training_experiments
-from overbae.services.datasets import exploration, land, paths, rows, sampling, store
-from overbae.services.datasets.examples import native_decision
+from overbae.services.datasets import exploration, land, paths, rows, store
 from overbae.services.datasets.exploration import advance
 from overbae.services.decision_providers import external_step
 from overbae.services.mcp.server import create_mcp_application
@@ -226,7 +225,7 @@ def test_fresh_mcp_client_derives_and_profiles_exact_parent_without_changing_it(
         assert report["source"]["fingerprint"] == fingerprint
 
 
-def test_target_sampling_preserves_mean_and_probability_supervision():
+def test_target_sampling_profiles_mean_and_probability_supervision():
 
     project, _, _ = workspace()
     dataset = Dataset.objects.create(project=project, name="Mixed ratings", intent="train")
@@ -255,17 +254,25 @@ def test_target_sampling_preserves_mean_and_probability_supervision():
     land.land_rows(dataset, examples)
     dataset.refresh_from_db()
 
-    def frames():
-        return store.iter_frames(rows.frame_path(dataset.active_cell))
-
-    selected = [
-        row
-        for frame in sampling.sample_frames(
-            frames, native_decision, rows=2, seed=1, target_type=True
-        )
-        for row in frame.to_dict("records")
+    operation = exploration.request(
+        project,
+        source_cell=dataset.active_cell,
+        name="Mixed target coverage",
+        request_key="mixed-target-coverage",
+        kind="profile",
+        sampling_request={"rows": 2, "seed": 1, "target_type": True},
+    )
+    advance(operation.pk)
+    operation.refresh_from_db()
+    assert operation.state == "completed"
+    assert operation.report["sampling"]["feasible"] is True
+    assert exploration.strata(operation)["strata"] == [
+        {"values": ["ordinal_mean"], "count": 1, "allocation": 1},
+        {"values": ["soft"], "count": 1, "allocation": 1},
     ]
-    assert [row["decision"] for row in selected] == [row["decision"] for row in examples]
+    assert [row["decision"] for row in store.iter_rows(rows.frame_path(dataset.active_cell))] == [
+        row["decision"] for row in examples
+    ]
 
 
 def test_mcp_derives_historical_chat_source_with_tool_messages_and_lineage():

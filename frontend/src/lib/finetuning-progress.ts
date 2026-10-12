@@ -274,18 +274,3 @@ function transferBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${Number((bytes / (1024 * 1024)).toFixed(1))} MiB`;
   return `${Number((bytes / (1024 * 1024 * 1024)).toFixed(1))} GiB`;
 }
-
-export function stageDescription(progress: FinetuningProgress | null | undefined): string | null {
-  if (["queued", "starting", "running"].includes(progress?.preparation?.state ?? "")) return null;
-  const stage = progress?.diagnostics?.stage || progress?.stage;
-  const descriptions: Record<string, string> = {
-    initial_validation:
-      "Measuring the starting model on the development set before training begins.",
-    loading_model: "Base weights are ready. Loading them onto the training GPU.",
-    preparing_base_model:
-      "Checking cached weights and downloading missing files before GPU training starts.",
-    starting_training_worker: "The base model is ready. Waiting for the training GPU to start.",
-    transferring: "Transferring the prepared rows to the training provider.",
-  };
-  return stage ? (descriptions[stage] ?? null) : null;
-}

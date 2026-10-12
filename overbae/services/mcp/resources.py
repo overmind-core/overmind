@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import uuid
 from collections import Counter
 from collections.abc import Iterable
 from urllib.parse import parse_qs, quote, unquote, urlparse
@@ -71,7 +70,7 @@ from overbae.services.mcp.contracts.datasets import (
 )
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
-from overbae.services.mcp.references import project_references
+from overbae.services.mcp.references import project_references, uuid_reference
 from overbae.services.model_activation import activation_progress
 from overbae.services.training_preparation import live_progress_for_job
 from overbae.services.training_record import run_record
@@ -421,13 +420,6 @@ def finetune_progress_payload(value):
     return progress
 
 
-def _uuid_ref(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(value))
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
 def _not_found(kind: str, value: str) -> MCPError:
     return MCPError("resource_not_found", f"No {kind} resource {value!r} exists in this project.")
 
@@ -459,7 +451,9 @@ def connector_mapping_assignments(project, raw) -> tuple[dict, list[dict]]:
         "fallback_capability_id": None,
     }
     assignments = payload.get("assignments") if isinstance(payload.get("assignments"), dict) else {}
-    ids = [normalized for value in assignments.values() if (normalized := _uuid_ref(str(value)))]
+    ids = [
+        normalized for value in assignments.values() if (normalized := uuid_reference(str(value)))
+    ]
     capabilities = {
         str(capability.id): capability
         for capability in Capability.objects.filter(project=project, id__in=ids)
@@ -810,7 +804,7 @@ def _dataset_resource(project, value: str, uri: str) -> dict:
 
 def _eval_set_resource(project, value: str, uri: str) -> dict:
     eval_set = (
-        EvalSet.objects.filter(project=project, id=_uuid_ref(value))
+        EvalSet.objects.filter(project=project, id=uuid_reference(value))
         .select_related("capability")
         .first()
     )
@@ -920,7 +914,7 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
 
 
 def _finetune_resource(project, value: str, uri: str) -> dict:
-    normalized_id = _uuid_ref(value)
+    normalized_id = uuid_reference(value)
     job = (
         FinetuningJob.objects.filter(project=project, id=normalized_id)
         .select_related(
@@ -1000,7 +994,7 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
     query = DeployedModel.objects.filter(project=project).select_related(
         "finetuning_job__capability"
     )
-    normalized_id = _uuid_ref(value)
+    normalized_id = uuid_reference(value)
     deployment = query.filter(id=normalized_id).first() if normalized_id else None
     if deployment is None:
         deployment = query.filter(model_id=value).first()
@@ -1048,7 +1042,7 @@ _DISCONNECTED = {"connected": False, "hostname": "", "cli_version": "", "heartbe
 
 
 def _optimizer_resource(project, value: str, uri: str) -> dict:
-    normalized_id = _uuid_ref(value)
+    normalized_id = uuid_reference(value)
     experiment = (
         OptimizerExperiment.objects.filter(project=project, id=normalized_id)
         .select_related("capability", "dataset")
@@ -1219,7 +1213,7 @@ def _optimizer_resource(project, value: str, uri: str) -> dict:
 
 def _job_resource(project, kind: str, value: str, uri: str) -> dict:
     if kind == "inference_request":
-        request = InferenceRequest.objects.filter(project=project, pk=_uuid_ref(value)).first()
+        request = InferenceRequest.objects.filter(project=project, pk=uuid_reference(value)).first()
         if request is None:
             raise _not_found("inference request", value)
         result = inference_requests.describe(request)
@@ -1243,7 +1237,7 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         return {"uri": uri, "kind": kind, **result}
     if kind == "model_activation":
         activation = ModelActivation.objects.filter(
-            pk=_uuid_ref(value), capability__project=project
+            pk=uuid_reference(value), capability__project=project
         ).first()
         if activation is None:
             raise _not_found("model activation", value)
@@ -1254,13 +1248,13 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
             **activation_progress(activation),
         }
     if kind in model_workflows.MODELS:
-        record = model_workflows.find(project, kind, _uuid_ref(value))
+        record = model_workflows.find(project, kind, uuid_reference(value))
         if record is None:
             raise _not_found(kind, value)
         return {"uri": uri, "kind": kind, **safe_json(model_workflows.describe(kind, record))}
     if kind == "training_preparation":
         prep = TrainingPreparation.objects.filter(
-            pk=_uuid_ref(value), cell__dataset__project=project
+            pk=uuid_reference(value), cell__dataset__project=project
         ).first()
         if prep is None:
             raise _not_found("training preparation", value)
@@ -1281,7 +1275,7 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         return _deployment_resource(project, value, uri)
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
         return _optimizer_resource(project, value, uri)
-    normalized_id = _uuid_ref(value)
+    normalized_id = uuid_reference(value)
     if kind == "dataset_transfer":
         from overbae.services.datasets import transfers
 
@@ -1413,7 +1407,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
     if host == "dataset-pipelines" and len(segments) == 1:
         recipe = (
             DatasetPipeline.objects.select_related("package")
-            .filter(project=project, pk=_uuid_ref(segments[0]))
+            .filter(project=project, pk=uuid_reference(segments[0]))
             .first()
         )
         if recipe is None:
@@ -1427,14 +1421,14 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         return result
     if host == "dataset-pipeline-bindings" and len(segments) == 1:
         binding = DatasetPipelineBinding.objects.filter(
-            project=project, pk=_uuid_ref(segments[0])
+            project=project, pk=uuid_reference(segments[0])
         ).first()
         if binding is None:
             raise _not_found("pipeline binding", segments[0])
         return {"uri": raw_uri, **pipeline_bindings.binding_record(binding)}
     if host == "dataset-pipeline-packages" and len(segments) == 1:
         package = DatasetPipelinePackage.objects.filter(
-            project=project, pk=_uuid_ref(segments[0])
+            project=project, pk=uuid_reference(segments[0])
         ).first()
         if package is None:
             raise _not_found("pipeline package", segments[0])
@@ -1454,7 +1448,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         return result
     if host == "pipeline-diagnostics" and len(segments) == 1:
         run = DatasetPipelineRun.objects.filter(
-            dataset__project=project, pk=_uuid_ref(segments[0])
+            dataset__project=project, pk=uuid_reference(segments[0])
         ).first()
         if run is None:
             raise _not_found("pipeline run", segments[0])
@@ -1485,7 +1479,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         try:
             return operational_progress.inspect(
                 project.pk,
-                _uuid_ref(segments[0]),
+                uuid_reference(segments[0]),
                 after=int(params.get("after", [0])[0]),
                 limit=int(params.get("limit", [50])[0]),
             )
@@ -1528,7 +1522,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         and segments[0] == "data_exploration"
         and segments[2] == "strata"
     ):
-        record = model_workflows.find(project, "data_exploration", _uuid_ref(segments[1]))
+        record = model_workflows.find(project, "data_exploration", uuid_reference(segments[1]))
         if record is None:
             raise _not_found("data_exploration", segments[1])
         params = parse_qs(urlparse(raw_uri).query)

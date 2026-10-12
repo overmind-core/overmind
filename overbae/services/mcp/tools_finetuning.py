@@ -90,6 +90,7 @@ from overbae.services.mcp.errors import (
     mcp_check,
     mcp_dataset,
 )
+from overbae.services.mcp.references import uuid_reference
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
 from overbae.services.training_cancellation import cancel as cancel_training
@@ -115,22 +116,11 @@ _SENSITIVE_KEYS = frozenset(
 _SENSITIVE_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _SENSITIVE_KEYS)
 
 
-def _uuid_ref(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (AttributeError, TypeError, ValueError):
-        return None
-
-
-def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    return mcp_dataset(context, reference)
-
-
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     query = Capability.objects.filter(
         project=context.project, status=Capability.Status.CURRENT
     ).select_related("active_model", "benchmark_model", "active_eval_set")
-    normalized = _uuid_ref(reference)
+    normalized = uuid_reference(reference)
     capability = query.filter(id=normalized).first() if normalized else None
     if capability is None and reference:
         capability = query.filter(
@@ -152,7 +142,7 @@ def _resolve_eval_set(
     ).select_related("capability")
     if capability is not None:
         query = query.filter(Q(capability=capability) | Q(capability__isnull=True))
-    normalized = _uuid_ref(reference)
+    normalized = uuid_reference(reference)
     eval_set = query.filter(id=normalized).first() if normalized else None
     if eval_set is None and reference:
         matches = list(query.filter(name__iexact=reference.strip()).order_by("-created_at")[:2])
@@ -168,7 +158,7 @@ def _resolve_deployment(context: MCPContext, reference: str) -> DeployedModel:
     query = DeployedModel.objects.filter(project=context.project).select_related(
         "finetuning_job", "finetuning_job__capability"
     )
-    normalized = _uuid_ref(reference)
+    normalized = uuid_reference(reference)
     deployment = query.filter(id=normalized).first() if normalized else None
     if deployment is None:
         deployment = query.filter(model_id=reference.strip()).first()
@@ -181,7 +171,7 @@ def _resolve_finetune(context: MCPContext, reference: str) -> FinetuningJob:
     query = FinetuningJob.objects.filter(project=context.project).select_related(
         "capability", "dataset", "deployed_model"
     )
-    normalized = _uuid_ref(reference)
+    normalized = uuid_reference(reference)
     job = query.filter(id=normalized).first() if normalized else None
     if job is None:
         matches = list(query.filter(name__iexact=reference.strip()).order_by("-created_at")[:2])
@@ -191,13 +181,6 @@ def _resolve_finetune(context: MCPContext, reference: str) -> FinetuningJob:
     if job is None:
         raise MCPError("finetune_not_found", "The fine-tuning job was not found in this project.")
     return job
-
-
-def _cell_ref(*values: str | None) -> str | None:
-    for value in values:
-        if value:
-            return value
-    return None
 
 
 def _require_credits(context: MCPContext) -> None:
@@ -330,12 +313,12 @@ def resolve_selection(payload, context, cell, capability=None):
     evaluations = {key: bool(value) for key, value in evaluations.items()}
     evaluate = any(evaluations.values())
     evaluation = (
-        _resolve_dataset(context, payload.eval_dataset)
+        mcp_dataset(context, payload.eval_dataset)
         if payload.eval_dataset
         else (default_eval_dataset(context.project, capability) if evaluate else None)
     )
     eval_cell = (
-        mcp_check(evaluation, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
+        mcp_check(evaluation, "eval", payload.eval_cell or payload.eval_version or None)
         if evaluation
         else None
     )
@@ -345,13 +328,11 @@ def resolve_selection(payload, context, cell, capability=None):
         else (default_eval_set(context.project, capability) if evaluate else None)
     )
     validation = (
-        _resolve_dataset(context, payload.validation_dataset)
-        if payload.validation_dataset
-        else None
+        mcp_dataset(context, payload.validation_dataset) if payload.validation_dataset else None
     )
     validation_cell = (
         mcp_check(
-            validation, "train", _cell_ref(payload.validation_cell, payload.validation_version)
+            validation, "train", payload.validation_cell or payload.validation_version or None
         )
         if validation
         else None
@@ -414,14 +395,14 @@ def monitoring_policy(payload, cell=None, *, has_development=True):
 def _readiness_sync(
     payload: CheckFinetuneReadinessInput, context: MCPContext
 ) -> CheckFinetuneReadinessOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     if public_intent(dataset.intent) != Dataset.Intent.TRAIN:
         raise MCPError(
             "dataset_intent_mismatch",
             "Fine-tuning requires a Train dataset.",
             fields={"dataset": "Expected intent=train."},
         )
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
+    cell = mcp_cell(dataset, payload.cell or payload.version or None) or dataset.active_cell
     monitoring = monitoring_policy(payload, cell, has_development=payload.validation_enabled)
     capability = _resolve_capability(context, payload.capability) if payload.capability else None
     selected = resolve_selection(payload, context, cell, capability)
@@ -579,14 +560,14 @@ def _readiness_sync(
 
 
 def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> EstimateFinetuneOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     if public_intent(dataset.intent) != Dataset.Intent.TRAIN:
         raise MCPError(
             "dataset_intent_mismatch",
             "Fine-tuning requires a Train dataset.",
             fields={"dataset": "Expected intent=train."},
         )
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
+    cell = mcp_cell(dataset, payload.cell or payload.version or None) or dataset.active_cell
     monitoring = monitoring_policy(payload, cell, has_development=payload.validation_enabled)
     if cell is None or not cell.fits("train")[0]:
         raise MCPError(
@@ -638,8 +619,8 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
         {key: value for key, value in payload.hyperparameters.items() if key != "monitoring"}
     ):
         raise MCPError("invalid_input", "Provider credentials are not accepted in tool input.")
-    dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_check(dataset, "train", _cell_ref(payload.cell, payload.version))
+    dataset = mcp_dataset(context, payload.dataset)
+    cell = mcp_check(dataset, "train", payload.cell or payload.version or None)
     capability = _resolve_capability(context, payload.capability) if payload.capability else None
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
@@ -971,13 +952,11 @@ def _model_swap_prompt_sync(
 
 
 def _prepare_training_sync(payload, context):
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     cell = mcp_cell(dataset, payload.cell) or dataset.active_cell
     monitoring = monitoring_policy(payload, cell)
     validation = (
-        _resolve_dataset(context, payload.validation_dataset)
-        if payload.validation_dataset
-        else None
+        mcp_dataset(context, payload.validation_dataset) if payload.validation_dataset else None
     )
     if cell is None or (validation is not None and validation.active_cell is None):
         raise MCPError("dataset_not_ready", "Select completed dataset versions.")
@@ -1018,13 +997,6 @@ def _prepare_training_sync(payload, context):
             ),
         ),
     )
-
-
-def _async_handler(function):
-    async def handler(payload, context):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
 
 
 def _schedule_native_evaluation_sync(payload, context):
@@ -1314,5 +1286,5 @@ def register_finetuning_tools(catalog) -> None:
                 cost_class=cost_class,
                 async_mode=async_mode,
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

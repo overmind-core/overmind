@@ -45,5 +45,6 @@ submitted as `d41d3526-d703-499b-aaee-663c2da0908d`, with adaptive monitoring an
 two-hour provider limit. The original cancelled job is unchanged.
 
 Exact recipes, commands, observed metrics, failures and qualification limits are
-recorded in `tests/evidence/training-monitoring-implementation-2026-10-10.md`.
+recorded in the historical `tests/evidence/training-monitoring-implementation-2026-10-10.md`
+in commit `63caac868ac9fc1cf6b66525f029e84e1b90a0de`.
 CPU qualification does not substitute for model-family GPU verification.

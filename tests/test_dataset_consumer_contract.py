@@ -142,14 +142,19 @@ def test_prepared_request_keeps_prior_assistant_context_on_repeat_preparation():
     assert prepare_examples(prepared, "train").iloc[0]["messages"] == record["messages"]
 
 
-def test_lineage_survives_projection_and_keeps_related_rows_in_one_split():
+def test_lineage_survives_projection_and_keeps_related_rows_in_one_split(tmp_path):
     original = pd.DataFrame([{**example(i), "source_row": i} for i in range(6)])
     shaped = pd.DataFrame(
         [{"source_row": i, "input": f"rephrased {i}", "expected_output": "yes"} for i in range(6)]
     )
-    shaped = review.preserve_provenance(original, shaped)
     original_rows = original.to_dict(orient="records")
-    shaped_rows = shaped.to_dict(orient="records")
+    before, after, destination = (
+        tmp_path / f"{name}.parquet" for name in ("before", "after", "output")
+    )
+    store.write_rows(before, original_rows)
+    store.write_rows(after, shaped.to_dict(orient="records"))
+    review.preserve_file_provenance(before, after, destination)
+    shaped_rows = list(store.iter_rows(destination))
     assert all(
         contamination_keys(a) & contamination_keys(b)
         for a, b in zip(original_rows, shaped_rows, strict=True)

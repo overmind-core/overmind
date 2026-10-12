@@ -4,6 +4,7 @@
  *
  * Adding a glyph: `name: glyph("<svg file name>")` here, then `bun run icons:vendor`.
  */
+import { DiscordIcon } from "./discord";
 import { glyph } from "./glyph";
 import {
   BarbellVertical,
@@ -49,6 +50,7 @@ export const Icon = {
   datasetAdd: glyph("database-zap"),
   delete: glyph("trash"), // the ONLY delete glyph (never the Cancel "X")
   diff: glyph("git-pull-request"),
+  discord: DiscordIcon,
   docs: glyph("book-open"),
   download: glyph("download"),
   edit: glyph("pen-square"),

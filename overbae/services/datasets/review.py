@@ -70,30 +70,6 @@ def summary(report: dict) -> dict:
     return result
 
 
-def preserve_provenance(before: pd.DataFrame, after: pd.DataFrame, *, group_by=()) -> pd.DataFrame:
-    if store.SOURCE_ROW not in before or store.SOURCE_ROW not in after:
-        return after
-    before = before.copy()
-    before[PROVENANCE_COLUMN] = [
-        preserve_lineage(row, group_by=group_by) for row in before.to_dict(orient="records")
-    ]
-    indexed = before.drop_duplicates(store.SOURCE_ROW).set_index(store.SOURCE_ROW)
-    for column in {
-        PROVENANCE_COLUMN,
-        "trace_id",
-        "source_trace_id",
-        "conversation_id",
-        "human_reviewed",
-        "_overmind_document_id",
-        *group_by,
-    }:
-        if column not in indexed:
-            continue
-        inherited = after[store.SOURCE_ROW].map(indexed[column])
-        after[column] = inherited.combine_first(after[column]) if column in after else inherited
-    return after
-
-
 def preview_examples(frame: pd.DataFrame) -> list:
     def clip(value):
         if isinstance(value, str):

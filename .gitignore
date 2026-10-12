@@ -192,8 +192,6 @@ tests/journeys/.runs/
 /.agents/skills/overmind/
 /.agents/skills/overmind-*/
 
-# Generated evidence retained locally; compact receipts and summaries are tracked
-/tests/evidence/decision-benchmarks-results.json
-/tests/evidence/decision-benchmarks-reports/boolq.json.gz
-/tests/evidence/mcp-prep-training-ux-audit-2026-10-08.json
-/tests/evidence/mcp-prep-training-ux-audit-2026-10-08-continuation.json
+# Local verification output; maintained regression inputs belong in tests/fixtures.
+/tests/evidence/*
+!/tests/evidence/README.md

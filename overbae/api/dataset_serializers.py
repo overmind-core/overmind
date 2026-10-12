@@ -377,7 +377,3 @@ class ColumnStatSerializer(serializers.Serializer):
     mean_len = serializers.FloatField(required=False, allow_null=True)
     max_len = serializers.IntegerField(required=False, allow_null=True)
     top = serializers.ListField(child=serializers.JSONField(), required=False)
-
-
-class DetailSerializer(serializers.Serializer):
-    detail = serializers.CharField()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from types import SimpleNamespace
 from typing import Any
 
@@ -63,6 +62,7 @@ from overbae.services.mcp.errors import (
     mcp_check,
     mcp_dataset,
 )
+from overbae.services.mcp.references import uuid_reference
 from overbae.services.mcp.resources import resource_link, safe_json
 
 _DEFAULT_VARIANT = {
@@ -73,24 +73,13 @@ _DEFAULT_VARIANT = {
 }
 
 
-def _uuid(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
-def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    return mcp_dataset(context, reference)
-
-
 def _resolve_eval_set(
     context: MCPContext, reference: str, *, capability: Capability | None = None
 ) -> EvalSet:
     query = EvalSet.objects.filter(project=context.project).select_related("capability")
     if capability is not None:
         query = query.filter(Q(capability=capability) | Q(capability__isnull=True))
-    normalized = _uuid(reference)
+    normalized = uuid_reference(reference)
     if normalized:
         eval_set = query.filter(id=normalized).first()
     else:
@@ -111,7 +100,7 @@ def _evaluator_query(context: MCPContext):
 
 def _resolve_evaluator(context: MCPContext, reference: str) -> Evaluator:
     query = _evaluator_query(context).filter(is_archived=False)
-    normalized = _uuid(reference)
+    normalized = uuid_reference(reference)
     if normalized:
         evaluator = query.filter(id=normalized).first()
     else:
@@ -139,7 +128,7 @@ def _resolve_evaluator(context: MCPContext, reference: str) -> Evaluator:
 
 def _resolve_run(context: MCPContext, reference: str) -> EvalRun:
     query = EvalRun.objects.filter(project=context.project).select_related("dataset")
-    normalized = _uuid(reference)
+    normalized = uuid_reference(reference)
     if normalized:
         run = query.filter(id=normalized).first()
     else:
@@ -153,7 +142,7 @@ def _resolve_run(context: MCPContext, reference: str) -> EvalRun:
 
 
 def _resolve_sample(context: MCPContext, reference: str) -> EvalSample:
-    normalized = _uuid(reference)
+    normalized = uuid_reference(reference)
     sample = (
         EvalSample.objects.filter(id=normalized, run__project=context.project)
         .select_related("run", "variant")
@@ -167,7 +156,7 @@ def _resolve_sample(context: MCPContext, reference: str) -> EvalSample:
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
-    normalized = _uuid(reference)
+    normalized = uuid_reference(reference)
     query = Capability.objects.filter(project=context.project)
     capability = query.filter(id=normalized).first() if normalized else None
     if capability is None and reference:
@@ -178,13 +167,6 @@ def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     if capability is None:
         raise MCPError("capability_not_found", "The capability was not found in this project.")
     return capability
-
-
-def _cell_ref(*values: str | None) -> str | None:
-    for value in values:
-        if value:
-            return value
-    return None
 
 
 def _credits_available(user) -> bool:
@@ -224,7 +206,7 @@ def _readiness_sync(
 ) -> CheckEvaluationReadinessOutput:
     if payload.judge_model and payload.judge_model not in judge_picker_models():
         raise MCPError("invalid_judge_model", "Select a configured generative judge model.")
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     if public_intent(dataset.intent) != Dataset.Intent.EVAL:
         if public_intent(dataset.intent) == Dataset.Intent.PENDING:
             message = (
@@ -237,7 +219,7 @@ def _readiness_sync(
                 f"this dataset has intent={public_intent(dataset.intent)}."
             )
         raise MCPError("dataset_intent_mismatch", message)
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
+    cell = mcp_cell(dataset, payload.cell or payload.version or None) or dataset.active_cell
 
     capability = dataset.capability
     eval_set = None
@@ -526,7 +508,7 @@ def _validate_variant_refs(
 ) -> None:
     for variant in variants:
         if variant.get("model_ref"):
-            model_ref = _uuid(str(variant["model_ref"]))
+            model_ref = uuid_reference(str(variant["model_ref"]))
             if (
                 model_ref is None
                 or not ModelRef.objects.filter(id=model_ref, project=context.project).exists()
@@ -536,7 +518,7 @@ def _validate_variant_refs(
                     "The model reference is not available in this project.",
                 )
         if variant.get("prompt"):
-            prompt_id = _uuid(str(variant["prompt"]))
+            prompt_id = uuid_reference(str(variant["prompt"]))
             prompt = (
                 Prompt.objects.filter(id=prompt_id, capability__project=context.project).first()
                 if prompt_id
@@ -554,8 +536,8 @@ def _run_sync(payload: RunEvaluationInput, context: MCPContext) -> RunEvaluation
     from overbae.api.credit_gate import PaymentRequired, require_credits
     from overbae.tasks.eval import run_eval_run
 
-    dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_check(dataset, "eval", _cell_ref(payload.cell, payload.version))
+    dataset = mcp_dataset(context, payload.dataset)
+    cell = mcp_check(dataset, "eval", payload.cell or payload.version or None)
 
     eval_set = None
     if payload.eval_set:
@@ -689,7 +671,7 @@ def _annotation_sync(
 ) -> AnnotationOutput:
     current = None
     if payload.annotation:
-        normalized = _uuid(payload.annotation)
+        normalized = uuid_reference(payload.annotation)
         current = (
             Annotation.objects.filter(id=normalized, project=context.project)
             .select_related("sample__run", "sample__variant", "evaluator", "user")
@@ -777,13 +759,6 @@ def _create_eval_set_sync(payload: CreateEvalSetInput, context: MCPContext) -> C
         ),
         resource_links=[resource_link("eval-sets", str(eval_set.id), eval_set.name)],
     )
-
-
-def _async_handler(function):
-    async def handler(payload, context):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
 
 
 def register_evaluation_tools(catalog) -> None:
@@ -896,5 +871,5 @@ def register_evaluation_tools(catalog) -> None:
                 cost_class=cost_class,
                 async_mode=async_mode,
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

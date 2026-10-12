@@ -320,26 +320,26 @@ def prepare(experiment):
         }
         experiment.save()
     try:
-        forecasts, boundaries = [], {}
+        forecasts, boundaries, cells = [], {}, {}
+        evaluation = (
+            NativeEvaluationPlan.objects.select_related(
+                "final_cell__dataset", "calibration_cell__dataset"
+            ).get(pk=experiment.protocol["source_evaluation"], project=experiment.project)
+            if experiment.protocol["source_evaluation"]
+            else None
+        )
         for variant in experiment.variants:
-            cell = Cell.objects.select_related("dataset").get(
-                pk=variant["cell"], dataset__project=experiment.project
-            )
-            cells = [cell]
-            if variant.get("development_cell"):
-                cells.append(
-                    Cell.objects.select_related("dataset").get(
-                        pk=variant["development_cell"], dataset__project=experiment.project
-                    )
+            for field in ("cell", "development_cell"):
+                reference = variant.get(field)
+                if not reference or reference in cells:
+                    continue
+                pinned = Cell.objects.select_related("dataset").get(
+                    pk=reference, dataset__project=experiment.project
                 )
-            for pinned in cells:
                 rows.verify(pinned)
                 if pinned.fingerprint != experiment.protocol["fingerprints"][str(pinned.pk)]:
                     raise InputValidationError("Frozen training source changed")
-                if experiment.protocol["source_evaluation"]:
-                    evaluation = NativeEvaluationPlan.objects.select_related(
-                        "final_cell__dataset", "calibration_cell__dataset"
-                    ).get(pk=experiment.protocol["source_evaluation"], project=experiment.project)
+                if evaluation:
                     boundaries[str(pinned.pk)] = {
                         role: rows.contamination(pinned, suite)
                         for role, suite in {
@@ -348,6 +348,8 @@ def prepare(experiment):
                         }.items()
                         if suite is not None
                     }
+                cells[reference] = pinned
+            cell = cells[variant["cell"]]
             hp = {**variant["hyperparameters"], "objective": dataset_objective(cell)}
             tokens = round(dataset_total_tokens(cell.stats) * (hp.get("n_epochs") or 1))
             measured = forecast(

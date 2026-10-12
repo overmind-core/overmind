@@ -36,6 +36,7 @@ def initialise(db, source):
             input TEXT, reference TEXT, error TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS sample_order ON samples(ordinal);
+        CREATE INDEX IF NOT EXISTS sample_hash ON samples(hash);
         CREATE TABLE IF NOT EXISTS predictions (
             arm TEXT, key TEXT, raw TEXT, adjusted TEXT, metrics TEXT, adjusted_metrics TEXT,
             error TEXT NOT NULL DEFAULT '', PRIMARY KEY(arm,key)
@@ -239,20 +240,23 @@ def refresh(plan):
                             ),
                         )
             for arm, policy in plan.calibration.get("arms", {}).items():
-                for prediction in db.execute(
-                    "SELECT p.key,p.raw,s.input,s.reference FROM predictions p JOIN samples s USING(key) WHERE p.arm=? AND p.error='' AND p.adjusted IS NULL",
-                    (arm,),
+                after = ""
+                while pending := db.execute(
+                    "SELECT p.key,p.raw,s.input,s.reference FROM predictions p JOIN samples s USING(key) WHERE p.arm=? AND p.key>? AND p.error='' AND p.adjusted IS NULL ORDER BY p.key LIMIT 256",
+                    (arm, after),
                 ).fetchall():
-                    adjusted = calibrated(json.loads(prediction["raw"]), policy)
-                    metrics = score_decision(
-                        json.loads(prediction["input"]),
-                        json.loads(prediction["reference"]),
-                        adjusted,
-                    )
-                    db.execute(
-                        "UPDATE predictions SET adjusted=?,adjusted_metrics=? WHERE arm=? AND key=?",
-                        (json.dumps(adjusted), json.dumps(metrics), arm, prediction["key"]),
-                    )
+                    for prediction in pending:
+                        adjusted = calibrated(json.loads(prediction["raw"]), policy)
+                        metrics = score_decision(
+                            json.loads(prediction["input"]),
+                            json.loads(prediction["reference"]),
+                            adjusted,
+                        )
+                        db.execute(
+                            "UPDATE predictions SET adjusted=?,adjusted_metrics=? WHERE arm=? AND key=?",
+                            (json.dumps(adjusted), json.dumps(metrics), arm, prediction["key"]),
+                        )
+                    after = pending[-1]["key"]
             db.commit()
             write_summary(db, plan, role, source)
 
@@ -262,33 +266,23 @@ def write_summary(db, plan, role, source):
     suite_counts = db.execute(
         "SELECT benchmark,COUNT(*) expected,SUM(error!='') incompatible FROM samples GROUP BY benchmark"
     ).fetchall()
+    fields = {"raw": "metrics", "calibrated": "adjusted_metrics"}
+    columns = ",".join(
+        f"{aggregate}(json_extract(p.{field},'$.{name}')) FILTER (WHERE p.error='') {mode}_{name}_{stat}"
+        for mode, field in fields.items()
+        for name in sorted(METRICS)
+        for aggregate, stat in (("AVG", "mean"), ("COUNT", "count"))
+    )
     for participant in participants(plan):
         arm = participant["key"]
         benchmarks = []
         recorded = {
             row["benchmark"]: dict(row)
             for row in db.execute(
-                "SELECT benchmark,COUNT(p.raw) received,SUM(p.error='') scored,SUM(p.error!='' AND p.raw IS NOT NULL) invalid,SUM(p.raw IS NULL) incompatible FROM predictions p JOIN samples s USING(key) WHERE arm=? GROUP BY benchmark",
+                f"SELECT benchmark,COUNT(p.raw) received,SUM(p.error='') scored,SUM(p.error!='' AND p.raw IS NOT NULL) invalid,SUM(p.raw IS NULL) incompatible,{columns} FROM predictions p JOIN samples s USING(key) WHERE arm=? GROUP BY benchmark",
                 (arm,),
             )
         }
-        measured = {}
-        for mode, field in (("raw", "metrics"), ("calibrated", "adjusted_metrics")):
-            columns = ",".join(
-                f"AVG(json_extract(p.{field},'$.{name}')) {name}_mean,COUNT(json_extract(p.{field},'$.{name}')) {name}_count"
-                for name in sorted(METRICS)
-            )
-            measured[mode] = {
-                row["benchmark"]: {
-                    name: {"mean": row[name + "_mean"], "decisions": row[name + "_count"]}
-                    for name in sorted(METRICS)
-                    if row[name + "_count"]
-                }
-                for row in db.execute(
-                    f"SELECT benchmark,{columns} FROM predictions p JOIN samples s USING(key) WHERE arm=? AND p.error='' GROUP BY benchmark",
-                    (arm,),
-                )
-            }
         for benchmark in suite_counts:
             counts = recorded.get(benchmark["benchmark"], {})
             benchmarks.append(
@@ -300,8 +294,15 @@ def write_summary(db, plan, role, source):
                     "scored": counts.get("scored", 0),
                     "invalid": counts.get("invalid", 0),
                     **{
-                        mode: values.get(benchmark["benchmark"], {})
-                        for mode, values in measured.items()
+                        mode: {
+                            name: {
+                                "mean": counts[f"{mode}_{name}_mean"],
+                                "decisions": counts[f"{mode}_{name}_count"],
+                            }
+                            for name in sorted(METRICS)
+                            if counts.get(f"{mode}_{name}_count")
+                        }
+                        for mode in fields
                     },
                 }
             )

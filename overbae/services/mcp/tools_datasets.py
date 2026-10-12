@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 
 import duckdb
 from asgiref.sync import sync_to_async
@@ -39,20 +38,10 @@ from overbae.services.mcp.contracts.datasets import (
     serialize_dataset_list_item,
 )
 from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
+from overbae.services.mcp.references import uuid_reference
 
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
 QUERY_RESULT_BYTES = 32 * 1024
-
-
-def _uuid(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(value))
-    except (AttributeError, TypeError, ValueError):
-        return None
-
-
-def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    return mcp_dataset(context, reference)
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
@@ -65,7 +54,7 @@ def _resolve_capability(context: MCPContext, reference: str) -> Capability:
 
 
 def _resolve_capability_uuid(context: MCPContext, reference: str) -> Capability:
-    capability_id = _uuid(reference)
+    capability_id = uuid_reference(reference)
     if capability_id is None:
         raise MCPError("invalid_input", "Capability references must be UUIDs.")
     capability = Capability.objects.filter(project=context.project, id=capability_id).first()
@@ -108,7 +97,7 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
 
 def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> DatasetDetail:
     return serialize_dataset_detail(
-        _resolve_dataset(context, payload.dataset),
+        mcp_dataset(context, payload.dataset),
         cell_offset=payload.cell_offset,
         cell_limit=payload.cell_limit,
         source_offset=payload.source_offset,
@@ -117,7 +106,7 @@ def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> 
 
 
 def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> QueryDatasetOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     sql = payload.sql.strip()
     if not _READ_ONLY_SQL.match(sql):
         raise MCPError("query_invalid", "Only read-only SELECT queries are supported.")
@@ -315,7 +304,7 @@ def _start_dataset_sync(payload: StartDatasetInput, context: MCPContext) -> Data
 
 
 def _cancel_dataset_sync(payload, context):
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     workbench.cancel(dataset)
     dataset.refresh_from_db()
     return mutation_output(
@@ -324,19 +313,12 @@ def _cancel_dataset_sync(payload, context):
 
 
 def _resume_import_sync(payload, context):
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     try:
         imports.resume_dataset(dataset)
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return mutation_output(dataset, summary="Source import resumed from its retained receipt.")
-
-
-def _async_handler(function):
-    async def handler(payload, context):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
 
 
 def register_dataset_tools(catalog) -> None:
@@ -455,5 +437,5 @@ def register_dataset_tools(catalog) -> None:
                 cost_class="free",
                 async_mode=mode,
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

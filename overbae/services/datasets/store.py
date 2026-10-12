@@ -124,13 +124,6 @@ def _infer_kind(values: list[Any]) -> str:
     return builder.manifest()[0]["type"] if values else "string"
 
 
-def infer_manifest(rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
-    builder = ManifestBuilder()
-    for row in rows:
-        builder.add(row)
-    return builder.manifest()
-
-
 class ManifestBuilder:
     def __init__(self):
         self.kinds = {}
