@@ -257,9 +257,43 @@ def connect(**tables: Path) -> duckdb.DuckDBPyConnection:
         }
     )
     for name, path in tables.items():
-        literal = str(path).replace("'", "''")
-        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT * FROM read_parquet('{literal}')")
+        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT * FROM {_scan(path)}")
     return con
+
+
+def aligned(left: Path, right: Path, columns: list[str]) -> Iterator[dict[str, Any] | None]:
+    """For each row of ``right`` in order, ``columns`` of the first row of ``left``
+    with the same ``source_row``, or None."""
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(left)}
+    keys = {kinds.get(SOURCE_ROW), Frame(right).kinds.get(SOURCE_ROW)}
+    if None in keys or (len(keys) > 1 and not keys <= {"integer", "number"}):
+        yield from (None for _ in range(row_count(right)))
+        return
+    picked = "".join(f", l.{_quote(c)}" for c in columns)
+    con = connect()
+    try:
+        cur = con.execute(
+            f"SELECT l.file_row_number IS NOT NULL{picked} FROM {_scan(right, numbered=True)} r "
+            "LEFT JOIN (SELECT source_row, min(file_row_number) AS first "
+            f"FROM {_scan(left, numbered=True)} GROUP BY source_row) f "
+            "ON r.source_row IS NOT DISTINCT FROM f.source_row "
+            f"LEFT JOIN {_scan(left, numbered=True)} l ON l.file_row_number = f.first "
+            "ORDER BY r.file_row_number"
+        )
+        for batch in cur.to_arrow_reader(1024):
+            for found, *values in zip(*(c.to_pylist() for c in batch.columns), strict=True):
+                yield (
+                    {c: value(v, kinds[c]) for c, v in zip(columns, values, strict=True)}
+                    if found
+                    else None
+                )
+    finally:
+        con.close()
+
+
+def _scan(path: Path, *, numbered: bool = False) -> str:
+    literal = str(path).replace("'", "''")
+    return f"read_parquet('{literal}'{', file_row_number = true' if numbered else ''})"
 
 
 def _quote(name: str) -> str:

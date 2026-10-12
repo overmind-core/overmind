@@ -394,20 +394,25 @@ def _execute(
         except (OSError, subprocess.SubprocessError) as exc:
             return CellResult(error=f"The runner could not start: {exc}")
         deadline = time.monotonic() + WALL_SECONDS
-        while True:
-            try:
-                proc.wait(timeout=_WATCH_SECONDS)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            if time.monotonic() > deadline:
-                stopped = f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."
-            elif _rss(proc.pid) > limit:
-                stopped = f"The {noun} used more than {_gib(limit)} GiB of memory and was stopped."
-            if stopped:
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=_WATCH_SECONDS)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+                if time.monotonic() > deadline:
+                    stopped = f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."
+                elif _rss(proc.pid) > limit:
+                    stopped = (
+                        f"The {noun} used more than {_gib(limit)} GiB of memory and was stopped."
+                    )
+                if stopped:
+                    break
+        finally:
+            if proc.poll() is None:
                 proc.kill()
                 proc.wait()
-                break
         out.seek(0)
         err.seek(0)
         stdout, stderr = out.read(), err.read()

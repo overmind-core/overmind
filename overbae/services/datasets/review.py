@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from collections import Counter
+from contextlib import closing
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -86,23 +89,12 @@ def finalize(before: Path, output: Path, path: Path, *, group_by=()) -> None:
             for batch in tables.batches(output):
                 writer.write_table(pa.Table.from_batches([batch]))
         return
-    carried = list(
-        dict.fromkeys(
-            [PROVENANCE_COLUMN, *(c for c in (*_IDENTITY, *group_by) if c in before_kinds)]
-        )
-    )
+    carried = [
+        c
+        for c in dict.fromkeys([PROVENANCE_COLUMN, *_IDENTITY, *group_by])
+        if c != store.SOURCE_ROW and (c == PROVENANCE_COLUMN or c in before_kinds)
+    ]
     source_kinds = {**before_kinds, PROVENANCE_COLUMN: "json"}
-    inherited: dict[Any, tuple] = {}
-    for record in store.records(before):
-        key = record.get(store.SOURCE_ROW)
-        if key is None or key in inherited:
-            continue
-        inherited[key] = tuple(
-            store.json_dumps(preserve_lineage(record))
-            if column == PROVENANCE_COLUMN
-            else record.get(column)
-            for column in carried
-        )
     kinds = {
         column: tables.union_kind({source_kinds[column], out_kinds[column]})
         if column in out_kinds
@@ -112,32 +104,69 @@ def finalize(before: Path, output: Path, path: Path, *, group_by=()) -> None:
     manifest = [
         {"name": name, "type": kinds.get(name, kind)} for name, kind in out_kinds.items()
     ] + [{"name": c, "type": kinds[c]} for c in carried if c not in out_kinds]
-    index = {column: i for i, column in enumerate(carried)}
+    with tempfile.TemporaryDirectory(prefix="overmind-lineage-") as scratch:
+        lineage = Path(scratch) / "lineage.parquet"
+
+        def inherit(_position, record):
+            if record.get(store.SOURCE_ROW) is None:
+                return {}
+            return {
+                c: store.json_dumps(preserve_lineage(record))
+                if c == PROVENANCE_COLUMN
+                else record.get(c)
+                for c in carried
+            }
+
+        _derive(
+            before,
+            lineage,
+            {**{c: source_kinds[c] for c in carried}, PROVENANCE_COLUMN: "string"},
+            inherit,
+        )
+        with (
+            closing(store.aligned(lineage, output, carried)) as found,
+            tables.TableWriter(path, manifest) as writer,
+        ):
+            for batch in tables.batches(output):
+                inherited = list(islice(found, batch.num_rows))
+                arrays = []
+                for spec in manifest:
+                    name, kind = spec["name"], spec["type"]
+                    if name not in kinds:
+                        arrays.append(batch.column(name))
+                        continue
+                    own = (
+                        batch.column(name).to_pylist()
+                        if name in out_kinds
+                        else [None] * batch.num_rows
+                    )
+                    own_kind = out_kinds.get(name, kind)
+                    merged = []
+                    for theirs, mine in zip(inherited, own, strict=True):
+                        if theirs is not None and theirs[name] is not None:
+                            lineage_text = name == PROVENANCE_COLUMN and kind == "json"
+                            merged.append(
+                                theirs[name] if lineage_text else tables.coerce(theirs[name], kind)
+                            )
+                        elif mine is None or kind == own_kind:
+                            merged.append(mine)
+                        else:
+                            merged.append(tables.coerce(store.value(mine, own_kind), kind))
+                    arrays.append(pa.array(merged, type=tables.ARROW_TYPES[kind]))
+                writer.write_table(pa.Table.from_arrays(arrays, schema=writer.schema))
+
+
+def _derive(source: Path, path: Path, kinds: dict[str, str], derive, columns=None) -> None:
+    """``source_row`` and ``derive(position, record)`` for each row of ``source``."""
+    frame = store.Frame(source)
+    manifest = [{"name": store.SOURCE_ROW, "type": frame.kinds[store.SOURCE_ROW]}] + [
+        {"name": name, "type": kind} for name, kind in kinds.items()
+    ]
     with tables.TableWriter(path, manifest) as writer:
-        for batch in tables.batches(output):
-            keys = batch.column(store.SOURCE_ROW).to_pylist()
-            found = [inherited.get(key) for key in keys]
-            arrays = []
-            for spec in manifest:
-                name, kind = spec["name"], spec["type"]
-                if name not in index:
-                    arrays.append(batch.column(name))
-                    continue
-                i = index[name]
-                own = batch.column(name).to_pylist() if name in out_kinds else [None] * len(keys)
-                own_kind = out_kinds.get(name, kind)
-                merged = []
-                for values, mine in zip(found, own, strict=True):
-                    theirs = values[i] if values is not None else None
-                    if theirs is not None:
-                        lineage = name == PROVENANCE_COLUMN and kind == "json"
-                        merged.append(theirs if lineage else tables.coerce(theirs, kind))
-                    elif mine is None or kind == own_kind:
-                        merged.append(mine)
-                    else:
-                        merged.append(tables.coerce(store.value(mine, own_kind), kind))
-                arrays.append(pa.array(merged, type=tables.ARROW_TYPES[kind]))
-            writer.write_table(pa.Table.from_arrays(arrays, schema=writer.schema))
+        writer.write_rows(
+            {store.SOURCE_ROW: record.get(store.SOURCE_ROW), **derive(position, record)}
+            for position, record in enumerate(frame.records(columns))
+        )
 
 
 def preview_examples(frame: pd.DataFrame) -> list:
@@ -162,73 +191,98 @@ def distribution(path: Path) -> dict:
     }
 
 
-def _source_rows(path: Path) -> list | None:
-    frame = store.Frame(path)
-    return list(frame.values(store.SOURCE_ROW)) if store.SOURCE_ROW in frame else None
+def _unique(path: Path) -> bool:
+    if store.SOURCE_ROW not in store.Frame(path):
+        return False
+    con = store.connect(t=path)
+    try:
+        return con.execute(
+            "SELECT count(source_row) = count(DISTINCT source_row) "
+            "AND count(*) - count(source_row) <= 1 FROM t"
+        ).fetchone()[0]
+    finally:
+        con.close()
 
 
-def _unique(keys: list) -> bool:
-    filled = [k for k in keys if k is not None]
-    return len(set(filled)) == len(filled) and len(keys) - len(filled) <= 1
+def _same_keys(a: Path, b: Path) -> bool:
+    con = store.connect(a=a, b=b)
+    try:
+        return not con.execute(
+            "SELECT 1 FROM (SELECT source_row FROM a EXCEPT SELECT source_row FROM b) "
+            "UNION ALL SELECT 1 FROM (SELECT source_row FROM b EXCEPT SELECT source_row FROM a) "
+            "LIMIT 1"
+        ).fetchall()
+    finally:
+        con.close()
 
 
 _PROMPT_COLUMNS = [store.SOURCE_ROW, "messages", "input", "system_prompt", "instruction"]
+_EXAMPLES = 20
 
 
 def _digest(value: Any) -> str:
     return hashlib.sha256(store.json_dumps(value).encode()).hexdigest()
 
 
+def _original(position: int, record: dict) -> dict:
+    prompt = instructions(record)
+    context = messages(record.get("messages")) or record.get("input")
+    return {
+        "position": position,
+        "prompt": _digest(prompt) if prompt else None,
+        "evidence": bool(context) and not identifier_only(context),
+    }
+
+
 def impact(before: Path, after: Path) -> dict:
-    before_ids, after_ids = _source_rows(before), _source_rows(after)
-    tracked = (
-        before_ids is not None
-        and after_ids is not None
-        and _unique(before_ids)
-        and _unique(after_ids)
-    )
+    tracked = _unique(before) and _unique(after)
     removed: list[int] = []
     inputs: list[int] = []
-    evidence_removed = []
-    prompt_changes = []
-    rows_added = None
+    evidence_removed: list = []
+    prompt_changes: list = []
+    rows_removed = rows_added = None
+    evidence_count = prompt_count = 0
     if tracked:
-        kept = set(after_ids)
-        known = set(before_ids)
-        removed = [i for i, key in enumerate(before_ids) if key not in kept]
-        rows_added = sum(1 for key in after_ids if key not in known)
-        position = {key: i for i, key in enumerate(before_ids)}
-        inputs = [position[key] for key in after_ids[:5] if key in known]
-        originals = {}
-        for record in store.Frame(before).records(_PROMPT_COLUMNS):
-            prompt = instructions(record)
-            context = messages(record.get("messages")) or record.get("input")
-            originals[record.get(store.SOURCE_ROW)] = (
-                _digest(prompt) if prompt else None,
-                bool(context) and not identifier_only(context),
-            )
-        for row in store.Frame(after).records(_PROMPT_COLUMNS):
-            original = originals.get(row.get(store.SOURCE_ROW))
-            if original is None:
-                continue
-            prompt, evidence = original
-            if prompt is not None and prompt != _digest(instructions(row)):
-                prompt_changes.append(row[store.SOURCE_ROW])
-            if evidence and identifier_only(row.get("input")):
-                evidence_removed.append(row[store.SOURCE_ROW])
+        with closing(store.aligned(after, before, [])) as kept:
+            missing = (i for i, row in enumerate(kept) if row is None)
+            removed = list(islice(missing, 5))
+            rows_removed = len(removed) + sum(1 for _ in missing)
+        rows_added = 0
+        with tempfile.TemporaryDirectory(prefix="overmind-impact-") as scratch:
+            digests = Path(scratch) / "digests.parquet"
+            kinds = {"position": "integer", "prompt": "string", "evidence": "boolean"}
+            _derive(before, digests, kinds, _original, _PROMPT_COLUMNS)
+            with closing(store.aligned(digests, after, list(kinds))) as originals:
+                rows = store.Frame(after).records(_PROMPT_COLUMNS)
+                for n, (original, row) in enumerate(zip(originals, rows, strict=True)):
+                    if original is None:
+                        rows_added += 1
+                        continue
+                    if n < 5:
+                        inputs.append(original["position"])
+                    if original["prompt"] is not None and original["prompt"] != _digest(
+                        instructions(row)
+                    ):
+                        prompt_count += 1
+                        if len(prompt_changes) < _EXAMPLES:
+                            prompt_changes.append(row[store.SOURCE_ROW])
+                    if original["evidence"] and identifier_only(row.get("input")):
+                        evidence_count += 1
+                        if len(evidence_removed) < _EXAMPLES:
+                            evidence_removed.append(row[store.SOURCE_ROW])
     return {
         "rows_before": store.row_count(before),
         "rows_after": store.row_count(after),
-        "rows_removed": len(removed) if tracked else None,
+        "rows_removed": rows_removed,
         "rows_added": rows_added,
         "identity_preserved": tracked,
-        "input_evidence_removed": len(evidence_removed),
-        "input_evidence_removed_examples": evidence_removed[:20],
-        "instruction_changes": len(prompt_changes),
-        "instruction_change_examples": prompt_changes[:20],
+        "input_evidence_removed": evidence_count,
+        "input_evidence_removed_examples": evidence_removed,
+        "instruction_changes": prompt_count,
+        "instruction_change_examples": prompt_changes,
         "coverage_before": distribution(before),
         "coverage_after": distribution(after),
-        "removed_examples": preview_examples(store.frame_rows(before, removed[:5])),
+        "removed_examples": preview_examples(store.frame_rows(before, removed)),
         "input_examples": preview_examples(store.frame_rows(before, inputs)),
         "output_examples": preview_examples(store.frame_rows(after, range(5))),
     }
@@ -378,36 +432,49 @@ def record_quality_results(
             raise ValueError("Check names must be at most 200 characters and not source_row.")
         names.add(name)
     results = store.Frame(measured)
-    keys = list(results.values(store.SOURCE_ROW)) if store.SOURCE_ROW in results else []
-    originals = _source_rows(paths.cell_path(dataset.id, cell.id)) or []
+    original = paths.cell_path(dataset.id, cell.id)
     if (
         set(results.columns) != {store.SOURCE_ROW, *names}
-        or len(keys) != len(originals)
-        or not _unique(keys)
-        or set(keys) != set(originals)
+        or len(results) != store.row_count(original)
+        or not _unique(measured)
+        or not _same_keys(measured, original)
     ):
         raise ValueError(
             "Audit results must contain source_row and the named check columns, with every original row exactly once. Use null for unmeasured rows."
         )
     outcomes = []
     for check in checks:
-        values = list(results.values(check["name"]))
-        if not all(type(value) is bool or value is None for value in values):
-            raise ValueError(
-                f"{check['name']} results must be booleans or null, not scores or strings."
-            )
-        failed = [key for key, value in zip(keys, values, strict=True) if value is False]
-        unknown = [key for key, value in zip(keys, values, strict=True) if value is None]
+        failed, unknown = [], []
+        rows_failed = rows_unknown = 0
+        for key, value in zip(
+            results.values(store.SOURCE_ROW), results.values(check["name"]), strict=True
+        ):
+            if value is None:
+                rows_unknown += 1
+                if len(unknown) < _EXAMPLES:
+                    unknown.append(key)
+            elif type(value) is not bool:
+                raise ValueError(
+                    f"{check['name']} results must be booleans or null, not scores or strings."
+                )
+            elif not value:
+                rows_failed += 1
+                if len(failed) < _EXAMPLES:
+                    failed.append(key)
         outcomes.append(
             {
                 "name": check["name"],
                 "evidence": check["evidence"][:2000],
-                "result": "fail" if failed else "unknown" if unknown or not keys else "pass",
-                "rows_checked": len(keys) - len(unknown),
-                "rows_failed": len(failed),
-                "rows_unknown": len(unknown),
-                "failed_source_rows": failed[:20],
-                "unknown_source_rows": unknown[:20],
+                "result": "fail"
+                if rows_failed
+                else "unknown"
+                if rows_unknown or not len(results)
+                else "pass",
+                "rows_checked": len(results) - rows_unknown,
+                "rows_failed": rows_failed,
+                "rows_unknown": rows_unknown,
+                "failed_source_rows": failed,
+                "unknown_source_rows": unknown,
             }
         )
     rows.verify(cell)

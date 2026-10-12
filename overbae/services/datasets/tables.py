@@ -85,15 +85,11 @@ def coerce(value: Any, kind: str) -> Any:
             return value.strip().lower() in ("true", "1", "yes")
         return bool(value)
     if kind == "datetime":
-        if isinstance(value, dt.datetime):
-            return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
-        if isinstance(value, pd.Timestamp):
-            ts = value.to_pydatetime()
-            return ts if ts.tzinfo else ts.replace(tzinfo=dt.UTC)
         try:
-            return pd.Timestamp(value).to_pydatetime().replace(tzinfo=dt.UTC)
+            ts = pd.Timestamp(value).to_pydatetime()
         except (TypeError, ValueError):
             return None
+        return ts.astimezone(dt.UTC) if ts.tzinfo else ts.replace(tzinfo=dt.UTC)
     return value
 
 
