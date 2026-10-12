@@ -573,12 +573,10 @@ export function TimeRangeButton({
   );
 }
 
-/** From/To datetime triggers: clear button affordance; white surface in dark mode. */
 const DATETIME_TRIGGER_CLASS = cn(
-  "h-8 cursor-pointer rounded-sm border border-border bg-background px-2 text-xs font-medium transition-colors",
-  "hover:bg-accent/60 focus-visible:ring-[2px] focus-visible:ring-ring/60",
-  NATIVE_DATE_TRIGGER,
-  "dark:[color-scheme:light]"
+  "h-8 cursor-pointer rounded-sm border px-2 text-xs font-medium transition-colors",
+  "focus-visible:ring-[2px] focus-visible:ring-ring/60",
+  NATIVE_DATE_TRIGGER
 );
 
 /** ISO → `datetime-local` value (local wall clock). Empty/invalid → "". */

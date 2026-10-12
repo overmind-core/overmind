@@ -81,7 +81,7 @@ Ruff enforces formatting and line length. What it can't:
 
 ### Frontend
 
-- Semantic tokens only. Status tints flip per theme, so **never write `dark:` variants** — `border-success/40 bg-success/10 text-success`, not a hardcoded pair.
+- Semantic tokens only. The Console is **dark-only**: one token set in `:root`, no theme switch, and **never a `dark:` variant** (`check:design` fails it) — `border-success/40 bg-success/10 text-success`, not a hardcoded pair.
 - **No box-shadows.** Every `--shadow-*` is `none` and `shadow-*` utilities are dead no-ops. Depth is surface layering plus 1px borders.
 - Icons come from the central registry only: `import { Icon } from "@/components/ui/icons"`. The glyphs are a vendored path table in `ui/icons/glyphs.ts` that `bun run icons:vendor` regenerates; never import that module or `lucide-react` in app code — `check:design` fails on both.
 - New shadcn components: `bunx shadcn@latest add <component>`, then adapt to the token system.

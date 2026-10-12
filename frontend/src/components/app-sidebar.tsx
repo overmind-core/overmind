@@ -259,8 +259,8 @@ function NavGroupItem({
                   // connector. Every trunk starts at one shared point 0.75rem
                   // above the FIRST row's centre and ends at its own row's
                   // centre — hence the row pitch (2rem) times index. The active
-                  // line is raised above the muted ones, and its colour must
-                  // stay a sidebar token: a hard `#fff` vanishes in light theme.
+                  // line is raised above the muted ones, and its colour stays
+                  // a sidebar token, never a hard `#fff`.
                   className={cn("sidebar-elbow", active && "z-10")}
                   key={item.to}
                   style={

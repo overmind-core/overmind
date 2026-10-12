@@ -37,7 +37,7 @@ const INFERENCE_HEADER = (
     icon={
       <Icon.inferenceTitle
         aria-hidden
-        className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+        className="size-6 shrink-0 [image-rendering:pixelated] invert"
       />
     }
     title="Inference"
@@ -241,7 +241,7 @@ function InferencePage() {
               className="flex-1"
               description="Deploy a fine-tuned model from the Training page to serve it here."
               icon={Icon.inferenceTitle}
-              iconClassName="dark:invert [image-rendering:pixelated]"
+              iconClassName="invert [image-rendering:pixelated]"
               size="section"
               title="No deployed models"
             />

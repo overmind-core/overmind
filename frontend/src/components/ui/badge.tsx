@@ -28,7 +28,6 @@ const badgeVariants = cva(
         neutral: "border-muted-foreground/50 bg-wash-raised text-muted-foreground",
         outline: "text-foreground",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
-        // Tokens flip per theme (--success/--warning/--info in styles.css), so no `dark:`.
         success: "border-success/40 bg-success/10 text-success",
         warning: "border-warning/40 bg-warning/10 text-warning",
       },

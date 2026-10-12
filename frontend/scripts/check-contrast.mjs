@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Checks the `:root` (light) and `.dark` token blocks of src/styles.css in both
- * themes. `bun run check:contrast`; `--all` also prints passing rows. Exits 1 on
- * any failure.
+ * Checks the `:root` token blocks of src/styles.css. `bun run check:contrast`;
+ * `--all` also prints passing rows. Exits 1 on any failure.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,11 +10,11 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const css = readFileSync(join(root, "src/styles.css"), "utf8");
 
-// styles.css declares :root/.dark more than once (app palette, workshop
-// instruments), so every block for a selector merges into one theme.
-function block(selector) {
+// styles.css declares :root more than once (app palette, workshop
+// instruments), so every block merges into one palette.
+function palette() {
   const out = {};
-  for (const m of css.matchAll(new RegExp(`${selector}\\s*\\{([^}]*)\\}`, "g"))) {
+  for (const m of css.matchAll(/:root\s*\{([^}]*)\}/g)) {
     for (const [, name, value] of m[1].matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)) {
       out[name] = value;
     }
@@ -26,7 +25,7 @@ function block(selector) {
   return out;
 }
 
-const THEMES = { dark: block("\\.dark"), light: block(":root") };
+const tokens = palette();
 
 const srgb = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 function luminance(hex) {
@@ -116,7 +115,7 @@ const TIERS = [
   ["muted", "card", "muted fill vs card"],
 ];
 
-// Every neutral in BOTH themes rides one hue under a chroma ceiling. Hue is
+// Every neutral rides one hue under a chroma ceiling. Hue is
 // asserted only above HUE_MIN_CHROMA; below it a hue is quantisation noise.
 const CHROMA_MAX = 6;
 const HUE_AXIS = 75;
@@ -175,165 +174,134 @@ function composite(fg, bg, alpha) {
     .join("")}`;
 }
 
-for (const [theme, tokens] of Object.entries(THEMES)) {
-  for (const [fg, bg, min, label] of PAIRS) {
-    const a = tokens[fg];
-    const b = tokens[bg];
-    if (!a || !b) {
-      rows.push([theme, label, fg, bg, null, min, "MISSING"]);
-      continue;
-    }
-    const r = ratio(a, b);
-    const ok = r >= min;
-    if (!ok) failed++;
-    if (!ok || showAll)
-      rows.push([theme, label, `${fg} ${a}`, `${bg} ${b}`, r, min, ok ? "ok" : "FAIL"]);
+for (const [fg, bg, min, label] of PAIRS) {
+  const a = tokens[fg];
+  const b = tokens[bg];
+  if (!a || !b) {
+    rows.push([label, fg, bg, null, min, "MISSING"]);
+    continue;
   }
+  const r = ratio(a, b);
+  const ok = r >= min;
+  if (!ok) failed++;
+  if (!ok || showAll) rows.push([label, `${fg} ${a}`, `${bg} ${b}`, r, min, ok ? "ok" : "FAIL"]);
 }
 
-for (const [theme, tokens] of Object.entries(THEMES)) {
+for (const surf of BORDER_SURFACES) {
   const border = tokens.border;
-  if (!border) continue;
-  for (const surf of BORDER_SURFACES) {
-    const bg = tokens[surf];
-    if (!bg) continue;
-    for (const [alpha, name] of BORDER_LEVELS) {
-      const mixed = composite(border, bg, alpha);
-      const r = ratio(mixed, bg);
-      const ok = r >= DECOR;
-      if (!ok) failed++;
-      if (!ok || showAll)
-        rows.push([
-          theme,
-          `border ${name} on ${surf}`,
-          `${border} @${Math.round(alpha * 100)}%`,
-          `${surf} ${bg}`,
-          r,
-          DECOR,
-          ok ? "ok" : "FAIL",
-        ]);
-    }
-  }
-}
-
-for (const [theme, tokens] of Object.entries(THEMES)) {
-  for (const [a, b, label] of TIERS) {
-    const x = tokens[a];
-    const y = tokens[b];
-    if (!x || !y) {
-      rows.push([theme, `tier: ${label}`, a, b, null, TIER_MIN, "MISSING"]);
-      failed++;
-      continue;
-    }
-    const d = Math.abs(lab(x).L - lab(y).L);
-    const ok = d >= TIER_MIN;
+  const bg = tokens[surf];
+  if (!border || !bg) continue;
+  for (const [alpha, name] of BORDER_LEVELS) {
+    const mixed = composite(border, bg, alpha);
+    const r = ratio(mixed, bg);
+    const ok = r >= DECOR;
     if (!ok) failed++;
     if (!ok || showAll)
       rows.push([
-        theme,
-        `tier: ${label}`,
-        `${a} ${x}`,
-        `${b} ${y}`,
-        d,
-        TIER_MIN,
-        ok ? "ok" : "FLAT",
+        `border ${name} on ${surf}`,
+        `${border} @${Math.round(alpha * 100)}%`,
+        `${surf} ${bg}`,
+        r,
+        DECOR,
+        ok ? "ok" : "FAIL",
       ]);
   }
 }
 
-// The sidebar is the one tier a theme may separate EITHER way — a tonal step or
-// a visible --sidebar-border. Only neither fails.
-for (const [theme, tokens] of Object.entries(THEMES)) {
-  const step =
-    tokens.sidebar && tokens.background
-      ? Math.abs(lab(tokens.sidebar).L - lab(tokens.background).L)
-      : 0;
-  const edge = tokens["sidebar-border"];
-  const hasEdge = Boolean(edge) && ratio(edge, tokens.sidebar ?? "#000000") >= DECOR;
-  const ok = step >= TIER_MIN || hasEdge;
+for (const [a, b, label] of TIERS) {
+  const x = tokens[a];
+  const y = tokens[b];
+  if (!x || !y) {
+    rows.push([`tier: ${label}`, a, b, null, TIER_MIN, "MISSING"]);
+    failed++;
+    continue;
+  }
+  const d = Math.abs(lab(x).L - lab(y).L);
+  const ok = d >= TIER_MIN;
   if (!ok) failed++;
   if (!ok || showAll)
-    rows.push([
-      theme,
-      "tier: sidebar wall",
-      `sidebar ${tokens.sidebar ?? "—"}`,
-      hasEdge ? `edge ${edge}` : "no edge",
-      step,
-      TIER_MIN,
-      ok ? "ok" : "FLAT",
-    ]);
+    rows.push([`tier: ${label}`, `${a} ${x}`, `${b} ${y}`, d, TIER_MIN, ok ? "ok" : "FLAT"]);
 }
 
-for (const [theme, tokens] of Object.entries(THEMES))
-  for (const name of NEUTRALS) {
-    const hex = tokens[name];
-    if (!hex) {
-      rows.push([theme, `axis: ${name}`, name, "—", null, CHROMA_MAX, "MISSING"]);
-      failed++;
-      continue;
-    }
-    const { C, h } = lab(hex);
-    if (C > CHROMA_MAX) {
-      failed++;
-      rows.push([
-        theme,
-        `axis: ${name} chroma`,
-        `${name} ${hex}`,
-        `C=${C.toFixed(1)}`,
-        C,
-        CHROMA_MAX,
-        "SATURATED",
-      ]);
-    } else if (showAll) {
-      rows.push([
-        theme,
-        `axis: ${name} chroma`,
-        `${name} ${hex}`,
-        `C=${C.toFixed(1)}`,
-        C,
-        CHROMA_MAX,
-        "ok",
-      ]);
-    }
-    if (C < HUE_MIN_CHROMA) continue;
-    const drift = Math.abs(((h - HUE_AXIS + 540) % 360) - 180);
-    if (drift > HUE_TOLERANCE) {
-      failed++;
-      rows.push([
-        theme,
-        `axis: ${name} hue`,
-        `${name} ${hex}`,
-        `h=${h.toFixed(0)}° want ${HUE_AXIS}°`,
-        drift,
-        HUE_TOLERANCE,
-        "OFF-AXIS",
-      ]);
-    } else if (showAll) {
-      rows.push([
-        theme,
-        `axis: ${name} hue`,
-        `${name} ${hex}`,
-        `h=${h.toFixed(0)}°`,
-        drift,
-        HUE_TOLERANCE,
-        "ok",
-      ]);
-    }
+// The sidebar is the one tier that may separate EITHER way — a tonal step or a
+// visible --sidebar-border. Only neither fails.
+const sidebarStep =
+  tokens.sidebar && tokens.background
+    ? Math.abs(lab(tokens.sidebar).L - lab(tokens.background).L)
+    : 0;
+const sidebarEdge = tokens["sidebar-border"];
+const hasSidebarEdge =
+  Boolean(sidebarEdge) && ratio(sidebarEdge, tokens.sidebar ?? "#000000") >= DECOR;
+const sidebarOk = sidebarStep >= TIER_MIN || hasSidebarEdge;
+if (!sidebarOk) failed++;
+if (!sidebarOk || showAll)
+  rows.push([
+    "tier: sidebar wall",
+    `sidebar ${tokens.sidebar ?? "—"}`,
+    hasSidebarEdge ? `edge ${sidebarEdge}` : "no edge",
+    sidebarStep,
+    TIER_MIN,
+    sidebarOk ? "ok" : "FLAT",
+  ]);
+
+for (const name of NEUTRALS) {
+  const hex = tokens[name];
+  if (!hex) {
+    rows.push([`axis: ${name}`, name, "—", null, CHROMA_MAX, "MISSING"]);
+    failed++;
+    continue;
   }
+  const { C, h } = lab(hex);
+  if (C > CHROMA_MAX) {
+    failed++;
+    rows.push([
+      `axis: ${name} chroma`,
+      `${name} ${hex}`,
+      `C=${C.toFixed(1)}`,
+      C,
+      CHROMA_MAX,
+      "SATURATED",
+    ]);
+  } else if (showAll) {
+    rows.push([`axis: ${name} chroma`, `${name} ${hex}`, `C=${C.toFixed(1)}`, C, CHROMA_MAX, "ok"]);
+  }
+  if (C < HUE_MIN_CHROMA) continue;
+  const drift = Math.abs(((h - HUE_AXIS + 540) % 360) - 180);
+  if (drift > HUE_TOLERANCE) {
+    failed++;
+    rows.push([
+      `axis: ${name} hue`,
+      `${name} ${hex}`,
+      `h=${h.toFixed(0)}° want ${HUE_AXIS}°`,
+      drift,
+      HUE_TOLERANCE,
+      "OFF-AXIS",
+    ]);
+  } else if (showAll) {
+    rows.push([
+      `axis: ${name} hue`,
+      `${name} ${hex}`,
+      `h=${h.toFixed(0)}°`,
+      drift,
+      HUE_TOLERANCE,
+      "ok",
+    ]);
+  }
+}
 
 if (rows.length === 0) {
   console.log(
-    "✓ contrast: every checked pairing clears AA in both themes, border ramp included;\n" +
-      "  every surface tier is perceptibly separated and both ramps hold one hue axis"
+    "✓ contrast: every checked pairing clears AA, border ramp included;\n" +
+      "  every surface tier is perceptibly separated and the ramp holds one hue axis"
   );
 } else {
   const w = (s, n) => String(s).padEnd(n);
   console.log(
-    `${w("theme", 6)} ${w("pairing", 30)} ${w("foreground", 26)} ${w("background", 26)} ${w("ratio", 7)} ${w("min", 5)} status`
+    `${w("pairing", 30)} ${w("foreground", 26)} ${w("background", 26)} ${w("ratio", 7)} ${w("min", 5)} status`
   );
-  for (const [theme, label, f, b, r, min, status] of rows) {
+  for (const [label, f, b, r, min, status] of rows) {
     console.log(
-      `${w(theme, 6)} ${w(label, 30)} ${w(f, 26)} ${w(b, 26)} ${w(r ? r.toFixed(2) : "—", 7)} ${w(min, 5)} ${status}`
+      `${w(label, 30)} ${w(f, 26)} ${w(b, 26)} ${w(r ? r.toFixed(2) : "—", 7)} ${w(min, 5)} ${status}`
     );
   }
 }

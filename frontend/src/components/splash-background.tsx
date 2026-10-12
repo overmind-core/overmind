@@ -1,21 +1,17 @@
 import { cn } from "@/lib/utils";
 
-/**
- * The art is authored light-on-dark, so light theme inverts both layers and
- * swaps the starfield's `screen` blend for its dual, `multiply`.
- * Needs a `relative overflow-hidden` parent.
- */
+/** Needs a `relative overflow-hidden` parent. */
 function SplashArt({ className }: { className?: string }) {
   return (
     <div aria-hidden="true" className={cn("pointer-events-none absolute inset-0", className)}>
       <img
         alt=""
-        className="absolute inset-0 h-full w-full animate-fade-in object-cover invert dark:invert-0"
+        className="absolute inset-0 h-full w-full animate-fade-in object-cover"
         src="/A2.png"
       />
       <img
         alt=""
-        className="absolute inset-0 h-full w-full animate-fade-in object-cover invert mix-blend-multiply [animation-delay:200ms] dark:invert-0 dark:mix-blend-screen"
+        className="absolute inset-0 h-full w-full animate-fade-in object-cover mix-blend-screen [animation-delay:200ms]"
         src="/A1.png"
       />
     </div>

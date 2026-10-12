@@ -512,7 +512,7 @@ export function RunsTable({
           className="flex-1"
           description="Evaluation runs appear here as they are launched."
           icon={Icon.evaluations}
-          iconClassName="dark:invert [image-rendering:pixelated]"
+          iconClassName="invert [image-rendering:pixelated]"
           size="section"
           title="No runs yet"
         />

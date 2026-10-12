@@ -11,11 +11,12 @@ The token spec is the root `DESIGN.md` — extend its values, don't restructure 
 
 ## Color — semantic tokens only
 
+- **Dark-only.** `src/styles.css` declares one token set in `:root`; there is no `.dark` class, theme provider, theme switch or stored theme. `index.html` declares `color-scheme: dark`, so the first paint is dark. Never write a `dark:` variant: without a custom variant Tailwind's `dark:` follows the OS colour scheme, and `check:design` fails it.
 - **Never** raw Tailwind palette utilities (`bg-green-500`, `text-blue-600`, `border-amber-400`) or hex in class strings (`bg-[#1c1917]`).
-- **Status** → the four semantic tokens as a tint triplet. Tokens flip per theme, so **no `dark:` variants**: `border-success/40 bg-success/10 text-success`. Meanings: `success` = passed/healthy/connected/completed; `warning` = review/degraded/stale; `info` = running/pending/queued/training; `destructive` = failed/error/cancelled. Prefer the components — `<Badge variant="success|warning|info|error|neutral">` or `<StatusBadge status={domainStatus(state)}>` (`lib/job-status.tsx`, `lib/colors.ts`).
+- **Status** → the four semantic tokens as a tint triplet: `border-success/40 bg-success/10 text-success`. Meanings: `success` = passed/healthy/connected/completed; `warning` = review/degraded/stale; `info` = running/pending/queued/training; `destructive` = failed/error/cancelled. Prefer the components — `<Badge variant="success|warning|info|error|neutral">` or `<StatusBadge status={domainStatus(state)}>` (`lib/job-status.tsx`, `lib/colors.ts`).
 - **Categorical** — a fixed set of entity types, not status → `text-cat-1 … text-cat-6` / `bg-cat-1/10`. Assign a stable slot per type.
 - **Login / onboarding**, the always-dark cinematic surfaces → the named `--auth-*` tokens (`bg-auth-panel`, `border-auth-border`, `text-auth-text-dim`, `text-auth-accent`, …), never inline hex.
-- Neutrals → `bg-background/card/muted`, `text-foreground/muted-foreground`, `border-border`. Titles use `text-foreground`, never `text-black dark:text-white`.
+- Neutrals → `bg-background/card/muted`, `text-foreground/muted-foreground`, `border-border`. Titles use `text-foreground`, never `text-white`.
 
 ## Border contrast — hard constraint
 
@@ -68,7 +69,7 @@ The left sidebar logic in `src/routes/_auth.tsx` and `src/components/ui/sidebar.
 
 - Package manager is **Bun** (`bun add`, `bunx shadcn@latest add …`) — never pnpm/npm/yarn. New shadcn components get adapted to the token system after generation.
 - **Biome must not format assets.** `.svg` is excluded in `biome.json` — keep it excluded and never run `biome … --write` over `**/*.svg` (2.5.x sorts attributes and corrupted a logo's XML prolog).
-- Verify every UI change, in both light and dark:
+- Verify every UI change:
 
 ```bash
 cd frontend

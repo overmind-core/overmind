@@ -22,8 +22,8 @@ function kindLabel(kind: RunningJobItem["kind"]): string {
 
 /** Each glyph must match the title icon of the page the row navigates to. */
 function JobKindIcon({ kind }: { kind: RunningJobItem["kind"] }) {
-  // Two-tone header glyphs need pixelated + dark:invert (see PageHeader call sites).
-  const titleIconClass = "size-4 shrink-0 [image-rendering:pixelated] dark:invert";
+  // Two-tone header glyphs need pixelated + invert (see PageHeader call sites).
+  const titleIconClass = "size-4 shrink-0 [image-rendering:pixelated] invert";
   if (kind === "finetuning") {
     return <Icon.finetuning className={titleIconClass} />;
   }

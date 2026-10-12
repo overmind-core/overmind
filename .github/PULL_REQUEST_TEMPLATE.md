@@ -16,7 +16,7 @@
 
 ## Screenshots
 
-<!-- UI changes only: before / after, in both light and dark. -->
+<!-- UI changes only: before / after. -->
 
 ## Completeness
 
@@ -33,4 +33,4 @@
 - [ ] The old path is deleted, not left standing beside the new one
 - [ ] Tests cover the change, or the reason they don't is stated above
 - [ ] Model changes: rebased on `main`, migration regenerated on top, `make check-migrations` passes
-- [ ] UI changes pass `bun run check:all` and were checked in both themes
+- [ ] UI changes pass `bun run check:all` and were checked in the browser

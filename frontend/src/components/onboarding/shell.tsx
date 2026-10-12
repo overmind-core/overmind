@@ -4,7 +4,7 @@ import { Icon } from "@/components/ui/icons";
 import { TITLE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 export const SOLID_SECONDARY_BUTTON_CLASS =
-  "border border-auth-border bg-auth-field text-auth-text hover:border-auth-border-hover hover:bg-auth-field-hover dark:bg-auth-field dark:hover:bg-auth-field-hover";
+  "border border-auth-border bg-auth-field text-auth-text hover:border-auth-border-hover hover:bg-auth-field-hover";
 
 const PILLARS = [
   { description: "See everything your agent does", icon: Icon.observability, name: "Map & Trace" },
