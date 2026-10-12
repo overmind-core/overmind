@@ -8,7 +8,7 @@ description: Run or modify the seed_demo management command (the one-project Sup
 Seeds one project — **Support Copilot** at Ledgerline, a fictional payments
 company — with thirty days of traffic across three capabilities (ticket triage,
 KB answering, dispute resolution) and every downstream surface filled: tasks,
-executions and verdicts, sessions, datasets with cell chains and chats, eval
+executions and verdicts, sessions, datasets with version trees, eval
 runs, optimiser runs (harness, backtest, hybrid), training jobs with judge
 evals and class metrics, deployed models with inference traffic, and the
 credits ledger.
@@ -57,11 +57,13 @@ workers to re-drive seeded rows against **real providers** and spend credits:
 
 - `auto_now_add`/`auto_now` columns are backdated via the raw-SQL `backdate()`
   helper (executemany), not via the ORM.
-- Datasets land through `services/datasets/land` and run through
-  `notebook/run.execute`, so every dataset has an active cell with a real
-  frame. Historical demo consumption stamps `used_at` directly and pins cells,
-  including each training job's `eval_cell`; it does not fabricate a semantic
-  quality review. Live use reports missing reviews as warnings. The reset deletes
+- Datasets land through `services/datasets/land` and add versions through
+  `services/datasets/executions.run_now`, which runs each script in the
+  sandbox inline, so every dataset has an active version with a real frame.
+  The sandbox must be up: run the seed in compose with
+  `docker compose exec celery-interactive-worker python manage.py seed_demo`.
+  Historical demo consumption stamps `used_at` directly and pins cells,
+  including each training job's `eval_cell`. The reset deletes
   jobs, experiments and eval runs before the project.
 - Eval run summaries come from the real `aggregate_run` task applied inline;
   scores per variant are `Score` rows, so per-variant numbers are read from

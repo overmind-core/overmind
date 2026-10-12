@@ -206,11 +206,11 @@ The Codex, Cursor and Claude Code plugin manifests package that same connection
 and the shared workflow skills. They add installation, branding, workflow guidance and
 links to the normal Console. They do not add a separate UI or another API.
 
-| Client      | Install the plugin                                                                      |
-| ----------- | --------------------------------------------------------------------------------------- |
+| Client      | Install the plugin                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------ |
 | Claude Code | `/plugin marketplace add overmind-core/overmind`, then `/plugin install overmind@overmind` |
 | Codex       | `codex plugin marketplace add overmind-core/overmind`, then enable it in `/plugins`        |
-| Cursor      | Add `overmind-core/overmind` as a plugin marketplace, then install Overmind              |
+| Cursor      | Add `overmind-core/overmind` as a plugin marketplace, then install Overmind                |
 
 The bundled `mcp.json` connects to the hosted API through OAuth account sign-in.
 Access continues until revoked, with automatic token refresh. Standalone MCP
@@ -265,7 +265,7 @@ repositories.
 | `overmind`               | Local setup, repository discovery and workflows across surfaces    |
 | `overmind-agent`         | Inspect capabilities, behaviour coverage and repository provenance |
 | `overmind-observability` | Investigate traces, failures, latency and instrumentation gaps     |
-| `overmind-datasets`      | Prepare, verify, generate and export Data Workshop versions        |
+| `overmind-datasets`      | Shape datasets with scripted versions, documents and exports       |
 | `overmind-evaluations`   | Author evaluators, prepare runs and compare results                |
 | `overmind-optimiser`     | Run prompt/code experiments and model comparisons                  |
 | `overmind-training`      | Prepare exact inputs, estimate costs and inspect fine-tuning       |

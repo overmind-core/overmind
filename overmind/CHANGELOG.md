@@ -8,11 +8,20 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- `overmind dataset upload --wait` waits only until the source has landed, and
+  the next MCP step is `get_job(kind=dataset_import)`.
+- `overmind dataset export --cell` takes a version label such as `v3`.
+- The dataset skills describe versions added by scripts in Overmind's sandbox;
+  the Data Workshop agent and its tools are gone. Skills version 1.3.0.
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 
 ### Added
 
+- `overmind dataset upload FILE --json-rows-field FIELD` imports one top-level
+  array from a JSON object.
+- `overmind dataset upload` lands PDF, DOCX, Markdown, text and PNG, JPEG or
+  WebP documents as text rows, within the server's per-type size limit.
 - Codex (`.agents/plugins/marketplace.json`) and Cursor (`.cursor-plugin/marketplace.json`)
   marketplaces at the repository root, so all three clients install the plugin
   from `overmind-core/overmind`.

@@ -44,7 +44,7 @@ writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
 LLM requests, background task failures and the error. `make test` never
 collects journeys: they need `TEST_REDIS_URL` and a serial run. The journeys take about six minutes, and CI runs them as their own job beside `test`;
 `make test-journeys test_args="-k <name>"` runs one. `test_kit_*.py` files run one
-journey per vendor (connectors, workshop LLM engines, GPU training outcomes): a new
+journey per vendor (connectors, LLM providers, GPU training outcomes): a new
 vendor joins its kit's parametrize list.
 
 ## Where a test belongs
@@ -53,7 +53,7 @@ vendor joins its kit's parametrize list.
 - **Contract kit** (`tests/test_*_contract.py`, `test_otlp_dialects.py`): one table over every vendor or dialect, the real client talking to a network fake.
 - **Unit test**: pure logic with many edge cases, through a public entry point.
 
-The unit suite runs behind the same outbound guard as the journeys: sockets reach loopback only, and every HTTP call must be answered by `tests/fakes` (`fake_llm` is autouse; `fake_modal`, `sft`, `serving`, `clerk`, `stripe_api`, `scripted(host)`, `slept` on request). FakeLLM serves chat, streaming (`stream_rounds`), the OpenRouter catalog (`catalog_payload`, `limits`, `prices`), and Jev decisions (`decide`; the Jev path needs Redis, so point `CACHES` at `TEST_REDIS_URL`). The Cursor SDK dials out from a bridge process the guard cannot see, so `CURSOR_API_KEY` is removed unless a test asks for the `cursor` fake.
+The unit suite runs behind the same outbound guard as the journeys: sockets reach loopback only, and every HTTP call must be answered by `tests/fakes` (`fake_llm` is autouse; `fake_modal`, `sft`, `serving`, `clerk`, `stripe_api`, `scripted(host)`, `slept` on request). FakeLLM serves chat, streaming (`stream_rounds`), the OpenRouter catalog (`catalog_payload`, `limits`, `prices`), and Jev decisions (`decide`; the Jev path needs Redis, so point `CACHES` at `TEST_REDIS_URL`). Dataset scripts and document extraction run in a real sandbox: a session fixture starts `python -m sandbox` on a loopback port with `SANDBOX_ALLOW_SHARED_UID=1` and points `SANDBOX_URL`/`SANDBOX_TOKEN` at it. OCR tests skip without `tesseract` (CI installs it). `tests/test_sandbox_isolation.py` holds the promises only a root sandbox keeps (own uid per run, no route out); it runs only when `SANDBOX_ISOLATION_URL`/`SANDBOX_ISOLATION_TOKEN` name one, such as the compose `sandbox` reached from a worker container.
 
 A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` control that asserts the correct behaviour; it turns red when the fix lands, and the marker goes.
 

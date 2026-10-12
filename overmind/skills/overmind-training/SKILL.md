@@ -17,8 +17,8 @@ contract. Use the chosen MCP project. For an existing job, start with
 
 Prefer the native `finetune-capability` prompt with the selected dataset and
 optional capability. Resolve datasets with `list_datasets`; inspect and query
-the exact train and held-out eval cells. Inspect whole-frame task families and
-workshop findings rather than assuming a sample describes the whole corpus.
+the exact train and held-out eval versions. Inspect whole-frame task families and
+fit findings rather than assuming a sample describes the whole corpus.
 
 Use `get_model_catalog` for initial model discovery, then
 `check_finetune_readiness` for the selected dataset. A capability is optional;
@@ -35,9 +35,10 @@ benchmark selection and readable dataset versions.
 
 For Modal training, call `prepare_training_data` for the chosen model, context
 length and cell, then poll the returned `training_preparation` job. Inspect
-exact token counts, supervised content and incompatible rows. Send concrete
-source-row repairs to `message_dataset_agent`; keep model-specific preprocessing
-in Training. Reprepare a changed cell rather than reusing a stale report.
+exact token counts, supervised content and incompatible rows. Fix concrete
+source rows with a new dataset version (`add_dataset_version`); keep
+model-specific preprocessing in Training. Reprepare a changed version rather
+than reusing a stale report.
 
 Use `estimate_finetune` and evaluation readiness to present training plus
 before/after evaluation spend. Each selected evaluation uses the full pinned

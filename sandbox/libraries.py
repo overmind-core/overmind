@@ -85,7 +85,6 @@ ALLOWED = frozenset(
         "dateutil",
         "pytz",
         "yaml",
-        "textstat",
         "unidecode",
         "ftfy",
         "simhash",

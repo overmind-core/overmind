@@ -125,6 +125,49 @@ def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path
     }
 
 
+def test_upload_file_lands_the_named_json_array_and_points_at_the_import(tmp_path: Path):
+    path = tmp_path / "export.json"
+    path.write_bytes(b'{"records": []}')
+    session = FakeSession(chunk_bytes=64)
+
+    result = upload_file(
+        path,
+        project_id="project-1",
+        api_key="key-1",
+        api_url="https://api.example",
+        json_rows_field="records",
+        session=session,
+    )
+
+    assert session.calls[-2][2]["json"] == {"size": 15, "json_rows_field": "records"}
+    assert session.calls[-1][2]["json"]["source"] == {
+        "upload_id": "upload-1",
+        "filename": "export.json",
+        "json_rows_field": "records",
+    }
+    assert result["next_mcp_actions"] == [
+        {"tool": "get_job", "arguments": {"kind": "dataset_import", "id": "dataset-1"}},
+        {"tool": "inspect_dataset", "arguments": {"dataset": "dataset-1"}},
+    ]
+
+
+def test_a_json_rows_field_needs_a_json_file(tmp_path: Path):
+    path = tmp_path / "policies.pdf"
+    path.write_bytes(b"%PDF")
+    session = FakeSession()
+
+    with pytest.raises(DatasetUploadError, match="--json-rows-field applies to .json files only."):
+        upload_file(
+            path,
+            project_id="project-1",
+            api_key="key-1",
+            api_url="https://api.example",
+            json_rows_field="records",
+            session=session,
+        )
+    assert session.calls == []
+
+
 def test_upload_file_with_split_hits_the_split_endpoint_and_returns_both_ids(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"ab")
@@ -234,7 +277,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
             "id": "dataset-1",
             "state": "landing",
             "next_mcp_actions": [
-                {"tool": "get_job", "arguments": {"kind": "dataset_run"}},
+                {"tool": "get_job", "arguments": {"kind": "dataset_import"}},
                 {"tool": "inspect_dataset", "arguments": {"dataset": "dataset-1"}},
             ],
         },
@@ -248,7 +291,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     body = json.loads(result.output)
     assert body["id"] == "dataset-1"
     assert body["state"] == "landing"
-    assert body["next_mcp_actions"][0]["arguments"]["kind"] == "dataset_run"
+    assert body["next_mcp_actions"][0]["arguments"]["kind"] == "dataset_import"
     assert "commit_dataset_build" not in result.output
     assert "api-key" not in result.output.lower()
 
@@ -256,7 +299,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     assert human.exit_code == 0, human.output
     assert "dataset-1" in human.output
     assert "landing" in human.output
-    assert "get_job(kind=dataset_run, id=" in human.output
+    assert "get_job(kind=dataset_import, id=" in human.output
 
 
 def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path: Path, monkeypatch):
@@ -536,9 +579,9 @@ def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(mo
         "d1",
         api_key="k",
         api_url="http://x",
-        session=_Session([{"state": "landing"}, {"state": "diagnosing"}, {"state": "idle"}]),
+        session=_Session([{"state": "landing"}, {"state": "landing"}, {"state": "idle", "running": 2}]),
     )
-    assert done == {"state": "idle"}
+    assert done == {"state": "idle", "running": 2}
     with pytest.raises(dataset_cmd.DatasetUploadError, match="Row 2 has 3 cells"):
         dataset_cmd.wait_until_ready(
             "d1",

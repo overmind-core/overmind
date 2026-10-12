@@ -69,7 +69,7 @@ Each works directly with the configured MCP connection and can be used on its ow
 | --------------------------------------------------- | ------------------------------------------------------------ |
 | [Agent](../overmind-agent/SKILL.md)                 | Capability map, behaviour coverage and repository provenance |
 | [Observability](../overmind-observability/SKILL.md) | Traces, failures, latency and instrumentation gaps           |
-| [Datasets](../overmind-datasets/SKILL.md)           | Data Workshop preparation, proposals, generation and export  |
+| [Datasets](../overmind-datasets/SKILL.md)           | Data Workshop versions, scripts, documents and export        |
 | [Evaluations](../overmind-evaluations/SKILL.md)     | Rubrics, eval sets, runs and baseline comparisons            |
 | [Optimiser](../overmind-optimiser/SKILL.md)         | Prompt/code experiments and model comparisons                |
 | [Training](../overmind-training/SKILL.md)           | Model selection, exact preparation, cost and fine-tuning     |
@@ -131,11 +131,10 @@ Follow these for ALL Overmind work:
    refused. There is no reingest tool and no dual-intent dataset. Set intent
    at upload (`overmind dataset upload FILE --json --intent train|eval`), at
    create (`create_dataset_from_traces` / `_failures`), or later with
-   `message_dataset_agent` ("set intent to train") if no version has been used.
+   `update_dataset(intent=...)`.
    `create_dataset_from_traces` with `split` lands one selection as a train
    dataset and an eval dataset with disjoint rows; so does `--split PERCENT`
-   on `overmind dataset upload`. A used cell freezes intent:
-   upload a second dataset with the other `--intent` instead of retagging.
+   on `overmind dataset upload`.
    Read the contracts section below.
 1. **Errors are values; mutations run immediately.** Every tool returns
    `{"error": "..."}` instead of raising — follow `fields` when present.
@@ -207,7 +206,7 @@ Follow these for ALL Overmind work:
   `overmind://capabilities/{capability}` for capability `id` and
   `active_model`.
 - **Async jobs.** Poll returned job references with `get_job(kind, id)`.
-  Dataset work uses `kind=dataset_run`; other supported kinds include
+  Dataset landing uses `kind=dataset_import`; other supported kinds include
   `eval_run`, `finetune_job`, `deployment`, `model_activation`, and `optimizer_experiment`.
 - Chat-UI-only helpers (`propose_plan`, `suggest_navigation`) are not exposed
   on MCP.
@@ -225,7 +224,9 @@ Datasets:
 
 `list_datasets`, `inspect_dataset`, `query_dataset`,
 `create_dataset_from_traces`, `create_dataset_from_llm_calls`,
-`message_dataset_agent`, `run_dataset`.
+`try_dataset_script`, `probe_dataset_version`, `add_dataset_version`,
+`add_synthetic_examples`, `diff_dataset_versions`, `activate_dataset_version`,
+`update_dataset`, `resume_dataset_import`.
 
 Evaluations:
 
@@ -264,11 +265,12 @@ older endpoint-shaped names.
 
 ## Dataset contracts — read first, they gate every workflow
 
-A dataset is a landed source and a linear chain of cells; every cell that
-ran is a **version** (1.0 is the source, then 1.1, 1.2, …), the dataset has
-an **intent** (`train` or `eval`, proposed at landing) and a **capability**,
-and every version carries two measured contracts (`list_datasets` shows the
-active version's):
+A dataset is a landed source (`v0`) and an immutable tree of **versions**
+(`v1`, `v2`, … in the order they were added, each with one parent). You add a
+version by running a Python script on a parent in Overmind's sandbox. The
+dataset has an **intent** (`train` or `eval`, proposed at landing) and a
+**capability**, and every version carries two measured contracts
+(`list_datasets` shows the active version's):
 
 - **`train`** ("Train") — a `messages` column whose every row is a chat
   transcript with an assistant turn (`tools` optional).
@@ -277,11 +279,11 @@ active version's):
 - **`pending`** — the intent is not decided yet; refused by every run.
 - There is no `ft` intent. A leftover stored `ft` is **train**.
 
-Capability prompt/schema mismatches, incomplete quality reviews and train/eval
-overlap are advisory warnings, not technical-format errors. Explain the remaining
-work and offer the workshop for repairs; users can continue without a quality
-approval step. Inspect cell `warnings` and `readiness.quality_reason`. A passing
-format contract is not a claim that the answers are supported by the inputs.
+Capability prompt/schema mismatches and train/eval overlap are advisory
+warnings, not technical-format errors. Explain them and offer a new version as
+the repair; users can continue without an approval step. A passing format
+contract is not a claim that the answers are supported by the inputs: report
+technical fit and task suitability separately.
 
 What each workflow accepts:
 
@@ -290,14 +292,13 @@ What each workflow accepts:
 - **Fine-tuning** (`start_finetune`) uses a **train** version, plus a
   separate **eval** dataset for in-training judge evals.
 
-A use freezes the version and everything before it, and starts a new major
-(2.0). A contract is measured, never declared. The dataset's own agent shapes
-the chain; if a consumer rejects a dataset for its contract, `inspect_dataset`
-names the reason. Use `message_dataset_agent` to request changes, then poll
-`get_job(kind=dataset_run)` and inspect again. Rows are never cleaned locally:
-land them raw, shape them on the server.
-Local loops pull one version by cell id
-([datasets.md](references/datasets.md#pulling-a-version-to-disk)).
+A run that uses a version marks it **Used**; it cannot be deleted. A contract
+is measured, never declared. If a consumer rejects a dataset for its contract,
+`inspect_dataset` names the reason: add a version that fixes it
+(`try_dataset_script`, then `add_dataset_version`) and activate it after the
+user agrees. Rows are never cleaned locally: land them raw, shape them with
+scripts on the server. Local loops pull one version with
+`overmind dataset export` ([datasets.md](references/datasets.md#local-export)).
 
 ## How the workflows chain
 
@@ -320,9 +321,9 @@ Typical loop (local setup once, then MCP):
    [references/telemetry.md](references/telemetry.md).
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
    (`create_dataset_from_traces`, or CLI upload).
-1. **Shape it** — use `message_dataset_agent`, poll
-   `get_job(kind=dataset_run)`, inspect with `inspect_dataset`, and accept a
-   proposed cell with `run_dataset` only after user approval.
+1. **Shape it** — `inspect_dataset`, then `try_dataset_script` and
+   `add_dataset_version`; activate with `activate_dataset_version` only after
+   the user agrees.
 1. **Grade it** — [evals.md](references/evals.md) when you want an
    eval-vs-eval comparison you drive yourself. Finetune and optimizer runs
    create their own incumbent / experiment baselines automatically — do not
@@ -432,8 +433,8 @@ local work is needed:
 - MCP does not carry local file bytes. From a coding agent with filesystem
   access, run `overmind dataset upload FILE --json` with optional
   `--intent train|eval` and `--project-id`. The command returns the dataset
-  UUID; poll it with `get_job(kind=dataset_run)`, then inspect it. Land raw
-  rows; the dataset agent shapes cells on the server.
+  UUID; poll it with `get_job(kind=dataset_import)`, then inspect it. Land raw
+  rows; shape them with scripts on the server.
 - MCP does not carry dataset export bytes. After the active version fits, run
   `overmind dataset export DATASET --json` locally, optionally adding
   `--format jsonl|csv`, `--cell`, or `--output PATH`. Use the dataset id

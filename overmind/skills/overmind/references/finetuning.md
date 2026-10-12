@@ -1,16 +1,16 @@
 # Fine-tuning and serving
 
-SFT one or more catalog base models on a chosen **train** cell that fits, keep
-a held-out **eval** cell for judges, then deploy
+SFT one or more catalog base models on a chosen **train** version that fits, keep
+a held-out **eval** version for judges, then deploy
 and compare the result with its untouched base and the capability's selected benchmark.
 
 Training dataset: intent **train** (`messages` with an assistant turn on
 every row — LLM-in → LLM-out, not agent-level rows). Eval dataset: intent
 **eval**; use an independent source or a shared source split. Report normalized
 input, trace/conversation, configured-group and synthetic-seed overlap as warnings;
-do not block progression or silently exclude rows. Successful job creation atomically freezes the
-selected train, validation and eval versions. The eval version is pinned for the
-matched before/after evaluations; a rejected launch does not freeze new versions.
+do not block progression or silently exclude rows. Successful job creation atomically pins the
+selected train, validation and eval versions and marks them **Used**. The eval version is pinned for the
+matched before/after evaluations; a rejected launch pins nothing.
 See
 [SKILL.md](../SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)
 and [datasets.md](datasets.md).
@@ -30,7 +30,7 @@ overmind finetune --models Qwen/Qwen2.5-7B-Instruct,meta-llama/Llama-3.1-8B-Inst
 ```
 
 Pass 1–4 catalog ids. The jobs share one `group_id`, the capability's active
-eval set, and the same train and eval cells. A model that is not in
+eval set, and the same train and eval versions. A model that is not in
 `GET /api/finetuning-jobs/models/` is refused before any dataset is created.
 
 ## Prepare and start
@@ -39,12 +39,12 @@ eval set, and the same train and eval cells. A model that is not in
    their backend, tier, context, training-method, tool-calling, and batch
    metadata.
 1. Call `list_datasets`, inspect each candidate by UUID, and use
-   `query_dataset` to verify a **train** cell and a separate **eval** cell.
-   Report workshop findings for task alignment, input evidence, answer support,
-   output schema and mismatched capability bindings. These are advisory; users may
-   continue with remaining work. Send requested repairs back to the workshop;
-   training never converts worker targets into orchestrator targets.
-1. Call `check_finetune_readiness` after selecting the training dataset/cell.
+   `query_dataset` to verify a **train** version and a separate **eval** version.
+   Report fit findings and mismatched capability bindings. These are advisory;
+   users may continue. Make requested repairs as new dataset versions
+   (`add_dataset_version`); training never converts worker targets into
+   orchestrator targets.
+1. Call `check_finetune_readiness` after selecting the training dataset and version.
    Capability is optional; omit it or pass null for no association. An eval
    dataset and an eval set with generative evaluators are still required.
    It may narrow or recommend candidates;
@@ -58,12 +58,12 @@ eval set, and the same train and eval cells. A model that is not in
 1. Call `estimate_finetune` for each approved base model when cost or duration
    matters.
 1. For Modal, after selecting the model and context, call `prepare_training_data`
-   with the dataset/cell, `base_model`, `context_length`, `training_type` (`lora`
+   with the dataset and version (`cell`), `base_model`, `context_length`, `training_type` (`lora`
    or `full`) and any separate validation dataset. This is a CPU compute operation;
    include it in spend approval. Poll the returned receipt with
    `get_job(kind="training_preparation", id=...)`. Inspect exact token counts,
    supervised content and incompatible source-row IDs. Do not start until ready.
-   Request concrete repairs in the dataset's chat, then prepare the revised version
+   Make concrete repairs as a new dataset version, activate it, then prepare it
    again. The workshop has no model selector. Training consumes the validated token
    artifact; it does not silently truncate or drop incompatible rows.
 1. After human approval, call `start_finetune`. It validates the dataset,
