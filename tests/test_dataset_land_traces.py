@@ -8,10 +8,11 @@ import uuid
 
 import pandas as pd
 import pytest
+from conftest import read_table
 from factories import make_project
 
 from overbae.models import Capability, Conversation, Dataset, Span, TaskExecution
-from overbae.services.datasets import land, paths, selection, store
+from overbae.services.datasets import land, paths, selection
 
 pytestmark = pytest.mark.django_db
 
@@ -76,7 +77,7 @@ def _land(project, spec):
     dataset = Dataset.objects.create(project=project, name="t")
     land.land_traces(dataset, spec)
     dataset.refresh_from_db()
-    return dataset, store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    return dataset, read_table(paths.cell_path(dataset.id, dataset.source.id))
 
 
 def test_one_row_per_trace_in_selection_order_with_the_fixed_columns():

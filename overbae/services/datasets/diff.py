@@ -32,6 +32,19 @@ def _neq(columns: list[str]) -> str:
     )
 
 
+def _hashed(columns: list[str]) -> str:
+    """Joins hashes, not values: long text stays out of the join's memory."""
+    hashes = ", ".join(f'hash(CAST("{c}" AS VARCHAR)) AS h{i}' for i, c in enumerate(columns))
+    return (
+        f"WITH ha AS (SELECT source_row, {hashes} FROM a), "
+        f"hb AS (SELECT source_row, {hashes} FROM b) "
+    )
+
+
+def _differs(i: int) -> str:
+    return f"ha.h{i} IS DISTINCT FROM hb.h{i}"
+
+
 def summary(before: Path, after: Path) -> dict[str, Any]:
     """The line under a cell: rows added and removed, table cells changed,
     columns added and removed."""
@@ -61,12 +74,14 @@ def summary(before: Path, after: Path) -> dict[str, Any]:
             ).fetchone()[0]
         )
         changed: dict[str, int] = {}
-        for c in shared:
-            n = con.execute(
-                f"SELECT count(*) FROM a JOIN b USING (source_row) WHERE {_neq([c])}"
-            ).fetchone()[0]
-            if n:
-                changed[c] = int(n)
+        if shared:
+            counts = con.execute(
+                _hashed(shared)
+                + "SELECT "
+                + ", ".join(f"count(*) FILTER (WHERE {_differs(i)})" for i in range(len(shared)))
+                + " FROM ha JOIN hb USING (source_row)"
+            ).fetchone()
+            changed = {c: int(n) for c, n in zip(shared, counts, strict=True) if n}
         out["cells_changed"] = sum(changed.values())
         out["changed_columns"] = changed
     finally:
@@ -149,13 +164,27 @@ def between(before: Path, after: Path) -> dict[str, Any]:
     con = store.connect(a=before, b=after)
     try:
         if changed:
+            sample = [
+                r[0]
+                for r in con.execute(
+                    _hashed(shared)
+                    + "SELECT source_row FROM ha JOIN hb USING (source_row) WHERE "
+                    + " OR ".join(_differs(i) for i in range(len(shared)))
+                    + f" LIMIT {_SAMPLE}"
+                ).fetchall()
+            ]
             select = ", ".join(
                 f'a."{c}" AS "before__{c}", b."{c}" AS "after__{c}"' for c in changed
             )
-            rows = con.execute(
-                f"SELECT a.source_row, {select} FROM a JOIN b USING (source_row) "
-                f"WHERE {_neq(shared)} LIMIT {_SAMPLE}"
-            ).fetchall()
+            ids = ", ".join(str(int(i)) for i in sample)
+            found = {
+                rec[0]: rec
+                for rec in con.execute(
+                    f"SELECT a.source_row, {select} FROM a JOIN b USING (source_row) "
+                    f"WHERE a.source_row IN ({ids})"
+                ).fetchall()
+            }
+            rows = [found[i] for i in sample if i in found]
             out["changed_examples"] = [
                 {
                     "source_row": rec[0],

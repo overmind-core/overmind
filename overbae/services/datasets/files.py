@@ -187,26 +187,59 @@ def _text_rows(fh: io.TextIOBase, name: str) -> list[dict[str, Any]]:
     return rows
 
 
-def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
-    name = (filename or "").lower()
-    bare = name.removesuffix(".gz")
-    if bare.endswith(".parquet"):
+class FileRows:
+    def __init__(self, path: Path, *, filename: str) -> None:
+        self.path = path
+        self.name = (filename or "").lower()
+        self.bare = self.name.removesuffix(".gz")
+        if self.bare.endswith(".json") and stored_stat(path).st_size > JSON_ARRAY_MAX_BYTES:
+            raise FileError(
+                f"A .json file is read whole and capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB "
+                "— use JSONL for larger files."
+            )
+        delimited = self.bare.endswith((".csv", ".tsv"))
+        raw: dict[str, None] = {}
+        numbers: dict[str, set[type] | None] = {}
+        self.count = 0
+        for row in self._parsed():
+            self.count += 1
+            for key, value in row.items():
+                raw.setdefault(key, None)
+                if not delimited or value in (None, "") or numbers.get(key, set()) is None:
+                    continue
+                parsed = _number(value)
+                numbers[key] = None if parsed is None else {*numbers.get(key, set()), type(parsed)}
+        self.names = dict(zip(raw, _clean_names(list(raw)), strict=True))
+        # Numeric only when every filled cell is the same kind of number.
+        self.numeric = {
+            key for key, kinds in numbers.items() if kinds is not None and len(kinds) == 1
+        }
+
+    def _parsed(self) -> Iterator[dict[str, Any]]:
+        if self.bare.endswith(".parquet"):
+            try:
+                source = pq.ParquetFile(self.path, pre_buffer=False)
+                for batch in source.iter_batches(batch_size=1_000, use_threads=False):
+                    yield from batch.to_pylist()
+            except (pa.ArrowException, OSError) as exc:
+                raise FileError("The file is not readable Parquet.") from exc
+            return
         try:
-            return _normalise_names(pq.read_table(path).to_pylist())
-        except (pa.ArrowException, OSError) as exc:
-            raise FileError("The file is not readable Parquet.") from exc
-    if bare.endswith(".json") and stored_stat(path).st_size > JSON_ARRAY_MAX_BYTES:
-        raise FileError(
-            f"A .json file is read whole and capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB "
-            "— use JSONL for larger files."
-        )
-    try:
-        with _open_text(path, name) as fh:
-            return _text_rows(fh, bare)
-    except UnicodeDecodeError as exc:
-        raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
-    except (gzip.BadGzipFile, EOFError) as exc:
-        raise FileError("The file is not readable gzip.") from exc
+            with _open_text(self.path, self.name) as fh:
+                yield from iter_stream_rows(fh, filename=self.bare)
+        except UnicodeDecodeError as exc:
+            raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
+        except (gzip.BadGzipFile, EOFError) as exc:
+            raise FileError("The file is not readable gzip.") from exc
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for row in self._parsed():
+            out = {}
+            for key, value in row.items():
+                if key in self.numeric:
+                    value = None if value in (None, "") else _number(value)
+                out[self.names[key]] = value
+            yield out
 
 
 def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:

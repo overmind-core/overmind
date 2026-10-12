@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import pickle
 import tempfile
 import uuid
 from collections.abc import Iterable, Iterator
@@ -22,8 +23,17 @@ from django.utils import timezone
 
 from overbae.models import Cell, Dataset, TaskExecution
 from overbae.models.traces import Span
-from overbae.services.datasets import alignment, contract, files, measure, paths, selection, store
-from overbae.services.datasets.partition import preserve_lineage, split_rows
+from overbae.services.datasets import (
+    alignment,
+    contract,
+    files,
+    measure,
+    paths,
+    selection,
+    store,
+    tables,
+)
+from overbae.services.datasets.partition import preserve_lineage, split_positions
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +49,7 @@ SPLIT_POSITIONS = ("head", "tail", "random")
 class Landing:
     """A source read once: the rows and how they arrived."""
 
-    rows: list[dict[str, Any]]
+    rows: Iterable[dict[str, Any]]
     kind: str = "file"
     spec: dict[str, Any] = field(default_factory=dict)
     manifest: list[dict] | None = None
@@ -53,7 +63,7 @@ class Landing:
         if position not in SPLIT_POSITIONS:
             raise LandError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.")
         try:
-            train, evaluation, report = split_rows(
+            train, evaluation, report = split_positions(
                 self.rows,
                 eval_percent=eval_percent,
                 position=position,
@@ -64,13 +74,63 @@ class Landing:
         except ValueError as exc:
             raise LandError(str(exc)) from exc
         spec = {**self.spec, "contamination_report": report}
-        return replace(self, rows=train, spec=spec), replace(self, rows=evaluation, spec=spec)
+        return (
+            replace(self, rows=_Picked(self.rows, train), spec=spec),
+            replace(self, rows=_Picked(self.rows, evaluation), spec=spec),
+        )
 
 
-def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
-    for offset, row in enumerate(rows):
-        row[store.SOURCE_ROW] = offset
-        row["_overmind_provenance"] = preserve_lineage(row)
+class _Picked:
+    def __init__(self, rows: Iterable[dict[str, Any]], positions: set[int]) -> None:
+        self.rows, self.positions = rows, positions
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for position, row in enumerate(self.rows):
+            if position in self.positions:
+                yield row
+
+
+class _Chain:
+    def __init__(self, parts: list[Iterable[dict[str, Any]]]) -> None:
+        self.parts = parts
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for part in self.parts:
+            yield from part
+
+
+class _Cleaned:
+    def __init__(self, rows: Iterable[Any]) -> None:
+        self.rows = rows
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for row in self.rows:
+            row = dict(row) if isinstance(row, dict) else {"value": row}
+            row.pop(store.SOURCE_ROW, None)
+            yield row
+
+
+class _Spool:
+    def __init__(self, rows: Iterable[dict[str, Any]]) -> None:
+        self._dir = tempfile.TemporaryDirectory(prefix="landing-")
+        self._path = Path(self._dir.name) / "rows.pickle"
+        self.count = 0
+        with self._path.open("wb") as fh:
+            for row in rows:
+                pickle.dump(row, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                self.count += 1
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        with self._path.open("rb") as fh:
+            for _ in range(self.count):
+                yield pickle.load(fh)  # noqa: S301 — written by this process
+
+
+def _stamped(row: dict[str, Any], offset: int) -> dict[str, Any]:
+    row = dict(row)
+    row[store.SOURCE_ROW] = offset
+    row["_overmind_provenance"] = preserve_lineage(row)
+    return row
 
 
 @dataclass
@@ -83,19 +143,23 @@ class PreparedLanding:
 
 
 def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True):
-    rows = landing.rows
-    _stamp_source_rows(rows)
     manifest = landing.manifest
-    if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
+    if not manifest:
+        builder = tables.ManifestBuilder()
+        for offset, row in enumerate(landing.rows):
+            builder.add(_stamped(row, offset))
+        manifest = builder.manifest()
+    elif not any(column["name"] == "_overmind_provenance" for column in manifest):
         manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
-    store.write_rows(path, rows, manifest)
-    df = store.read_frame(path)
+    with tables.TableWriter(path, manifest) as writer:
+        writer.write_rows(_stamped(row, offset) for offset, row in enumerate(landing.rows))
+    frame = store.Frame(path)
     fields = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
         "state": state,
         "error": "",
-        "capability_rank": alignment.rank(dataset.project_id, df),
+        "capability_rank": alignment.rank(dataset.project_id, frame),
     }
     measured = Dataset.objects.select_related("capability").get(pk=dataset.pk)
     if infer_capability and measured.capability_id is None and fields["capability_rank"]:
@@ -103,9 +167,9 @@ def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capabilit
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
             measured.capability_id = best["capability_id"]
-    report = contract.measure(df)
+    report = contract.measure(frame)
     if measured.intent == Dataset.Intent.PENDING:
-        fields["intent"] = contract.propose_intent(df, report)
+        fields["intent"] = contract.propose_intent(frame, report)
         measured.intent = fields["intent"]
     source = dataset.cells.filter(position=0).first()
     return PreparedLanding(
@@ -114,7 +178,7 @@ def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capabilit
         path,
         fields,
         {
-            **measure.describe_frame(measured, path, df=df, report=report),
+            **measure.describe_frame(measured, path, report=report),
             "input_fingerprint": "",
             "seconds": 0.0,
         },
@@ -167,37 +231,38 @@ def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capab
         return publish(dataset, prepared, user=user)
 
 
-def read_file(path: Path, *, filename: str) -> Landing:
+def _file_rows(path: Path, filename: str) -> files.FileRows:
     try:
-        rows = files.read_file_rows(path, filename=filename)
+        rows = files.FileRows(path, filename=filename)
     except files.FileError as exc:
         raise LandError(str(exc)) from exc
-    if not rows:
+    if not rows.count:
         raise LandError("The file has no rows.")
-    return read_rows(rows, spec={"filename": filename})
+    return rows
+
+
+def read_file(path: Path, *, filename: str) -> Landing:
+    return read_rows(_file_rows(path, filename), spec={"filename": filename})
 
 
 def read_uploads(upload_ids: list[str]) -> Landing:
-    rows: list[dict[str, Any]] = []
+    parts = []
     sources = []
     for upload_id in upload_ids:
         filename = files.upload_filename(upload_id)
         path = files.upload_data_path(upload_id)
         if not filename or not path.exists():
             raise LandError("An upload has expired. Start it again.")
-        part = read_file(path, filename=filename)
+        part = _file_rows(path, filename)
         sources.append(
-            {"filename": filename, "bytes": files.stored_stat(path).st_size, "rows": len(part.rows)}
+            {"filename": filename, "bytes": files.stored_stat(path).st_size, "rows": part.count}
         )
-        rows.extend(part.rows)
-    return read_rows(rows, spec={"files": sources})
+        parts.append(part)
+    return read_rows(_Chain(parts), spec={"files": sources})
 
 
-def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None) -> Landing:
-    rows = [dict(r) if isinstance(r, dict) else {"value": r} for r in rows]
-    for row in rows:
-        row.pop(store.SOURCE_ROW, None)
-    return Landing(rows, kind=Dataset.SourceKind.FILE, spec=spec or {})
+def read_rows(rows: Iterable[Any], *, spec: dict[str, Any] | None = None) -> Landing:
+    return Landing(_Cleaned(rows), kind=Dataset.SourceKind.FILE, spec=spec or {})
 
 
 def land_rows(
@@ -407,12 +472,12 @@ def read_traces(project_id: Any, spec: dict[str, Any], *, on_progress: Any = Non
     """One row per trace, in selection order. ``spec`` is a ``TraceSource`` payload."""
     try:
         source = selection.TraceSource.parse(spec)
-        rows = list(
+        rows = _Spool(
             iter_trace_rows(project_id, source.iter_trace_ids(project_id), on_progress=on_progress)
         )
     except selection.TraceSourceError as exc:
         raise LandError(str(exc)) from exc
-    if not rows:
+    if not rows.count:
         raise LandError("No traces matched. Widen the selection or check the project.")
     return Landing(
         rows, kind=Dataset.SourceKind.TRACES, spec=source.spec(), manifest=list(TRACE_MANIFEST)

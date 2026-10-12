@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
+import pyarrow as pa
 from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import paths, rows, store
+from overbae.services.datasets import paths, rows, store, tables
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.examples import identifier_only, instructions, messages
@@ -50,33 +54,90 @@ def summary(report: dict) -> dict:
     return result
 
 
-def same_frame(before: pd.DataFrame, after: pd.DataFrame) -> bool:
-    try:
-        pd.testing.assert_frame_equal(before, after, check_dtype=False, check_exact=True)
-    except AssertionError:
+def _changed(a: Any, b: Any, kind_a: str, kind_b: str) -> bool:
+    if a == b and kind_a == kind_b:
         return False
+    return store.value(a, kind_a) != store.value(b, kind_b)
+
+
+def same(before: Path, after: Path) -> bool:
+    left, right = store.read_manifest(before), store.read_manifest(after)
+    if [c["name"] for c in left] != [c["name"] for c in right]:
+        return False
+    if store.row_count(before) != store.row_count(after):
+        return False
+    kinds = [(a["type"], b["type"]) for a, b in zip(left, right, strict=True)]
+    for a, b in zip(store.raw_rows(before), store.raw_rows(after), strict=True):
+        for (kind_a, kind_b), x, y in zip(kinds, a.values(), b.values(), strict=True):
+            if _changed(x, y, kind_a, kind_b):
+                return False
     return True
 
 
-def preserve_provenance(before: pd.DataFrame, after: pd.DataFrame, *, group_by=()) -> pd.DataFrame:
-    if store.SOURCE_ROW not in before or store.SOURCE_ROW not in after:
-        return after
-    before = before.copy()
-    before[PROVENANCE_COLUMN] = [preserve_lineage(row) for row in before.to_dict(orient="records")]
-    indexed = before.drop_duplicates(store.SOURCE_ROW).set_index(store.SOURCE_ROW)
-    for column in {
-        PROVENANCE_COLUMN,
-        "trace_id",
-        "source_trace_id",
-        "conversation_id",
-        "human_reviewed",
-        *group_by,
-    }:
-        if column not in indexed:
+_IDENTITY = ("trace_id", "source_trace_id", "conversation_id", "human_reviewed")
+
+
+def finalize(before: Path, output: Path, path: Path, *, group_by=()) -> None:
+    """``output`` with lineage and identity carried over from ``before`` by ``source_row``."""
+    out_kinds = {c["name"]: c["type"] for c in store.read_manifest(output)}
+    before_kinds = {c["name"]: c["type"] for c in store.read_manifest(before)}
+    if store.SOURCE_ROW not in before_kinds or store.SOURCE_ROW not in out_kinds:
+        with tables.TableWriter(path, store.read_manifest(output)) as writer:
+            for batch in tables.batches(output):
+                writer.write_table(pa.Table.from_batches([batch]))
+        return
+    carried = list(
+        dict.fromkeys(
+            [PROVENANCE_COLUMN, *(c for c in (*_IDENTITY, *group_by) if c in before_kinds)]
+        )
+    )
+    source_kinds = {**before_kinds, PROVENANCE_COLUMN: "json"}
+    inherited: dict[Any, tuple] = {}
+    for record in store.records(before):
+        key = record.get(store.SOURCE_ROW)
+        if key is None or key in inherited:
             continue
-        inherited = after[store.SOURCE_ROW].map(indexed[column])
-        after[column] = inherited.combine_first(after[column]) if column in after else inherited
-    return after
+        inherited[key] = tuple(
+            store.json_dumps(preserve_lineage(record))
+            if column == PROVENANCE_COLUMN
+            else record.get(column)
+            for column in carried
+        )
+    kinds = {
+        column: tables.union_kind({source_kinds[column], out_kinds[column]})
+        if column in out_kinds
+        else source_kinds[column]
+        for column in carried
+    }
+    manifest = [
+        {"name": name, "type": kinds.get(name, kind)} for name, kind in out_kinds.items()
+    ] + [{"name": c, "type": kinds[c]} for c in carried if c not in out_kinds]
+    index = {column: i for i, column in enumerate(carried)}
+    with tables.TableWriter(path, manifest) as writer:
+        for batch in tables.batches(output):
+            keys = batch.column(store.SOURCE_ROW).to_pylist()
+            found = [inherited.get(key) for key in keys]
+            arrays = []
+            for spec in manifest:
+                name, kind = spec["name"], spec["type"]
+                if name not in index:
+                    arrays.append(batch.column(name))
+                    continue
+                i = index[name]
+                own = batch.column(name).to_pylist() if name in out_kinds else [None] * len(keys)
+                own_kind = out_kinds.get(name, kind)
+                merged = []
+                for values, mine in zip(found, own, strict=True):
+                    theirs = values[i] if values is not None else None
+                    if theirs is not None:
+                        lineage = name == PROVENANCE_COLUMN and kind == "json"
+                        merged.append(theirs if lineage else tables.coerce(theirs, kind))
+                    elif mine is None or kind == own_kind:
+                        merged.append(mine)
+                    else:
+                        merged.append(tables.coerce(store.value(mine, own_kind), kind))
+                arrays.append(pa.array(merged, type=tables.ARROW_TYPES[kind]))
+            writer.write_table(pa.Table.from_arrays(arrays, schema=writer.schema))
 
 
 def preview_examples(frame: pd.DataFrame) -> list:
@@ -92,46 +153,74 @@ def preview_examples(frame: pd.DataFrame) -> list:
     return clip(json.loads(frame.head(5).to_json(orient="records")))
 
 
-def distribution(frame: pd.DataFrame) -> dict:
+def distribution(path: Path) -> dict:
+    frame = store.Frame(path)
     return {
-        column: dict(Counter(str(value) for value in frame[column].tolist()).most_common(50))
+        column: dict(Counter(str(value) for value in frame.values(column)).most_common(50))
         for column in _COVERAGE_COLUMNS
-        if column in frame.columns
+        if column in frame
     }
 
 
-def impact(before: pd.DataFrame, after: pd.DataFrame) -> dict:
+def _source_rows(path: Path) -> list | None:
+    frame = store.Frame(path)
+    return list(frame.values(store.SOURCE_ROW)) if store.SOURCE_ROW in frame else None
+
+
+def _unique(keys: list) -> bool:
+    filled = [k for k in keys if k is not None]
+    return len(set(filled)) == len(filled) and len(keys) - len(filled) <= 1
+
+
+_PROMPT_COLUMNS = [store.SOURCE_ROW, "messages", "input", "system_prompt", "instruction"]
+
+
+def _digest(value: Any) -> str:
+    return hashlib.sha256(store.json_dumps(value).encode()).hexdigest()
+
+
+def impact(before: Path, after: Path) -> dict:
+    before_ids, after_ids = _source_rows(before), _source_rows(after)
     tracked = (
-        store.SOURCE_ROW in before
-        and store.SOURCE_ROW in after
-        and before[store.SOURCE_ROW].is_unique
-        and after[store.SOURCE_ROW].is_unique
+        before_ids is not None
+        and after_ids is not None
+        and _unique(before_ids)
+        and _unique(after_ids)
     )
-    removed = before.iloc[:0]
-    inputs = before.iloc[:0]
+    removed: list[int] = []
+    inputs: list[int] = []
     evidence_removed = []
     prompt_changes = []
+    rows_added = None
     if tracked:
-        removed = before[~before[store.SOURCE_ROW].isin(after[store.SOURCE_ROW])]
-        preview_ids = after.head(5)[store.SOURCE_ROW]
-        preview_ids = preview_ids[preview_ids.isin(before[store.SOURCE_ROW])]
-        inputs = before.set_index(store.SOURCE_ROW, drop=False).loc[preview_ids]
-        originals = before.set_index(store.SOURCE_ROW).to_dict(orient="index")
-        for row in after.to_dict(orient="records"):
-            original = originals.get(row[store.SOURCE_ROW], {})
-            original_prompt = instructions(original)
-            if original_prompt and original_prompt != instructions(row):
+        kept = set(after_ids)
+        known = set(before_ids)
+        removed = [i for i, key in enumerate(before_ids) if key not in kept]
+        rows_added = sum(1 for key in after_ids if key not in known)
+        position = {key: i for i, key in enumerate(before_ids)}
+        inputs = [position[key] for key in after_ids[:5] if key in known]
+        originals = {}
+        for record in store.Frame(before).records(_PROMPT_COLUMNS):
+            prompt = instructions(record)
+            context = messages(record.get("messages")) or record.get("input")
+            originals[record.get(store.SOURCE_ROW)] = (
+                _digest(prompt) if prompt else None,
+                bool(context) and not identifier_only(context),
+            )
+        for row in store.Frame(after).records(_PROMPT_COLUMNS):
+            original = originals.get(row.get(store.SOURCE_ROW))
+            if original is None:
+                continue
+            prompt, evidence = original
+            if prompt is not None and prompt != _digest(instructions(row)):
                 prompt_changes.append(row[store.SOURCE_ROW])
-            context = messages(original.get("messages")) or original.get("input")
-            if context and not identifier_only(context) and identifier_only(row.get("input")):
+            if evidence and identifier_only(row.get("input")):
                 evidence_removed.append(row[store.SOURCE_ROW])
     return {
-        "rows_before": len(before),
-        "rows_after": len(after),
+        "rows_before": store.row_count(before),
+        "rows_after": store.row_count(after),
         "rows_removed": len(removed) if tracked else None,
-        "rows_added": int((~after[store.SOURCE_ROW].isin(before[store.SOURCE_ROW])).sum())
-        if tracked
-        else None,
+        "rows_added": rows_added,
         "identity_preserved": tracked,
         "input_evidence_removed": len(evidence_removed),
         "input_evidence_removed_examples": evidence_removed[:20],
@@ -139,9 +228,9 @@ def impact(before: pd.DataFrame, after: pd.DataFrame) -> dict:
         "instruction_change_examples": prompt_changes[:20],
         "coverage_before": distribution(before),
         "coverage_after": distribution(after),
-        "removed_examples": preview_examples(removed),
-        "input_examples": preview_examples(inputs),
-        "output_examples": preview_examples(after),
+        "removed_examples": preview_examples(store.frame_rows(before, removed[:5])),
+        "input_examples": preview_examples(store.frame_rows(before, inputs)),
+        "output_examples": preview_examples(store.frame_rows(after, range(5))),
     }
 
 
@@ -215,13 +304,12 @@ def warnings(dataset, cell, *, capability=None) -> list[str]:
     return findings
 
 
-def save_proposal(dataset, cell, previous, frame: pd.DataFrame, *, kind: str, note: str) -> dict:
-    before = store.read_frame(paths.cell_path(dataset.id, previous.id))
-    frame = preserve_provenance(
-        before, frame, group_by=dataset.source_spec.get("split", {}).get("group_by", [])
-    )
+def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str) -> dict:
+    before = paths.cell_path(dataset.id, previous.id)
     path = paths.cell_path(dataset.id, cell.id)
-    store.write_frame(path, frame)
+    finalize(
+        before, output, path, group_by=dataset.source_spec.get("split", {}).get("group_by", [])
+    )
     report = {
         "kind": kind,
         "reason": note,
@@ -230,7 +318,7 @@ def save_proposal(dataset, cell, previous, frame: pd.DataFrame, *, kind: str, no
         "context_fingerprint": context_fingerprint(dataset.capability),
         "intent": dataset.intent,
         "status": "pending",
-        **impact(before, frame),
+        **impact(before, path),
     }
     Cell.objects.filter(pk=cell.pk).update(review=report, quality_report={})
     cell.review = report
@@ -247,13 +335,13 @@ def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
         paths.cell_path(dataset.id, cell.id),
         library_cache=paths.library_cache(dataset.project_id),
     )
-    if result.frame is None:
+    if result.path is None:
         raise ValueError(result.error or "The audit produced no row results.")
     return record_quality_results(
         dataset,
         cell,
         checks,
-        result.frame,
+        result.path,
         audit={"method": "row_results", "script": script},
         reviewer="workshop_agent",
         context=context,
@@ -264,14 +352,13 @@ def record_quality_results(
     dataset,
     cell,
     checks: list[dict],
-    measured: pd.DataFrame,
+    measured: Path,
     *,
     audit: dict,
     reviewer: str,
     context: str,
     semantic_audit: dict | None = None,
     expected_semantic_audit: dict | None = None,
-    original: pd.DataFrame | None = None,
 ) -> dict:
     rows.verify(cell)
     if not checks or len(checks) > 30:
@@ -290,39 +377,33 @@ def record_quality_results(
         if name == store.SOURCE_ROW or len(name) > 200:
             raise ValueError("Check names must be at most 200 characters and not source_row.")
         names.add(name)
-    if original is None:
-        original = store.read_frame(paths.cell_path(dataset.id, cell.id))
+    results = store.Frame(measured)
+    keys = list(results.values(store.SOURCE_ROW)) if store.SOURCE_ROW in results else []
+    originals = _source_rows(paths.cell_path(dataset.id, cell.id)) or []
     if (
-        set(measured.columns) != {store.SOURCE_ROW, *names}
-        or len(measured) != len(original)
-        or not measured[store.SOURCE_ROW].is_unique
-        or set(measured[store.SOURCE_ROW]) != set(original[store.SOURCE_ROW])
+        set(results.columns) != {store.SOURCE_ROW, *names}
+        or len(keys) != len(originals)
+        or not _unique(keys)
+        or set(keys) != set(originals)
     ):
         raise ValueError(
             "Audit results must contain source_row and the named check columns, with every original row exactly once. Use null for unmeasured rows."
         )
     outcomes = []
     for check in checks:
-        values = measured[check["name"]]
-        if not all(
-            type(value) is bool
-            or value is None
-            or value is pd.NA
-            or isinstance(value, float)
-            and pd.isna(value)
-            for value in values.tolist()
-        ):
+        values = list(results.values(check["name"]))
+        if not all(type(value) is bool or value is None for value in values):
             raise ValueError(
                 f"{check['name']} results must be booleans or null, not scores or strings."
             )
-        failed = measured.loc[values.eq(False), store.SOURCE_ROW].tolist()
-        unknown = measured.loc[values.isna(), store.SOURCE_ROW].tolist()
+        failed = [key for key, value in zip(keys, values, strict=True) if value is False]
+        unknown = [key for key, value in zip(keys, values, strict=True) if value is None]
         outcomes.append(
             {
                 "name": check["name"],
                 "evidence": check["evidence"][:2000],
-                "result": "fail" if failed else "unknown" if unknown or measured.empty else "pass",
-                "rows_checked": len(measured) - len(unknown),
+                "result": "fail" if failed else "unknown" if unknown or not keys else "pass",
+                "rows_checked": len(keys) - len(unknown),
                 "rows_failed": len(failed),
                 "rows_unknown": len(unknown),
                 "failed_source_rows": failed[:20],

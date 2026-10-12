@@ -143,14 +143,14 @@ def test_prepared_request_keeps_prior_assistant_context_on_repeat_preparation():
     assert prepare_examples(prepared, "train").iloc[0]["messages"] == record["messages"]
 
 
-def test_lineage_survives_projection_and_keeps_related_rows_in_one_split():
-    original = pd.DataFrame([{**example(i), "source_row": i} for i in range(6)])
-    shaped = pd.DataFrame(
+def test_lineage_survives_projection_and_keeps_related_rows_in_one_split(frame_of, tmp_path):
+    original = frame_of([{**example(i), "source_row": i} for i in range(6)])
+    shaped = frame_of(
         [{"source_row": i, "input": f"rephrased {i}", "expected_output": "yes"} for i in range(6)]
     )
-    shaped = review.preserve_provenance(original, shaped)
-    original_rows = original.to_dict(orient="records")
-    shaped_rows = shaped.to_dict(orient="records")
+    review.finalize(original.path, shaped.path, tmp_path / "shaped.parquet")
+    original_rows = list(store.records(original.path))
+    shaped_rows = list(store.records(tmp_path / "shaped.parquet"))
     assert all(
         contamination_keys(a) & contamination_keys(b)
         for a, b in zip(original_rows, shaped_rows, strict=True)
@@ -162,23 +162,21 @@ def test_lineage_survives_projection_and_keeps_related_rows_in_one_split():
     assert not any(train_keys & contamination_keys(row) for row in evaluation)
 
 
-def test_identifier_only_inputs_warn_without_failing_the_format_contract():
+def test_identifier_only_inputs_warn_without_failing_the_format_contract(frame_of):
     report = contract.measure(
-        pd.DataFrame([{"input": {"onboarding_packet_id": "case-1"}, "expected_output": "entity"}])
+        frame_of([{"input": {"onboarding_packet_id": "case-1"}, "expected_output": "entity"}])
     )
     assert report["eval"]["ok"]
     assert "without evidence" in report["eval"]["warnings"][0]
 
 
-def test_projecting_domain_evidence_to_an_identifier_is_a_reviewed_change():
-    before = pd.DataFrame(
-        [{"source_row": 0, "input": {"case_id": "one", "documents": ["evidence"]}}]
-    )
-    after = pd.DataFrame([{"source_row": 0, "input": {"case_id": "one"}}])
-    assert review.impact(before, after)["input_evidence_removed"] == 1
+def test_projecting_domain_evidence_to_an_identifier_is_a_reviewed_change(frame_of):
+    before = frame_of([{"source_row": 0, "input": {"case_id": "one", "documents": ["evidence"]}}])
+    after = frame_of([{"source_row": 0, "input": {"case_id": "one"}}])
+    assert review.impact(before.path, after.path)["input_evidence_removed"] == 1
 
 
-def test_model_transcript_is_not_validated_as_an_application_entry_point():
+def test_model_transcript_is_not_validated_as_an_application_entry_point(frame_of):
     capability = SimpleNamespace(
         improvement_metadata={
             "capability_card": {
@@ -192,7 +190,7 @@ def test_model_transcript_is_not_validated_as_an_application_entry_point():
             }
         }
     )
-    prepared = prepare_examples(pd.DataFrame([example()]), "eval")
+    prepared = frame_of(prepare_examples(pd.DataFrame([example()]), "eval").to_dict("records"))
     assert alignment.capability_contract(capability, prepared, "eval")["ok"]
     capability.improvement_metadata["capability_card"]["system_prompt"] = (
         "Orchestrate the workflow."
@@ -211,7 +209,7 @@ def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_rev
     result = tools.prepare_examples({})
     assert result["ok"] and not result.get("proposed"), result
     active = dataset.active_cell
-    assert contract.measure(store.read_frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
+    assert contract.measure(store.Frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
     lost = tools.add_cell(
         {
             "title": "Identifier projection",

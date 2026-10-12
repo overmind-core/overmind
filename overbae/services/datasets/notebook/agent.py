@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterator
 from threading import RLock
 from typing import Any
 
+import numpy as np
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -17,7 +18,7 @@ from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import lifecycle, paths, review, semantic_checks, store, synthetic
 from overbae.services.datasets.context import context_fingerprint, workshop_context
-from overbae.services.datasets.notebook import engines, events, libraries, prompts
+from overbae.services.datasets.notebook import engines, events, libraries, prompts, runner
 from overbae.services.datasets.notebook import run as run_svc
 
 logger = logging.getLogger(__name__)
@@ -147,13 +148,14 @@ def _visible_columns(names: list[str]) -> list[str]:
     return [n for n in names if n not in {store.SOURCE_ROW, review.PROVENANCE_COLUMN}]
 
 
-def _preview(frame) -> dict[str, Any]:
-    from overbae.services.datasets.store import manifest_from_frame
-
+def _preview(result: runner.CellResult) -> dict[str, Any]:
+    names = [c["name"] for c in store.read_manifest(result.path)]
     return {
-        "rows": int(len(frame)),
-        "columns": _visible_columns([c["name"] for c in manifest_from_frame(frame)]),
-        "head": _visible(frame.head(_PREVIEW_ROWS).to_dict(orient="records")),
+        "rows": result.rows,
+        "columns": _visible_columns(names),
+        "head": _visible(
+            store.frame_rows(result.path, range(_PREVIEW_ROWS)).to_dict(orient="records")
+        ),
     }
 
 
@@ -331,9 +333,9 @@ class Tools:
         after = resolve_cell(dataset, args.get("after"), ran_only=True)
         result = run_svc.try_script(dataset, str(args.get("script") or ""), after=after)
         self.preview = (after.id, after.fingerprint, str(args.get("script") or ""), result)
-        if result.frame is None:
+        if result.path is None:
             return {"ok": False, "error": result.error, "stdout": result.stdout}
-        return {"ok": True, **_preview(result.frame), "stdout": result.stdout}
+        return {"ok": True, **_preview(result), "stdout": result.stdout}
 
     def inspect(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
@@ -376,18 +378,18 @@ class Tools:
             else run_svc.try_script(dataset, script, after=previous)
         )
         self.preview = None
-        if result.frame is None:
+        if result.path is None:
             return {"ok": False, "error": result.error}
-        before = store.read_frame(paths.cell_path(dataset.id, previous.id))
-        if review.same_frame(before, result.frame):
+        before = paths.cell_path(dataset.id, previous.id)
+        if review.same(before, result.path):
             return {
                 "ok": True,
                 "unchanged": True,
                 "proposed": False,
                 **_cell_line(dataset, previous, dataset.versions()),
             }
-        changes = review.impact(before, result.frame)
-        if self.generation and (changes["rows_added"] or len(result.frame) > len(before)):
+        changes = review.impact(before, result.path)
+        if self.generation and (changes["rows_added"] or result.rows > store.row_count(before)):
             return {
                 "ok": False,
                 "error": "Generate new examples with add_synthetic_rows. Do not expand the dataset by copying rows or remapping identifiers in a script.",
@@ -413,7 +415,7 @@ class Tools:
         self._touch(cell, "proposed" if not run else "created")
         self.emit({"type": "cells_changed"})
         report = review.save_proposal(
-            dataset, cell, previous, result.frame, kind=kind, note=str(args.get("note") or "")
+            dataset, cell, previous, result.path, kind=kind, note=str(args.get("note") or "")
         )
         if not run:
             return {
@@ -484,8 +486,9 @@ class Tools:
                 return {"ok": False, "error": str(exc)}
             instruction = generated_cell.review["instruction"]
             self._touch(generated_cell, "ran")
-        frame = store.read_frame(paths.cell_path(dataset.id, cell.id))
-        if target <= len(frame):
+        path = paths.cell_path(dataset.id, cell.id)
+        rows_before = store.row_count(path)
+        if target <= rows_before:
             return {"ok": False, "error": "Set target_rows to the requested final dataset size."}
         self.generation = self.generation or {
             "id": generated_cell.review["generation_id"] if generated_cell else str(uuid.uuid4()),
@@ -503,19 +506,23 @@ class Tools:
             "generating",
             "Generating examples",
             instruction,
-            rows_before=len(frame),
+            rows_before=rows_before,
             target_rows=target,
             generated_rows=generated,
             **({"cell_id": str(generated_cell.id)} if generated_cell else {}),
         )
         count = min(max(int(args.get("limit", 3)), 1), 10)
-        sample = frame.sample(n=min(len(frame), count), random_state=42)
+        # The rows DataFrame.sample(n, random_state=42) draws.
+        picked = np.random.RandomState(42).choice(
+            rows_before, size=min(rows_before, count), replace=False
+        )
+        sample = store.frame_rows(path, [int(i) for i in picked])
         return {
             "version": dataset.versions().get(cell.id),
-            "rows_before": len(frame),
+            "rows_before": rows_before,
             "target_rows": target,
             "generated_rows": generated,
-            "remaining_rows": target - len(frame) - generated,
+            "remaining_rows": target - rows_before - generated,
             "examples": [
                 {
                     "seed_row": int(row[store.SOURCE_ROW]),
@@ -612,11 +619,9 @@ class Tools:
                 if previous is None:
                     return {"ok": False, "error": "The source cannot be edited."}
                 result = run_svc.try_script(dataset, str(args["script"]), after=previous)
-                if result.frame is None:
+                if result.path is None:
                     return {"ok": False, "error": result.error}
-                changes = review.impact(
-                    store.read_frame(paths.cell_path(dataset.id, previous.id)), result.frame
-                )
+                changes = review.impact(paths.cell_path(dataset.id, previous.id), result.path)
                 if args.get("kind") == "semantic" or review.requires_approval(changes):
                     return {
                         "ok": False,

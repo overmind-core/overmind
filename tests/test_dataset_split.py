@@ -7,6 +7,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
+from conftest import read_table
 from factories import make_project, make_user, member_client
 
 from overbae.models import Dataset, ProjectMembership, Span
@@ -34,7 +35,7 @@ def test_split_takes_the_eval_slice_from_the_head_tail_or_a_fixed_draw():
     assert _inputs(evaluation) == ["q8", "q9"]
     first = _landing().split(eval_percent=30, position="random")
     again = _landing().split(eval_percent=30, position="random")
-    assert _inputs(first[1]) == _inputs(again[1]) and len(first[1].rows) == 3
+    assert _inputs(first[1]) == _inputs(again[1]) and len(list(first[1].rows)) == 3
     assert sorted(_inputs(first[0]) + _inputs(first[1])) == sorted(_inputs(_landing()))
     assert _inputs(first[0]) == sorted(_inputs(first[0]), key=lambda s: int(s[1:]))
 
@@ -42,9 +43,9 @@ def test_split_takes_the_eval_slice_from_the_head_tail_or_a_fixed_draw():
 def test_split_keeps_at_least_one_row_on_each_side():
     two = land.read_rows(ROWS[:2])
     train, evaluation = two.split(eval_percent=1, position="tail")
-    assert len(train.rows) == 1 and len(evaluation.rows) == 1
+    assert len(list(train.rows)) == 1 and len(list(evaluation.rows)) == 1
     train, evaluation = two.split(eval_percent=99, position="tail")
-    assert len(train.rows) == 1 and len(evaluation.rows) == 1
+    assert len(list(train.rows)) == 1 and len(list(evaluation.rows)) == 1
     with pytest.raises(land.LandError):
         land.read_rows(ROWS[:1]).split(eval_percent=50, position="tail")
     with pytest.raises(land.LandError):
@@ -81,7 +82,7 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
         "sibling": str(evaluation.id),
     }
     assert evaluation.source_spec["split"]["sibling"] == str(train.id)
-    frames = [store.read_frame(paths.cell_path(ds.id, ds.source.id)) for ds in (train, evaluation)]
+    frames = [read_table(paths.cell_path(ds.id, ds.source.id)) for ds in (train, evaluation)]
     assert list(frames[0][store.SOURCE_ROW]) == list(range(8))
     assert list(frames[1][store.SOURCE_ROW]) == [0, 1]
     assert {call.kwargs["kwargs"]["dataset_id"] for call in diagnose.call_args_list} == {

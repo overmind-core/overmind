@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from overbae.services.datasets.partition import split_rows
+from collections.abc import Iterable
+
+from overbae.services.datasets.partition import split_positions
 
 
 def _get(row, key, default=None):
@@ -8,35 +10,44 @@ def _get(row, key, default=None):
 
 
 def split_datapoint_ids(
-    datapoints: list, val_ratio: float, *, method="random", group_by=(), stratify_by=None
+    datapoints: Iterable, val_ratio: float, *, method="random", group_by=(), stratify_by=None
 ):
+    """``datapoints`` in order; read once."""
     if not 0 < val_ratio < 1 or method not in {"ordered", "random"}:
         raise ValueError(
             "Choose a validation ratio between zero and one and a random or ordered split."
         )
-    ordered = sorted(datapoints, key=lambda row: (_get(row, "order", 0), str(_get(row, "id"))))
-    if len(ordered) < 2:
-        return [_get(row, "id") for row in ordered], [], []
-    records = []
-    for row in ordered:
-        records.append(
-            {
+    ids: list = []
+
+    def records():
+        for row in datapoints:
+            ids.append(_get(row, "id"))
+            yield {
                 **(_get(row, "extra", {}) or {}),
-                "source_row": _get(row, "id"),
-                "input": _get(row, "input", str(_get(row, "id"))),
+                "source_row": ids[-1],
+                "input": _get(row, "input", str(ids[-1])),
                 "expected_output": _get(row, "expected_output"),
                 "source_trace_id": _get(row, "source_trace_id", ""),
             }
+
+    try:
+        train, validation, report = split_positions(
+            records(),
+            eval_percent=val_ratio * 100,
+            position="tail" if method == "ordered" else "random",
+            group_by=group_by,
+            stratify_by=stratify_by,
+            deduplicate=False,
         )
-    train, validation, report = split_rows(
-        records,
-        eval_percent=val_ratio * 100,
-        position="tail" if method == "ordered" else "random",
-        group_by=group_by,
-        stratify_by=stratify_by,
-        deduplicate=False,
-    )
+    except ValueError:
+        if len(ids) < 2:
+            return ids, [], []
+        raise
     warnings = []
     if report["eval_rows"] != report["target_eval_rows"]:
         warnings.append(f"Group boundaries produced {report['eval_rows']} validation rows.")
-    return [row["source_row"] for row in train], [row["source_row"] for row in validation], warnings
+    return (
+        [i for position, i in enumerate(ids) if position in train],
+        [i for position, i in enumerate(ids) if position in validation],
+        warnings,
+    )

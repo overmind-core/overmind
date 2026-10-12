@@ -96,17 +96,20 @@ def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str |
         return training_path, validation_path, num_train, meta
 
     row_store.verify(version)
-    rows = list(row_store.iter_rows(version))
     train_ids, val_ids, warnings = split_datapoint_ids(
-        rows,
+        row_store.iter_rows(version),
         job.validation_split_ratio,
         method=job.split_method,
         group_by=version.dataset.source_spec.get("split", {}).get("group_by", []),
         stratify_by=version.dataset.source_spec.get("split", {}).get("stratify_by"),
     )
-    by_id = {r.id: r for r in rows}
-    training_path, num_train = _write_rows((by_id[i] for i in train_ids), prefix="ft-train-")
-    validation_path, num_val = _write_rows((by_id[i] for i in val_ids), prefix="ft-val-")
+    validating = set(val_ids)
+    training_path, num_train = _write_rows(
+        (r for r in row_store.iter_rows(version) if r.id not in validating), prefix="ft-train-"
+    )
+    validation_path, num_val = _write_rows(
+        (r for r in row_store.iter_rows(version) if r.id in validating), prefix="ft-val-"
+    )
     meta.update(
         {
             "train_examples": num_train,

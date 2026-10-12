@@ -13,6 +13,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from conftest import read_table
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, Project
@@ -287,7 +288,7 @@ def test_split_outputs_share_one_durable_import(imported_source):
 
 
 def test_real_csv_lands_once_and_retains_no_source_after_commit(imported_source, monkeypatch):
-    from overbae.services.datasets import imports, paths, store
+    from overbae.services.datasets import imports, paths
 
     dataset, run = create_import(imported_source)
     handoffs = []
@@ -300,7 +301,7 @@ def test_real_csv_lands_once_and_retains_no_source_after_commit(imported_source,
     run.refresh_from_db()
     assert dataset.state == "diagnosing" and run.state == "complete"
     assert dataset.cells.count() == 1
-    frame = store.read_frame(paths.cell_path(dataset.pk, dataset.source.pk))
+    frame = read_table(paths.cell_path(dataset.pk, dataset.source.pk))
     assert frame["passenger_id"].tolist() == [1, 2]
     assert frame["survived"].tolist() == [0, 1]
     assert not files.upload_data_path(imported_source[1]).exists()

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 import uuid
+from pathlib import Path
 
-import pandas as pd
 from django.db import transaction
 
 from overbae.models import Cell, Dataset
@@ -60,24 +61,26 @@ def add(
         raise ValueError("Choose training or evaluation before generating examples.")
     if not instruction.strip():
         raise ValueError("Describe the requested generation and intended coverage.")
-    source = store.read_frame(paths.cell_path(dataset.id, previous.id))
+    source_path = paths.cell_path(dataset.id, previous.id)
+    source_count = store.row_count(source_path)
     if (
         isinstance(target_rows, bool)
         or not isinstance(target_rows, int)
-        or target_rows <= len(source)
+        or target_rows <= source_count
     ):
         raise ValueError("The target must exceed the current row count.")
-    if store.SOURCE_ROW not in source or source[store.SOURCE_ROW].duplicated().any():
+    source = store.Frame(source_path)
+    keys = list(source.values(store.SOURCE_ROW)) if store.SOURCE_ROW in source else None
+    if keys is None or len(set(keys)) != len(keys):
         raise ValueError("Generation needs unique source row identities.")
-    source_ids = {int(v) for v in source[store.SOURCE_ROW].dropna()}
+    positions = {int(key): i for i, key in enumerate(keys) if key is not None}
     context = context_fingerprint(dataset.capability)
     cell = dataset.cells.filter(review__generation_id=generation_id).first()
-    combined = source
+    combined = source_path
     batches = []
     if cell is not None:
         validate_generation(dataset, cell, previous, target_rows)
-        path = paths.cell_path(dataset.id, cell.id)
-        combined = store.read_frame(path)
+        combined = paths.cell_path(dataset.id, cell.id)
         batches = cell.review.get("batch_fingerprints", [])
     elif (
         not previous.ran
@@ -88,19 +91,24 @@ def add(
     batch = hashlib.sha256(store.json_dumps(examples).encode()).hexdigest()
     if batch in batches:
         return cell
-    if len(combined) + len(examples) > target_rows:
-        raise ValueError(f"Only {target_rows - len(combined)} rows remain to reach the target.")
-    next_id = int(combined[store.SOURCE_ROW].max()) + 1
-    generated = []
-    source_by_id = {int(row[store.SOURCE_ROW]): row for row in source.to_dict(orient="records")}
-    seen = {content_key(row, include_output=True) for row in combined.to_dict(orient="records")}
-    group_by = dataset.source_spec.get("split", {}).get("group_by", [])
-    for offset, example in enumerate(examples):
+    combined_count = store.row_count(combined)
+    if combined_count + len(examples) > target_rows:
+        raise ValueError(f"Only {target_rows - combined_count} rows remain to reach the target.")
+    next_id = max(k for k in store.Frame(combined).values(store.SOURCE_ROW) if k is not None) + 1
+    for example in examples:
         if not isinstance(example, dict) or not isinstance(example.get("row"), dict):
             raise ValueError("Each example needs a row object and a seed_row.")
         seed = example.get("seed_row")
-        if isinstance(seed, bool) or not isinstance(seed, int) or seed not in source_ids:
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed not in positions:
             raise ValueError("Every generated example must reference an existing seed_row.")
+    seeds = sorted({example["seed_row"] for example in examples})
+    seed_rows = store.frame_rows(source_path, [positions[seed] for seed in seeds])
+    source_by_id = dict(zip(seeds, seed_rows.to_dict(orient="records"), strict=True))
+    seen = {content_key(row, include_output=True) for row in store.records(combined)}
+    generated = []
+    group_by = dataset.source_spec.get("split", {}).get("group_by", [])
+    for offset, example in enumerate(examples):
+        seed = example["seed_row"]
         row = dict(example["row"])
         for key in (
             store.SOURCE_ROW,
@@ -134,21 +142,26 @@ def add(
             "instruction": instruction[:4000],
         }
         generated.append(row)
-    frame = pd.DataFrame(generated)
-    report = contract.measure(frame)[dataset.intent]
-    if not report["ok"]:
-        raise ValueError(f"Generated examples are not format-valid: {report['reason']}")
-    combined = pd.concat([combined, frame], ignore_index=True)
-    if cell is None:
-        cell = lifecycle.add_cell(
-            dataset,
-            title="Synthetic examples",
-            script="",
-            note=instruction,
-            user=user,
-        )
+    with tempfile.TemporaryDirectory(prefix="synthetic-") as scratch:
+        added = Path(scratch) / "generated.parquet"
+        store.write_rows(added, generated)
+        report = contract.measure(store.Frame(added))[dataset.intent]
+        if not report["ok"]:
+            raise ValueError(f"Generated examples are not format-valid: {report['reason']}")
+        output = Path(scratch) / "combined.parquet"
+        store.write_extended(combined, generated, output)
+        if cell is None:
+            cell = lifecycle.add_cell(
+                dataset,
+                title="Synthetic examples",
+                script="",
+                note=instruction,
+                user=user,
+            )
+        review.save_proposal(dataset, cell, previous, output, kind="synthetic", note=instruction)
+    path = paths.cell_path(dataset.id, cell.id)
+    total = combined_count + len(generated)
     generator = cell.review.get("generator", "workshop_agent")
-    review.save_proposal(dataset, cell, previous, combined, kind="synthetic", note=instruction)
     cell.review.update(
         status="accepted",
         approval="generation",
@@ -157,8 +170,10 @@ def add(
         generation_id=generation_id,
         target_rows=target_rows,
         batch_fingerprints=[*batches, batch],
-        generated_examples=review.preview_examples(combined.iloc[len(source) :]),
-        generated_rows=len(combined) - len(source),
+        generated_examples=review.preview_examples(
+            store.frame_rows(path, range(source_count, min(source_count + 5, total)))
+        ),
+        generated_rows=total - source_count,
         generator=generator,
     )
     cell.save(update_fields=["review"])

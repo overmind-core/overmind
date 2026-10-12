@@ -70,7 +70,9 @@ def test_family_selection_is_not_biased_by_sorted_source_order():
 
 
 @pytest.mark.parametrize("intent", ["train", "eval"])
-def test_encoded_wire_fields_are_normalised_without_modifying_text_or_source(intent, tmp_path):
+def test_encoded_wire_fields_are_normalised_without_modifying_text_or_source(
+    intent, tmp_path, frame_of
+):
     source = example(tools=json.dumps([tool()]))
     original = deepcopy(source)
     source["messages"] = json.dumps(source["messages"])
@@ -78,7 +80,7 @@ def test_encoded_wire_fields_are_normalised_without_modifying_text_or_source(int
     path = tmp_path / "frame.parquet"
     store.write_frame(path, prepared)
     persisted = next(store.iter_rows(path))
-    assert contract.measure(pd.DataFrame([persisted]))[intent]["ok"]
+    assert contract.measure(frame_of([persisted]))[intent]["ok"]
     product_row = rows.row_from_record(0, persisted)
     if intent == "train":
         exported = row_to_finetuning_line(product_row)
@@ -111,15 +113,15 @@ def test_existing_encoded_tools_survive_the_consumer_handoff(tmp_path):
         [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "invalid"}}}],
     ],
 )
-def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools):
+def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools, frame_of):
     record = example(tools=bad_tools)
     result = validate_rows([record])
     assert not result.valid and "tools" in result.errors[0]
-    assert not contract.measure(pd.DataFrame([record]))["train"]["ok"]
+    assert not contract.measure(frame_of([record]))["train"]["ok"]
     with pytest.raises(ValueError, match="tools"):
         row_to_finetuning_line(rows.row_from_record(0, record))
     evaluation = prepare_examples(pd.DataFrame([record]), "eval")
-    assert not contract.measure(evaluation)["eval"]["ok"]
+    assert not contract.measure(frame_of(evaluation.to_dict("records")))["eval"]["ok"]
 
 
 @pytest.mark.django_db
@@ -153,10 +155,13 @@ def test_replacing_existing_instructions_requires_review_even_if_claimed_mechani
     assert len(workshop_context(dataset)["profiles"]["source"]["families"]) == 2
 
 
-def test_representation_changes_and_projection_do_not_look_like_scope_changes():
+def test_representation_changes_and_projection_do_not_look_like_scope_changes(frame_of):
     before = pd.DataFrame([example(source_row=0, tools=json.dumps([tool()]))])
     after = prepare_examples(before, "eval")
-    assert review.impact(before, after)["instruction_changes"] == 0
+    changes = review.impact(
+        frame_of(before.to_dict("records")).path, frame_of(after.to_dict("records")).path
+    )
+    assert changes["instruction_changes"] == 0
 
 
 @pytest.mark.django_db

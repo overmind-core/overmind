@@ -112,6 +112,26 @@ def slept(monkeypatch) -> list[float]:
     return naps
 
 
+def read_table(path):
+    """A small frame file as one pandas frame."""
+    from overbae.services.datasets import store
+
+    return store.frame_rows(path, range(store.row_count(path)))
+
+
+@pytest.fixture
+def frame_of(tmp_path):
+    """Rows written to a frame file, read back as the store's Frame."""
+    from overbae.services.datasets import store
+
+    def make(rows: list[dict]) -> store.Frame:
+        path = tmp_path / f"frame-{len(list(tmp_path.glob('frame-*')))}.parquet"
+        store.write_rows(path, rows)
+        return store.Frame(path)
+
+    return make
+
+
 @pytest.fixture
 def fake_modal(monkeypatch) -> FakeModal:
     return FakeModal().install(monkeypatch)

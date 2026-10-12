@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS
+from conftest import EVAL_ROWS, TRAIN_ROWS, read_table
 from factories import make_project
 
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
@@ -41,28 +44,61 @@ def _source(tmp_path, rows=ROWS):
 def test_cell_reads_df_and_keeps_source_row_through_a_filter(tmp_path):
     result = runner.run(KEEP, _source(tmp_path), library_cache=tmp_path / "lib")
     assert result.error == ""
-    assert list(result.frame["question"]) == ["q1", "q3"]
-    assert list(result.frame["source_row"]) == [0, 2]
+    assert list(read_table(result.path)["question"]) == ["q1", "q3"]
+    assert list(read_table(result.path)["source_row"]) == [0, 2]
 
 
 def test_cell_rebuilds_source_row_when_the_script_dropped_it(tmp_path):
     script = "df = df[['question']][df['question'] != '']\n"
     result = runner.run(script, _source(tmp_path), library_cache=tmp_path / "lib")
     assert result.error == ""
-    assert list(result.frame["source_row"]) == [0, 2]
+    assert list(read_table(result.path)["source_row"]) == [0, 2]
 
 
 def test_cell_without_row_identity_reports_it(tmp_path):
     script = "df = df.groupby('tag').size().reset_index(name='n')\n"
     result = runner.run(script, _source(tmp_path), library_cache=tmp_path / "lib")
     assert result.error == ""
-    assert "source_row" not in result.frame.columns
+    assert "source_row" not in read_table(result.path).columns
 
 
 def test_cell_error_carries_the_traceback(tmp_path):
     result = runner.run("df = df['missing']\n", _source(tmp_path), library_cache=tmp_path / "lib")
-    assert result.frame is None
+    assert result.path is None
     assert "missing" in result.error
+
+
+def test_a_cell_larger_than_the_sandbox_budget_does_not_start(tmp_path, settings):
+    settings.WORKSHOP_SANDBOX_MEMORY_BYTES = 512 * 1024**2
+    result = runner.run(KEEP, _source(tmp_path), library_cache=tmp_path / "lib")
+    assert result.path is None
+    assert result.error == (
+        "This version needs about 1.0 GiB of memory for a pandas cell; this worker has 0.5 GiB."
+    )
+
+
+def test_a_cell_that_outgrows_its_reservation_is_stopped(tmp_path, settings):
+    settings.WORKSHOP_SANDBOX_MEMORY_BYTES = 8 * 1024**3
+    script = "blob = b'x' * (3 * 1024**3)\n"
+    result = runner.run(script, _source(tmp_path), library_cache=tmp_path / "lib")
+    assert result.path is None
+    assert result.error == "The cell used more than 1.5 GiB of memory and was stopped."
+
+
+def test_cells_that_do_not_fit_together_take_turns(tmp_path, settings):
+    settings.WORKSHOP_SANDBOX_MEMORY_BYTES = 3 * 1024**3 // 2
+    script = "total = sum(range(40_000_000))\n"
+    source = _source(tmp_path)
+
+    def timed(_):
+        started = time.monotonic()
+        result = runner.run(script, source, library_cache=tmp_path / "lib")
+        return result.ok, time.monotonic() - started
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        (first_ok, first), (second_ok, second) = pool.map(timed, range(2))
+    assert first_ok and second_ok
+    assert max(first, second) > 1.6 * min(first, second)
 
 
 def test_audit_reads_the_library_list(tmp_path):
@@ -302,4 +338,4 @@ def test_a_named_index_is_kept_as_columns(tmp_path):
         _source(tmp_path),
         library_cache=tmp_path / "none",
     )
-    assert result.ok and {"tag", "question", "answer"} <= set(result.frame.columns)
+    assert result.ok and {"tag", "question", "answer"} <= set(read_table(result.path).columns)

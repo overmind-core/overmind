@@ -5,33 +5,30 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
 from overbae.services.datasets import alignment, contract, store
 
 
-def describe_frame(dataset, path, *, df=None, report=None):
-    if df is None:
-        df = store.read_frame(path)
-    report = report or contract.measure(df)
-    manifest = store.read_manifest(path)
+def describe_frame(dataset, path, *, report=None):
+    frame = store.Frame(path)
+    report = report or contract.measure(frame)
     null_rates = {c["name"]: c["null_rate"] for c in store.column_stats(path)}
     capability_report = (
-        alignment.capability_contract(dataset.capability, df, dataset.intent)
+        alignment.capability_contract(dataset.capability, frame, dataset.intent)
         if dataset.capability_id is not None
         else {}
     )
     return {
         "state": Cell.State.OK,
         "error": "",
-        "rows": int(len(df)),
-        "columns": [{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in manifest],
+        "rows": len(frame),
+        "columns": [{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in frame.manifest],
         "fingerprint": store.file_sha256(path),
         "intent_report": {"train": report["train"], "eval": report["eval"]},
         "capability_report": capability_report,
-        "stats": contract.stats(df),
+        "stats": contract.stats(frame),
         "updated_at": timezone.now(),
     }
 
@@ -41,12 +38,11 @@ def frame(
     cell: Cell,
     path: Path,
     *,
-    df: pd.DataFrame | None = None,
     report: dict[str, Any] | None = None,
     **fields,
 ) -> Cell:
     Cell.objects.filter(pk=cell.pk).update(
-        **{**describe_frame(dataset, path, df=df, report=report), **fields}
+        **{**describe_frame(dataset, path, report=report), **fields}
     )
     cell.refresh_from_db()
     from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
@@ -65,9 +61,7 @@ def capability_only(dataset: Dataset) -> None:
         if not path.exists():
             continue
         report = (
-            alignment.capability_contract(
-                dataset.capability, store.read_frame(path), dataset.intent
-            )
+            alignment.capability_contract(dataset.capability, store.Frame(path), dataset.intent)
             if dataset.capability_id is not None
             else {}
         )

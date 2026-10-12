@@ -2,6 +2,7 @@ import uuid
 from unittest.mock import Mock, patch
 
 import pytest
+from conftest import read_table
 from fakes.llm import tool_call
 
 from overbae.models import Cell, Dataset, Project
@@ -65,9 +66,10 @@ def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch,
     assert dataset.state == Dataset.State.DIAGNOSING
     assert dataset.chat[-1]["status"] == "resolved"
     assert dataset.chat[-1]["error"] == ""
-    assert store.read_frame(paths.cell_path(dataset.id, proposal.id))[
-        "expected_output"
-    ].tolist() == ["unknown", "unknown"]
+    assert read_table(paths.cell_path(dataset.id, proposal.id))["expected_output"].tolist() == [
+        "unknown",
+        "unknown",
+    ]
     kwargs = enqueue.call_args.kwargs["kwargs"]
     assert "Prepare these rows and check their quality" in kwargs["message"]
     assert "approved" in kwargs["message"]
@@ -141,7 +143,7 @@ def test_changed_preview_after_approval_fails_without_resuming(dataset, monkeypa
     dispatch.run_dataset(dataset, None, proposal=proposal)
     store.write_frame(
         paths.cell_path(dataset.id, proposal.id),
-        store.read_frame(paths.cell_path(dataset.id, dataset.source.id)),
+        read_table(paths.cell_path(dataset.id, dataset.source.id)),
     )
     dataset.refresh_from_db()
     tasks.run.apply(
