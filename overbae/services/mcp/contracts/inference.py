@@ -38,12 +38,6 @@ class RunInferenceInput(MCPModel):
         return self
 
 
-class InferenceUsage(MCPModel):
-    prompt_tokens: int = Field(default=0, ge=0)
-    completion_tokens: int = Field(default=0, ge=0)
-    total_tokens: int | None = Field(default=None, ge=0)
-
-
 class RunInferenceOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     model_id: str

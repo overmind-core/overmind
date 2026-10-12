@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
-
 from asgiref.sync import sync_to_async
 from django.db import connection, transaction
 
@@ -45,6 +43,7 @@ from overbae.services.mcp.contracts.connectors import (
     SyncConnectorOutput,
 )
 from overbae.services.mcp.errors import MCPError
+from overbae.services.mcp.references import uuid_reference
 from overbae.services.mcp.resources import (
     connector_mapping_assignments,
     connector_resource_payload,
@@ -100,13 +99,6 @@ def _json_safe_mapping(mapping: dict | None) -> dict:
     return result
 
 
-def _uuid_ref(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (AttributeError, TypeError, ValueError):
-        return None
-
-
 def _connector_ref(value: str) -> str:
     value = value.strip()
     if value.startswith("connectors:"):
@@ -119,7 +111,7 @@ def _connector_ref(value: str) -> str:
 def _resolve_connector(context: MCPContext, reference: str) -> ConnectorCredential:
     reference = _connector_ref(reference)
     query = ConnectorCredential.objects.filter(project=context.project)
-    normalized_id = _uuid_ref(reference)
+    normalized_id = uuid_reference(reference)
     connector = query.filter(id=normalized_id).first() if normalized_id else None
     if connector is None:
         connector = query.filter(name__iexact=reference).order_by("-created_at").first()
@@ -783,13 +775,6 @@ def _sync_connector_sync(payload: SyncConnectorInput, context: MCPContext) -> Sy
     )
 
 
-def _async_handler(function):
-    async def handler(payload, context):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
-
-
 def register_connector_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
@@ -858,5 +843,5 @@ def register_connector_tools(catalog) -> None:
                 cost_class="compute" if name == "inspect_connectors" else "free",
                 async_mode=async_mode,
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

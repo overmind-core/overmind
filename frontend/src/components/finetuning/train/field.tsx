@@ -46,14 +46,6 @@ export function Field({
   );
 }
 
-export function SetupGrid({ children }: { children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 items-start gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-      {children}
-    </div>
-  );
-}
-
 export function Column({
   label,
   meta,

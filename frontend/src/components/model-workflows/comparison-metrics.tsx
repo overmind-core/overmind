@@ -285,26 +285,6 @@ type ComparisonProps = {
   baselineKey?: string;
 };
 
-export function ComparisonConfidence({
-  comparisons,
-  names,
-  baselineKey = "base",
-}: ComparisonProps) {
-  const groups = comparisonGroups(comparisons, names, baselineKey);
-  return (
-    <TooltipProvider>
-      <div className="grid gap-4 xl:grid-cols-2">
-        {groups.map((group) => (
-          <div className="space-y-3" key={group.name}>
-            {groups.length > 1 && <h3 className="text-sm font-medium">{group.name}</h3>}
-            <ConfidenceGroup {...group} />
-          </div>
-        ))}
-      </div>
-    </TooltipProvider>
-  );
-}
-
 export function ComparisonMetrics({ comparisons, names, baselineKey = "base" }: ComparisonProps) {
   const { sort, setSort, sortRows } = useTableSort<string>();
   const groups = useMemo(

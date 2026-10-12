@@ -21,7 +21,6 @@ from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import TRAIN_DECISION, train_function_name
 from modal_shared.training_data import file_digest
-from modal_shared.training_release import data_format_identity
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_hf_base,
@@ -43,10 +42,6 @@ from overbae.services.training_contract import dataset_objective
 
 def processor_fingerprint():
     return asset_fingerprint(Path(__file__).parent / "sft_assets")
-
-
-def data_format_fingerprint():
-    return data_format_identity(Path(__file__).resolve().parents[2])
 
 
 def request_preparation(

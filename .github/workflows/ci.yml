@@ -25,8 +25,6 @@ jobs:
         with:
           version: "0.11.0"
           enable-cache: true
-          # Pin to 3.13: spacy 3.8.x has no cp314 wheels, so uv must not
-          # auto-select the newer 3.14 interpreter. Matches .python-version.
           python-version: "3.13"
 
       - name: Install dev tools (ruff)

@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Callable
 from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.db.models import Avg, Count, Q
 from django.http import QueryDict
 from django.utils import timezone
-from pydantic import BaseModel
 
 from overbae.api.filters import SpanFilter, TaskExecutionFilter
 from overbae.api.serializers import (
@@ -807,13 +805,6 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     )
 
 
-def _async_handler(function: Callable[[BaseModel, MCPContext], BaseModel]):
-    async def handler(payload: BaseModel, context: MCPContext):
-        return await sync_to_async(function, thread_sensitive=True)(payload, context)
-
-    return handler
-
-
 def inspect_operation_sync(payload, context):
     try:
         result = operational_progress.inspect(
@@ -845,7 +836,7 @@ def register_observability_tools(catalog) -> None:
             cost_class="free",
             async_mode="sync",
         ),
-        _async_handler(inspect_operation_sync),
+        sync_to_async(inspect_operation_sync, thread_sensitive=True),
     )
 
     definitions = [
@@ -912,5 +903,5 @@ def register_observability_tools(catalog) -> None:
                 cost_class=cost_class,
                 async_mode="sync",
             ),
-            _async_handler(function),
+            sync_to_async(function, thread_sensitive=True),
         )

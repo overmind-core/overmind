@@ -1,14 +1,8 @@
-"""Non-stream chat against a READY deployed fine-tune.
-
-Shared by the OpenAI-compatible completions gateway and MCP ``run_inference``
-so cold-start detection and InferenceCall recording
-stay on one path.
-"""
+"""Shared cold-start detection and inference usage recording."""
 
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -17,14 +11,8 @@ from typing import Any
 from django.db.models import Q
 from django.utils import timezone
 
-from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
 from overbae.models import BillingService, Capability, DeployedModel, InferenceCall, User
 from overbae.services.billing_ledger import charge_credits
-from overbae.services.inference_client import (
-    ContextBudgetError,
-    InferenceClientError,
-    get_inference_client,
-)
 from overbae.services.inference_pricing import estimate_call_cost
 
 logger = logging.getLogger(__name__)
@@ -160,75 +148,3 @@ def record_inference_call(
             )
     except Exception:
         logger.exception("Failed to record InferenceCall for %s", deployed.model_id)
-
-
-def chat_with_deployed_model(
-    *,
-    deployed: DeployedModel,
-    messages: list[dict],
-    user: User | None = None,
-    temperature: float = 1.0,
-    max_tokens: int | None = None,
-) -> dict[str, Any]:
-    """Non-stream chat completion against a READY deployed model.
-
-    Returns ``{content, usage, latency_ms, is_cold, model_id}`` on success,
-    or ``{error: ...}`` when the model is not ready / the gateway fails.
-    """
-    if deployed.status != DeployedModel.Status.READY:
-        return {
-            "error": f"Model '{deployed.model_id}' is not ready (status: {deployed.status}).",
-        }
-
-    cold = is_cold_start(deployed)
-    client = get_inference_client()
-    t_start = time.monotonic()
-    try:
-        result = client.chat_completions(
-            model_id=deployed.model_id,
-            messages=messages,
-            stream=False,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            deployed=deployed,
-            include_metrics=True,
-        )
-    except InferenceClientError as exc:
-        logger.error("Inference error for model %s: %s", deployed.model_id, exc)
-        error_code = (
-            "context_length_exceeded" if isinstance(exc, ContextBudgetError) else "server_error"
-        )
-        record_inference_call(
-            deployed,
-            None,
-            round((time.monotonic() - t_start) * 1000, 1),
-            cold,
-            user=user,
-            outcome="failed",
-            error_code=error_code,
-        )
-        return {"error": f"Inference backend error: {exc}", "error_code": error_code}
-
-    latency_ms = round((time.monotonic() - t_start) * 1000, 1)
-    usage = result.get("usage") if isinstance(result, dict) else None
-    call_metrics = result.pop("metrics", None) if isinstance(result, dict) else None
-    record_inference_call(deployed, usage, latency_ms, cold, user=user, metrics=call_metrics)
-
-    content = ""
-    finish_reason = None
-    if isinstance(result, dict):
-        choices = result.get("choices") or []
-        if choices:
-            message = choices[0].get("message") or {}
-            content = message.get("content") or ""
-            finish_reason = choices[0].get("finish_reason")
-
-    return {
-        "model_id": deployed.model_id,
-        "content": content,
-        "usage": usage,
-        "latency_ms": latency_ms,
-        "is_cold": cold,
-        "finish_reason": finish_reason,
-        "truncated": finish_reason in INCOMPLETE_FINISH_REASONS,
-    }

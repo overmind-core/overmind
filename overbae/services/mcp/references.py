@@ -1,4 +1,5 @@
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import UUID
 
 
 def project_references(value, project_id):
@@ -12,3 +13,10 @@ def project_references(value, project_id):
         query["project_id"] = str(project_id)
         return urlunsplit(parsed._replace(query=urlencode(query)))
     return value
+
+
+def uuid_reference(value: str) -> str | None:
+    try:
+        return str(UUID(str(value)))
+    except (AttributeError, TypeError, ValueError):
+        return None

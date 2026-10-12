@@ -176,8 +176,6 @@ export const datasetsSearchSchema = projectIdSearchSchema.extend({
   ds_search: z.string().optional().default(""),
 });
 
-export type DatasetsSearch = z.infer<typeof datasetsSearchSchema>;
-
 // `inf_capability` is prefixed so it can't collide with the bare `capability` other routes
 // carry through `search: (prev) => …`. The model detail route must share this schema:
 // zod strips undeclared keys, and the detail page rebuilds the list URL from them.

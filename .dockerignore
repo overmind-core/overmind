@@ -3,3 +3,7 @@ fly.toml
 *.sqlite3
 
 frontend
+scratch/
+data_preparation/
+tests/evidence/
+.venv/

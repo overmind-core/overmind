@@ -1,7 +1,6 @@
 import contextlib
 import json
 import math
-import random
 from collections import Counter
 
 
@@ -131,42 +130,3 @@ def allocation(counts, config):
         for key in ranking[: config["rows"] - sum(quotas.values())]:
             quotas[key] += 1
     return quotas
-
-
-def sample_frames(read_batches, native_decision, **request):
-    config = validate_request(**request)
-    counts = census(read_batches, native_decision, config)
-    check = feasibility(counts, config)
-    if not check["feasible"]:
-        raise ValueError(check["reason"])
-    total = check["source_rows"]
-    quotas = allocation(counts, config)
-    rng = random.Random(config["seed"])
-    reservoirs = {key: [] for key in quotas}
-    seen = Counter()
-    position = 0
-    for batch in read_batches():
-        for row in batch.to_dict(orient="records"):
-            key = stratum(row, native_decision, config)
-            seen[key] += 1
-            reservoir = reservoirs[key]
-            if len(reservoir) < quotas[key]:
-                reservoir.append(position)
-            else:
-                index = rng.randrange(seen[key])
-                if index < quotas[key]:
-                    reservoir[index] = position
-            position += 1
-    if seen != counts or any(len(reservoirs[key]) != quota for key, quota in quotas.items()):
-        raise ValueError("Source changed during sampling")
-    # Retain positions only; even very long selected examples stay in bounded input batches.
-    selected = {position for reservoir in reservoirs.values() for position in reservoir}
-    offset = emitted = 0
-    for batch in read_batches():
-        mask = [offset + i in selected for i in range(len(batch))]
-        offset += len(batch)
-        chosen = batch.loc[mask].copy()
-        emitted += len(chosen)
-        yield chosen
-    if offset != total or emitted != config["rows"]:
-        raise ValueError("Source changed while emitting the sample")

@@ -2,6 +2,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 from conftest import frozen_dataset
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from modal_shared.decision_checkpoint_policy import select_checkpoint, validate_policy
 from modal_shared.runtime_profile import representative_order
@@ -84,7 +86,9 @@ def test_experiment_freezes_variants_and_launches_each_saved_candidate_once(
         ) as dispatch,
         django_capture_on_commit_callbacks(execute=True),
     ):
-        training_experiments.prepare(group)
+        with CaptureQueriesContext(connection) as preparation_queries:
+            training_experiments.prepare(group)
+        assert sum('FROM "overbae_cell"' in q["sql"] for q in preparation_queries) == 2
         training_experiments.launch(group, user=user)
         training_experiments.prepare(group)
         training_experiments.launch(group, user=user)
@@ -101,6 +105,37 @@ def test_experiment_freezes_variants_and_launches_each_saved_candidate_once(
         job.hyperparameters["n_epochs"] == 1
         for job in FinetuningJob.objects.filter(group_id=group.pk)
     )
+
+
+@pytest.mark.parametrize("changed_role", ["train", "development"])
+def test_experiment_preparation_rejects_changed_shared_sources(changed_role):
+    project = Project.objects.create(name="Shared source integrity")
+    user = User.objects.create_user(email="source-integrity@example.com")
+    ProjectMembership.objects.create(project=project, user=user)
+    sources = {role: data(project, role) for role in ("train", "development")}
+    experiment = training_experiments.create(
+        project,
+        user=user,
+        name="Shared sources",
+        purpose="Check frozen data across variants",
+        request_key="shared-sources",
+        variants=[
+            {
+                "name": f"Seed {seed}",
+                "base_model": "Qwen/Qwen3.5-4B",
+                "cell": str(sources["train"].active_cell.pk),
+                "development_cell": str(sources["development"].active_cell.pk),
+                "hyperparameters": {"n_epochs": 1, "seed": seed},
+            }
+            for seed in (1, 2)
+        ],
+    )
+    with rows.frame_path(sources[changed_role].active_cell).open("ab") as source:
+        source.write(b"changed after pinning")
+    experiment = training_experiments.prepare(experiment)
+    assert experiment.state == "preparation_failed"
+    assert "forecast" not in experiment.protocol
+    assert not FinetuningJob.objects.filter(group_id=experiment.pk).exists()
 
 
 def test_retained_checkpoint_policy_requires_development_and_refuses_final_selection():

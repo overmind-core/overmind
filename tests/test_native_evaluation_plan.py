@@ -1,5 +1,6 @@
 import json
 import math
+from contextlib import closing
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,7 +9,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from overbae.models import Dataset, FinetuningJob, Project
-from overbae.services import native_evaluation
+from overbae.services import native_evaluation, native_evaluation_monitor
 from overbae.services.datasets import land
 
 pytestmark = pytest.mark.django_db
@@ -162,6 +163,54 @@ def test_plan_keeps_references_local_and_freezes_calibration_before_final_predic
     assert fitted["decisions"] == 3
     assert native_evaluation.fit_calibration(plan) == fitted
     assert not (native_evaluation.directory(plan, "final") / "candidate.jsonl").exists()
+
+
+def test_monitor_calibrates_every_valid_prediction_across_batches(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan(question_count=513)
+    source = native_evaluation.directory(plan, "final")
+    with closing(native_evaluation_monitor.connect(source / "monitor.sqlite")) as db, db:
+        for row in native_evaluation.records(source / "inputs.jsonl"):
+            native_evaluation_monitor.ingest(
+                db,
+                plan,
+                "base",
+                {
+                    "key": row["key"],
+                    "input_sha256": row["input_sha256"],
+                    "kind": "boolean" if row["key"] == "0" else "choice",
+                    "probabilities": [0.8, 0.2],
+                    "log_probabilities": [math.log(0.8), math.log(0.2)],
+                },
+            )
+    plan.calibration = {"arms": {"base": {"temperature": 2}}}
+    for _ in range(2):
+        native_evaluation_monitor.refresh(plan)
+        with closing(native_evaluation_monitor.connect(source / "monitor.sqlite")) as db:
+            predictions = db.execute("SELECT * FROM predictions ORDER BY key").fetchall()
+        assert len(predictions) == 513
+        assert predictions[0]["key"] == "0" and predictions[0]["error"]
+        assert predictions[0]["adjusted"] is None
+        for prediction in predictions[1:]:
+            assert json.loads(prediction["raw"])["probabilities"] == [0.8, 0.2]
+            adjusted = json.loads(prediction["adjusted"])
+            assert adjusted["probabilities"] == pytest.approx([2 / 3, 1 / 3])
+            assert json.loads(prediction["adjusted_metrics"])["accuracy"] == 1
+    inspected = native_evaluation_monitor.inspect(plan, offset=500, limit=20)
+    assert len(inspected["samples"]) == 13
+    assert inspected["arms"][0]["scored"] == 512
+    benchmark = inspected["arms"][0]["benchmarks"][0]
+    assert benchmark["invalid"] == 1
+    assert benchmark["raw"]["cross_entropy"] == {
+        "decisions": 512,
+        "mean": pytest.approx(-math.log(0.8)),
+    }
+    assert benchmark["calibrated"]["cross_entropy"] == {
+        "decisions": 512,
+        "mean": pytest.approx(-math.log(2 / 3)),
+    }
+    assert inspected["arms"][1]["received"] == 0
+    assert inspected["arms"][1]["benchmarks"][0]["raw"] == {}
 
 
 def test_unknown_submission_is_not_repeated(tmp_path, settings):
