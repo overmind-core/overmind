@@ -121,3 +121,44 @@ def test_systemone_returns_answers_and_rejects_context_overflow():
         )
     assert overflow.status_code == 400
     assert "max_length_exceeded" in str(overflow.data)
+
+
+def test_trained_checkpoint_inference_uses_the_saved_artifact():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+    job = DecisionJob.objects.create(
+        project=project,
+        model_id="Cloudflare/clef",
+        status=DecisionJob.Status.SUCCEEDED,
+        records=[_record()],
+        result={"saved": "/artifacts/job/merged"},
+    )
+    payload = {
+        "model": "/artifacts/job/merged",
+        "answers": {"pay": {"choice": "yes"}},
+        "usage": {"input_tokens": 4, "output_tokens": 0},
+    }
+    with patch("modal.Function.from_name") as lookup:
+        lookup.return_value.remote.return_value = payload
+        answered = _client(user).post(
+            f"/api/decision-jobs/{job.id}/systemone/",
+            {"state": "The invoice is unpaid.", "questions": {"pay": {"type": "choice"}}},
+            format="json",
+        )
+    assert answered.status_code == 200, answered.data
+    sent = lookup.return_value.remote.call_args.args[0]
+    assert sent["checkpoint"] == "/artifacts/job/merged"
+    assert answered.data["answers"]["pay"]["choice"] == "yes"
+
+    waiting = DecisionJob.objects.create(
+        project=project,
+        model_id="Cloudflare/clef",
+        status=DecisionJob.Status.RUNNING,
+        records=[_record()],
+    )
+    early = _client(user).post(
+        f"/api/decision-jobs/{waiting.id}/systemone/",
+        {"state": "The invoice is unpaid.", "questions": {"pay": {"type": "choice"}}},
+        format="json",
+    )
+    assert early.status_code == 400

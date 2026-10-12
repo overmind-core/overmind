@@ -112,7 +112,18 @@ def refresh(job: DecisionJob) -> DecisionJob:
     return job
 
 
+def infer_job(job: DecisionJob, state, questions) -> dict:
+    saved = (job.result or {}).get("saved") if job.status == DecisionJob.Status.SUCCEEDED else None
+    if not isinstance(saved, str) or not saved:
+        raise InputValidationError("Decision checkpoint is not ready.")
+    return _infer(job.model_id, state, questions, checkpoint=saved)
+
+
 def systemone(model_id: str, state, questions) -> dict:
+    return _infer(model_id, state, questions, checkpoint=None)
+
+
+def _infer(model_id: str, state, questions, checkpoint: str | None) -> dict:
     spec = get(model_id)
     if spec is None:
         raise InputValidationError("Unknown decision model.")
@@ -124,6 +135,8 @@ def systemone(model_id: str, state, questions) -> dict:
         "state": state,
         "questions": questions,
     }
+    if checkpoint:
+        payload["checkpoint"] = checkpoint
     try:
         result = modal.Function.from_name(
             APP_NAME,

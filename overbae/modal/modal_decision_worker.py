@@ -62,9 +62,12 @@ def train_decision(payload: dict) -> dict:
     gpu="H100",
     timeout=2 * 60 * 60,
     secrets=[secret],
+    volumes={"/artifacts": volume},
     scaledown_window=300,
 )
 def serve_decision(payload: dict) -> dict:
     import decision_train
 
+    if payload.get("checkpoint"):
+        volume.reload()
     return decision_train.predict(payload)

@@ -75,6 +75,7 @@ def _train_clef(payload: dict) -> dict:
             weight_decay=0.01,
             num_train_epochs=1,
             bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
+            gradient_checkpointing=True,
             logging_steps=10,
             report_to="none",
             save_strategy="no",
@@ -129,6 +130,9 @@ def _train_d3(payload: dict) -> dict:
     for name, param in backbone.named_parameters():
         if "visual" in name:
             param.requires_grad_(False)
+    # ponytail: 26B batch-2 activations exceed one H100. Recompute them; batch stays 2.
+    backbone.enable_input_require_grads()
+    backbone.gradient_checkpointing_enable()
     readout = torch.nn.Parameter(runtime.readout.detach().float().clone())
     trainable = [param for param in backbone.parameters() if param.requires_grad]
     optimizer = torch.optim.AdamW(
@@ -313,15 +317,19 @@ def _export_d3(src: Path, dest: Path, backbone, readout) -> None:
     save_file({"weight": readout.detach().float().cpu().contiguous()}, dest / "readout.safetensors")
 
 
+def _source(payload: dict) -> str:
+    return payload.get("checkpoint") or payload["repo"]
+
+
 def _predict_clef(payload: dict) -> dict:
     from unsloth import FastDecisionModel
     from unsloth.models.clef import encode_record
 
-    repo = payload["repo"]
+    source = _source(payload)
     max_context = int(payload["max_context_length"])
     model, processor = _cached(
-        ("clef", repo, max_context),
-        lambda: _load_clef(repo, max_context),
+        ("clef", source, max_context),
+        lambda: _load_clef(source, max_context),
     )
     # predict() hides its truncated flag and otherwise cuts the prompt at its serve window.
     model.decision_config["max_len"] = max_context
@@ -335,7 +343,7 @@ def _predict_clef(payload: dict) -> dict:
         return {"error": "max_length_exceeded"}
     answers = FastDecisionModel.predict(model, processor, payload["state"], payload["questions"])
     return {
-        "model": repo,
+        "model": source,
         "answers": answers,
         "usage": {"input_tokens": len(encoded.input_ids), "output_tokens": 0},
     }
@@ -355,18 +363,31 @@ def _load_clef(repo: str, max_context: int):
 
 def _predict_d3(payload: dict) -> dict:
     repo = payload["repo"]
+    source = _source(payload)
     max_context = int(payload["max_context_length"])
-    runtime = _cached(("d3", repo, max_context), lambda: _load_d3(repo, max_context))
+    runtime = _cached(
+        ("d3", source, max_context),
+        lambda: _load_d3(source, max_context, repo),
+    )
     return runtime.system_one(state=payload["state"], questions=payload["questions"])
 
 
-def _load_d3(repo: str, max_context: int):
+def _load_d3(source: str, max_context: int, name: str):
     # Before transformers binds Qwen3.5's Gated DeltaNet to the PyTorch reference.
     import unsloth  # noqa: F401
-    from huggingface_hub import snapshot_download
 
-    folder = snapshot_download(repo)
+    folder = source
+    if not Path(source).is_dir():
+        from huggingface_hub import snapshot_download
+
+        folder = snapshot_download(source)
     sys.path.insert(0, folder)
+    # A warm container keeps the previous checkpoint's runtime module.
+    for loaded in list(sys.modules):
+        module = sys.modules[loaded]
+        origin = getattr(module, "__file__", "") or ""
+        if origin.startswith(folder) or "/artifacts/" in origin or loaded == "d3_runtime":
+            del sys.modules[loaded]
     from d3_runtime import D3
 
     return D3.from_pretrained(
@@ -374,7 +395,7 @@ def _load_d3(repo: str, max_context: int):
         max_length=max_context,
         verify="none",
         device="cuda:0",
-        model_name=repo,
+        model_name=name,
     )
 
 

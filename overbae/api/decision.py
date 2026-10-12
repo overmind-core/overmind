@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,7 +10,13 @@ from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.modal.decision_catalog import models as decision_models
 from overbae.models import DecisionJob, Project
-from overbae.services.decision_jobs import DecisionUnavailableError, refresh, submit, systemone
+from overbae.services.decision_jobs import (
+    DecisionUnavailableError,
+    infer_job,
+    refresh,
+    submit,
+    systemone,
+)
 
 
 class DecisionModelSerializer(serializers.Serializer):
@@ -60,6 +67,11 @@ class DecisionSystemOneRequestSerializer(serializers.Serializer):
     questions = serializers.DictField()
 
 
+class DecisionJobInferSerializer(serializers.Serializer):
+    state = serializers.JSONField()
+    questions = serializers.DictField()
+
+
 class DecisionSystemOneResponseSerializer(serializers.Serializer):
     model = serializers.CharField()
     answers = serializers.DictField()
@@ -106,6 +118,25 @@ class DecisionJobViewSet(
         except InputValidationError as exc:
             raise ValidationError(exc.detail) from exc
         return Response(DecisionJobSerializer(job).data, status=202)
+
+    @extend_schema(
+        request=DecisionJobInferSerializer,
+        responses={200: DecisionSystemOneResponseSerializer},
+        summary="Score a trained decision checkpoint",
+    )
+    @action(detail=True, methods=["post"], url_path="systemone")
+    def systemone(self, request, pk=None):
+        job = self.get_object()
+        body = DecisionJobInferSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            result = infer_job(job, data["state"], data["questions"])
+        except InputValidationError as exc:
+            raise ValidationError(exc.detail) from exc
+        except DecisionUnavailableError:
+            return Response({"detail": "Decision inference is not available."}, status=503)
+        return Response(DecisionSystemOneResponseSerializer(result).data)
 
 
 class DecisionSystemOneView(APIView):
