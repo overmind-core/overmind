@@ -9,7 +9,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -50,21 +51,22 @@
       "status": 200,
       "model": "OvermindLab/qwen-3.5-0.8B-decision",
       "usage": {
-        "input_tokens": 278,
-        "output_tokens": 0
+        "input_tokens": 133,
+        "output_tokens": 3
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
-      "job_id": "c7b1f7ea-2349-4733-ae7f-8718a5c981eb",
+      "job_id": "519755e8-dabc-4ed6-8e90-f6d3221047c2",
       "status": "succeeded",
       "error": "",
       "result": {
         "rank": 64,
         "batch": 8,
         "model": "OvermindLab/qwen-3.5-0.8B-decision",
-        "saved": "/artifacts/c7b1f7ea-2349-4733-ae7f-8718a5c981eb/merged",
+        "saved": "/artifacts/519755e8-dabc-4ed6-8e90-f6d3221047c2/adapter",
         "steps": 1,
         "family": "clef",
         "skipped": 0,
@@ -73,7 +75,7 @@
         "train_records": 2,
         "holdout_records": 0,
         "loss_first_last": [],
-        "train_runtime_s": 170.7601,
+        "train_runtime_s": 162.0067,
         "peak_reserved_gb": 2.92,
         "peak_allocated_gb": 2.71,
         "max_context_length": 32768
@@ -90,7 +92,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -131,10 +134,11 @@
       "status": 200,
       "model": "OvermindLab/qwen-3.5-2B-decision",
       "usage": {
-        "input_tokens": 278,
-        "output_tokens": 0
+        "input_tokens": 133,
+        "output_tokens": 3
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -208,7 +212,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -252,7 +257,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -296,7 +302,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -337,10 +344,11 @@
       "status": 200,
       "model": "Cloudflare/clef-flash",
       "usage": {
-        "input_tokens": 278,
-        "output_tokens": 0
+        "input_tokens": 133,
+        "output_tokens": 3
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -377,7 +385,8 @@
         "input_tokens": 284,
         "output_tokens": 0
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,
@@ -418,10 +427,11 @@
       "status": 200,
       "model": "Cloudflare/clef",
       "usage": {
-        "input_tokens": 278,
-        "output_tokens": 0
+        "input_tokens": 133,
+        "output_tokens": 3
       },
-      "errors": {}
+      "errors": {},
+      "detail": null
     },
     "train": {
       "ok": true,

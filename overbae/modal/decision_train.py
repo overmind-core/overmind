@@ -1,7 +1,8 @@
-"""Decision-model training and serving. Imported inside the Modal image, not by Django."""
+"""Decision-model training. Imported inside the Modal image, not by Django."""
 
 from __future__ import annotations
 
+import json
 import random
 import shutil
 import sys
@@ -9,7 +10,6 @@ import time
 from pathlib import Path
 
 SEED = 3407
-_LOADED: dict = {}
 _FIT_ERROR = "No records fit the context cap."
 
 
@@ -20,15 +20,6 @@ def train(payload: dict) -> dict:
     if family == "d3":
         return _train_d3(payload)
     return {"error": "Decision training failed."}
-
-
-def predict(payload: dict) -> dict:
-    family = payload["family"]
-    if family == "clef":
-        return _predict_clef(payload)
-    if family == "d3":
-        return _predict_d3(payload)
-    return {"error": "Decision inference is not available."}
 
 
 def _train_clef(payload: dict) -> dict:
@@ -85,8 +76,9 @@ def _train_clef(payload: dict) -> dict:
     trained = trainer.train()
     losses = [row["loss"] for row in trainer.state.log_history if "loss" in row]
     calibration = FastDecisionModel.calibrate(model, processor, holdout) if holdout else {}
-    saved = out / "merged"
-    model.save_pretrained_merged(str(saved))
+    saved = out / "adapter"
+    trainer.save_model(str(saved))
+    _pin_adapter_base(saved, repo)
     runtime = float(trained.metrics["train_runtime"])
     return {
         "model": repo,
@@ -196,6 +188,16 @@ def _train_d3(payload: dict) -> dict:
         "loss_first_last": [round(losses[0], 4), round(losses[-1], 4)],
         "saved": str(saved),
     }
+
+
+def _pin_adapter_base(saved: Path, repo: str) -> None:
+    cfg_path = saved / "adapter_config.json"
+    if not cfg_path.is_file():
+        raise RuntimeError("Clef training did not write a LoRA adapter")
+    cfg = json.loads(cfg_path.read_text())
+    if cfg.get("base_model_name_or_path") != repo:
+        cfg["base_model_name_or_path"] = repo
+        cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
 
 
 def _d3_lora():
@@ -315,97 +317,6 @@ def _export_d3(src: Path, dest: Path, backbone, readout) -> None:
     state = {key: value.detach().cpu().contiguous() for key, value in backbone.state_dict().items()}
     save_file(state, dest / "model.safetensors")
     save_file({"weight": readout.detach().float().cpu().contiguous()}, dest / "readout.safetensors")
-
-
-def _source(payload: dict) -> str:
-    return payload.get("checkpoint") or payload["repo"]
-
-
-def _predict_clef(payload: dict) -> dict:
-    from unsloth import FastDecisionModel
-    from unsloth.models.clef import encode_record
-
-    source = _source(payload)
-    max_context = int(payload["max_context_length"])
-    model, processor = _cached(
-        ("clef", source, max_context),
-        lambda: _load_clef(source, max_context),
-    )
-    # predict() hides its truncated flag and otherwise cuts the prompt at its serve window.
-    model.decision_config["max_len"] = max_context
-    tokenizer = getattr(processor, "tokenizer", processor)
-    encoded = encode_record(
-        tokenizer,
-        {"state": payload["state"], "questions": payload["questions"]},
-        max_length=max_context + 1,
-    )
-    if len(encoded.input_ids) > max_context:
-        return {"error": "max_length_exceeded"}
-    answers = FastDecisionModel.predict(model, processor, payload["state"], payload["questions"])
-    return {
-        "model": source,
-        "answers": answers,
-        "usage": {"input_tokens": len(encoded.input_ids), "output_tokens": 0},
-    }
-
-
-def _load_clef(repo: str, max_context: int):
-    from unsloth import FastDecisionModel
-
-    model, processor = FastDecisionModel.from_pretrained(
-        repo,
-        max_seq_length=max_context,
-        load_in_4bit=False,
-    )
-    FastDecisionModel.for_inference(model)
-    return model, processor
-
-
-def _predict_d3(payload: dict) -> dict:
-    repo = payload["repo"]
-    source = _source(payload)
-    max_context = int(payload["max_context_length"])
-    runtime = _cached(
-        ("d3", source, max_context),
-        lambda: _load_d3(source, max_context, repo),
-    )
-    return runtime.system_one(state=payload["state"], questions=payload["questions"])
-
-
-def _load_d3(source: str, max_context: int, name: str):
-    # Before transformers binds Qwen3.5's Gated DeltaNet to the PyTorch reference.
-    import unsloth  # noqa: F401
-
-    folder = source
-    if not Path(source).is_dir():
-        from huggingface_hub import snapshot_download
-
-        folder = snapshot_download(source)
-    sys.path.insert(0, folder)
-    # A warm container keeps the previous checkpoint's runtime module.
-    for loaded in list(sys.modules):
-        module = sys.modules[loaded]
-        origin = getattr(module, "__file__", "") or ""
-        if origin.startswith(folder) or "/artifacts/" in origin or loaded == "d3_runtime":
-            del sys.modules[loaded]
-    from d3_runtime import D3
-
-    return D3.from_pretrained(
-        folder,
-        max_length=max_context,
-        verify="none",
-        device="cuda:0",
-        model_name=name,
-    )
-
-
-def _cached(key, load):
-    if _LOADED.get("key") != key or "value" not in _LOADED:
-        loaded = load()
-        _LOADED.clear()
-        _LOADED["key"] = key
-        _LOADED["value"] = loaded
-    return _LOADED["value"]
 
 
 def _peak_allocated():

@@ -135,24 +135,35 @@ def _infer(model_id: str, state, questions, checkpoint: str | None) -> dict:
         "state": state,
         "questions": questions,
     }
-    if checkpoint:
-        payload["checkpoint"] = checkpoint
+    # Clef fine-tunes are adapters on the shared base. D3 fine-tunes are their own checkpoint.
+    if checkpoint and spec["family"] == "clef":
+        payload["adapter"] = checkpoint
+        source = spec["repo"]
+    else:
+        source = checkpoint or spec["repo"]
+    # Modal class parameters reject slashes.
+    cls_name = "ClefServer" if spec["family"] == "clef" else "D3Server"
     try:
-        result = modal.Function.from_name(
+        result = modal.Cls.from_name(
             APP_NAME,
-            "serve_decision",
+            cls_name,
             environment_name=os.environ.get("MODAL_ENVIRONMENT") or None,
-        ).remote(payload)
+        )(source=source.replace("/", "--")).score.remote(payload)
     except Exception as exc:
         logger.exception("Decision inference failed for %s", model_id)
         raise DecisionUnavailableError from exc
     if not isinstance(result, dict) or "answers" not in result:
         if isinstance(result, dict) and result.get("error") == "max_length_exceeded":
             raise InputValidationError("max_length_exceeded")
+        logger.error(
+            "Decision inference returned no answers for %s: %s",
+            model_id,
+            result.get("error") if isinstance(result, dict) else type(result).__name__,
+        )
         raise DecisionUnavailableError
     usage = result.get("usage") or {}
     return {
-        "model": result.get("model") or spec["id"],
+        "model": spec["id"],
         "answers": result["answers"],
         "usage": {
             "input_tokens": int(usage.get("input_tokens") or 0),

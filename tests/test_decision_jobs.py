@@ -34,7 +34,8 @@ def _record() -> dict:
 
 def test_catalog_caps_every_checkpoint_at_h100_context():
     rows = models()
-    assert len(rows) == 11
+    assert len(rows) == 10
+    assert "OvermindLab/lfm-2.5-2.6B-decision" not in rows
     assert {row["family"] for row in rows.values()} == {"clef", "d3"}
     assert {row["max_context_length"] for row in rows.values()} == {32768}
 
@@ -104,18 +105,21 @@ def test_systemone_returns_answers_and_rejects_context_overflow():
         "answers": {"pay": {"noul": 0.2}},
         "usage": {"input_tokens": 12, "output_tokens": 0},
     }
-    with patch("modal.Function.from_name") as lookup:
-        lookup.return_value.remote.return_value = payload
+    with patch("modal.Cls.from_name") as lookup:
+        lookup.return_value.return_value.score.remote.return_value = payload
         answered = client.post(
             "/api/decision-models/Cloudflare/clef/systemone", body, format="json"
         )
     assert answered.status_code == 200
     assert answered.data["answers"]["pay"]["noul"] == 0.2
     assert answered.data["usage"]["input_tokens"] == 12
-    assert lookup.call_args.args[1] == "serve_decision"
+    assert lookup.call_args.args[1] == "ClefServer"
+    assert lookup.return_value.call_args.kwargs["source"] == "Cloudflare--clef"
 
-    with patch("modal.Function.from_name") as lookup:
-        lookup.return_value.remote.return_value = {"error": "max_length_exceeded"}
+    with patch("modal.Cls.from_name") as lookup:
+        lookup.return_value.return_value.score.remote.return_value = {
+            "error": "max_length_exceeded"
+        }
         overflow = client.post(
             "/api/decision-models/Cloudflare/clef/systemone", body, format="json"
         )
@@ -131,24 +135,44 @@ def test_trained_checkpoint_inference_uses_the_saved_artifact():
         model_id="Cloudflare/clef",
         status=DecisionJob.Status.SUCCEEDED,
         records=[_record()],
-        result={"saved": "/artifacts/job/merged"},
+        result={"saved": "/artifacts/job/adapter"},
     )
     payload = {
-        "model": "/artifacts/job/merged",
+        "model": "Cloudflare/clef",
         "answers": {"pay": {"choice": "yes"}},
         "usage": {"input_tokens": 4, "output_tokens": 0},
     }
-    with patch("modal.Function.from_name") as lookup:
-        lookup.return_value.remote.return_value = payload
+    with patch("modal.Cls.from_name") as lookup:
+        lookup.return_value.return_value.score.remote.return_value = payload
         answered = _client(user).post(
             f"/api/decision-jobs/{job.id}/systemone/",
             {"state": "The invoice is unpaid.", "questions": {"pay": {"type": "choice"}}},
             format="json",
         )
     assert answered.status_code == 200, answered.data
-    sent = lookup.return_value.remote.call_args.args[0]
-    assert sent["checkpoint"] == "/artifacts/job/merged"
+    sent = lookup.return_value.return_value.score.remote.call_args.args[0]
+    assert sent["adapter"] == "/artifacts/job/adapter"
+    assert lookup.return_value.call_args.kwargs["source"] == "Cloudflare--clef"
     assert answered.data["answers"]["pay"]["choice"] == "yes"
+
+    d3 = DecisionJob.objects.create(
+        project=project,
+        model_id="vllm-sr/d3-edge",
+        status=DecisionJob.Status.SUCCEEDED,
+        records=[_record()],
+        result={"saved": "/artifacts/d3-job"},
+    )
+    with patch("modal.Cls.from_name") as lookup:
+        lookup.return_value.return_value.score.remote.return_value = payload
+        d3_answered = _client(user).post(
+            f"/api/decision-jobs/{d3.id}/systemone/",
+            {"state": "The invoice is unpaid.", "questions": {"pay": {"type": "choice"}}},
+            format="json",
+        )
+    assert d3_answered.status_code == 200, d3_answered.data
+    assert lookup.call_args.args[1] == "D3Server"
+    assert lookup.return_value.call_args.kwargs["source"] == "--artifacts--d3-job"
+    assert "adapter" not in lookup.return_value.return_value.score.remote.call_args.args[0]
 
     waiting = DecisionJob.objects.create(
         project=project,
