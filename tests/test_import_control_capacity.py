@@ -67,7 +67,7 @@ def examined_import_rows(node):
 def test_control_queries_do_not_walk_completed_import_history(receipt_history, operation, tmp_path):
     with CaptureQueriesContext(connection) as captured:
         if operation == "reconcile":
-            assert imports.reconcile() == {"processed": 0}
+            assert imports.reconcile() == {"processed": 0, "orphaned": 0}
         else:
             workload = read_workloads()["landing"]
             assert (workload["waiting"], workload["running"], workload["blocked"]) == (1, 1, 1)

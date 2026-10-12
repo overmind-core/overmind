@@ -52,6 +52,7 @@ from overbae.models import (
     EvalSetMember,
     Evaluator,
     EvalVariant,
+    Execution,
     Feedback,
     FinetuningJob,
     FinetuningJobEval,
@@ -76,11 +77,11 @@ from overbae.models import (
 from overbae.models.traces import usage_slice
 from overbae.services import sync as sync_service
 from overbae.services.capabilities import identity as capability_identity
+from overbae.services.datasets import executions as dataset_executions
 from overbae.services.datasets import land as dataset_land
-from overbae.services.datasets import lifecycle as dataset_lifecycle
 from overbae.services.datasets import paths as dataset_paths
 from overbae.services.datasets import rows as row_store
-from overbae.services.datasets.notebook import run as notebook_run
+from overbae.services.datasets import versions as dataset_versions
 from overbae.services.eval import composition
 from overbae.services.eval import dispatch as eval_dispatch
 from overbae.services.eval import snapshots as eval_snapshots
@@ -2656,8 +2657,7 @@ class Command(BaseCommand):
             for i, c in enumerate(ds.cells.order_by("position")):
                 Cell.objects.filter(pk=c.pk).update(created_at=born + timedelta(hours=1, minutes=i))
 
-        def _run(ds, born, *, want=None):
-            notebook_run.execute(ds)
+        def _check(ds, born, *, want=None):
             ds.refresh_from_db()
             if ds.state != "idle":
                 raise RuntimeError(f"seed dataset {ds.name!r}: {ds.error}")
@@ -2668,6 +2668,16 @@ class Command(BaseCommand):
             _stamp_dataset(ds, born)
             return ds
 
+        def _version(ds, parent, title, script, *, activate=True):
+            done = dataset_executions.run_now(
+                ds, mode=Execution.Mode.CELL, parent=parent, script=script, title=title
+            )
+            if done.cell is None:
+                raise RuntimeError(f"seed dataset {ds.name!r}, {title}: {done.run.error}")
+            if activate:
+                dataset_versions.activate(ds, done.cell)
+            return done.cell
+
         def _paste(name, rows, intent, *, capability=None, born):
             ds = Dataset.objects.create(
                 project=project,
@@ -2677,7 +2687,7 @@ class Command(BaseCommand):
                 source_spec={"pasted": True},
             )
             dataset_land.land_rows(ds, [dict(r) for r in rows], spec={"pasted": True})
-            return _run(ds, born, want=intent if intent != "pending" else None)
+            return _check(ds, born, want=intent if intent != "pending" else None)
 
         def _from_traces(cap, name, *, want, intent, born):
             entries = [e for e in trace_index[cap.pk] if e[4]]
@@ -2688,13 +2698,8 @@ class Command(BaseCommand):
             )
             dataset_land.land_traces(ds, {"trace_ids": [tid for tid, *_ in chosen]})
             if intent == "eval":
-                dataset_lifecycle.add_cell(
-                    ds,
-                    title="Eval pairs",
-                    script=_TRACE_EVAL_SCRIPT,
-                    note="input + delivered output as the reference",
-                )
-            return _run(ds, born, want=intent)
+                _version(ds, ds.source, "Eval pairs", _TRACE_EVAL_SCRIPT)
+            return _check(ds, born, want=intent)
 
         def _tool_decl(name, description, args):
             return {
@@ -2807,24 +2812,52 @@ class Command(BaseCommand):
             capability=triage_capability,
             born=days_ago(19),
         )
-        dataset_lifecycle.add_cell(
+        deduplicated = _version(
             triage_train,
-            title="Drop exact duplicates",
-            script="df = df.drop_duplicates(subset=['messages']).reset_index(drop=True)\n",
-            note="2 rows",
+            triage_train.source,
+            "Drop exact duplicates",
+            "df = df.drop_duplicates(subset=['messages']).reset_index(drop=True)\n",
         )
-        dataset_lifecycle.add_cell(
+        # A branch: two caps tried from the same parent; the 20% cap is active.
+        _version(
             triage_train,
-            title="Cap support-general at 20%",
-            script=(
+            deduplicated,
+            "Cap support-general at 30%",
+            (
+                "cap = int(len(df) * 0.30)\n"
+                "general = df[df['team'] == 'support-general']\n"
+                "drop = general.index[cap:] if len(general) > cap else general.index[:0]\n"
+                "df = df.drop(index=drop).reset_index(drop=True)\n"
+            ),
+            activate=False,
+        )
+        _version(
+            triage_train,
+            deduplicated,
+            "Cap support-general at 20%",
+            (
                 "cap = int(len(df) * 0.20)\n"
                 "general = df[df['team'] == 'support-general']\n"
                 "drop = general.index[cap:] if len(general) > cap else general.index[:0]\n"
                 "df = df.drop(index=drop).reset_index(drop=True)\n"
             ),
-            note="class balance",
         )
-        _run(triage_train, days_ago(19), want="train")
+        dataset_executions.run_now(
+            triage_train,
+            mode=Execution.Mode.TRY,
+            parent=triage_train.active_cell,
+            script="df = df[df['team'] != 'billing']\n",
+        )
+        failed = dataset_executions.run_now(
+            triage_train,
+            mode=Execution.Mode.CELL,
+            parent=triage_train.active_cell,
+            script="df = df.sort_values('priority')\n",
+            title="Sort by priority",
+        )
+        if failed.run is None or failed.run.state != Execution.State.FAILED:
+            raise RuntimeError("seed: the failing script did not fail")
+        _check(triage_train, days_ago(19), want="train")
         triage_golden = _from_traces(
             triage_capability, "Triage Golden Set", want=60, intent="eval", born=days_ago(21)
         )
@@ -2985,20 +3018,20 @@ class Command(BaseCommand):
                 },
             ),
         )
-        _run(split_train, days_ago(2), want="train")
-        dataset_lifecycle.add_cell(
+        _check(split_train, days_ago(2), want="train")
+        _version(
             split_eval,
-            title="Eval pairs from transcripts",
-            script=(
+            split_eval.source,
+            "Eval pairs from transcripts",
+            (
                 "import json\n"
                 "msgs = df['messages'].apply(lambda m: json.loads(m) if isinstance(m, str) else m)\n"
                 "df['input'] = msgs.apply(lambda m: {'ticket': next(x['content'] for x in m if x['role'] == 'user')})\n"
                 "df['expected_output'] = msgs.apply(lambda m: m[-1]['content'])\n"
                 "df = df[['input', 'expected_output', 'team']]\n"
             ),
-            note="the last assistant turn is the reference",
         )
-        _run(split_eval, days_ago(2), want="eval")
+        _check(split_eval, days_ago(2), want="eval")
 
         voice_notes = _paste(
             "Voice-of-customer notes (raw)",
@@ -3054,198 +3087,6 @@ class Command(BaseCommand):
             split_eval,
             voice_notes,
         ]
-
-        def _chat(ds, turns, born):
-            """turns: [(role, text, steps, cells)]; the agent turns read as landed by the workshop."""
-            chat = []
-            at = born + timedelta(hours=1, minutes=2)
-            for i, (role, text, steps, cells) in enumerate(turns):
-                entry = {
-                    "role": role,
-                    "text": text,
-                    "at": (at + timedelta(minutes=i * 2)).isoformat(),
-                }
-                if role == "agent":
-                    entry.update(
-                        {
-                            "error": "",
-                            "cells": cells,
-                            "steps": steps,
-                            "ms": random.randint(24000, 96000),
-                            "engine": "openrouter",
-                            "model": "anthropic/claude-sonnet-5",
-                        }
-                    )
-                chat.append(entry)
-            Dataset.objects.filter(pk=ds.pk).update(chat=chat)
-
-        def _step(i, tool, summary, ms):
-            return {
-                "type": "activity",
-                "phase": "tool_done",
-                "id": f"s{i}",
-                "status": "done",
-                "tool": tool,
-                "title": tool,
-                "summary": summary,
-                "ok": True,
-                "durationMs": ms,
-            }
-
-        def _think(i, text, ms):
-            return {
-                "type": "activity",
-                "phase": "thinking",
-                "id": f"t{i}",
-                "status": "done",
-                "text": text,
-                "durationMs": ms,
-            }
-
-        _chat(
-            triage_train,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "Train contract holds on the source: every row is a transcript with an assistant turn and declared tools.\n\n"
-                    "Quality checks on 362 rows: 2 exact duplicates, 0 truncated finals, 0 undeclared tool calls, 0 rows from another capability. "
-                    "Class balance across `team` is uneven — support-general carries 31% of rows.\n\n"
-                    "- 1.1 **Drop exact duplicates** — 2 rows.\n"
-                    "- 1.2 **Cap support-general at 20%** — 18 rows.\n\n"
-                    "intent ok · capability ok. 342 rows on the active version.",
-                    [
-                        _think(
-                            1,
-                            "Reading the status, the contracts and the playbook before touching the rows.",
-                            4200,
-                        ),
-                        _step(
-                            2, "status", "362 rows × 3 columns · train fits · capability fits", 380
-                        ),
-                        _step(
-                            3,
-                            "query",
-                            "SELECT COUNT(*) FROM t GROUP BY md5(messages) HAVING COUNT(*) > 1 → 2",
-                            910,
-                        ),
-                        _step(
-                            4,
-                            "inspect",
-                            "team share: support-general 31%, oncall-payments 22%, …",
-                            1400,
-                        ),
-                        _step(5, "add_cell", "1.1 Drop exact duplicates — 360 rows", 3100),
-                        _step(6, "add_cell", "1.2 Cap support-general at 20% — 342 rows", 2900),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in triage_train.cells.filter(position__gt=0)
-                    ],
-                ),
-            ],
-            days_ago(19),
-        )
-        _chat(
-            triage_golden,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "Eval contract: the source carries `input` and `output`; cell 1.1 renames the delivered output to `expected_output` and drops the wire transcript.\n\n"
-                    "Quality checks on 60 rows: 0 empty references, 0 ambiguous duplicates, 0 reference leakage. "
-                    "Every `input` carries the capability's required keys.\n\n"
-                    "intent ok · capability ok.",
-                    [
-                        _think(
-                            1,
-                            "The rows are one per trace, so the reference is the delivered output.",
-                            2600,
-                        ),
-                        _step(2, "status", "60 rows × 18 columns · pending", 340),
-                        _step(
-                            3,
-                            "try_script",
-                            "rename output → expected_output on 1.0: 60 rows, fits eval",
-                            2200,
-                        ),
-                        _step(4, "set_intent", "eval", 120),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in triage_golden.cells.filter(position__gt=0)
-                    ],
-                ),
-                ("user", "How many rows route to oncall-payments?", [], []),
-                (
-                    "agent",
-                    "14 of 60 rows have `expected_output.team = oncall-payments`; 11 of them are payout delays and 3 are 3DS failures.",
-                    [
-                        _step(
-                            1,
-                            "query",
-                            "SELECT COUNT(*) FROM t WHERE json_extract(expected_output, '$.team') = 'oncall-payments' → 14",
-                            640,
-                        )
-                    ],
-                    [],
-                ),
-            ],
-            days_ago(21),
-        )
-
-        # The pair's chats: the eval half needed a cell, the train half did not.
-        _chat(
-            split_eval,
-            [
-                (
-                    "user",
-                    "Prepare this dataset: shape it to both contracts, then run the quality checks.",
-                    [],
-                    [],
-                ),
-                (
-                    "agent",
-                    "The rows are transcripts, so the eval contract failed on the source. Cell 1.1 lifts the user message into `input` and the last assistant turn into `expected_output`, keeping `team` for the class metrics.\n\n"
-                    "Quality checks on 40 rows: 0 empty references, 0 duplicates, 0 leakage.\n\nintent ok · capability ok.",
-                    [
-                        _think(
-                            1,
-                            "Transcripts cannot fit eval as-is; derive the pair from the messages.",
-                            3100,
-                        ),
-                        _step(
-                            2,
-                            "status",
-                            "40 rows × 3 columns · eval does not fit: no input column",
-                            300,
-                        ),
-                        _step(
-                            3,
-                            "try_script",
-                            "derive input + expected_output: 40 rows, fits eval",
-                            2400,
-                        ),
-                        _step(4, "add_cell", "1.1 Eval pairs from transcripts — 40 rows", 2800),
-                    ],
-                    [
-                        {"id": str(c.id), "action": "ran"}
-                        for c in split_eval.cells.filter(position__gt=0)
-                    ],
-                ),
-            ],
-            days_ago(2),
-        )
 
         # ── Eval runs ────────────────────────────────────────────────────────────────────
 
@@ -3800,7 +3641,6 @@ class Command(BaseCommand):
                 num_iterations=num_iterations or len(iteration_qs),
                 num_candidates_per_iteration=len(iteration_qs[0]) if iteration_qs else 3,
                 command_template=_COMMAND_TEMPLATE,
-                cursor_usage={},
             )
             datapoints = list(row_store.iter_rows(version))
             span_hours = max(4.0, (done - born).total_seconds() / 3600.0)
@@ -3973,16 +3813,6 @@ class Command(BaseCommand):
             exp.scores = scores
             exp.current_iteration = len(iteration_qs)
             exp.stalled_iterations = stalled
-            exp.cursor_usage = {
-                "input_tokens": random.randint(280_000, 520_000),
-                "output_tokens": random.randint(24_000, 48_000),
-                "cache_read_tokens": random.randint(800_000, 1_500_000),
-                "cache_write_tokens": random.randint(60_000, 130_000),
-                "reasoning_tokens": random.randint(9_000, 26_000),
-            }
-            exp.cursor_usage["total_tokens"] = sum(
-                v for k, v in exp.cursor_usage.items() if k != "reasoning_tokens"
-            )
             state = {"eval_pending": {}}
             if status == "completed" and winner is not None and mode == "optimize":
                 state["winner_score"] = scores["best"]
@@ -4857,24 +4687,6 @@ class Command(BaseCommand):
                 },
             )
             backdate(BillingTelemetry, [(row.pk, job.completed_at)], column="timestamp")
-        for ds, days_, amt in (
-            (triage_train, 19, "0.4180000"),
-            (triage_golden, 21, "0.2260000"),
-            (split_eval, 2, "0.1930000"),
-        ):
-            row = BillingTelemetry.objects.create(
-                user=owner,
-                project=project,
-                amount=Decimal("-" + amt),
-                service=BillingService.DATA_WORKSHOP,
-                idempotency_key=f"data-workshop:{ds.pk}:seed",
-                metadata={
-                    "dataset_id": str(ds.pk),
-                    "engine": "openrouter",
-                    "model": "anthropic/claude-sonnet-5",
-                },
-            )
-            backdate(BillingTelemetry, [(row.pk, days_ago(days_, h=-1))], column="timestamp")
         row = BillingTelemetry.objects.create(
             user=owner,
             amount=Decimal("50.0000000"),

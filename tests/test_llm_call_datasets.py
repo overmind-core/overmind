@@ -204,10 +204,10 @@ def test_a_final_tool_call_trains_and_a_gap_does_not():
     assert not validate_rows([gap]).valid
 
 
-def test_landing_settles_idle_without_a_workshop_turn(monkeypatch):
+def test_landing_settles_idle_with_the_source_active_and_runs_nothing(monkeypatch):
     queued = []
     monkeypatch.setattr(
-        dataset_tasks.diagnose, "apply_async", lambda *args, **kwargs: queued.append(kwargs)
+        dataset_tasks.execute, "apply_async", lambda *args, **kwargs: queued.append(kwargs)
     )
     project = _project()
     capability = Capability.objects.create(project=project, name="Support", slug="support")
@@ -230,6 +230,7 @@ def test_landing_settles_idle_without_a_workshop_turn(monkeypatch):
     dataset.refresh_from_db()
     assert queued == []
     assert dataset.state == Dataset.State.IDLE, dataset.error
+    assert dataset.active_id == dataset.source.id
     assert dataset.active_cell.fits("eval")[0]
     frame = read_table(paths.cell_path(dataset.id, dataset.source.id))
     assert "trace_id" not in set(frame.columns)

@@ -21,7 +21,7 @@ from overbae.models import (
     FinetuningJob,
     TrainingPreparation,
 )
-from overbae.services.datasets import paths, review, store
+from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_finetuning
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
@@ -66,9 +66,9 @@ def test_preparation_and_deployment_refusals_reach_the_agent(monkeypatch, tool):
 def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True, fits=True):
     cell = Cell.objects.create(
         dataset=dataset,
+        parent=dataset.cells.filter(position=0).first() if position else None,
         position=position,
         title=title,
-        state=Cell.State.OK,
         rows=rows,
         fingerprint=f"fp-{position}-{uuid.uuid4().hex[:8]}",
         intent_report={intent: {"ok": fits, "reason": "" if fits else "not a fit"}},
@@ -98,20 +98,6 @@ def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True
     )
     cell.fingerprint = store.file_sha256(path)
     cell.save(update_fields=["fingerprint"])
-    review.record_quality(
-        dataset,
-        cell,
-        [
-            {
-                "name": name,
-                "result": "pass",
-                "rows_checked": rows,
-                "evidence": "Controlled test fixture.",
-            }
-            for name in review.REQUIRED_CHECKS
-        ],
-        script="df = pd.DataFrame({'source_row': df.source_row, **{name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')}})",
-    )
     return cell
 
 

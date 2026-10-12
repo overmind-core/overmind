@@ -26,7 +26,7 @@ def test_version_info_names_the_pinned_version(project):
     assert data["dataset_name"] == "graded set"
     assert data["cell_info"] == {
         "id": str(version.id),
-        "version": "1.0",
+        "version": "v0",
         "title": "Source",
         "rows": 2,
         "fingerprint": version.fingerprint,

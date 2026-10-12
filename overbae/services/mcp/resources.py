@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections import Counter
 from collections.abc import Iterable
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
@@ -20,8 +19,8 @@ from overbae.api.eval_serializers import compute_run_progress
 from overbae.core.errors import InputValidationError
 from overbae.models import (
     Capability,
-    Cell,
     Dataset,
+    DatasetImport,
     DeployedModel,
     EvalSet,
     FinetuningJob,
@@ -55,9 +54,7 @@ JSON_MIME = "application/json"
 _MAX_EVENTS = 20
 _MAX_LIST = 50
 _OPTIMIZER_PATCH_CAP = 4_000
-_CHAT_DEFAULT = 10
 _ERROR_CAP = 1_000
-_CHAT_TEXT_CAP = 2_000
 
 
 def _normalize_key(key: object) -> str:
@@ -182,7 +179,7 @@ def _dataset_upload_resource(uri: str) -> dict:
             "eval_percent (1–99) and position (head, tail or random)."
         ),
         "next_mcp_calls": [
-            "get_job(kind=dataset_run, id=dataset_id)",
+            "get_job(kind=dataset_import, id=dataset_id)",
         ],
     }
 
@@ -586,32 +583,8 @@ def _dataset_human_action(dataset) -> dict:
     }
 
 
-def _chat_turn(raw) -> dict | None:
-    if not isinstance(raw, dict):
-        return None
-    cells = raw.get("cells") if isinstance(raw.get("cells"), list) else []
-    ms = raw.get("ms")
-    return {
-        "role": _clip_text(raw.get("role"), 16),
-        "text": _clip_text(raw.get("text"), _CHAT_TEXT_CAP),
-        "error": _clip_text(raw.get("error"), _ERROR_CAP) or None,
-        "cells": safe_json(cells[:20]),
-        "at": _clip_text(raw.get("at"), 80) or None,
-        "ms": ms if isinstance(ms, int) else None,
-        "status": raw.get("status"),
-        "progress": safe_json(raw.get("progress")),
-    }
-
-
-def _latest_turn(dataset) -> dict | None:
-    chat = dataset.chat or []
-    if not chat:
-        return None
-    return _chat_turn(chat[-1])
-
-
-def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAULT) -> dict:
-    detail = serialize_dataset_detail(dataset, chat_limit=chat_limit)
+def _dataset_detail_payload(dataset, *, uri: str) -> dict:
+    detail = serialize_dataset_detail(dataset)
     payload = detail.model_dump(mode="json", by_alias=True)
     payload["uri"] = uri
     payload.setdefault("kind", "dataset")
@@ -620,48 +593,45 @@ def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAUL
     return payload
 
 
-def dataset_run_job_payload(dataset, uri: str) -> dict:
-    chain = dataset.chain
-    versions = dataset.versions(chain=chain)
-    ran = [cell for cell in chain if cell.state == Cell.State.OK]
-    active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
-    actions = [action.model_dump(mode="json") for action in next_actions(dataset, chain, active)]
-    cells = {"n": len(chain), "states": dict(Counter(cell.state for cell in chain))}
+def dataset_import_job_payload(dataset, uri: str) -> dict:
+    active = dataset.active
+    actions = [action.model_dump(mode="json") for action in next_actions(dataset, active)]
+    receipt = DatasetImport.objects.filter(Q(dataset=dataset) | Q(evaluation=dataset)).first()
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
-        "jobs", f"dataset_run/{dataset.id}", (dataset.name or "Dataset run")[:160]
+        "jobs", f"dataset_import/{dataset.id}", (dataset.name or "Dataset import")[:160]
     )
-    error = _clip_text(dataset.error, _ERROR_CAP) or None
-    latest_turn = _latest_turn(dataset)
-    waiting = dataset.state == "idle" and (latest_turn or {}).get("status") == "awaiting_approval"
     return {
         "uri": uri,
-        "kind": "dataset_run",
+        "kind": "dataset_import",
         "id": str(dataset.id),
         "name": dataset.name,
-        "status": "awaiting_approval" if waiting else dataset.state,
+        "status": dataset.state,
         "state": dataset.state,
-        "error": error,
+        "error": _clip_text(dataset.error, _ERROR_CAP) or None,
+        "import": (
+            {
+                "state": receipt.state,
+                "attempts": receipt.attempts,
+                "failure_code": receipt.failure_code or None,
+            }
+            if receipt is not None
+            else None
+        ),
         "active": (
             {
                 "id": str(active.id),
-                "version": versions.get(active.id, ""),
+                "version": active.label,
                 "title": active.title,
                 "rows": active.rows,
             }
             if active
             else None
         ),
-        "latest_turn": latest_turn,
-        "cells": cells,
         "next_action": actions[0] if actions else None,
         "next_actions": actions,
         "dataset": dataset_link,
-        "progress": {
-            **((latest_turn or {}).get("progress") or {}),
-            "cells": cells["states"],
-            "rows": active.rows if active else 0,
-        },
+        "progress": {"rows": active.rows if active else 0},
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
         "updated_at": dataset.updated_at,
@@ -674,7 +644,6 @@ def _load_dataset_job(project, normalized_id):
     return (
         Dataset.objects.filter(project=project, id=normalized_id)
         .select_related("capability", "active")
-        .prefetch_related("cells")
         .first()
     )
 
@@ -1107,11 +1076,11 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
         return _optimizer_resource(project, value, uri)
     normalized_id = _uuid_ref(value)
-    if kind == "dataset_run":
+    if kind == "dataset_import":
         job = _load_dataset_job(project, normalized_id)
         if job is None:
-            raise _not_found("dataset run", value)
-        return dataset_run_job_payload(job, uri)
+            raise _not_found("dataset import", value)
+        return dataset_import_job_payload(job, uri)
     raise _not_found("job", f"{kind}/{value}")
 
 

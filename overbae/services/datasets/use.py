@@ -1,4 +1,4 @@
-"""Pick a readable version and freeze it; quality findings do not prevent use."""
+"""Pick a readable version and freeze it."""
 
 from __future__ import annotations
 
@@ -29,23 +29,22 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     else:
         cell.refresh_from_db()
     if cell is None:
+        if dataset.state == Dataset.State.LANDING:
+            raise DatasetError(f"{dataset.name} is still landing.", code="landing")
         if dataset.state == Dataset.State.ERROR:
             raise DatasetError(
-                f"The last run of {dataset.name} failed. Run it again in the data workshop.",
-                code="run_failed",
+                f"The source of {dataset.name} did not land: {dataset.error}", code="land_failed"
             )
-        if dataset.state in (Dataset.State.RUNNING, Dataset.State.DIAGNOSING):
-            raise DatasetError(f"{dataset.name} is running. Wait for it to finish.", code="running")
-        raise DatasetError(f"{dataset.name} has no version that ran.", code="no_version")
+        raise DatasetError(f"{dataset.name} has no version.", code="no_version")
     ok, reason = cell.fits(intent)
     if not ok:
-        raise DatasetError(f"{dataset.name} · {label(dataset, cell)}: {reason}", code="contract")
+        raise DatasetError(f"{dataset.name} · {cell.label}: {reason}", code="contract")
     try:
         rows.verify(cell)
     except (ValueError, rows.RowStoreError) as exc:
         logger.exception("Could not verify dataset cell %s", cell.pk)
         raise DatasetError(
-            f"{dataset.name}: this version is unreadable or has changed. Run it again in the data workshop.",
+            f"{dataset.name} · {cell.label} is unreadable or has changed.",
             code="workshop_validation",
         ) from exc
     return cell
@@ -53,8 +52,6 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
 
 @transaction.atomic
 def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
-    """``check``, then set ``used_at`` the first time, which freezes the cell
-    and every cell it reads and starts a new major version."""
     # Share generation's lock so a consumed version cannot change between batches.
     dataset = (
         Dataset.objects.select_for_update(of=("self",))
@@ -73,16 +70,12 @@ def freeze(*cells: Cell | None) -> None:
             cell.refresh_from_db()
 
 
-def label(dataset: Dataset, cell: Cell) -> str:
-    return dataset.versions().get(cell.id, cell.title)
-
-
 def describe(cell: Cell | None) -> dict[str, Any] | None:
     if cell is None:
         return None
     return {
         "id": str(cell.id),
-        "version": cell.dataset.versions().get(cell.id, ""),
+        "version": cell.label,
         "title": cell.title,
         "rows": cell.rows,
         "fingerprint": cell.fingerprint,

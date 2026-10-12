@@ -36,9 +36,9 @@ def _call(name: str, arguments: dict, context: MCPContext):
 def _ok_cell(dataset, *, intent="eval", rows=2, title="source", position=0, active=True, fits=True):
     cell = Cell.objects.create(
         dataset=dataset,
+        parent=dataset.cells.filter(position=0).first() if position else None,
         position=position,
         title=title,
-        state=Cell.State.OK,
         rows=rows,
         fingerprint=f"fp-{position}-{uuid.uuid4().hex[:8]}",
         intent_report={intent: {"ok": fits, "reason": "" if fits else "not a fit"}},

@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import tempfile
+import threading
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -440,15 +441,28 @@ def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def query(sql: str, *, limit: int | None = 200, **tables: Path) -> dict[str, Any]:
+class QueryTimeoutError(StoreError):
+    pass
+
+
+def query(
+    sql: str, *, limit: int | None = 200, timeout: float | None = None, **tables: Path
+) -> dict[str, Any]:
     """Read-only SQL over registered tables. Returns decoded rows and columns."""
     con = connect_sandboxed(**tables)
     sql = sql.strip().rstrip(";").strip()
+    timer = threading.Timer(timeout, con.interrupt) if timeout else None
     try:
+        if timer is not None:
+            timer.start()
         cur = con.execute(f"SELECT * FROM ({sql}) LIMIT {int(limit)}" if limit else sql)
         cols = [d[0] for d in cur.description]
         rows = _records(cur)
+    except duckdb.InterruptException as exc:
+        raise QueryTimeoutError(f"The query ran longer than {timeout:g}s and was stopped.") from exc
     finally:
+        if timer is not None:
+            timer.cancel()
         con.close()
     return {"rows": [_json_safe(r) for r in rows], "columns": cols}
 

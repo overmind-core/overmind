@@ -13,8 +13,6 @@ x-env-common: &env-common
   TMPDIR: /data/tmp
   HOME: /data/tmp
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   SANDBOX_URL: http://sandbox:8080
   SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}

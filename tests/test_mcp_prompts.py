@@ -56,6 +56,7 @@ def _arguments(prompt: types.Prompt) -> dict[str, str]:
         "deployment": "deployment-id",
         "finetune": "finetune-job-id",
         "connector_type": "langfuse",
+        "task": "an eval set of support tickets",
     }
     return {argument.name: values.get(argument.name, "") for argument in prompt.arguments or []}
 
@@ -81,6 +82,7 @@ def test_dataset_prompts_do_not_use_retired_workshop_language():
         "compare-models",
         "upload-dataset-file",
         "export-dataset",
+        "prepare-dataset",
     }
     text = " ".join(prompt.template for prompt in PROMPTS if prompt.name in dataset_prompts)
 
@@ -96,6 +98,10 @@ def test_dataset_prompts_do_not_use_retired_workshop_language():
         "job_status",
         "dataset_build",
         "--surface",
+        "message_dataset_agent",
+        "run_dataset",
+        "proposal_cell",
+        "check_semantic_quality",
     ):
         assert retired not in text
 

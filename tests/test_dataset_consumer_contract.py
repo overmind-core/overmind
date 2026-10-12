@@ -6,9 +6,19 @@ import pandas as pd
 import pytest
 from conftest import frozen_dataset
 
-from overbae.models import Capability, Dataset, EvalRun, EvalVariant, Project
-from overbae.services.datasets import alignment, contract, land, paths, review, rows, store, use
-from overbae.services.datasets.notebook import agent
+from overbae.models import Capability, Dataset, EvalRun, EvalVariant, Execution, Project
+from overbae.services.datasets import (
+    alignment,
+    contract,
+    executions,
+    land,
+    paths,
+    review,
+    rows,
+    store,
+    use,
+    versions,
+)
 from overbae.services.datasets.partition import contamination_keys, split_rows
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.sampling import select_rows
@@ -170,7 +180,7 @@ def test_identifier_only_inputs_warn_without_failing_the_format_contract(frame_o
     assert "without evidence" in report["eval"]["warnings"][0]
 
 
-def test_projecting_domain_evidence_to_an_identifier_is_a_reviewed_change(frame_of):
+def test_projecting_domain_evidence_to_an_identifier_is_measured(frame_of):
     before = frame_of([{"source_row": 0, "input": {"case_id": "one", "documents": ["evidence"]}}])
     after = frame_of([{"source_row": 0, "input": {"case_id": "one"}}])
     assert review.impact(before.path, after.path)["input_evidence_removed"] == 1
@@ -199,25 +209,30 @@ def test_model_transcript_is_not_validated_as_an_application_entry_point(frame_o
 
 
 @pytest.mark.django_db
-def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_review():
+def test_prepare_examples_in_a_script_makes_an_eval_version_and_lost_evidence_is_measured():
     project = Project.objects.create(name="Consumer contract", slug="consumer-contract")
     dataset = Dataset.objects.create(project=project, name="Cases", intent="eval")
     land.land_rows(dataset, [example()])
     dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    tools.automatic = True
-    result = tools.prepare_examples({})
-    assert result["ok"] and not result.get("proposed"), result
-    active = dataset.active_cell
-    assert contract.measure(store.Frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
-    lost = tools.add_cell(
-        {
-            "title": "Identifier projection",
-            "script": "df['input'] = [{'onboarding_packet_id': 'case-1'} for _ in range(len(df))]",
-        }
-    )
-    assert lost["proposed"] and lost["review"]["input_evidence_removed"] == 1
-    assert use.use(dataset, "eval").id == active.id
+    prepared = executions.run_now(
+        dataset,
+        mode=Execution.Mode.CELL,
+        parent=dataset.source,
+        title="Prepare evaluation examples",
+        script="df = prepare_examples(df, intent='eval')",
+    ).cell
+    assert prepared is not None
+    assert contract.measure(store.Frame(paths.cell_path(dataset.id, prepared.id)))["eval"]["ok"]
+    versions.activate(dataset, prepared)
+    lost = executions.run_now(
+        dataset,
+        mode=Execution.Mode.CELL,
+        parent=prepared,
+        title="Identifier projection",
+        script="df['input'] = [{'onboarding_packet_id': 'case-1'} for _ in range(len(df))]",
+    ).cell
+    assert lost.impact["input_evidence_removed"] == 1
+    assert use.use(dataset, "eval").id == prepared.id
 
 
 @pytest.mark.django_db

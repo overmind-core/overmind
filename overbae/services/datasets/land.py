@@ -142,7 +142,7 @@ class PreparedLanding:
     cell_fields: dict[str, Any]
 
 
-def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True):
+def prepare(dataset, landing, *, path, infer_capability=True):
     manifest = landing.manifest
     if not manifest:
         builder = tables.ManifestBuilder()
@@ -157,7 +157,7 @@ def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capabilit
     fields = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
-        "state": state,
+        "state": Dataset.State.IDLE,
         "error": "",
         "capability_rank": alignment.rank(dataset.project_id, frame),
     }
@@ -171,7 +171,7 @@ def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capabilit
     if measured.intent == Dataset.Intent.PENDING:
         fields["intent"] = contract.propose_intent(frame, report)
         measured.intent = fields["intent"]
-    source = dataset.cells.filter(position=0).first()
+    source = dataset.source
     return PreparedLanding(
         dataset.pk,
         source.pk if source else uuid.uuid4(),
@@ -190,7 +190,7 @@ def publish(dataset, prepared, *, user=None):
     if prepared.dataset_id != dataset.pk:
         raise LandError("The prepared source belongs to another dataset.")
     locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
-    source = locked.cells.filter(position=0).first()
+    source = locked.source
     if source is not None and source.pk != prepared.cell_id:
         raise LandError("The source changed before publication.")
     destination = paths.cell_path(locked.pk, prepared.cell_id)
@@ -208,7 +208,7 @@ def publish(dataset, prepared, *, user=None):
     else:
         Cell.objects.filter(pk=source.pk).update(**prepared.cell_fields)
     Dataset.objects.filter(pk=locked.pk).update(
-        **prepared.dataset_fields, updated_at=timezone.now()
+        **prepared.dataset_fields, active_id=prepared.cell_id, updated_at=timezone.now()
     )
     dataset.refresh_from_db()
     from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
@@ -217,7 +217,7 @@ def publish(dataset, prepared, *, user=None):
     return dataset
 
 
-def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capability=True):
+def commit(dataset, landing, *, user=None, infer_capability=True):
     parent = paths.dataset_dir(dataset.pk)
     parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-", dir=parent) as directory:
@@ -225,7 +225,6 @@ def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capab
             dataset,
             landing,
             path=Path(directory) / "source.parquet",
-            state=state,
             infer_capability=infer_capability,
         )
         return publish(dataset, prepared, user=user)

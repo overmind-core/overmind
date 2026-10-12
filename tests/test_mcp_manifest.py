@@ -37,6 +37,20 @@ def _serialized_tools(permissions: frozenset[str]) -> bytes:
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
 
 
+def _annotation_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "properties":
+                for prop in child.values():
+                    yield from _annotation_keys(prop)
+            else:
+                yield key
+                yield from _annotation_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _annotation_keys(child)
+
+
 def _property_names(value):
     if isinstance(value, dict):
         for key, child in value.get("properties", {}).items():
@@ -84,7 +98,7 @@ def test_input_schemas_keep_strict_validation_without_secret_fields():
         schema = definition.as_mcp_tool().inputSchema
         assert schema["type"] == "object"
         assert schema["additionalProperties"] is False
-        assert "title" not in json.dumps(schema)
+        assert "title" not in _annotation_keys(schema)
         assert '"default":' not in json.dumps(schema)
         for name in _property_names(schema):
             parts = name.casefold().replace("-", "_").split("_")

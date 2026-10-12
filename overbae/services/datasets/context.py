@@ -27,16 +27,15 @@ CONSUMERS = {
     "shared": {
         "task_scope": "Infer distinct source tasks from prompts, payloads, targets and tool context. A selected capability is the intended target, not evidence that every row already performs it. Transform each family using supported evidence; a prompt-only relabel is not a task transformation.",
         "split": "Keep case, content, conversation and synthetic-seed families disjoint across train/eval. Do not combine evidence across held-out boundaries.",
-        "readiness": "Technical format errors require repair. Semantic quality findings are advisory; apply supported repairs, then allow progression with remaining warnings.",
+        "readiness": "Technical format errors block training and evaluation. Overmind measures technical fit only; judge task suitability with the user.",
     },
 }
 
 
 def workshop_context(dataset) -> dict:
-    versions = dataset.versions()
     profiles = {}
     for name, cell in (("source", dataset.source), ("active", dataset.active_cell)):
-        if cell is None or not cell.ran:
+        if cell is None:
             continue
         if name == "active" and profiles.get("source", {}).get("cell") == str(cell.id):
             continue
@@ -46,7 +45,7 @@ def workshop_context(dataset) -> dict:
             continue
         profiles[name] = {
             "cell": str(cell.id),
-            "version": versions.get(cell.id),
+            "version": cell.label,
             "fingerprint": cell.fingerprint,
             **profile_records(store.iter_rows(path)),
         }

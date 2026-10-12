@@ -1,14 +1,11 @@
-"""Everything a cell records about the frame it left."""
+"""Everything a version records about its frame."""
 
 from __future__ import annotations
-
-from pathlib import Path
-from typing import Any
 
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import alignment, contract, store
+from overbae.services.datasets import alignment, contract, paths, store
 
 
 def describe_frame(dataset, path, *, report=None):
@@ -21,8 +18,6 @@ def describe_frame(dataset, path, *, report=None):
         else {}
     )
     return {
-        "state": Cell.State.OK,
-        "error": "",
         "rows": len(frame),
         "columns": [{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in frame.manifest],
         "fingerprint": store.file_sha256(path),
@@ -33,30 +28,10 @@ def describe_frame(dataset, path, *, report=None):
     }
 
 
-def frame(
-    dataset: Dataset,
-    cell: Cell,
-    path: Path,
-    *,
-    report: dict[str, Any] | None = None,
-    **fields,
-) -> Cell:
-    Cell.objects.filter(pk=cell.pk).update(
-        **{**describe_frame(dataset, path, report=report), **fields}
-    )
-    cell.refresh_from_db()
-    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-    maybe_enqueue_card_evaluator_sync(dataset)
-    return cell
-
-
 def capability_only(dataset: Dataset) -> None:
-    """Re-measure the capability contract on every cell that ran, after the
-    capability or the intent changed."""
-    from overbae.services.datasets import paths
-
-    for cell in dataset.cells.filter(state=Cell.State.OK):
+    """Re-measure the capability contract on every version after the capability or the
+    intent changed."""
+    for cell in dataset.cells.all():
         path = paths.cell_path(dataset.id, cell.id)
         if not path.exists():
             continue

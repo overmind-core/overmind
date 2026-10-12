@@ -52,9 +52,9 @@ def test_split_keeps_at_least_one_row_on_each_side():
         two.split(eval_percent=50, position="middle")
 
 
-def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diagnoses():
+def test_create_split_lands_two_idle_datasets_with_disjoint_rows_and_queues_nothing_else():
     project, user = make_project(), make_user()
-    with patch("overbae.tasks.datasets.diagnose.apply_async") as diagnose:
+    with patch("overbae.tasks.datasets.execute.apply_async") as execute:
         train, evaluation = dispatch.create_split(
             project=project,
             user=user,
@@ -65,12 +65,13 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
         )
     train.refresh_from_db()
     evaluation.refresh_from_db()
-    assert (train.name, train.intent, train.state) == ("Support train", "train", "diagnosing")
+    assert (train.name, train.intent, train.state) == ("Support train", "train", "idle")
     assert (evaluation.name, evaluation.intent, evaluation.state) == (
         "Support eval",
         "eval",
-        "diagnosing",
+        "idle",
     )
+    assert (train.active_id, evaluation.active_id) == (train.source.id, evaluation.source.id)
     assert train.source.rows == 8 and evaluation.source.rows == 2
     assert train.source_spec["split"] == {
         "eval_percent": 20,
@@ -85,10 +86,7 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
     frames = [read_table(paths.cell_path(ds.id, ds.source.id)) for ds in (train, evaluation)]
     assert list(frames[0][store.SOURCE_ROW]) == list(range(8))
     assert list(frames[1][store.SOURCE_ROW]) == [0, 1]
-    assert {call.kwargs["kwargs"]["dataset_id"] for call in diagnose.call_args_list} == {
-        str(train.id),
-        str(evaluation.id),
-    }
+    assert execute.call_args_list == []
 
 
 def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():

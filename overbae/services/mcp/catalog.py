@@ -87,11 +87,9 @@ class ToolDefinition(BaseModel):
     def as_mcp_tool(self) -> types.Tool:
         schema = _compact_schema(self.input_model.model_json_schema(by_alias=True))
         if self.project_scoped:
-            schema.setdefault("properties", {})["project_id"] = {
-                "type": "string",
-                "format": "uuid",
-                "description": "Project ID from list_projects. Required for account connections.",
-            }
+            # The server instructions explain project_id once; repeating it per tool would
+            # spend the manifest budget.
+            schema.setdefault("properties", {})["project_id"] = {"type": "string", "format": "uuid"}
         return types.Tool(
             name=self.name,
             title=self.title,
@@ -108,7 +106,13 @@ def _compact_schema(value: Any) -> Any:
         return value
 
     compacted = {
-        key: _compact_schema(item) for key, item in value.items() if key not in _SCHEMA_NOISE_KEYS
+        key: (
+            {name: _compact_schema(child) for name, child in item.items()}
+            if key == "properties" and isinstance(item, dict)
+            else _compact_schema(item)
+        )
+        for key, item in value.items()
+        if key not in _SCHEMA_NOISE_KEYS
     }
     any_of = compacted.get("anyOf")
     if isinstance(any_of, list) and len(any_of) == 2:

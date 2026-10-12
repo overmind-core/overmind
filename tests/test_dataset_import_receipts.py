@@ -17,7 +17,7 @@ from conftest import read_table
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, Project
-from overbae.services.datasets import dispatch, files
+from overbae.services.datasets import dispatch, files, imports
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks import datasets as dataset_tasks
 from overbae.tasks.cleanup_tmp import cleanup_uploads
@@ -107,7 +107,7 @@ def test_queue_age_does_not_count_as_execution_age(imported_source, settings):
         updated_at=old,
         queued_at=old,
     )
-    dataset_tasks.reap_stuck_runs()
+    imports.reconcile()
     dataset.refresh_from_db()
     run.refresh_from_db()
     assert dataset.state == "landing" and dataset.error == ""
@@ -134,7 +134,7 @@ def test_claim_starts_a_new_execution_clock_after_long_queue_wait(imported_sourc
     old = timezone.now() - timedelta(minutes=66)
     Dataset.objects.filter(pk=dataset.pk).update(updated_at=old)
     assert imports.claim(run.pk) is not None
-    dataset_tasks.reap_stuck_runs()
+    imports.reconcile()
     dataset.refresh_from_db()
     assert dataset.state == "landing"
     assert dataset.updated_at > old
@@ -291,26 +291,21 @@ def test_real_csv_lands_once_and_retains_no_source_after_commit(imported_source,
     from overbae.services.datasets import imports, paths
 
     dataset, run = create_import(imported_source)
-    handoffs = []
-    monkeypatch.setattr(
-        dataset_tasks.diagnose, "apply_async", lambda **kwargs: handoffs.append(kwargs)
-    )
     result = imports.execute(str(run.pk), run.inputs)
     assert result == {"status": "ok", "rows": 2}
     dataset.refresh_from_db()
     run.refresh_from_db()
-    assert dataset.state == "diagnosing" and run.state == "complete"
-    assert dataset.cells.count() == 1
+    assert dataset.state == "idle" and run.state == "complete"
+    assert dataset.cells.count() == 1 and dataset.active_id == dataset.source.pk
     frame = read_table(paths.cell_path(dataset.pk, dataset.source.pk))
     assert frame["passenger_id"].tolist() == [1, 2]
     assert frame["survived"].tolist() == [0, 1]
     assert not files.upload_data_path(imported_source[1]).exists()
-    assert len(handoffs) == 1
     assert imports.execute(str(run.pk), run.inputs) == {"status": "complete"}
-    assert dataset.cells.count() == 1 and len(handoffs) == 1
+    assert dataset.cells.count() == 1
 
 
-def test_existing_run_action_resumes_blocked_source_import(imported_source, monkeypatch):
+def test_resume_import_requeues_a_blocked_source_import(imported_source):
     from overbae.services.datasets import imports
 
     dataset, run = create_import(imported_source)
@@ -318,11 +313,12 @@ def test_existing_run_action_resumes_blocked_source_import(imported_source, monk
     imports.fail(claim, "The worker stopped before publication.")
     dataset.refresh_from_db()
     assert dataset.state == "error" and dataset.source is None
-    dataset = dispatch.run_dataset(dataset, None)
+    dataset = dispatch.resume_import(dataset)
     run.refresh_from_db()
     assert dataset.state == "landing" and run.state == "queued"
-    monkeypatch.setattr(dataset_tasks.diagnose, "apply_async", lambda **kwargs: None)
     assert imports.execute(str(run.pk), run.inputs) == {"status": "ok", "rows": 2}
+    with pytest.raises(DatasetError, match="not blocked"):
+        dispatch.resume_import(dataset)
 
 
 def test_adopting_an_existing_message_does_not_publish_again(imported_source):
@@ -373,66 +369,6 @@ def test_legacy_error_delivery_preserves_source_without_restarting(imported_sour
     assert files.upload_data_path(upload_id).exists() and not deliveries
 
 
-def test_concurrent_handoff_publisher_cannot_publish_the_same_turn(imported_source, monkeypatch):
-    from overbae.services.datasets import imports
-
-    dataset, run = create_import(imported_source)
-    handoffs = []
-
-    def publish(**kwargs):
-        handoffs.append(kwargs)
-        imports.publish_handoffs(run.pk)
-
-    monkeypatch.setattr(dataset_tasks.diagnose, "apply_async", publish)
-    assert imports.execute(str(run.pk), run.inputs)["status"] == "ok"
-    assert len(handoffs) == 1
-    task_id = handoffs[0]["task_id"]
-    assert imports.claim_diagnosis(dataset.pk, task_id)
-    assert not imports.claim_diagnosis(dataset.pk, task_id)
-
-
-def test_split_handoff_retry_only_publishes_the_unacknowledged_target(imported_source, monkeypatch):
-    from overbae.services.datasets import imports
-
-    project, upload_id, _filename, _deliveries = imported_source
-    train, evaluation = dispatch.create_split(
-        project=project,
-        user=None,
-        name="Pair",
-        source={"uploads": [upload_id]},
-        eval_percent=50,
-        position="head",
-    )
-    run = DatasetImport.objects.get(dataset=train)
-    handoffs = []
-
-    def publish(**kwargs):
-        handoffs.append(kwargs)
-        if kwargs["kwargs"]["dataset_id"] == str(evaluation.pk):
-            raise ConnectionError("broker disconnected after the first split target")
-
-    monkeypatch.setattr(dataset_tasks.diagnose, "apply_async", publish)
-    assert imports.execute(str(run.pk), run.inputs)["status"] == "ok"
-    assert len(handoffs) == 2
-    run.refresh_from_db()
-    assert run.handoff_pending
-    DatasetImport.objects.filter(pk=run.pk).update(
-        handoff_lease_until=timezone.now() - timedelta(seconds=1)
-    )
-    monkeypatch.setattr(
-        dataset_tasks.diagnose, "apply_async", lambda **kwargs: handoffs.append(kwargs)
-    )
-    imports.publish_handoffs(run.pk)
-    assert [item["kwargs"]["dataset_id"] for item in handoffs] == [
-        str(train.pk),
-        str(evaluation.pk),
-        str(evaluation.pk),
-    ]
-    assert handoffs[1]["task_id"] == handoffs[2]["task_id"]
-    run.refresh_from_db()
-    assert not run.handoff_pending
-
-
 def test_receipt_adoption_cannot_be_overwritten_by_a_stale_reaper(imported_source):
     import queue
     import time
@@ -452,7 +388,7 @@ def test_receipt_adoption_cannot_be_overwritten_by_a_stale_reaper(imported_sourc
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_backend_pid()")
                 backend_ids.put(cursor.fetchone()[0])
-            return dataset_tasks.reap_stuck_runs()
+            return imports.reconcile()
         finally:
             connection.close()
 

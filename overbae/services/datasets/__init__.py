@@ -1,1 +1,1 @@
-"""Datasets: a Parquet source table, a notebook recipe, and frozen product versions."""
+"""Datasets: a Parquet source table and a tree of immutable versions."""

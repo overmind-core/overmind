@@ -27,8 +27,6 @@ dependencies = [
     "boto3>=1.38.0",
     "psycopg2-binary>=2.9.10",
     "clerk-backend-api>=5.0.6",
-    # Data Workshop / AI engineer feature (pre-installed for Cursor SDK agent scripts)
-    "cursor-sdk>=1.0.31",
     # Overmind OTel SDK — internal pipeline observability (code analysis agent tracing)
     "overmind>=0.1.49",
     "pandas>=2.2.0",

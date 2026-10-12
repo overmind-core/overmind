@@ -1,5 +1,5 @@
-"""Datasets: landing, the chain of cells, rows with diff marks, export, the
-agent chat and the event stream. Consumers use a cell; the active one by default."""
+"""Datasets: landing, the version tree, rows with diff marks, export, script runs and
+the event stream. Versions are added over MCP; consumers use the active one by default."""
 
 from __future__ import annotations
 
@@ -20,29 +20,33 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from overbae.api.dataset_serializers import (
-    CellCreateSerializer,
-    CellSerializer,
-    CellWriteSerializer,
-    ChatSerializer,
     ColumnStatSerializer,
     DatasetCreateSerializer,
     DatasetPairSerializer,
     DatasetSerializer,
     DatasetSplitCreateSerializer,
-    DetailSerializer,
+    ExecutionSerializer,
     RowsPageSerializer,
 )
 from overbae.api.scoping import project_ids_for
 from overbae.models import Capability, Cell, Dataset, Project
 from overbae.services.datasets import diff as diff_svc
-from overbae.services.datasets import dispatch, files, lifecycle, paths, selection, store
+from overbae.services.datasets import (
+    dispatch,
+    events,
+    files,
+    lifecycle,
+    paths,
+    selection,
+    store,
+    versions,
+)
 from overbae.services.datasets import export as export_svc
-from overbae.services.datasets.notebook import events
-from overbae.services.datasets.notebook.agent import resolve_cell
 
 logger = logging.getLogger(__name__)
 
 _ROW_PAGE_MAX = 500
+_EXECUTIONS_MAX = 50
 
 
 class ServerSentEventRenderer(JSONRenderer):
@@ -54,17 +58,11 @@ def _error(exc: lifecycle.DatasetError, http_status: int = 409) -> Response:
     return Response({"detail": exc.detail, "code": exc.code}, status=http_status)
 
 
-def _agent_owns(dataset: Dataset) -> Response | None:
-    if dataset.state != Dataset.State.DIAGNOSING:
-        return None
-    return _error(lifecycle.DatasetError("The agent is working. Wait for it.", code=dataset.state))
-
-
 _CELL_PARAM = OpenApiParameter(
     "cell",
     OpenApiTypes.STR,
     OpenApiParameter.QUERY,
-    description="a cell id or a version such as 1.2; default = active",
+    description="a version such as v3 or its id; default = active",
 )
 
 
@@ -78,9 +76,9 @@ _CELL_PARAM = OpenApiParameter(
             OpenApiParameter("search", OpenApiTypes.STR, OpenApiParameter.QUERY),
         ],
     ),
-    retrieve=extend_schema(summary="Get a dataset with its cells and chat"),
+    retrieve=extend_schema(summary="Get a dataset with its versions"),
     partial_update=extend_schema(
-        summary="Rename a dataset, set its capability or intent (until a version is used), or its active cell"
+        summary="Rename a dataset, set its capability or intent (until a version is used), or its active version"
     ),
     destroy=extend_schema(summary="Delete a dataset (refused while a version is used)"),
 )
@@ -235,9 +233,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"source": "An upload is empty or has expired."})
         return payload
 
-    def perform_update(self, serializer):
-        dataset = serializer.instance
+    def partial_update(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        serializer = self.get_serializer(dataset, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if "expected_active" in data and "active" not in data:
+            raise ValidationError({"expected_active": "Give it together with active."})
         try:
             if "name" in data:
                 lifecycle.rename(dataset, data["name"])
@@ -246,9 +248,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if "capability" in data:
                 lifecycle.set_capability(dataset, data["capability"])
             if "active" in data:
-                lifecycle.set_active(dataset, data["active"])
+                versions.activate(
+                    dataset, data["active"], expected_active=data.get("expected_active")
+                )
         except lifecycle.DatasetError as exc:
+            if exc.code == "active_conflict":
+                return _error(exc)
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
+        return Response(DatasetSerializer(self.get_object()).data)
 
     def destroy(self, request, *args, **kwargs):
         dataset = self.get_object()
@@ -258,153 +265,57 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return _error(exc)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def _cell(self, dataset: Dataset, cell_id) -> Cell:
-        cell = dataset.cells.filter(pk=cell_id).first()
-        if cell is None:
-            raise NotFound("No such cell.")
-        return cell
-
-    def _cell_response(self, dataset: Dataset, cell: Cell, http_status: int = 200) -> Response:
-        return Response(
-            CellSerializer(
-                cell,
-                context={
-                    "versions": dataset.versions(),
-                    "frozen_before": dataset.frozen_before,
-                    "intent": dataset.intent,
-                },
-            ).data,
-            status=http_status,
-        )
-
     @extend_schema(
-        summary="Add a cell at the end of the chain (queued; run to execute)",
-        request=CellCreateSerializer,
-        responses={201: CellSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="cells")
-    def add_cell(self, request, id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        body = CellCreateSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            cell = lifecycle.add_cell(
-                dataset,
-                title=body.validated_data["title"],
-                script=body.validated_data["script"],
-                note=body.validated_data.get("note") or "",
-                user=request.user if request.user.is_authenticated else None,
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        events.publish(dataset.id, {"dataset_id": str(dataset.id), "type": "cells_changed"})
-        return self._cell_response(dataset, cell, status.HTTP_201_CREATED)
-
-    @extend_schema(
-        summary="Edit a cell's title, script or note; a script change queues it and every cell after it",
-        request=CellWriteSerializer,
-        responses={200: CellSerializer},
-    )
-    @action(detail=True, methods=["patch"], url_path=r"cells/(?P<cell_id>[0-9a-f-]{36})")
-    def edit_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        cell = self._cell(dataset, cell_id)
-        body = CellWriteSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            cell = lifecycle.edit_cell(dataset, cell, **body.validated_data)
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return self._cell_response(dataset, cell)
-
-    @extend_schema(summary="Remove a cell (refused when frozen)", responses={204: None})
-    @edit_cell.mapping.delete
-    def remove_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        if (refused := _agent_owns(dataset)) is not None:
-            return refused
-        cell = self._cell(dataset, cell_id)
-        try:
-            dispatch.discard_cell(
-                dataset, cell, request.user if request.user.is_authenticated else None
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        events.publish(dataset.id, {"dataset_id": str(dataset.id), "type": "cells_changed"})
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @extend_schema(
-        summary="Accept a proposal: it joins the chain and the run starts",
+        summary="Retry a blocked source import",
         request=None,
-        responses={202: CellSerializer},
+        responses={202: DatasetSerializer},
     )
-    @action(detail=True, methods=["post"], url_path=r"cells/(?P<cell_id>[0-9a-f-]{36})/accept")
-    def accept_cell(self, request, id=None, cell_id=None):
-        dataset = self.get_object()
-        cell = self._cell(dataset, cell_id)
-        try:
-            dispatch.run_dataset(
-                dataset,
-                request.user if request.user.is_authenticated else None,
-                proposal=cell,
-            )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        cell.refresh_from_db()
-        return self._cell_response(dataset, cell, status.HTTP_202_ACCEPTED)
-
-    @extend_schema(summary="Run the chain", request=None, responses={202: DatasetSerializer})
-    @action(detail=True, methods=["post"], url_path="run")
-    def run(self, request, id=None):
+    @action(detail=True, methods=["post"], url_path="resume-import")
+    def resume_import(self, request, id=None):
         dataset = self.get_object()
         try:
-            dataset = dispatch.run_dataset(
-                dataset, request.user if request.user.is_authenticated else None
-            )
+            dataset = dispatch.resume_import(dataset)
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_202_ACCEPTED)
 
     @extend_schema(
-        summary="Send a message to the dataset's agent",
-        request=ChatSerializer,
-        responses={202: DetailSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="chat")
-    def chat(self, request, id=None):
-        dataset = self.get_object()
-        body = ChatSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        try:
-            dispatch.message_agent(
-                dataset,
-                request.user if request.user.is_authenticated else None,
-                body.validated_data["message"],
+        summary="The dataset's latest script runs, newest first",
+        parameters=[
+            OpenApiParameter(
+                "limit", OpenApiTypes.INT, OpenApiParameter.QUERY, description="1-50, default 20"
             )
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return Response({"detail": "Sent."}, status=status.HTTP_202_ACCEPTED)
+        ],
+        responses={200: ExecutionSerializer(many=True)},
+    )
+    @action(detail=True, methods=["get"], url_path="executions", pagination_class=None)
+    def executions(self, request, id=None):
+        dataset = self.get_object()
+        try:
+            limit = min(_EXECUTIONS_MAX, max(1, int(request.query_params.get("limit", 20))))
+        except ValueError:
+            raise ValidationError({"limit": "must be an integer."}) from None
+        runs = dataset.executions.select_related("parent", "cell", "created_by").order_by(
+            "-queued_at"
+        )[:limit]
+        return Response(ExecutionSerializer(runs, many=True).data)
 
     def _frame(self, dataset: Dataset, cell: Cell):
         path = paths.cell_path(dataset.id, cell.id)
-        if not cell.fingerprint or not path.exists():
-            raise NotFound("That cell has no frame. Run the chain.")
+        if not path.exists():
+            raise NotFound(f"{cell.label} has no stored rows.")
         return path
 
     def _table(self, dataset: Dataset, request) -> tuple:
-        """``?cell=`` picks a frame by id or version; default = the active cell."""
+        """``?cell=`` picks a version by label or id; default = the active one."""
         try:
-            cell = resolve_cell(dataset, request.query_params.get("cell"))
+            cell = versions.resolve_cell(dataset, request.query_params.get("cell"))
         except lifecycle.DatasetError as exc:
             raise NotFound(exc.detail) from exc
         return self._frame(dataset, cell), cell
 
     @extend_schema(
-        summary="A page of rows from a cell's frame, with diff marks against the cell before",
+        summary="A page of rows from a version, with diff marks against its parent",
         parameters=[
             _CELL_PARAM,
             OpenApiParameter("offset", OpenApiTypes.INT, OpenApiParameter.QUERY),
@@ -453,17 +364,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
         except store.StoreError as exc:
             raise ValidationError({"detail": str(exc)}) from exc
         marks: dict = {}
-        if params.get("diff") not in (None, "", "0", "false") and cell.position > 0:
-            before = (
-                dataset.cells.filter(position__lt=cell.position, state=Cell.State.OK)
-                .order_by("-position")
-                .first()
-            )
-            if before is not None:
-                source_rows = [
-                    int(r["source_row"]) for r in page["rows"] if r.get("source_row") is not None
-                ]
-                marks = diff_svc.marks(self._frame(dataset, before), path, source_rows)
+        if params.get("diff") not in (None, "", "0", "false") and cell.parent_id:
+            source_rows = [
+                int(r["source_row"]) for r in page["rows"] if r.get("source_row") is not None
+            ]
+            marks = diff_svc.marks(self._frame(dataset, cell.parent), path, source_rows)
         return Response({**page, "offset": offset, "limit": limit, "marks": marks})
 
     @extend_schema(summary="One row by index", parameters=[_CELL_PARAM])
@@ -477,7 +382,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response({"index": int(index), "row": row})
 
     @extend_schema(
-        summary="Per-column stats of a cell's frame",
+        summary="Per-column stats of a version",
         parameters=[_CELL_PARAM],
         responses={200: ColumnStatSerializer(many=True)},
     )
@@ -488,7 +393,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response(store.column_stats(path))
 
     @extend_schema(
-        summary="Download a cell's frame as JSONL or CSV; a raw stream, never a use",
+        summary="Download a version as JSONL or CSV; a raw stream, never a use",
         parameters=[
             _CELL_PARAM,
             OpenApiParameter(
@@ -508,8 +413,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
         dataset = self.get_object()
         path, cell = self._table(dataset, request)
         fmt = "csv" if request.query_params.get("fmt") == "csv" else "jsonl"
-        version = dataset.versions().get(cell.id, "")
-        label = f"{dataset.name or 'dataset'}-{version or 'source'}"
+        version = cell.label
+        label = f"{dataset.name or 'dataset'}-{version}"
         chunks, content_type, ext = export_svc.stream(path, fmt)
         response = StreamingHttpResponse(chunks, content_type=content_type)
         safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in label)
@@ -524,7 +429,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return [JSONRenderer(), ServerSentEventRenderer()]
         return super().get_renderers()
 
-    @extend_schema(summary="Dataset event stream (SSE): landing, cells, runs and chat")
+    @extend_schema(
+        summary="Dataset event stream (SSE): landing, script runs, versions and settings"
+    )
     @action(detail=True, methods=["get"], url_path="events")
     def events(self, request, id=None):
         from asgiref.sync import sync_to_async

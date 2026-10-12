@@ -11,7 +11,6 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum
 
 from overbae.models import BillingService, BillingTelemetry, User
-from overbae.services import model_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -133,57 +132,3 @@ def ensure_credits(user: User) -> None:
     from overbae.services.billing_provider import get_billing
 
     get_billing().ensure_credits(user)
-
-
-def _attempt_cost(stats: dict[str, Any]) -> tuple[float, bool]:
-    if stats.get("cached"):
-        return 0.0, False
-    cost = stats.get("response_cost")
-    if cost is not None:
-        return float(cost), False
-    attempts = stats.get("attempts")
-    if attempts:
-        priced = [_attempt_cost(attempt) for attempt in attempts]
-        return sum(value for value, _ in priced), any(unknown for _, unknown in priced)
-    estimate = model_catalog.estimate_cost(
-        str(stats.get("served_model") or ""),
-        int(stats.get("prompt_tokens") or 0),
-        int(stats.get("completion_tokens") or 0),
-        cached_tokens=int(stats.get("cached_tokens") or 0),
-    )
-    return (estimate, False) if estimate is not None else (0.0, True)
-
-
-def charge_llm_usage(
-    user: User,
-    stats: dict[str, Any] | None,
-    *,
-    service: str,
-    project_id: UUID | str | None = None,
-    idempotency_key: str,
-    metadata: dict[str, Any] | None = None,
-) -> BillingTelemetry | None:
-    if user is None or not stats:
-        return None
-    if stats.get("cached"):
-        return None
-    cost, incomplete = _attempt_cost(stats)
-    metadata = {**(metadata or {}), "cost_incomplete": incomplete}
-    if not cost:
-        return None
-    try:
-        return charge_credits(
-            user,
-            Decimal(str(cost)),
-            service,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-            metadata={"llm_usage": stats, **(metadata or {})},
-        )
-    except Exception:
-        logger.exception(
-            "Failed to charge llm usage key=%s user_id=%s",
-            idempotency_key,
-            getattr(user, "pk", None),
-        )
-        return None

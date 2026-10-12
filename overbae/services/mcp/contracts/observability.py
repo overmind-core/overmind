@@ -225,7 +225,7 @@ class QueryTaskExecutionsOutput(MCPModel):
 
 JobKind = Literal[
     "training_preparation",
-    "dataset_run",
+    "dataset_import",
     "connector_sync",
     "eval_run",
     "finetune",

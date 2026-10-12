@@ -11,7 +11,6 @@ from django.db import connections
 logger = logging.getLogger(__name__)
 
 INTERVAL_SECONDS = 30
-STALE_SECONDS = 5 * 60
 
 
 def start(touch: Callable[[], object], *, owner: str) -> threading.Event:

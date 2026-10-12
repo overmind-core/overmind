@@ -11,7 +11,6 @@ from starlette.testclient import TestClient
 from overbae.models import (
     APIToken,
     Capability,
-    Cell,
     Conversation,
     Dataset,
     DeployedModel,
@@ -137,7 +136,7 @@ def test_resource_reads_are_json_and_project_scoped():
         f"overmind://finetunes/{finetune.id}",
         f"overmind://deployments/{deployment.id}",
         f"overmind://optimizer-runs/{optimizer.id}",
-        f"overmind://jobs/dataset_run/{dataset.id}",
+        f"overmind://jobs/dataset_import/{dataset.id}",
     ]
 
     async def read_all():
@@ -303,17 +302,6 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
         capability=capability,
         intent=Dataset.Intent.EVAL,
         state=Dataset.State.LANDING,
-        chat=[
-            {"role": "user", "text": "shape this", "at": "2026-09-09T00:00:00+00:00"},
-            {
-                "role": "agent",
-                "text": "done",
-                "error": "",
-                "cells": [{"id": "c1"}],
-                "ms": 12,
-                "at": "2026-09-09T00:00:01+00:00",
-            },
-        ],
     )
     land.land_rows(dataset, list(EVAL_ROWS))
     dataset.refresh_from_db()
@@ -332,11 +320,10 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
     assert payload["active"]["rows"] == 2
     assert payload["active"]["id"]
     assert payload["active"]["version"]
-    assert payload["cells"]
-    assert payload["cells_truncated"] is False
+    assert [version["version"] for version in payload["versions"]] == ["v0"]
+    assert payload["versions_total"] == 1
     assert payload["sample"]["cell_id"] == payload["active"]["id"]
     assert len(payload["sample"]["rows"]) == 2
-    assert {turn["role"] for turn in payload["recent_chat"]} >= {"user", "agent"}
     assert payload["next_actions"]
     assert payload["human_action"]["command"] == "overmind dataset export DATASET --json"
     assert "api_key" not in json.dumps(payload["human_action"]).lower()
@@ -345,66 +332,51 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
     assert ".parquet" not in encoded
     assert "upload/" not in encoded
     assert local["id"] == payload["id"]
-    assert local["cells"]
+    assert local["versions"] == payload["versions"]
     assert local["human_action"]["command"] == payload["human_action"]["command"]
 
 
-def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
+def test_get_job_dataset_import_tracks_state_and_emits_job_resource_link():
     project, _ = _project()
-    dataset = Dataset.objects.create(
-        project=project,
-        name="Notebook",
-        state=Dataset.State.LANDING,
-        chat=[{"role": "user", "text": "land it", "at": "t0"}],
-    )
-    Cell.objects.create(dataset=dataset, position=0, title="Source", state=Cell.State.QUEUED)
+    dataset = Dataset.objects.create(project=project, name="Upload", state=Dataset.State.LANDING)
     context = _tool_context(project)
-    uri = f"overmind://jobs/dataset_run/{dataset.id}"
+    uri = f"overmind://jobs/dataset_import/{dataset.id}"
 
-    states = (
-        Dataset.State.LANDING,
-        Dataset.State.DIAGNOSING,
-        Dataset.State.RUNNING,
-        Dataset.State.IDLE,
-        Dataset.State.ERROR,
-    )
-    for state in states:
+    for state in (Dataset.State.LANDING, Dataset.State.ERROR):
         Dataset.objects.filter(pk=dataset.pk).update(
             state=state, error="clipped-secret" if state == Dataset.State.ERROR else ""
         )
         result = asyncio.run(
-            CATALOG.call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
+            CATALOG.call("get_job", {"kind": "dataset_import", "id": str(dataset.id)}, context)
         )
         assert result.isError is False, result.structuredContent
         body = result.structuredContent
-        assert body["kind"] == "dataset_run"
+        assert body["kind"] == "dataset_import"
         assert body["id"] == str(dataset.id)
         assert body["status"] == state
         assert body["resource"]["uri"] == uri
-        assert body["details"]["next_action"]["tool"]
         links = [str(item.uri) for item in result.content if isinstance(item, types.ResourceLink)]
         assert uri in links
         assert f"overmind://datasets/{dataset.id}" in links
         job = _read(project, uri)
         assert job["status"] == state
         assert job["dataset"]["uri"] == f"overmind://datasets/{dataset.id}"
-        assert job["latest_turn"]["role"] == "user"
 
     assert result.structuredContent["job_error"] == "clipped-secret"
-    assert result.structuredContent["details"]["next_action"]["tool"] in {
-        "inspect_dataset",
-        "message_dataset_agent",
-    }
+    landing = asyncio.run(
+        CATALOG.call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    ).structuredContent
+    assert landing["next_actions"] == []
 
 
-def test_dataset_run_job_is_project_scoped():
+def test_dataset_import_job_is_project_scoped():
     project, _ = _project()
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
     foreign = Dataset.objects.create(project=other, name="Foreign")
     context = _tool_context(project)
 
     missing = asyncio.run(
-        CATALOG.call("get_job", {"kind": "dataset_run", "id": str(foreign.id)}, context)
+        CATALOG.call("get_job", {"kind": "dataset_import", "id": str(foreign.id)}, context)
     )
     retired = asyncio.run(
         CATALOG.call("get_job", {"kind": "dataset_build", "id": str(foreign.id)}, context)
@@ -420,4 +392,4 @@ def test_dataset_run_job_is_project_scoped():
     with pytest.raises(McpError):
         _read(project, f"overmind://datasets/{foreign.id}")
     with pytest.raises(McpError):
-        _read(project, f"overmind://jobs/dataset_run/{foreign.id}")
+        _read(project, f"overmind://jobs/dataset_import/{foreign.id}")

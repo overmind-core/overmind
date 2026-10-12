@@ -4,11 +4,9 @@ from copy import deepcopy
 import pandas as pd
 import pytest
 
-from overbae.models import Dataset, Project
-from overbae.services.datasets import contract, land, lifecycle, review, rows, store
+from overbae.models import Dataset, Execution, Project
+from overbae.services.datasets import contract, executions, land, review, rows, store
 from overbae.services.datasets.context import workshop_context
-from overbae.services.datasets.notebook import agent
-from overbae.services.datasets.notebook import run as notebook_run
 from overbae.services.datasets.profile import profile_records
 from overbae.services.finetuning_validator import row_to_finetuning_line, validate_rows
 from sandbox.examples import prepare_examples
@@ -126,30 +124,23 @@ def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools, frame_o
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("intent", ["train", "eval"])
-@pytest.mark.parametrize("automatic", [True, False])
-def test_replacing_existing_instructions_requires_review_even_if_claimed_mechanical(
-    intent, automatic
-):
+def test_a_version_that_replaces_instructions_records_it_and_stays_inactive(intent):
     project = Project.objects.create(name="Context", slug="context")
     dataset = Dataset.objects.create(project=project, name="Mixed tasks", intent=intent)
     records = prepare_examples(pd.DataFrame([example(), example("Apply rules")]), intent)
     land.land_rows(dataset, records.to_dict(orient="records"))
     dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    tools.automatic = automatic
     column = "messages" if intent == "train" else "input"
     transcript = "value" if intent == "train" else 'value["messages"]'
-    result = tools.add_cell(
-        {
-            "title": "Replace instructions",
-            "kind": "mechanical",
-            "run": True,
-            "script": f'def replace(value):\n    {transcript}[0]["content"] = "Do everything"\n    return value\ndf["{column}"] = df["{column}"].map(replace)',
-        }
+    done = executions.run_now(
+        dataset,
+        mode=Execution.Mode.CELL,
+        parent=dataset.source,
+        title="Replace instructions",
+        script=f'def replace(value):\n    {transcript}[0]["content"] = "Do everything"\n    return value\ndf["{column}"] = df["{column}"].map(replace)',
     )
-    assert result["ok"] and result["proposed"]
-    assert result["review"]["kind"] == "semantic"
-    assert result["review"]["instruction_changes"] == 2
+    assert done.cell is not None, done.run.error
+    assert done.cell.impact["instruction_changes"] == 2
     dataset.refresh_from_db()
     assert dataset.active_cell.id == dataset.source.id
     assert len(workshop_context(dataset)["profiles"]["source"]["families"]) == 2
@@ -162,25 +153,3 @@ def test_representation_changes_and_projection_do_not_look_like_scope_changes(fr
         frame_of(before.to_dict("records")).path, frame_of(after.to_dict("records")).path
     )
     assert changes["instruction_changes"] == 0
-
-
-@pytest.mark.django_db
-def test_edit_and_upstream_rerun_cannot_silently_replace_instructions():
-    project = Project.objects.create(name="Guard", slug="guard")
-    dataset = Dataset.objects.create(project=project, name="Instructions", intent="train")
-    land.land_rows(dataset, [example("Original task")])
-    dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    first = tools.add_cell({"title": "Keep source", "script": "df['coverage'] = 'source'"})
-    last = tools.add_cell({"title": "Keep task", "script": "df['coverage'] = 'task'"})
-    rewrite = 'df["messages"].iloc[0][0]["content"] = "Different task"'
-    edited = tools.edit_cell({"id": last["id"], "script": rewrite})
-    assert not edited["ok"] and "instruction changes" in edited["error"]
-    shaped = dataset.cells.get(pk=first["id"])
-    kept = dataset.cells.get(pk=last["id"])
-    lifecycle.edit_cell(dataset, shaped, script='df["new_column"] = "value"')
-    kept.script = rewrite
-    kept.save(update_fields=["script"])
-    notebook_run.execute(dataset)
-    kept.refresh_from_db()
-    assert kept.state == "failed" and "task instructions" in kept.error

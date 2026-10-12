@@ -1,42 +1,61 @@
-"""Project-scoped dataset inspection, creation, agent, and run tools."""
+"""Project-scoped dataset tools: create, inspect, query, and shape datasets with scripts
+that run in the sandbox. Overmind never writes or chooses a script."""
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 
 import duckdb
 from asgiref.sync import sync_to_async
 
-from overbae.models import Capability, Cell, Dataset
-from overbae.services.datasets import dispatch, paths, store
+from overbae.models import Capability, Dataset
+from overbae.services.datasets import dispatch, paths, store, versions, workshop
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.datasets.notebook.agent import resolve_cell
 from overbae.services.datasets.selection import TraceSource, TraceSourceError
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.common import PageContract
 from overbae.services.mcp.contracts.datasets import (
+    ActivateDatasetVersionInput,
+    AddDatasetVersionInput,
+    AddDatasetVersionOutput,
+    AddSyntheticExamplesInput,
     CreateDatasetFromLlmCallsInput,
     CreateDatasetFromTracesInput,
     DatasetDetail,
     DatasetMutationOutput,
+    DatasetOutput,
+    DiffDatasetVersionsInput,
+    DiffDatasetVersionsOutput,
     InspectDatasetInput,
     ListDatasetsInput,
     ListDatasetsOutput,
-    MessageDatasetAgentInput,
+    ProbeDatasetVersionInput,
     QueryDatasetInput,
     QueryDatasetOutput,
-    RunDatasetInput,
+    ResumeDatasetImportInput,
+    ScriptRunOutput,
+    TryDatasetScriptInput,
+    TryDatasetScriptOutput,
+    UpdateDatasetInput,
+    dataset_output,
     dataset_resource_link,
     mutation_output,
+    probe_output,
     sanitize_error,
     serialize_dataset_detail,
     serialize_dataset_list_item,
+    try_output,
+    version_output,
 )
 from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
 
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
+QUERY_SECONDS = 10
+QUERY_MAX_BYTES = 32 * 1024
+QUERY_MAX_COLUMNS = 200
 
 
 def _uuid(value: str) -> str | None:
@@ -44,10 +63,6 @@ def _uuid(value: str) -> str | None:
         return str(uuid.UUID(value))
     except (AttributeError, TypeError, ValueError):
         return None
-
-
-def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    return mcp_dataset(context, reference)
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
@@ -81,9 +96,9 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
         query = query.filter(name__icontains=payload.search.strip())
     total = query.count()
     datasets = list(
-        query.select_related("capability", "active")
-        .prefetch_related("cells")
-        .order_by("-created_at")[payload.offset : payload.offset + payload.limit]
+        query.select_related("capability", "active").order_by("-created_at")[
+            payload.offset : payload.offset + payload.limit
+        ]
     )
     items = [serialize_dataset_list_item(dataset) for dataset in datasets]
     next_offset = payload.offset + len(items)
@@ -103,41 +118,62 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
 
 def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> DatasetDetail:
     return serialize_dataset_detail(
-        _resolve_dataset(context, payload.dataset),
-        chat_limit=payload.chat_limit,
+        mcp_dataset(context, payload.dataset),
+        offset=payload.cell_offset,
+        limit=payload.cell_limit,
     )
 
 
+def _version(dataset: Dataset, ref: str | None):
+    try:
+        return versions.resolve_cell(dataset, ref)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+
+
 def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> QueryDatasetOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
+    dataset = mcp_dataset(context, payload.dataset)
     sql = payload.sql.strip()
     if not _READ_ONLY_SQL.match(sql):
         raise MCPError("query_invalid", "Only read-only SELECT queries are supported.")
-    try:
-        cell = resolve_cell(dataset, payload.cell, ran_only=True)
-    except DatasetError as exc:
-        raise MCPError("cell_not_found", "The cell was not found in this dataset.") from exc
-    if cell.dataset_id != dataset.id:
-        raise MCPError("cell_not_found", "The cell was not found in this dataset.")
+    cell = _version(dataset, payload.version)
     limit = min(payload.limit, 100)
     try:
-        result = store.query(sql, limit=limit + 1, t=paths.cell_path(dataset.id, cell.id))
+        result = store.query(
+            sql,
+            limit=limit + 1,
+            timeout=QUERY_SECONDS,
+            t=paths.cell_path(dataset.id, cell.id),
+        )
+    except store.QueryTimeoutError as exc:
+        raise MCPError("query_timeout", str(exc), retryable=False) from exc
     except duckdb.Error as exc:
         reason = sanitize_error(str(exc).splitlines()[0], 300)
         raise MCPError("query_invalid", f"The query failed: {reason}") from exc
     rows = list(result["rows"])[:limit]
-    columns = [str(column) for column in (result.get("columns") or [])[:200]]
-    link = dataset_resource_link(dataset)
+    columns = [str(column) for column in (result.get("columns") or [])]
+    if len(columns) > QUERY_MAX_COLUMNS:
+        raise MCPError(
+            "query_result_too_large",
+            f"The query returned {len(columns)} columns; select at most {QUERY_MAX_COLUMNS}.",
+        )
+    size = len(json.dumps(rows, default=str, ensure_ascii=False).encode())
+    if size > QUERY_MAX_BYTES:
+        raise MCPError(
+            "query_result_too_large",
+            f"The result is {size // 1024} KiB; the limit is {QUERY_MAX_BYTES // 1024} KiB. "
+            "Select fewer rows or columns, or shorter values.",
+        )
     return QueryDatasetOutput(
-        summary=f"{len(rows)} rows.",
+        summary=f"{len(rows)} rows from {cell.label}.",
         dataset=str(dataset.id),
         cell_id=str(cell.id),
-        version=dataset.versions().get(cell.id),
+        version=cell.label,
         columns=columns,
         rows=rows,
         n=len(rows),
         truncated=len(result["rows"]) > limit,
-        resource_links=[link],
+        resource_links=[dataset_resource_link(dataset)],
     )
 
 
@@ -263,43 +299,114 @@ def _create_dataset_from_llm_calls_sync(
     )
 
 
-def _message_dataset_agent_sync(
-    payload: MessageDatasetAgentInput, context: MCPContext
+def _try_dataset_script_sync(
+    payload: TryDatasetScriptInput, context: MCPContext
+) -> TryDatasetScriptOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        run = workshop.try_script(dataset, payload.parent, payload.script, user=context.user)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return try_output(dataset, run)
+
+
+def _probe_dataset_version_sync(
+    payload: ProbeDatasetVersionInput, context: MCPContext
+) -> ScriptRunOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        run = workshop.probe(dataset, payload.version, payload.script, user=context.user)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return probe_output(dataset, run)
+
+
+def _add_dataset_version_sync(
+    payload: AddDatasetVersionInput, context: MCPContext
+) -> AddDatasetVersionOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        run = workshop.add_version(
+            dataset, payload.parent, payload.title, payload.script, user=context.user
+        )
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return version_output(dataset, run)
+
+
+def _add_synthetic_examples_sync(
+    payload: AddSyntheticExamplesInput, context: MCPContext
+) -> AddDatasetVersionOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        run = workshop.add_synthetic_examples(
+            dataset, payload.parent, payload.rows, payload.instruction, user=context.user
+        )
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return version_output(dataset, run)
+
+
+def _diff_dataset_versions_sync(
+    payload: DiffDatasetVersionsInput, context: MCPContext
+) -> DiffDatasetVersionsOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        result = workshop.diff_versions(dataset, payload.start, payload.to)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    start, end = result.pop("from"), result.pop("to")
+    return DiffDatasetVersionsOutput(
+        summary=f"{start} to {end}: {result.get('rows_before')} → {result.get('rows_after')} rows.",
+        start=start,
+        to=end,
+        diff=json.loads(json.dumps(result, default=str)),
+        resource_links=[dataset_resource_link(dataset)],
+    )
+
+
+def _activate_dataset_version_sync(
+    payload: ActivateDatasetVersionInput, context: MCPContext
+) -> DatasetOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        dataset = workshop.activate_version(
+            dataset, payload.version, expected_active=payload.expected_active
+        )
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return dataset_output(dataset, f"{dataset.active.label} is active.")
+
+
+def _update_dataset_sync(payload: UpdateDatasetInput, context: MCPContext) -> DatasetOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    changes = {}
+    if payload.name is not None:
+        changes["name"] = payload.name
+    if payload.intent is not None:
+        changes["intent"] = payload.intent
+    if "capability" in payload.model_fields_set:
+        changes["capability"] = (
+            _resolve_capability_uuid(context, payload.capability) if payload.capability else None
+        )
+    if not changes:
+        raise MCPError("invalid_input", "Give name, intent or capability.")
+    try:
+        dataset = workshop.update_dataset(dataset, **changes)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return dataset_output(dataset, "Dataset updated: " + ", ".join(changes) + ".")
+
+
+def _resume_dataset_import_sync(
+    payload: ResumeDatasetImportInput, context: MCPContext
 ) -> DatasetMutationOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
-    message = payload.message.strip()
-    if not message:
-        raise MCPError("invalid_input", "A non-empty message is required.")
+    dataset = mcp_dataset(context, payload.dataset)
     try:
-        dispatch.message_agent(dataset, context.user, message)
+        dataset = dispatch.resume_import(dataset)
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
-    return mutation_output(dataset, summary="Dataset agent queued.")
-
-
-def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetMutationOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
-    proposal = None
-    if payload.proposal_cell:
-        proposal_id = _uuid(payload.proposal_cell)
-        if proposal_id is None:
-            raise MCPError("invalid_input", "Proposal cell references must be UUIDs.")
-        proposal = dataset.cells.filter(id=proposal_id).first()
-        if proposal is None:
-            raise MCPError("cell_not_found", "The proposal was not found in this dataset.")
-    if payload.decision == "deny":
-        if proposal is None or proposal.state != Cell.State.PROPOSED:
-            raise MCPError("invalid_input", "Only a pending proposal can be denied.")
-        try:
-            dispatch.discard_cell(dataset, proposal, context.user)
-        except DatasetError as exc:
-            raise dataset_mcp_error(exc) from exc
-        return mutation_output(dataset, summary="Proposal denied.")
-    try:
-        dispatch.run_dataset(dataset, context.user, proposal=proposal)
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
-    return mutation_output(dataset, summary="Dataset run queued.")
+    return mutation_output(dataset, summary="Source import resumed.")
 
 
 def _async_handler(function):
@@ -309,6 +416,16 @@ def _async_handler(function):
     return handler
 
 
+_IDEMPOTENT = {
+    "try_dataset_script",
+    "probe_dataset_version",
+    "add_dataset_version",
+    "add_synthetic_examples",
+    "activate_dataset_version",
+    "update_dataset",
+}
+
+
 def register_dataset_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
@@ -316,7 +433,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "list_datasets",
             "List datasets",
-            "List bounded project datasets with optional capability, intent, state, and name filters.",
+            "List project datasets with optional capability, intent, state and name filters.",
             ListDatasetsInput,
             ListDatasetsOutput,
             _list_datasets_sync,
@@ -326,7 +443,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect one project dataset, its bounded cell chain, source/active task-family profiles, downstream consumer requirements, sample, recent agent chat, and next actions.",
+            "One dataset: its version tree, active version, consumer requirements "
+            "(preparation_context), a sample and next actions.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -336,8 +454,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "query_dataset",
             "Query dataset",
-            "Read-only SELECT over table t on one ran cell (active unless cell is an id or version). "
-            "At most 100 rows; truncated when more matched.",
+            "Read-only SELECT over table t of one version (active by default). At most 100 rows "
+            "and 32 KiB; 10 s timeout.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,
@@ -366,24 +484,85 @@ def register_dataset_tools(catalog) -> None:
             "task",
         ),
         (
-            "message_dataset_agent",
-            "Message dataset agent",
-            "Queue one agent turn for an idle project dataset.",
-            MessageDatasetAgentInput,
-            DatasetMutationOutput,
-            _message_dataset_agent_sync,
+            "try_dataset_script",
+            "Try dataset script",
+            "Run a script on a version in the sandbox and preview the resulting df. Creates nothing.",
+            TryDatasetScriptInput,
+            TryDatasetScriptOutput,
+            _try_dataset_script_sync,
             False,
-            "job",
+            "sync",
         ),
         (
-            "run_dataset",
-            "Run dataset",
-            "Run a dataset; approving a proposal activates it and resumes its agent request; decision=deny discards it.",
-            RunDatasetInput,
-            DatasetMutationOutput,
-            _run_dataset_sync,
+            "probe_dataset_version",
+            "Probe dataset version",
+            "Run a script on a version in the sandbox and return what it prints.",
+            ProbeDatasetVersionInput,
+            ScriptRunOutput,
+            _probe_dataset_version_sync,
             False,
-            "job",
+            "sync",
+        ),
+        (
+            "add_dataset_version",
+            "Add dataset version",
+            "Run a script on a parent version in the sandbox and store the resulting df as a new, "
+            "inactive version.",
+            AddDatasetVersionInput,
+            AddDatasetVersionOutput,
+            _add_dataset_version_sync,
+            False,
+            "sync",
+        ),
+        (
+            "add_synthetic_examples",
+            "Add synthetic examples",
+            "Append 1-50 rows you wrote to a version as a new, inactive version.",
+            AddSyntheticExamplesInput,
+            AddDatasetVersionOutput,
+            _add_synthetic_examples_sync,
+            False,
+            "sync",
+        ),
+        (
+            "diff_dataset_versions",
+            "Diff dataset versions",
+            "Compare two versions row by row on source_row.",
+            DiffDatasetVersionsInput,
+            DiffDatasetVersionsOutput,
+            _diff_dataset_versions_sync,
+            True,
+            "sync",
+        ),
+        (
+            "activate_dataset_version",
+            "Activate dataset version",
+            "Make a version the one training, evaluation and the optimizer use.",
+            ActivateDatasetVersionInput,
+            DatasetOutput,
+            _activate_dataset_version_sync,
+            False,
+            "sync",
+        ),
+        (
+            "update_dataset",
+            "Update dataset",
+            "Set a dataset's name, intent or capability.",
+            UpdateDatasetInput,
+            DatasetOutput,
+            _update_dataset_sync,
+            False,
+            "sync",
+        ),
+        (
+            "resume_dataset_import",
+            "Resume dataset import",
+            "Retry a blocked source import.",
+            ResumeDatasetImportInput,
+            DatasetMutationOutput,
+            _resume_dataset_import_sync,
+            False,
+            "task",
         ),
     ]
     for (
@@ -404,12 +583,12 @@ def register_dataset_tools(catalog) -> None:
                 input_model=input_model,
                 output_model=output_model,
                 read_only=read_only,
-                idempotent=read_only,
+                idempotent=read_only or name in _IDEMPOTENT,
                 open_world=False,
                 required_scopes=frozenset(
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
-                cost_class="llm" if name == "run_dataset" else "free",
+                cost_class="free",
                 async_mode=mode,
             ),
             _async_handler(function),

@@ -11,25 +11,14 @@ from typing import Any
 
 import pandas as pd
 import pyarrow as pa
-from django.db import transaction
-from django.utils import timezone
 
-from overbae.models import Cell, Dataset
-from overbae.services.datasets import paths, rows, store
-from overbae.services.datasets.context import context_fingerprint
+from overbae.services.datasets import store
 from overbae.services.datasets.contract import public_intent
-from overbae.services.datasets.notebook import runner
 from overbae.services.datasets.partition import preserve_lineage
 from sandbox import tables
 from sandbox.examples import identifier_only, instructions, messages
 
 PROVENANCE_COLUMN = "_overmind_provenance"
-REQUIRED_CHECKS = {
-    "task_alignment": "Task alignment",
-    "input_evidence": "Input evidence",
-    "answer_support": "Answer support",
-    "output_schema": "Output schema",
-}
 _COVERAGE_COLUMNS = (
     "label",
     "class",
@@ -42,40 +31,6 @@ _COVERAGE_COLUMNS = (
     "worker_mode",
     "task_type",
 )
-
-
-def summary(report: dict) -> dict:
-    result = {key: value for key, value in report.items() if not key.endswith("_examples")}
-    if result.get("semantic_audit"):
-        audit = result["semantic_audit"]
-        result["semantic_audit"] = {
-            "method": audit["method"],
-            "contract": audit["contract"],
-            "definitions": audit["definitions"],
-            "processed_rows": len(audit.get("results", {})),
-            "batches": len(audit.get("batches", [])),
-        }
-    return result
-
-
-def _changed(a: Any, b: Any, kind_a: str, kind_b: str) -> bool:
-    if a == b and kind_a == kind_b:
-        return False
-    return store.value(a, kind_a) != store.value(b, kind_b)
-
-
-def same(before: Path, after: Path) -> bool:
-    left, right = store.read_manifest(before), store.read_manifest(after)
-    if [c["name"] for c in left] != [c["name"] for c in right]:
-        return False
-    if store.row_count(before) != store.row_count(after):
-        return False
-    kinds = [(a["type"], b["type"]) for a, b in zip(left, right, strict=True)]
-    for a, b in zip(store.raw_rows(before), store.raw_rows(after), strict=True):
-        for (kind_a, kind_b), x, y in zip(kinds, a.values(), b.values(), strict=True):
-            if _changed(x, y, kind_a, kind_b):
-                return False
-    return True
 
 
 _IDENTITY = ("trace_id", "source_trace_id", "conversation_id", "human_reviewed")
@@ -205,18 +160,6 @@ def _unique(path: Path) -> bool:
         con.close()
 
 
-def _same_keys(a: Path, b: Path) -> bool:
-    con = store.connect(a=a, b=b)
-    try:
-        return not con.execute(
-            "SELECT 1 FROM (SELECT source_row FROM a EXCEPT SELECT source_row FROM b) "
-            "UNION ALL SELECT 1 FROM (SELECT source_row FROM b EXCEPT SELECT source_row FROM a) "
-            "LIMIT 1"
-        ).fetchall()
-    finally:
-        con.close()
-
-
 _PROMPT_COLUMNS = [store.SOURCE_ROW, "messages", "input", "system_prompt", "instruction"]
 _EXAMPLES = 20
 
@@ -289,238 +232,16 @@ def impact(before: Path, after: Path) -> dict:
     }
 
 
-def requires_approval(changes: dict, *, allow_exclusions: bool = False) -> bool:
-    return bool(
-        (changes["rows_removed"] and not allow_exclusions)
-        or changes["rows_added"]
-        or not changes["identity_preserved"]
-        or changes["input_evidence_removed"]
-        or changes["instruction_changes"]
-    )
-
-
-def readiness(dataset, cell, *, context: str | None = None) -> dict:
+def readiness(dataset, cell) -> dict:
     valid, reason = cell.fits(public_intent(dataset.intent))
-    report = cell.quality_report or {}
-    reviewed = bool(
-        report.get("fingerprint") == cell.fingerprint
-        and report.get("context_fingerprint")
-        == (context or context_fingerprint(dataset.capability))
-        and report.get("intent") == public_intent(dataset.intent)
-        and report.get("checks")
-    )
-    blockers = quality_blockers(cell) if reviewed else ["No current workshop quality review."]
-    blockers.extend(
-        (cell.intent_report.get(public_intent(dataset.intent)) or {}).get("warnings", [])
-    )
-    contract = cell.capability_report or {}
-    if contract and not contract.get("ok"):
-        blockers.append(contract.get("reason") or "Rows do not match the capability.")
     return {
         "format_valid": valid,
         "format_reason": reason,
-        "quality_reviewed": reviewed,
-        "quality_passed": reviewed and not blockers,
-        "quality_reason": "; ".join(blockers),
         "training_configuration": "not_checked",
     }
 
 
-def quality_blockers(cell) -> list[str]:
-    checks = (cell.quality_report or {}).get("checks") or []
-    indexed = {check["name"]: check for check in checks}
-    blockers = []
-    if (cell.quality_report or {}).get("audit", {}).get("method") not in {
-        "row_results",
-        "semantic_decisions",
-    }:
-        blockers.append("Quality claims have no executed row-level audit.")
-    for name, label in REQUIRED_CHECKS.items():
-        check = indexed.get(name)
-        if check is None:
-            blockers.append(f"{label}: not reviewed")
-        elif check.get("result") != "pass":
-            blockers.append(f"{label}: {check.get('result', 'unknown')}")
-        elif check.get("rows_checked") != cell.rows:
-            blockers.append(f"{label}: not reviewed across all {cell.rows} rows")
-    blockers.extend(
-        f"{check['name']}: {check['result']}"
-        for check in checks
-        if check["name"] not in REQUIRED_CHECKS and check["result"] == "fail"
-    )
-    return blockers
-
-
 def warnings(dataset, cell, *, capability=None) -> list[str]:
-    status = readiness(dataset, cell)
-    findings = [status["quality_reason"]] if status["quality_reason"] else []
     if capability is not None and dataset.capability_id != capability.id:
-        findings.append(f"This dataset has not been reviewed for {capability.name}.")
-    return findings
-
-
-def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str) -> dict:
-    before = paths.cell_path(dataset.id, previous.id)
-    path = paths.cell_path(dataset.id, cell.id)
-    finalize(
-        before, output, path, group_by=dataset.source_spec.get("split", {}).get("group_by", [])
-    )
-    report = {
-        "kind": kind,
-        "reason": note,
-        "input_fingerprint": previous.fingerprint,
-        "output_fingerprint": store.file_sha256(path),
-        "context_fingerprint": context_fingerprint(dataset.capability),
-        "intent": dataset.intent,
-        "status": "pending",
-        **impact(before, path),
-    }
-    Cell.objects.filter(pk=cell.pk).update(review=report, quality_report={})
-    cell.review = report
-    return report
-
-
-def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
-    rows.verify(cell)
-    if not script.strip():
-        raise ValueError("Provide an audit script that computes row-level results.")
-    context = context_fingerprint(dataset.capability)
-    result = runner.run(
-        script,
-        paths.cell_path(dataset.id, cell.id),
-        library_cache=paths.library_cache(dataset.project_id),
-    )
-    if result.path is None:
-        raise ValueError(result.error or "The audit produced no row results.")
-    return record_quality_results(
-        dataset,
-        cell,
-        checks,
-        result.path,
-        audit={"method": "row_results", "script": script},
-        reviewer="workshop_agent",
-        context=context,
-    )
-
-
-def record_quality_results(
-    dataset,
-    cell,
-    checks: list[dict],
-    measured: Path,
-    *,
-    audit: dict,
-    reviewer: str,
-    context: str,
-    semantic_audit: dict | None = None,
-    expected_semantic_audit: dict | None = None,
-) -> dict:
-    rows.verify(cell)
-    if not checks or len(checks) > 30:
-        raise ValueError("Provide between 1 and 30 measured quality checks.")
-    names = set()
-    for check in checks:
-        if not isinstance(check, dict):
-            raise ValueError("Each check needs a name and evidence.")
-        if not all(
-            isinstance(check.get(key), str) and check[key].strip() for key in ("name", "evidence")
-        ):
-            raise ValueError("Each check needs a name and measured evidence.")
-        name = check["name"]
-        if name in names:
-            raise ValueError("Each quality check must have a unique name.")
-        if name == store.SOURCE_ROW or len(name) > 200:
-            raise ValueError("Check names must be at most 200 characters and not source_row.")
-        names.add(name)
-    results = store.Frame(measured)
-    original = paths.cell_path(dataset.id, cell.id)
-    if (
-        set(results.columns) != {store.SOURCE_ROW, *names}
-        or len(results) != store.row_count(original)
-        or not _unique(measured)
-        or not _same_keys(measured, original)
-    ):
-        raise ValueError(
-            "Audit results must contain source_row and the named check columns, with every original row exactly once. Use null for unmeasured rows."
-        )
-    outcomes = []
-    for check in checks:
-        failed, unknown = [], []
-        rows_failed = rows_unknown = 0
-        for key, value in zip(
-            results.values(store.SOURCE_ROW), results.values(check["name"]), strict=True
-        ):
-            if value is None:
-                rows_unknown += 1
-                if len(unknown) < _EXAMPLES:
-                    unknown.append(key)
-            elif type(value) is not bool:
-                raise ValueError(
-                    f"{check['name']} results must be booleans or null, not scores or strings."
-                )
-            elif not value:
-                rows_failed += 1
-                if len(failed) < _EXAMPLES:
-                    failed.append(key)
-        outcomes.append(
-            {
-                "name": check["name"],
-                "evidence": check["evidence"][:2000],
-                "result": "fail"
-                if rows_failed
-                else "unknown"
-                if rows_unknown or not len(results)
-                else "pass",
-                "rows_checked": len(results) - rows_unknown,
-                "rows_failed": rows_failed,
-                "rows_unknown": rows_unknown,
-                "failed_source_rows": failed,
-                "unknown_source_rows": unknown,
-            }
-        )
-    rows.verify(cell)
-    report = {
-        "fingerprint": cell.fingerprint,
-        "context_fingerprint": context,
-        "intent": public_intent(dataset.intent),
-        "reviewer": reviewer,
-        "at": timezone.now().isoformat(),
-        "checks": outcomes,
-        "audit": audit,
-        **({"semantic_audit": semantic_audit} if semantic_audit is not None else {}),
-    }
-    with transaction.atomic():
-        current_dataset = (
-            Dataset.objects.select_for_update(of=("self",))
-            .select_related("capability")
-            .get(pk=dataset.pk)
-        )
-        current = Cell.objects.select_for_update().get(pk=cell.pk)
-        if (
-            current.fingerprint != cell.fingerprint
-            or current_dataset.intent != dataset.intent
-            or current_dataset.capability_id != dataset.capability_id
-            or context_fingerprint(current_dataset.capability) != context
-        ):
-            raise ValueError("The version changed during the audit. Run the audit again.")
-        previous = current.quality_report or {}
-        if semantic_audit is not None and previous.get("semantic_audit") != expected_semantic_audit:
-            raise ValueError(
-                "The semantic audit changed during this batch. Resume the audit again."
-            )
-        if (
-            previous.get("fingerprint") == cell.fingerprint
-            and previous.get("context_fingerprint") == context
-            and previous.get("intent") == report["intent"]
-        ):
-            report["checks"] = [
-                c for c in previous.get("checks", []) if c["name"] not in names
-            ] + outcomes
-            report["audits"] = {**previous.get("audits", {}), **dict.fromkeys(names, audit)}
-            if semantic_audit is None and previous.get("semantic_audit"):
-                report["semantic_audit"] = previous["semantic_audit"]
-        else:
-            report["audits"] = dict.fromkeys(names, audit)
-        Cell.objects.filter(pk=cell.pk).update(quality_report=report)
-    cell.quality_report = report
-    return report
+        return [f"This dataset is not attached to {capability.name}."]
+    return []

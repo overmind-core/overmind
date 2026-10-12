@@ -322,7 +322,7 @@ def _readiness_sync(
         for item in (report.get("missing") or [])
         if not str(item).startswith("training dataset")
     ]
-    fits, reason = (False, "no version that ran") if cell is None else cell.fits("train")
+    fits, reason = (False, "no version yet") if cell is None else cell.fits("train")
     if cell is not None and fits:
         try:
             dataset_use.check(dataset, "train", cell=cell)
@@ -336,7 +336,7 @@ def _readiness_sync(
         if not validation.valid:
             missing.insert(
                 0,
-                "training dataset — fix the rows the validator lists, then run the notebook again",
+                "training dataset — fix the rows the validator lists in a new version",
             )
     if not evaluator_readiness.ready:
         missing.append("evaluator — select at least one active generative evaluator")

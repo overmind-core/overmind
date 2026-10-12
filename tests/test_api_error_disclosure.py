@@ -25,7 +25,7 @@ def request_context(db, monkeypatch):
     project = Project.objects.create(name="Errors", slug="errors")
     ProjectMembership.objects.create(user=user, project=project)
     dataset = Dataset.objects.create(project=project, name="Training", intent="train")
-    cell = Cell.objects.create(dataset=dataset, position=0, state="ok", fingerprint="fixture")
+    cell = Cell.objects.create(dataset=dataset, position=0, fingerprint="fixture")
     dataset.active = cell
     dataset.save(update_fields=["active"])
     job = FinetuningJob.objects.create(

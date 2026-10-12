@@ -1,48 +1,18 @@
-"""Imports have dedicated ``landing`` capacity; runs and turns use ``interactive``."""
+"""Imports have dedicated ``landing`` capacity; script runs use ``interactive``."""
 
 from __future__ import annotations
 
-import logging
-import os
-import threading
-from datetime import timedelta
 from typing import Any
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
-from overbae.models import Cell, Dataset, DatasetImport, User
-from overbae.services.datasets import dispatch, heartbeat, imports, lifecycle
-from overbae.services.datasets.lifecycle import WORKSHOP_QUEUE_SECONDS
-from overbae.services.datasets.notebook import agent, events
-from overbae.services.datasets.notebook import run as run_svc
-
-logger = logging.getLogger(__name__)
+from overbae.services.datasets import executions, imports
 
 LAND_SOFT_LIMIT = 55 * 60
 LAND_HARD_LIMIT = 60 * 60
-RUN_SOFT_LIMIT = 20 * 60
-RUN_HARD_LIMIT = 22 * 60
-TURN_SOFT_LIMIT = 40 * 60
-TURN_HARD_LIMIT = 42 * 60
-REAP_GRACE = 5 * 60
-
-
-def _start_workshop(task: Any, dataset_id: str) -> threading.Event:
-    # Celery's request is thread-local: read on the heartbeat thread, its id is None
-    # and every beat misses the row.
-    task_id = task.request.id
-    owner = f"dataset {dataset_id} task {task_id}"
-    logger.info("%s claimed %s on %s pid %d", task.name, owner, task.request.hostname, os.getpid())
-    return heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, task_id), owner=owner)
-
-
-def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
-
-    events.publish(dataset_id, {"dataset_id": str(dataset_id), **event})
+EXECUTE_SOFT_LIMIT = 540
+EXECUTE_HARD_LIMIT = 600
 
 
 @shared_task(
@@ -62,7 +32,6 @@ def land(
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
 ) -> dict[str, Any]:
-
     inputs = {
         "dataset_id": dataset_id,
         "source": source,
@@ -76,194 +45,37 @@ def land(
 
 @shared_task(name="overbae.tasks.datasets.reconcile_imports")
 def reconcile_imports():
-
     return imports.reconcile()
 
 
 @shared_task(
     bind=True,
-    name="overbae.tasks.datasets.run",
-    soft_time_limit=RUN_SOFT_LIMIT,
-    time_limit=RUN_HARD_LIMIT,
+    name="overbae.tasks.datasets.execute",
+    soft_time_limit=EXECUTE_SOFT_LIMIT,
+    time_limit=EXECUTE_HARD_LIMIT,
     acks_late=True,
     reject_on_worker_lost=True,
+    max_retries=None,
 )
-def run(
-    self, *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
-) -> dict[str, Any]:
-
-    dataset = Dataset.objects.filter(pk=dataset_id).first()
-    if dataset is None:
-        return {"status": "gone"}
-    if proposal_id and any(proposal_id in item.get("decisions", {}) for item in dataset.chat):
-        return {"status": dataset.state}
-    if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.RUNNING):
-        return {"status": "superseded"}
-    beat = _start_workshop(self, dataset_id)
-    user = User.objects.filter(pk=user_id).first() if user_id else None
+def execute(self, *, execution_id: str, busy: int = 0, unreachable: int = 0) -> None:
+    """Idempotent: a run that is not ``queued`` is owned by another delivery. Retries
+    are bounded by ``executions`` (slot wait, busy and unreachable sandbox)."""
     try:
-        run_svc.execute(
-            dataset,
-            user=user,
-            activate_cell_id=proposal_id,
-            hold=Dataset.State.RUNNING if proposal_id else None,
-        )
-        if dataset.error:
-            Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-                state=Dataset.State.ERROR
-            )
-            dataset.state = Dataset.State.ERROR
-        elif proposal_id:
-            proposal = dataset.cells.get(pk=proposal_id)
-            dispatch.resume_after_decision(
-                dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
-            )
-            dataset.refresh_from_db()
-            _emit(dataset_id, {"type": "dataset_changed"})
+        retry = executions.perform(execution_id, busy=busy, unreachable=unreachable)
     except SoftTimeLimitExceeded:
-        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-            state=Dataset.State.ERROR, error="The run took too long and was stopped."
+        executions.on_soft_limit(execution_id)
+        return
+    if retry is not None:
+        raise self.retry(
+            countdown=retry.countdown,
+            kwargs={
+                "execution_id": execution_id,
+                "busy": retry.busy,
+                "unreachable": retry.unreachable,
+            },
         )
-        _emit(dataset_id, {"type": "run_failed", "error": "The run took too long and was stopped."})
-        return {"status": "timeout"}
-    except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
-        logger.exception("run failed for dataset %s", dataset_id)
-        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-            state=Dataset.State.ERROR, error=str(exc)[:4000]
-        )
-        _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
-        return {"status": "failed", "error": str(exc)}
-    finally:
-        beat.set()
-    return {"status": dataset.state}
 
 
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.diagnose",
-    soft_time_limit=TURN_SOFT_LIMIT,
-    time_limit=TURN_HARD_LIMIT,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
-
-    if not imports.claim_diagnosis(dataset_id, self.request.id):
-        return {"status": "superseded"}
-    beat = _start_workshop(self, dataset_id)
-    user = User.objects.filter(pk=user_id).first() if user_id else None
-    try:
-        for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
-            pass
-    except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
-        logger.exception("diagnosis failed for dataset %s", dataset_id)
-        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id, turn_key=self.request.id or "")
-        return {"status": "failed"}
-    finally:
-        beat.set()
-    return {"status": "ok"}
-
-
-@shared_task(
-    bind=True,
-    name="overbae.tasks.datasets.turn",
-    soft_time_limit=TURN_SOFT_LIMIT,
-    time_limit=TURN_HARD_LIMIT,
-    acks_late=True,
-    reject_on_worker_lost=True,
-)
-def turn(
-    self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
-) -> dict[str, Any]:
-
-    if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.DIAGNOSING):
-        return {"status": "superseded"}
-    beat = _start_workshop(self, dataset_id)
-    user = User.objects.filter(pk=user_id).first() if user_id else None
-    try:
-        for _event in agent.follow_up(
-            dataset_id, message, user=user, turn_key=self.request.id or "", display=display
-        ):
-            pass
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("agent turn failed for dataset %s", dataset_id)
-        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id, turn_key=self.request.id or "")
-        return {"status": "failed"}
-    finally:
-        beat.set()
-    return {"status": "ok"}
-
-
-@shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
-def reap_stuck_runs() -> dict[str, Any]:
-    """Queue waiting and execution have separate, immutable clocks."""
-
-    imports.reconcile()
-    now = timezone.now()
-    ids: list[Any] = []
-    for state, limit in (
-        (Dataset.State.LANDING, LAND_HARD_LIMIT),
-        (Dataset.State.RUNNING, RUN_HARD_LIMIT),
-        (Dataset.State.DIAGNOSING, TURN_HARD_LIMIT),
-    ):
-        stuck = Dataset.objects.filter(state=state)
-        if state == Dataset.State.LANDING:
-            stuck = stuck.filter(updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE))
-            stuck = stuck.exclude(pk__in=DatasetImport.objects.values("dataset_id")).exclude(
-                pk__in=DatasetImport.objects.exclude(evaluation=None).values("evaluation_id")
-            )
-        else:
-            stuck = stuck.filter(
-                Q(workshop_started_at__lt=now - timedelta(seconds=limit + REAP_GRACE))
-                | Q(
-                    workshop_started_at__isnull=False,
-                    updated_at__lt=now - timedelta(seconds=heartbeat.STALE_SECONDS),
-                )
-            )
-        with transaction.atomic():
-            rows = list(
-                stuck.select_for_update(skip_locked=True).values(
-                    "id", "workshop_task_id", "workshop_started_at", "updated_at"
-                )
-            )
-            for row in rows:
-                logger.warning(
-                    "reaping %s dataset %s task %s: started %s, last beat %s",
-                    state,
-                    row["id"],
-                    row["workshop_task_id"] or "-",
-                    row["workshop_started_at"],
-                    row["updated_at"],
-                )
-            found = [row["id"] for row in rows]
-            stuck.filter(pk__in=found).update(
-                state=Dataset.State.ERROR,
-                error="The worker stopped before this finished.",
-                updated_at=now,
-            )
-            ids += found
-    with transaction.atomic():
-        queued = Dataset.objects.filter(
-            state__in=[Dataset.State.DIAGNOSING, Dataset.State.RUNNING],
-            workshop_started_at__isnull=True,
-            workshop_queued_at__lt=now - timedelta(seconds=WORKSHOP_QUEUE_SECONDS),
-        )
-        waiting = list(queued.select_for_update(skip_locked=True).values_list("id", flat=True))
-        queue_error = (
-            "The request waited too long for a workshop worker. Send a message or run it again."
-        )
-        queued.filter(pk__in=waiting).update(
-            state=Dataset.State.ERROR, error=queue_error, updated_at=now
-        )
-    Cell.objects.filter(dataset_id__in=ids, state=Cell.State.RUNNING).update(
-        state=Cell.State.QUEUED
-    )
-    for dataset_id in ids:
-        _emit(
-            dataset_id, {"type": "run_failed", "error": "The worker stopped before this finished."}
-        )
-    for dataset_id in waiting:
-        _emit(dataset_id, {"type": "run_failed", "error": queue_error})
-    return {"reaped": len(ids) + len(waiting)}
+@shared_task(name="overbae.tasks.datasets.sweep_executions")
+def sweep_executions() -> dict[str, int]:
+    return executions.sweep()

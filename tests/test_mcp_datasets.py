@@ -3,26 +3,28 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
 from conftest import frozen_dataset, read_table
-from fakes.llm import tool_call
+from django.db import close_old_connections
+from django.utils import timezone
 from mcp_fixtures import mcp_context
 
-from overbae.models import (
-    Capability,
-    Cell,
-    Dataset,
-    Project,
-    Span,
-)
-from overbae.services.datasets import land, paths, store
-from overbae.services.datasets.notebook import agent
+from overbae.models import Capability, Cell, Dataset, Execution, Project, Span
+from overbae.services.datasets import executions, land, paths
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+ROWS = [
+    {"input": "q1", "expected_output": "a1", "tag": "keep"},
+    {"input": "", "expected_output": "orphan", "tag": "junk"},
+    {"input": "q3", "expected_output": "a3", "tag": "keep"},
+]
+KEEP = "df = df[df['tag'] == 'keep']\n"
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -41,12 +43,13 @@ def _dataset(context: MCPContext, name: str = "Eval", **kwargs) -> Dataset:
     return Dataset.objects.create(**defaults)
 
 
-def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> Cell:
+def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source", parent=None) -> Cell:
     return Cell.objects.create(
         dataset=dataset,
+        parent=parent,
+        script_sha256=f"{position:064x}" if parent else "",
         position=position,
         title=title,
-        state=Cell.State.OK,
         rows=3,
         fingerprint="f" * 64,
         columns=[{"name": "input", "type": "string"}],
@@ -55,57 +58,283 @@ def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> 
     )
 
 
-def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data():
+def _landed(context: MCPContext, rows=ROWS) -> Dataset:
+    return frozen_dataset(context.project, rows, contract="eval")
+
+
+def test_try_previews_a_script_without_creating_a_version():
     context = mcp_context(("read", "write"))
-    dataset = _dataset(context)
-    land.land_rows(
-        dataset,
-        [{"input": "one", "expected_output": "yes"}, {"input": "two", "expected_output": "no"}],
-    )
-    dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, context.user, lambda _: None)
-    earlier = tools.add_cell(
-        {"title": "Alternative", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
-    )
-    selected = tools.add_cell(
-        {"title": "Keep eligible rows", "script": "df = df.iloc[:1]", "kind": "semantic"}
-    )
-    source = dataset.source
-    fingerprint = store.file_sha256(paths.cell_path(dataset.id, source.id))
+    dataset = _landed(context)
     result = _call(
-        "run_dataset", {"dataset": str(dataset.id), "proposal_cell": selected["id"]}, context
+        "try_dataset_script",
+        {"dataset": str(dataset.id), "script": KEEP + "print(len(df))"},
+        context,
     )
-    assert not result.isError, result.structuredContent
-    dataset.refresh_from_db()
-    assert str(dataset.active_cell.id) == selected["id"]
-    assert dataset.active_cell.rows == 1
-    assert dataset.cells.get(pk=earlier["id"]).state == Cell.State.PROPOSED
-    assert list(dataset.cells.values_list("position", flat=True)) == [0, 1, 2]
-    assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
+    assert result.isError is False, result.structuredContent
+    body = result.structuredContent
+    assert (body["status"], body["rows"], body["stdout"]) == ("ok", 2, "2\n")
+    assert body["columns"] == ["input", "expected_output", "tag"]
+    assert [row["input"] for row in body["head"]] == ["q1", "q3"]
+    assert dataset.cells.count() == 1
+    assert Execution.objects.get(pk=body["execution"]).mode == Execution.Mode.TRY
 
 
-def test_a_proposal_can_be_denied_but_a_saved_cell_cannot():
+def test_probe_returns_what_the_script_prints():
     context = mcp_context(("read", "write"))
-    dataset = _dataset(context)
-    land.land_rows(dataset, [{"input": "one", "expected_output": "yes"}])
-    dataset.refresh_from_db()
-    proposed = agent.Tools(dataset.id, context.user, lambda _: None).add_cell(
-        {"title": "Alternative", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
-    )
-    source = dataset.source
-    refused = _call(
-        "run_dataset",
-        {"dataset": str(dataset.id), "proposal_cell": str(source.id), "decision": "deny"},
+    dataset = _landed(context)
+    result = _call(
+        "probe_dataset_version",
+        {
+            "dataset": str(dataset.id),
+            "version": "v0",
+            "script": "print(df['tag'].value_counts().to_dict())",
+        },
         context,
     )
-    denied = _call(
-        "run_dataset",
-        {"dataset": str(dataset.id), "proposal_cell": proposed["id"], "decision": "deny"},
+    assert result.structuredContent["status"] == "ok"
+    assert result.structuredContent["stdout"] == "{'keep': 2, 'junk': 1}\n"
+
+
+def test_an_added_version_is_measured_inactive_and_activated_only_on_request():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    added = _call(
+        "add_dataset_version",
+        {"dataset": str(dataset.id), "parent": "v0", "title": "Keep", "script": KEEP},
         context,
     )
-    assert refused.isError is True
-    assert denied.isError is False, denied.structuredContent
-    assert list(dataset.cells.values_list("id", flat=True)) == [source.id]
+    assert added.isError is False, added.structuredContent
+    version = added.structuredContent["version"]
+    assert (version["version"], version["parent"], version["rows"]) == ("v1", "v0", 2)
+    assert version["impact"]["rows_removed"] == 1 and version["used"] is False
+    assert added.structuredContent["summary"] == "v1 from v0: 2 rows, not active."
+    inspected = _call("inspect_dataset", {"dataset": str(dataset.id)}, context).structuredContent
+    assert inspected["active"]["version"] == "v0"
+    assert [v["version"] for v in inspected["versions"]] == ["v0", "v1"]
+
+    stale = _call(
+        "activate_dataset_version",
+        {"dataset": str(dataset.id), "version": "v1", "expected_active": "v1"},
+        context,
+    )
+    assert stale.structuredContent["error"]["code"] == "active_conflict"
+    assert stale.structuredContent["error"]["fields"] == {}
+    activated = _call(
+        "activate_dataset_version",
+        {"dataset": str(dataset.id), "version": "v1", "expected_active": "v0"},
+        context,
+    )
+    assert activated.isError is False, activated.structuredContent
+    assert activated.structuredContent["dataset"]["active"]["version"] == "v1"
+    diff = _call("diff_dataset_versions", {"dataset": str(dataset.id)}, context)
+    assert (diff.structuredContent["from"], diff.structuredContent["to"]) == ("v0", "v1")
+    assert diff.structuredContent["diff"]["rows_removed"] == 1
+
+
+def test_the_same_parent_and_script_return_one_version_even_when_sent_at_once():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+
+    def add(title):
+        close_old_connections()
+        try:
+            result = _call(
+                "add_dataset_version",
+                {"dataset": str(dataset.id), "title": title, "script": KEEP},
+                context,
+            )
+            return result.structuredContent["version"]["id"]
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        ids = list(pool.map(add, ["One", "Two", "Three"]))
+    assert len(set(ids)) == 1
+    assert dataset.cells.count() == 2
+    again = _call(
+        "add_dataset_version",
+        {"dataset": str(dataset.id), "parent": "v0", "title": "Renamed", "script": KEEP},
+        context,
+    ).structuredContent
+    assert again["version"]["id"] == ids[0] and again["execution"] is None
+
+
+def test_branches_are_siblings_under_one_parent():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    for script in (KEEP, "df = df[df['tag'] == 'junk']\n"):
+        _call(
+            "add_dataset_version",
+            {"dataset": str(dataset.id), "parent": "v0", "title": "Branch", "script": script},
+            context,
+        )
+    versions = _call("inspect_dataset", {"dataset": str(dataset.id)}, context).structuredContent[
+        "versions"
+    ]
+    assert [(v["version"], v["parent"]) for v in versions] == [
+        ("v0", None),
+        ("v1", "v0"),
+        ("v2", "v0"),
+    ]
+
+
+def test_a_failing_script_creates_no_version_and_its_failure_is_reused_for_an_hour():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    arguments = {"dataset": str(dataset.id), "title": "Broken", "script": "df = df['missing']\n"}
+    failed = _call("add_dataset_version", arguments, context).structuredContent
+    assert failed["status"] == "failed" and failed["transient"] is False
+    assert "missing" in failed["error"] and failed["version"] is None
+    assert dataset.cells.count() == 1
+    assert (
+        _call("add_dataset_version", arguments, context).structuredContent["execution"]
+        == (failed["execution"])
+    )
+    Execution.objects.filter(pk=failed["execution"]).update(
+        finished_at=timezone.now() - timedelta(hours=1, minutes=1)
+    )
+    later = _call("add_dataset_version", arguments, context).structuredContent
+    assert later["status"] == "failed" and later["execution"] != failed["execution"]
+
+
+def test_an_unreachable_sandbox_fails_transiently_and_the_same_call_runs_again(settings):
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    working = settings.SANDBOX_URL
+    settings.SANDBOX_URL = "http://127.0.0.1:9"
+    arguments = {"dataset": str(dataset.id), "script": KEEP}
+    down = _call("try_dataset_script", arguments, context).structuredContent
+    assert (down["status"], down["transient"], down["error"]) == (
+        "failed",
+        True,
+        "The sandbox is unavailable.",
+    )
+    settings.SANDBOX_URL = working
+    back = _call("try_dataset_script", arguments, context).structuredContent
+    assert back["status"] == "ok" and back["execution"] != down["execution"]
+
+
+def test_a_run_that_stopped_without_a_result_is_failed_and_runs_again():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    script = KEEP
+    stuck = Execution.objects.create(
+        key=executions.key("try", dataset.id, dataset.source.id, script),
+        project=context.project,
+        dataset=dataset,
+        parent=dataset.source,
+        mode="try",
+        script=script,
+        state="running",
+        queued_at=timezone.now() - timedelta(minutes=13),
+        started_at=timezone.now() - timedelta(minutes=12),
+    )
+    rerun = _call("try_dataset_script", {"dataset": str(dataset.id), "script": script}, context)
+    assert rerun.structuredContent["status"] == "ok"
+    stuck.refresh_from_db()
+    assert (stuck.state, stuck.transient, stuck.error) == (
+        "failed",
+        True,
+        "The run stopped without a result.",
+    )
+
+
+def test_the_sweep_fails_stuck_runs_and_deletes_runs_after_thirty_days():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    now = timezone.now()
+
+    def run(**fields):
+        return Execution.objects.create(
+            key=uuid.uuid4().hex,
+            project=context.project,
+            dataset=dataset,
+            parent=dataset.source,
+            mode="try",
+            **fields,
+        )
+
+    stuck = run(
+        state="running",
+        queued_at=now - timedelta(minutes=12),
+        started_at=now - timedelta(minutes=12),
+    )
+    lost = run(state="queued", queued_at=now - timedelta(minutes=21))
+    fresh = run(state="running", queued_at=now, started_at=now)
+    old = run(state="ok", queued_at=now - timedelta(days=31), finished_at=now - timedelta(days=31))
+    assert executions.sweep() == {"stopped": 2, "deleted": 1}
+    for item in (stuck, lost, fresh):
+        item.refresh_from_db()
+    assert (stuck.state, lost.state, fresh.state) == ("failed", "failed", "running")
+    assert stuck.transient and lost.transient
+    assert not Execution.objects.filter(pk=old.pk).exists()
+
+
+def test_every_run_has_a_row_with_timings():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    _call(
+        "add_dataset_version",
+        {"dataset": str(dataset.id), "title": "Keep", "script": KEEP},
+        context,
+    )
+    run = dataset.executions.get()
+    assert run.state == "ok" and run.cell_id is not None
+    assert None not in (run.started_at, run.finished_at, run.queue_seconds, run.run_seconds)
+    assert run.transfer_seconds is not None and run.stdout == ""
+
+
+def test_scripts_and_versions_are_refused_while_landing_and_unknown_versions_name_the_field():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    missing = _call(
+        "add_dataset_version",
+        {"dataset": str(dataset.id), "parent": "v9", "title": "T", "script": KEEP},
+        context,
+    ).structuredContent["error"]
+    assert missing["code"] == "cell_not_found" and missing["fields"] == {"parent": "No version v9."}
+    Dataset.objects.filter(pk=dataset.pk).update(state="landing")
+    busy = _call("try_dataset_script", {"dataset": str(dataset.id), "script": KEEP}, context)
+    assert busy.structuredContent["error"]["code"] == "dataset_busy"
+    assert "dataset_import" in busy.structuredContent["error"]["message"]
+
+
+def test_update_dataset_renames_sets_intent_and_detaches_the_capability():
+    context = mcp_context(("read", "write"))
+    capability = Capability.objects.create(project=context.project, name="Support", slug="support")
+    dataset = _landed(context)
+    set_capability = _call(
+        "update_dataset",
+        {"dataset": str(dataset.id), "name": "Renamed", "capability": str(capability.id)},
+        context,
+    ).structuredContent
+    assert set_capability["dataset"]["name"] == "Renamed"
+    assert set_capability["dataset"]["capability"]["id"] == str(capability.id)
+    detached = _call(
+        "update_dataset",
+        {"dataset": str(dataset.id), "capability": None, "intent": "train"},
+        context,
+    ).structuredContent
+    assert detached["dataset"]["capability"] is None and detached["dataset"]["intent"] == "train"
+    empty = _call("update_dataset", {"dataset": str(dataset.id)}, context)
+    assert empty.structuredContent["error"]["code"] == "invalid_input"
+
+
+def test_query_stops_a_slow_query_and_refuses_a_large_result():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    slow = _call(
+        "query_dataset",
+        {"dataset": str(dataset.id), "sql": "select count(*) from range(100000000000)"},
+        context,
+    )
+    assert slow.structuredContent["error"]["code"] == "query_timeout"
+    large = _call(
+        "query_dataset",
+        {"dataset": str(dataset.id), "sql": "select repeat('x', 20000) as a from range(3)"},
+        context,
+    )
+    assert large.structuredContent["error"]["code"] == "query_result_too_large"
 
 
 def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
@@ -134,37 +363,6 @@ def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
     uuid.UUID(result.structuredContent["datasets"][0]["id"])
 
 
-def test_inspection_and_job_report_saved_generation_progress():
-    context = mcp_context(("read", "write"))
-    dataset = _dataset(
-        context,
-        state="diagnosing",
-        chat=[
-            {
-                "role": "agent",
-                "text": "",
-                "status": "running",
-                "progress": {
-                    "stage": "generating",
-                    "label": "Generating examples",
-                    "detail": "Cover rare cases",
-                    "rows_before": 270,
-                    "target_rows": 500,
-                    "generated_rows": 50,
-                    "cell_id": "generated-cell",
-                },
-            }
-        ],
-    )
-    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
-    assert not result.isError
-    assert result.structuredContent["recent_chat"][-1]["progress"]["generated_rows"] == 50
-    assert result.structuredContent["recent_chat"][-1]["progress"]["cell_id"] == "generated-cell"
-    job = _call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
-    assert not job.isError
-    assert job.structuredContent["details"]["latest_turn"]["status"] == "running"
-
-
 def test_inspection_exposes_the_workshops_source_families_and_consumer_requirements():
     context = mcp_context(("read", "write"))
     dataset = _dataset(context)
@@ -191,45 +389,6 @@ def test_inspection_exposes_the_workshops_source_families_and_consumer_requireme
     assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
 
 
-def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(fake_llm):
-    context = mcp_context(("read", "write"))
-    dataset = _dataset(context)
-    land.land_rows(dataset, [{"input": "seed", "expected_output": "yes"}])
-    fake_llm.stream_rounds(
-        [
-            (
-                [
-                    tool_call("seed_examples", {"target_rows": 2, "instruction": "Cover variants"}),
-                    tool_call(
-                        "add_synthetic_rows",
-                        {
-                            "examples": [
-                                {"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}
-                            ]
-                        },
-                    ),
-                ],
-                "Adding a contrasting example.",
-            ),
-            ([], "One example added."),
-        ]
-    )
-    list(agent.follow_up(dataset.id, "Generate and add one example"))
-    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
-    assert not result.isError
-    body = result.structuredContent
-    assert body["active"]["rows"] == 2
-    assert all(cell["state"] != "proposed" for cell in body["cells"])
-    assert all(action["tool"] != "run_dataset" for action in body["next_actions"])
-    turn = body["recent_chat"][-1]
-    assert turn["progress"]["cell_id"] == body["active"]["id"]
-    assert turn["cells"][0]["action"] == "ran"
-    queried = _call(
-        "query_dataset", {"dataset": str(dataset.id), "sql": "SELECT count(*) AS n FROM t"}, context
-    )
-    assert not queried.isError and queried.structuredContent["rows"] == [{"n": 2}]
-
-
 def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
     context = mcp_context(("read", "write"))
     dataset = _dataset(
@@ -239,38 +398,24 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
             {"capability_id": str(uuid.uuid4()), "name": f"Capability {n}", "score": n}
             for n in range(25)
         ],
-        chat=[{"role": "user", "text": str(n), "at": f"t{n}"} for n in range(35)],
     )
     active = _ran_cell(dataset, position=0)
     dataset.active = active
     dataset.save(update_fields=["active"])
-    Cell.objects.create(
-        dataset=dataset,
-        position=1,
-        title="Proposal",
-        state=Cell.State.PROPOSED,
-        script="return df",
+    for position in range(1, 4):
+        _ran_cell(dataset, position=position, title=f"Step {position}", parent=active)
+    result = _call(
+        "inspect_dataset", {"dataset": str(dataset.id), "cell_offset": 1, "cell_limit": 2}, context
     )
-    result = _call("inspect_dataset", {"dataset": str(dataset.id), "chat_limit": 30}, context)
     by_name = _call("inspect_dataset", {"dataset": dataset.name}, context)
 
     assert result.isError is False
     body = result.structuredContent
-    assert [cell["position"] for cell in body["cells"]] == [0, 1]
+    assert [v["version"] for v in body["versions"]] == ["v1", "v2"]
+    assert body["versions_total"] == 4
     assert body["active"]["id"] == str(active.id)
     assert len(body["capability_rank"]) == 20
-    assert len(body["recent_chat"]) == 30
-    assert body["recent_chat"][0]["text"] == "5"
-    assert body["next_actions"] == [
-        {
-            "tool": "run_dataset",
-            "reason": "User must approve or deny (decision=deny) this proposed cell.",
-            "arguments": {
-                "dataset": str(dataset.id),
-                "proposal_cell": str(dataset.cells.get(position=1).id),
-            },
-        }
-    ]
+    assert body["next_actions"][0]["tool"] == "check_evaluation_readiness"
     assert by_name.isError is False
     assert by_name.structuredContent["id"] == str(dataset.id)
     Dataset.objects.create(project=context.project, name=dataset.name)
@@ -280,21 +425,16 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
 
 
 @pytest.mark.parametrize(
-    ("state", "tool"),
-    [
-        (Dataset.State.LANDING, "get_job"),
-        (Dataset.State.DIAGNOSING, "get_job"),
-        (Dataset.State.RUNNING, "get_job"),
-        (Dataset.State.ERROR, "message_dataset_agent"),
-    ],
+    ("state", "tools"),
+    [(Dataset.State.LANDING, ["get_job"]), (Dataset.State.ERROR, [])],
 )
-def test_inspect_next_action_follows_dataset_state(state: str, tool: str):
+def test_inspect_next_action_follows_dataset_state(state: str, tools: list[str]):
     context = mcp_context(("read", "write"))
     dataset = _dataset(context, state=state, error="/private/tmp/secret.parquet")
 
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
 
-    assert result.structuredContent["next_actions"][0]["tool"] == tool
+    assert [action["tool"] for action in result.structuredContent["next_actions"]] == tools
     assert "/private/tmp" not in json.dumps(result.structuredContent)
 
 
@@ -303,17 +443,16 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped():
     dataset = frozen_dataset(
         context.project, [{"input": str(n), "expected_output": "x"} for n in range(150)]
     )
-    cell = dataset.active_cell
     foreign_dataset = _dataset(context, "Foreign dataset")
     foreign_cell = _ran_cell(foreign_dataset)
     ok = _call(
         "query_dataset",
-        {"dataset": str(dataset.id), "cell": str(cell.id), "sql": "select input from t"},
+        {"dataset": str(dataset.id), "version": "v0", "sql": "select input from t"},
         context,
     )
     foreign = _call(
         "query_dataset",
-        {"dataset": str(dataset.id), "cell": str(foreign_cell.id), "sql": "select * from t"},
+        {"dataset": str(dataset.id), "version": str(foreign_cell.id), "sql": "select * from t"},
         context,
     )
     write = _call(
@@ -397,7 +536,7 @@ def test_trace_creation_respects_the_capability_choice(split, choice):
         assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
 
 
-def test_trace_creation_returns_a_dataset_run_receipt():
+def test_trace_creation_returns_a_dataset_import_receipt():
     context = mcp_context(("read", "write"))
     Capability.objects.create(project=context.project, name="Support", slug="support")
     _root_span(context.project, "b" * 32)
@@ -409,10 +548,10 @@ def test_trace_creation_returns_a_dataset_run_receipt():
     )
     for result in (traces,):
         body = result.structuredContent
-        assert body["job"]["kind"] == "dataset_run"
+        assert body["job"]["kind"] == "dataset_import"
         assert body["job"]["id"] == body["dataset"]["id"]
         assert body["job"]["resource"]["uri"] == (
-            f"overmind://jobs/dataset_run/{body['dataset']['id']}"
+            f"overmind://jobs/dataset_import/{body['dataset']['id']}"
         )
         assert body["dataset"]["resource"]["uri"] in {
             link["uri"] for link in body["resource_links"]
@@ -421,82 +560,6 @@ def test_trace_creation_returns_a_dataset_run_receipt():
     dataset = Dataset.objects.get(pk=traces.structuredContent["dataset"]["id"])
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.active_cell.rows == 1
-
-
-def test_message_agent_refuses_busy_then_queues_one_turn(monkeypatch):
-    context = mcp_context(("read", "write"))
-    dataset = _dataset(context, state=Dataset.State.LANDING)
-    queued = []
-    monkeypatch.setattr(
-        "overbae.tasks.datasets.turn.apply_async",
-        lambda **kwargs: queued.append(kwargs),
-    )
-
-    busy = _call(
-        "message_dataset_agent",
-        {"dataset": str(dataset.id), "message": "Shape this"},
-        context,
-    )
-    Dataset.objects.filter(pk=dataset.pk).update(state=Dataset.State.IDLE)
-    queued_result = _call(
-        "message_dataset_agent",
-        {"dataset": str(dataset.id), "message": "Shape this"},
-        context,
-    )
-
-    dataset.refresh_from_db()
-    assert busy.structuredContent["error"]["code"] == "dataset_busy"
-    assert queued_result.isError is False
-    assert dataset.state == Dataset.State.DIAGNOSING
-    assert len(queued) == 1
-
-
-def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
-    context = mcp_context(("read", "write"))
-    dataset = _dataset(context)
-    land.land_rows(dataset, [{"input": "question", "expected_output": "answer"}])
-    dataset.refresh_from_db()
-    proposed = agent.Tools(dataset.id, None, lambda _: None).add_cell(
-        {"title": "Proposal", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
-    )
-    proposal = dataset.cells.get(pk=proposed["id"])
-    other = _dataset(context, "Other")
-    foreign = Cell.objects.create(
-        dataset=other,
-        position=0,
-        title="Foreign proposal",
-        state=Cell.State.PROPOSED,
-    )
-    queued = []
-    monkeypatch.setattr(
-        "overbae.tasks.datasets.run.apply_async",
-        lambda **kwargs: queued.append(kwargs),
-    )
-
-    rejected = _call(
-        "run_dataset",
-        {"dataset": str(dataset.id), "proposal_cell": str(foreign.id)},
-        context,
-    )
-    accepted = _call(
-        "run_dataset",
-        {"dataset": str(dataset.id), "proposal_cell": str(proposal.id)},
-        context,
-    )
-
-    assert rejected.structuredContent["error"]["code"] == "cell_not_found"
-    assert accepted.isError is False
-    assert accepted.structuredContent["dataset"]["state"] == Dataset.State.RUNNING
-    assert len(queued) == 1
-    repeated = _call(
-        "run_dataset",
-        {"dataset": str(dataset.id), "proposal_cell": str(proposal.id)},
-        context,
-    )
-    assert repeated.isError is False
-    assert len(queued) == 1
-    definition = next(d for d in CATALOG.definitions() if d.name == "run_dataset")
-    assert definition.cost_class == "llm"
 
 
 def test_dataset_tool_text_is_complete_structured_json():

@@ -3,42 +3,31 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from overbae.models import Cell, Dataset
+from overbae.models import Cell, Dataset, Execution
 from overbae.services.datasets import review
-from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
 
 class DatasetReadinessSerializer(serializers.Serializer):
     format_valid = serializers.BooleanField()
     format_reason = serializers.CharField(allow_blank=True)
-    quality_reviewed = serializers.BooleanField()
-    quality_passed = serializers.BooleanField()
-    quality_reason = serializers.CharField(allow_blank=True)
     training_configuration = serializers.CharField()
 
 
 class CellSerializer(serializers.ModelSerializer):
-    """A cell with its derived version. The view passes ``versions`` and
-    ``frozen_before`` in the context so a chain costs no extra queries."""
-
-    version = serializers.SerializerMethodField()
-    frozen = serializers.SerializerMethodField()
+    version = serializers.CharField(source="label", read_only=True)
+    frozen = serializers.BooleanField(read_only=True)
     fits = serializers.SerializerMethodField()
-    readiness = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
         fields = [
             "id",
-            "position",
             "version",
+            "position",
+            "parent",
             "title",
             "script",
-            "note",
-            "state",
-            "error",
-            "frozen",
             "rows",
             "columns",
             "fingerprint",
@@ -46,64 +35,33 @@ class CellSerializer(serializers.ModelSerializer):
             "capability_report",
             "fits",
             "stats",
-            "review",
-            "quality_report",
-            "readiness",
+            "impact",
+            "stdout",
             "seconds",
             "used_at",
+            "frozen",
             "created_at",
-            "updated_at",
         ]
         read_only_fields = fields
-
-    def get_version(self, obj) -> str:
-        versions = self.context.get("versions")
-        if versions is None:
-            versions = obj.dataset.versions()
-        return versions.get(obj.id, "")
-
-    def get_frozen(self, obj) -> bool:
-        frozen_before = self.context.get("frozen_before")
-        if frozen_before is None:
-            return obj.frozen
-        return obj.used_at is not None or obj.position <= frozen_before
 
     def get_fits(self, obj) -> dict:
         intent = self.context.get("intent") or obj.dataset.intent
         ok, reason = obj.fits(intent)
         return {"ok": ok, "reason": reason}
 
-    @extend_schema_field(DatasetReadinessSerializer)
-    def get_readiness(self, obj):
-        return review.readiness(
-            self.context.get("dataset") or obj.dataset,
-            obj,
-            context=self.context.get("preparation_context"),
-        )
-
-
-class ChatTurnSerializer(serializers.Serializer):
-    id = serializers.CharField(required=False)
-    role = serializers.ChoiceField(choices=["user", "agent"])
-    text = serializers.CharField(allow_blank=True)
-    error = serializers.CharField(required=False, allow_blank=True)
-    cells = serializers.ListField(child=serializers.JSONField(), required=False)
-    steps = serializers.ListField(child=serializers.JSONField(), required=False)
-    ms = serializers.IntegerField(required=False)
-    status = serializers.ChoiceField(
-        choices=["running", "awaiting_approval", "resolved", "complete", "error"], required=False
-    )
-    progress = serializers.JSONField(required=False)
-    at = serializers.CharField()
-
 
 class DatasetSerializer(serializers.ModelSerializer):
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
     cells = serializers.SerializerMethodField()
-    chat = ChatTurnSerializer(many=True, read_only=True)
     active_version = serializers.SerializerMethodField()
     rows = serializers.SerializerMethodField()
     readiness = serializers.SerializerMethodField()
+    expected_active = serializers.PrimaryKeyRelatedField(
+        queryset=Cell.objects.all(),
+        write_only=True,
+        required=False,
+        help_text="With active: refuse with 409 active_conflict unless this is the active version.",
+    )
 
     class Meta:
         model = Dataset
@@ -118,71 +76,44 @@ class DatasetSerializer(serializers.ModelSerializer):
             "capability_rank",
             "intent",
             "active",
+            "expected_active",
             "active_version",
             "rows",
             "readiness",
             "state",
             "error",
             "cells",
-            "chat",
             "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
-            f for f in fields if f not in ("name", "capability", "intent", "active")
+            f
+            for f in fields
+            if f not in ("name", "capability", "intent", "active", "expected_active")
         ]
 
-    def _chain(self, obj) -> list[Cell]:
+    def _versions(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
-        return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
+        return sorted(cached, key=lambda c: c.position) if cached is not None else obj.versions
 
-    def _context_fingerprint(self, obj):
-        fingerprints = self.context.setdefault("capability_fingerprints", {})
-        if obj.capability_id not in fingerprints:
-            fingerprints[obj.capability_id] = context_fingerprint(obj.capability)
-        return fingerprints[obj.capability_id]
+    def _active(self, obj) -> Cell | None:
+        return next((c for c in self._versions(obj) if c.id == obj.active_id), None)
 
     @extend_schema_field(DatasetReadinessSerializer(allow_null=True))
     def get_readiness(self, obj):
         active = self._active(obj)
-        return (
-            review.readiness(obj, active, context=self._context_fingerprint(obj))
-            if active
-            else None
-        )
+        return review.readiness(obj, active) if active else None
 
     @extend_schema_field(CellSerializer(many=True))
     def get_cells(self, obj) -> list[dict]:
         if self.context.get("summary"):
             return []
-        chain = self._chain(obj)
-        versions = obj.versions(chain=chain)
-        frozen = max((c.position for c in chain if c.used_at is not None), default=-1)
-        return CellSerializer(
-            chain,
-            many=True,
-            context={
-                "versions": versions,
-                "frozen_before": frozen,
-                "intent": obj.intent,
-                "dataset": obj,
-                "preparation_context": self._context_fingerprint(obj),
-            },
-        ).data
-
-    def _active(self, obj) -> Cell | None:
-        chain = self._chain(obj)
-        ran = [c for c in chain if c.state == Cell.State.OK and c.fingerprint]
-        if obj.active_id is not None:
-            for cell in ran:
-                if cell.id == obj.active_id:
-                    return cell
-        return ran[-1] if ran else None
+        return CellSerializer(self._versions(obj), many=True, context={"intent": obj.intent}).data
 
     def get_active_version(self, obj) -> str:
         cell = self._active(obj)
-        return obj.versions(chain=self._chain(obj)).get(cell.id, "") if cell else ""
+        return cell.label if cell else ""
 
     def get_rows(self, obj) -> int:
         cell = self._active(obj)
@@ -194,9 +125,55 @@ class DatasetSerializer(serializers.ModelSerializer):
         return value
 
     def validate_active(self, value):
-        if value is not None and value.dataset_id != self.instance.id:
+        if value is None or value.dataset_id != self.instance.id:
             raise serializers.ValidationError("That version belongs to another dataset.")
         return value
+
+    def validate_expected_active(self, value):
+        if value.dataset_id != self.instance.id:
+            raise serializers.ValidationError("That version belongs to another dataset.")
+        return value
+
+
+class ExecutionSerializer(serializers.ModelSerializer):
+    error = serializers.SerializerMethodField()
+    parent = serializers.SerializerMethodField()
+    cell = serializers.SerializerMethodField()
+    created_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Execution
+        fields = [
+            "id",
+            "mode",
+            "title",
+            "state",
+            "transient",
+            "error",
+            "parent",
+            "cell",
+            "queued_at",
+            "started_at",
+            "finished_at",
+            "run_seconds",
+            "created_by",
+        ]
+        read_only_fields = fields
+
+    def get_error(self, obj) -> str:
+        return obj.error[:300]
+
+    def get_parent(self, obj) -> str | None:
+        return obj.parent.label if obj.parent_id else None
+
+    def get_cell(self, obj) -> str | None:
+        return obj.cell.label if obj.cell_id else None
+
+    def get_created_by(self, obj) -> str | None:
+        user = obj.created_by
+        if user is None:
+            return None
+        return user.get_full_name() or user.email
 
 
 class SourceSerializer(serializers.Serializer):
@@ -275,21 +252,6 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
 class DatasetPairSerializer(serializers.Serializer):
     train = DatasetSerializer()
     eval = DatasetSerializer()
-
-
-class CellWriteSerializer(serializers.Serializer):
-    title = serializers.CharField(required=False, max_length=255)
-    script = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
-    note = serializers.CharField(required=False, allow_blank=True, max_length=512)
-
-
-class CellCreateSerializer(CellWriteSerializer):
-    title = serializers.CharField(max_length=255)
-    script = serializers.CharField(allow_blank=True, trim_whitespace=False)
-
-
-class ChatSerializer(serializers.Serializer):
-    message = serializers.CharField(max_length=8000)
 
 
 class RowsPageSerializer(serializers.Serializer):

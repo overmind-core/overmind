@@ -37,6 +37,9 @@ ErrorCode = Literal[
     "dataset_build_conflict",
     "dataset_intent_mismatch",
     "dataset_locked",
+    "active_conflict",
+    "query_timeout",
+    "query_result_too_large",
     "eval_set_not_found",
     "evaluator_not_found",
     "evaluator_invalid",
@@ -129,11 +132,12 @@ def error_payload(error: MCPError) -> dict[str, Any]:
 
 _DATASET_ERROR_CODES: dict[str, ErrorCode] = {
     "intent": "dataset_intent_mismatch",
-    "running": "dataset_busy",
     "landing": "dataset_busy",
-    "diagnosing": "dataset_busy",
     "no_cell": "cell_not_found",
+    "no_version": "cell_not_found",
     "cell_mismatch": "cell_not_found",
+    "frozen": "dataset_locked",
+    "active_conflict": "active_conflict",
 }
 
 
@@ -141,11 +145,16 @@ def dataset_mcp_error(error) -> MCPError:
     """Translate ``DatasetError``; do not re-check contracts here."""
     code = _DATASET_ERROR_CODES.get(getattr(error, "code", ""), "dataset_invalid")
     message = str(getattr(error, "detail", None) or error)
+    field = getattr(error, "field", "")
+    fields = {field: message[:300]} if field else None
     if code == "dataset_busy":
         return MCPError(
-            code, f"{message} Poll get_job with kind dataset_run until it is idle.", retryable=True
+            code,
+            f"{message} Poll get_job with kind dataset_import until it is idle.",
+            retryable=True,
+            fields=fields,
         )
-    return MCPError(code, message)
+    return MCPError(code, message, fields=fields)
 
 
 _DATASET_URI = "overmind://datasets/"
@@ -157,11 +166,7 @@ def mcp_dataset(context, reference: str):
     from overbae.models import Dataset
 
     value = str(reference).strip().removeprefix(_DATASET_URI)
-    query = (
-        Dataset.objects.filter(project=context.project)
-        .select_related("capability", "active")
-        .prefetch_related("cells")
-    )
+    query = Dataset.objects.filter(project=context.project).select_related("capability", "active")
     try:
         dataset = query.filter(id=uuid.UUID(value)).first()
     except ValueError:
@@ -177,14 +182,13 @@ def mcp_dataset(context, reference: str):
 
 
 def mcp_cell(dataset, ref: str | None):
-    """Optional cell/version; blank means the caller should use the active cell."""
-    from overbae.services.datasets.lifecycle import DatasetError
-    from overbae.services.datasets.notebook.agent import resolve_cell
+    """Optional version; blank means the caller should use the active one."""
+    from overbae.services.datasets.versions import resolve_cell
 
     if not ref:
         return None
     try:
-        return resolve_cell(dataset, ref, ran_only=True)
+        return resolve_cell(dataset, ref, field="cell")
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
 
@@ -212,7 +216,7 @@ def mcp_cell_contract(dataset, cell, intent: str):
             fits, reason = False, exc.detail
     return DatasetCellContract(
         id=str(cell.id),
-        version=dataset.versions().get(cell.id, ""),
+        version=cell.label,
         title=cell.title,
         rows=int(cell.rows or 0),
         fingerprint=cell.fingerprint or "",

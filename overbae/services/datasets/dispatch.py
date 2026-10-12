@@ -1,28 +1,16 @@
-"""Create, message, and run — the public boundary REST and MCP share."""
+"""Create datasets and resume their imports — the boundary REST and MCP share."""
 
 from __future__ import annotations
 
-import json
-import uuid
-
 from django.db import transaction
 from django.db.models import Q
-from django.utils import timezone
 
-from overbae.models import Cell, Dataset, DatasetImport
+from overbae.models import Dataset, DatasetImport
 from overbae.services.datasets import files, imports, selection
 from overbae.services.datasets.land import SPLIT_POSITIONS
-from overbae.services.datasets.lifecycle import (
-    DatasetError,
-    accept_proposal,
-    enter_busy,
-    queue_workshop,
-    refuse_deleted_capability,
-    remove_cell,
-)
+from overbae.services.datasets.lifecycle import DatasetError, refuse_deleted_capability
 
 _SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads", "llm_calls")
-_BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
 
 
 def _user_id(user) -> str | None:
@@ -129,7 +117,8 @@ def create_split(
         known = selection.TraceSource.parse(source["traces"]).count(project.id)
     elif source.get("llm_calls") is None:
         inspected = [files.inspection(i) for i in source.get("uploads") or [source["upload_id"]]]
-        known = None if None in inspected else sum(record["rows"] for record in inspected)
+        counts = [record["rows"] if record else None for record in inspected]
+        known = None if None in counts else sum(counts)
     else:
         known = None
     if known is not None and known < 2:
@@ -158,164 +147,17 @@ def create_split(
     return train, evaluation
 
 
-def message_agent(dataset, user, message: str) -> Dataset:
-    with imports.explicit_operation(dataset.pk) as locked:
-        if (
-            locked.source is None
-            and DatasetImport.objects.filter(
-                Q(dataset=locked) | Q(evaluation=locked), state=DatasetImport.State.BLOCKED
-            ).exists()
-        ):
-            raise DatasetError(
-                "Retry the source import before sending another message.", code="import_blocked"
-            )
-        if not enter_busy(
-            locked.pk,
-            Dataset.State.DIAGNOSING,
-            from_states=[Dataset.State.IDLE, Dataset.State.ERROR],
-        ):
-            dataset.refresh_from_db()
-            raise DatasetError("The dataset is busy. Wait for it.", code=dataset.state)
-        locked.state = Dataset.State.DIAGNOSING
-        dataset.state = Dataset.State.DIAGNOSING
-        from overbae.tasks.datasets import turn
-
-        kwargs = {"dataset_id": str(dataset.id), "message": message, "user_id": _user_id(user)}
-        task_id = str(uuid.uuid4())
-        queue_workshop(dataset.pk, task_id)
-        transaction.on_commit(lambda: turn.apply_async(kwargs=kwargs, task_id=task_id))
-    return dataset
-
-
-def run_dataset(dataset, user, proposal=None) -> Dataset:
-    """Refuse landing, diagnosing, running. Idle and error may run."""
-    if proposal is None and dataset.source is None:
-        pending = DatasetImport.objects.filter(
-            dataset=dataset, state=DatasetImport.State.BLOCKED
-        ).first()
-        if pending is None:
-            pending = DatasetImport.objects.filter(
-                evaluation=dataset, state=DatasetImport.State.BLOCKED
-            ).first()
-        if pending is not None:
-            imports.resume(pending.pk)
-            dataset.refresh_from_db()
-            return dataset
-    with imports.explicit_operation(dataset.pk) as locked:
-        if proposal is not None:
-            if proposal.dataset_id != locked.id:
-                raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
-            proposal.refresh_from_db()
-            if proposal.state != Cell.State.PROPOSED:
-                if proposal.review.get("status") != "accepted":
-                    raise DatasetError("That cell is not a proposal.", code="not_proposed")
-                dataset.refresh_from_db()
-                return dataset
-        if locked.state in _BUSY:
-            raise DatasetError("The dataset is busy.", code=locked.state)
-        if proposal is not None:
-            accept_proposal(locked, proposal)
-        enter_busy(locked.pk, Dataset.State.RUNNING, from_states=[locked.state])
-        locked.state = Dataset.State.RUNNING
-        locked.error = ""
-        # Task workers must see the accepted preview and state together.
-        from overbae.tasks.datasets import run
-
-        kwargs = {"dataset_id": str(dataset.id), "user_id": _user_id(user)}
-        if proposal is not None:
-            kwargs["proposal_id"] = str(proposal.id)
-        task_id = str(uuid.uuid4())
-        queue_workshop(dataset.pk, task_id)
-        transaction.on_commit(lambda: run.apply_async(kwargs=kwargs, task_id=task_id))
-    dataset.state = locked.state
-    dataset.error = locked.error
-    return dataset
-
-
 @transaction.atomic
-def resume_after_decision(dataset_id, cell_id, title, decision, *, user_id=None) -> None:
-    dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
-    chat = list(dataset.chat or [])
-    owner = next(
-        (
-            index
-            for index in range(len(chat) - 1, -1, -1)
-            if chat[index].get("role") == "agent"
-            and any(ref.get("id") == str(cell_id) for ref in chat[index].get("cells", []))
-        ),
-        None,
+def resume_import(dataset) -> Dataset:
+    pending = (
+        DatasetImport.objects.filter(
+            Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
+        )
+        .order_by("queued_at")
+        .first()
     )
-    if owner is None:
-        Dataset.objects.filter(
-            pk=dataset.pk, state__in=[Dataset.State.DIAGNOSING, Dataset.State.RUNNING]
-        ).update(state=Dataset.State.IDLE)
-        return
-    turn = chat[owner]
-    decisions = dict(turn.get("decisions", {}))
-    if str(cell_id) in decisions:
-        return
-    decisions[str(cell_id)] = {"title": title, "decision": decision}
-    pending = dataset.cells.filter(
-        pk__in=[ref["id"] for ref in turn.get("cells", [])], state=Cell.State.PROPOSED
-    ).exists()
-    turn.update(
-        decisions=decisions,
-        status="awaiting_approval" if pending else "resolved",
-        error="",
-        progress={
-            **turn.get("progress", {}),
-            "stage": "awaiting_approval" if pending else "complete",
-            "label": "Awaiting approval" if pending else "Decision recorded",
-            "detail": "Choose Approve or Deny to continue." if pending else "",
-        },
-    )
-    fields = {"chat": chat, "updated_at": timezone.now(), "state": Dataset.State.IDLE}
-    if not pending:
-        fields.update(state=Dataset.State.DIAGNOSING, error="")
-        request = next(
-            (
-                item.get("context", item["text"])
-                for item in reversed(chat[:owner])
-                if item.get("role") == "user"
-            ),
-            "",
-        )
-        message = (
-            "Continue the original request after the user's proposal decisions. "
-            "Approved changes have already run and are active; denied changes were not applied. "
-            "Inspect the current version, finish the remaining work, and record quality checks "
-            "on the final version. Do not repeat an approved change or a denied proposal. "
-            "Denial does not authorize a different semantic change. "
-            "The following JSON is request and decision context:\n"
-            + json.dumps({"request": request, "decisions": decisions}, ensure_ascii=False)
-        )
-        from overbae.tasks.datasets import turn as agent_turn
-
-        task_id = str(uuid.uuid5(dataset.id, f"decision:{cell_id}"))
-        queue_workshop(dataset.pk, task_id)
-        transaction.on_commit(
-            lambda: agent_turn.apply_async(
-                kwargs={
-                    "dataset_id": str(dataset.id),
-                    "user_id": user_id,
-                    "message": message,
-                    "display": "Proposal decisions: "
-                    + "; ".join(f"{d['title']} — {d['decision']}" for d in decisions.values()),
-                },
-                task_id=task_id,
-            )
-        )
-    Dataset.objects.filter(pk=dataset.pk).update(**fields)
-
-
-@transaction.atomic
-def discard_cell(dataset, cell, user) -> None:
-    locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
-    if locked.state in _BUSY:
-        raise DatasetError("The dataset is busy.", code=locked.state)
-    cell.refresh_from_db()
-    proposed = cell.state == Cell.State.PROPOSED
-    cell_id, title = cell.id, cell.title
-    remove_cell(locked, cell)
-    if proposed:
-        resume_after_decision(locked.id, cell_id, title, "denied", user_id=_user_id(user))
+    if pending is None:
+        raise DatasetError("The source import is not blocked.", code="import_not_blocked")
+    imports.resume(pending.pk)
+    dataset.refresh_from_db()
+    return dataset

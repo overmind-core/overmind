@@ -65,7 +65,7 @@ from overbae.services.mcp.contracts.observability import (
 )
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import (
-    dataset_run_job_payload,
+    dataset_import_job_payload,
     resource_link,
     safe_json,
 )
@@ -592,43 +592,33 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "dataset_id": str(job.dataset_id),
         }
         primary = _link("finetunes", str(job.id), label)
-    elif kind == "dataset_run":
+    elif kind == "dataset_import":
         job = (
             Dataset.objects.filter(project=context.project, id=normalized_id)
             .select_related("capability", "active")
-            .prefetch_related("cells")
             .first()
             if normalized_id
             else None
         )
         if job is None:
             raise MCPError("resource_not_found", "The dataset was not found.")
-        snapshot = dataset_run_job_payload(
-            job,
-            resource_link("jobs", f"dataset_run/{job.id}", (job.name or "Dataset run")[:160])[
-                "uri"
-            ],
-        )
+        uri = resource_link("jobs", f"dataset_import/{job.id}", (job.name or "Dataset")[:160])
+        snapshot = dataset_import_job_payload(job, uri["uri"])
         created_at, updated_at = job.created_at, job.updated_at
-        label, status, job_error = (
-            (job.name or "Dataset")[:160],
-            snapshot["status"],
-            job.error or None,
-        )
+        label, status, job_error = (job.name or "Dataset")[:160], job.state, job.error or None
         progress = snapshot["progress"]
         details = {
             "name": job.name,
             "state": job.state,
             "intent": job.intent,
             "source_kind": job.source_kind,
+            "import": snapshot["import"],
             "active": snapshot["active"],
-            "latest_turn": snapshot["latest_turn"],
-            "cells": snapshot["cells"],
             "next_action": snapshot["next_action"],
             "next_actions": snapshot["next_actions"],
             "dataset": snapshot["dataset"],
         }
-        primary = _link("jobs", f"dataset_run/{job.id}", label)
+        primary = _link("jobs", f"dataset_import/{job.id}", label)
         underlying.append(_link("datasets", str(job.id), label))
     elif kind == "optimizer_experiment":
         job = (

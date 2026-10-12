@@ -1,4 +1,4 @@
-"""Bounded MCP contracts for Dataset + Cell. No ingestion, workshop, ft, or surface."""
+"""Bounded MCP contracts for datasets, their versions and script runs."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from urllib.parse import quote
 from django.db.models import Q
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
-from overbae.models import Cell, Dataset, DatasetImport
-from overbae.services.datasets import imports, review
+from overbae.models import Cell, Dataset, DatasetImport, Execution
+from overbae.services.datasets import executions, imports, paths, store, workshop
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -24,17 +24,20 @@ from overbae.services.mcp.contracts.common import (
 )
 
 _LIST_CAP = 100
-_CELL_CAP = 50
+_VERSION_DEFAULT = 50
+_VERSION_CAP = 200
 _SAMPLE_ROWS = 5
 _SAMPLE_CELL_CHARS = 600
 _QUERY_ROWS = 100
-_CHAT_DEFAULT = 10
-_CHAT_MAX = 30
-_SCRIPT_CHARS = 8_000
+_SCRIPT_CHARS = 4_000
+_SCRIPT_INPUT_CHARS = 20_000
+_STDOUT_CHARS = 4_000
 _RANK_CAP = 20
 _SUMMARY_CHARS = 240
-_BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
 _PATH_RE = re.compile(r"(?:/[\w.-]+)+")
+
+DatasetState = Literal["landing", "idle", "error"]
+RunStatus = Literal["queued", "running", "ok", "failed"]
 
 
 def _clip(value: str, limit: int = _SCRIPT_CHARS) -> str:
@@ -73,21 +76,14 @@ def dataset_resource_link(dataset) -> ResourceLinkContract:
     return _link(f"overmind://datasets/{ds_id}", dataset.name or "Dataset")
 
 
-def dataset_run_job_link(dataset) -> ResourceLinkContract:
+def dataset_import_job_link(dataset) -> ResourceLinkContract:
     ds_id = quote(str(dataset.id), safe="")
-    title = f"{dataset.name or 'Dataset'} run"
-    return _link(f"overmind://jobs/dataset_run/{ds_id}", title)
+    return _link(f"overmind://jobs/dataset_import/{ds_id}", f"{dataset.name or 'Dataset'} import")
 
 
 def _capability_link(capability) -> ResourceLinkContract:
     cap_id = quote(str(capability.id), safe="")
     return _link(f"overmind://capabilities/{cap_id}", capability.name or "Capability")
-
-
-def _cell_link(dataset, cell) -> ResourceLinkContract:
-    """A cell is read through its dataset: the server serves no per-cell resource."""
-    ds_id = quote(str(dataset.id), safe="")
-    return _link(f"overmind://datasets/{ds_id}", cell.title.strip() or "Cell")
 
 
 class FitReport(MCPModel):
@@ -114,36 +110,29 @@ class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
     intent: Literal["train", "eval", "pending"]
-    source_kind: Literal["file", "traces"]
-    state: Literal["landing", "diagnosing", "idle", "running", "error"]
+    source_kind: Literal["file", "traces", "llm_calls"]
+    state: DatasetState
     capability: CapabilityRef | None = None
     active: ActiveVersion | None = None
     resource: ResourceLinkContract
 
 
-class CellSummary(MCPModel):
+class VersionSummary(MCPModel):
     id: str
-    position: int = Field(ge=0)
     version: str = Field(min_length=1, max_length=32)
+    parent: str | None = Field(default=None, max_length=32)
     title: str = Field(min_length=1, max_length=255)
     script: str = Field(default="", max_length=_SCRIPT_CHARS)
     script_truncated: bool = False
-    note: str = Field(default="", max_length=512)
-    state: Literal["proposed", "queued", "running", "ok", "failed"]
-    error: str | None = None
-    frozen: bool
     rows: int = Field(ge=0)
     columns: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     fingerprint: str = Field(default="", max_length=64)
+    fits: FitReport
     intent_report: dict[str, Any] = Field(default_factory=dict)
     capability_report: dict[str, Any] = Field(default_factory=dict)
-    fits: FitReport
-    seconds: float = 0.0
-    review: dict[str, Any] = Field(default_factory=dict)
-    quality_report: dict[str, Any] = Field(default_factory=dict)
-    readiness: dict[str, Any] = Field(default_factory=dict)
-    used_at: datetime | None = None
-    resource: ResourceLinkContract
+    impact: dict[str, Any] = Field(default_factory=dict)
+    used: bool
+    created_at: datetime
 
 
 class CapabilityRankItem(MCPModel):
@@ -157,36 +146,6 @@ class DatasetSample(MCPModel):
     version: str = Field(min_length=1, max_length=32)
     cell_id: str
     rows: list[dict[str, Any]] = Field(default_factory=list, max_length=_SAMPLE_ROWS)
-
-
-class TouchedCell(MCPModel):
-    id: str
-    action: str = Field(default="", max_length=40)
-    text_offset: int | None = Field(default=None, ge=0)
-
-
-class AgentProgress(MCPModel):
-    stage: str = Field(max_length=40)
-    label: str = Field(max_length=255)
-    detail: str = Field(max_length=4000)
-    started_at: str | None = None
-    updated_at: str | None = None
-    rows_before: int | None = Field(default=None, ge=0)
-    target_rows: int | None = Field(default=None, ge=0)
-    generated_rows: int | None = Field(default=None, ge=0)
-    cell_id: str | None = None
-    proposal_id: str | None = None
-
-
-class ChatTurn(MCPModel):
-    role: Literal["user", "agent"]
-    text: str = Field(default="", max_length=_SCRIPT_CHARS)
-    error: str | None = None
-    cells: list[TouchedCell] = Field(default_factory=list, max_length=20)
-    at: str | None = Field(default=None, max_length=80)
-    ms: int | None = Field(default=None, ge=0)
-    status: Literal["running", "awaiting_approval", "resolved", "complete", "error"] | None = None
-    progress: AgentProgress | None = None
 
 
 class NextAction(MCPModel):
@@ -204,10 +163,10 @@ class DatasetDetail(DatasetListItem):
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
-    cells: list[CellSummary] = Field(default_factory=list, max_length=_CELL_CAP)
-    cells_truncated: bool = False
+    versions: list[VersionSummary] = Field(default_factory=list, max_length=_VERSION_CAP)
+    versions_total: int = Field(ge=0)
+    running: int = Field(default=0, ge=0)
     sample: DatasetSample | None = None
-    recent_chat: list[ChatTurn] = Field(default_factory=list, max_length=_CHAT_MAX)
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=8)
     summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
@@ -218,12 +177,12 @@ class DatasetDetail(DatasetListItem):
 class DatasetMutationRef(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
-    state: Literal["landing", "diagnosing", "idle", "running", "error"]
+    state: DatasetState
     resource: ResourceLinkContract
 
 
 class DatasetJobReceipt(JobReceipt):
-    kind: Literal["dataset_run"] = "dataset_run"
+    kind: Literal["dataset_import"] = "dataset_import"
 
 
 class DatasetMutationOutput(MCPModel):
@@ -238,10 +197,22 @@ class DatasetMutationOutput(MCPModel):
     resource_links: list[ResourceLinkContract] = Field(max_length=4)
 
 
+def _dataset_field():
+    return Field(
+        min_length=1,
+        max_length=255,
+        validation_alias=AliasChoices("dataset", "dataset_id"),
+    )
+
+
+def _version_field():
+    return Field(default=None, min_length=1, max_length=80)
+
+
 class ListDatasetsInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
     intent: Literal["train", "eval", "pending"] | None = None
-    state: Literal["landing", "diagnosing", "idle", "running", "error"] | None = None
+    state: DatasetState | None = None
     search: str | None = Field(default=None, min_length=1, max_length=255)
     limit: int = Field(default=20, ge=1, le=_LIST_CAP)
     offset: int = Field(default=0, ge=0)
@@ -255,27 +226,19 @@ class ListDatasetsOutput(MCPModel):
 
 
 class InspectDatasetInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
-    chat_limit: int = Field(default=_CHAT_DEFAULT, ge=1, le=_CHAT_MAX)
+    dataset: str = _dataset_field()
+    cell_offset: int = Field(default=0, ge=0)
+    cell_limit: int = Field(default=_VERSION_DEFAULT, ge=1, le=_VERSION_CAP)
 
 
 class QueryDatasetInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
+    dataset: str = _dataset_field()
     sql: str = Field(
         min_length=1,
         max_length=8_000,
-        description="One SELECT over the table `t`, the chosen cell. DuckDB dialect. "
-        "`source_row` is the row's identity in the source, not data.",
+        description="One DuckDB SELECT over table t. source_row is row identity, not data.",
     )
-    cell: str | None = Field(default=None, min_length=1, max_length=80)
+    version: str | None = _version_field()
     limit: int = Field(default=_QUERY_ROWS, ge=1, le=_QUERY_ROWS)
 
 
@@ -283,7 +246,7 @@ class QueryDatasetOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
     dataset: str
     cell_id: str
-    version: str | None = None
+    version: str
     columns: list[str] = Field(default_factory=list, max_length=200)
     rows: list[dict[str, Any]] = Field(default_factory=list, max_length=_QUERY_ROWS)
     n: int = Field(ge=0, le=_QUERY_ROWS)
@@ -304,8 +267,6 @@ class SplitInput(MCPModel):
 
 
 class CreateDatasetFromTracesInput(MCPModel):
-    """One row lands per trace. Either ``trace_ids`` or a filter selection, never both."""
-
     name: str = Field(min_length=1, max_length=255, description="Dataset name.")
     trace_ids: list[str] | None = Field(
         default=None,
@@ -315,11 +276,9 @@ class CreateDatasetFromTracesInput(MCPModel):
     filters: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Traces-list filters. Keys: capability (uuid), has_error (true|false), "
-            "received_at__gte / received_at__lte (ISO 8601), model, service_name, "
-            "session (uuid), conversation, min_duration_ms / max_duration_ms, "
-            "total_tokens__gte / __lte, total_cost__gte / __lte, unbound (true|false). "
-            "An unknown key is refused."
+            "Keys: capability, has_error, received_at__gte/__lte (ISO 8601), model, "
+            "service_name, session, conversation, min/max_duration_ms, total_tokens__gte/__lte, "
+            "total_cost__gte/__lte, unbound. Unknown keys are refused."
         ),
     )
     search: str | None = Field(
@@ -391,23 +350,90 @@ class CreateDatasetFromLlmCallsInput(MCPModel):
         return self
 
 
-class MessageDatasetAgentInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
-    message: str = Field(min_length=1, max_length=_SCRIPT_CHARS)
+class TryDatasetScriptInput(MCPModel):
+    dataset: str = _dataset_field()
+    parent: str | None = _version_field()
+    script: str = Field(min_length=1, max_length=_SCRIPT_INPUT_CHARS)
 
 
-class RunDatasetInput(MCPModel):
-    dataset: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("dataset", "dataset_id"),
-    )
-    proposal_cell: str | None = Field(default=None, min_length=1, max_length=80)
-    decision: Literal["approve", "deny"] = "approve"
+class ProbeDatasetVersionInput(MCPModel):
+    dataset: str = _dataset_field()
+    version: str | None = _version_field()
+    script: str = Field(min_length=1, max_length=_SCRIPT_INPUT_CHARS)
+
+
+class AddDatasetVersionInput(MCPModel):
+    dataset: str = _dataset_field()
+    parent: str | None = _version_field()
+    title: str = Field(min_length=1, max_length=120)
+    script: str = Field(min_length=1, max_length=_SCRIPT_INPUT_CHARS)
+
+
+class AddSyntheticExamplesInput(MCPModel):
+    dataset: str = _dataset_field()
+    parent: str | None = _version_field()
+    rows: list[dict[str, Any]] = Field(min_length=1, max_length=50)
+    instruction: str = Field(min_length=1, max_length=4_000)
+
+
+class DiffDatasetVersionsInput(MCPModel):
+    dataset: str = _dataset_field()
+    start: str | None = Field(default=None, min_length=1, max_length=80, alias="from")
+    to: str | None = _version_field()
+
+
+class ActivateDatasetVersionInput(MCPModel):
+    dataset: str = _dataset_field()
+    version: str = Field(min_length=1, max_length=80)
+    expected_active: str | None = _version_field()
+
+
+class UpdateDatasetInput(MCPModel):
+    dataset: str = _dataset_field()
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    intent: Literal["train", "eval"] | None = None
+    capability: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ResumeDatasetImportInput(MCPModel):
+    dataset: str = _dataset_field()
+
+
+class ScriptRunOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
+    status: RunStatus
+    execution: str | None = None
+    transient: bool = False
+    error: str | None = None
+    stdout: str = Field(default="", max_length=_STDOUT_CHARS)
+    queued_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=2)
+
+
+class TryDatasetScriptOutput(ScriptRunOutput):
+    rows: int | None = Field(default=None, ge=0)
+    columns: list[str] = Field(default_factory=list, max_length=200)
+    head: list[dict[str, Any]] = Field(default_factory=list, max_length=executions.PREVIEW_ROWS)
+
+
+class AddDatasetVersionOutput(ScriptRunOutput):
+    version: VersionSummary | None = None
+
+
+class DiffDatasetVersionsOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
+    start: str = Field(alias="from", min_length=1, max_length=32)
+    to: str = Field(min_length=1, max_length=32)
+    diff: dict[str, Any] = Field(default_factory=dict)
+    resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=2)
+
+
+class DatasetOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
+    dataset: DatasetListItem
+    resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=2)
 
 
 def _mutation_ref(dataset) -> DatasetMutationRef:
@@ -427,44 +453,18 @@ def mutation_output(
     calls: int | None = None,
     eval_dataset=None,
 ) -> DatasetMutationOutput:
-    links = [dataset_resource_link(dataset), dataset_run_job_link(dataset)]
+    links = [dataset_resource_link(dataset), dataset_import_job_link(dataset)]
     if eval_dataset is not None:
-        links += [dataset_resource_link(eval_dataset), dataset_run_job_link(eval_dataset)]
+        links += [dataset_resource_link(eval_dataset), dataset_import_job_link(eval_dataset)]
     return DatasetMutationOutput(
         summary=_clip(summary, _SUMMARY_CHARS),
         dataset=_mutation_ref(dataset),
-        job=DatasetJobReceipt(
-            kind="dataset_run",
-            id=str(dataset.id),
-            status=dataset.state,
-            resource=links[1],
-        ),
+        job=DatasetJobReceipt(id=str(dataset.id), status=dataset.state, resource=links[1]),
         eval_dataset=_mutation_ref(eval_dataset) if eval_dataset is not None else None,
         traces=traces,
         calls=calls,
         resource_links=links,
     )
-
-
-def _chain(dataset) -> list[Cell]:
-    cached = getattr(dataset, "_prefetched_objects_cache", {}).get("cells")
-    if cached is not None:
-        return sorted(cached, key=lambda cell: cell.position)
-    return dataset.chain
-
-
-def _active_cell(dataset, chain: list[Cell]) -> Cell | None:
-    ran = [cell for cell in chain if cell.state == Cell.State.OK and cell.fingerprint]
-    if dataset.active_id is not None:
-        for cell in ran:
-            if cell.id == dataset.active_id:
-                return cell
-    return ran[-1] if ran else None
-
-
-def _frozen_before(chain: list[Cell]) -> int:
-    used = [cell.position for cell in chain if cell.used_at is not None]
-    return max(used, default=-1)
 
 
 def _fit(cell: Cell, intent: str) -> FitReport:
@@ -483,22 +483,21 @@ def _capability_ref(dataset) -> CapabilityRef | None:
     )
 
 
-def _active_version(dataset, chain: list[Cell], versions: dict) -> ActiveVersion | None:
-    cell = _active_cell(dataset, chain)
+def _active_version(dataset) -> ActiveVersion | None:
+    cell = dataset.active
     if cell is None:
         return None
     return ActiveVersion(
         id=str(cell.id),
-        version=versions.get(cell.id, "1.0"),
-        title=cell.title.strip() or "Cell",
+        version=cell.label,
+        title=cell.title.strip() or "Version",
         rows=int(cell.rows or 0),
         fingerprint=cell.fingerprint or "",
         fits=_fit(cell, public_intent(dataset.intent)),
     )
 
 
-def _list_fields(dataset, chain: list[Cell]) -> dict[str, Any]:
-    versions = dataset.versions(chain=chain)
+def _list_fields(dataset) -> dict[str, Any]:
     return {
         "id": str(dataset.id),
         "name": dataset.name or "",
@@ -506,45 +505,36 @@ def _list_fields(dataset, chain: list[Cell]) -> dict[str, Any]:
         "source_kind": dataset.source_kind,
         "state": dataset.state,
         "capability": _capability_ref(dataset),
-        "active": _active_version(dataset, chain, versions),
+        "active": _active_version(dataset),
         "resource": dataset_resource_link(dataset),
     }
 
 
 def serialize_dataset_list_item(dataset) -> DatasetListItem:
-    return DatasetListItem.model_validate(_list_fields(dataset, _chain(dataset)))
+    return DatasetListItem.model_validate(_list_fields(dataset))
 
 
-def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> CellSummary:
-    version = "proposed" if cell.state == Cell.State.PROPOSED else versions.get(cell.id, "1.0")
-    error = sanitize_error(cell.error) or None
+def version_summary(dataset, cell: Cell) -> VersionSummary:
     columns = [
         _jsonable(col) if isinstance(col, dict) else {"name": str(col)}
         for col in (cell.columns or [])[:100]
     ]
-    return CellSummary(
+    return VersionSummary(
         id=str(cell.id),
-        position=cell.position,
-        version=version,
-        title=cell.title.strip() or "Cell",
+        version=cell.label,
+        parent=cell.parent.label if cell.parent_id else None,
+        title=cell.title.strip() or "Version",
         script=_clip(cell.script or ""),
         script_truncated=len(cell.script or "") > _SCRIPT_CHARS,
-        note=cell.note or "",
-        state=cell.state,
-        error=error,
-        frozen=cell.used_at is not None or cell.position <= frozen_before,
         rows=int(cell.rows or 0),
         columns=columns,
         fingerprint=cell.fingerprint or "",
+        fits=_fit(cell, public_intent(dataset.intent)),
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
-        review=_jsonable(cell.review),
-        quality_report=_jsonable(review.summary(cell.quality_report or {})),
-        readiness=review.readiness(dataset, cell),
-        fits=_fit(cell, public_intent(dataset.intent)),
-        seconds=float(cell.seconds or 0),
-        used_at=cell.used_at,
-        resource=_cell_link(dataset, cell),
+        impact=_jsonable(cell.impact or {}),
+        used=cell.used_at is not None,
+        created_at=cell.created_at,
     )
 
 
@@ -576,11 +566,9 @@ def _sample_cell(value: Any) -> Any:
     return value
 
 
-def _sample(dataset, cell: Cell | None, versions: dict) -> DatasetSample | None:
-    if cell is None or not cell.ran:
+def _sample(dataset, cell: Cell | None) -> DatasetSample | None:
+    if cell is None:
         return None
-    from overbae.services.datasets import paths, store
-
     path = paths.cell_path(dataset.id, cell.id)
     if not path.exists():
         return None
@@ -589,52 +577,10 @@ def _sample(dataset, cell: Cell | None, versions: dict) -> DatasetSample | None:
     except Exception:  # noqa: BLE001 — sample is optional; never leak store errors
         return None
     return DatasetSample(
-        version=versions.get(cell.id, "1.0"),
+        version=cell.label,
         cell_id=str(cell.id),
-        rows=[
-            {str(k): _sample_cell(v) for k, v in row.items()}
-            if isinstance(row, dict)
-            else {"value": _sample_cell(row)}
-            for row in rows
-        ],
+        rows=[{str(k): _sample_cell(v) for k, v in row.items()} for row in rows],
     )
-
-
-def _touched(raw) -> list[TouchedCell]:
-    out: list[TouchedCell] = []
-    for item in raw or []:
-        if isinstance(item, dict) and item.get("id"):
-            out.append(TouchedCell(id=str(item["id"]), action=str(item.get("action") or "")[:40]))
-        elif item:
-            out.append(TouchedCell(id=str(item)))
-        if len(out) >= 20:
-            break
-    return out
-
-
-def _chat(raw, limit: int) -> list[ChatTurn]:
-    turns = [item for item in (raw or []) if isinstance(item, dict)]
-    window = turns[-max(1, min(limit, _CHAT_MAX)) :]
-    out: list[ChatTurn] = []
-    for item in window:
-        role = item.get("role")
-        if role not in ("user", "agent"):
-            continue
-        error = sanitize_error(str(item.get("error") or "")) or None
-        ms = item.get("ms")
-        out.append(
-            ChatTurn(
-                role=role,
-                text=_clip(str(item.get("text") or "")),
-                error=error,
-                cells=_touched(item.get("cells")),
-                at=str(item.get("at") or "")[:80] or None,
-                ms=int(ms) if isinstance(ms, (int, float)) and ms >= 0 else None,
-                status=item.get("status"),
-                progress=item.get("progress"),
-            )
-        )
-    return out
 
 
 def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
@@ -652,60 +598,46 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
     return None
 
 
-def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
+def _blocked_attempts(dataset) -> int | None:
+    return (
+        DatasetImport.objects.filter(
+            Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
+        )
+        .values_list("attempts", flat=True)
+        .first()
+    )
+
+
+def next_actions(dataset, active: Cell | None) -> list[NextAction]:
     """The one answer to "what now" for a dataset. Every suggestion satisfies
     the named tool's schema as given."""
     ds_id = str(dataset.id)
-    if dataset.state in _BUSY:
+    if dataset.state == Dataset.State.LANDING:
         return [
             NextAction(
                 tool="get_job",
-                reason=f"Dataset is {dataset.state}.",
-                arguments={"kind": "dataset_run", "id": ds_id},
+                reason="The source is landing.",
+                arguments={"kind": "dataset_import", "id": ds_id},
             )
         ]
     if dataset.state == Dataset.State.ERROR:
-        if not chain:
-            attempts = (
-                DatasetImport.objects.filter(
-                    Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
+        attempts = _blocked_attempts(dataset)
+        if attempts is not None and attempts < imports.MAX_ATTEMPTS:
+            return [
+                NextAction(
+                    tool="resume_dataset_import",
+                    reason="Resume the retained source import.",
+                    arguments={"dataset": ds_id},
                 )
-                .values_list("attempts", flat=True)
-                .first()
-            )
-            if attempts is not None:
-                if attempts >= imports.MAX_ATTEMPTS:
-                    return []
-                return [
-                    NextAction(
-                        tool="run_dataset",
-                        reason="Resume the retained source import.",
-                        arguments={"dataset": ds_id},
-                    )
-                ]
-        reason = sanitize_error(dataset.error) or "The dataset is in error."
-        return [
-            NextAction(
-                tool="message_dataset_agent",
-                reason=reason,
-                arguments={"dataset": ds_id},
-            )
-        ]
-    proposed = [cell for cell in chain if cell.state == Cell.State.PROPOSED]
-    if proposed:
-        return [
-            NextAction(
-                tool="run_dataset",
-                reason="User must approve or deny (decision=deny) this proposed cell.",
-                arguments={"dataset": ds_id, "proposal_cell": str(cell.id)},
-            )
-            for cell in proposed[:5]
-        ]
+            ]
+        return []
     if active is None:
+        return []
+    if dataset.intent == Dataset.Intent.PENDING:
         return [
             NextAction(
-                tool="message_dataset_agent",
-                reason="No version has run.",
+                tool="update_dataset",
+                reason="Choose train or eval with intent.",
                 arguments={"dataset": ds_id},
             )
         ]
@@ -714,28 +646,19 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
     if not ok:
         return [
             NextAction(
-                tool="message_dataset_agent",
+                tool="add_dataset_version",
                 reason=sanitize_error(reason) or "The active version does not fit.",
-                arguments={"dataset": ds_id},
+                arguments={"dataset": ds_id, "parent": active.label},
             )
         ]
-    actions: list[NextAction] = []
-    if findings := review.warnings(dataset, active):
-        actions.append(
-            NextAction(
-                tool="message_dataset_agent",
-                reason="Review recommended: " + "; ".join(findings),
-                arguments={"dataset": ds_id},
-            )
-        )
     args = {"dataset": ds_id, "cell": str(active.id)}
     if intent == Dataset.Intent.TRAIN:
-        return actions + [
+        return [
             NextAction(
                 tool="check_finetune_readiness", reason="Active version fits train.", arguments=args
             )
         ]
-    actions += [
+    actions = [
         NextAction(
             tool="check_evaluation_readiness", reason="Active version fits eval.", arguments=args
         )
@@ -751,50 +674,116 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
     return actions
 
 
-def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
+def _detail_summary(dataset, total: int, active: Cell | None, running: int) -> str:
     if dataset.state == Dataset.State.ERROR:
         return _clip(
-            f"Dataset error: {sanitize_error(dataset.error) or 'The dataset failed.'}",
+            f"Dataset error: {sanitize_error(dataset.error) or 'The source did not land.'}",
             _SUMMARY_CHARS,
         )
     if dataset.state == Dataset.State.LANDING:
-        return "Dataset is landing."
-    if dataset.state == Dataset.State.DIAGNOSING:
-        return "Dataset agent is diagnosing."
-    if dataset.state == Dataset.State.RUNNING:
-        return "Dataset run is in progress."
-    n = len(chain)
-    rows = int(active.rows) if active is not None else 0
-    noun = "cell" if n == 1 else "cells"
-    return f"{n} {noun}, {dataset.state}, {rows} rows."
+        return "The source is landing."
+    noun = "version" if total == 1 else "versions"
+    text = f"{total} {noun}"
+    if active is not None:
+        text += f", active {active.label} with {int(active.rows)} rows"
+    if running:
+        text += f", {running} running"
+    return text + "."
 
 
-def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> DatasetDetail:
-    chain = _chain(dataset)
-    versions = dataset.versions(chain=chain)
-    frozen_before = _frozen_before(chain)
-    active = _active_cell(dataset, chain)
-    cells = [_cell_summary(dataset, cell, versions, frozen_before) for cell in chain[:_CELL_CAP]]
-    fields = _list_fields(dataset, chain)
-    dataset_link = fields["resource"]
-    links = [dataset_link]
-    if dataset.state in _BUSY:
-        links.append(dataset_run_job_link(dataset))
-    error = sanitize_error(dataset.error) or None
+def serialize_dataset_detail(dataset, *, offset: int = 0, limit: int = _VERSION_DEFAULT):
+    status = workshop.status(dataset, offset, limit)
+    active = status["active"]
+    links = [dataset_resource_link(dataset)]
+    if dataset.state == Dataset.State.LANDING:
+        links.append(dataset_import_job_link(dataset))
     return DatasetDetail.model_validate(
         {
-            **fields,
+            **_list_fields(dataset),
             "preparation_context": _jsonable(workshop_context(dataset)),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),
-            "cells": cells,
-            "cells_truncated": len(chain) > _CELL_CAP,
-            "sample": _sample(dataset, active, versions),
-            "recent_chat": _chat(dataset.chat, chat_limit),
-            "next_actions": next_actions(dataset, chain, active),
+            "versions": [version_summary(dataset, cell) for cell in status["versions"]],
+            "versions_total": status["total"],
+            "running": status["running"],
+            "sample": _sample(dataset, active),
+            "next_actions": next_actions(dataset, active),
             "resource_links": links,
-            "summary": _detail_summary(dataset, chain, active),
+            "summary": _detail_summary(dataset, status["total"], active, status["running"]),
             "human_action": _human_action(dataset, active),
-            "error": error,
+            "error": sanitize_error(dataset.error) or None,
         }
+    )
+
+
+def _run_fields(dataset, run: workshop.Run) -> dict[str, Any]:
+    execution = run.execution
+    fields: dict[str, Any] = {
+        "status": run.status,
+        "resource_links": [dataset_resource_link(dataset)],
+    }
+    if execution is not None:
+        fields.update(
+            execution=str(execution.id),
+            transient=execution.transient,
+            error=sanitize_error(execution.error, 2_000) or None,
+            stdout=_clip(execution.stdout, _STDOUT_CHARS),
+            queued_at=execution.queued_at,
+            started_at=execution.started_at,
+            finished_at=execution.finished_at,
+        )
+    return fields
+
+
+def _run_summary(run: workshop.Run, done: str) -> str:
+    if run.status == Execution.State.QUEUED:
+        return "Queued. Repeat the identical call to get the result."
+    if run.status == Execution.State.RUNNING:
+        return "Running. Repeat the identical call to get the result."
+    if run.status == Execution.State.FAILED:
+        prefix = (
+            "The platform stopped the run; the identical call runs again."
+            if (run.execution is not None and run.execution.transient)
+            else "The script failed."
+        )
+        return _clip(prefix, _SUMMARY_CHARS)
+    return _clip(done, _SUMMARY_CHARS)
+
+
+def try_output(dataset, run: workshop.Run) -> TryDatasetScriptOutput:
+    result = run.execution.result if run.execution is not None else {}
+    summary = _run_summary(run, f"{result.get('rows', 0)} rows. No version was created.")
+    return TryDatasetScriptOutput(
+        summary=summary,
+        **_run_fields(dataset, run),
+        rows=result.get("rows"),
+        columns=result.get("columns", []),
+        head=[{str(k): _sample_cell(v) for k, v in row.items()} for row in result.get("head", [])],
+    )
+
+
+def probe_output(dataset, run: workshop.Run) -> ScriptRunOutput:
+    return ScriptRunOutput(summary=_run_summary(run, "Done."), **_run_fields(dataset, run))
+
+
+def version_output(dataset, run: workshop.Run) -> AddDatasetVersionOutput:
+    cell = None
+    done = "Done."
+    if run.cell is not None:
+        cell = Cell.objects.select_related("parent").get(pk=run.cell.pk)
+        state = "active" if dataset.active_id == cell.pk else "not active"
+        done = f"{cell.label} from {cell.parent.label}: {cell.rows} rows, {state}."
+    return AddDatasetVersionOutput(
+        summary=_run_summary(run, done),
+        **_run_fields(dataset, run),
+        version=version_summary(dataset, cell) if cell is not None else None,
+    )
+
+
+def dataset_output(dataset, summary: str) -> DatasetOutput:
+    dataset = Dataset.objects.select_related("capability", "active").get(pk=dataset.pk)
+    return DatasetOutput(
+        summary=_clip(summary, _SUMMARY_CHARS),
+        dataset=serialize_dataset_list_item(dataset),
+        resource_links=[dataset_resource_link(dataset)],
     )

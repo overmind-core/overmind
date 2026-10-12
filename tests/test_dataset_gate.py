@@ -7,7 +7,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
+from conftest import EVAL_ROWS, TRAIN_ROWS, add_versions, frozen_dataset
 from django.utils import timezone
 
 from overbae.api.serializers import FinetuningJobSerializer
@@ -24,9 +24,7 @@ from overbae.models import (
     User,
 )
 from overbae.models.optimizer import optimizer_dataset_error
-from overbae.services.datasets import dispatch, lifecycle, use
-from overbae.services.datasets.notebook import run as run_svc
-from overbae.tasks import datasets as dataset_tasks
+from overbae.services.datasets import imports, lifecycle, use
 
 pytestmark = pytest.mark.django_db
 
@@ -104,10 +102,9 @@ def test_a_refused_training_launch_leaves_every_version_unused():
 def test_a_training_job_pins_and_freezes_the_versions_it_was_checked_on():
     project, capability, user, train, evaluation = _setup()
     pinned = evaluation.active_cell
-    later = lifecycle.add_cell(evaluation, title="later", script="df = df.head(1)\n")
-    run_svc.execute(evaluation)
-    evaluation.refresh_from_db()
-    assert evaluation.active_cell == later
+    add_versions(evaluation, [("later", "df = df.head(1)\n")])
+    later = evaluation.active_cell
+    assert later.parent_id == pinned.id
     serializer = _job(project, capability, user, train, evaluation, eval_cell=str(pinned.id))
     assert serializer.is_valid(), serializer.errors
     job = serializer.save(triggered_by=user)
@@ -117,25 +114,17 @@ def test_a_training_job_pins_and_freezes_the_versions_it_was_checked_on():
     assert later.used_at is None
 
 
-def test_a_live_turn_on_an_old_dataset_is_not_reaped():
-    project, _capability, user, train, _evaluation = _setup()
-    Dataset.objects.filter(pk=train.pk).update(updated_at=timezone.now() - timedelta(days=2))
-    dispatch.message_agent(train, user, "hello")
-    assert dataset_tasks.reap_stuck_runs() == {"reaped": 0}
-    train.refresh_from_db()
-    assert train.state == Dataset.State.DIAGNOSING
-
-
-def test_the_reaper_fails_a_state_only_after_that_state_own_limit():
+def test_a_landing_without_an_import_receipt_fails_only_after_the_import_limit():
     project, _capability, _user, train, evaluation = _setup()
-    age = timedelta(seconds=dataset_tasks.RUN_HARD_LIMIT + dataset_tasks.REAP_GRACE + 60)
+    limit = timedelta(seconds=imports.EXECUTION_SECONDS + imports.LEASE_GRACE_SECONDS)
     Dataset.objects.filter(pk=train.pk).update(
-        state="running", workshop_started_at=timezone.now() - age, updated_at=timezone.now() - age
+        state="landing", updated_at=timezone.now() - limit - timedelta(minutes=1)
     )
     Dataset.objects.filter(pk=evaluation.pk).update(
-        state="landing", updated_at=timezone.now() - age
+        state="landing", updated_at=timezone.now() - limit + timedelta(minutes=1)
     )
-    assert dataset_tasks.reap_stuck_runs() == {"reaped": 1}
+    assert imports.reconcile()["orphaned"] == 1
     train.refresh_from_db()
     evaluation.refresh_from_db()
     assert (train.state, evaluation.state) == ("error", "landing")
+    assert train.error == "The worker stopped before this finished."

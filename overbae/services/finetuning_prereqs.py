@@ -129,13 +129,11 @@ def finetune_prerequisite_report(
     warnings: list[str] = []
     product = dataset.active_cell
     if product is None:
-        missing.append("training dataset — no version has run yet")
+        missing.append("training dataset — no version yet")
     elif not product.fits("train")[0]:
         missing.append(f"training dataset — {product.fits('train')[1]}")
     elif not validation.valid:
-        missing.append(
-            "training dataset — fix the rows the validator lists, then run the notebook again"
-        )
+        missing.append("training dataset — fix the rows the validator lists in a new version")
     if eval_dataset is None:
         missing.append(
             "eval dataset — create an eval dataset whose version fits the eval contract "

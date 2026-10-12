@@ -73,7 +73,7 @@ def test_all_tools_return_structured_content_and_project_scoped_rows():
         ("query_task_executions", {"capability": "support"}),
         ("get_job", {"kind": "eval_run", "id": str(eval_run.id)}),
         ("get_job", {"kind": "finetune", "id": str(finetune.id)}),
-        ("get_job", {"kind": "dataset_run", "id": str(dataset.id)}),
+        ("get_job", {"kind": "dataset_import", "id": str(dataset.id)}),
     ]
 
     async def invoke():
@@ -96,8 +96,8 @@ def test_all_tools_return_structured_content_and_project_scoped_rows():
     assert body["query_task_executions"]["task_executions"][0]["trace_id"] == "b" * 32
     assert eval_job["resource"]["uri"] == f"overmind://eval-runs/{eval_run.id}"
     assert finetune_job["resource"]["uri"] == f"overmind://finetunes/{finetune.id}"
-    assert dataset_job["resource"]["uri"] == f"overmind://jobs/dataset_run/{dataset.id}"
-    assert dataset_job["kind"] == "dataset_run"
+    assert dataset_job["resource"]["uri"] == f"overmind://jobs/dataset_import/{dataset.id}"
+    assert dataset_job["kind"] == "dataset_import"
     assert dataset_job["id"] == str(dataset.id)
 
 

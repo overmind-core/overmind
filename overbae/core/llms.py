@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -310,8 +309,6 @@ def _do_openai_completion(
     # Each chat owns its client and loop. Cached asynchronous clients cannot be
     # reused across worker threads or across the loops of successive calls.
     budget = retry_deadline if retry_deadline > 0 else _REQUEST_TIMEOUT
-    if completion_kwargs.get("stream"):
-        return _completion_stream(client, completion_kwargs, request_kwargs, retry_deadline, budget)
 
     async def complete():
         try:
@@ -325,46 +322,6 @@ def _do_openai_completion(
             ) from exc
 
     return asyncio.run(complete())
-
-
-def _completion_stream(client, completion_kwargs, request_kwargs, retry_deadline, budget):
-    async def chunks():
-        deadline = asyncio.get_running_loop().time() + budget
-        try:
-            async with client:
-                async with asyncio.timeout_at(deadline):
-                    stream = await _create_completion(
-                        client, completion_kwargs, request_kwargs, retry_deadline
-                    )
-                try:
-                    iterator = stream.__aiter__()
-                    while True:
-                        if asyncio.get_running_loop().time() >= deadline:
-                            raise TimeoutError
-                        # A single absolute deadline covers every read, including
-                        # SSE comments that never yield a model token.
-                        async with asyncio.timeout_at(deadline):
-                            chunk = await anext(iterator, None)
-                        if chunk is None:
-                            break
-                        yield chunk
-                finally:
-                    await stream.close()
-        except TimeoutError as exc:
-            raise CompletionDeadlineExceededError(
-                f"Completion deadline exceeded after {budget:g}s"
-            ) from exc
-
-    with asyncio.Runner() as runner:
-        iterator = chunks()
-        try:
-            while True:
-                chunk = runner.run(anext(iterator, None))
-                if chunk is None:
-                    break
-                yield chunk
-        finally:
-            runner.run(iterator.aclose())
 
 
 class EmbeddingUnavailableError(RuntimeError):
@@ -656,60 +613,31 @@ def call_llm(
         raise RuntimeError(f"Error calling LLM: {e}") from e
 
 
-# OpenAI rejects unknown keys; cache_control and reasoning_details are OpenRouter-only.
-def _portable_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for message in messages:
-        if message.get("role") == "system" and isinstance(message.get("content"), list):
-            text = "\n".join(
-                str(part.get("text") or "") for part in message["content"] if isinstance(part, dict)
-            )
-            out.append({**message, "content": text})
-        elif "reasoning_details" in message:
-            out.append({k: v for k, v in message.items() if k != "reasoning_details"})
-        else:
-            out.append(message)
-    return out
-
-
 def _tool_completion_kwargs(
-    provider: Provider,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
     model: str | None,
     max_tokens: int,
     fallback_models: list[str] | None,
-    reasoning_effort: str | None = None,
 ) -> tuple[dict, str]:
     selected_model_name = normalize_model_name(model) if model else _get_default_model()
-    selected = (
-        openrouter_slug(selected_model_name) if provider.openrouter_extras else selected_model_name
-    )
+    selected = openrouter_slug(selected_model_name)
     completion_kwargs: dict = {
         "model": selected,
-        "messages": messages if provider.openrouter_extras else _portable_messages(messages),
-        provider.output_cap_param: effective_max_tokens(selected_model_name, max_tokens),
+        "messages": messages,
+        "max_tokens": effective_max_tokens(selected_model_name, max_tokens),
     }
     # An empty tools array is a 400 on some providers.
     if tools:
         completion_kwargs["tools"] = tools
-    if provider.openrouter_extras:
-        extra_body: dict = {"usage": {"include": True}, "provider": {"require_parameters": True}}
-        reasoning_body = _reasoning_extra_body(selected_model_name, reasoning_effort, None)
-        if reasoning_body:
-            extra_body.update(reasoning_body)
-        chain = _fallback_slugs(fallback_models, selected)
-        if chain:
-            extra_body["models"] = chain
-        completion_kwargs["extra_body"] = extra_body
-    elif tools and provider.tools_reasoning_effort:
-        completion_kwargs["reasoning_effort"] = provider.tools_reasoning_effort
-    elif (
-        provider.reasoning_effort
-        and reasoning_effort
-        and reasoning_effort in reasoning_of(selected_model_name).levels
-    ):
-        completion_kwargs["reasoning_effort"] = reasoning_effort
+    extra_body: dict = {"usage": {"include": True}, "provider": {"require_parameters": True}}
+    reasoning_body = _reasoning_extra_body(selected_model_name, None, None)
+    if reasoning_body:
+        extra_body.update(reasoning_body)
+    chain = _fallback_slugs(fallback_models, selected)
+    if chain:
+        extra_body["models"] = chain
+    completion_kwargs["extra_body"] = extra_body
     return completion_kwargs, selected
 
 
@@ -738,13 +666,12 @@ def call_llm_tools(
     this keeps both, which agentic loops need when a model narrates while
     proposing calls.
     """
-    provider = PROVIDERS["openrouter"]
     completion_kwargs, selected = _tool_completion_kwargs(
-        provider, messages, tools, model, max_tokens, fallback_models
+        messages, tools, model, max_tokens, fallback_models
     )
     try:
         response = _do_openai_completion(
-            _provider_client(provider), completion_kwargs, {}, retry_deadline
+            _provider_client("openrouter"), completion_kwargs, {}, retry_deadline
         )
     except SoftTimeLimitExceeded:
         raise
@@ -764,140 +691,6 @@ def call_llm_tools(
     if stats["finish_reason"] in INCOMPLETE_FINISH_REASONS:
         raise IncompleteCompletionError(text, stats)
     return text, tool_calls, stats
-
-
-def _merge_tool_call_delta(acc: dict[int, dict], delta: Any) -> None:
-    for part in delta or ():
-        index = getattr(part, "index", 0) or 0
-        call = acc.setdefault(
-            index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
-        )
-        if getattr(part, "id", None):
-            call["id"] = part.id
-        function = getattr(part, "function", None)
-        if function is None:
-            continue
-        if getattr(function, "name", None):
-            call["function"]["name"] = function.name
-        if getattr(function, "arguments", None):
-            call["function"]["arguments"] += function.arguments
-
-
-def _merge_reasoning_details(acc: list[dict], parts: Any) -> None:
-    for part in parts or ():
-        if not isinstance(part, dict):
-            part = getattr(part, "model_dump", lambda: {})()
-        if not isinstance(part, dict):
-            continue
-        index = part.get("index")
-        target = next((d for d in acc if index is not None and d.get("index") == index), None)
-        if target is None:
-            acc.append(dict(part))
-            continue
-        for key, value in part.items():
-            if key in ("text", "summary", "data") and isinstance(value, str):
-                target[key] = str(target.get(key) or "") + value
-            elif value is not None:
-                target[key] = value
-
-
-@dataclass(frozen=True)
-class ToolStreamDelta:
-    kind: str  # text | reasoning
-    text: str
-
-
-@dataclass
-class ToolStreamResult:
-    text: str
-    tool_calls: list[dict[str, Any]]
-    stats: dict[str, Any]
-    reasoning: str = ""
-    reasoning_details: list[dict[str, Any]] = field(default_factory=list)
-
-    def assistant_message(self) -> dict[str, Any]:
-        message: dict[str, Any] = {"role": "assistant", "content": self.text or None}
-        if self.tool_calls:
-            message["tool_calls"] = self.tool_calls
-        if self.reasoning_details:
-            message["reasoning_details"] = self.reasoning_details
-        return message
-
-
-def stream_llm_tools(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]],
-    model: str | None = None,
-    max_tokens: int = 4000,
-    fallback_models: list[str] | None = None,
-    retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
-    reasoning_effort: str | None = None,
-    provider: Provider | None = None,
-) -> Iterator[ToolStreamDelta | ToolStreamResult]:
-    provider = provider or PROVIDERS["openrouter"]
-    completion_kwargs, selected = _tool_completion_kwargs(
-        provider, messages, tools, model, max_tokens, fallback_models, reasoning_effort
-    )
-    completion_kwargs["stream"] = True
-    completion_kwargs["stream_options"] = {"include_usage": True}
-
-    started = time.monotonic()
-    try:
-        stream = _do_openai_completion(
-            _provider_client(provider), completion_kwargs, {}, retry_deadline
-        )
-    except SoftTimeLimitExceeded:
-        raise
-    except Exception as e:
-        raise RuntimeError(f"Error calling LLM: {e}") from e
-
-    parts: list[str] = []
-    thoughts: list[str] = []
-    details: list[dict] = []
-    calls: dict[int, dict] = {}
-    usage = None
-    served_model = None
-    finish_reason = None
-    try:
-        for chunk in stream:
-            if getattr(chunk, "usage", None):
-                usage = chunk.usage
-            if getattr(chunk, "model", None):
-                served_model = chunk.model
-            choices = getattr(chunk, "choices", None) or ()
-            if not choices:
-                continue
-            finish_reason = getattr(choices[0], "finish_reason", None) or finish_reason
-            delta = getattr(choices[0], "delta", None)
-            if delta is None:
-                continue
-            extra = _extra(delta)
-            thought = extra.get("reasoning") or getattr(delta, "reasoning", None)
-            if isinstance(thought, str) and thought:
-                thoughts.append(thought)
-                yield ToolStreamDelta("reasoning", thought)
-            _merge_reasoning_details(details, extra.get("reasoning_details"))
-            text = getattr(delta, "content", None)
-            if text:
-                parts.append(text)
-                yield ToolStreamDelta("text", text)
-            _merge_tool_call_delta(calls, getattr(delta, "tool_calls", None))
-    except SoftTimeLimitExceeded:
-        raise
-    except Exception as e:
-        raise RuntimeError(f"Error streaming LLM: {e}") from e
-    finally:
-        with suppress(Exception):
-            stream.close()
-
-    tool_calls = [calls[index] for index in sorted(calls)]
-    stats = _tool_call_stats(usage, served_model, selected, (time.monotonic() - started) * 1000)
-    stats["finish_reason"] = finish_reason
-    if finish_reason in INCOMPLETE_FINISH_REASONS:
-        raise IncompleteCompletionError("".join(parts).strip(), stats)
-    yield ToolStreamResult(
-        "".join(parts).strip(), tool_calls, stats, "".join(thoughts).strip(), details
-    )
 
 
 def try_json_parsing(json_data: str):

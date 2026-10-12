@@ -214,9 +214,9 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
     capability, dataset, eval_set = _ready_objects(context)
     extra = Cell.objects.create(
         dataset=dataset,
+        parent=dataset.source,
         position=1,
         title="shaped",
-        state=Cell.State.OK,
         rows=11,
         fingerprint=f"fp-opt-{uuid.uuid4().hex[:8]}",
         intent_report={"eval": {"ok": True, "reason": ""}},

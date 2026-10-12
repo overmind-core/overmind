@@ -1,5 +1,5 @@
-"""A 20,000-row table moves through landing, a cell, paging and the diff inside
-budgets a per-row Python loop or a quadratic join would miss by a wide margin."""
+"""A 20,000-row table moves through landing, a sandboxed version, paging and the diff
+inside budgets a per-row Python loop or a quadratic join would miss by a wide margin."""
 
 from __future__ import annotations
 
@@ -8,9 +8,8 @@ import uuid
 
 import pytest
 
-from overbae.models import Dataset, Project
-from overbae.services.datasets import diff, land, lifecycle, paths, store
-from overbae.services.datasets.notebook import run as run_svc
+from overbae.models import Dataset, Execution, Project
+from overbae.services.datasets import diff, executions, land, paths, store
 
 pytestmark = pytest.mark.django_db
 ROWS = 20_000
@@ -41,10 +40,19 @@ def test_twenty_thousand_transcripts_land_run_page_and_diff_within_budget():
     dataset.refresh_from_db()
     assert dataset.intent == "train" and dataset.source.fits("train") == (True, "")
 
-    cell = lifecycle.add_cell(dataset, title="Drop a tag", script="df = df[df.tag != 3]\n")
-    _timed(30, lambda: run_svc.execute(dataset))
-    cell.refresh_from_db()
-    assert cell.state == "ok" and cell.rows == ROWS - len(range(3, ROWS, 7))
+    done = _timed(
+        30,
+        lambda: executions.run_now(
+            dataset,
+            mode=Execution.Mode.CELL,
+            parent=dataset.source,
+            script="df = df[df.tag != 3]\n",
+            title="Drop a tag",
+        ),
+    )
+    cell = done.cell
+    assert cell is not None, done.run.error
+    assert cell.rows == ROWS - len(range(3, ROWS, 7))
 
     before = paths.cell_path(dataset.id, dataset.source.id)
     after = paths.cell_path(dataset.id, cell.id)

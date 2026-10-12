@@ -212,8 +212,6 @@ def clerk(settings, fake_llm) -> ClerkAPI:
 @pytest.fixture(autouse=True)
 def _openrouter_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
-    # The Cursor SDK dials out from a bridge process the socket guard cannot see.
-    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -247,26 +245,35 @@ def _media_root(settings, tmp_path):
 
 @pytest.fixture(autouse=True)
 def _inline_dataset_tasks(monkeypatch):
-    """Landing and runs execute in-process: no worker in tests, and the API's
-    202 answers still leave a finished version behind."""
+    """Landing and script runs execute in-process: no worker in tests, and the API's
+    202 answers still leave a finished landing or run behind."""
     from overbae.tasks import datasets as dataset_tasks
 
-    for task in (dataset_tasks.land, dataset_tasks.run):
+    for task in (dataset_tasks.land, dataset_tasks.execute):
         monkeypatch.setattr(
             task,
             "apply_async",
             lambda kwargs, task_id=None, _t=task, **_: _t.apply(kwargs=kwargs, task_id=task_id),
         )
-    # The agent needs Cursor; a test that wants a turn drives the agent module itself.
-    # Landing hands the dataset to its first scan, so the stub ends that scan.
-    from overbae.services.datasets.notebook import agent
 
-    monkeypatch.setattr(
-        dataset_tasks.diagnose,
-        "apply_async",
-        lambda kwargs, **_: agent.settle(kwargs["dataset_id"]),
-    )
-    monkeypatch.setattr(dataset_tasks.turn, "apply_async", lambda kwargs, **_: None)
+
+def add_versions(dataset, steps, *, user=None):
+    """Add each ``(title, script)`` as a child of the one before, through the sandbox,
+    and make the last one active."""
+    from overbae.models import Execution
+    from overbae.services.datasets import executions, versions
+
+    parent = dataset.active_cell
+    for title, script in steps:
+        done = executions.run_now(
+            dataset, mode=Execution.Mode.CELL, parent=parent, script=script, title=title, user=user
+        )
+        assert done.cell is not None, done.run.error
+        parent = done.cell
+    if steps:
+        versions.activate(dataset, parent)
+    dataset.refresh_from_db()
+    return dataset
 
 
 def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=None, user=None):
@@ -274,7 +281,6 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     ready. ``rows`` defaults to a two-row table of the requested intent."""
     from overbae.models import Dataset
     from overbae.services.datasets import land
-    from overbae.services.datasets.notebook import run as run_svc
 
     if rows is None:
         rows = TRAIN_ROWS if contract == "train" else EVAL_ROWS
@@ -282,7 +288,6 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
         project=project, capability=capability, name=name, intent=contract or "pending"
     )
     land.land_rows(dataset, list(rows), user=user)
-    run_svc.execute(dataset, user=user)
     dataset.refresh_from_db()
     return dataset
 
@@ -303,8 +308,9 @@ def _rubric_compiler(fake_llm):
 
 @pytest.fixture
 def make_dataset(settings, tmp_path):
-    """Land rows and run the chain in-process, so a test gets a version back
-    synchronously without a worker. ``cells`` is a list of ``(title, script)``."""
+    """Land rows and add versions in-process, so a test gets a version back
+    synchronously without a worker. ``cells`` is a list of ``(title, script)`` added as
+    a chain of children; the last one becomes active."""
 
     def _make(
         project,
@@ -313,14 +319,12 @@ def make_dataset(settings, tmp_path):
         name="rows",
         capability=None,
         cells=None,
-        run=True,
         user=None,
         source_kind="file",
         target=None,
     ):
         from overbae.models import Dataset
-        from overbae.services.datasets import land, lifecycle
-        from overbae.services.datasets.notebook import run as run_svc
+        from overbae.services.datasets import land
 
         dataset = Dataset.objects.create(
             project=project,
@@ -330,11 +334,7 @@ def make_dataset(settings, tmp_path):
             intent=target or "pending",
         )
         land.land_rows(dataset, list(rows), user=user)
-        for title, script in cells or []:
-            lifecycle.add_cell(dataset, title=title, script=script, user=user)
-        if run:
-            run_svc.execute(dataset, user=user)
         dataset.refresh_from_db()
-        return dataset
+        return add_versions(dataset, cells or [], user=user)
 
     return _make
