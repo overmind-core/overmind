@@ -9,7 +9,9 @@ from sandbox.protocol import HeaderReader, header_bytes
 
 def run(url: str, token: str, script: str, frame: Path, *, mode: str = "cell"):
     def body():
-        yield header_bytes({"mode": mode, "script": script})
+        yield header_bytes(
+            {"mode": mode, "script": script, "input_bytes": tables.uncompressed_bytes(frame)}
+        )
         yield frame.read_bytes()
 
     with httpx.stream(
@@ -32,7 +34,8 @@ def test_a_wrong_token_is_refused(sandbox_server, tmp_path):
 
     response = httpx.post(
         f"{url}/v1/run",
-        content=header_bytes({"mode": "cell", "script": "df = df"}) + frame.read_bytes(),
+        content=header_bytes({"mode": "cell", "script": "df = df", "input_bytes": 1})
+        + frame.read_bytes(),
         headers={"Authorization": "Bearer wrong"},
     )
 

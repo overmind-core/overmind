@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import struct
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 PROTOCOL = 1
 MAX_HEADER_BYTES = 1024**2
@@ -52,10 +51,10 @@ class HeaderReader:
         return self.header
 
 
-def frame(header: dict[str, Any], payload: Path | None = None) -> Iterator[bytes]:
+def frame(header: dict[str, Any], payload: BinaryIO | None = None) -> Iterator[bytes]:
     yield header_bytes(header)
     if payload is None:
         return
-    with open(payload, "rb") as fh:
-        while chunk := fh.read(CHUNK_BYTES):
+    with payload:
+        while chunk := payload.read(CHUNK_BYTES):
             yield chunk

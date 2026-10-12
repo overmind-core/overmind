@@ -57,11 +57,11 @@ def reconcile_imports():
     reject_on_worker_lost=True,
     max_retries=None,
 )
-def execute(self, *, execution_id: str, busy: int = 0, unreachable: int = 0) -> None:
+def execute(self, *, execution_id: str, unreachable: int = 0) -> None:
     """Idempotent: a run that is not ``queued`` is owned by another delivery. Retries
-    are bounded by ``executions`` (slot wait, busy and unreachable sandbox)."""
+    are bounded by ``executions`` (time in the queue, unreachable sandbox)."""
     try:
-        retry = executions.perform(execution_id, busy=busy, unreachable=unreachable)
+        retry = executions.perform(execution_id, unreachable=unreachable)
     except SoftTimeLimitExceeded:
         executions.on_soft_limit(execution_id)
         return
@@ -70,7 +70,6 @@ def execute(self, *, execution_id: str, busy: int = 0, unreachable: int = 0) -> 
             countdown=retry.countdown,
             kwargs={
                 "execution_id": execution_id,
-                "busy": retry.busy,
                 "unreachable": retry.unreachable,
             },
         )

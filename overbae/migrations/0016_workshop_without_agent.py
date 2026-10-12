@@ -31,13 +31,48 @@ CONSUMERS = (
 )
 
 
+def _cell_file(dataset_id, cell_id) -> Path:
+    return Path(settings.MEDIA_ROOT) / "datasets" / str(dataset_id) / "cells" / f"{cell_id}.parquet"
+
+
+def _orphans(cells) -> set:
+    """Cells the version tree cannot hold: not run, run on a frame that is no longer the
+    previous cell's (an old chain kept ``ok`` cells after an edit upstream), or without
+    their file. Every cell after one of these was computed from it, or from older data."""
+    removed = set()
+    kept = None
+    for cell in cells:
+        current = (
+            cell.state == "ok"
+            and (kept is None or cell.input_fingerprint == kept.fingerprint)
+            and _cell_file(cell.dataset_id, cell.pk).exists()
+        )
+        if current and (kept is not None or not removed):
+            kept = cell
+        else:
+            removed.add(cell.pk)
+    return removed
+
+
 def build_version_tree(apps, schema_editor):
     alias = schema_editor.connection.alias
     Cell = apps.get_model("overbae", "Cell")
     Dataset = apps.get_model("overbae", "Dataset")
 
-    stale = Cell.objects.using(alias).exclude(state="ok")
-    stale_ids = set(stale.values_list("pk", flat=True))
+    chains = {}
+    for cell in Cell.objects.using(alias).order_by("dataset_id", "position"):
+        chains.setdefault(cell.dataset_id, []).append(cell)
+    if chains and not any(
+        _cell_file(cell.dataset_id, cell.pk).exists() for chain in chains.values() for cell in chain
+    ):
+        raise RuntimeError(
+            f"No cell file exists under {settings.MEDIA_ROOT}. Run the migration where the "
+            "dataset volume is mounted."
+        )
+    stale_ids = set()
+    for chain in chains.values():
+        stale_ids |= _orphans(chain)
+    stale = Cell.objects.using(alias).filter(pk__in=stale_ids)
     referenced = set()
     for model_name, fields in CONSUMERS:
         model = apps.get_model("overbae", model_name)
@@ -49,24 +84,19 @@ def build_version_tree(apps, schema_editor):
             )
     if referenced:
         raise RuntimeError(
-            "These unrun cells are used by training, evaluation or the optimizer; "
-            "resolve them before migrating: " + ", ".join(sorted(str(pk) for pk in referenced))
+            "These cells are not run, are out of date or have no file, and training, "
+            "evaluation or the optimizer uses them; resolve them before migrating: "
+            + ", ".join(sorted(str(pk) for pk in referenced))
         )
 
     removed = Counter()
     files = []
     for cell_id, dataset_id in stale.values_list("pk", "dataset_id"):
-        files.append(
-            Path(settings.MEDIA_ROOT)
-            / "datasets"
-            / str(dataset_id)
-            / "cells"
-            / f"{cell_id}.parquet"
-        )
+        files.append(_cell_file(dataset_id, cell_id))
         removed[dataset_id] += 1
     stale.delete()
     for dataset_id, count in sorted(removed.items(), key=lambda item: str(item[0])):
-        print(f"  dataset {dataset_id}: deleted {count} unrun cells")
+        print(f"  dataset {dataset_id}: deleted {count} cells outside the version tree")
 
     def delete_files():
         for path in files:
@@ -115,7 +145,8 @@ def build_version_tree(apps, schema_editor):
 
 def irreversible(apps, schema_editor):
     raise RuntimeError(
-        "0016_workshop_without_agent deleted unrun cells, chats and proposals. "
+        "0016_workshop_without_agent deleted cells outside the version tree, chats and "
+        "proposals. "
         "Restore a database backup to go back."
     )
 

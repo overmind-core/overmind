@@ -233,7 +233,7 @@ services:
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
       SANDBOX_MEMORY_BYTES: ${SANDBOX_MEMORY_BYTES:-0}
     tmpfs:
-      - /tmp
+      - /tmp:size=8g
     volumes:
       - ./sandbox:/code/sandbox
     networks:

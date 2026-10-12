@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from sandbox import libraries, tables
 
@@ -28,13 +30,17 @@ PROCESSES = 256
 STDOUT_CHARS = 4000
 ERROR_CHARS = 1200
 RESERVE_WAIT_SECONDS = 120
+KILL_SECONDS = 10
+EXTRACTION_BYTES = 1024**2
 UIDS = range(20000, 21000)
+SHARED_DIRS = ("/tmp", "/var/tmp", "/dev/shm")
 # Measured peak of a script: 4-5.5x the frame's uncompressed Parquet bytes.
 _FRAME_FACTOR = 5.5
 _CHILD_BASE_BYTES = 256 * 1024**2
 _GROWTH = 1.5
 _BUDGET_SHARE = 0.6
 _WATCH_SECONDS = 0.2
+_DISK_EVERY = 5
 _KILLED = (-signal.SIGKILL, -signal.SIGXCPU, 128 + signal.SIGKILL)
 
 _FORBIDDEN_CALLS = frozenset(
@@ -66,7 +72,8 @@ class Outcome:
     error: str = ""
     stdout: str = ""
     seconds: float = 0.0
-    output: Path | None = None
+    output: BinaryIO | None = None
+    extraction: dict | None = None
 
 
 def gib(value: float) -> str:
@@ -99,15 +106,6 @@ def memory_budget() -> int:
     return configured or int(host_memory() * _BUDGET_SHARE)
 
 
-def script_reservation(source: Path) -> int:
-    loaded = tables.uncompressed_bytes(source)
-    return max(GIB, int(loaded * _FRAME_FACTOR) + _CHILD_BASE_BYTES)
-
-
-def extract_reservation(document: Path) -> int:
-    return max(2 * GIB, 4 * document.stat().st_size)
-
-
 def audit(script: str) -> list[str]:
     allowed = libraries.allowed_imports()
     violations: list[str] = []
@@ -133,8 +131,63 @@ def audit(script: str) -> list[str]:
     return sorted(set(violations))
 
 
+SCRIPT_MODES = ("cell", "inspect")
+
+
+def need_for(header: dict) -> int:
+    """``input_bytes`` is the frame's uncompressed size for a script and the file's size
+    for a document."""
+    declared = int(header["input_bytes"])
+    if header["mode"] == "extract":
+        return max(2 * GIB, 4 * declared)
+    return max(GIB, int(declared * _FRAME_FACTOR) + _CHILD_BASE_BYTES)
+
+
+def refusal(header: dict, need: int, budget: int) -> str:
+    if header["mode"] in SCRIPT_MODES:
+        violations = audit(header["script"])
+        if violations:
+            return "; ".join(violations[:5])
+    if need <= budget:
+        return ""
+    if header["mode"] == "extract":
+        return (
+            f"This document needs about {gib(need)} GiB of memory to extract; "
+            f"this worker has {gib(budget)} GiB."
+        )
+    noun = "cell" if header["mode"] == "cell" else "script"
+    return (
+        f"This version needs about {gib(need)} GiB of memory for a pandas {noun}; "
+        f"this worker has {gib(budget)} GiB."
+    )
+
+
+def input_matches(header: dict, path: Path) -> bool:
+    declared = int(header["input_bytes"])
+    if header["mode"] == "extract":
+        return path.stat().st_size == declared
+    try:
+        return tables.uncompressed_bytes(path) <= declared
+    except (OSError, ValueError):
+        return False
+
+
 def shared_uid() -> bool:
     return os.geteuid() != 0
+
+
+def runs_dir() -> Path:
+    # A run owns its scratch dir, and a sticky /tmp lets an owner rename its dir and leave
+    # a symlink in its place; under a parent only the server can write, it cannot.
+    path = Path(tempfile.gettempdir()) / "sandbox"
+    with contextlib.suppress(FileExistsError):
+        path.mkdir(mode=0o711)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid():
+        raise RuntimeError(f"{path} is not a directory this server owns.")
+    if stat.S_IMODE(info.st_mode) != 0o711:
+        path.chmod(0o711)
+    return path
 
 
 def _alive(pid: int) -> bool:
@@ -149,73 +202,132 @@ def _alive(pid: int) -> bool:
 
 @contextlib.contextmanager
 def _ledger() -> Iterator[dict]:
-    path = Path(tempfile.gettempdir()) / "sandbox-ledger.json"
-    with open(path, "a+", encoding="utf-8") as fh:
+    with open(runs_dir() / "ledger.json", "a+", encoding="utf-8") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:
             fh.seek(0)
             try:
-                entries = json.loads(fh.read() or "{}")
+                saved = json.loads(fh.read() or "{}")
             except ValueError:
-                entries = {}
-            entries = {k: v for k, v in entries.items() if _alive(int(v["pid"]))}
-            yield entries
+                saved = {}
+            ledger = {
+                "runs": {k: v for k, v in saved.get("runs", {}).items() if _alive(int(v["pid"]))},
+                "released": saved.get("released", {}),
+            }
+            yield ledger
             fh.seek(0)
             fh.truncate()
-            fh.write(json.dumps(entries))
+            fh.write(json.dumps(ledger))
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
-@contextlib.contextmanager
-def reserved(need: int, budget: int) -> Iterator[int | None]:
-    token = uuid.uuid4().hex
-    deadline = time.monotonic() + RESERVE_WAIT_SECONDS
-    while True:
-        with _ledger() as entries:
-            used = {e.get("uid") for e in entries.values()}
-            free = [None] if shared_uid() else [u for u in UIDS if u not in used][:1]
-            if free and sum(int(e["bytes"]) for e in entries.values()) + need <= budget:
-                uid = free[0]
-                entries[token] = {"pid": os.getpid(), "bytes": need, "uid": uid}
-                break
-        if time.monotonic() > deadline:
-            raise BusyError
-        time.sleep(0.5)
-    try:
-        yield uid
-    finally:
-        with _ledger() as entries:
-            entries.pop(token, None)
-
-
-def _members(leader: int, uid: int | None) -> list[tuple[int, int]]:
+def _processes() -> Iterator[tuple[int, int, int, int]]:
+    """``(pid, uid, process group, rss bytes)`` of each live process. A zombie holds no
+    memory and cannot be killed again."""
     page = os.sysconf("SC_PAGE_SIZE")
-    found = []
     for name in os.listdir("/proc"):
         if not name.isdigit():
             continue
         try:
-            if uid is not None and os.stat(f"/proc/{name}").st_uid != uid:
-                continue
+            uid = os.stat(f"/proc/{name}").st_uid
             with open(f"/proc/{name}/stat", encoding="ascii", errors="replace") as fh:
                 fields = fh.read().rsplit(")", 1)[1].split()
         except (OSError, IndexError):
             continue
-        if uid is None and int(fields[2]) != leader:
+        if fields[0] in ("Z", "X"):
             continue
-        found.append((int(name), int(fields[21]) * page))
-    return found
+        yield int(name), uid, int(fields[2]), int(fields[21]) * page
 
 
-def _kill(leader: int, uid: int | None) -> None:
+def _members(leader: int, uid: int | None) -> list[tuple[int, int]]:
+    if uid is None:
+        return [(pid, rss) for pid, _, group, rss in _processes() if group == leader]
+    return [(pid, rss) for pid, owner, _, rss in _processes() if owner == uid]
+
+
+def _kill_all(uid: int) -> None:
+    for pid, _ in _members(0, uid):
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+
+def _stop(leader: int, uid: int | None) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(leader, signal.SIGKILL)
-    # A child that left the group with setsid() still runs as the run's uid.
+    if uid is None:
+        return
+    # A process forked after a pass scanned /proc survives it, and a child that left
+    # the group with setsid() still runs as the run's uid: repeat until none is left.
+    deadline = time.monotonic() + KILL_SECONDS
+    while _members(leader, uid) and time.monotonic() < deadline:
+        _kill_all(uid)
+        time.sleep(0.05)
+
+
+def _free_uid(ledger: dict) -> int | None:
+    taken = {entry["uid"] for entry in ledger["runs"].values()}
+    lingering = {owner for _, owner, _, _ in _processes() if owner in UIDS}
+    for uid in lingering - taken:
+        _kill_all(uid)
+    free = [uid for uid in UIDS if uid not in taken and uid not in lingering]
+    if not free:
+        return None
+    released = ledger["released"]
+    return min(free, key=lambda uid: released.get(str(uid), 0.0))
+
+
+@dataclass
+class Slot:
+    token: str
+    uid: int | None
+    limit: int
+
+
+def reserve(need: int, budget: int) -> Slot:
+    token = uuid.uuid4().hex
+    deadline = time.monotonic() + RESERVE_WAIT_SECONDS
+    while True:
+        with _ledger() as ledger:
+            runs = ledger["runs"]
+            if sum(int(entry["bytes"]) for entry in runs.values()) + need <= budget:
+                uid = None if shared_uid() else _free_uid(ledger)
+                if shared_uid() or uid is not None:
+                    runs[token] = {"pid": os.getpid(), "bytes": need, "uid": uid}
+                    return Slot(token, uid, int(need * _GROWTH))
+        if time.monotonic() > deadline:
+            raise BusyError
+        time.sleep(0.5)
+
+
+def release(slot: Slot) -> None:
+    with _ledger() as ledger:
+        ledger["runs"].pop(slot.token, None)
+        if slot.uid is not None:
+            ledger["released"][str(slot.uid)] = time.time()
+
+
+def _allocated(root: str | Path, uid: int | None) -> int:
+    skip = str(runs_dir())
+    total = 0
+    for parent, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if os.path.join(parent, d) != skip]
+        for name in files:
+            try:
+                info = os.lstat(os.path.join(parent, name))
+            except OSError:
+                continue
+            if uid is None or info.st_uid == uid:
+                total += info.st_blocks * 512
+    return total
+
+
+def _files_bytes(scratch: Path, uid: int | None) -> int:
+    # /tmp is a tmpfs: what a run writes there is memory the RSS sum does not see.
+    total = _allocated(scratch, None)
     if uid is not None:
-        for pid, _ in _members(leader, uid):
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
+        total += sum(_allocated(shared, uid) for shared in SHARED_DIRS)
+    return total
 
 
 def hand_over(scratch: Path, uid: int | None) -> None:
@@ -234,8 +346,10 @@ def _take_back(scratch: Path, uid: int | None) -> None:
             os.chown(Path(root) / name, owner, owner, follow_symlinks=False)
     os.chown(scratch, owner, owner)
     # A reused uid must not find files an earlier run left in a shared directory.
-    for shared in ("/tmp", "/var/tmp", "/dev/shm"):
+    skip = str(runs_dir())
+    for shared in SHARED_DIRS:
         for root, dirs, files in os.walk(shared):
+            dirs[:] = [d for d in dirs if os.path.join(root, d) != skip]
             for name in [*dirs, *files]:
                 path = Path(root) / name
                 try:
@@ -250,6 +364,30 @@ def _take_back(scratch: Path, uid: int | None) -> None:
                     continue
 
 
+def claim(path: Path, max_bytes: int | None = None) -> BinaryIO | None:
+    """Open a file the run wrote. The run controls the name: it can be a symlink to
+    another run's data, a FIFO that blocks ``open`` for ever, or a hard link."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return None
+    info = os.fstat(fd)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or (max_bytes is not None and info.st_size > max_bytes)
+    ):
+        os.close(fd)
+        return None
+    return os.fdopen(fd, "rb")
+
+
+def _tail(fh: BinaryIO, chars: int) -> str:
+    size = fh.seek(0, os.SEEK_END)
+    fh.seek(max(0, size - 4 * chars))
+    return fh.read().decode("utf-8", "replace")[-chars:]
+
+
 @dataclass
 class Child:
     argv: list[str]
@@ -258,7 +396,8 @@ class Child:
     wall_seconds: int
 
 
-def spawn(child: Child, scratch: Path, uid: int | None, limit: int) -> Outcome:
+def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
+    uid = slot.uid
     hand_over(scratch, uid)
     rlimits = [child.cpu_seconds, FILE_SIZE_BYTES, 0 if uid is None else PROCESSES]
     env = {
@@ -268,6 +407,7 @@ def spawn(child: Child, scratch: Path, uid: int | None, limit: int) -> Outcome:
         "OMP_NUM_THREADS": "2",
         "MALLOC_ARENA_MAX": "2",
         "HOME": str(scratch),
+        "TMPDIR": str(scratch),
         "TIKTOKEN_CACHE_DIR": "/opt/sandbox/tiktoken",
     }
     identity = {} if uid is None else {"user": uid, "group": uid, "extra_groups": []}
@@ -288,6 +428,8 @@ def spawn(child: Child, scratch: Path, uid: int | None, limit: int) -> Outcome:
         except (OSError, subprocess.SubprocessError) as exc:
             return Outcome(error=f"The runner could not start: {exc}")
         deadline = started + child.wall_seconds
+        files = 0
+        tick = 0
         try:
             while True:
                 try:
@@ -295,71 +437,99 @@ def spawn(child: Child, scratch: Path, uid: int | None, limit: int) -> Outcome:
                     break
                 except subprocess.TimeoutExpired:
                     pass
+                if tick % _DISK_EVERY == 0:
+                    files = _files_bytes(scratch, uid)
+                tick += 1
+                rss = sum(rss for _, rss in _members(proc.pid, uid))
                 if time.monotonic() > deadline:
                     stopped = (
                         f"The {child.noun} ran longer than {child.wall_seconds}s and was stopped."
                     )
-                elif sum(rss for _, rss in _members(proc.pid, uid)) > limit:
+                elif rss > slot.limit:
                     stopped = (
-                        f"The {child.noun} used more than {gib(limit)} GiB of memory "
+                        f"The {child.noun} used more than {gib(slot.limit)} GiB of memory "
                         "and was stopped."
+                    )
+                elif rss + files > slot.limit:
+                    stopped = (
+                        f"The {child.noun} used more than {gib(slot.limit)} GiB of memory and "
+                        "scratch files and was stopped."
                     )
                 if stopped:
                     break
         finally:
-            _kill(proc.pid, uid)
+            _stop(proc.pid, uid)
             proc.wait()
             _take_back(scratch, uid)
-        out.seek(0)
-        err.seek(0)
-        stdout = out.read().decode("utf-8", "replace")
-        stderr = err.read().decode("utf-8", "replace")
+        stdout = _tail(out, STDOUT_CHARS)
+        stderr = _tail(err, 2 * ERROR_CHARS)
     seconds = round(time.monotonic() - started, 3)
-    tail = stdout[-STDOUT_CHARS:]
     if stopped:
-        return Outcome(error=stopped, stdout=tail, seconds=seconds)
+        return Outcome(error=stopped, stdout=stdout, seconds=seconds)
     if proc.returncode != 0:
         failure = (stderr or stdout).strip()[-ERROR_CHARS:]
         if proc.returncode in _KILLED:
             failure = failure or f"The {child.noun} used more memory or CPU than allowed."
         return Outcome(
             error=failure or f"The {child.noun} exited with code {proc.returncode}.",
-            stdout=tail,
+            stdout=stdout,
             seconds=seconds,
         )
-    return Outcome(ok=True, stdout=tail, seconds=seconds)
+    return Outcome(ok=True, stdout=stdout, seconds=seconds)
 
 
-def run_script(script: str, scratch: Path, *, produce_frame: bool) -> Outcome:
+def run(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
+    if header["mode"] == "extract":
+        return _extract(header, scratch, source, slot)
+    produce_frame = header["mode"] == "cell"
     noun = "cell" if produce_frame else "script"
-    violations = audit(script)
-    if violations:
-        return Outcome(error="; ".join(violations[:5]))
-    source = scratch / "input.parquet"
-    need, budget = script_reservation(source), memory_budget()
-    if need > budget:
-        return Outcome(
-            error=f"This version needs about {gib(need)} GiB of memory for a pandas {noun}; "
-            f"this worker has {gib(budget)} GiB."
-        )
-    (scratch / "script.py").write_text(script, encoding="utf-8")
-    output = scratch / "output.parquet"
+    (scratch / "script.py").write_text(header["script"], encoding="utf-8")
     child = Child(
         argv=[
             str(Path(__file__).with_name("child.py")),
             "script.py",
             source.name,
-            output.name,
+            "output.parquet",
             "cell" if produce_frame else "inspect",
         ],
         noun=noun,
         cpu_seconds=SCRIPT_CPU_SECONDS,
         wall_seconds=SCRIPT_WALL_SECONDS,
     )
-    with reserved(need, budget) as uid:
-        outcome = spawn(child, scratch, uid, int(need * _GROWTH))
+    outcome = spawn(child, scratch, slot)
     if outcome.ok and produce_frame:
-        if not output.exists():
+        outcome.output = claim(scratch / "output.parquet")
+        if outcome.output is None:
             return Outcome(error="The cell's output could not be read.", stdout=outcome.stdout)
-        outcome.output = output
+    return outcome
+
+
+def _extract(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
+    child = Child(
+        argv=[
+            str(Path(__file__).with_name("documents") / "child.py"),
+            source.name,
+            header["filename"],
+            "output.parquet",
+            "extraction.json",
+        ],
+        noun="document extraction",
+        cpu_seconds=EXTRACT_CPU_SECONDS,
+        wall_seconds=EXTRACT_WALL_SECONDS,
+    )
+    outcome = spawn(child, scratch, slot)
+    if not outcome.ok:
+        return outcome
+    unreadable = Outcome(error="The extraction's output could not be read.", stdout=outcome.stdout)
+    report = claim(scratch / "extraction.json", EXTRACTION_BYTES)
+    if report is None:
+        return unreadable
+    with report:
+        try:
+            outcome.extraction = json.loads(report.read())
+        except ValueError:
+            return unreadable
+    outcome.output = claim(scratch / "output.parquet")
+    if outcome.output is None or not isinstance(outcome.extraction, dict):
+        return unreadable
     return outcome

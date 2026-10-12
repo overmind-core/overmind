@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 import redis
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Max
@@ -25,6 +26,7 @@ from django.utils import timezone
 from overbae.models import Cell, Dataset, Execution
 from overbae.services.datasets import events, measure, paths, review, store, synthetic
 from overbae.services.datasets.lifecycle import DatasetError
+from sandbox import tables
 from sandbox.protocol import CHUNK_BYTES, HeaderReader, header_bytes
 
 logger = logging.getLogger(__name__)
@@ -35,10 +37,9 @@ WAIT_SECONDS = 25
 POLL_SECONDS = 0.5
 STDOUT_CHARS = 4000
 SLOT_LEASE_SECONDS = 600
-SLOT_WAIT_SECONDS = 15 * 60
+QUEUE_LIMIT_SECONDS = 15 * 60
 SLOT_RETRY_SECONDS = 2
 BUSY_RETRY_SECONDS = 5
-BUSY_RETRIES = 24
 UNREACHABLE_RETRY_SECONDS = (2, 4, 8)
 STALE_RUNNING_SECONDS = 11 * 60
 STALE_QUEUED_SECONDS = 20 * 60
@@ -47,8 +48,9 @@ VALUE_CHARS = 400
 
 STOPPED = "The run stopped without a result."
 UNAVAILABLE = "The sandbox is unavailable."
-NO_MEMORY = "The sandbox had no free memory for 2 minutes."
-NO_SLOT = "This project's scripts waited 15 minutes for a free slot."
+NO_MEMORY = "The sandbox had no free memory for this run."
+NO_SLOT = "The run waited 15 minutes for a free slot in this project."
+FAILED_ON_WORKER = "The run failed on the worker. The error is in the worker log."
 
 _TAKE_SLOT = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -72,7 +74,6 @@ class SandboxUnavailableError(Exception):
 @dataclass
 class Retry:
     countdown: float
-    busy: int = 0
     unreachable: int = 0
 
 
@@ -351,6 +352,7 @@ def add_version(
         impact = review.impact(parent_path, final)
         measured = Dataset.objects.select_related("capability").get(pk=dataset.pk)
         fields = measure.describe_frame(measured, final)
+        destination: Path | None = None
         try:
             with transaction.atomic():
                 locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
@@ -372,8 +374,15 @@ def add_version(
                 destination = paths.cell_path(dataset.pk, cell.pk)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(final, destination)
-        except IntegrityError:
-            return Cell.objects.get(parent=parent, script_sha256=digest)
+        except BaseException as exc:
+            # The row rolled back; a file moved before the commit failed has no row.
+            if destination is not None:
+                destination.unlink(missing_ok=True)
+            if isinstance(exc, IntegrityError):
+                existing = Cell.objects.filter(parent=parent, script_sha256=digest).first()
+                if existing is not None:
+                    return existing
+            raise
     transaction.on_commit(
         lambda: events.publish(
             dataset.pk,
@@ -426,10 +435,15 @@ def _requeue(run: Execution) -> None:
     _move(run, Execution.State.RUNNING, state=Execution.State.QUEUED, started_at=None)
 
 
+def _waited_too_long(run: Execution) -> bool:
+    # Slot and memory waits share one clock from submission, so a run gives up well
+    # before the sweep fails a queued run as stale.
+    return run.queued_at < timezone.now() - timedelta(seconds=QUEUE_LIMIT_SECONDS)
+
+
 def perform(
     execution_id: Any,
     *,
-    busy: int = 0,
     unreachable: int = 0,
     slots: bool = True,
     retries: bool = True,
@@ -444,7 +458,7 @@ def perform(
     if run is None or run.state != Execution.State.QUEUED:
         return None
     if slots and not take_slot(run):
-        if run.queued_at < timezone.now() - timedelta(seconds=SLOT_WAIT_SECONDS):
+        if _waited_too_long(run):
             finish(
                 run,
                 Execution.State.FAILED,
@@ -453,17 +467,29 @@ def perform(
                 expected=Execution.State.QUEUED,
             )
             return None
-        return Retry(SLOT_RETRY_SECONDS, busy, unreachable)
+        return Retry(SLOT_RETRY_SECONDS, unreachable)
+    if not _start(run):
+        # A second delivery matches the slot the running delivery holds; leave it.
+        if (
+            slots
+            and not Execution.objects.filter(pk=run.pk, state=Execution.State.RUNNING).exists()
+        ):
+            release_slot(run)
+        return None
     try:
-        if not _start(run):
-            return None
-        return _execute(run, busy=busy, unreachable=unreachable, retries=retries)
+        return _execute(run, unreachable=unreachable, retries=retries)
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception:
+        logger.exception("workshop execution %s failed on the worker", run.pk)
+        finish(run, Execution.State.FAILED, error=FAILED_ON_WORKER)
+        return None
     finally:
         if slots:
             release_slot(run)
 
 
-def _execute(run: Execution, *, busy: int, unreachable: int, retries: bool) -> Retry | None:
+def _execute(run: Execution, *, unreachable: int, retries: bool) -> Retry | None:
     dataset, parent = run.dataset, run.parent
     if parent is None:
         finish(run, Execution.State.FAILED, error="The version this run read was deleted.")
@@ -480,21 +506,22 @@ def _execute(run: Execution, *, busy: int, unreachable: int, retries: bool) -> R
                 {
                     "mode": "inspect" if run.mode == Execution.Mode.PROBE else "cell",
                     "script": run.script,
+                    "input_bytes": tables.uncompressed_bytes(parent_path),
                 },
                 parent_path,
                 output,
             )
         except SandboxBusyError:
-            if retries and busy < BUSY_RETRIES:
+            if retries and not _waited_too_long(run):
                 _requeue(run)
-                return Retry(BUSY_RETRY_SECONDS, busy + 1, unreachable)
+                return Retry(BUSY_RETRY_SECONDS, unreachable)
             finish(run, Execution.State.FAILED, error=NO_MEMORY, transient=True)
             return None
         except SandboxUnavailableError as exc:
             logger.warning("sandbox unavailable for execution %s: %s", run.pk, exc)
             if retries and unreachable < len(UNREACHABLE_RETRY_SECONDS):
                 _requeue(run)
-                return Retry(UNREACHABLE_RETRY_SECONDS[unreachable], busy, unreachable + 1)
+                return Retry(UNREACHABLE_RETRY_SECONDS[unreachable], unreachable + 1)
             finish(run, Execution.State.FAILED, error=UNAVAILABLE, transient=True)
             return None
         elapsed = time.monotonic() - started

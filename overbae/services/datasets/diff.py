@@ -1,5 +1,5 @@
 """What changed between two frames, matched on ``source_row``. Counts for the
-cell, marks for a page of the grid, samples for the chat."""
+cell, marks for a page of the grid, samples for `diff_dataset_versions`."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def removed_rows(before: Path, after: Path, *, limit: int = 50) -> list[dict[str
 
 
 def between(before: Path, after: Path) -> dict[str, Any]:
-    """The summary plus a few example rows, for the chat."""
+    """The summary plus a few example rows."""
     out = summary(before, after)
     if not out.get("tracked"):
         return out
