@@ -187,7 +187,7 @@ export class UploadsApi extends runtime.BaseAPI {
 
     /**
      * Parsers must stay declared on the class: ``@action`` initkwargs only apply through the router, so an action-level parser silently reverts elsewhere.
-     * Validate an uploaded file and count its rows
+     * Validate an uploaded file and count a table\'s rows
      */
     async uploadsInspectCreateRaw(requestParameters: UploadsInspectCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadInspection>> {
         if (requestParameters['id'] == null) {
@@ -247,7 +247,7 @@ export class UploadsApi extends runtime.BaseAPI {
 
     /**
      * Parsers must stay declared on the class: ``@action`` initkwargs only apply through the router, so an action-level parser silently reverts elsewhere.
-     * Validate an uploaded file and count its rows
+     * Validate an uploaded file and count a table\'s rows
      */
     async uploadsInspectCreate(requestParameters: UploadsInspectCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadInspection> {
         const response = await this.uploadsInspectCreateRaw(requestParameters, initOverrides);

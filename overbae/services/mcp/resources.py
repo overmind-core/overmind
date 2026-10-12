@@ -151,16 +151,33 @@ def _dataset_upload_resource(uri: str) -> dict:
         "uri": uri,
         "kind": "dataset_upload",
         "extensions": list(files.ALLOWED_SUFFIXES),
+        "table_extensions": list(files.TABLE_SUFFIXES),
+        "document_extensions": list(files.DOCUMENT_SUFFIXES),
         "max_bytes": files.MAX_UPLOAD_BYTES,
+        "document_max_bytes": files.MAX_DOCUMENT_BYTES,
         "json_array_max_bytes": files.JSON_ARRAY_MAX_BYTES,
         "limits": (
             f"CSV, TSV, JSON, JSONL, NDJSON, and Parquet uploads are capped at "
             f"{files.MAX_UPLOAD_BYTES // 1024**3} GiB. "
             f"Monolithic JSON arrays are capped at {files.JSON_ARRAY_MAX_BYTES // 1024**2} MiB "
-            "because the parser reads them whole."
+            "because the parser reads them whole. "
+            f"Documents are capped at {files.MAX_DOCUMENT_BYTES // 1024**2} MiB and 2,000 PDF "
+            "pages, and are not gzipped."
+        ),
+        "documents": (
+            "A PDF, DOCX, Markdown, text or image upload lands one row per text element: text, "
+            "page, source_name, _overmind_document_id (the file's sha256) and provenance with "
+            "page regions. Scanned pages and images are read with English OCR. Overmind does "
+            "not chunk; group rows into pages or chunks with add_dataset_version. Tables and "
+            "documents cannot share one dataset. The uploaded file is deleted after landing."
         ),
         "chunk_bytes": files.CHUNK_BYTES,
         "command": "overmind dataset upload FILE --json",
+        "json_rows_field": (
+            "For a JSON object that wraps the rows, --json-rows-field FIELD (API: "
+            "json_rows_field on inspect and source.json_rows_field on create) selects the "
+            "top-level array. Without it, data, rows, items or examples is used."
+        ),
         "auth": "Project-scoped API key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
         "config": (
             "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, "
@@ -169,14 +186,16 @@ def _dataset_upload_resource(uri: str) -> dict:
         "flow": (
             "POST /api/uploads/, resume with PUT /api/uploads/{id}/chunk/?offset= using "
             "chunk_bytes, then POST /api/uploads/{id}/inspect/ with size in bytes (required: "
-            "an uninspected upload is refused), then POST /api/datasets/ with upload_id and project."
+            "an uninspected upload is refused; a document reports rows as null), then POST "
+            "/api/datasets/ with upload_id and project."
         ),
         "multiple_files": (
             "Reserve, upload and inspect each file (POST /api/uploads/{id}/inspect/ with size "
             "in bytes; required). POST /api/datasets/ with project, name "
             "and source.uploads containing the upload UUIDs in row order (up to 100 files). "
             "For a train/eval pair, POST /api/datasets/split/ with the same source, "
-            "eval_percent (1–99) and position (head, tail or random)."
+            "eval_percent (1–99) and position (head, tail or random); documents split by "
+            "_overmind_document_id unless group_by is given."
         ),
         "next_mcp_calls": [
             "get_job(kind=dataset_import, id=dataset_id)",

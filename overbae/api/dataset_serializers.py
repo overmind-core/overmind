@@ -214,6 +214,11 @@ class SourceSerializer(serializers.Serializer):
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
     traces = serializers.JSONField(required=False)
     llm_calls = serializers.JSONField(required=False)
+    json_rows_field = serializers.CharField(
+        max_length=200,
+        required=False,
+        help_text="Top-level JSON array to import from a .json upload.",
+    )
 
     def validate(self, attrs):
         keys = [

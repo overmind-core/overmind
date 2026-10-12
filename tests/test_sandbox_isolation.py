@@ -1,11 +1,16 @@
+import io
 import os
 import threading
+from pathlib import Path
 
+import httpx
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 from test_sandbox import run
 
 from sandbox import tables
+from sandbox.protocol import HeaderReader, header_bytes
 
 # These promises hold only for a sandbox that runs as root and starts each run as its
 # own uid on a network without a route out: the compose `sandbox` service.
@@ -176,3 +181,24 @@ for i in range(16):
     assert header["error"] == (
         "The script used more than 1.5 GiB of memory and scratch files and was stopped."
     )
+
+
+def test_a_document_is_extracted_with_no_route_out():
+    document = Path(__file__).parent / "fixtures" / "documents" / "scanned.pdf"
+    content = document.read_bytes()
+    body = header_bytes({"mode": "extract", "filename": document.name, "input_bytes": len(content)})
+
+    response = httpx.post(
+        f"{URL}/v1/run",
+        content=body + content,
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        timeout=300,
+    )
+
+    reader = HeaderReader()
+    payload = reader.feed(response.content)
+    header = reader.finish()
+    assert header["ok"] is True, header["error"]
+    assert header["extraction"]["ocr"]["languages"] == ["eng"]
+    rows = pq.read_table(io.BytesIO(payload)).to_pylist()
+    assert [row["text"] for row in rows] == ["Policy 7: refunds need a receipt."]

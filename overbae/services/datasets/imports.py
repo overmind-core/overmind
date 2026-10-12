@@ -88,6 +88,8 @@ def _source_inputs(inputs):
                 "mtime_ns": stat.st_mtime_ns,
             }
         )
+    if len({files.is_document(source["filename"]) for source in manifest}) > 1:
+        raise DatasetError(files.MIXED, code="mixed_sources")
     return inputs, manifest
 
 
@@ -500,13 +502,31 @@ def _read_parts(run, targets):
     source = run.inputs["source"]
     split = run.inputs.get("split")
     if source.get("uploads"):
-        read = landing.read_uploads(source["uploads"])
+
+        def extracting(filename):
+            for target in targets:
+                events.publish(
+                    target.pk,
+                    {
+                        "dataset_id": str(target.pk),
+                        "type": "land_progress",
+                        "stage": "extracting",
+                        "filename": filename,
+                    },
+                )
+
+        read = landing.read_uploads(
+            source["uploads"],
+            json_rows_field=source.get("json_rows_field"),
+            on_extract=extracting,
+        )
         if source.get("pasted"):
             read = replace(read, spec={"pasted": True})
     elif source.get("upload_id"):
         read = landing.read_file(
             files.upload_data_path(source["upload_id"]),
             filename=source.get("filename") or files.upload_filename(source["upload_id"]),
+            json_rows_field=source.get("json_rows_field"),
         )
     elif source.get("traces") is not None:
         read = landing.read_traces(
@@ -570,10 +590,11 @@ def _read_parts(run, targets):
         raise landing.LandError("No saved source is available.")
     if not split:
         return [(targets[0], read)]
+    documents = read.manifest is landing.DOCUMENT_MANIFEST
     cut = {
         "eval_percent": int(split["eval_percent"]),
         "position": split["position"],
-        "group_by": split.get("group_by", []),
+        "group_by": split.get("group_by") or ([landing.DOCUMENT_GROUP] if documents else []),
         "stratify_by": split.get("stratify_by"),
         "deduplicate": split.get("deduplicate", True),
     }

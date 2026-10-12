@@ -31,12 +31,13 @@ class UploadReservedSerializer(serializers.Serializer):
 
 class InspectUploadSerializer(serializers.Serializer):
     size = serializers.IntegerField(min_value=0, max_value=files.MAX_UPLOAD_BYTES)
+    json_rows_field = serializers.CharField(max_length=200, required=False)
 
 
 class UploadInspectionSerializer(serializers.Serializer):
     filename = serializers.CharField()
     bytes = serializers.IntegerField()
-    rows = serializers.IntegerField()
+    rows = serializers.IntegerField(allow_null=True)
 
 
 class OctetStreamParser(BaseParser):
@@ -57,7 +58,7 @@ class UploadViewSet(viewsets.ViewSet):
     lookup_value_regex = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
     @extend_schema(
-        summary="Validate an uploaded file and count its rows",
+        summary="Validate an uploaded file and count a table's rows",
         request=InspectUploadSerializer,
         responses={200: UploadInspectionSerializer},
     )
@@ -67,7 +68,11 @@ class UploadViewSet(viewsets.ViewSet):
         payload = InspectUploadSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         try:
-            result = files.inspect_upload(upload_id, size=payload.validated_data["size"])
+            result = files.inspect_upload(
+                upload_id,
+                size=payload.validated_data["size"],
+                json_rows_field=payload.validated_data.get("json_rows_field"),
+            )
         except files.FileError as exc:
             raise ValidationError({"detail": exc.detail}) from exc
         return Response(UploadInspectionSerializer(result).data)
@@ -89,7 +94,7 @@ class UploadViewSet(viewsets.ViewSet):
                 "upload_id": upload_id,
                 "filename": name,
                 "chunk_bytes": files.CHUNK_BYTES,
-                "max_bytes": files.MAX_UPLOAD_BYTES,
+                "max_bytes": files.upload_byte_limit(name),
             },
             status=status.HTTP_201_CREATED,
         )

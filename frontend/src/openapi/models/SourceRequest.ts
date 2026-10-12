@@ -63,6 +63,12 @@ export interface SourceRequest {
      * @memberof SourceRequest
      */
     llmCalls?: any | null;
+    /**
+     * Top-level JSON array to import from a .json upload.
+     * @type {string}
+     * @memberof SourceRequest
+     */
+    jsonRowsField?: string;
 }
 
 /**
@@ -89,6 +95,7 @@ export function SourceRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'rows': json['rows'] == null ? undefined : json['rows'],
         'traces': json['traces'] == null ? undefined : json['traces'],
         'llmCalls': json['llm_calls'] == null ? undefined : json['llm_calls'],
+        'jsonRowsField': json['json_rows_field'] == null ? undefined : json['json_rows_field'],
     };
 }
 
@@ -110,5 +117,6 @@ export function SourceRequestToJSONTyped(value?: SourceRequest | null, ignoreDis
         'rows': value['rows'],
         'traces': value['traces'],
         'llm_calls': value['llmCalls'],
+        'json_rows_field': value['jsonRowsField'],
     };
 }

@@ -12,6 +12,7 @@ import json
 import logging
 import pickle
 import tempfile
+import time
 import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
@@ -26,6 +27,7 @@ from overbae.models.traces import Span
 from overbae.services.datasets import (
     alignment,
     contract,
+    executions,
     files,
     measure,
     paths,
@@ -39,7 +41,9 @@ logger = logging.getLogger(__name__)
 
 
 class LandError(ValueError):
-    pass
+    def __init__(self, message: str, *, code: str = "import_failed") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 SPLIT_POSITIONS = ("head", "tail", "random")
@@ -230,9 +234,9 @@ def commit(dataset, landing, *, user=None, infer_capability=True):
         return publish(dataset, prepared, user=user)
 
 
-def _file_rows(path: Path, filename: str) -> files.FileRows:
+def _file_rows(path: Path, filename: str, json_rows_field: str | None) -> files.FileRows:
     try:
-        rows = files.FileRows(path, filename=filename)
+        rows = files.FileRows(path, filename=filename, json_rows_field=json_rows_field)
     except files.FileError as exc:
         raise LandError(str(exc)) from exc
     if not rows.count:
@@ -240,24 +244,142 @@ def _file_rows(path: Path, filename: str) -> files.FileRows:
     return rows
 
 
-def read_file(path: Path, *, filename: str) -> Landing:
-    return read_rows(_file_rows(path, filename), spec={"filename": filename})
+DOCUMENT_MANIFEST = [
+    {"name": store.SOURCE_ROW, "type": "integer"},
+    {"name": "text", "type": "string"},
+    {"name": "page", "type": "integer"},
+    {"name": "source_name", "type": "string"},
+    {"name": "_overmind_document_id", "type": "string"},
+    {"name": "_overmind_provenance", "type": "json"},
+]
+DOCUMENT_GROUP = "_overmind_document_id"
+EXTRACT_WAIT_SECONDS = 15 * 60
+EXTRACT_BUSY_RETRY_SECONDS = 5
+EXTRACT_UNREACHABLE_RETRY_SECONDS = (2, 4, 8)
 
 
-def read_uploads(upload_ids: list[str]) -> Landing:
-    parts = []
-    sources = []
+def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
+    """The sandbox parses documents; a busy or unreachable sandbox is waited out here,
+    under the import's lease, before the import is blocked."""
+    header = {
+        "mode": "extract",
+        "filename": filename,
+        "input_bytes": files.stored_stat(path).st_size,
+    }
+    deadline = time.monotonic() + EXTRACT_WAIT_SECONDS
+    unreachable = 0
+    while True:
+        try:
+            reply = executions.sandbox_call(header, path, output)
+            break
+        except executions.SandboxBusyError:
+            if time.monotonic() > deadline:
+                raise LandError(
+                    "The sandbox had no free memory to extract the document. Retry the import.",
+                    code="sandbox_busy",
+                ) from None
+            time.sleep(EXTRACT_BUSY_RETRY_SECONDS)
+        except executions.SandboxUnavailableError as exc:
+            logger.warning("sandbox unavailable for extraction of %s: %s", filename, exc)
+            if unreachable == len(EXTRACT_UNREACHABLE_RETRY_SECONDS):
+                raise LandError(
+                    "The sandbox is unavailable. Retry the import.", code="sandbox_unavailable"
+                ) from None
+            time.sleep(EXTRACT_UNREACHABLE_RETRY_SECONDS[unreachable])
+            unreachable += 1
+    if not reply.get("ok"):
+        raise LandError(reply.get("error") or "The document could not be extracted.")
+    extraction = reply.get("extraction")
+    expected = [c["name"] for c in DOCUMENT_MANIFEST[1:]]
+    try:
+        names = [c["name"] for c in store.read_manifest(output)]
+    except (OSError, ValueError, KeyError) as exc:
+        raise LandError("The extracted rows could not be read.") from exc
+    if names != expected or not isinstance(extraction, dict):
+        raise LandError("The extracted rows could not be read.")
+    return extraction
+
+
+class _Extracted:
+    """Rows the sandbox extracted, one Parquet file per document, read lazily."""
+
+    def __init__(self, directory: tempfile.TemporaryDirectory, outputs: list[Path]) -> None:
+        self._directory = directory
+        self.outputs = outputs
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for output in self.outputs:
+            yield from store.iter_rows(output)
+
+
+def _read_documents(sources: list[tuple[Path, str]], *, on_extract: Any = None) -> Landing:
+    directory = tempfile.TemporaryDirectory(prefix="documents-")
+    outputs = []
+    described = []
+    limitations: list[str] = []
+    for index, (path, filename) in enumerate(sources):
+        if on_extract is not None:
+            on_extract(filename)
+        output = Path(directory.name) / f"{index}.parquet"
+        extraction = _extract(path, filename, output)
+        digest = extraction.pop("sha256", "")
+        for limitation in extraction.get("limitations", []):
+            if limitation not in limitations:
+                limitations.append(limitation)
+        outputs.append(output)
+        described.append(
+            {
+                "filename": filename,
+                "bytes": files.stored_stat(path).st_size,
+                "sha256": digest,
+                "rows": store.row_count(output),
+                "extraction": extraction,
+            }
+        )
+    return Landing(
+        _Cleaned(_Extracted(directory, outputs)),
+        kind=Dataset.SourceKind.FILE,
+        spec={"files": described, "extraction": {"limitations": limitations}},
+        manifest=DOCUMENT_MANIFEST,
+    )
+
+
+def read_file(path: Path, *, filename: str, json_rows_field: str | None = None) -> Landing:
+    if files.is_document(filename):
+        return _read_documents([(path, filename)])
+    spec: dict[str, Any] = {"filename": filename}
+    if json_rows_field:
+        spec["json_rows_field"] = json_rows_field
+    return read_rows(_file_rows(path, filename, json_rows_field), spec=spec)
+
+
+def read_uploads(
+    upload_ids: list[str], *, json_rows_field: str | None = None, on_extract: Any = None
+) -> Landing:
+    stored = []
     for upload_id in upload_ids:
         filename = files.upload_filename(upload_id)
         path = files.upload_data_path(upload_id)
         if not filename or not path.exists():
             raise LandError("An upload has expired. Start it again.")
-        part = _file_rows(path, filename)
+        stored.append((path, filename))
+    documents = [files.is_document(filename) for _, filename in stored]
+    if any(documents):
+        if not all(documents):
+            raise LandError(files.MIXED, code="mixed_sources")
+        return _read_documents(stored, on_extract=on_extract)
+    parts = []
+    sources = []
+    for path, filename in stored:
+        part = _file_rows(path, filename, json_rows_field)
         sources.append(
             {"filename": filename, "bytes": files.stored_stat(path).st_size, "rows": part.count}
         )
         parts.append(part)
-    return read_rows(_Chain(parts), spec={"files": sources})
+    spec: dict[str, Any] = {"files": sources}
+    if json_rows_field:
+        spec["json_rows_field"] = json_rows_field
+    return read_rows(_Chain(parts), spec=spec)
 
 
 def read_rows(rows: Iterable[Any], *, spec: dict[str, Any] | None = None) -> Landing:
