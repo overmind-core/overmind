@@ -558,8 +558,8 @@ the token can't reach it.
   patching `h-*` onto one.
 - **Primary:** Ink fill, canvas text (`bg-primary text-primary-foreground`),
   hover to 85% ink.
-- **Secondary:** The neutral control face: a soft `#efe4d7` fill and no
-  border, hovering to `#e5d7c7`. An outline on every control reads cheap at this
+- **Secondary:** The neutral control face: a soft `#262320` fill and no
+  border, hovering to `#2f2c29`. An outline on every control reads cheap at this
   density, and the fill still makes the button obvious at rest.
 - **Outline:** A true hairline, reserved for controls that must read against an
   already-filled surface.
