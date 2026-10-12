@@ -163,7 +163,7 @@ def derive_claim(
         return Claim(type="grounding", grain="terminal")
     if surface_area == "failure_mode":
         return Claim(type="safety", grain=grain)
-    if kind in ("deterministic", "statistical", "script"):
+    if kind in ("deterministic", "statistical"):
         return Claim(type="conformance", grain=grain)
     behaviour_role = (config.get("behaviour") or {}).get("role")
     if behaviour_role == "outcome":
@@ -431,26 +431,6 @@ class EvaluatorSpec(BaseModel):
                     re.compile(pattern)
                 except re.error as exc:
                     raise ValueError(f"invalid regex pattern {pattern!r}: {exc}") from exc
-        if self.kind == "script":
-            from overbae.services.eval import span_script  # noqa: PLC0415 — cycle with specs
-
-            source = self.config.get("source")
-            if not isinstance(source, str) or not source.strip():
-                raise ValueError("script config['source'] must be a non-empty string")
-            violations = span_script.audit(source)
-            if violations:
-                raise ValueError("; ".join(violations[:5]))
-            span_filter = self.config.get("span_filter") or {}
-            if not isinstance(span_filter, dict):
-                raise ValueError("script config['span_filter'] must be an object")
-            unknown = set(span_filter) - {"span_type", "operation"}
-            if unknown:
-                raise ValueError(f"script config['span_filter'] unknown keys: {sorted(unknown)}")
-            if self.scope != "step":
-                raise ValueError("script evaluators must use scope='step'")
-            # Scripts grade live spans; generate-mode has none.
-            self.surface = "harness"
-            self.applicable_roles = [TRACE_SCORING]
         if self.kind == "statistical":
             metric = self.config.get("metric")
             if metric not in STATISTICAL_METRICS:

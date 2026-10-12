@@ -15,9 +15,7 @@ from overbae.services.mcp.contracts.common import (
     ResourceLinkContract,
 )
 
-EvaluatorKind = Literal[
-    "llm_judge", "trajectory", "deterministic", "statistical", "agentic", "script"
-]
+EvaluatorKind = Literal["llm_judge", "trajectory", "deterministic", "statistical", "agentic"]
 EvaluatorScope = Literal["final_output", "turn", "step", "trajectory", "sample", "dataset"]
 ScoreType = Literal["numeric", "categorical", "boolean"]
 EvaluationMode = Literal["existing", "generate"]
@@ -296,11 +294,7 @@ class EvaluatorUpsertInput(MCPModel):
     config: dict[str, Any] = Field(
         default_factory=dict,
         max_length=100,
-        description=(
-            "Family-specific config. decision.backend: generative (default) or jev. "
-            "For kind=script: source (required import-free Python with def evaluate(span)), "
-            "optional span_filter {span_type?, operation?}."
-        ),
+        description="decision.backend: generative (default) or jev. min_confidence 0..1, version 1. Registered Jev release; labelled qualification; confidence is not accuracy. Label-only categorical evaluators can use Jev; checklists and behaviour contracts stay generative. Provenance only, no explanation.",
     )
     applicable_roles: list[EvaluationRole] = Field(default_factory=list, max_length=2)
     surface: Literal["model", "harness", "any"] = "any"

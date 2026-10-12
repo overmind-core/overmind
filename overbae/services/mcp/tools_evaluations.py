@@ -375,8 +375,6 @@ def _upsert_sync(payload: EvaluatorUpsertInput, context: MCPContext) -> Evaluato
         raise MCPError("evaluator_invalid", "An evaluator name is required.")
     kind = _field(payload, "kind", current.kind if current else "llm_judge")
     scope = _field(payload, "scope", current.scope if current else "final_output")
-    if kind == "script":
-        scope = "step"
     score_type = _field(payload, "score_type", current.score_type if current else "numeric")
     rubric = _field(payload, "rubric_md", current.rubric_md if current else "")
     if (
@@ -792,14 +790,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "upsert_evaluator",
             "Upsert evaluator",
-            "Create or update a project evaluator. judge_model picks the generative judge. "
-            "config.decision opts into Jev after workload validation. Authoring and holistic "
-            "judgments stay generative. kind=script runs import-free pure Python "
-            "def evaluate(span) against every matching span at trace-scoring time; "
-            "config.source is the script, config.span_filter may set span_type and/or "
-            "operation. span exposes parent/children/siblings and attributes; return "
-            "bool, a number in [0,1], (score, reason), or None to abstain. Scripts use "
-            "scope=step and surface=harness.",
+            "Create or update a project evaluator. judge_model picks the generative judge. config.decision opts into Jev after workload validation. Authoring and holistic judgments stay generative.",
             EvaluatorUpsertInput,
             EvaluatorUpsertOutput,
             _upsert_sync,

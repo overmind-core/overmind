@@ -228,36 +228,6 @@ class EvaluatorSerializer(serializers.ModelSerializer):
                     )
                 }
             )
-        if merged.kind == Evaluator.Kind.SCRIPT:
-            from overbae.services.eval import span_script
-
-            config = merged.config or {}
-            source = config.get("source")
-            if not isinstance(source, str) or not source.strip():
-                raise serializers.ValidationError(
-                    {"config": "script config.source must be a non-empty string"}
-                )
-            violations = span_script.audit(source)
-            if violations:
-                raise serializers.ValidationError({"config": "; ".join(violations[:5])})
-            span_filter = config.get("span_filter") or {}
-            if not isinstance(span_filter, dict):
-                raise serializers.ValidationError(
-                    {"config": "script config.span_filter must be an object"}
-                )
-            unknown = set(span_filter) - {"span_type", "operation"}
-            if unknown:
-                raise serializers.ValidationError(
-                    {"config": f"script config.span_filter unknown keys: {sorted(unknown)}"}
-                )
-            scope = attrs.get("scope", getattr(self.instance, "scope", None))
-            if scope and scope != Evaluator.Scope.STEP:
-                raise serializers.ValidationError(
-                    {"scope": "script evaluators must use scope='step'"}
-                )
-            attrs["scope"] = Evaluator.Scope.STEP
-            attrs["surface"] = Evaluator.Surface.HARNESS
-            attrs["applicable_roles"] = [EvalSetMember.Role.TRACE_SCORING]
         return attrs
 
 
