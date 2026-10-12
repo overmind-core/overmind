@@ -156,8 +156,8 @@ code {
   /* One masked box with two mask layers, so a single background-color drives
      both segments (active rows override --elbow-color). The vertical layer
      stops 12px short so the corner reads as pixel steps, not a filled square.
-     Shared by sidebar sub-nav (fixed --elbow-h pitch math) and agent-activity
-     plan steps (live-measured row centers). */
+     Shared by sidebar sub-nav (fixed --elbow-h pitch math) and lists that
+     measure their row centers live (trace conversation steps). */
   .sidebar-elbow::before {
     position: absolute;
     bottom: 50%;
@@ -317,6 +317,34 @@ code {
     left: 0;
     width: 100%;
     opacity: 0.5;
+    animation: none;
+  }
+}
+
+/* Workshop status: opacity and colour only (DESIGN.md Motion: no scale, no bounce). */
+@keyframes workshop-working {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes workshop-finished {
+  from {
+    color: var(--foreground);
+  }
+}
+.workshop-working {
+  animation: workshop-working 1.2s ease-in-out infinite;
+}
+.workshop-finished {
+  animation: workshop-finished 700ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workshop-working,
+  .workshop-finished {
     animation: none;
   }
 }

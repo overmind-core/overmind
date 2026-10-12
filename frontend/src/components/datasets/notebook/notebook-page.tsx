@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
-import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
-import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat";
-import { NotebookOutline } from "@/components/datasets/notebook/outline";
+import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
+import {
+  type CapabilityChoice,
+  type UsePurpose,
+  VersionCard,
+} from "@/components/datasets/notebook/cell";
+import { type FlowFocus, VersionFlow } from "@/components/datasets/notebook/cell-flow";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import { WorkshopStatus } from "@/components/datasets/workshop-status";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   activeCellOf,
   cellsOf,
-  chatOf,
   type DatasetEvent,
   datasetDisplayName,
   downloadExport,
@@ -22,30 +25,27 @@ import {
   invalidateDataset,
   isBusy,
   rankOf,
-  useAcceptCellMutation,
-  useChatMutation,
   useDatasetEvents,
   useDatasetQuery,
-  useEditCellMutation,
   usePatchDatasetMutation,
-  useRemoveCellMutation,
-  useRunMutation,
+  useResumeImportMutation,
 } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { notify } from "@/lib/notify";
 import type { Cell } from "@/openapi";
+
+const MCP_DOCS = "https://docs.overmindlab.ai/platform/mcp";
 
 export function DatasetNotebook({
   datasetId,
   projectId,
   cellParam,
-  initialRequest,
 }: {
   datasetId: string;
   projectId: string;
   cellParam?: string;
-  initialRequest?: string;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -53,19 +53,14 @@ export function DatasetNotebook({
   const datasetQuery = useDatasetQuery(datasetId);
   const dataset = datasetQuery.data;
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
-  const capabilities = capabilitiesQuery.data?.results ?? [];
-
   const patch = usePatchDatasetMutation(datasetId);
-  const editCell = useEditCellMutation(datasetId);
-  const removeCell = useRemoveCellMutation(datasetId);
-  const acceptCell = useAcceptCellMutation(datasetId);
-  const run = useRunMutation(datasetId);
-  const chat = useChatMutation(datasetId);
-
+  const resume = useResumeImportMutation(datasetId);
+  const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
-  const [live, setLive] = useState<LiveTurn | null>(null);
-  const [landedAt, setLandedAt] = useState(0);
-  const [tracesRead, setTracesRead] = useState(0);
+  const [focus, setFocus] = useState<FlowFocus | null>(
+    cellParam ? { id: cellParam, request: 0 } : null
+  );
+  const [landing, setLanding] = useState<{ stage?: string; traces?: number }>({});
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -77,157 +72,88 @@ export function DatasetNotebook({
   }, [qc, datasetId]);
 
   useDatasetEvents(datasetId, (event: DatasetEvent, meta) => {
-    if (!meta.live) return;
-    switch (event.type) {
-      case "chat_turn":
-        if (event.role === "user") setLive({ cells: [], steps: [], text: "" });
-        // Cleared once the refetched chat carries the turn, so the text never blinks out.
-        else setLandedAt(Date.now());
-        refresh();
-        break;
-      case "chat_delta":
-        // After a reload, keep the saved turn until a complete progress snapshot arrives.
-        setLive(
-          (prev) =>
-            prev && {
-              ...prev,
-              cells: prev?.cells ?? [],
-              steps: prev?.steps ?? [],
-              text: (prev?.text ?? "") + event.text,
-            }
-        );
-        break;
-      case "chat_thinking":
-        setLive(
-          (prev) =>
-            prev && {
-              ...prev,
-              cells: prev?.cells ?? [],
-              steps: [
-                ...(prev?.steps ?? []),
-                { id: event.id, phase: "thinking", text: event.text, type: "activity" },
-              ],
-              text: prev?.text ?? "",
-            }
-        );
-        break;
-      case "chat_step": {
-        const { type: _type, ...part } = event;
-        setLive(
-          (prev) =>
-            prev && {
-              ...prev,
-              cells: prev?.cells ?? [],
-              steps: [...(prev?.steps ?? []), { ...part, type: "activity" }],
-              text: prev?.text ?? "",
-            }
-        );
-        break;
-      }
-      case "chat_cell":
-        setLive(
-          (prev) =>
-            prev && {
-              ...prev,
-              cells: [
-                ...(prev?.cells ?? []),
-                { action: event.action, id: event.cell_id, text_offset: event.text_offset },
-              ],
-              steps: prev?.steps ?? [],
-              text: prev?.text ?? "",
-            }
-        );
-        refresh();
-        break;
-      case "chat_progress":
-        setLive({
-          cells: event.cells,
-          progress: event.progress,
-          steps: event.steps,
-          text: event.text,
-        });
-        refresh();
-        break;
-      case "chat_failed":
-        setLive(null);
-        notify.error(new Error(event.error), "The agent stopped");
-        refresh();
-        break;
-      // Every (re)connect ends its replay here; whatever happened while the
-      // stream was down is on the dataset row, so read it once.
-      case "replay.done":
-        refresh();
-        break;
-      case "land_progress":
-        setTracesRead(Number(event.traces) || 0);
-        break;
-      default:
-        refresh();
+    if (!meta.live && event.type !== "replay.done") return;
+    if (event.type === "land_progress") {
+      setLanding({ stage: event.stage, traces: event.traces });
+      return;
     }
+    if (event.type === "land_done" || event.type === "land_failed") setLanding({});
+    refresh();
   });
 
-  const turns = useMemo(() => chatOf(dataset), [dataset]);
-  useEffect(() => {
-    if (!landedAt) return;
-    if (turns.at(-1)?.role === "agent" && turns.at(-1)?.status !== "running") {
-      setLive(null);
-      setLandedAt(0);
-    }
-  }, [turns, landedAt]);
-
-  useEffect(() => {
-    if (dataset && !isBusy(dataset)) setLive(null);
-  }, [dataset]);
-
-  const all = useMemo(() => cellsOf(dataset), [dataset]);
-  // Proposals wait in the chat; the notebook shows only cells that are in the chain.
-  const cells = useMemo(() => all.filter((c) => c.state !== "proposed"), [all]);
+  const cells = useMemo(() => cellsOf(dataset), [dataset]);
   const active = activeCellOf(dataset);
-  const busy = isBusy(dataset);
-  const editable = !!dataset && !busy;
+  const editable = !!dataset && !isBusy(dataset);
   const intent = intentOf(dataset);
+  const capabilities = capabilitiesQuery.data?.results;
+  const capabilityChoices = useMemo<CapabilityChoice[]>(
+    () =>
+      [
+        ...rankOf(dataset).map((r) => ({ id: r.capability_id, name: r.name, score: r.score })),
+        ...(capabilities ?? []).map((c) => ({ id: c.id, name: c.name })),
+      ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i),
+    [dataset, capabilities]
+  );
 
-  const cellsRef = useRef<HTMLDivElement>(null);
-  // Scrolls the cells column only: scrollIntoView would also shove every
-  // overflow-hidden ancestor (the panel, the page card) and leave it stuck.
-  const scrollTo = useCallback((id: string) => {
+  const show = useCallback((id: string) => {
     setSelectedId(id);
-    const column = cellsRef.current;
-    const target = document.getElementById(`cell-${id}`);
-    if (!column || !target) return;
-    const top = target.getBoundingClientRect().top - column.getBoundingClientRect().top;
-    column.scrollTo({ behavior: "smooth", top: column.scrollTop + top - 8 });
+    setFocus((current) => ({ id, request: (current?.request ?? 0) + 1 }));
   }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the deep-linked cell is loaded
-  useEffect(() => {
-    if (cellParam && cells.some((c) => c.id === cellParam)) scrollTo(cellParam);
-  }, [cellParam, cells.length]);
 
   const handOff = useCallback(
-    (cell: Cell, purpose: UsePurpose) => {
-      const go = () => {
-        const capabilityId = dataset?.capability ?? undefined;
-        if (purpose === "train") {
-          void navigate({
-            search: { capabilityId, datasetId, projectId, train: true },
-            to: "/training",
-          });
-        } else if (purpose === "train_eval") {
-          void navigate({
-            search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
-            to: "/training",
-          });
-        } else {
-          void navigate({
-            search: { capabilityId, datasetId, optimize: true, projectId },
-            to: "/optimiser",
-          });
-        }
-      };
-      if (dataset?.active !== cell.id) patch.mutate({ active: cell.id }, { onSuccess: go });
-      else go();
+    (purpose: UsePurpose) => {
+      const capabilityId = dataset?.capability ?? undefined;
+      if (purpose === "train")
+        void navigate({
+          search: { capabilityId, datasetId, projectId, train: true },
+          to: "/training",
+        });
+      else if (purpose === "train_eval")
+        void navigate({
+          search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
+          to: "/training",
+        });
+      else
+        void navigate({
+          search: { capabilityId, datasetId, optimize: true, projectId },
+          to: "/optimiser",
+        });
     },
-    [dataset?.active, dataset?.capability, datasetId, navigate, patch, projectId]
+    [dataset?.capability, datasetId, navigate, projectId]
+  );
+
+  const renderVersion = useCallback(
+    (cell: Cell) =>
+      dataset ? (
+        <VersionCard
+          actions={{
+            onActivate: guard(() =>
+              patch.mutate({ active: cell.id, expectedActive: dataset.active ?? undefined })
+            ),
+            onCapability: guard((id: string | null) => patch.mutate({ capability: id })),
+            onExport: (fmt) =>
+              void downloadExport(
+                datasetId,
+                cell.id,
+                fmt,
+                `${datasetDisplayName(dataset)}-${cell.version}`
+              ).catch((e) => notify.error(e, "Export failed")),
+            onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
+            onUse: guard(handOff),
+          }}
+          active={cell.id === dataset.active}
+          capabilities={capabilityChoices}
+          capabilityName={dataset.capabilityName ?? ""}
+          cell={cell}
+          datasetId={datasetId}
+          editable={editable && !patch.isPending}
+          intent={intent}
+          onSelect={() => setSelectedId(cell.id)}
+          selected={cell.id === selectedId}
+          sourceSpec={dataset.sourceSpec}
+        />
+      ) : null,
+    [dataset, guard, patch, datasetId, handOff, capabilityChoices, editable, intent, selectedId]
   );
 
   if (datasetQuery.isPending) {
@@ -250,129 +176,86 @@ export function DatasetNotebook({
     );
   }
 
-  const rank = rankOf(dataset);
-  const capabilityChoices = [
-    ...rank.map((r) => ({ id: r.capability_id, name: r.name, score: r.score })),
-    ...capabilities.map((c) => ({ id: c.id, name: c.name })),
-  ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
+  const landingText =
+    landing.stage === "extracting"
+      ? "Extracting text"
+      : landing.traces
+        ? `Landing the source… ${landing.traces.toLocaleString()} traces read`
+        : "Landing the source…";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PanelGroup className="min-h-0 flex-1" direction="horizontal">
-        <Panel className="flex flex-col" defaultSize={66} id="notebook" minSize={40} order={1}>
-          <div className="relative flex min-h-0 flex-1">
-            <NotebookOutline
-              activeId={active?.id ?? null}
-              cells={cells}
-              onSelect={scrollTo}
-              selectedId={selectedId}
-            />
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
-              <ContaminationReport spec={dataset.sourceSpec} />
-              {cells.length === 0 ? (
-                dataset.state === "error" ? (
-                  <EmptyState
-                    action={
-                      <Button
-                        aria-busy={run.isPending}
-                        disabled={!editable || run.isPending}
-                        onClick={guard(() => run.mutate())}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        {run.isPending && <Spinner className="size-3.5" />}
-                        Retry import
-                      </Button>
-                    }
-                    description="The source has not landed."
-                    size="section"
-                    title="Import failed"
-                  />
-                ) : (
-                  <p className="p-3 text-xs text-muted-foreground">
-                    {dataset.state !== "landing"
-                      ? "Nothing landed."
-                      : tracesRead > 0
-                        ? `Landing the source… ${tracesRead.toLocaleString()} traces read`
-                        : "Landing the source…"}
-                  </p>
-                )
-              ) : (
-                cells.map((cell) => (
-                  <NotebookCell
-                    actions={{
-                      onActivate: guard(() => patch.mutate({ active: cell.id })),
-                      onCapability: guard((id: string | null) => {
-                        const name = capabilityChoices.find((c) => c.id === id)?.name;
-                        chat.mutate(
-                          `Set the capability to ${name ?? "none"}, then add the fewest cells after ${cell.version} that make both contracts hold.`
-                        );
-                      }),
-                      onExport: (fmt) =>
-                        void downloadExport(
-                          datasetId,
-                          cell.id,
-                          fmt,
-                          `${datasetDisplayName(dataset)}-${cell.version || "source"}`
-                        ).catch((e) => notify.error(e, "Export failed")),
-                      onFix: guard((problem: string) =>
-                        chat.mutate(
-                          `Fix one contract on version ${cell.version}: ${problem}. The intent is ${intent} and the capability is ${dataset.capabilityName ?? "not set"}. Add the fewest cells after ${cell.version} that make that contract hold. Do not run the quality checks and do not touch anything else.`
-                        )
-                      ),
-                      onIntent: guard((next: "train" | "eval") =>
-                        chat.mutate(
-                          `Set the intent to ${next}, then add the fewest cells after ${cell.version} that make both contracts hold.`
-                        )
-                      ),
-                      onRemove: guard(() => removeCell.mutate(cell.id)),
-                      onRun: guard(() => run.mutate()),
-                      onScript: guard((script: string) =>
-                        editCell.mutate(
-                          { cellId: cell.id, script },
-                          { onSuccess: () => cell.state !== "proposed" && run.mutate() }
-                        )
-                      ),
-                      onTitle: guard((title: string) =>
-                        editCell.mutate({ cellId: cell.id, title })
-                      ),
-                      onUse: guard((purpose: UsePurpose) => handOff(cell, purpose)),
-                    }}
-                    active={cell.id === active?.id}
-                    capabilities={capabilityChoices}
-                    capabilityName={dataset.capabilityName ?? ""}
-                    cell={cell}
-                    datasetId={datasetId}
-                    editable={editable}
-                    intent={intent}
-                    key={cell.id}
-                    onSelect={() => setSelectedId(cell.id)}
-                    running={dataset.state === "running"}
-                    selected={cell.id === selectedId}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </Panel>
-        <PanelResizeHandle className="relative w-px bg-border/60 transition-colors hover:bg-foreground/40 data-[resize-handle-state='drag']:bg-foreground/60" />
-        <Panel defaultSize={34} id="chat" minSize={22} order={2}>
-          <DatasetChat
-            busy={busy || run.isPending || acceptCell.isPending || removeCell.isPending}
-            cells={all}
-            error={dataset.state === "error" ? dataset.error || undefined : undefined}
-            initialRequest={initialRequest}
-            live={live}
-            onAccept={guard((id: string) => acceptCell.mutate(id))}
-            onDiscard={guard((id: string) => removeCell.mutate(id))}
-            onSelect={scrollTo}
-            onSend={guard((message: string) => chat.mutate(message))}
-            sourceReady={cells.length > 0}
-            state={dataset.state ?? ""}
-            turns={turns}
+    <div className="relative flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-start gap-2 border-b border-border/70 px-3 py-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {dataset.state === "landing" && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Spinner className="size-3" />
+              {landingText}
+            </p>
+          )}
+          {dataset.state === "error" && dataset.error && (
+            <p className="text-xs text-destructive" role="alert">
+              {dataset.error}
+            </p>
+          )}
+          {dataset.importBlocked && (
+            <Button
+              aria-busy={resume.isPending}
+              className="self-start"
+              disabled={resume.isPending}
+              onClick={guard(() => resume.mutate())}
+              size="xs"
+              variant="secondary"
+            >
+              {resume.isPending ? <Spinner className="size-3" /> : <Icon.refresh />}
+              Retry import
+            </Button>
+          )}
+          <ContaminationReport spec={dataset.sourceSpec} />
+          {dataset.state !== "landing" && dataset.state !== "error" && !cells.length && (
+            <p className="text-xs text-muted-foreground">Nothing landed.</p>
+          )}
+        </div>
+        <WorkshopStatus
+          dataset={dataset}
+          onShowVersion={(label) => {
+            const target = cells.find((cell) => cell.version === label);
+            if (target) show(target.id);
+          }}
+        />
+        <NotebookControls
+          onToggleMinimap={cells.length ? () => setShowMinimap((on) => !on) : undefined}
+          showMinimap={showMinimap}
+        />
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {cells.length === 1 && dataset.state === "idle" && (
+          <section
+            aria-label="No versions yet"
+            className="absolute top-3 left-3 z-10 flex max-w-80 flex-col gap-2 rounded-md border border-border bg-card p-3"
+          >
+            <p className="text-sm text-foreground">No versions yet</p>
+            <p className="text-xs text-muted-foreground">
+              Add versions from a coding agent connected over MCP.
+            </p>
+            <Button asChild className="self-start" size="xs" variant="secondary">
+              <a href={MCP_DOCS} rel="noreferrer" target="_blank">
+                <Icon.externalLink />
+                Connect an agent
+              </a>
+            </Button>
+          </section>
+        )}
+        {cells.length > 0 && (
+          <VersionFlow
+            cells={cells}
+            focus={focus ?? (active ? { id: active.id, request: 0 } : null)}
+            renderVersion={renderVersion}
+            showMinimap={showMinimap}
+            storageKey={`workshop-flow:positions:${projectId}:${datasetId}`}
           />
-        </Panel>
-      </PanelGroup>
+        )}
+      </div>
     </div>
   );
 }

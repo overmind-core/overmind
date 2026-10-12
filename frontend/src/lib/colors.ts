@@ -75,6 +75,7 @@ const STATES_BY_TONE: Array<[StatusTone, readonly string[]]> = [
       "deployed",
       "healthy",
       "live",
+      "ok",
       "passed",
       "ready",
       "succeeded",

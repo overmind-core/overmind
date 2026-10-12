@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
@@ -6,6 +6,7 @@ import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tansta
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
+import { WorkshopSidebar } from "@/components/datasets/workshop-sidebar";
 import { CreateAccountDialog } from "@/components/guest/create-account-dialog";
 import { HeaderCredits } from "@/components/header-credits";
 import { ProjectSelector } from "@/components/project-selector";
@@ -14,7 +15,9 @@ import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthContext } from "@/contexts/auth-context";
+import { WorkshopSidebarContext } from "@/contexts/workshop-sidebar-context";
 import { useFinetuningRunJobsQuery } from "@/hooks/use-finetuning";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { emitGuestUpgrade, getGuestProjectId, isGuestAllowedPath } from "@/lib/guest";
 import { sentenceCase } from "@/lib/label-case";
@@ -291,6 +294,35 @@ function HeaderActions({ hideProjects }: { hideProjects: boolean }) {
   );
 }
 
+const WORKSHOP_PATH = /^\/datasets\/[^/]+\/?$/;
+
+/** The dataset list beside a dataset's canvas. On a phone it covers the page. */
+function useWorkshopLayout(pathname: string) {
+  const inWorkshop = WORKSHOP_PATH.test(pathname);
+  const isMobile = useIsMobile();
+  const [expanded, setExpanded] = useState(false);
+  const trigger = useRef<HTMLElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a navigation is the trigger
+  useEffect(() => {
+    if (!inWorkshop || isMobile) setExpanded(false);
+  }, [pathname]);
+  const close = useCallback(() => {
+    setExpanded(false);
+    trigger.current?.focus();
+  }, []);
+  const toggle = useCallback(
+    (element: HTMLElement | null) => {
+      trigger.current = element;
+      if (expanded) close();
+      else setExpanded(true);
+    },
+    [expanded, close]
+  );
+  const open = inWorkshop && expanded;
+  const sidebar = useMemo(() => ({ close, open, toggle }), [close, open, toggle]);
+  return { covered: open && isMobile, inWorkshop, open, sidebar };
+}
+
 function RootLayout() {
   useProjectSearchSync();
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
@@ -298,6 +330,11 @@ function RootLayout() {
   const flowFull = useRouterState({
     select: (s) => (s.location.search as { flowFull?: boolean }).flowFull === true,
   });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const projectId = useRouterState({
+    select: (s) => (s.location.search as { projectId?: string }).projectId,
+  });
+  const workshop = useWorkshopLayout(pathname);
 
   return (
     <SidebarProvider>
@@ -306,29 +343,49 @@ function RootLayout() {
       <SidebarInset className="min-w-0 bg-sidebar">
         <div className="flex h-screen p-2">
           {/* border-sidebar-border: hairline in the sidebar black family (not --border grey). */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-md border border-sidebar-border bg-card">
-            <header
-              className={cn(
-                // pr-3 matches the 12px the 32px-tall controls leave above and
-                // below them, so the corner control sits square.
-                "flex h-14 shrink-0 items-center gap-3 border-b border-border/70 pl-3 pr-3",
-                flowFull && "hidden"
-              )}
-            >
-              <Breadcrumb />
-            </header>
-            {/* relative: absolute descendants (e.g. sr-only spans in pagination
+          <div
+            className={cn(
+              "grid min-w-0 flex-1 overflow-clip rounded-md border border-sidebar-border bg-card",
+              workshop.inWorkshop &&
+                "transition-[grid-template-columns] duration-300 motion-reduce:transition-none",
+              !workshop.inWorkshop
+                ? "grid-cols-[minmax(0,1fr)]"
+                : workshop.open
+                  ? "grid-cols-[minmax(0,1fr)_0px] md:grid-cols-[248px_minmax(0,1fr)]"
+                  : "grid-cols-[0px_minmax(0,1fr)]"
+            )}
+          >
+            <WorkshopSidebarContext.Provider value={workshop.sidebar}>
+              {workshop.inWorkshop && <WorkshopSidebar projectId={projectId} />}
+              <div
+                aria-hidden={workshop.covered || undefined}
+                className={cn("flex min-h-0 min-w-0 flex-col", workshop.covered && "invisible")}
+                inert={workshop.covered}
+              >
+                <header
+                  className={cn(
+                    // pr-3 matches the 12px the 32px-tall controls leave above and
+                    // below them, so the corner control sits square.
+                    "flex h-14 shrink-0 items-center gap-3 border-b border-border/70 pl-3 pr-3",
+                    flowFull && "hidden"
+                  )}
+                >
+                  <Breadcrumb />
+                </header>
+                {/* relative: absolute descendants (e.g. sr-only spans in pagination
                   buttons) must resolve their containing block inside this clipper —
                   otherwise they escape to the ICB, extend the hidden-overflow body,
                   and any focus/scrollIntoView shoves the whole shell off screen. */}
-            <div
-              className={cn(
-                "relative flex min-h-0 flex-1 flex-col",
-                flowFull ? "overflow-hidden p-0" : "overflow-y-auto p-4 md:p-6"
-              )}
-            >
-              <Outlet />
-            </div>
+                <div
+                  className={cn(
+                    "relative flex min-h-0 flex-1 flex-col",
+                    flowFull ? "overflow-hidden p-0" : "overflow-y-auto p-4 md:p-6"
+                  )}
+                >
+                  <Outlet />
+                </div>
+              </div>
+            </WorkshopSidebarContext.Provider>
           </div>
         </div>
       </SidebarInset>

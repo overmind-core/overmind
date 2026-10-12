@@ -96,4 +96,30 @@ describe("dataset uploads", () => {
     expect(result.current.files.map((file) => file.uploadId)).toEqual(["new.csv"]);
     expect(api.uploadsCreate).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps a document ready without a row count until extraction", async () => {
+    api.uploadsInspectCreate.mockResolvedValue({ rows: null });
+    const { result } = renderHook(useDatasetUploads);
+    act(() => result.current.add([new File(["%PDF"], "policies.pdf")]));
+    await waitFor(() => expect(result.current.files[0].status).toBe("ready"));
+    expect(result.current.files[0].rows).toBeNull();
+    expect(result.current.files[0].uploadId).toBe("policies.pdf");
+  });
+
+  it("refuses a file over the limit the server gives for its type", async () => {
+    api.uploadsCreate.mockResolvedValue({
+      chunkBytes: 1024,
+      maxBytes: 100 * 1024 ** 2,
+      uploadId: "scan.pdf",
+    });
+    const big = new File(["x"], "scan.pdf");
+    Object.defineProperty(big, "size", { value: 150 * 1024 ** 2 });
+    const { result } = renderHook(useDatasetUploads);
+    act(() => result.current.add([big]));
+    await waitFor(() => expect(result.current.files[0].status).toBe("error"));
+    expect(result.current.files[0].error).toBe(
+      "scan.pdf is 150 MB. The limit for this file type is 100 MB."
+    );
+    expect(api.uploadsChunkUpdate).not.toHaveBeenCalled();
+  });
 });

@@ -4,7 +4,6 @@ import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { IntentBadge, SOURCE_KIND_LABEL, StateBadge } from "@/components/datasets/badges";
-import { type DatasetSource, NewDatasetButton } from "@/components/datasets/new-dataset-button";
 import { EntityRef } from "@/components/entity-ref";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -72,8 +71,7 @@ export function DatasetsToolbar({
   capabilityFilter = "all",
   setCapabilityFilter,
   capabilityNameById = {},
-  onCreate,
-}: DatasetsFilterProps & { onCreate: (source: DatasetSource) => void }) {
+}: DatasetsFilterProps) {
   const capabilityIds = useMemo(() => {
     const ids = new Set<string>(Object.keys(capabilityNameById));
     for (const ds of datasets) ids.add(ds.capability || NO_CAPABILITY);
@@ -124,7 +122,6 @@ export function DatasetsToolbar({
         setIntentFilter("all");
         setCapabilityFilter?.("all");
       }}
-      primary={<NewDatasetButton onSelect={onCreate} />}
       search={
         <SearchInput
           className="min-w-[200px] flex-1"
@@ -150,7 +147,7 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
     case "rows":
       return ds.rows ?? 0;
     case "version":
-      return ds.activeVersion ?? "";
+      return Number(ds.activeVersion?.slice(1) || -1);
     case "capability":
       return (ds.capabilityName ?? "").toLowerCase();
     case "updated":

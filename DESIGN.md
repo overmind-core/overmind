@@ -553,7 +553,7 @@ the token can't reach it.
 
 - **Shape:** Barely nicked corners (2px), 150ms colour-only transition.
 - **Height ramp:** One shared control ramp: `xs` 24px, `sm` 28px, default 32px,
-  `lg` 36px. `xs` is the notebook cell's scale: every bar in a cell is 32px.
+  `lg` 36px. `xs` is the version card's scale: every bar in a card is 32px.
   A row of controls stays aligned by giving them all the same `size`, never by
   patching `h-*` onto one.
 - **Primary:** Ink fill, canvas text (`bg-primary text-primary-foreground`),
@@ -637,100 +637,75 @@ so it follows the palette, inset by a 3px transparent border so it reads as a
 slim pill. The gutter is always reserved, so appearing and disappearing never
 reflows content.
 
-### Data Workshop notebook
+### Data Workshop canvas
 
-The dataset page fills its frame: the cells on the left and the dataset's
-agent on the right in a resizable split, on app tokens only, with no parallel
-palette. There is no page header: the breadcrumb names the dataset, and the
-name, the intent and the capability change through the chat (the agent's
-`rename`, `set_intent` and `set_capability` tools). The rail on the left holds
-a search button (a jump list of version, title and rows) and one small mark
-per cell: outlined when selected, `success/20` for the active one,
-`destructive` when failed.
+The dataset page fills its frame with a canvas of version cards on the card
+surface with a dot grid; no page header, the breadcrumb names the dataset. A
+32px bar above the canvas holds, from the left: the landing line ("Landing the
+source…", "Extracting text"), the landing error as plain `destructive` text,
+**Retry import** when the import can resume, and the data-split summary; on the
+right the workshop status and the controls (the dataset-list switcher and the
+minimap toggle, ghost icon buttons). Each version is a node under its parent,
+laid out top-down by ELK on a 20px grid, joined by square-cornered
+`muted-foreground` edges with no labels. A card can be dragged by its chip and
+keeps its place; **Reset layout** in the canvas controls clears the places.
+The wheel pans; pinch zooms. Scrolling inside a script or a table scrolls it,
+not the canvas.
 
-Each cell is a rounded frame with a chip on its top border. The chip is
-sticky: while a cell scrolls through the column its chip stays at the top and
-the next cell's chip pushes it away. The chip holds the version, a title input
-sized to its text, then Run / Export / Remove behind a hairline (the source
-chip carries Export alone; Export opens a dialog with CSV and JSONL; Remove
-asks first), then the state and a lock when frozen. The active cell draws its
-frame and its chip at 1.5px in the `success` tone with a small green square
-before the version. Inside, every bar is 32px with `xs` controls: the two
-collapsible strips with the same chevron header, **Script** and **Data**
-(`rows × columns` in its meta), the table's search and filter row, and its
-pagination. The table shows new rows on `success/10` and changed values as a
-word-level diff in place: removed on `destructive/15` struck through, added on
-`success/20`. A click opens the row in place: the same cells stop truncating
-and wrap to their full text (objects as indented JSON), and a second click
-closes it. No extra row, no sheet, no per-type rendering.
+Each card is a rounded frame with a chip on its top border: the version
+(`v3`), the title (**Source** for `v0`) and Export behind a hairline, then
+**Used** with a lock once a run used it. The active card draws its frame and
+chip at 1.5px in the `success` tone with a small green square before the
+version; a selected card draws a `primary/60` frame. Inside, every bar is 32px
+with `xs` controls and the same chevron header: **Script** (read-only, Python
+highlighting, run time in its meta), **Output** when the script printed, then
+**Changes**, then **Data** (`rows × columns` in its meta; open by default only
+on the active card). Changes lists only lines that say something:
+`120 → 96 rows`, `24 removed · 3 added`, and in `warning` **Row identity not
+kept**, **Input evidence removed in N rows**, **Instructions changed in N
+rows**. The source card shows its files (name, size, rows, short sha256) and
+the extraction limitations instead of a script.
 
-The footer is one 32px line. First an **Active** indicator (`success` chip
-with a tick). Then a contract chip that names the first failure (**Not a
-train table**, **Does not match Research Agent**, **Intent pending**, else
-**Fits**). Its hover card gives each contract as Needs / Columns / Found / Fix
-and, when one fails, three rows of actions. **Data**: ask Overmind to fix it
-(one turn on that contract alone, no quality pass). **Intent**: use the other
-intent, marked `fits` when its report already holds. **Capability**: the three
-best ranked alternatives with their score, and None. Every one of these is a
-chat turn, so the agent makes the change and re-aligns the chain. Then the
-consumers in the primary tint on the right: a train table offers **Train a
-model**; an eval table offers **Run the optimiser** and **Use in a training
-job** (the eval dataset that scores the job); each opens the wizard on its
-page with this version chosen. Any other version that ran shows **Set active**
-as a plain outline on the right. A failed cell prints its traceback under an
-**Error** label.
+The table shows new rows on `success/10` and changed values as a word-level
+diff against the parent version: removed on `destructive/15` struck through,
+added on `success/20`. The row number is a button that opens the row in
+place: the same cells wrap to their full text, and a document row adds one
+**Source evidence** line (file · page · element).
 
-The quality chip shows **Quality passed** or a warning-tinted **Review recommended**.
-Its hover card lists measured checks and remaining work. Quality and capability
-findings never disable consumer buttons. Review recommendations remain in the
-workshop, not training setup. Setup has no per-model preprocessing cards or
-preprocessing gate; model-specific preparation runs within the launched job.
-Overlap is advisory in setup.
-Unreadable data, invalid technical formats and incompatible model settings still
-block execution. There is no extra quality-approval step.
+The footer is one 32px line. On the active card: an **Active** chip, then a
+contract chip that names the first failure (**The active version does not
+match the train shape.**, **Rows do not match Research Agent.**, **Intent
+pending**, else **Format valid**). Its hover card gives each contract as Needs
+/ Columns / Found / Fix and, when one fails, the only Console changes: use the
+other intent when its shape holds, or switch to a better-ranked capability, or
+remove the capability. Then the consumers in the primary tint on the right:
+**Train a model**, or **Run the optimiser** and **Use in a training job**.
+Every other card shows **Set active** as a plain outline on the right.
 
-The chat on the right has no header or repeated agent-name labels.
-Explanations, thinking/tool sections and cell results appear in execution order.
-The current activity section opens while work runs; earlier sections collapse
-into **Thought for…** when narration resumes. The user can expand or collapse
-them at any time. Provider-exposed thinking text reads as Markdown prose, not
-a clipped code block. Tool calls keep their inputs and results in individual
-disclosures. Shared elbow connectors group the steps; no enclosing status card.
-Generation counts remain secondary below the live conversation.
-A quiet-period notice reports time since the last activity, never invented
-progress. Thinking snapshots and progress survive a reload. Assistant responses
-explain the approach, findings and caveats in normal paragraphs rather than a
-fixed one-line result; verified generation counts accompany that explanation.
-One full-width result row per non-proposed cell shows its title, row count,
-version and current state: `ran` on `success/10`,
-`failed` on `destructive/10`, `edited` on `info/10`, `removed` struck through,
-and discarded proposals dashed and struck through. A result row jumps to its cell.
+A dataset with only its source shows a panel at the top left of the canvas:
+**No versions yet**, "Add versions from a coding agent connected over MCP.",
+and **Connect an agent** (the MCP docs). New versions fade in where the layout
+places them; a re-measured card flashes `wash-raised` back to `card`.
 
-Initial preparation runs its cleaning and shaping cells end-to-end without
-routine per-cell approval. Judgement calls remain explicit proposals, including
-during initial preparation. The original source and coverage impact remain available;
-the user adjusts the result through chat. Requested synthetic generation also
-adds validated rows directly, without a draft or Apply step. Batches accumulate
-in one active cell; progress shows rows added. An interrupted run keeps the
-added rows, and a follow-up prompt resumes generation.
+The workshop status reads **Running N scripts** while runs are queued or
+running, else **Activity**. It opens a popover with the last 20 runs, newest
+first: kind (Try, Probe, Add, Synthetic), title or first script line, a
+status badge, run time, when, the parent version, the first error line in
+`destructive` for a failure, and a button to the version a run created.
 
-All pending proposals appear in the chat's review section as shared bordered
-cards with impact counts and expandable input/output examples. **Approve** consumes
-the saved transformation preview; **Deny** removes it. Stale proposals
-cannot be applied. Generated data uses the normal cell-result row instead.
-Chat Markdown has no horizontal rules or heading underlines; tables and thinking
-elbows keep their borders. No divider sits above the composer or proposal actions.
-The composer has an input and vendored pixel Send icon, without helper subtext. It stays
-at the bottom and accepts a draft while a request runs;
-Send is disabled until completion. New activity follows the bottom only while
-the user is already there. These surfaces reuse Card, Badge, Progress, Alert
-and shared activity data, with no separate chat theme or model selector.
+The switcher opens the project's datasets in a 248px column at the card's
+left edge, with search, a status glyph per dataset (working, failed,
+completed) and delete on hover; on a phone the column covers the page.
+Escape closes it and focus returns to the switcher.
 
 ### Motion (system-wide)
 
 150ms for colour and background transitions, 200ms for dialog open/close, `ease`
 and `ease-out` throughout. No spring physics, no bounce. Hover changes colour,
 background and border only: never scale, never lift, never shadow.
+Status glyphs that report work pulse their opacity while it runs and fade their
+colour in once when it completes; a version card fades in (500ms) or flashes
+its surface (500ms). Under reduced motion all of these stop or shorten to 120ms.
 
 ## Language
 

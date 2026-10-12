@@ -123,7 +123,7 @@ export function DatasetCard({ id, name }: { id: string; name: string }) {
     <EntityCardShell
       kind="dataset"
       name={data.name || name}
-      subtitle={data.activeVersion ? `version ${data.activeVersion}` : "no version yet"}
+      subtitle={data.activeVersion ? `active ${data.activeVersion}` : "no version yet"}
     >
       <Row label="Rows">{(data.rows ?? 0).toLocaleString()}</Row>
       <Row label="Intent">{INTENT_LABEL[intentOf(data)]}</Row>

@@ -287,25 +287,6 @@ describe("SetupPanel", () => {
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
-  it("keeps workshop review recommendations out of training setup", () => {
-    const readiness = {
-      formatReason: "",
-      formatValid: true,
-      qualityPassed: false,
-      qualityReason: "Input evidence: unknown",
-      qualityReviewed: true,
-      trainingConfiguration: "not_checked",
-    };
-    setup({
-      capabilityId: "another-capability",
-      dataset: { ...TRAIN_SET, readiness },
-      evalDataset: { ...EVAL_SET, readiness },
-    });
-    expect(screen.queryByText("Review recommended")).toBeNull();
-    expect(screen.queryByText("Input evidence: unknown")).toBeNull();
-    expect(screen.queryByRole("link", { name: "Open workshop" })).toBeNull();
-    expect(screen.queryByText("Can't be trained on yet")).toBeNull();
-  });
   it("groups each model's evaluation targets in its own field", () => {
     setup();
 

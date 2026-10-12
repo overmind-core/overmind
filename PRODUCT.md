@@ -127,35 +127,34 @@ navigation code but are no longer used to stage access.
 
 ### Data Workshop specifics
 
-- Any file, pasted rows, or trace selection lands as-is as the **source**;
-  nothing is reshaped on the way in. Trace rows carry the behaviour, verdicts,
-  scores and asks that trace scoring produced, one row per task execution.
-- Landing proposes two things and the first use freezes them: the **intent**
-  (train or eval) and the **capability** the rows belong to. Both are
-  contracts every version is measured against: the intent contract is the
-  shape, the capability contract is row by row — an eval input carries the
-  capability's required keys, a train transcript is the capability's own
-  system prompt and tools. A row that cannot meet them is a finding, never a
-  default value.
-- A linear chain of Python cells is the recipe: a cell is a body (the frame
-  arrives as `df` and leaves as `df`), each cell that ran is a **version**
-  (the source is 1.0, then 1.1, 1.2, …), and each shows what it did to the
-  rows and values against the cell before — added rows, removed rows, and
-  changed values with the old value in reach. The **active version** is the
-  last cell that ran unless the user points elsewhere. Editing a cell re-runs
-  it and every cell after it in place; the numbers do not move.
-- The chat on a dataset is the dataset's own agent, an ML engineer, not the
-  general assistant: it tests a script before it lands a cell, one request is
-  one cell, it reads before it writes, and it never asks what to do next. The
-  moment a dataset lands it runs one turn: the fewest cells that make both
-  contracts hold, each run in view, then the quality checks an engineer would
-  run for that intent — refusals, truncated turns, duplicates, length
-  outliers, leakage, coverage — each landed and run as one cell with the row
-  count in its note; only a fix that would drop more than half the rows waits
-  as a proposal. After that the conversation is open.
-- Eval runs, optimiser runs, training runs and exports **use** the exact
-  version they read: it becomes the next major (2.0), it and every cell
-  before it freeze, the frame cannot be deleted, and the run links back to it.
+- Any file, pasted rows, trace selection or document lands as-is as the
+  **source**, version `v0`; nothing is reshaped on the way in. Trace rows carry
+  the behaviour, verdicts, scores and asks that trace scoring produced, one row
+  per task execution. A PDF, DOCX, Markdown, text or image upload lands one row
+  per text element with its page, file name, the file's sha256 and the page
+  regions it came from; Overmind does not chunk. Tables and documents never
+  share a dataset.
+- Landing proposes two things: the **intent** (train or eval) and the
+  **capability** the rows belong to. Both are contracts every version is
+  measured against: the intent contract is the shape, the capability contract
+  is row by row — an eval input carries the capability's required keys, a
+  train transcript is the capability's own system prompt and tools. A row that
+  cannot meet them is a finding, never a default value.
+- Versions form an immutable tree. A coding agent connected over MCP adds a
+  version by running a Python script on a parent version (the frame arrives as
+  `df` and leaves as `df`); every script runs in an isolated sandbox with no
+  network, and a failed run leaves no version. Each version records what it
+  changed against its parent — rows before and after, rows removed and added,
+  identity, input evidence and instructions touched — and siblings under one
+  parent are branches the agent can compare. Overmind has no built-in agent.
+- The **active version** is what training, evaluation and the optimiser read
+  by default. An agent or the Console sets it; two writers resolve with an
+  expected active version. The Console shows the tree on a canvas, the runs in
+  an Activity list, and changes only the name, intent, capability and active
+  version.
+- Eval runs, optimiser runs and training runs **use** the exact version they
+  read: it is marked **Used**, its frame cannot be deleted, and the run links
+  back to it.
 - The product's shape and token distribution feed the training recommender —
   model tier, epochs, learning rate, adapter settings — with cost and duration
   estimated before commitment.

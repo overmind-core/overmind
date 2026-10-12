@@ -30,6 +30,7 @@ describe("domainStatus", () => {
   it("maps terminal states", () => {
     expect(domainStatus("completed")).toBe("success");
     expect(domainStatus("succeeded")).toBe("success");
+    expect(domainStatus("ok")).toBe("success");
     expect(domainStatus("failed")).toBe("error");
     expect(domainStatus("cancelled")).toBe("error");
     expect(domainStatus("partially_completed")).toBe("warning");

@@ -38,19 +38,11 @@ export function StateBadge({
   className?: string;
 }) {
   if (!dataset) return null;
-  if (
-    dataset.state === "landing" ||
-    dataset.state === "running" ||
-    dataset.state === "diagnosing"
-  ) {
+  if (dataset.state === "landing") {
     return (
       <Badge className={cn("gap-1", className)} size="chip" variant="info">
         <Spinner className="size-3" />
-        {dataset.state === "landing"
-          ? "Landing"
-          : dataset.state === "running"
-            ? "Running"
-            : "Agent"}
+        Landing
       </Badge>
     );
   }

@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
+import { SourceDetails } from "@/components/datasets/notebook/source";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -16,24 +15,17 @@ import {
 } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Icon, type IconName } from "@/components/ui/icons";
-import { Spinner } from "@/components/ui/spinner";
-import { type CellState, columnsOf, fitOf } from "@/hooks/use-datasets";
+import { columnsOf, fitOf } from "@/hooks/use-datasets";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
 /** `train_eval`: the eval dataset that scores a training job. */
 export type UsePurpose = "train" | "train_eval" | "optimise";
 
-export interface CellActions {
-  onTitle: (title: string) => void;
-  onScript: (script: string) => void;
-  onRemove: () => void;
+export interface VersionActions {
   onActivate: () => void;
-  onRun: () => void;
   onUse: (purpose: UsePurpose) => void;
   onExport: (fmt: "jsonl" | "csv") => void;
-  /** Ask the agent to make the one failing contract hold, nothing more. */
-  onFix: (problem: string) => void;
   onIntent: (intent: "train" | "eval") => void;
   onCapability: (id: string | null) => void;
 }
@@ -44,7 +36,6 @@ interface Suggestion {
   title: string;
   hint: string;
   run: () => void;
-  primary?: boolean;
 }
 
 export interface CapabilityChoice {
@@ -52,43 +43,6 @@ export interface CapabilityChoice {
   name: string;
   /** Landing's score for this table, when it ranked the capability. */
   score?: number;
-}
-
-function TitleField({
-  value,
-  disabled,
-  onSave,
-}: {
-  value: string;
-  disabled: boolean;
-  onSave: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    const next = draft.trim();
-    if (next && next !== value) onSave(next);
-    else setDraft(value);
-  };
-  return (
-    <input
-      aria-label="Cell title"
-      className="w-auto min-w-4 max-w-64 truncate bg-transparent text-xs text-foreground outline-none field-sizing-content focus-visible:underline"
-      disabled={disabled}
-      maxLength={255}
-      onBlur={commit}
-      onChange={(e) => setDraft(e.target.value)}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          setDraft(value);
-          e.currentTarget.blur();
-        }
-      }}
-      value={draft}
-    />
-  );
 }
 
 function ExportDialog({
@@ -174,14 +128,6 @@ function SectionHeader({
   );
 }
 
-const STATE_LABEL: Record<CellState, string> = {
-  failed: "failed",
-  ok: "",
-  proposed: "proposed",
-  queued: "queued",
-  running: "running",
-};
-
 type Report = {
   ok?: boolean;
   reason?: string;
@@ -206,11 +152,11 @@ interface Check {
   fixable?: boolean;
 }
 
-function intentCheck(intent: string, shape: Report, ran: boolean): Check {
+function intentCheck(intent: string, shape: Report): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Tell Overmind in the chat which one the rows are for.",
+      fix: "Select train or eval.",
       found: "train or eval not chosen",
       label: "Intent",
       ok: false,
@@ -223,15 +169,6 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
       ? "an input column with a value on every row; expected_output when a reference exists"
       : "a messages column: a list of role and content turns on every row";
   const columns = intent === "eval" ? ["input", "expected_output"] : ["messages"];
-  if (!ran)
-    return {
-      columns,
-      fix: "Run the cell.",
-      found: "the cell has not run",
-      label,
-      ok: false,
-      requires,
-    };
   if (shape.ok) return { columns, found: "every row holds the shape", label, ok: true, requires };
   const reason = shape.reason ?? "";
   if (shape.fixable === false)
@@ -244,7 +181,7 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
       ok: false,
       requires,
     };
-  let fix = "Ask the agent to shape the table.";
+  let fix = `Add a version that gives every row the ${intent} shape.`;
   if (reason.startsWith("no input column"))
     fix = "Add an input column: rename the prompt column or build it from messages.";
   else if (reason.startsWith("no messages column"))
@@ -280,7 +217,7 @@ function capabilityCheck(name: string, report: Report, intent: string): Check {
     };
   }
   const reason = report.reason ?? "";
-  let fix = `Ask the agent to align the rows with ${name}.`;
+  let fix = `Add a version that aligns the rows with ${name}.`;
   if (reason.startsWith("system turn differs"))
     fix = `Set the first message of every row to ${name}'s system prompt.`;
   else if (reason.startsWith("undeclared tool calls"))
@@ -341,9 +278,9 @@ function CheckRow({ check, present }: { check: Check; present: Set<string> }) {
   );
 }
 
-/** Both contracts on the frame: the chip names the first failure, the hover
- *  card says what each needs, which columns are there, what was found and
- *  what makes it pass. */
+/** Both contracts on the active version: the chip names the first failure, the hover
+ *  card says what each needs, which columns are there, what was found and what makes
+ *  it pass. The Console changes only the intent and the capability from here. */
 function FitChip({
   cell,
   intent,
@@ -355,99 +292,75 @@ function FitChip({
   intent: string;
   capabilityName: string;
   capabilities: CapabilityChoice[];
-  /** Absent while the dataset is busy or frozen: the card then only reports. */
-  actions?: Pick<CellActions, "onFix" | "onIntent" | "onCapability">;
+  actions?: Pick<VersionActions, "onIntent" | "onCapability">;
 }) {
   const reports = (cell.intentReport as Record<string, Report> | null) ?? {};
   const shape = (reports[intent] ?? {}) as Report;
-  const ran = cell.state === "ok" && !!cell.fingerprint;
   const other: "train" | "eval" | null =
     intent === "train" ? "eval" : intent === "eval" ? "train" : null;
-  const otherFits = other ? !!(reports[other] as Report | undefined)?.ok : false;
-  const checks = [intentCheck(intent, shape, ran)];
-
-  /** Only the moves that would actually change the verdict, most likely first. */
-  function suggest(
-    failing: Check,
-    acts: Pick<CellActions, "onFix" | "onIntent" | "onCapability">
-  ): Suggestion[] {
-    const out: Suggestion[] = [];
-    const capabilityFails = failing.label.endsWith(" rows");
-    const intentFails = !capabilityFails && failing.label !== "Intent";
-    if (failing.label === "Intent") {
-      for (const choice of ["train", "eval"] as const) {
-        if ((reports[choice] as Report | undefined)?.ok) {
-          out.push({
-            hint: `The ${choice} shape already holds on this version.`,
-            icon: "target",
-            key: `intent-${choice}`,
-            run: () => acts.onIntent(choice),
-            title: `Use it for ${choice}`,
-          });
-        }
-      }
-      return out;
-    }
-    if (failing.fixable === false) return out;
-    out.push({
-      hint: intentFails
-        ? `Adds a cell so the table is a ${intent} table.`
-        : `Adds a cell so every row matches ${capabilityName}.`,
-      icon: "overmind",
-      key: "fix",
-      primary: true,
-      run: () => acts.onFix(`${failing.label}: ${failing.found}`),
-      title: "Ask Overmind to fix it",
-    });
-    if (other && otherFits) {
-      out.push({
-        hint: `The ${other} shape already holds on this version.`,
-        icon: "target",
-        key: "intent",
-        run: () => acts.onIntent(other),
-        title: `Use it for ${other} instead`,
-      });
-    }
-    if (capabilityFails) {
-      const current = capabilities.find((c) => c.name === capabilityName)?.score ?? 0;
-      const better = capabilities
-        .filter((c) => c.name !== capabilityName && (c.score ?? 0) > current)
-        .slice(0, 2);
-      for (const c of better) {
-        out.push({
-          hint: `${Math.round((c.score ?? 0) * 100)}% of rows match it, against ${Math.round(current * 100)}% for ${capabilityName}.`,
-          icon: "capability",
-          key: `cap-${c.id}`,
-          run: () => acts.onCapability(c.id),
-          title: `Switch to ${c.name}`,
-        });
-      }
-      if (better.length === 0) {
-        out.push({
-          hint: `No capability matches these rows better. Only the ${intent} shape is checked then.`,
-          icon: "close",
-          key: "detach",
-          run: () => acts.onCapability(null),
-          title: "Remove the capability",
-        });
-      }
-    }
-    return out;
-  }
+  const checks = [intentCheck(intent, shape)];
   if (capabilityName) {
     checks.push(capabilityCheck(capabilityName, (cell.capabilityReport ?? {}) as Report, intent));
   }
   const present = new Set(columnsOf(cell).map((c) => c.name));
   const failing = checks.find((c) => !c.ok);
+  const capabilityFails = !!failing?.label.endsWith(" rows");
+
+  const suggestions: Suggestion[] = [];
+  if (failing && actions) {
+    const holds = (choice: "train" | "eval") => !!(reports[choice] as Report | undefined)?.ok;
+    if (failing.label === "Intent") {
+      for (const choice of ["train", "eval"] as const) {
+        if (holds(choice))
+          suggestions.push({
+            hint: `The ${choice} shape already holds on this version.`,
+            icon: "target",
+            key: `intent-${choice}`,
+            run: () => actions.onIntent(choice),
+            title: `Use it for ${choice}`,
+          });
+      }
+    } else {
+      if (other && holds(other))
+        suggestions.push({
+          hint: `The ${other} shape already holds on this version.`,
+          icon: "target",
+          key: "intent",
+          run: () => actions.onIntent(other),
+          title: `Use it for ${other} instead`,
+        });
+      if (capabilityFails) {
+        const current = capabilities.find((c) => c.name === capabilityName)?.score ?? 0;
+        const better = capabilities
+          .filter((c) => c.name !== capabilityName && (c.score ?? 0) > current)
+          .slice(0, 2);
+        for (const c of better)
+          suggestions.push({
+            hint: `${Math.round((c.score ?? 0) * 100)}% of rows match it, against ${Math.round(current * 100)}% for ${capabilityName}.`,
+            icon: "capability",
+            key: `cap-${c.id}`,
+            run: () => actions.onCapability(c.id),
+            title: `Switch to ${c.name}`,
+          });
+        if (!better.length)
+          suggestions.push({
+            hint: `No capability matches these rows better. Only the ${intent} shape is checked then.`,
+            icon: "close",
+            key: "detach",
+            run: () => actions.onCapability(null),
+            title: "Remove the capability",
+          });
+      }
+    }
+  }
+
   const headline = !failing
     ? "Format valid"
     : failing.label === "Intent"
       ? "Intent pending"
-      : failing.label.endsWith(" rows")
-        ? `Does not match ${capabilityName}`
-        : `Not a ${intent} table`;
-  const detail = failing && failing.found.length <= 48 ? failing.found : null;
-  const suggestions = failing && actions ? suggest(failing, actions) : [];
+      : capabilityFails
+        ? `Rows do not match ${capabilityName}.`
+        : `The active version does not match the ${intent} shape.`;
   return (
     <HoverCard openDelay={250}>
       <HoverCardTrigger asChild>
@@ -464,10 +377,7 @@ function FitChip({
           ) : (
             <Icon.success className="size-3 shrink-0" />
           )}
-          <span className="truncate">
-            {headline}
-            {detail && <span className="text-warning/80"> · {detail}</span>}
-          </span>
+          <span className="truncate">{headline}</span>
         </span>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-[28rem] p-2.5">
@@ -482,34 +392,20 @@ function FitChip({
             </li>
           )}
         </ul>
-        {failing && actions && suggestions.length > 0 && (
+        {suggestions.length > 0 && (
           <div className="mt-3 flex flex-col gap-1 border-t border-border/70 pt-2">
             {suggestions.map((item) => {
               const Glyph = Icon[item.icon];
               return (
                 <button
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-sm border px-2 py-1.5 text-left",
-                    item.primary
-                      ? "border-primary/40 bg-primary/10 hover:bg-primary/20"
-                      : "border-border/70 hover:bg-accent/50"
-                  )}
+                  className="flex w-full items-start gap-2 rounded-sm border border-border/70 px-2 py-1.5 text-left hover:bg-accent/50"
                   key={item.key}
                   onClick={item.run}
                   type="button"
                 >
-                  <Glyph
-                    className={cn(
-                      "mt-0.5 size-3.5 shrink-0",
-                      item.primary ? "text-primary" : "text-muted-foreground"
-                    )}
-                  />
+                  <Glyph className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                   <span className="flex min-w-0 flex-col">
-                    <span
-                      className={cn("text-xs", item.primary ? "text-primary" : "text-foreground")}
-                    >
-                      {item.title}
-                    </span>
+                    <span className="text-xs text-foreground">{item.title}</span>
                     <span className="text-xs text-muted-foreground">{item.hint}</span>
                   </span>
                 </button>
@@ -522,15 +418,78 @@ function FitChip({
   );
 }
 
-export function NotebookCell({
+interface Impact {
+  rows_before?: number | null;
+  rows_after?: number | null;
+  rows_removed?: number | null;
+  rows_added?: number | null;
+  identity_preserved?: boolean;
+  input_evidence_removed?: number | null;
+  instruction_changes?: number | null;
+}
+
+const count = (n: number) => n.toLocaleString();
+
+/** What a version changed against its parent. Lines that would read zero are left out. */
+function Changes({ impact }: { impact: Impact }) {
+  const { rows_before: before, rows_after: after } = impact;
+  const lines: Array<{ key: string; parts: string[]; warning?: boolean }> = [];
+  if (before != null && after != null && before !== after)
+    lines.push({ key: "rows", parts: [`${count(before)} → ${count(after)} rows`] });
+  const moved = [
+    impact.rows_removed ? `${count(impact.rows_removed)} removed` : "",
+    impact.rows_added ? `${count(impact.rows_added)} added` : "",
+  ].filter(Boolean);
+  if (moved.length) lines.push({ key: "moved", parts: moved });
+  if (impact.identity_preserved === false)
+    lines.push({ key: "identity", parts: ["Row identity not kept"], warning: true });
+  if (impact.input_evidence_removed)
+    lines.push({
+      key: "evidence",
+      parts: [`Input evidence removed in ${count(impact.input_evidence_removed)} rows`],
+      warning: true,
+    });
+  if (impact.instruction_changes)
+    lines.push({
+      key: "instructions",
+      parts: [`Instructions changed in ${count(impact.instruction_changes)} rows`],
+      warning: true,
+    });
+  if (!lines.length) return null;
+  return (
+    <ul aria-label="Changes" className="flex flex-col gap-0.5 px-3 pb-2.5">
+      {lines.map((line) => (
+        <li
+          className={cn(
+            "flex items-center gap-1.5 text-xs",
+            line.warning ? "text-warning" : "text-muted-foreground"
+          )}
+          key={line.key}
+        >
+          {line.warning && <Icon.warning className="size-3 shrink-0" />}
+          {line.parts.map((part, index) => (
+            <span className="tabular-nums" key={part}>
+              {index > 0 && <span aria-hidden> · </span>}
+              <span>{part}</span>
+            </span>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const CONSUMER_BUTTON = "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20";
+
+export function VersionCard({
   datasetId,
   cell,
   intent,
   capabilityName,
   capabilities,
+  sourceSpec,
   active,
   editable,
-  running,
   selected,
   onSelect,
   actions,
@@ -540,271 +499,183 @@ export function NotebookCell({
   intent: string;
   capabilityName: string;
   capabilities: CapabilityChoice[];
+  sourceSpec: unknown;
   active: boolean;
   editable: boolean;
-  running: boolean;
   selected: boolean;
   onSelect: () => void;
-  actions: CellActions;
+  actions: VersionActions;
 }) {
-  const source = cell.position === 0;
-  const ran = cell.state === "ok" && !!cell.fingerprint;
-  const frozen = !!cell.frozen;
-  const canEdit = editable && !frozen && !source;
-  const [scriptOpen, setScriptOpen] = useState(!ran);
-  const [tableOpen, setTableOpen] = useState(true);
-  const [script, setScript] = useState(cell.script);
-  useEffect(() => setScript(cell.script), [cell.script]);
-  useEffect(() => {
-    if (cell.state === "failed" || cell.state === "queued") setScriptOpen(true);
-  }, [cell.state]);
-  const dirty = script !== cell.script;
+  const source = cell.parent == null;
+  const title = source ? "Source" : cell.title;
+  const [scriptOpen, setScriptOpen] = useState(true);
+  const [outputOpen, setOutputOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(active);
   const fit = fitOf(cell);
   const columns = columnsOf(cell).length;
-
-  const version = cell.version;
-  const stateTone =
-    cell.state === "failed"
-      ? "border-destructive/60"
-      : cell.state === "running"
-        ? "border-info/60"
-        : active
-          ? "border-[1.5px] border-success/60"
-          : "border-border";
+  const changes = (cell.impact ?? {}) as Impact;
 
   return (
     <article
       aria-current={selected ? "true" : undefined}
-      aria-label={cell.title}
-      className="group/cell relative px-3 py-3"
-      id={`cell-${cell.id}`}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && e.target === e.currentTarget) onSelect();
-      }}
+      aria-label={`${cell.version} ${title}`}
+      className="relative pt-3"
+      onClickCapture={onSelect}
     >
-      {/* The chip sticks to the top of the scroll while its cell is in view; the frame
-          starts half a chip lower so the border runs through the chip's middle. */}
-      <div className="pointer-events-none sticky top-1 z-20 flex items-center pl-1.5">
-        <div className="pointer-events-auto flex items-center gap-1 bg-card px-1">
-          <span
-            className={cn(
-              "inline-flex h-6 items-center overflow-hidden rounded-sm bg-card text-xs",
-              active ? "border-[1.5px] border-success/60" : "border border-border",
-              selected || source ? "text-foreground" : "text-muted-foreground"
-            )}
-          >
-            <span className="inline-flex items-center gap-1.5 pr-1.5 pl-2">
-              {active && <span className="size-1.5 rounded-xs bg-success" />}
-              <span className={cn("font-mono", active && "font-semibold text-foreground")}>
-                {version}
-              </span>
-              {source ? (
-                <span>Source</span>
-              ) : (
-                <TitleField disabled={!canEdit} onSave={actions.onTitle} value={cell.title} />
-              )}
+      <div className="version-drag-handle absolute top-0 left-3 z-10 flex cursor-grab items-center gap-1 bg-card px-1 active:cursor-grabbing">
+        <span
+          className={cn(
+            "inline-flex h-6 items-center overflow-hidden rounded-sm bg-card text-xs",
+            active ? "border-[1.5px] border-success/60" : "border border-border",
+            selected || source ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
+          <span className="inline-flex items-center gap-1.5 pr-1.5 pl-2">
+            {active && <span className="size-1.5 rounded-xs bg-success" />}
+            <span className={cn("font-mono", active && "font-semibold text-foreground")}>
+              {cell.version}
             </span>
-            <span
-              aria-label={`${cell.title} cell`}
-              className="flex h-full items-center divide-x divide-border/70 border-l border-border/70"
-              role="toolbar"
-            >
-              {!source && (
-                <Button
-                  aria-label="Run the chain"
-                  className="h-full rounded-none"
-                  disabled={!editable || running}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (dirty) actions.onScript(script);
-                    else actions.onRun();
-                  }}
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Icon.play />
-                </Button>
-              )}
-              {ran && (
-                <ExportDialog
-                  columns={columns}
-                  onExport={actions.onExport}
-                  rows={cell.rows}
-                  title={`${version} ${cell.title}`}
-                />
-              )}
-              {!source && (
-                <ConfirmDialog
-                  confirmLabel="Remove"
-                  description="Every cell after it runs again without this step. Versions after this one change."
-                  destructive
-                  onConfirm={actions.onRemove}
-                  title={`Remove ${version} ${cell.title}?`}
-                  trigger={
-                    <Button
-                      aria-label="Remove cell"
-                      className="h-full rounded-none"
-                      disabled={!editable || frozen}
-                      onClick={(e) => e.stopPropagation()}
-                      size="icon-xs"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Icon.delete />
-                    </Button>
-                  }
-                />
-              )}
+            <span className="max-w-72 truncate" title={title}>
+              {title}
             </span>
           </span>
-          {cell.state === "running" ? (
-            <Spinner className="size-3" />
-          ) : STATE_LABEL[cell.state as CellState] ? (
-            <span
-              className={cn(
-                "pixel-label text-xs",
-                cell.state === "failed" ? "text-destructive" : "text-muted-foreground"
-              )}
-            >
-              {STATE_LABEL[cell.state as CellState]}
-            </span>
-          ) : null}
-          {frozen && !source && (
-            <Icon.lock
-              aria-label="Used by a run; frozen"
-              className="size-3 text-muted-foreground"
+          <span className="nodrag flex h-full items-center border-l border-border/70">
+            <ExportDialog
+              columns={columns}
+              onExport={actions.onExport}
+              rows={cell.rows}
+              title={`${cell.version} ${title}`}
             />
-          )}
-        </div>
+          </span>
+        </span>
+        {cell.frozen && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Icon.lock className="size-3" />
+            Used
+          </span>
+        )}
       </div>
-      <div className={cn("relative -mt-3 w-full min-w-0 rounded-md border", stateTone)}>
-        {!source && (
-          <div className="pt-3">
+      <div
+        className={cn(
+          "w-full min-w-0 rounded-md border bg-card pt-3 transition-colors duration-200",
+          active
+            ? "border-[1.5px] border-success/60"
+            : selected
+              ? "border-primary/60"
+              : "border-border"
+        )}
+        data-cell-frame
+      >
+        {source ? (
+          <SourceDetails spec={sourceSpec} />
+        ) : (
+          <>
             <SectionHeader
               label="Script"
-              onToggle={() => setScriptOpen((o) => !o)}
+              meta={cell.seconds ? `${cell.seconds.toFixed(1)}s` : undefined}
+              onToggle={() => setScriptOpen((open) => !open)}
               open={scriptOpen}
             />
-          </div>
-        )}
-        {!source && scriptOpen && (
-          <div className="px-3 pt-1 pb-2.5">
-            <ScriptCode
-              aria-label={`Script of ${cell.title}`}
-              onChange={canEdit ? setScript : undefined}
-              onRun={() => {
-                if (dirty) actions.onScript(script);
-                else actions.onRun();
-              }}
-              source={script}
-            />
-            {dirty && (
-              <div className="mt-1.5 flex justify-end gap-1">
-                <Button onClick={() => setScript(cell.script)} size="xs" variant="secondary">
-                  Discard
-                </Button>
-                <Button onClick={() => actions.onScript(script)} size="xs">
-                  Save and run
-                </Button>
+            {scriptOpen && (
+              <div className="px-3 pt-1 pb-2.5">
+                <ScriptCode aria-label={`Script of ${cell.version}`} source={cell.script} />
               </div>
             )}
-          </div>
-        )}
-        {source && <div className="h-3" />}
-
-        {cell.state === "failed" && cell.error && (
-          <div className="mx-3 mb-2.5 flex flex-col gap-1">
-            <span className="pixel-label flex items-center gap-1 text-xs text-destructive">
-              <Icon.warning className="size-3" />
-              Error
-            </span>
-            <pre className="whitespace-pre-wrap break-words rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-xs text-destructive">
-              {cell.error}
-            </pre>
-          </div>
-        )}
-
-        {ran ? (
-          <div className={cn(!source && "border-t border-border/70")}>
-            <SectionHeader
-              label="Data"
-              meta={`${cell.rows.toLocaleString()} rows × ${columns}`}
-              onToggle={() => setTableOpen((o) => !o)}
-              open={tableOpen}
-            />
-            {tableOpen && (
-              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
+            {cell.stdout && (
+              <>
+                <SectionHeader
+                  label="Output"
+                  onToggle={() => setOutputOpen((open) => !open)}
+                  open={outputOpen}
+                />
+                {outputOpen && (
+                  <pre className="nodrag nowheel mx-3 mb-2.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border/70 px-2 py-1 font-mono text-xs text-muted-foreground">
+                    {cell.stdout}
+                  </pre>
+                )}
+              </>
             )}
-            <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1">
-              {active ? (
-                <>
-                  <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
-                    <Icon.success className="size-3" />
-                    Active
-                  </span>
-                  <FitChip
-                    actions={editable && !frozen ? actions : undefined}
-                    capabilities={capabilities}
-                    capabilityName={capabilityName}
-                    cell={cell}
-                    intent={intent}
-                  />
-                  <QualityChip cell={cell} />
-                  <span className="flex-1" />
-                  {intent === "train" && (
-                    <Button
-                      className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                      disabled={!fit.ok}
-                      onClick={() => actions.onUse("train")}
-                      size="xs"
-                      variant="outline"
-                    >
-                      <Icon.training />
-                      Train a model
-                    </Button>
-                  )}
-                  {intent === "eval" && (
-                    <>
-                      <Button
-                        className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                        disabled={!fit.ok}
-                        onClick={() => actions.onUse("optimise")}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Icon.optimiser />
-                        Run the optimiser
-                      </Button>
-                      <Button
-                        className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                        disabled={!fit.ok}
-                        onClick={() => actions.onUse("train_eval")}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Icon.training />
-                        Use in a training job
-                      </Button>
-                    </>
-                  )}
-                </>
-              ) : (
+            <Changes impact={changes} />
+          </>
+        )}
+        <div className="border-t border-border/70">
+          <SectionHeader
+            label="Data"
+            meta={`${cell.rows.toLocaleString()} rows × ${columns}`}
+            onToggle={() => setTableOpen((open) => !open)}
+            open={tableOpen}
+          />
+          {tableOpen && (
+            <div className="nodrag">
+              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
+            </div>
+          )}
+        </div>
+        <footer className="nodrag flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1">
+          {active ? (
+            <>
+              <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
+                <Icon.success className="size-3" />
+                Active
+              </span>
+              <FitChip
+                actions={editable ? actions : undefined}
+                capabilities={capabilities}
+                capabilityName={capabilityName}
+                cell={cell}
+                intent={intent}
+              />
+              <span className="flex-1" />
+              {intent === "train" && (
                 <Button
-                  className="ml-auto"
-                  disabled={!editable}
-                  onClick={actions.onActivate}
+                  className={CONSUMER_BUTTON}
+                  disabled={!fit.ok}
+                  onClick={() => actions.onUse("train")}
                   size="xs"
                   variant="outline"
                 >
-                  <Icon.pin />
-                  Set active
+                  <Icon.training />
+                  Train a model
                 </Button>
               )}
-            </footer>
-          </div>
-        ) : null}
+              {intent === "eval" && (
+                <>
+                  <Button
+                    className={CONSUMER_BUTTON}
+                    disabled={!fit.ok}
+                    onClick={() => actions.onUse("optimise")}
+                    size="xs"
+                    variant="outline"
+                  >
+                    <Icon.optimiser />
+                    Run the optimiser
+                  </Button>
+                  <Button
+                    className={CONSUMER_BUTTON}
+                    disabled={!fit.ok}
+                    onClick={() => actions.onUse("train_eval")}
+                    size="xs"
+                    variant="outline"
+                  >
+                    <Icon.training />
+                    Use in a training job
+                  </Button>
+                </>
+              )}
+            </>
+          ) : (
+            <Button
+              className="ml-auto"
+              disabled={!editable}
+              onClick={actions.onActivate}
+              size="xs"
+              variant="outline"
+            >
+              <Icon.pin />
+              Set active
+            </Button>
+          )}
+        </footer>
       </div>
     </article>
   );

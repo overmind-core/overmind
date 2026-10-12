@@ -119,7 +119,7 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
     dataReady: true,
     drafts: DRAFTS,
     estimates: new Map(),
-    evalDataset: { activeVersion: "1.0", rows: 30 } as unknown as Dataset,
+    evalDataset: { activeVersion: "v1", rows: 30 } as unknown as Dataset,
     excluded: [],
     rec: REC,
     recommendQuery: { error: null, isLoading: false },

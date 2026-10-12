@@ -2,12 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 
+import { Attachment } from "@/components/datasets/attachment";
 import { evaluationRows } from "@/components/datasets/dataset-split";
-import type { DatasetSource } from "@/components/datasets/new-dataset-button";
-import {
-  TraceBulkSourcePicker,
-  type TraceSelectionState,
-} from "@/components/traces/trace-bulk-source-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,8 +38,9 @@ import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Dataset, SourceRequest } from "@/openapi";
 
-type Purpose = "train" | "eval" | "split";
+type Purpose = "pending" | "train" | "eval" | "split";
 const PURPOSES: Array<{ value: Purpose; label: string }> = [
+  { label: "Choose in workshop", value: "pending" },
   { label: "Evaluation", value: "eval" },
   { label: "Training", value: "train" },
   { label: "Train + eval", value: "split" },
@@ -55,16 +52,14 @@ const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
 ];
 const AUTO_CAPABILITY = "__auto__";
 const NO_CAPABILITY = "__none__";
+const TABLES = [".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet"];
+const DOCUMENTS = [".pdf", ".docx", ".md", ".txt", ".png", ".jpg", ".jpeg", ".webp"];
+const ACCEPT = [...TABLES, ".gz", ...DOCUMENTS].join(",");
+const MIXED = "Upload tables and documents as separate datasets.";
+const isDocument = (name: string) =>
+  DOCUMENTS.some((suffix) => name.toLowerCase().endsWith(suffix));
 const stripExtension = (name: string) =>
-  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet)(\.gz)?$/i, "");
-const fileType = (name: string) =>
-  name.toLowerCase().replace(/\.gz$/, "").split(".").at(-1)?.toUpperCase() || "FILE";
-const fileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-};
+  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet|pdf|docx|md|txt|png|jpe?g|webp)(\.gz)?$/i, "");
 
 type Readiness = { source: SourceRequest; rows?: number } | { hint: string };
 
@@ -73,8 +68,6 @@ export interface NewDatasetDialogProps {
   onOpenChange: (open: boolean) => void;
   projectId: string;
   initialCapabilityId?: string;
-  initialSource?: DatasetSource;
-  initialFiles?: File[];
   initialTraceIds?: string[];
   initialSelection?: TraceSelectionSpec | null;
   initialSelectionCount?: number;
@@ -86,8 +79,6 @@ export function NewDatasetDialog({
   onOpenChange,
   projectId,
   initialCapabilityId,
-  initialSource = "file",
-  initialFiles,
   initialTraceIds,
   initialSelection,
   initialSelectionCount,
@@ -95,14 +86,12 @@ export function NewDatasetDialog({
 }: NewDatasetDialogProps) {
   const navigate = useNavigate();
   const fromTraces = (initialTraceIds?.length ?? 0) > 0 || !!initialSelection;
-  const sourceType = fromTraces ? "traces" : initialSource;
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
-  const [purpose, setPurpose] = useState<Purpose | "">("");
+  const [purpose, setPurpose] = useState<Purpose>("pending");
   const [percentInput, setPercentInput] = useState("30");
   const [position, setPosition] = useState<SplitPosition>("tail");
-  const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,17 +115,11 @@ export function NewDatasetDialog({
     setName("");
     setNameTouched(false);
     setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
-    setPurpose("");
+    setPurpose("pending");
     setPercentInput("30");
     setPosition("tail");
-    setPicked({ status: "counting" });
     setError(null);
     setDragging(false);
-    if (initialFiles && initialFiles.length > 100) {
-      setError("Choose up to 100 files.");
-    } else if (initialFiles?.length) {
-      upload.add(initialFiles);
-    }
   }, [open]);
 
   const addFiles = (files: File[]) => {
@@ -149,18 +132,8 @@ export function NewDatasetDialog({
     upload.add(files);
   };
 
+  const mixed = new Set(upload.files.map((file) => isDocument(file.file.name))).size > 1;
   const readiness = useMemo((): Readiness => {
-    if (sourceType === "file") {
-      if (!upload.files.length) return { hint: "Choose files" };
-      if (upload.files.some((file) => file.status === "error"))
-        return { hint: "Remove or retry files with errors" };
-      if (upload.files.some((file) => file.status !== "ready"))
-        return { hint: "Uploading and counting rows" };
-      return {
-        rows: upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0),
-        source: { uploads: upload.files.map((file) => file.uploadId!) },
-      };
-    }
     if (initialTraceIds?.length)
       return { rows: initialTraceIds.length, source: { traces: { trace_ids: initialTraceIds } } };
     if (initialSelection)
@@ -168,12 +141,18 @@ export function NewDatasetDialog({
         rows: initialSelectionCount,
         source: { traces: traceSelectionBody(initialSelection) },
       };
-    if (picked.status === "counting") return { hint: "Counting matching traces" };
-    if (picked.status === "error") return { hint: "Couldn't count matching traces" };
-    if (picked.status === "incomplete") return { hint: picked.hint };
-    if (picked.count === 0) return { hint: "No traces match" };
-    return { rows: picked.count, source: { traces: traceSelectionBody(picked.selection) } };
-  }, [sourceType, upload.files, initialTraceIds, initialSelection, initialSelectionCount, picked]);
+    if (!upload.files.length) return { hint: "Choose files" };
+    if (mixed) return { hint: MIXED };
+    if (upload.files.some((file) => file.status === "error"))
+      return { hint: "Remove or retry files with errors" };
+    if (upload.files.some((file) => file.status !== "ready"))
+      return { hint: "Uploading and checking files" };
+    const counted = upload.files.every((file) => typeof file.rows === "number");
+    return {
+      rows: counted ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0) : undefined,
+      source: { uploads: upload.files.map((file) => file.uploadId!) },
+    };
+  }, [mixed, upload.files, initialTraceIds, initialSelection, initialSelectionCount]);
   const ready = "source" in readiness;
   const rows = ready ? readiness.rows : undefined;
   const splitError =
@@ -188,12 +167,11 @@ export function NewDatasetDialog({
     rows !== undefined && rows >= 2 && validPercent ? evaluationRows(rows, evalPercent) : undefined;
 
   const capabilityName = capabilities.find((c) => c.id === capabilityId)?.name;
-  const suggestedName =
-    sourceType === "file"
-      ? stripExtension(upload.files[0]?.file.name ?? "")
-      : capabilityName
-        ? `${capabilityName} traces`
-        : "Traces";
+  const suggestedName = !fromTraces
+    ? stripExtension(upload.files[0]?.file.name ?? "")
+    : capabilityName
+      ? `${capabilityName} traces`
+      : "Traces";
   useEffect(() => {
     if (!nameTouched) setName(suggestedName);
   }, [nameTouched, suggestedName]);
@@ -212,7 +190,7 @@ export function NewDatasetDialog({
   );
 
   const handleSubmit = async () => {
-    if (!ready || !purpose || busy || splitError) return;
+    if (!ready || busy || splitError) return;
     setError(null);
     const base = {
       capabilityId:
@@ -263,7 +241,7 @@ export function NewDatasetDialog({
             />
           </div>
 
-          {sourceType === "file" ? (
+          {!fromTraces ? (
             <section
               aria-label="Upload files"
               className={cn(
@@ -288,62 +266,13 @@ export function NewDatasetDialog({
               {upload.files.length > 0 && (
                 <ul aria-label="Selected files" className="flex flex-col gap-2">
                   {upload.files.map((entry) => (
-                    <li
-                      className="flex items-center gap-3 rounded-sm border border-border bg-muted px-3 py-2"
+                    <Attachment
+                      disabled={busy}
+                      entry={entry}
                       key={entry.id}
-                    >
-                      <Icon.file className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm" title={entry.file.name}>
-                          {entry.file.name}
-                        </p>
-                        <p
-                          className={cn(
-                            "text-xs",
-                            entry.status === "error" ? "text-destructive" : "text-muted-foreground"
-                          )}
-                        >
-                          {entry.status === "ready"
-                            ? `${entry.rows?.toLocaleString()} rows`
-                            : entry.status === "error"
-                              ? entry.error
-                              : entry.status === "counting"
-                                ? "Counting rows"
-                                : entry.status === "queued"
-                                  ? "Queued"
-                                  : `Uploading ${entry.percent}%`}
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                        {fileType(entry.file.name)}
-                      </span>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {fileSize(entry.file.size)}
-                      </span>
-                      {entry.status === "error" && (
-                        <Button
-                          disabled={busy}
-                          onClick={() => upload.retry(entry)}
-                          size="sm"
-                          variant="secondary"
-                        >
-                          Retry
-                        </Button>
-                      )}
-                      {entry.status !== "ready" && entry.status !== "error" && (
-                        <Spinner className="size-3.5" />
-                      )}
-                      <Button
-                        aria-label={`Remove ${entry.file.name}`}
-                        disabled={busy}
-                        onClick={() => upload.remove(entry.id)}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Icon.close className="size-4" />
-                      </Button>
-                    </li>
+                      onRemove={() => upload.remove(entry.id)}
+                      onRetry={() => upload.retry(entry)}
+                    />
                   ))}
                 </ul>
               )}
@@ -358,10 +287,12 @@ export function NewDatasetDialog({
                   <p className="text-sm">
                     {upload.files.length ? "Drop more files here" : "Drop files here"}
                   </p>
-                  <p className="text-xs text-muted-foreground">CSV, TSV, JSON, JSONL or Parquet</p>
+                  <p className="text-xs text-muted-foreground">
+                    Tables, documents, PNG, JPEG or WebP images
+                  </p>
                 </div>
                 <input
-                  accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz"
+                  accept={ACCEPT}
                   aria-label="Choose dataset files"
                   className="hidden"
                   disabled={busy}
@@ -385,7 +316,7 @@ export function NewDatasetDialog({
                 </Button>
               </div>
             </section>
-          ) : fromTraces ? (
+          ) : (
             <div className="rounded-md border border-border bg-muted px-3 py-3">
               <p className="text-sm">
                 {initialTraceIds?.length
@@ -394,8 +325,6 @@ export function NewDatasetDialog({
               </p>
               <p className="text-xs text-muted-foreground">One row per trace</p>
             </div>
-          ) : (
-            <TraceBulkSourcePicker onChange={setPicked} projectId={projectId} />
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -421,11 +350,10 @@ export function NewDatasetDialog({
               <Select
                 disabled={busy}
                 onValueChange={(value) => setPurpose(value as Purpose)}
-                required
                 value={purpose}
               >
                 <SelectTrigger className="w-full" id="dataset-purpose">
-                  <SelectValue placeholder="Select purpose" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PURPOSES.map((option) => (
@@ -524,10 +452,7 @@ export function NewDatasetDialog({
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>
-          <Button
-            disabled={!ready || !purpose || busy || !!splitError}
-            onClick={() => void handleSubmit()}
-          >
+          <Button disabled={!ready || busy || !!splitError} onClick={() => void handleSubmit()}>
             {busy ? <Spinner className="size-4" /> : <Icon.datasetAdd />}
             {purpose === "split" ? "Create datasets" : "Create dataset"}
           </Button>

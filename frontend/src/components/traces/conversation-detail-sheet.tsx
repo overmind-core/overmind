@@ -2,7 +2,7 @@ import { type ReactNode, useMemo, useState } from "react";
 
 import { useSearch } from "@tanstack/react-router";
 
-import { TOOL_ICONS, toolDetail } from "@/components/agent-activity/activity-timeline";
+import { TOOL_ICONS, toolDetail } from "@/components/traces/tool-detail";
 import { TraceExecutionFlow } from "@/components/traces/trace-execution-flow";
 import { ScoreReasonChip } from "@/components/traces/trace-score-chips";
 import { ElbowGroupHeading, type ElbowItem, ElbowList } from "@/components/ui/elbow-list";

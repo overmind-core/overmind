@@ -1,0 +1,72 @@
+import { Icon } from "@/components/ui/icons";
+import { formatBytes } from "@/lib/formatters";
+
+interface SourceFile {
+  filename: string;
+  bytes?: number;
+  rows?: number;
+  sha256?: string;
+}
+
+interface SourceSpec {
+  files?: SourceFile[];
+  filename?: string;
+  extraction?: { limitations?: string[] };
+}
+
+export function sourceFiles(spec: unknown): SourceFile[] {
+  const read = (spec ?? {}) as SourceSpec;
+  if (Array.isArray(read.files)) return read.files.filter((file) => !!file?.filename);
+  return read.filename ? [{ filename: read.filename }] : [];
+}
+
+/** The files the source landed from and what extraction could not guarantee. */
+export function SourceDetails({ spec }: { spec: unknown }) {
+  const files = sourceFiles(spec);
+  const limitations = (spec as SourceSpec | null)?.extraction?.limitations ?? [];
+  if (!files.length && !limitations.length) return null;
+  return (
+    <div className="flex flex-col gap-2 px-2.5 pb-2.5">
+      {files.length > 0 && (
+        <ul aria-label="Source files" className="flex flex-wrap gap-1.5">
+          {files.map((file, index) => (
+            <li
+              className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-sm border border-border/70 px-1.5 text-xs"
+              key={`${file.filename}-${index}`}
+            >
+              <Icon.file className="size-3 shrink-0 text-muted-foreground" />
+              <span className="truncate text-foreground" title={file.filename}>
+                {file.filename}
+              </span>
+              {file.bytes != null && (
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {formatBytes(file.bytes)}
+                </span>
+              )}
+              {file.rows != null && (
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {file.rows.toLocaleString()} {file.rows === 1 ? "row" : "rows"}
+                </span>
+              )}
+              {file.sha256 && (
+                <span className="shrink-0 font-mono text-muted-foreground" title={file.sha256}>
+                  {file.sha256.slice(0, 8)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {limitations.length > 0 && (
+        <ul aria-label="Extraction limitations" className="flex flex-col gap-0.5">
+          {limitations.map((limitation) => (
+            <li className="flex items-start gap-1.5 text-xs text-muted-foreground" key={limitation}>
+              <Icon.info className="mt-0.5 size-3 shrink-0" />
+              {limitation}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
