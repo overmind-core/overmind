@@ -1,4 +1,4 @@
-.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker check-migrations
+.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker check-migrations modal-deploy
 
 install-hooks:
 	uv run pre-commit install
@@ -62,3 +62,21 @@ test-serial: ## Run all tests serially (for debugging)
 
 test-journeys: ## Run end-to-end journeys on the live stack (needs compose Postgres and Redis)
 	TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest tests/journeys -q $(test_args)
+
+# make modal-deploy overmind-dev
+MODAL_APPS := overbae/modal/modal_vllm_worker.py overbae/modal/register_model.py overbae/modal/modal_sft_worker.py overbae/modal/modal_decision_worker.py
+
+modal-deploy:
+	@set -eu; \
+	env='$(word 2,$(MAKECMDGOALS))'; \
+	if [ -z "$$env" ]; then echo 'usage: make modal-deploy <env>'; exit 1; fi; \
+	for app in $(MODAL_APPS); do \
+		echo "modal deploy $$app --env $$env"; \
+		MODAL_ENVIRONMENT="$$env" modal deploy $$app --env "$$env"; \
+	done
+
+ifeq ($(firstword $(MAKECMDGOALS)),modal-deploy)
+  ifneq ($(word 2,$(MAKECMDGOALS)),)
+    $(eval $(word 2,$(MAKECMDGOALS)):;@:)
+  endif
+endif

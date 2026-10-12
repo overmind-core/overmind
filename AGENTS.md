@@ -13,7 +13,7 @@ This file is the single playbook. Claude Code, Codex and Cursor all read it nati
 ## Commands
 
 - Frontend (**Bun**, from `frontend/`): `bun run typecheck`, `bun run lint` (Biome — no ESLint/Prettier), `bun run test` (vitest), `bun run check:all` (design/contrast/controls scripts). Scripts run with `bun`; there is no `node` on this machine.
-- Backend (**uv**): `make test` (parallel pytest on the compose Postgres), `make test-journeys` (end-to-end journeys in `tests/journeys/` on the live ASGI app, a real Celery worker and compose Redis; outside services are faked at the network), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
+- Backend (**uv**): `make test` (parallel pytest on the compose Postgres), `make test-journeys` (end-to-end journeys in `tests/journeys/` on the live ASGI app, a real Celery worker and compose Redis; outside services are faked at the network), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`. `make modal-deploy <env>` deploys the vLLM, register, SFT, and decision workers with `MODAL_ENVIRONMENT` set to that env.
 - SDK (**uv**, from `overmind/`): `make -C overmind test`, `make -C overmind lint-check`.
 - CI (`.github/workflows/ci.yml`) runs on `main`: platform lint, frontend, test and journeys as parallel jobs; draft PRs skip it. SDK CI (`sdk-ci.yml`) runs on `overmind/` changes.
 - A local deployment already runs via `docker compose` with hot reload — do not start dev servers to verify changes. Celery workers auto-restart via watchmedo; `docker compose restart <worker>` if in doubt.
