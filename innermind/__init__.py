@@ -19,7 +19,9 @@ Shape of the code:
       one factory entry.
     - Evaluators are LLM judges (LLMEvaluator, over the span's own expectations) or
       deterministic (OvermindEvaluator, one per matching DeterministicCheck row, run in
-      the innermind.deterministic sandbox). Checks live only in the database.
+      the innermind.deterministic sandbox). Checks live only in the database;
+      migrate seeds the shipped scripts in innermind/checks, ready ones enabled and
+      templates disabled until their constants are filled.
     - score_* functions compute and return; only the queues write to the database.
 
 Storage:

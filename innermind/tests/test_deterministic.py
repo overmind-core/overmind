@@ -19,9 +19,13 @@ from unittest.mock import patch
 
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key-for-deterministic")
 
+from asgiref.sync import sync_to_async  # noqa: E402
+
+from innermind import checks  # noqa: E402
 from innermind.deterministic import WALL_SECONDS, audit  # noqa: E402
 from innermind.innermind import DeterministicCheck, Span, ensure_schema  # noqa: E402
-from innermind.span_processor import Metric, score_span  # noqa: E402
+from innermind.span_processor import score_span  # noqa: E402
+from innermind.utils import Metric  # noqa: E402
 
 RUNS = Path(__file__).resolve().parent / ".runs"
 ARTIFACT = RUNS / "deterministic.json"
@@ -234,6 +238,145 @@ async def test_sandbox_escapes() -> dict:
     return scored.eval_attributes
 
 
+# template: (blank constant, filled constant, span it is scored on, expected score)
+CONFIGURED = {
+    "exact_match": ('REFERENCE = ""', 'REFERENCE = "Sent"', "s-email", 1.0),
+    "contains": ('NEEDLE = ""', 'NEEDLE = "tp1351"', "s-root", 1.0),
+    "regex": ('PATTERN = ""', "PATTERN = r'\"price\": \\d+'", "s-root", 1.0),
+    "goal_state_match": ("GOAL_MARKERS = ()", 'GOAL_MARKERS = ("TP1351", "Lisbon")', "s-root", 0.0),
+    "json_required_keys": (
+        "REQUIRED_KEYS = ()",
+        'REQUIRED_KEYS = ("flight", "price")',
+        "s-root",
+        1.0,
+    ),
+    "schema_field_conformance": (
+        "FIELDS = {}",
+        'FIELDS = {"price": {"type": "number", "max": 100}, "seat": {"type": "string"}}',
+        "s-root",
+        0.0,
+    ),
+    "tool_args_match": (
+        "EXPECTED_CALLS = ()",
+        'EXPECTED_CALLS = ({"name": "search_flights", "arguments": {"destination": "LIS"}},)',
+        "s-root",
+        1.0,
+    ),
+    "llm_call_budget": ("MAX_LLM_CALLS = None", "MAX_LLM_CALLS = 0", "s-root", 0.0),
+    "latency_budget": ("MAX_SECONDS = None", "MAX_SECONDS = 2", "s-choose", 1.0),
+    "cost_budget": ("MAX_COST = None", "MAX_COST = 0.001", "s-choose", 0.0),
+}
+
+
+async def test_seeded_checks() -> dict:
+    trace_id = "det-seeded"
+    await reset(trace_id)
+    assert await sync_to_async(checks.seed)(DeterministicCheck) == len(checks.CATALOG)
+    seeded = {c.name: c async for c in DeterministicCheck.objects.all()}
+    assert {name for name, c in seeded.items() if c.enabled} == set(checks.READY)
+
+    edited = seeded["regex"]
+    edited.source = "def evaluate(span):\n    return None\n"
+    await edited.asave()
+    assert await sync_to_async(checks.seed)(DeterministicCheck) == 0
+    assert (await DeterministicCheck.objects.aget(name="regex")).source == edited.source
+    await DeterministicCheck.objects.filter(name="regex").adelete()
+    await sync_to_async(checks.seed)(DeterministicCheck)
+
+    # Unconfigured templates run too: each must abstain, never error or score.
+    await DeterministicCheck.objects.aupdate(enabled=True)
+
+    root = make_span(
+        span_id="s-root",
+        trace_id=trace_id,
+        kind="workflow",
+        name="book",
+        attributes={
+            "overmind.intent": "book the cheapest flight",
+            "overmind.input": "London to Lisbon on Friday",
+            "overmind.output": '{"flight": "TP1351", "price": 120}',
+            "overmind.reference_trajectory": ["search_flights", "book_flight"],
+        },
+    )
+    search = make_span(
+        span_id="s-search",
+        trace_id=trace_id,
+        parent_id="s-root",
+        kind="tool",
+        name="search_flights",
+        attributes={
+            "overmind.input": '{"origin": "LON", "destination": "LIS"}',
+            "overmind.output": '[{"flight": "TP1351"',
+        },
+    )
+    email = make_span(
+        span_id="s-email",
+        trace_id=trace_id,
+        parent_id="s-root",
+        kind="tool",
+        name="send_email",
+        attributes={"overmind.input": "ops@example.com", "overmind.output": "sent"},
+    )
+    choose = make_span(
+        span_id="s-choose",
+        trace_id=trace_id,
+        parent_id="s-root",
+        kind="llm",
+        name="choose",
+        attributes={
+            "overmind.output": 'Picked:\n```json\n{"pick": "TP1351"}\n```',
+            "genai.elapsed_seconds": 1.2,
+            "genai.cost": 0.002,
+        },
+    )
+    await Span.objects.abulk_create([root, search, email, choose])
+
+    observed = {}
+    templates_ran = set()
+    for span_id in ("s-root", "s-search", "s-email", "s-choose"):
+        scored = await score_span(await Span.objects.aget(span_id=span_id))
+        evaluators = scored.eval_attributes["evaluators"]
+        for name in set(checks.TEMPLATES) & set(evaluators):
+            metric = evaluators[name]["metrics"][0]
+            assert metric["verdict"] == "abstain" and not metric["error"], (span_id, name, metric)
+            templates_ran.add(name)
+        observed[span_id] = scored.eval_attributes
+    assert templates_ran == set(checks.TEMPLATES)
+
+    root_evals = observed["s-root"]["evaluators"]
+    assert root_evals["output_is_valid_json"]["score"] == 1.0
+    assert root_evals["tool_selection"]["score"] == 0.5
+    assert "book_flight" in root_evals["tool_selection"]["metrics"][0]["reason"]
+    assert observed["s-root"]["score"] == 0.75
+
+    truncated = observed["s-search"]["evaluators"]["output_is_valid_json"]
+    assert truncated["score"] == 0.0
+    assert observed["s-search"]["evaluators"]["tool_selection"]["score"] is None
+
+    assert observed["s-email"]["evaluators"]["output_is_valid_json"]["score"] is None
+    assert observed["s-email"]["score"] is None
+
+    assert observed["s-choose"]["evaluators"]["output_is_valid_json"]["score"] == 1.0
+
+    assert set(CONFIGURED) == set(checks.TEMPLATES)
+    await DeterministicCheck.objects.filter(name__in=checks.READY).adelete()
+    for name, (blank, filled, _, _) in CONFIGURED.items():
+        source = checks.source(name)
+        assert blank in source, name
+        await DeterministicCheck.objects.filter(name=name).aupdate(
+            source=source.replace(blank, filled)
+        )
+    configured = {}
+    for span_id in {span_id for _, _, span_id, _ in CONFIGURED.values()}:
+        scored = await score_span(await Span.objects.aget(span_id=span_id))
+        configured[span_id] = scored.eval_attributes["evaluators"]
+    for name, (_, _, span_id, score) in CONFIGURED.items():
+        result = configured[span_id][name]
+        assert result["score"] == score, (name, result)
+    observed["configured_templates"] = configured
+    return observed
+
+
 async def main() -> int:
     RUNS.mkdir(parents=True, exist_ok=True)
     results = {}
@@ -242,13 +385,14 @@ async def main() -> int:
         results["graph_and_contracts"] = await test_graph_and_contracts()
         results["llm_judge_and_check_on_one_span"] = await test_llm_judge_and_check_on_one_span()
         results["sandbox_escapes"] = await test_sandbox_escapes()
+        results["seeded_checks"] = await test_seeded_checks()
     finally:
         artifact = {
             "command": COMMAND,
             "wall_seconds_default": WALL_SECONDS,
             "environment": {"OPENROUTER_API_KEY": "set (Jev calls stubbed)"},
             "observed": results,
-            "ok": len(results) == 4,
+            "ok": len(results) == 5,
         }
         ARTIFACT.write_text(json.dumps(artifact, indent=2, default=str) + "\n")
         print(f"wrote {ARTIFACT}")

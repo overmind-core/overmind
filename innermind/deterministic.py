@@ -2,7 +2,9 @@
 Import-free Python checks that grade one span at a time.
 
 Users write ``def evaluate(span): ...``. The script sees only the span, its
-parent, children, siblings, and their attributes. Checks live in
+parent, children, siblings, and their attributes, plus ``json`` (loads, dumps)
+and ``re`` (search, fullmatch, findall, sub) without importing. Attributes are
+read-only: mappings are not ``dict`` and lists arrive as tuples. Checks live in
 ``DeterministicCheck`` rows, never on spans; span_processor.OvermindEvaluator
 runs one check per evaluator. Execution is an AST audit plus a ``python3 -I``
 child under CPU/memory/wall limits.
@@ -150,8 +152,8 @@ BUILTIN_NAMES = (
 )
 
 CHILD = rf"""
-import copy, json, resource, sys, traceback
-from types import MappingProxyType
+import copy, json, re, resource, sys, traceback
+from types import MappingProxyType, SimpleNamespace
 
 CPU_SECONDS = {CPU_SECONDS}
 ADDRESS_SPACE = {MEMORY_BYTES}
@@ -228,6 +230,12 @@ def build_graph(payloads):
 def whitelist():
     out = {{name: __builtins__[name] if isinstance(__builtins__, dict) else getattr(__builtins__, name)
            for name in BUILTIN_NAMES}}
+    # Functions, never the modules: a module attribute chain reaches os and sys.
+    out["json"] = SimpleNamespace(loads=json.loads, dumps=json.dumps)
+    out["re"] = SimpleNamespace(
+        search=re.search, fullmatch=re.fullmatch, findall=re.findall, sub=re.sub,
+        IGNORECASE=re.IGNORECASE, DOTALL=re.DOTALL, error=re.error,
+    )
     return out
 
 def load_evaluate(source):
