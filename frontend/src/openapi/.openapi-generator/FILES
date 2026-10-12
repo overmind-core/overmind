@@ -5,6 +5,8 @@ apis/BillingApi.ts
 apis/CapabilitiesApi.ts
 apis/ConnectorCredentialsApi.ts
 apis/DatasetsApi.ts
+apis/DecisionJobsApi.ts
+apis/DecisionModelsApi.ts
 apis/DeployedModelsApi.ts
 apis/EvalRunsApi.ts
 apis/EvalSamplesApi.ts
@@ -129,9 +131,16 @@ models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DecisionJob.ts
+models/DecisionJobCreateRequest.ts
+models/DecisionJobStatusEnum.ts
+models/DecisionModel.ts
 models/DecisionPolicy.ts
 models/DecisionPolicyBackendEnum.ts
 models/DecisionPolicyRequest.ts
+models/DecisionSystemOneRequestRequest.ts
+models/DecisionSystemOneResponse.ts
+models/DecisionUsage.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts
@@ -256,6 +265,7 @@ models/PaginatedCapabilityListList.ts
 models/PaginatedConnectorCredentialList.ts
 models/PaginatedConnectorSyncRunList.ts
 models/PaginatedDatasetList.ts
+models/PaginatedDecisionJobList.ts
 models/PaginatedDeployedModelList.ts
 models/PaginatedEvalRunListList.ts
 models/PaginatedEvalSampleListList.ts

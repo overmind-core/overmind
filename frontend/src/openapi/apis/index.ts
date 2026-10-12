@@ -7,6 +7,8 @@ export * from './BillingApi';
 export * from './CapabilitiesApi';
 export * from './ConnectorCredentialsApi';
 export * from './DatasetsApi';
+export * from './DecisionJobsApi';
+export * from './DecisionModelsApi';
 export * from './DeployedModelsApi';
 export * from './EvalRunsApi';
 export * from './EvalSamplesApi';

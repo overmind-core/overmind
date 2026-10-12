@@ -1,0 +1,451 @@
+[
+  {
+    "model": "vllm-sr/d3-edge",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3-edge",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "379357c7-7e6e-403a-8961-2db07af38c44",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3-edge",
+        "saved": "/artifacts/379357c7-7e6e-403a-8961-2db07af38c44",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.923,
+          0.923
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 128.7,
+        "peak_reserved_gb": 1.76,
+        "trainable_params": 5474304,
+        "peak_allocated_gb": 1.63,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "OvermindLab/qwen-3.5-0.8B-decision",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "OvermindLab/qwen-3.5-0.8B-decision",
+      "usage": {
+        "input_tokens": 278,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "c7b1f7ea-2349-4733-ae7f-8718a5c981eb",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 64,
+        "batch": 8,
+        "model": "OvermindLab/qwen-3.5-0.8B-decision",
+        "saved": "/artifacts/c7b1f7ea-2349-4733-ae7f-8718a5c981eb/merged",
+        "steps": 1,
+        "family": "clef",
+        "skipped": 0,
+        "grad_accum": 2,
+        "calibration": {},
+        "train_records": 2,
+        "holdout_records": 0,
+        "loss_first_last": [],
+        "train_runtime_s": 170.7601,
+        "peak_reserved_gb": 2.92,
+        "peak_allocated_gb": 2.71,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "vllm-sr/d3-lite",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3-lite",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "006ca87d-d5ef-415c-bf0f-4a23bc597b9b",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3-lite",
+        "saved": "/artifacts/006ca87d-d5ef-415c-bf0f-4a23bc597b9b",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.3536,
+          0.3536
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 22.5,
+        "peak_reserved_gb": 4.23,
+        "trainable_params": 11083776,
+        "peak_allocated_gb": 4.16,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "OvermindLab/qwen-3.5-2B-decision",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "OvermindLab/qwen-3.5-2B-decision",
+      "usage": {
+        "input_tokens": 278,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "0c83e25c-5937-413e-8ac8-a889cf4fb367",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 64,
+        "batch": 8,
+        "model": "OvermindLab/qwen-3.5-2B-decision",
+        "saved": "/artifacts/0c83e25c-5937-413e-8ac8-a889cf4fb367/merged",
+        "steps": 1,
+        "family": "clef",
+        "skipped": 0,
+        "grad_accum": 2,
+        "calibration": {},
+        "train_records": 2,
+        "holdout_records": 0,
+        "loss_first_last": [],
+        "train_runtime_s": 8.219,
+        "peak_reserved_gb": 5.71,
+        "peak_allocated_gb": 5.68,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "OvermindLab/lfm-2.5-2.6B-decision",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "OvermindLab/lfm-2.5-2.6B-decision",
+      "usage": {
+        "input_tokens": 297,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "305648e9-0ccc-4796-a9d3-13f94cc8b766",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 64,
+        "batch": 8,
+        "model": "OvermindLab/lfm-2.5-2.6B-decision",
+        "saved": "/artifacts/305648e9-0ccc-4796-a9d3-13f94cc8b766/merged",
+        "steps": 1,
+        "family": "clef",
+        "skipped": 0,
+        "grad_accum": 2,
+        "calibration": {},
+        "train_records": 2,
+        "holdout_records": 0,
+        "loss_first_last": [],
+        "train_runtime_s": 23.9743,
+        "peak_reserved_gb": 6.95,
+        "peak_allocated_gb": 6.77,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "vllm-sr/d3-nano",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3-nano",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "1469fafe-f3e4-4407-87f1-865d3a3a7946",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3-nano",
+        "saved": "/artifacts/1469fafe-f3e4-4407-87f1-865d3a3a7946",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.1112,
+          0.1112
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 13.5,
+        "peak_reserved_gb": 11.38,
+        "trainable_params": 17341440,
+        "peak_allocated_gb": 11.24,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "vllm-sr/d3-mini",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3-mini",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "cc1c923d-6a52-4483-b2ae-d9f024fc903e",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3-mini",
+        "saved": "/artifacts/cc1c923d-6a52-4483-b2ae-d9f024fc903e",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.0711,
+          0.0711
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 30.2,
+        "peak_reserved_gb": 16.48,
+        "trainable_params": 33117696,
+        "peak_allocated_gb": 15.07,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "vllm-sr/d3-flash",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3-flash",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "ff3ea641-dca1-449b-9225-44d89075a5fe",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3-flash",
+        "saved": "/artifacts/ff3ea641-dca1-449b-9225-44d89075a5fe",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.0244,
+          0.0244
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 138.2,
+        "peak_reserved_gb": 18.91,
+        "trainable_params": 44322816,
+        "peak_allocated_gb": 18.18,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "Cloudflare/clef-flash",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "Cloudflare/clef-flash",
+      "usage": {
+        "input_tokens": 278,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "fa174a1c-c0be-4911-a496-9295664189cb",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 64,
+        "batch": 8,
+        "model": "Cloudflare/clef-flash",
+        "saved": "/artifacts/fa174a1c-c0be-4911-a496-9295664189cb/merged",
+        "steps": 1,
+        "family": "clef",
+        "skipped": 0,
+        "grad_accum": 2,
+        "calibration": {},
+        "train_records": 2,
+        "holdout_records": 0,
+        "loss_first_last": [],
+        "train_runtime_s": 168.1568,
+        "peak_reserved_gb": 22.06,
+        "peak_allocated_gb": 22.03,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "vllm-sr/d3",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "vllm-sr/d3",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "fc4bf56d-a292-4823-beac-5938e25fc3aa",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 16,
+        "batch": 2,
+        "model": "vllm-sr/d3",
+        "saved": "/artifacts/fc4bf56d-a292-4823-beac-5938e25fc3aa",
+        "steps": 1,
+        "family": "d3",
+        "kernels": {
+          "fla": "0.5.1",
+          "causal_conv1d_fn": "torch-reference",
+          "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk.chunk_gated_delta_rule"
+        },
+        "grad_accum": 8,
+        "loss_first_last": [
+          0.0103,
+          0.0103
+        ],
+        "train_questions": 2,
+        "train_runtime_s": 212.9,
+        "peak_reserved_gb": 56.21,
+        "trainable_params": 118033408,
+        "peak_allocated_gb": 55.39,
+        "skipped_questions": 0,
+        "max_context_length": 32768
+      }
+    }
+  },
+  {
+    "model": "Cloudflare/clef",
+    "infer": {
+      "ok": true,
+      "status": 200,
+      "model": "Cloudflare/clef",
+      "usage": {
+        "input_tokens": 278,
+        "output_tokens": 0
+      },
+      "errors": {}
+    },
+    "train": {
+      "ok": true,
+      "job_id": "7dfa623c-eab5-4973-a3dc-fddbbf1b60cc",
+      "status": "succeeded",
+      "error": "",
+      "result": {
+        "rank": 64,
+        "batch": 8,
+        "model": "Cloudflare/clef",
+        "saved": "/artifacts/7dfa623c-eab5-4973-a3dc-fddbbf1b60cc/merged",
+        "steps": 1,
+        "family": "clef",
+        "skipped": 0,
+        "grad_accum": 2,
+        "calibration": {},
+        "train_records": 2,
+        "holdout_records": 0,
+        "loss_first_last": [],
+        "train_runtime_s": 165.9827,
+        "peak_reserved_gb": 60.38,
+        "peak_allocated_gb": 60.29,
+        "max_context_length": 32768
+      }
+    }
+  }
+]

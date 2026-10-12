@@ -4,6 +4,7 @@ from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
 from .datasets import Cell, Dataset, DatasetImport
+from .decision import DecisionJob
 from .eval_generation import EvalGenerationRun, EvalGenerationScheduler, EvalGenerationWork
 from .evaluation import (
     Annotation,
@@ -79,6 +80,7 @@ __all__ = [
     "ConnectorSyncRun",
     "Dataset",
     "DatasetImport",
+    "DecisionJob",
     "Cell",
     "DatasetContext",
     "Conversation",
