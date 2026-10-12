@@ -186,10 +186,6 @@ class Cell(models.Model):
         return f"v{self.position}"
 
     @property
-    def is_source(self) -> bool:
-        return self.parent_id is None
-
-    @property
     def frozen(self) -> bool:
         return self.used_at is not None
 

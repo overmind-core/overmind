@@ -3,7 +3,6 @@ import { createContext, useContext } from "react";
 export interface WorkshopSidebar {
   open: boolean;
   close: () => void;
-  /** The trigger gets focus back when the sidebar closes. */
   toggle: (trigger: HTMLElement | null) => void;
 }
 

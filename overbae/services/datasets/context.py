@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
-
 from django.db.models import Prefetch
 
 from overbae.models import Behaviour, BehaviourVersion
@@ -97,8 +94,3 @@ def preparation_context(capability) -> dict:
             for versions in [behaviour.latest_versions]
         ],
     }
-
-
-def context_fingerprint(capability) -> str:
-    raw = json.dumps(preparation_context(capability), sort_keys=True, default=str)
-    return hashlib.sha256(raw.encode()).hexdigest()

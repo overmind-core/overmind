@@ -11,7 +11,7 @@ import { sentenceCase } from "@/lib/label-case";
 import { cn } from "@/lib/utils";
 import type { Dataset, Execution } from "@/openapi";
 
-export type WorkshopState = "working" | "complete" | "error" | "idle";
+type WorkshopState = "working" | "complete" | "error" | "idle";
 
 export const workshopStateOf = (dataset: Pick<Dataset, "state" | "running" | "activeVersion">) =>
   dataset.state === "landing" || (dataset.running ?? 0) > 0
@@ -29,7 +29,6 @@ const STATE_LABEL: Record<WorkshopState, string> = {
   working: "Working",
 };
 
-/** One glyph per dataset state. Leaving `working` plays a short colour fade. */
 export function WorkshopStatusIcon({
   state,
   className,
@@ -123,7 +122,6 @@ function RunLine({
   );
 }
 
-/** "Running N scripts" while runs are queued or running; opens the last 20 runs. */
 export function WorkshopStatus({
   dataset,
   onShowVersion,

@@ -10,12 +10,9 @@ export interface Motion {
 
 const UNPLAYED_MS = 2000;
 
-/** What a viewer would see change on an immutable version: its measured reports. */
 const signature = (cell: Cell) =>
   JSON.stringify([cell.impact, cell.intentReport, cell.capabilityReport, cell.stats]);
 
-/** New versions arrive and re-measured versions refresh; the first load is quiet.
- *  A motion stays until its frame settles it or two seconds pass. */
 export function useVersionMotion(cells: Cell[] | undefined) {
   const seen = useRef<Map<string, string> | null>(null);
   const counter = useRef(0);
@@ -80,7 +77,6 @@ function onScreen(element: Element) {
   );
 }
 
-/** Plays a version's motion once the canvas has placed it. Opacity and colour only. */
 export function VersionMotionFrame({
   cellId,
   motion,

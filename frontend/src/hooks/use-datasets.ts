@@ -235,7 +235,6 @@ export function useDatasetInventoryQuery(projectId: string | undefined) {
 
 const working = (ds: Dataset | undefined) => isBusy(ds) || (ds?.running ?? 0) > 0;
 
-/** Polls while the source lands or scripts run; the SSE stream fills the gaps. */
 export function useDatasetQuery(id: string | undefined) {
   return useQuery<Dataset>({
     enabled: !!id,

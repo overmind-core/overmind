@@ -22,7 +22,7 @@ import type { Cell } from "@/openapi";
 /** `train_eval`: the eval dataset that scores a training job. */
 export type UsePurpose = "train" | "train_eval" | "optimise";
 
-export interface VersionActions {
+interface VersionActions {
   onActivate: () => void;
   onUse: (purpose: UsePurpose) => void;
   onExport: (fmt: "jsonl" | "csv") => void;
@@ -278,9 +278,6 @@ function CheckRow({ check, present }: { check: Check; present: Set<string> }) {
   );
 }
 
-/** Both contracts on the active version: the chip names the first failure, the hover
- *  card says what each needs, which columns are there, what was found and what makes
- *  it pass. The Console changes only the intent and the capability from here. */
 function FitChip({
   cell,
   intent,
@@ -430,7 +427,6 @@ interface Impact {
 
 const count = (n: number) => n.toLocaleString();
 
-/** What a version changed against its parent. Lines that would read zero are left out. */
 function Changes({ impact }: { impact: Impact }) {
   const { rows_before: before, rows_after: after } = impact;
   const lines: Array<{ key: string; parts: string[]; warning?: boolean }> = [];

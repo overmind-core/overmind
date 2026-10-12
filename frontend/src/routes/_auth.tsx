@@ -296,7 +296,6 @@ function HeaderActions({ hideProjects }: { hideProjects: boolean }) {
 
 const WORKSHOP_PATH = /^\/datasets\/[^/]+\/?$/;
 
-/** The dataset list beside a dataset's canvas. On a phone it covers the page. */
 function useWorkshopLayout(pathname: string) {
   const inWorkshop = WORKSHOP_PATH.test(pathname);
   const isMobile = useIsMobile();

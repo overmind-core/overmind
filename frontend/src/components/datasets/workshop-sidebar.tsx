@@ -19,8 +19,7 @@ import type { Dataset, PaginatedDatasetList } from "@/openapi";
 
 const PAGE = 30;
 
-/** File types, file count and rows, or where the rows came from. */
-export function datasetSummary(dataset: Dataset): string {
+function datasetSummary(dataset: Dataset): string {
   const files = sourceFiles(dataset.sourceSpec);
   const rows = `${dataset.rows.toLocaleString()} ${dataset.rows === 1 ? "row" : "rows"}`;
   if (!files.length) {
@@ -179,7 +178,6 @@ function DatasetNavigation({ projectId }: { projectId: string }) {
   );
 }
 
-/** The project's datasets beside the canvas. Escape closes it. */
 export function WorkshopSidebar({ projectId }: { projectId: string | undefined }) {
   const { open, close } = useWorkshopSidebar();
   useEffect(() => {

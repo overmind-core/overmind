@@ -45,7 +45,6 @@ interface Evidence {
   element?: string;
 }
 
-/** Where a document row came from: file, page and element, one entry per piece. */
 function evidenceOf(row: Row): string[] {
   const provenance = row._overmind_provenance as { evidence?: Evidence[] } | null | undefined;
   return (provenance?.evidence ?? []).map((piece) =>
@@ -560,7 +559,6 @@ export function RowsGrid({
                           <td
                             className={cn(
                               "max-w-[26rem] border-r border-b border-border/60 px-2 py-1 align-top last:border-r-0",
-                              // Open: the same cells, wrapped to their full text.
                               open ? "whitespace-pre-wrap break-words" : "truncate",
                               c.type === "number" || c.type === "integer"
                                 ? "text-right tabular-nums"

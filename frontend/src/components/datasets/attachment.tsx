@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 
-export const fileType = (name: string) =>
+const fileType = (name: string) =>
   name.toLowerCase().replace(/\.gz$/, "").split(".").at(-1)?.toUpperCase() || "FILE";
 
 function statusText(entry: DatasetUpload): string {
@@ -35,7 +35,6 @@ function ImagePreview({ file }: { file: File }) {
   ) : null;
 }
 
-/** One selected file: what it is, how far its upload got, and what landing will do. */
 export function Attachment({
   entry,
   disabled,

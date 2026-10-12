@@ -31,7 +31,6 @@ export function formatElapsed(totalSeconds: number): string {
 
 const BYTE_UNITS = ["KB", "MB", "GB", "TB"];
 
-/** Binary multiples, one decimal only when it says something: `2 B`, `1.5 KB`, `100 MB`. */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   let value = bytes / 1024;

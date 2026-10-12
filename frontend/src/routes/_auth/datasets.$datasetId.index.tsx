@@ -9,7 +9,6 @@ import { projectIdSearchSchema } from "@/lib/schemas";
 export const Route = createFileRoute("/_auth/datasets/$datasetId/")({
   component: DatasetNotebookPage,
   validateSearch: projectIdSearchSchema.extend({
-    /** A version to frame; back-links from runs carry it. */
     cell: z.string().optional(),
   }),
 });

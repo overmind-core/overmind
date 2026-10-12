@@ -209,7 +209,6 @@ function Canvas({
     [getNodes, nodeWidth, setViewport]
   );
 
-  // The first placed layout frames the focused version, or the source.
   useEffect(() => {
     if (!laid || framed.current) return;
     framed.current = true;
@@ -298,7 +297,6 @@ function Canvas({
   );
 }
 
-/** The version tree on a canvas: each version is a card under its parent. */
 export function VersionFlow(props: {
   cells: Cell[];
   storageKey: string;

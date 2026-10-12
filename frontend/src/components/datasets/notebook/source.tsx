@@ -20,7 +20,6 @@ export function sourceFiles(spec: unknown): SourceFile[] {
   return read.filename ? [{ filename: read.filename }] : [];
 }
 
-/** The files the source landed from and what extraction could not guarantee. */
 export function SourceDetails({ spec }: { spec: unknown }) {
   const files = sourceFiles(spec);
   const limitations = (spec as SourceSpec | null)?.extraction?.limitations ?? [];
