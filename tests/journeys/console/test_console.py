@@ -30,7 +30,6 @@ def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
 
     console.goto(f"/datasets?projectId={project}")
     console.press("New dataset")
-    console.click("Upload file")
     console.fill("#dataset-name", "Console upload")
     console.upload('input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")

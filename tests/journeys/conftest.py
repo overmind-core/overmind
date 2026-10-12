@@ -53,10 +53,6 @@ def _journey_db(transactional_db):
 
 @pytest.fixture(autouse=True)
 def _only_fake_providers(monkeypatch):
-    from overbae.core.model_registry import WORKSHOP_KEY_ENVS
-
-    for env in WORKSHOP_KEY_ENVS:
-        monkeypatch.delenv(env, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
 
 

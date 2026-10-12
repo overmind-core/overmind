@@ -11,6 +11,24 @@ def upload(cli, sample_agent, path, *extra) -> str:
     return json.loads(out)["id"]
 
 
+def prepare(mcp, dataset, intent) -> str:
+    """What a caller's agent does first: shape the landed rows into the intent's
+    examples and activate that version."""
+    added = mcp.call(
+        "add_dataset_version",
+        {
+            "dataset": dataset,
+            "parent": "v0",
+            "title": "Prepare examples",
+            "script": f"df = prepare_examples(df, intent={intent!r})",
+        },
+    )
+    assert added["status"] == "ok", added["error"]
+    version = added["version"]["version"]
+    mcp.call("activate_dataset_version", {"dataset": dataset, "version": version})
+    return version
+
+
 def tickets(tmp_path, n=3):
     path = tmp_path / "tickets.jsonl"
     rows = [

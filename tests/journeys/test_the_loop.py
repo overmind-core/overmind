@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 from .conftest import GOOD_REPLY
+from .datasets import prepare
 from .stack import drain
 from .surfaces import SDK
 
@@ -25,31 +26,6 @@ print(answer(OpenAI(), ticket, category.lstrip("[")))
 overmind.force_flush_traces(timeout_millis=10_000)
 PY
 """
-
-
-def _workshop_corrects_references(fake_llm) -> None:
-    def offers(request, tool):
-        return any(
-            (t.get("function") or {}).get("name") == tool for t in request.body.get("tools") or []
-        )
-
-    def turn(request):
-        if any(m.get("role") == "tool" for m in request.messages[-2:]):
-            return {"content": "Set the corrected reply as the reference."}
-        script = f"df['expected_output'] = {GOOD_REPLY!r}\n"
-        call = {"title": "Correct the references", "script": script}
-        return {
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": "call_references",
-                    "type": "function",
-                    "function": {"name": "add_cell", "arguments": json.dumps(call)},
-                }
-            ],
-        }
-
-    fake_llm.on(lambda r: offers(r, "add_cell") and "failures, not references" in r.text, turn)
 
 
 def _candidate_diff(repo) -> str:
@@ -76,7 +52,6 @@ def test_failing_traces_become_a_measured_winning_diff(
     live_api,
     support_desk_llm,
     rubric_judges,
-    fake_llm,
     tmp_path,
 ):
     cli.scan(sample_agent)
@@ -102,12 +77,21 @@ def test_failing_traces_become_a_measured_winning_diff(
     )
     dataset = created["dataset"]["id"]
     drain(worker)
-    _workshop_corrects_references(fake_llm)
-    mcp.call(
-        "message_dataset_agent",
-        {"dataset": dataset, "message": "These rows are failures, not references. Correct them."},
+    prepared = prepare(mcp, dataset, "eval")
+    corrected = mcp.call(
+        "add_dataset_version",
+        {
+            "dataset": dataset,
+            "parent": prepared,
+            "title": "Correct the references",
+            "script": f"df['expected_output'] = {GOOD_REPLY!r}\n",
+        },
     )
-    drain(worker)
+    assert corrected["status"] == "ok", corrected["error"]
+    mcp.call(
+        "activate_dataset_version",
+        {"dataset": dataset, "version": corrected["version"]["version"]},
+    )
     references = mcp.call(
         "query_dataset", {"dataset": dataset, "sql": "select distinct expected_output from t"}
     )["rows"]
@@ -139,7 +123,7 @@ def test_failing_traces_become_a_measured_winning_diff(
     result = mcp.call("inspect_optimizer_result", {"experiment": state["experiment_id"]})
     scores = result["experiment"]["scores"]
     assert result["experiment"]["status"] == "completed"
-    assert result["experiment"]["cell"]["version"] == "2.0"
+    assert result["experiment"]["cell"]["version"] == corrected["version"]["version"]
     assert scores["best"] > scores["baseline"]
 
     [baseline] = result["iterations"][0]["candidates"]

@@ -21,6 +21,7 @@ FILLED = {
     "INFERENCE_API_URL": "https://inference.fake",
     "INFERENCE_API_KEY": "fake",
     "OPENROUTER_API_KEY": "sk-or-fake",
+    "SANDBOX_TOKEN": "fake",
 }
 HOSTED = {
     "DJANGO_DEBUG": "False",
@@ -139,6 +140,8 @@ def test_health_fails_when_the_database_is_unreachable():
         ("INFERENCE_API_URL", "INFERENCE_API_URL"),
         ("INFERENCE_API_KEY", "INFERENCE_API_KEY"),
         ("OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
+        ("SANDBOX_URL", "SANDBOX_URL"),
+        ("SANDBOX_TOKEN", "SANDBOX_TOKEN"),
     ],
 )
 def test_a_missing_required_variable_stops_startup_and_is_named(blank, named):

@@ -1,4 +1,4 @@
-from .datasets import JUDGE, evaluate, tickets, upload
+from .datasets import JUDGE, evaluate, prepare, tickets, upload
 from .stack import drain
 
 
@@ -10,6 +10,7 @@ def test_an_evaluation_grades_on_card_criteria_with_a_frozen_judge(
         cli, sample_agent, tickets(tmp_path), "--intent", "eval", "--capability", answer["id"]
     )
     drain(worker)
+    prepare(workshop, dataset, "eval")
     fake_llm.fail(
         lambda r: r.schema_name == "ChecklistResult" and "Refund order 1 please" in r.text,
         status=400,

@@ -1,6 +1,6 @@
 import pytest
 
-from .datasets import tickets, training_rows, until, upload
+from .datasets import prepare, tickets, training_rows, until, upload
 from .stack import drain
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
@@ -23,6 +23,7 @@ def training(workshop, cli, sample_agent, worker, sft, fake_modal, beat, tmp_pat
         cli, sample_agent, tickets(tmp_path), "--intent", "eval", "--capability", answer["id"]
     )
     drain(worker)
+    prepare(workshop, evals, "eval")
     job = workshop.call(
         "start_finetune",
         {

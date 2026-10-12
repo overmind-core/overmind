@@ -1,7 +1,7 @@
 import re
 
 from .conftest import GOOD_REPLY, answer_turn
-from .datasets import tickets, training_rows, until, upload
+from .datasets import prepare, tickets, training_rows, until, upload
 from .stack import drain
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
@@ -54,6 +54,7 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
         cli, sample_agent, tickets(tmp_path), "--intent", "eval", "--capability", answer["id"]
     )
     drain(worker)
+    prepare(workshop, evals, "eval")
 
     # An agent authors its own judge from prose alone, as most agents do.
     judge = workshop.call(
@@ -94,8 +95,8 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
     assert order.index("upload_dataset") < order.index(
         next(n for n in order if n.startswith("sft_"))
     )
-    pinned = {c["id"]: c for c in workshop.call("inspect_dataset", {"dataset": train})["cells"]}
-    assert pinned[finetune()["cell"]]["frozen"] is True
+    pinned = {v["id"]: v for v in workshop.call("inspect_dataset", {"dataset": train})["versions"]}
+    assert pinned[finetune()["cell"]]["used"] is True
 
     fake_modal.release("sft_")
 
