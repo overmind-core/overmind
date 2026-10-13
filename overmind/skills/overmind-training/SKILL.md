@@ -5,6 +5,9 @@ description: Select models, prepare exact training inputs, estimate costs, launc
 
 # Overmind Training
 
+For a request spanning source transformation through training launch and comparison,
+start with the `model-training-engineering` skill, then use this skill for Training.
+
 Start with `list_projects` and choose the intended accessible project. For an
 account connection, pass its `project_id` on every project tool and resource
 URI query; follow returned links. Project API keys retain their narrower access.
@@ -14,6 +17,15 @@ contract. Use the chosen MCP project. For an existing job, start with
 `overmind://finetunes/{job_id}` and its `finetune_job` status; do not relaunch it.
 
 ## Prepare the training contract
+
+For data-first development, use `save_training_plan` and the evidence-linked
+procedure in [model workflows](../overmind/references/model-workflows.md).
+Retain task/source, Workshop output and partition identities and attributed
+audit/baseline/sanity evidence. Use stage=full directly for requested full training;
+no pilot job or measured pilot selection is required. Use stage=pilot only when
+the user requests a bounded quality experiment. Any optional pilot selection must
+reference matching task/data evidence, never an unrelated existing run.
+Hardware profiles and formatting success are not quality evidence.
 
 Prefer the native `finetune-capability` prompt with the selected dataset and
 optional capability. Resolve datasets with `list_datasets`; inspect and query

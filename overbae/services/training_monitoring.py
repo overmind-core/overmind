@@ -1,10 +1,13 @@
+import asyncio
 import json
 import re
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from uuid import UUID
 
 import jsonschema
 import modal
+from asgiref.sync import async_to_sync
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
@@ -282,33 +285,51 @@ def interrupt(job, *, reason):
         check.save(update_fields=["facts"])
 
 
-def collect(job, payload):
+def _pending_evidence(job, payload):
     if job.provider != "modal":
+        return []
+    known = set(job.validation_runs.exclude(evidence="").values_list("key", flat=True))
+    return [
+        check
+        for check in payload.get("checks", [])
+        if check.get("artifact") and check["key"] not in known and check["state"] in TERMINAL
+    ]
+
+
+async def _read_evidence(environment, run_id, path):
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_-]+", run_id)
+        or not path
+        or PurePosixPath(path).name != path
+        or path in {".", ".."}
+    ):
+        raise ValueError("Invalid monitoring artifact path")
+    # Read the sealed artifact once; paged worker calls reread the whole file per page.
+    async with asyncio.timeout(30):
+        volume = modal.Volume.from_name("overmind-sft", environment_name=environment)
+        chunks = [chunk async for chunk in volume.read_file.aio(f"/runs/{run_id}/{path}")]
+    return json.loads(b"".join(chunks))
+
+
+def collect(job, payload):
+    pending = _pending_evidence(job, payload)
+    if not pending:
         return payload
     release = job_release(job)
-    known = set(job.validation_runs.exclude(evidence="").values_list("key", flat=True))
-    for check in payload.get("checks", []):
-        artifact = check.get("artifact")
-        if not artifact or check["key"] in known or check["state"] not in TERMINAL:
-            continue
-        reader = modal.Function.from_name(
-            release["app"], "get_monitoring_examples", environment_name=release["environment"]
+    for check in pending:
+        artifact = check["artifact"]
+        saved = async_to_sync(_read_evidence)(
+            release["environment"], job.remote_job_id.split(":", 1)[0], artifact["path"]
         )
-        offset, rows = 0, []
-        while offset is not None:
-            page = reader.remote(job.remote_job_id.split(":", 1)[0], check["key"], offset, 50)
-            if page["sha256"] != artifact["sha256"]:
-                raise ValueError("Training evidence changed during collection")
-            rows.extend(page["items"])
-            following = page["next_offset"]
-            if following is not None and following <= offset:
-                raise ValueError("Training evidence cursor did not advance")
-            offset = following
-        artifact["examples"] = rows
+        if saved["sha256"] != artifact["sha256"]:
+            raise ValueError("Training evidence changed during collection")
+        artifact["examples"] = saved["examples"]
+        # Commit each verified check so a later unavailable file cannot lose progress.
+        ingest(job, {"checks": [check]})
     return payload
 
 
-def observe(job, payload):
+def observe(job, payload, *, collect_examples=False):
     ingest(job, payload)
     summary = {
         key: payload.get(key)
@@ -324,9 +345,12 @@ def observe(job, payload):
         )
     }
     try:
-        collect(job, payload)
-        ingest(job, payload)
-        summary["collection"] = {"state": "observed", "observed_at": timezone.now().isoformat()}
+        if collect_examples:
+            collect(job, payload)
+        summary["collection"] = {
+            "state": "pending" if _pending_evidence(job, payload) else "observed",
+            "observed_at": timezone.now().isoformat(),
+        }
     except Exception as exc:
         summary["collection"] = {
             "state": "unavailable",

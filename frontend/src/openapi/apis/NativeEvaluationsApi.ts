@@ -70,10 +70,12 @@ export interface NativeEvaluationsMonitorRetrieveRequest {
     key?: string;
     limit?: number;
     offset?: number;
+    ordering?: string;
     outcome?: NativeEvaluationsMonitorRetrieveOutcomeEnum;
     participant?: string;
     role?: NativeEvaluationsMonitorRetrieveRoleEnum;
     search?: string;
+    view?: NativeEvaluationsMonitorRetrieveViewEnum;
 }
 
 export interface NativeEvaluationsPauseCreateRequest {
@@ -427,6 +429,10 @@ export class NativeEvaluationsApi extends runtime.BaseAPI {
             queryParameters['offset'] = requestParameters['offset'];
         }
 
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
         if (requestParameters['outcome'] != null) {
             queryParameters['outcome'] = requestParameters['outcome'];
         }
@@ -441,6 +447,10 @@ export class NativeEvaluationsApi extends runtime.BaseAPI {
 
         if (requestParameters['search'] != null) {
             queryParameters['search'] = requestParameters['search'];
+        }
+
+        if (requestParameters['view'] != null) {
+            queryParameters['view'] = requestParameters['view'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -854,6 +864,14 @@ export const NativeEvaluationsMonitorRetrieveRoleEnum = {
     calibration: 'calibration'
 } as const;
 export type NativeEvaluationsMonitorRetrieveRoleEnum = typeof NativeEvaluationsMonitorRetrieveRoleEnum[keyof typeof NativeEvaluationsMonitorRetrieveRoleEnum];
+/**
+ * @export
+ */
+export const NativeEvaluationsMonitorRetrieveViewEnum = {
+    samples: 'samples',
+    labels: 'labels'
+} as const;
+export type NativeEvaluationsMonitorRetrieveViewEnum = typeof NativeEvaluationsMonitorRetrieveViewEnum[keyof typeof NativeEvaluationsMonitorRetrieveViewEnum];
 /**
  * @export
  */

@@ -144,8 +144,9 @@ export const useFinetuningRunsQuery = ({
       baseModel || null,
     ],
     refetchInterval: (q) =>
-      backoffPolling(q, () =>
-        finetuningJobsPollInterval(q.state.data?.results.flatMap((r) => r.jobs))
+      backoffPolling(
+        q,
+        () => finetuningJobsPollInterval(q.state.data?.results.flatMap((r) => r.jobs)) || 10_000
       ),
   });
 

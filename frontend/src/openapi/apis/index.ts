@@ -35,6 +35,7 @@ export * from './SessionsApi';
 export * from './TaskExecutionsApi';
 export * from './TracesApi';
 export * from './TrainingExperimentsApi';
+export * from './TrainingPlansApi';
 export * from './TrainingPreparationsApi';
 export * from './UploadsApi';
 export * from './V1Api';

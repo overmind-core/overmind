@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Training Engineering"
+  short_description: "Evidence-led data, training and benchmark workflow"
+  default_prompt: "Use $model-training-engineering to prepare and run this model-training experiment with verified data, baselines, monitoring and comparisons."

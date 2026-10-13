@@ -194,7 +194,13 @@ class PrepareTrainingInput(MCPModel):
     cell: str | None = None
 
 
+class FineTuneJobReference(JobReceipt):
+    kind: Literal["finetune_job"] = "finetune_job"
+    name: str
+
+
 class PrepareTrainingOutput(MCPModel):
+    training_job: FineTuneJobReference
     monitoring: dict[str, Any] = Field(default_factory=dict)
     job: JobReceipt
     id: str
@@ -255,11 +261,6 @@ class StartFinetuneInput(MCPModel):
         description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
     )
     group_id: UUID | None = None
-
-
-class FineTuneJobReference(JobReceipt):
-    kind: Literal["finetune_job"] = "finetune_job"
-    name: str
 
 
 class StartFinetuneOutput(MCPModel):

@@ -145,6 +145,12 @@ navigation code but are no longer used to stage access.
 
 ### Data Workshop specifics
 
+- Final-output cells expose server-measured Metrics alongside Script/Data, with
+  alert chips on Data while Metrics is collapsed. Counts, baselines, evidence,
+  warnings and unperformed checks are bound to the exact data fingerprint and
+  also delivered through MCP after transformation. These are advisory findings,
+  not an automatic training-quality approval or a rebalancing policy.
+
 - Data Workshop opens with a project dataset table showing purpose, source,
   row count, active version, capability and update time. Selecting a dataset opens
   its unchanged, full-size cells on a grid-snapped flow canvas at scale 1:
@@ -155,12 +161,15 @@ navigation code but are no longer used to stage access.
   The right-hand box groups the minimap toggle with the folder button for project
   dataset navigation; cell search and the cell-selector strip are removed.
   Platform-agent chat and the prompt-style landing are removed.
+
 - The native coding agent owns planning, interpretation, transformation code,
   generation and semantic judgment. The platform owns source landing, version
   identity, deterministic execution, lineage, impact and consumer pinning.
+
 - Sources may be files, pasted rows or traces; source-free briefs are supported.
   Documents and images retain original bytes and extraction evidence, including
   local English OCR where needed. Intent is explicit and otherwise stays pending.
+
 - Agents discover reusable project transformations, then validate and preview
   against a pinned source. Revisions retain ordered scripts, declared contracts,
   parameters and an approved immutable runtime. Compatible sources reuse the exact
@@ -170,24 +179,30 @@ navigation code but are no longer used to stage access.
   retained recipe. MCP returns this flow explicitly; execution receipts separately
   record actual input cells and output counts. Condition labels are declarations,
   not independent verification of script semantics.
+
 - Script packages run in isolated, resource-bounded containers without network or
   platform credentials. Native agents own authoring, semantic work and interpretation.
   Imported outputs declare all source parents and producer attribution.
   Large outputs use an uploaded, checksum-bound artifact. Source attribution
   does not independently verify execution or answer correctness.
+
 - Retries with the same request key recover the same work; changed inputs conflict.
   Failed or cancelled transformations never replace a readable version.
   Runs have durable receipts; unknown work is not blindly replayed.
+
 - Explicitly enabled bindings reuse an exact revision as source datasets or trace
   selections change. These are full-snapshot rebuilds, not assumed incremental
   scripts. Checkpoints advance only with publication; failed work requires explicit
   retry authorization. Existing training and evaluation inputs do not change.
+
 - Technical fit, source preservation, coverage and semantic quality are distinct.
   Unmeasured quality stays unknown. Quality findings remain advisory; unreadable
   or technically incompatible data blocks consumer use.
+
 - Evaluation, Optimiser and Training freeze the exact version consumed.
   Later transformations do not modify those inputs. Training owns
   model-specific preprocessing; Workshop remains model-independent.
+
 - MCP is the first-class authoring surface. Chat, mutable-cell editing and script
   replay are unavailable in the Console. Native-agent intake inspects record
   boundaries before upload and verifies landed counts and values before handoff;

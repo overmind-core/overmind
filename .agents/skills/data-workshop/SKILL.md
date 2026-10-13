@@ -130,6 +130,15 @@ limits are checked before extraction. `overmind://dataset-upload` exposes these
 limits as numeric fields. Single and batch uploads persist file/stage progress;
 PDF OCR also reports total pages and completed/total OCR pages through
 `get_job(kind=dataset_run).progress.landing` and dataset inspection.
+Server-side analytics are measured during publication's full-row profile pass,
+including partition outputs, and bound to the exact fingerprint and rule version.
+Terminal cells show Metrics and collapsed Data alert chips. REST and MCP cells
+share the report; completed pipeline receipts include final-output analytics.
+Use `explore_dataset` to backfill historical versions without changing rows.
+Class imbalance/rare-class thresholds are advisory. Never argmax soft targets,
+infer gold labels, or present a majority baseline as model performance. Bounded
+coverage and `not_checked` risks stay explicit; see `docs/workshop-pipelines.md`.
+
 `inspect_dataset` pages source metadata independently with `source_offset` and
 `source_limit` (default 10, maximum 20). Follow `source_page.next_cursor`; response
 budgets may shorten a page. Complete checksums and extraction/OCR metadata survive
@@ -196,6 +205,16 @@ retaining the full plan name.
 Group identity aliases are shared by lineage recording and partition validation.
 A declared `content` column has a separate group identity from internal input
 fingerprints, including after projection removes that column.
+
+Raw tables have no inferred feature/target mapping. Their full records, excluding
+platform row/provenance identities, receive versioned `record:v1:` fingerprints.
+Names such as `state`, `text`, `label` and `score` never select or exclude columns.
+Explicit input/chat envelopes and the complete native decision wire format use
+model-input fingerprints; native target variants stay together across flat,
+nested and wrapped formats. Declared groups and inherited source/seed keys remain
+partition constraints. Historical keys are not silently dropped or rewritten.
+For affected historical imports, follow the immutable-source rebuild procedure
+in `docs/workshop-pipelines.md` before creating new consumer snapshots.
 
 `use.check` verifies readability and technical fit. `use.use` / `use.freeze`
 pin exact cells in the consumer transaction. Training pins train/validation/eval
@@ -288,3 +307,13 @@ Large row stores bound staging and DataFrame chunks to 16 MiB of serialized row 
 Keep the existing cell and branch UI. `save_dataset_pipeline(dataset=..., package=...)` automatically retains the script and associates the current revision with its preparation. Registration retries return the old receipt without resetting a newer association. Submission also binds reused project recipes to the dataset; package-free execution remains prohibited. `DatasetPipeline.authoring_dataset_id` retains the request identity independently of dataset deletion.
 
 Grid comparisons use the recorded single input, so corrections do not display discarded attempts as their baseline. Multi-input cells do not invent a single comparison parent.
+
+Trace source cells expose a preparation prompt for the external coding agent. It
+pins the deployment, project, dataset and original source fingerprint, carries the
+explicit purpose and brief, and uses the retained-package workflow. Observed trace
+outputs never become verified references implicitly. Dataset polling refreshes the
+preparation graph by dataset revision; event reconnection also refreshes it.
+
+Creating a dataset from selected traces asks for its name and optional capability
+only. It lands with pending purpose; preparation and consumer intent follow in
+Workshop. Trace selections omit the table-only `all_spans` display parameter.

@@ -96,7 +96,7 @@ from overbae.services.recommendation import estimate_for_hyperparams, find_catal
 from overbae.services.training_cancellation import cancel as cancel_training
 from overbae.services.training_contract import contract, selection_record
 from overbae.services.training_policies import profile_options
-from overbae.services.training_preparation import request_preparation, retry_preparation
+from overbae.services.training_preparation import begin_preparation, retry_preparation
 from overbae.tasks.training_preparation import inspect_preparation
 
 _SENSITIVE_KEYS = frozenset(
@@ -961,10 +961,11 @@ def _prepare_training_sync(payload, context):
     if cell is None or (validation is not None and validation.active_cell is None):
         raise MCPError("dataset_not_ready", "Select completed dataset versions.")
     try:
-        prep = request_preparation(
+        prep = begin_preparation(
             cell,
             payload.base_model,
             payload.context_length,
+            user=context.user,
             validation_cell=(
                 mcp_cell(validation, payload.validation_cell) or validation.active_cell
             )
@@ -978,7 +979,14 @@ def _prepare_training_sync(payload, context):
         raise MCPError("preparation_invalid", exc.detail) from exc
     if prep.state == "queued":
         inspect_preparation.delay(str(prep.id))
+    training_job = prep.training_jobs.earliest("created_at")
     return PrepareTrainingOutput(
+        training_job=FineTuneJobReference(
+            id=str(training_job.pk),
+            name=training_job.name,
+            status=training_job.status,
+            resource=resource_link("finetunes", str(training_job.pk), "Training job"),
+        ),
         monitoring={
             "policy": monitoring,
             "sample_state": "Modal freezes the resolved training/development samples during transfer, before GPU dispatch; token preparation alone does not select the development split",
@@ -1122,7 +1130,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "prepare_training_data",
             "Prepare training data",
-            "Tokenize for a model and context length. Repeat the same call to observe completion. Does not start GPU training.",
+            "Create the visible training job and tokenize for a model and context length. Repeated calls reuse the preparation and job. start_finetune promotes that job when the model, pinned cells, context, training type and runtime match. Does not start GPU training.",
             PrepareTrainingInput,
             PrepareTrainingOutput,
             _prepare_training_sync,

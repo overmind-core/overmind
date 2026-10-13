@@ -27,6 +27,13 @@ import {
     NativeModelProgressToJSON,
     NativeModelProgressToJSONTyped,
 } from './NativeModelProgress';
+import type { NativeLabelMetrics } from './NativeLabelMetrics';
+import {
+    NativeLabelMetricsFromJSON,
+    NativeLabelMetricsFromJSONTyped,
+    NativeLabelMetricsToJSON,
+    NativeLabelMetricsToJSONTyped,
+} from './NativeLabelMetrics';
 import type { NativeSample } from './NativeSample';
 import {
     NativeSampleFromJSON,
@@ -125,6 +132,18 @@ export interface NativeMonitor {
      * @memberof NativeMonitor
      */
     samples: Array<NativeSample>;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeMonitor
+     */
+    view: string;
+    /**
+     *
+     * @type {Array<NativeLabelMetrics>}
+     * @memberof NativeMonitor
+     */
+    labels: Array<NativeLabelMetrics>;
 }
 
 /**
@@ -145,6 +164,8 @@ export function instanceOfNativeMonitor(value: object): value is NativeMonitor {
     if (!('offset' in value) || value['offset'] === undefined) return false;
     if (!('limit' in value) || value['limit'] === undefined) return false;
     if (!('samples' in value) || value['samples'] === undefined) return false;
+    if (!('view' in value) || value['view'] === undefined) return false;
+    if (!('labels' in value) || value['labels'] === undefined) return false;
     return true;
 }
 
@@ -172,6 +193,8 @@ export function NativeMonitorFromJSONTyped(json: any, ignoreDiscriminator: boole
         'offset': json['offset'],
         'limit': json['limit'],
         'samples': ((json['samples'] as Array<any>).map(NativeSampleFromJSON)),
+        'view': json['view'],
+        'labels': ((json['labels'] as Array<any>).map(NativeLabelMetricsFromJSON)),
     };
 }
 
@@ -200,5 +223,7 @@ export function NativeMonitorToJSONTyped(value?: NativeMonitor | null, ignoreDis
         'offset': value['offset'],
         'limit': value['limit'],
         'samples': ((value['samples'] as Array<any>).map(NativeSampleToJSON)),
+        'view': value['view'],
+        'labels': ((value['labels'] as Array<any>).map(NativeLabelMetricsToJSON)),
     };
 }

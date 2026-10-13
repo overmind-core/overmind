@@ -28,7 +28,7 @@ CONFIGURATION_FIELDS = (
 )
 
 
-def requested_configuration(values, *, runtime=None):
+def requested_configuration(values, *, runtime=None, training_plan=None):
     selected = selection_record(
         values.get("cell"),
         validation_cell=values.get("validation_cell"),
@@ -48,6 +48,8 @@ def requested_configuration(values, *, runtime=None):
     }
     if settings.FINETUNING_BACKEND == "modal":
         result["runtime"] = runtime or training_release.current()
+    if training_plan:
+        result["training_plan"] = training_plan
     result["fingerprint"] = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
     return result
 

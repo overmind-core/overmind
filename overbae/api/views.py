@@ -124,10 +124,13 @@ from overbae.services.inference_metrics import Median, model_activity, model_met
 from overbae.services.training_cancellation import cancel as cancel_training
 from overbae.services.training_preparation import (
     live_progress_for_job,
+    retry_preparation,
+    sync_setup_jobs,
 )
 from overbae.services.training_preparation import (
     retry_for_job as retry_training_preparation,
 )
+from overbae.tasks.training_preparation import inspect_preparation
 
 logger = logging.getLogger(__name__)
 
@@ -983,6 +986,21 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             FinetuningJob.Status.CANCELLED,
         }:
             raise drf_serializers.ValidationError("Only failed/cancelled jobs can be retried.")
+        if job.preparation_id and not job.requested_configuration:
+            prep = job.preparation
+            if prep.state in {"failed", "incompatible"}:
+                try:
+                    prep = retry_preparation(prep)
+                except InputValidationError as exc:
+                    raise drf_serializers.ValidationError(exc.detail) from exc
+            FinetuningJob.objects.filter(pk=job.pk).update(
+                status=FinetuningJob.Status.PREPROCESSING
+            )
+            sync_setup_jobs(prep)
+            if prep.state == "queued":
+                inspect_preparation.delay(str(prep.pk))
+            job.refresh_from_db()
+            return Response(FinetuningJobSerializer(job).data)
         require_credits(request.user)
         try:
             retry_training_preparation(job)

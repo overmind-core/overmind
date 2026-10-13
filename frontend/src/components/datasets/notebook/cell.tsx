@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { Handle, Position, useNodeConnections } from "@xyflow/react";
 
+import { AnalyticsAlerts, AnalyticsDetails } from "@/components/datasets/notebook/cell-analytics";
 import { CellScript } from "@/components/datasets/notebook/cell-script";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { Badge } from "@/components/ui/badge";
@@ -102,11 +103,13 @@ function ExportDialog({
 
 function SectionHeader({
   label,
+  alerts,
   meta,
   open,
   onToggle,
 }: {
   label: string;
+  alerts?: ReactNode;
   meta?: string;
   open: boolean;
   onToggle: () => void;
@@ -114,7 +117,7 @@ function SectionHeader({
   return (
     <button
       aria-expanded={open}
-      className="flex h-8 w-full items-center gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-wash-raised hover:text-foreground"
+      className="flex min-h-8 w-full flex-wrap items-center gap-1.5 px-2.5 py-1 text-xs text-muted-foreground hover:bg-wash-raised hover:text-foreground focus-visible:outline focus-visible:outline-ring"
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -125,6 +128,7 @@ function SectionHeader({
         className={cn("size-3 transition-transform duration-150", open && "rotate-90")}
       />
       <span className="pixel-label whitespace-nowrap">{label}</span>
+      {alerts}
       <span className="flex-1" />
       {meta && <span className="truncate font-mono tabular-nums">{meta}</span>}
     </button>
@@ -515,6 +519,8 @@ export function NotebookCell({
   const outgoing = useNodeConnections({ handleType: "source" });
   const [scriptOpen, setScriptOpen] = useState(!ran);
   const [tableOpen, setTableOpen] = useState(true);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const terminal = outgoing.length === 0 || active;
   useEffect(() => {
     if (cell.state === "failed" || cell.state === "queued") setScriptOpen(true);
   }, [cell.state]);
@@ -668,6 +674,9 @@ export function NotebookCell({
         {ran ? (
           <div className={cn(!source && (hasScript || attachment) && "border-t border-border/70")}>
             <SectionHeader
+              alerts={
+                terminal && !metricsOpen ? <AnalyticsAlerts report={cell.analytics} /> : undefined
+              }
               label="Data"
               meta={`${cell.rows.toLocaleString()} rows × ${columns}`}
               onToggle={() => setTableOpen((o) => !o)}
@@ -675,6 +684,19 @@ export function NotebookCell({
             />
             {tableOpen && (
               <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
+            )}
+            {terminal && (
+              <div className="border-t border-border/70">
+                <SectionHeader
+                  label="Metrics"
+                  meta={
+                    cell.analytics?.status === "completed" ? "Measured by Overmind" : "Not measured"
+                  }
+                  onToggle={() => setMetricsOpen((open) => !open)}
+                  open={metricsOpen}
+                />
+                {metricsOpen && <AnalyticsDetails report={cell.analytics} />}
+              </div>
             )}
             {active && (
               <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1 [&>*]:shrink-0">

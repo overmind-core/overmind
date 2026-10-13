@@ -1,5 +1,34 @@
 # Reusable Workshop transformations
 
+## Version-bound analytics
+
+Overmind measures every newly published cell during its existing full-row profile
+pass, including final transformation and partition outputs. `stats.analytics` is
+bound to the cell fingerprint and rule version. Terminal cells expose Metrics
+beside Script/Data; collapsed Metrics leave warning/error and unchecked chips on
+Data. No training or row transformation is triggered by opening these sections.
+
+REST cells and MCP `inspect_dataset` return the same `analytics` report. Completed
+pipeline `get_job` receipts include final-output analytics. For historical cells,
+`explore_dataset` computes and persists the report asynchronously, preserving the
+rows and fingerprint. Stale/missing reports are explicitly `unmeasured`; reads do
+not scan data. Completion notifies the Console to refresh.
+
+Version 2 measures target validity, declared categorical class counts, majority
+accuracy baseline, rare/missing classes, observation weights, and missing/constant
+input values. Class shares below 5% and class counts below 20 are advisory
+heuristics, not launch gates. Probability/ordinal targets are never converted to
+gold labels; ordered options and declared semantics define separate families.
+All rows are scanned; details are bounded to 8 families, 32 options and 100 input
+fields, with uncovered data explicit. Prose states receive whole-text checks,
+not inferred field parsing. Cross-split leakage, feature availability/outliers
+and evaluation strategy remain `not_checked`. Source label correctness is not
+established by declared semantics. Neither scan completion nor format validity
+means the data is suitable for training.
+
+Regression coverage: `tests/test_workshop_analytics.py`, the cell analytics UI
+tests, and `make test-journeys test_args="-k test_workshop_publishes_version_bound_analytics_to_mcp_and_rest"`.
+
 The native coding agent writes and interprets transformations. Overmind retains
 their code, immutable revisions, exact inputs, step outputs and measured receipts.
 Reuse a revision with compatible sources in the same project. If a source needs
@@ -185,6 +214,60 @@ Run the retained-package and publication regressions without provider calls:
 ```sh
 uv run pytest tests/test_reusable_workshop_journey.py tests/test_workshop_package_transfer_journey.py -q
 ```
+
+## Source fingerprints and rebuilding historical imports
+
+Raw tabular records do not declare model features or targets. Overmind fingerprints
+all their fields except platform row/provenance identities, using the
+`record:v1:` namespace. Familiar names such as `state`, `text`, `score` or `label`
+do not cause other fields to be ignored. This is exact source-record identity,
+not a claim about semantic similarity or customer independence.
+
+Use supported explicit `input`, chat-message or native-decision structures to
+declare model input. Complete flat native decisions include `state`, `question`,
+`kind`, `options` and `target`; partial flat rows remain raw records. Native
+decision targets and weights do not affect model-input equivalence. Flat, nested
+and wrapped native decisions share that equivalence. Source/seed fingerprints
+and declared groups are preserved through transformations and remain partition
+constraints, including when the visible grouping columns are projected away.
+
+Older imports may retain incorrect fingerprints inferred from column names.
+Updating the code does not repair those immutable cells. Do not strip provenance,
+relax partition checks, append the same file to an existing source (which adds
+rows), or reuse an old transfer request key expecting new execution.
+
+To rebuild an affected import:
+
+1. Export each retained original source with `overmind dataset export DATASET --source SHA256 --output FILE --json`. Verify the original byte identities and
+   record the affected dataset/cell IDs and checksums in the replacement brief.
+1. Create an explicit replacement source and upload the original bytes through the
+   normal upload workflow after deploying the corrected code. For multi-file
+   sources, retain the same file order and extraction settings. A new destination
+   and request identity distinguish this rebuild from an upload retry. Preserve
+   the old source and every consumer-pinned version; there is no automatic in-place
+   migration of historical fingerprints.
+1. Reuse the retained transformation or save an attributed revision for the new
+   source. Preview, publish and inspect counts, target semantics, record identities
+   and intended group boundaries before partitioning.
+1. Build fresh partitions and consumer snapshots. Confirm coverage and absence of
+   unintended overlap. Historical training/evaluation evidence remains pinned to
+   its original artifacts and must not be relabelled as rebuilt evidence.
+
+This recovery uses original bytes, never a locally transformed derivative uploaded
+as an unrelated source. If original bytes or extraction settings are unavailable,
+retain the failure and investigate; do not guess which inherited keys to remove.
+
+Regression commands (compose PostgreSQL and Redis required for the journey):
+
+```sh
+uv run pytest tests/test_dataset_fingerprints.py tests/test_dataset_split.py tests/test_dataset_preparation.py -q
+TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest tests/journeys/test_tabular_partition.py -q
+```
+
+The journey uploads a table with shared `state` and `text` values, imports an
+explicit decision transformation with lineage, creates four time-ordered roles,
+and checks that the original source is unchanged. Journey evidence is retained
+under `tests/journeys/.runs/`.
 
 ## Explicit flow, authored by the native agent
 

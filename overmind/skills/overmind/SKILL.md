@@ -39,7 +39,7 @@ Route guided work to these exact prompt names:
 - `export-dataset` — download a dataset version through the local CLI; MCP carries guidance, not file bytes.
 - `download-checkpoint` — download an archived fine-tuned deployment checkpoint through the local CLI; MCP carries guidance, not checkpoint bytes.
 - `connect-traces` — connect a tracing provider, review capability boundaries and verify imported traces.
-- `develop-model-from-data` — explore uploaded data, freeze partitions, compare decision models and save training/performance experiments.
+- `develop-model-from-data` — establish a generative or decision task, retain a training plan and data evidence, train and evaluate the requested recipe, with bounded quality pilots only when requested.
 - `prepare-evaluation` — check evaluation dataset, evaluators, eval set, bindings, and credits.
 - `evaluate-change` — run an evaluation and compare it with a supplied baseline.
 - `finetune-capability` — check, estimate, launch, and verify fine-tuning.
@@ -225,6 +225,8 @@ Evaluations:
 `compare_evaluations`, `annotate_evaluation_sample`.
 
 Fine-tuning and serving:
+
+`save_training_plan` retains immutable task, data, audit, baseline, sanity and optional pilot-selection evidence. Plan-bound `create_training_experiment` uses explicit `pilot` or `full` stages. Full training does not require a pilot or pilot-selection evidence. Pilots are optional and should run only when requested; any supplied pilot selection must match the task and data. Direct training remains available. Follow [model workflows](references/model-workflows.md) for both generative and decision training.
 
 `get_model_catalog`,
 `check_finetune_readiness`, `estimate_finetune`, `start_finetune`,

@@ -14,6 +14,7 @@ from overbae.models import (
     NativeEvaluationPlan,
     Project,
     ProjectMembership,
+    TrainingPlan,
     User,
 )
 from overbae.services import native_evaluation
@@ -343,3 +344,7 @@ def test_demo_model_workflows_remain_terminal_and_reset_without_provider_work():
     assert comparison.results["demo"] is True
     assert comparison.results["comparisons"]["demo"]["raw"]["candidate"]["benchmarks"]
     assert DecisionPerformanceRun.objects.get(project=project).state == "completed"
+    plan = TrainingPlan.objects.get(project=project)
+    assert plan.state == "discovery"
+    assert plan.specification["selection"] is None
+    assert plan.specification["evidence"] == []

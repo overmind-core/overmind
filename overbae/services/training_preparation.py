@@ -28,7 +28,7 @@ from overbae.modal.model_registry import (
     get_unsloth_image,
 )
 from overbae.modal.training_type import training_context_length, training_enabled
-from overbae.models import TrainingPreparation
+from overbae.models import FinetuningJob, Project, TrainingPreparation
 from overbae.services import operational_progress, training_release
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
@@ -137,7 +137,90 @@ def retry_preparation(preparation):
         touched_at=timezone.now(),
     )
     preparation.refresh_from_db()
+    sync_setup_jobs(preparation)
     return preparation
+
+
+@transaction.atomic
+def begin_preparation(cell, model, context_length, *, user, **kwargs):
+    Project.objects.select_for_update().get(pk=cell.dataset.project_id)
+    prep = request_preparation(cell, model, context_length, **kwargs)
+    if not prep.training_jobs.exists():
+        FinetuningJob.objects.create(
+            project_id=prep.cell.dataset.project_id,
+            dataset=prep.cell.dataset,
+            cell=prep.cell,
+            validation_cell=prep.validation_cell,
+            validation_dataset=prep.validation_cell.dataset if prep.validation_cell_id else None,
+            triggered_by=user,
+            preparation=prep,
+            base_model=prep.config["model"],
+            provider=FinetuningJob.Provider.MODAL,
+            name=f"{prep.cell.dataset.name} · {prep.config['model'].split('/')[-1]}",
+            hyperparameters={
+                "context_length": prep.config["context_length"],
+                "objective": prep.config["objective"],
+                "training_type": {
+                    "type": "Full" if prep.config["training_type"] == "full" else "Lora"
+                },
+            },
+            status=FinetuningJob.Status.PREPROCESSING,
+            eval_model_before=False,
+            eval_model_after=False,
+        )
+    sync_setup_jobs(prep)
+    return prep
+
+
+def sync_setup_jobs(prep):
+    failed = prep.state in {"failed", "incompatible"}
+    status = (
+        FinetuningJob.Status.FAILED
+        if failed
+        else FinetuningJob.Status.AWAITING_LAUNCH
+        if prep.state == "ready"
+        else FinetuningJob.Status.PREPROCESSING
+    )
+    progress = {
+        "phase": "awaiting_launch" if prep.state == "ready" else "preprocessing",
+        "preparation": {
+            "id": str(prep.pk),
+            "state": prep.state,
+            "report": prep.report,
+            **(prep.report.get("progress") or {}),
+        },
+    }
+    # Only setup jobs follow the tokenization receipt; launched and cancelled jobs own their state.
+    prep.training_jobs.filter(requested_configuration={}).exclude(status="cancelled").update(
+        status=status,
+        progress=progress,
+        error_message=preparation_error(prep) if failed else "",
+        completed_at=prep.touched_at if failed else None,
+        updated_at=timezone.now(),
+    )
+
+
+def setup_job_for_launch(values, runtime):
+    hp = values.get("hyperparameters") or {}
+    return (
+        FinetuningJob.objects.filter(
+            project=values["project"],
+            cell=values["cell"],
+            validation_cell=values.get("validation_cell")
+            if values.get("validation_enabled", True)
+            else None,
+            base_model=values["base_model"],
+            status__in=[FinetuningJob.Status.PREPROCESSING, FinetuningJob.Status.AWAITING_LAUNCH],
+            requested_configuration={},
+            preparation__config__runtime=runtime,
+            preparation__config__context_length=hp.get("context_length"),
+            preparation__config__training_type="full"
+            if (hp.get("training_type") or {}).get("type") == "Full"
+            else "lora",
+        )
+        .select_for_update()
+        .first()
+    )
 
 
 def observe_progress(prep):
@@ -179,7 +262,11 @@ def observe_progress(prep):
 def live_progress_for_job(job):
     progress = dict(job.progress) if isinstance(job.progress, dict) else {}
     binding = progress.get("preparation")
-    if job.status != "preparing" or not isinstance(binding, dict) or not binding.get("id"):
+    if (
+        job.status not in {"preparing", "preprocessing", "awaiting_launch"}
+        or not isinstance(binding, dict)
+        or not binding.get("id")
+    ):
         return progress
     current = (
         TrainingPreparation.objects.filter(
@@ -357,6 +444,7 @@ def ready_for_job(job, context_length):
         raise ValueError(
             prep.error or "Exact preprocessing is not ready for this training configuration."
         )
+    FinetuningJob.objects.filter(pk=job.pk).update(preparation=prep)
     return prep
 
 
@@ -411,6 +499,7 @@ def for_job(job):
             runtime=training_release.for_job(job),
             training_type=kind,
         )
+    FinetuningJob.objects.filter(pk=job.pk).update(preparation=prep)
     return prep
 
 

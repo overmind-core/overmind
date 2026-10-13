@@ -88,7 +88,8 @@ export interface TraceSelectionSpec {
 export function traceSelectionBody(selection: TraceSelectionSpec) {
   const filters: Record<string, string> = {};
   for (const [key, value] of Object.entries(selection.filters ?? {})) {
-    if (value !== undefined && value !== "") filters[key] = value;
+    // The table's span display mode is not a dataset selection predicate.
+    if (key !== "all_spans" && value !== undefined && value !== "") filters[key] = value;
   }
   return {
     exclude_trace_ids: selection.excludeTraceIds ?? [],
@@ -191,10 +192,11 @@ export interface DatasetListFilters {
   pageSize?: number;
 }
 
-export function useDatasetPreparationQuery(datasetId: string, cell?: string) {
+export function useDatasetPreparationQuery(datasetId: string, cell?: string, revision?: number) {
   return useQuery({
     queryFn: () => apiClient.datasets.datasetsPreparationRetrieve({ cell, id: datasetId }),
-    queryKey: ["datasets", datasetId, "preparation", cell],
+    // Dataset polling must refresh the graph even when a completion event was missed.
+    queryKey: ["datasets", datasetId, "preparation", cell, revision],
   });
 }
 

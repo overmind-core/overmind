@@ -22,7 +22,7 @@ from overbae.models import (
     Project,
     TrainingExperiment,
 )
-from overbae.services import native_evaluation, training_release
+from overbae.services import native_evaluation, training_plans, training_release
 from overbae.services.datasets import rows, use
 from overbae.services.plan_limits import require_plan_quota
 from overbae.services.recommendation.candidates import dataset_total_tokens
@@ -81,6 +81,8 @@ def create(
     evaluation=None,
     constraints=None,
     reuse_existing_predictions=False,
+    training_plan=None,
+    stage="exploratory",
 ):
     constraints = TrainingConstraints.model_validate(constraints or {}).model_dump(
         exclude_none=True
@@ -94,6 +96,9 @@ def create(
             or prior.name != name
             or prior.purpose != purpose
             or prior.variants != variants
+            or (prior.protocol.get("training_plan") or {}).get("id")
+            != (str(training_plan) if training_plan else None)
+            or prior.protocol.get("stage", "exploratory") != stage
             or prior.protocol.get("source_evaluation")
             != (str(evaluation.pk) if evaluation else None)
         ):
@@ -101,6 +106,18 @@ def create(
         return prior
     if not isinstance(variants, list) or not 1 <= len(variants) <= 6:
         raise InputValidationError("Save one to six explicit candidates")
+    plan_binding = training_plans.bind_experiment(project, training_plan, stage, variants)
+    if plan_binding and evaluation:
+        roles = plan_binding["bindings"]["roles"]
+        if stage == "pilot":
+            raise InputValidationError("Quality pilots cannot launch a final evaluation protocol")
+        if str(evaluation.final_cell_id) != roles["final"]["cell"] or (
+            evaluation.calibration_cell_id
+            and str(evaluation.calibration_cell_id) != roles.get("calibration", {}).get("cell")
+        ):
+            raise InputValidationError(
+                "The evaluation must use this training plan's frozen final/calibration roles"
+            )
     if reuse_existing_predictions and evaluation is None:
         raise InputValidationError("Select a source comparison when reusing predictions")
     if evaluation and evaluation.project_id != project.pk:
@@ -134,6 +151,8 @@ def create(
         if policy:
             validate_policy(policy, has_development=bool(variant.get("development_cell")))
     protocol = {
+        "training_plan": plan_binding,
+        "stage": stage,
         "constraints": constraints,
         "reuse_existing_predictions": reuse_existing_predictions,
         "source_evaluation": str(evaluation.pk) if evaluation else None,
@@ -179,6 +198,16 @@ def launch(experiment, *, user, quote_id=None):
     ) != configuration_identity(experiment):
         raise InputValidationError("The forecast is stale for this configuration; prepare it again")
     require_authorized_forecast(experiment.protocol, quote_id)
+    plan_binding = experiment.protocol.get("training_plan")
+    if plan_binding:
+        current = training_plans.bind_experiment(
+            experiment.project,
+            plan_binding["id"],
+            experiment.protocol["stage"],
+            experiment.variants,
+        )
+        if current != plan_binding:
+            raise InputValidationError("The training-plan evidence changed after preparation")
     for cell_id, fingerprint in experiment.protocol["fingerprints"].items():
         cell = Cell.objects.select_related("dataset").get(
             pk=cell_id, dataset__project=experiment.project
@@ -195,6 +224,7 @@ def launch(experiment, *, user, quote_id=None):
             context={
                 "request": SimpleNamespace(user=user),
                 "training_runtime": experiment.protocol["runtime"],
+                "training_plan": plan_binding,
                 "verify_source_files": False,
             },
         )
@@ -268,6 +298,11 @@ def configuration_identity(experiment):
                 "evaluation",
                 "reuse_existing_predictions",
             )
+        },
+        **{
+            key: experiment.protocol[key]
+            for key in ("training_plan", "stage")
+            if key in experiment.protocol
         },
     }
     return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
@@ -466,6 +501,11 @@ def launch_readiness(experiment):
     if experiment.state != "prepared":
         return readiness
     try:
+        binding = experiment.protocol.get("training_plan")
+        if binding:
+            training_plans.bind_experiment(
+                experiment.project, binding["id"], experiment.protocol["stage"], experiment.variants
+            )
         require_authorized_forecast(
             experiment.protocol, (experiment.protocol.get("forecast") or {}).get("id")
         )

@@ -7,7 +7,7 @@ import random
 from collections import Counter, defaultdict
 from contextlib import suppress
 
-from overbae.services.datasets.examples import field_value, input_objects
+from overbae.services.datasets.examples import field_value, input_objects, native_decision
 
 GROUP_ALIASES = {
     "source_trace_id": "trace_id",
@@ -17,28 +17,6 @@ GROUP_ALIASES = {
 }
 
 _IDENTITY = {"source_row", "trace_id", "source_trace_id", "conversation_id", "_overmind_provenance"}
-_OUTPUT = {
-    "output",
-    "expected_output",
-    "answer",
-    "response",
-    "completion",
-    "label",
-    "score",
-    "target",
-}
-_RAW_INPUT = (
-    "question",
-    "prompt",
-    "instruction",
-    "state",
-    "context",
-    "evidence",
-    "passage",
-    "text",
-    "options",
-    "choices",
-)
 
 
 def _canonical(value) -> str:
@@ -76,20 +54,17 @@ def content_key(row: dict, *, include_output: bool = False) -> str:
     else:
         value = source
         decision = (
-            source.get("decision")
-            if isinstance(source, dict) and set(source) == {"decision"}
-            else row.get("decision")
-            if source is None
+            native_decision(row)
+            if source is None or (isinstance(source, dict) and set(source) == {"decision"})
             else None
         )
         if isinstance(decision, dict):
             value = {key: decision.get(key) for key in ("state", "question", "kind", "options")}
         if value is None:
-            fields = {k: row[k] for k in _RAW_INPUT if row.get(k) is not None}
-            # A generic question alone can be shared by millions of distinct cases.
-            value = next(iter(fields.values())) if len(fields) == 1 else fields or None
-        if value is None:
-            value = {k: v for k, v in row.items() if k not in _IDENTITY | _OUTPUT}
+            # Raw column names do not declare input/target semantics. Keep record
+            # identity separate from equivalence of explicitly structured inputs.
+            value = {k: v for k, v in row.items() if k not in _IDENTITY}
+            return "record:v1:" + hashlib.sha256(_canonical(value).encode()).hexdigest()
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
 
 

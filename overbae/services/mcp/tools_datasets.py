@@ -368,7 +368,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect dataset versions, extraction metadata, progress, profiles and consumer requirements. Cells expose receipt-backed transformation execution, exact revision/package/entrypoint, distinguishing external imports and unrecorded history. Read all package files through dataset-pipeline-packages resources. Page cells and sources with offsets and next_cursor.",
+            "Inspect dataset versions, extraction metadata, progress, profiles and consumer requirements. Cell analytics expose fingerprint-bound server measurements, class counts, majority baselines, warnings and explicitly unchecked risks; unmeasured versions can be scanned with explore_dataset. Inspect the exact consumer cell before training handoff. Cells expose receipt-backed transformation execution, exact revision/package/entrypoint, distinguishing external imports and unrecorded history. Read all package files through dataset-pipeline-packages resources. Page cells and sources with offsets and next_cursor.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,

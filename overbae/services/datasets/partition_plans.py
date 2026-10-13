@@ -345,11 +345,7 @@ def build(plan_id):
                             "project": plan.project,
                             "name": f"{plan.name[: 252 - len(role)]} · {role}",
                             "brief": plan.source_cell.dataset.brief,
-                            "intent": "eval"
-                            if role in {"calibration", "final"}
-                            else "train"
-                            if plan.source_cell.dataset.intent in {"train", "eval"}
-                            else plan.source_cell.dataset.intent,
+                            "intent": "eval" if role in {"calibration", "final"} else "train",
                             "state": Dataset.State.LANDING,
                         },
                     )

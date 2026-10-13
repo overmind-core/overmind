@@ -8,9 +8,10 @@ from factories import make_project, make_user
 from overbae.models import APIToken, Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.mcp.context import MCPContext
 
-MAX_MANIFEST_BYTES = 82 * 1024
+MAX_MANIFEST_BYTES = 86 * 1024
 
 EXPECTED_TOOL_NAMES = {
+    "save_training_plan",
     "deploy_finetune",
     "inspect_native_evaluation",
     "resume_dataset_import",

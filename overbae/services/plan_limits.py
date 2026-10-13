@@ -111,7 +111,11 @@ def usage_count(user: User, kind: QuotaKind) -> int:
     if kind == "training_jobs":
         from overbae.models import FinetuningJob
 
-        return FinetuningJob.objects.filter(triggered_by=user, created_at__gte=start).count()
+        return (
+            FinetuningJob.objects.filter(triggered_by=user, created_at__gte=start)
+            .exclude(preparation__isnull=False, requested_configuration={})
+            .count()
+        )
 
     if kind == "deploy_jobs":
         from overbae.models import DeployedModel

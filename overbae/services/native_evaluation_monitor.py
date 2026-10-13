@@ -3,6 +3,7 @@ import logging
 import math
 import re
 import sqlite3
+from collections import defaultdict
 from contextlib import closing
 
 import modal
@@ -37,6 +38,7 @@ def initialise(db, source):
         );
         CREATE INDEX IF NOT EXISTS sample_order ON samples(ordinal);
         CREATE INDEX IF NOT EXISTS sample_hash ON samples(hash);
+        CREATE INDEX IF NOT EXISTS sample_benchmark ON samples(benchmark);
         CREATE TABLE IF NOT EXISTS predictions (
             arm TEXT, key TEXT, raw TEXT, adjusted TEXT, metrics TEXT, adjusted_metrics TEXT,
             error TEXT NOT NULL DEFAULT '', PRIMARY KEY(arm,key)
@@ -178,6 +180,32 @@ def collect_progress(plan, stage, call):
     call.pop("progress_error", None)
 
 
+def retain_partial(plan, stage):
+    role, participant, preparing, _ = provider_stage(plan, stage)
+    if preparing:
+        return {"partial": True}
+    source = directory(plan, role)
+    arm = participant["key"]
+    target = source / f"{arm}.jsonl"
+    with artifact_lock(source / "monitor"), closing(connect(source / "monitor.sqlite")) as db, db:
+        initialise(db, source)
+        if participant["kind"] == "external":
+            for record in plan.requests.filter(
+                role=role, participant=arm, state="completed"
+            ).iterator():
+                for row in db.execute(
+                    "SELECT key FROM samples WHERE hash=?", (record.input_sha256,)
+                ).fetchall():
+                    ingest(db, plan, arm, {**record.prediction, "key": row["key"]})
+        with target.with_suffix(".partial").open("w") as output:
+            for row in db.execute(
+                "SELECT raw FROM predictions WHERE arm=? AND raw IS NOT NULL ORDER BY key", (arm,)
+            ):
+                output.write(row["raw"] + "\n")
+        target.with_suffix(".partial").replace(target)
+    return {"partial": True, "predictions_sha256": digest_file(target)}
+
+
 def refresh(plan):
     for role in plan.config["suites"]:
         source = directory(plan, role)
@@ -196,7 +224,11 @@ def refresh(plan):
                 if call.get("state") == "completed" and path.exists():
                     provider = source / f"{arm}-provider.jsonl"
                     receipt = call.get("receipt") or {}
-                    if provider.exists() and receipt.get("predictions_sha256"):
+                    if (
+                        provider.exists()
+                        and receipt.get("predictions_sha256")
+                        and not receipt.get("partial")
+                    ):
                         ingest_file(
                             db,
                             plan,
@@ -213,6 +245,8 @@ def refresh(plan):
                             .get(role, {})
                             .get("predictions_sha256")
                         )
+                        if receipt.get("partial"):
+                            checksum = receipt["predictions_sha256"]
                         if participant["kind"] != "external" and not checksum:
                             raise ValueError("Prediction receipt is unavailable")
                         ingest_file(
@@ -317,6 +351,8 @@ def write_summary(db, plan, role, source):
                 },
             }
         )
+    write_label_metrics(db, plan)
+    db.commit()
     atomic_json(
         source / "monitor.json",
         {
@@ -326,8 +362,104 @@ def write_summary(db, plan, role, source):
             "evaluation_state": plan.state,
             "error": "",
             "arms": arms,
+            "label_metrics_ready": True,
         },
     )
+
+
+def write_label_metrics(db, plan):
+    db.execute("""CREATE TABLE IF NOT EXISTS label_metrics (
+        benchmark TEXT, label_index INTEGER, label TEXT, expected INTEGER, models TEXT,
+        PRIMARY KEY(benchmark, label_index)
+    )""")
+    db.execute("DELETE FROM label_metrics")
+    # Label indexes are comparable only within a benchmark's fixed option order.
+    for suite in db.execute("""SELECT benchmark, MIN(json_extract(input,'$.options')) options
+        FROM samples WHERE error='' GROUP BY benchmark
+        HAVING COUNT(DISTINCT json_extract(input,'$.options'))=1""").fetchall():
+        benchmark = suite["benchmark"]
+        expected = dict(
+            db.execute(
+                """SELECT target.key, COUNT(*) FROM samples s,
+            json_each(s.reference, '$.probabilities') target
+            WHERE s.benchmark=? AND s.error='' AND target.value=1 GROUP BY target.key""",
+                (benchmark,),
+            ).fetchall()
+        )
+        if not expected:
+            continue
+        counts = db.execute(
+            """SELECT p.arm, target.key actual,
+            json_extract(p.metrics,'$.predicted_option') predicted, COUNT(*) n
+            FROM predictions p JOIN samples s USING(key),
+            json_each(s.reference,'$.probabilities') target
+            WHERE s.benchmark=? AND s.error='' AND p.error=''
+            AND json_extract(p.metrics,'$.accuracy') IS NOT NULL AND target.value=1
+            GROUP BY p.arm, actual, predicted""",
+            (benchmark,),
+        ).fetchall()
+        totals = defaultdict(lambda: {"support": 0, "predicted": 0, "correct": 0})
+        for count in counts:
+            totals[count["arm"], count["actual"]]["support"] += count["n"]
+            totals[count["arm"], count["predicted"]]["predicted"] += count["n"]
+            if count["actual"] == count["predicted"]:
+                totals[count["arm"], count["actual"]]["correct"] += count["n"]
+        for index, label in enumerate(json.loads(suite["options"])):
+            models = {}
+            for participant in participants(plan):
+                arm = participant["key"]
+                support, predicted, correct = (
+                    totals[arm, index][name] for name in ("support", "predicted", "correct")
+                )
+                models[arm] = {
+                    "support": support,
+                    "predicted": predicted,
+                    "correct": correct,
+                    "precision": correct / predicted if predicted else None,
+                    "recall": correct / support if support else None,
+                    "f1": 2 * correct / (support + predicted) if support + predicted else None,
+                }
+            db.execute(
+                "INSERT INTO label_metrics VALUES(?,?,?,?,?)",
+                (
+                    benchmark,
+                    index,
+                    label if isinstance(label, str) else json.dumps(label),
+                    expected.get(index, 0),
+                    json.dumps(models),
+                ),
+            )
+
+
+def inspect_labels(db, response, *, search, participant, ordering, offset, limit):
+    field = ordering.removeprefix("-")
+    direction = "DESC" if ordering.startswith("-") else "ASC"
+    values = []
+    if field in {"benchmark", "label", "expected"}:
+        expression = field
+    else:
+        arm, metric = field.rsplit(":", 1)
+        expression = "json_extract(models, ?)"
+        values.append(f'$."{arm}".{metric}')
+    where = "(instr(lower(label),lower(?))>0 OR instr(lower(benchmark),lower(?))>0)"
+    response["count"] = db.execute(
+        f"SELECT COUNT(*) FROM label_metrics WHERE {where}", (search, search)
+    ).fetchone()[0]
+    for row in db.execute(
+        f"SELECT *, {expression} sort_value FROM label_metrics WHERE {where} "
+        f"ORDER BY sort_value IS NULL, sort_value {direction}, benchmark, label_index LIMIT ? OFFSET ?",
+        [*values, search, search, limit, offset],
+    ):
+        models = json.loads(row["models"])
+        response["labels"].append(
+            {
+                "benchmark": row["benchmark"],
+                "label": row["label"],
+                "index": row["label_index"],
+                "expected": row["expected"],
+                "models": {participant: models[participant]} if participant else models,
+            }
+        )
 
 
 def sample_filter(search, outcome, arms):
@@ -360,11 +492,31 @@ def sample_filter(search, outcome, arms):
 
 
 def inspect(
-    plan, *, role="final", offset=0, limit=25, key=None, search="", participant=None, outcome="all"
+    plan,
+    *,
+    role="final",
+    offset=0,
+    limit=25,
+    key=None,
+    search="",
+    participant=None,
+    outcome="all",
+    view="samples",
+    ordering="label",
 ):
     if role not in plan.config["suites"]:
         raise InputValidationError("Select a frozen calibration or final suite")
     arms = [p["key"] for p in participants(plan)]
+    if view not in {"samples", "labels"}:
+        raise InputValidationError("Select samples or labels")
+    if view == "labels" and (key is not None or outcome != "all"):
+        raise InputValidationError("Label metrics cannot be combined with sample keys or outcomes")
+    if ordering.removeprefix("-") not in {"label", "benchmark", "expected"} | {
+        f"{arm}:{metric}" for arm in arms for metric in ("precision", "recall", "f1")
+    }:
+        raise InputValidationError(
+            "Select a label column or a participant's precision, recall or f1"
+        )
     if participant is not None and participant not in arms:
         raise InputValidationError("Select a participant in this evaluation")
     if outcome not in {"all", "correct", "incorrect", "missing", "unscored"}:
@@ -380,6 +532,7 @@ def inspect(
     )
     if (
         not path.exists()
+        or (view == "labels" and not summary.get("label_metrics_ready"))
         or (plan.state == "completed" and summary.get("evaluation_state") != "completed")
     ) and plan.calls.get("verify_inputs", {}).get("state") == "completed":
         request_refresh(plan)
@@ -396,6 +549,8 @@ def inspect(
         )
         if state == "completed":
             phase = "completed" if call else "waiting_for_worker"
+        elif state == "retrying":
+            phase = "recovering"
         calls.append(
             {
                 "key": candidate["key"],
@@ -423,12 +578,28 @@ def inspect(
         "offset": offset,
         "limit": limit,
         "samples": [],
+        "labels": [],
+        "view": view,
     }
     dbpath = source / "monitor.sqlite"
     if not path.exists() or not dbpath.exists():
         return response
     with closing(connect(dbpath, readonly=True)) as db:
         db.execute("BEGIN")
+        if view == "labels":
+            if not summary.get("label_metrics_ready"):
+                response["state"] = "pending"
+                return response
+            inspect_labels(
+                db,
+                response,
+                search=search.strip(),
+                participant=participant,
+                ordering=ordering,
+                offset=offset,
+                limit=limit,
+            )
+            return response
         where, values = sample_filter(
             search.strip(), outcome, [participant] if participant else arms
         )

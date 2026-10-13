@@ -604,6 +604,10 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         label, status, job_error = "Training preparation", job.state, job.error or None
         progress = safe_json(job.report)
         details = safe_json(job.config)
+        training_job_id = (
+            job.training_jobs.order_by("created_at").values_list("id", flat=True).first()
+        )
+        details["training_job"] = str(training_job_id) if training_job_id else None
         primary = _link("jobs", f"training_preparation/{job.id}", label)
     elif kind == "eval_run":
         job, error = resolve_eval_run(context.project, ref)

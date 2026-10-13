@@ -26,6 +26,8 @@ class ExperimentCandidateSerializer(serializers.Serializer):
 
 
 class ExperimentRequestSerializer(serializers.Serializer):
+    training_plan = serializers.UUIDField(required=False, allow_null=True)
+    stage = serializers.ChoiceField(choices=["exploratory", "pilot", "full"], default="exploratory")
     reuse_existing_predictions = serializers.BooleanField(default=False)
     project = serializers.UUIDField()
     name = serializers.CharField(max_length=255)

@@ -49,6 +49,7 @@ from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
+from overbae.api.training_plans import TrainingPlanViewSet
 from overbae.api.training_preparation import TrainingPreparationViewSet
 from overbae.api.uploads import UploadViewSet
 from overbae.api.views import (
@@ -80,6 +81,7 @@ router.register(
 # Must precede ``projects`` so ``…/memberships`` is not captured as a project id.
 router.register("data-explorations", DataExplorationViewSet, basename="data-exploration")
 router.register(r"training-experiments", TrainingExperimentViewSet, basename="training-experiment")
+router.register("training-plans", TrainingPlanViewSet, basename="training-plan")
 router.register(
     r"decision-performance", DecisionPerformanceViewSet, basename="decision-performance"
 )

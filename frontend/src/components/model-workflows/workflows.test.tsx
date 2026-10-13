@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { DataProjectForm } from "@/components/onboarding/data-project-form";
+import { seriesColor } from "@/lib/colors";
 import { type Comparison, ComparisonMetrics } from "./comparison-metrics";
 
 const create = vi.hoisted(() => vi.fn());
@@ -50,6 +51,7 @@ it("keeps soft-target metrics and coverage visible without inventing accuracy", 
   const delta = { candidate_minus_baseline: -0.1, decisions: 7, groups: 5, interval_95: [-0.2, 0] };
   render(
     <ComparisonMetrics
+      colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
       comparisons={{
         trained: {
           raw: {
@@ -95,6 +97,7 @@ it("compares all models once and omits hard-label aliases", () => {
   };
   render(
     <ComparisonMetrics
+      colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
       comparisons={{
         base: { raw: comparison },
         first: { raw: comparison },
@@ -103,6 +106,17 @@ it("compares all models once and omits hard-label aliases", () => {
       names={{ base: "Base", first: "First", second: "Second" }}
     />
   );
+  for (const [name, colorIndex] of [
+    ["Base", 2],
+    ["First", 0],
+    ["Second", 1],
+  ] as const) {
+    for (const value of ["75.0%", "0.2000", "0.4800"]) {
+      expect(screen.getByRole("button", { name: `${name}: ${value}` }).style.backgroundColor).toBe(
+        seriesColor(colorIndex)
+      );
+    }
+  }
   expect(screen.getAllByRole("table")).toHaveLength(1);
   expect(screen.getAllByRole("row")).toHaveLength(4);
   expect(screen.getByRole("row", { name: /First/ })).toBeTruthy();
@@ -148,6 +162,7 @@ it("retains distribution metrics when accuracy covers only the hard-label subset
   };
   render(
     <ComparisonMetrics
+      colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
       comparisons={{ trained: { raw: comparison } }}
       names={{ base: "Base", trained: "Trained" }}
     />
@@ -174,6 +189,7 @@ it("shows confidence as a separate metric and retains adjusted scores without re
   };
   render(
     <ComparisonMetrics
+      colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
       comparisons={{
         trained: {
           calibrated: {
@@ -192,6 +208,20 @@ it("shows confidence as a separate metric and retains adjusted scores without re
     />
   );
   expect(screen.getByRole("heading", { name: "Confidence" })).toBeTruthy();
+  for (const [name, colorIndex] of [
+    ["Base", 2],
+    ["Trained", 0],
+  ] as const) {
+    expect(screen.getByRole("button", { name: `${name}: 71.2%` }).style.backgroundColor).toBe(
+      seriesColor(colorIndex)
+    );
+    for (const mode of ["Original", "Adjusted"]) {
+      const bar = screen.getByRole("button", { name: new RegExp(`${name} · ${mode}:`) });
+      expect(
+        bar.querySelector<HTMLElement>("[style*='background-color']")?.style.backgroundColor
+      ).toBe(seriesColor(colorIndex));
+    }
+  }
   expect(
     screen.getByRole("button", { name: /Trained · Original: Correct 71.2%, claimed 95.0%/ })
   ).toBeTruthy();

@@ -77,6 +77,8 @@ function averageScore(row: EvaluationRow, metric: string, mode: ScoreMode) {
 
 function evaluationState({ plan, participant, job }: EvaluationRow) {
   if (plan.deletedAt) return { label: "Deleted", variant: "neutral" as const };
+  if (plan.state === "completed" && plan.results?.completion?.status === "completed_with_issues")
+    return { label: "Completed with issues", variant: "warning" as const };
   if (plan.state === "completed") return { label: "Completed", variant: "success" as const };
   if (["failed", "submission_unknown"].includes(plan.state))
     return {
@@ -384,9 +386,10 @@ export function NativeEvaluationTable({
         ) : !rows.length ? (
           !error && (
             <EmptyState
-              icon={Icon.successDouble}
+              className="items-start px-0 pt-0 pb-4 text-left"
               size="section"
               title="No evaluations pinned to this run"
+              titleClassName="mb-0 text-sm font-normal text-muted-foreground"
             />
           )
         ) : (

@@ -30,6 +30,12 @@ export interface TrainingPreparation {
      * @type {string}
      * @memberof TrainingPreparation
      */
+    readonly trainingJob: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof TrainingPreparation
+     */
     readonly cell: string;
     /**
      *
@@ -74,6 +80,7 @@ export interface TrainingPreparation {
  */
 export function instanceOfTrainingPreparation(value: object): value is TrainingPreparation {
     if (!('id' in value) || value['id'] === undefined) return false;
+    if (!('trainingJob' in value) || value['trainingJob'] === undefined) return false;
     if (!('cell' in value) || value['cell'] === undefined) return false;
     if (!('validationCell' in value) || value['validationCell'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
@@ -95,6 +102,7 @@ export function TrainingPreparationFromJSONTyped(json: any, ignoreDiscriminator:
     return {
 
         'id': json['id'],
+        'trainingJob': json['training_job'],
         'cell': json['cell'],
         'validationCell': json['validation_cell'],
         'state': json['state'],
@@ -109,7 +117,7 @@ export function TrainingPreparationToJSON(json: any): TrainingPreparation {
     return TrainingPreparationToJSONTyped(json, false);
 }
 
-export function TrainingPreparationToJSONTyped(value?: Omit<TrainingPreparation, 'id'|'cell'|'validation_cell'|'state'|'config'|'report'|'error'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function TrainingPreparationToJSONTyped(value?: Omit<TrainingPreparation, 'id'|'training_job'|'cell'|'validation_cell'|'state'|'config'|'report'|'error'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

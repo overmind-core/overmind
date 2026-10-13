@@ -79,6 +79,7 @@ import {
 } from "@/hooks/use-finetuning";
 import { useDeployedModelsQuery } from "@/hooks/use-inference";
 import { useTableSort } from "@/hooks/use-table-sort";
+import { ApiError } from "@/lib/api-error";
 import { seriesColor } from "@/lib/colors";
 import { groupCostUsd, jobCostUsd } from "@/lib/finetuning-cost";
 import {
@@ -93,7 +94,7 @@ import { formatElapsed } from "@/lib/formatters";
 import { errorMessage } from "@/lib/notify";
 import { PROSE } from "@/lib/typography";
 import { cn, scorePct } from "@/lib/utils";
-import { type FinetuningJobList, type NativeEvaluation, ResponseError } from "@/openapi";
+import type { FinetuningJobList, NativeEvaluation } from "@/openapi";
 
 export function WizardMonitor({
   projectId,
@@ -201,7 +202,7 @@ export function TrainingMonitorPanel({
         });
       } catch (error) {
         // Ad-hoc job groups do not have a TrainingExperiment record.
-        if (error instanceof ResponseError && error.response.status === 404) return null;
+        if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }
     },
@@ -964,6 +965,7 @@ function experimentStatusLine(s: ExperimentSnapshot): string {
     const last = activity.at(-1);
     return last?.kind === "stage" ? "" : (last?.message ?? "");
   }
+  if (status === "awaiting_launch") return "Data ready · training has not started";
   if (downloadLine) return downloadLine;
   const stageLine = stageStatusLine(progress);
   if (stageLine) return stageLine;
@@ -974,7 +976,11 @@ function experimentStatusLine(s: ExperimentSnapshot): string {
   const label = isDeploying ? "Deploying" : progressPhaseLabel(progress, status);
   const latest = activity.at(-1)?.message;
   if (latest) return `${label} — ${scrubInfraLeak(latest)}`;
-  if (["preparing", "submission_unknown", "queued", "validating_files"].includes(status)) {
+  if (
+    ["preprocessing", "preparing", "submission_unknown", "queued", "validating_files"].includes(
+      status
+    )
+  ) {
     return label;
   }
   return `${label} · provider stage not reported`;
@@ -1004,7 +1010,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
           solidProgress
           status={status}
         />
-        {!snapshot.terminal && (
+        {!snapshot.terminal && status !== "awaiting_launch" && (
           <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-xs bg-primary" />
         )}
         <p

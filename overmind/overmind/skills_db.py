@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 # Every plugin manifest (.claude-plugin, .codex-plugin, .cursor-plugin) carries this version.
-SKILLS_VERSION = "1.2.1"
+SKILLS_VERSION = "1.2.2"
 
 
 @dataclass
@@ -50,6 +50,12 @@ skills = [
         name="Overmind Optimiser",
         slug="overmind-optimiser",
         description="Improve prompts, code and model choices",
+        provider="overmind-core",
+    ),
+    Skill(
+        name="Model Training Engineering",
+        slug="model-training-engineering",
+        description="Engineer evidence-led data, training and model comparisons",
         provider="overmind-core",
     ),
     Skill(

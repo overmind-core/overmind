@@ -4,7 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import imports, lifecycle, review, transformation
+from overbae.services.datasets import analytics, imports, lifecycle, review, transformation
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
@@ -40,6 +40,45 @@ class CellTransformationSerializer(serializers.Serializer):
     provenance = serializers.CharField(allow_blank=True)
 
 
+class DatasetAnalyticsCheckSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
+    status = serializers.ChoiceField(
+        choices=["pass", "warning", "error", "not_checked", "not_applicable"]
+    )
+    summary = serializers.CharField()
+    metrics = serializers.JSONField()
+
+
+class DatasetAnalyticsFamilySerializer(serializers.Serializer):
+    id = serializers.CharField()
+    question = serializers.CharField()
+    labels = serializers.ListField(child=serializers.CharField())
+    labels_truncated = serializers.BooleanField()
+    semantics = serializers.CharField()
+    rows = serializers.IntegerField()
+    weight_sum = serializers.FloatField(allow_null=True)
+    counts = serializers.ListField(child=serializers.IntegerField(), allow_null=True)
+    target_mass = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    majority_baseline = serializers.FloatField(allow_null=True)
+
+
+class DatasetAnalyticsSerializer(serializers.Serializer):
+    version = serializers.IntegerField(required=False)
+    status = serializers.ChoiceField(choices=["completed", "unmeasured"])
+    cell = serializers.UUIDField()
+    dataset = serializers.UUIDField()
+    fingerprint = serializers.CharField(allow_blank=True)
+    measured_at = serializers.DateTimeField(required=False)
+    rows_scanned = serializers.IntegerField(required=False)
+    population = serializers.CharField(required=False)
+    decision_rows = serializers.IntegerField(required=False)
+    invalid_decision_rows = serializers.IntegerField(required=False)
+    unlisted_family_rows = serializers.IntegerField(required=False)
+    families = DatasetAnalyticsFamilySerializer(many=True)
+    checks = DatasetAnalyticsCheckSerializer(many=True)
+
+
 class CellSerializer(serializers.ModelSerializer):
     """A cell with its derived version. The view passes ``versions`` and
     ``frozen_before`` in the context so a chain costs no extra queries."""
@@ -51,6 +90,7 @@ class CellSerializer(serializers.ModelSerializer):
     preparation_plan = serializers.SerializerMethodField()
     usage = serializers.SerializerMethodField()
     transformation = serializers.SerializerMethodField()
+    analytics = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
@@ -73,6 +113,7 @@ class CellSerializer(serializers.ModelSerializer):
             "capability_report",
             "fits",
             "stats",
+            "analytics",
             "review",
             "quality_report",
             "preparation_plan",
@@ -90,6 +131,10 @@ class CellSerializer(serializers.ModelSerializer):
         if versions is None:
             versions = obj.dataset.versions()
         return versions.get(obj.id, "")
+
+    @extend_schema_field(DatasetAnalyticsSerializer)
+    def get_analytics(self, obj):
+        return analytics.describe(obj)
 
     @extend_schema_field(CellTransformationSerializer)
     def get_transformation(self, obj):

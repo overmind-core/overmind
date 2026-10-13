@@ -29,6 +29,8 @@ def describe_frame(
         else {}
     )
     fingerprint = store.file_sha256(path)
+    profile = profile_records(store.iter_rows(path))
+    analytics = {**profile.pop("analytics"), "fingerprint": fingerprint}
     return dict(
         state=Cell.State.OK,
         error="",
@@ -39,7 +41,8 @@ def describe_frame(
         capability_report=capability_report,
         stats={
             **contract.stats_rows(store.iter_rows(path), {c["name"] for c in manifest}),
-            "preparation_profile": profile_records(store.iter_rows(path)),
+            "preparation_profile": profile,
+            "analytics": analytics,
         },
         updated_at=timezone.now(),
     )

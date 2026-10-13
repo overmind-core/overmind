@@ -229,6 +229,7 @@ def _dataset_upload_resource(uri: str) -> dict:
                 ],
             },
             "column_types": sorted(pipeline_packages.TYPES),
+            "analytics": "Published cells carry fingerprint-bound server analytics from a full-row scan. inspect_dataset and REST expose the same counts, baselines, warnings and not_checked risks; completed pipeline get_job includes final-output analytics. Read the exact selected consumer/partition cell before training handoff. Historical or stale reports are unmeasured: use explore_dataset to refresh without changing rows. Class imbalance and rare-class thresholds are advisory; soft targets are not converted to labels and a majority baseline is not model performance.",
             "consumer": {
                 "values": ["decision_train", "decision_eval", "chat_train", "model_eval"],
                 "scope": "Declare on the final step. Validates the complete output, including nested decision targets, in both preview and publish. Technical compatibility does not establish target meaning.",
@@ -1262,6 +1263,13 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
             "kind": kind,
             "id": str(prep.id),
             "status": prep.state,
+            "training_job": str(job_id)
+            if (
+                job_id := prep.training_jobs.order_by("created_at")
+                .values_list("id", flat=True)
+                .first()
+            )
+            else None,
             "report": prep.report,
             "config": prep.config,
             "error": prep.error,
@@ -1330,6 +1338,7 @@ def interface_resource():
         "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
         "tool_count": len(manifest),
         "training_measurements": {
+            "planning": "save_training_plan retains immutable source/task, prepared versions, partition and attributed audit/baseline/sanity evidence. Full training requires no pilot; bind create_training_experiment with stage full directly. Stage pilot and measured pilot selection are optional. Primary metric is a JSON Pointer into check metrics; optional pilot selection requires finite task metrics and a verified checkpoint from matching data, and limits full recipes to declared budget-field changes. Hardware profiles are not quality pilots. New upstream identities require new matching evidence; old snapshots stay reproducible.",
             "monitoring": "A frozen monitoring policy controls bounded development checks, generation scoring, checkpoint selection and optional early stopping. inspect_training_progress pages durable checks and exact evidence without invoking workers. cancel_finetune preserves completed evidence and records remote acknowledgement separately. Development metrics are not final benchmarks. Native target distributions and mean-only denominators remain distinct.",
             "billing": "New Modal training charges use deduplicated worker GPU-time receipts and recorded hardware, never local completion-observation delay. Missing usage remains unmeasured. recorded_basis identifies the retained charge calculation; historical charges without that receipt are not retrospectively relabelled.",
             "forecast": "Matching duration evidence comes from worker usage receipts, excluding collector delay; estimates and recorded charges are not all-in invoices or spend caps.",

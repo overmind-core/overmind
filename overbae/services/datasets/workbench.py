@@ -730,6 +730,7 @@ def execute(run_id, *, script_executor=None):
                         "impact": receipts[-1]["impact"],
                         "seconds": round(time.monotonic() - started, 3),
                         "semantic_quality": "unmeasured",
+                        "analytics": cell.stats["analytics"],
                     },
                     lease_until=None,
                     updated_at=timezone.now(),

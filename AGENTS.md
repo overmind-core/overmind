@@ -95,6 +95,8 @@ Each line is the invariant; the named skill section carries the mechanics.
 
 - Successful training automatically deploys every model through its matching inference runtime. Native decision deployments preserve verified adapter/head artifacts, recorded single-GPU hardware and a pinned serving release; readiness requires a real probability prediction. `deploy_finetune` backfills historical successes without changing routing. Chat aliases and benchmark choices remain separate. REST and MCP share durable typed inference receipts. Detail: backend-architecture § Native decision serving.
 
+- Explicit REST/MCP training preparation creates the dashboard FinetuningJob atomically before dispatching preprocessing. Setup jobs show preparing data, awaiting launch or preparation failure; they never enter GPU dispatch or consume launch quota. A matching launch promotes that same job and pins the full recipe; preparation retries only retry preprocessing.
+
 - Training launch receipts pin the runtime release/environment, exact cells and requested recipe. Stall detection counts native validation and checkpoint-stage progress independently of optimizer steps; a committer heartbeat alone does not establish forward progress. Reusing a project request key returns the same job; a changed recipe conflicts. Provider intent is persisted before dispatch; an unknown acknowledgement is reconciled against that job's provider metadata, never resubmitted. Explicit settings that require a clamp are rejected. Native paired evaluation uses its own frozen calibration/final plan, retains incompatible rows, keeps references local and fits calibration before final predictions. Downloadable run records distinguish recorded GPU spend from unreported components. Detail: backend-architecture § Reproducible training experiments.
 
 - Development monitoring freezes `hyperparameters.monitoring` across readiness,
@@ -162,6 +164,11 @@ Each line is the invariant; the named skill section carries the mechanics.
   provisional metrics and unavailable telemetry. Completed historical evidence can
   be indexed without another provider call. Calibration remains separate from final
   scoring; ordinal means never become invented probability references.
+
+  Native evaluation inspection also pages per-label precision, recall, F1 and
+  coverage with `view=labels`. REST and MCP share the retained local projection;
+  only hard references with a fixed benchmark option order qualify. Missing
+  predictions and zero denominators remain distinct from incorrect answers.
 
 - Benchmark selection is separate from serving: capability `benchmark_model` selects a ready trained model, or null for the codebase incumbent. New training jobs snapshot the primary choice in `baseline_model`; `active_model` only controls serving. Chat-training setup can pin additional benchmark models for the same eval set and dataset; they and the selected training bases are scored before training when benchmarking is enabled. Trained models are scored after training when evaluations are enabled. MCP `set_benchmark_model` sets the capability default.
 

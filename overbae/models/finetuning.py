@@ -56,6 +56,8 @@ class FinetuningJob(models.Model):
     """
 
     class Status(models.TextChoices):
+        PREPROCESSING = "preprocessing", "Preparing data"
+        AWAITING_LAUNCH = "awaiting_launch", "Awaiting launch"
         SUBMISSION_UNKNOWN = "submission_unknown"
         QUEUED = "queued"
         PREPARING = "preparing"
@@ -186,6 +188,13 @@ class FinetuningJob(models.Model):
     provider = models.CharField(max_length=20, choices=Provider.choices, default=Provider.BASETEN)
 
     base_model = models.CharField(max_length=255)
+    preparation = models.ForeignKey(
+        TrainingPreparation,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="training_jobs",
+    )
     # Forwarded verbatim to the provider (learning_rate, n_epochs, batch_size,
     # lora params, …).
     hyperparameters = models.JSONField(default=dict, blank=True)

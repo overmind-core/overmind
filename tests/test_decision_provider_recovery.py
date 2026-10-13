@@ -90,7 +90,7 @@ def test_saved_response_is_recovered_without_paid_repeat_and_discrepancies_are_v
     assert record.response == payload()
 
 
-def test_unresolved_transport_intent_blocks_replay():
+def test_unresolved_transport_intent_is_reported_missing_without_replay():
 
     plan, participant, request = fixture()
     DecisionProviderRequest.objects.create(
@@ -100,12 +100,17 @@ def test_unresolved_transport_intent_blocks_replay():
         input_sha256=input_digest(request),
         state="submitting",
     )
-    with (
-        patch("overbae.core.decisions.request_once", side_effect=AssertionError("must not replay")),
-        pytest.raises(decision_providers.SubmissionUnknownError),
-    ):
-        decision_providers.external_step(plan, "final", participant)
+    result = decision_providers.external_step(plan, "final", participant)
+    assert result["completed"]
+    assert result["issues"] == [
+        {
+            "error": "Provider acknowledgement is unresolved; request was not replayed.",
+            "requests": 1,
+        }
+    ]
     assert plan.requests.count() == 1
+    assert plan.requests.get().state == "submission_unknown"
+    assert plan.requests.get().attempts == []
 
 
 def test_adapter_rejects_model_drift_and_unexplainable_probability_mass():

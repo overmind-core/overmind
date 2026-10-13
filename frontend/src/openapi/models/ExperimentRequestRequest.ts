@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { ExperimentRequestStageEnum } from './ExperimentRequestStageEnum';
+import {
+    ExperimentRequestStageEnumFromJSON,
+    ExperimentRequestStageEnumFromJSONTyped,
+    ExperimentRequestStageEnumToJSON,
+    ExperimentRequestStageEnumToJSONTyped,
+} from './ExperimentRequestStageEnum';
 import type { ExperimentCandidateRequest } from './ExperimentCandidateRequest';
 import {
     ExperimentCandidateRequestFromJSON,
@@ -27,6 +34,18 @@ import {
  * @interface ExperimentRequestRequest
  */
 export interface ExperimentRequestRequest {
+    /**
+     *
+     * @type {string}
+     * @memberof ExperimentRequestRequest
+     */
+    trainingPlan?: string | null;
+    /**
+     *
+     * @type {ExperimentRequestStageEnum}
+     * @memberof ExperimentRequestRequest
+     */
+    stage?: ExperimentRequestStageEnum;
     /**
      *
      * @type {boolean}
@@ -77,6 +96,8 @@ export interface ExperimentRequestRequest {
     constraints?: any | null;
 }
 
+
+
 /**
  * Check if a given object implements the ExperimentRequestRequest interface.
  */
@@ -99,6 +120,8 @@ export function ExperimentRequestRequestFromJSONTyped(json: any, ignoreDiscrimin
     }
     return {
 
+        'trainingPlan': json['training_plan'] == null ? undefined : json['training_plan'],
+        'stage': json['stage'] == null ? undefined : ExperimentRequestStageEnumFromJSON(json['stage']),
         'reuseExistingPredictions': json['reuse_existing_predictions'] == null ? undefined : json['reuse_existing_predictions'],
         'project': json['project'],
         'name': json['name'],
@@ -121,6 +144,8 @@ export function ExperimentRequestRequestToJSONTyped(value?: ExperimentRequestReq
 
     return {
 
+        'training_plan': value['trainingPlan'],
+        'stage': ExperimentRequestStageEnumToJSON(value['stage']),
         'reuse_existing_predictions': value['reuseExistingPredictions'],
         'project': value['project'],
         'name': value['name'],

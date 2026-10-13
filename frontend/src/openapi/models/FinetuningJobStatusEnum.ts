@@ -14,6 +14,8 @@
 
 
 /**
+ * * `preprocessing` - Preparing data
+ * * `awaiting_launch` - Awaiting launch
  * * `submission_unknown` - Submission Unknown
  * * `queued` - Queued
  * * `preparing` - Preparing
@@ -25,6 +27,8 @@
  * @export
  */
 export const FinetuningJobStatusEnum = {
+    preprocessing: 'preprocessing',
+    awaiting_launch: 'awaiting_launch',
     submission_unknown: 'submission_unknown',
     queued: 'queued',
     preparing: 'preparing',

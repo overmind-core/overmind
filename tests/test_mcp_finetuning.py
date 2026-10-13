@@ -62,7 +62,7 @@ def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool
     detail = "The previous operation has not stopped." if known else private
     failure = InputValidationError(detail) if known else ValueError(detail)
     if tool == "prepare_training_data":
-        monkeypatch.setattr(tools_finetuning, "request_preparation", Mock(side_effect=failure))
+        monkeypatch.setattr(tools_finetuning, "begin_preparation", Mock(side_effect=failure))
         arguments = {
             "dataset": str(train.id),
             "base_model": "Qwen/Qwen3-8B",
@@ -165,8 +165,13 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
     assert not result.isError, result.structuredContent
     receipt = result.structuredContent["job"]
     assert receipt["kind"] == "training_preparation"
+    training = result.structuredContent["training_job"]
+    assert training["kind"] == "finetune_job" and training["status"] == "preprocessing"
+    visible = _call("get_job", {"kind": training["kind"], "id": training["id"]}, context)
+    assert not visible.isError, visible.structuredContent
     poll = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, context)
     assert not poll.isError, poll.structuredContent
+    assert poll.structuredContent["details"]["training_job"] == training["id"]
 
     async def resource():
         with bind_context(context):

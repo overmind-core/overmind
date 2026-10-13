@@ -109,6 +109,7 @@ export function hasStageProgress(progress: FinetuningProgress | null | undefined
 }
 
 const PHASE_LABELS: Record<string, string> = {
+  awaiting_launch: "Awaiting launch",
   cancelled: "Cancelled",
   completed: "Completed",
   deploying: "Deploying",
@@ -116,6 +117,7 @@ const PHASE_LABELS: Record<string, string> = {
   // Provider-side training is already done — never surface "Finalising".
   finalizing: "Completed",
   preparing: "Preparing training data",
+  preprocessing: "Preparing training data",
   processing_dataset: "Queued",
   queued: "Queued",
   running: "Running",

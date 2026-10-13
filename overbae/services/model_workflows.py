@@ -6,8 +6,14 @@ from overbae.models import (
     DecisionPerformanceRun,
     NativeEvaluationPlan,
     TrainingExperiment,
+    TrainingPlan,
 )
-from overbae.services import decision_performance, native_evaluation, training_experiments
+from overbae.services import (
+    decision_performance,
+    native_evaluation,
+    training_experiments,
+    training_plans,
+)
 from overbae.services.datasets import exploration, partition_plans
 
 MODELS = {
@@ -16,6 +22,7 @@ MODELS = {
     "data_partition": DataPartitionPlan,
     "native_evaluation": NativeEvaluationPlan,
     "training_experiment": TrainingExperiment,
+    "training_plan": TrainingPlan,
 }
 DESCRIBERS = {
     "data_exploration": exploration.describe,
@@ -23,6 +30,7 @@ DESCRIBERS = {
     "data_partition": partition_plans.describe,
     "native_evaluation": native_evaluation.describe,
     "training_experiment": training_experiments.describe,
+    "training_plan": training_plans.describe,
 }
 
 
@@ -130,6 +138,8 @@ def describe(kind, record):
 
 
 def next_actions(kind, record):
+    if kind == "training_plan":
+        return training_plans.describe(record)["next_actions"]
     if kind == "native_evaluation" and record.deleted_at is not None:
         return ["get_job"]
     if record.state == "completed":
@@ -158,6 +168,12 @@ def next_actions(kind, record):
 
 
 def guidance(kind, record):
+    if kind == "training_plan":
+        return {
+            "action_requirements": {"training_plan": str(record.pk)},
+            "input_required": True,
+            "poll_after_seconds": None,
+        }
     if kind == "native_evaluation" and record.deleted_at is not None:
         return {"action_requirements": {}, "input_required": False, "poll_after_seconds": None}
     required = {}
@@ -179,7 +195,7 @@ def guidance(kind, record):
                 if value.get("state") == "submission_unknown"
             ]
             required["resolution"] = (
-                "Recover the existing provider call ID; never submit another request to resolve an unknown acknowledgement"
+                "Resume recorded transport failures within the saved retry budget; native submissions require their existing call ID. Unknown external intents remain missing without replay and do not block later inputs."
             )
         if record.state in {"draft", "prepared"}:
             required["authorization_scope"] = "saved_participants_and_suites"

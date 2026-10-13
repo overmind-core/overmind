@@ -145,6 +145,8 @@ class DecisionCatalogRequestSerializer(serializers.Serializer):
 
 
 class NativeMonitorQuerySerializer(serializers.Serializer):
+    view = serializers.ChoiceField(choices=["samples", "labels"], default="samples")
+    ordering = serializers.CharField(max_length=128, default="label")
     role = serializers.ChoiceField(choices=["final", "calibration"], default="final")
     offset = serializers.IntegerField(min_value=0, default=0)
     limit = serializers.IntegerField(min_value=1, max_value=100, default=25)
@@ -212,6 +214,23 @@ class NativeSampleSerializer(serializers.Serializer):
     predictions = serializers.DictField(child=NativeSamplePredictionSerializer())
 
 
+class NativeLabelScoreSerializer(serializers.Serializer):
+    support = serializers.IntegerField()
+    predicted = serializers.IntegerField()
+    correct = serializers.IntegerField()
+    precision = serializers.FloatField(allow_null=True)
+    recall = serializers.FloatField(allow_null=True)
+    f1 = serializers.FloatField(allow_null=True)
+
+
+class NativeLabelMetricsSerializer(serializers.Serializer):
+    benchmark = serializers.CharField()
+    label = serializers.CharField()
+    index = serializers.IntegerField()
+    expected = serializers.IntegerField()
+    models = serializers.DictField(child=NativeLabelScoreSerializer())
+
+
 class NativeMonitorSerializer(serializers.Serializer):
     evaluation = serializers.UUIDField()
     evaluation_state = serializers.CharField()
@@ -227,6 +246,8 @@ class NativeMonitorSerializer(serializers.Serializer):
     offset = serializers.IntegerField()
     limit = serializers.IntegerField()
     samples = NativeSampleSerializer(many=True)
+    view = serializers.CharField()
+    labels = NativeLabelMetricsSerializer(many=True)
 
 
 class NativeEvaluationViewSet(

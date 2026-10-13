@@ -5,6 +5,7 @@ import json
 from collections import Counter
 
 from modal_shared.decisions import decision_line
+from overbae.services.datasets.analytics import Analytics
 from overbae.services.datasets.examples import (
     decode,
     input_objects,
@@ -56,6 +57,7 @@ def _example(record: dict, transcript: list) -> str:
 
 
 def profile_records(records) -> dict:
+    analytics = Analytics()
     groups = {}
     columns = {}
     scanned = other = 0
@@ -106,6 +108,7 @@ def profile_records(records) -> dict:
         }
         payload = decode(record.get("input"))
         decision = native_decision(record)
+        valid_decision = False
         if isinstance(decision, dict):
             totals["decision_rows"] += 1
             probabilities = decision.get("target_probabilities")
@@ -114,6 +117,7 @@ def profile_records(records) -> dict:
             except (ValueError, TypeError):
                 totals["invalid_decision_rows"] += 1
             else:
+                valid_decision = True
                 totals["valid_decision_rows"] += 1
                 if probabilities is not None:
                     totals["soft_target_rows"] += max(probabilities) < 1
@@ -125,6 +129,7 @@ def profile_records(records) -> dict:
             labels["kind"] = str(decision.get("kind", ""))
             if record.get("source"):
                 labels["source"] = _clip(str(record["source"]), 120)
+        analytics.observe(decision, valid=valid_decision)
         raw_tools = record.get("tools")
         if missing(raw_tools) and isinstance(payload, dict):
             raw_tools = payload.get("tools")
@@ -199,6 +204,7 @@ def profile_records(records) -> dict:
     for family in families[_EXAMPLE_LIMIT:]:
         family["example"] = "Query example_row for full values."
     return {
+        "analytics": analytics.report(),
         "rows_scanned": scanned,
         "families": families,
         "unlisted_family_rows": other,

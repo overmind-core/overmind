@@ -16,6 +16,7 @@ import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
 import { buildExperimentSnapshot } from "@/components/finetuning/job-snapshot";
 import type { LossCurveData } from "@/hooks/use-finetuning";
 import type { DeployedModelsQueryParams } from "@/hooks/use-inference";
+import { ApiError } from "@/lib/api-error";
 import { stageDetailLine, stageLabel, stageStatusLine } from "@/lib/finetuning-progress";
 import type { FinetuningJobList, NativeEvaluation, TrainingExperiment } from "@/openapi";
 
@@ -359,6 +360,41 @@ it("shows the frozen native plan beside its training job", () => {
   expect(screen.getAllByText("Waiting for checkpoint")).toHaveLength(2);
   expect(screen.getByText(/48 decisions/)).toBeTruthy();
   expect(screen.queryByText(/No eval dataset or eval set linked/)).toBeNull();
+});
+
+it.each([
+  404, 403, 500,
+])("treats only a missing optional training experiment as empty (HTTP %s)", async (status) => {
+  const message =
+    status === 404 ? "No TrainingExperiment matches the given query." : "Could not load experiment";
+  vi.mocked(apiClient.trainingExperiments.trainingExperimentsRetrieve).mockRejectedValue(
+    new ApiError(status, message, true)
+  );
+  const native = {
+    ...job,
+    nativeEvaluation: null,
+    trainingContract: { objective: "decision_cross_entropy" },
+  } as FinetuningJobList;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <TrainingMonitorPanel
+        focusJobId={native.id}
+        groupJobs={[native]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  if (status === 404) {
+    expect(await screen.findByText("No evaluations pinned to this run")).toBeTruthy();
+    expect(screen.queryByText(message)).toBeNull();
+    expect(client.getQueryData(["training-experiment", PROJECT_ID, native.groupId])).toBeNull();
+  } else {
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByText("No evaluations pinned to this run")).toBeNull();
+  }
+  expect(apiClient.nativeEvaluations.nativeEvaluationsRetrieve).not.toHaveBeenCalled();
 });
 
 it.each([

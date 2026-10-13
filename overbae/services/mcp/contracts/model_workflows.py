@@ -4,7 +4,12 @@ from uuid import UUID
 from pydantic import Field
 
 from overbae.services.mcp.contracts.common import MCPModel, ResourceLinkContract
+from overbae.services.training_plan_contract import TrainingPlanRequest
 from overbae.services.training_policies import TrainingConstraints
+
+
+class SaveTrainingPlanInput(TrainingPlanRequest, MCPModel):
+    pass
 
 
 class HoldoutRule(MCPModel):
@@ -84,6 +89,8 @@ class ResumeComparisonInput(MCPModel):
 
 class InspectComparisonInput(MCPModel):
     evaluation: UUID
+    view: Literal["samples", "labels"] = "samples"
+    ordering: str = Field(default="label", max_length=128)
     role: Literal["calibration", "final"] = "final"
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=10, ge=1, le=50)
@@ -110,6 +117,8 @@ class CandidateInput(MCPModel):
 
 
 class CreateExperimentInput(MCPModel):
+    training_plan: UUID | None = None
+    stage: Literal["exploratory", "pilot", "full"] = "exploratory"
     reuse_existing_predictions: bool = False
     constraints: TrainingConstraints | None = None
     name: str = Field(min_length=1, max_length=255)
@@ -130,6 +139,7 @@ class ListWorkflowsInput(MCPModel):
         "data_partition",
         "native_evaluation",
         "training_experiment",
+        "training_plan",
         "decision_performance",
     ]
     limit: int = Field(default=20, ge=1, le=100)

@@ -13,6 +13,7 @@ from overbae.services import (
     native_evaluation,
     native_evaluation_monitor,
     training_experiments,
+    training_plans,
 )
 from overbae.services.datasets import exploration, partition_plans
 from overbae.services.decision_providers import catalog
@@ -36,6 +37,7 @@ from overbae.services.mcp.contracts.model_workflows import (
     ResumePerformanceInput,
     RetryPartitionInput,
     ReusePredictionsInput,
+    SaveTrainingPlanInput,
     WorkflowListOutput,
     WorkflowOutput,
 )
@@ -165,6 +167,13 @@ def create_experiment(payload, context):
         **values,
     )
     return output("training_experiment", experiment)
+
+
+def save_training_plan(payload, context):
+    return output(
+        "training_plan",
+        training_plans.save(context.project, user=context.user, **payload.model_dump(mode="json")),
+    )
 
 
 def launch_experiment(payload, context):
@@ -304,7 +313,7 @@ def inspect_comparison(payload, context):
     if len(json.dumps(monitoring).encode()) > 32 * 1024:
         raise MCPError(
             "result_too_large",
-            "Select fewer samples with limit, or inspect one exact key. No values were clipped.",
+            "Select fewer rows with limit, a participant for labels, or one exact sample key. No values were clipped.",
         )
     return InspectComparisonOutput(
         summary=f"{plan.name}: {plan.state}; {payload.role} observations",
@@ -319,9 +328,20 @@ def register_model_workflow_tools(catalog):
 
     definitions = [
         (
+            "save_training_plan",
+            "Retain training task and evidence",
+            "Save an immutable task/source snapshot for generative or decision training. Add prepared data, a frozen partition and attributed audit/baseline/sanity evidence in a superseding snapshot. Pilot selection is optional; full training requires no pilot. If supplied, selection references a measured development check from a matching plan-bound pilot, not a hardware profile, and full recipes may change only its declared budget fields. Reads use get_job(kind=training_plan). Saving never launches compute or certifies semantics.",
+            SaveTrainingPlanInput,
+            WorkflowOutput,
+            save_training_plan,
+            False,
+            "free",
+            "overmind:train",
+        ),
+        (
             "inspect_native_evaluation",
             "Inspect benchmark progress and samples",
-            "Read recorded model stages, metrics, coverage and frozen input/reference/probability samples. Search inputs/benchmark names and filter raw outcomes before pagination; participant scopes outcomes, otherwise any model may match. Soft targets are neither correct nor incorrect. Aggregate metrics remain unfiltered. An exact key (including 0) excludes filters. Calibration remains in-sample. Reads may index retained evidence, never invoke inference.",
+            "Read recorded model stages, metrics and frozen samples. view=labels pages per-label precision/recall/F1 and counts for hard references with fixed benchmark options; search labels/benchmarks, order by label, benchmark, expected or participant-key:metric (prefix - descending). No key/outcome with labels. Samples search inputs/benchmarks and filter raw outcomes; participant scopes outcomes, otherwise any model may match. Soft targets have no hard correctness. Aggregate metrics stay unfiltered. Exact key excludes filters. Calibration is in-sample. Reads may index retained evidence, never invoke inference.",
             InspectComparisonInput,
             InspectComparisonOutput,
             inspect_comparison,
@@ -387,7 +407,7 @@ def register_model_workflow_tools(catalog):
         (
             "explore_dataset",
             "Explore source data",
-            "Profile a selected immutable source across all rows with bounded examples and optional sampling feasibility. Does not interpret labels, modify rows or submit provider work; get_job retains evidence across reconnects.",
+            "Profile a selected immutable source across all rows with bounded examples and optional sampling feasibility. Refreshes fingerprint-bound cell analytics, also returned by inspect_dataset and REST. Checks declared target balance, coverage, weights and observable inputs; unchecked risks remain explicit. Does not infer label semantics, modify rows or submit provider work; get_job retains evidence across reconnects.",
             ExploreDatasetInput,
             WorkflowOutput,
             explore_data,
@@ -486,7 +506,7 @@ def register_model_workflow_tools(catalog):
         (
             "resume_native_evaluation",
             "Resume decision comparison",
-            "Resume unfinished collection or saved-response analysis. On a paused comparison, explicitly select a local verify_inputs, fit_calibration or score stage to retry local work, or supply the exact recorded native call_id to recover an interrupted collector. Reconcile unresolved native submissions with their existing call ID; never replay unknown external submissions.",
+            "Resume stopped collection or saved-response analysis. Transient failures retry automatically; poll get_job while running. Exhausted collection scores verified available predictions with results.completion coverage and issues; missing outputs are not zero scores. Incomplete calibration leaves raw scores available. Saved calls and responses are reused; uncertain costs remain. Unknown external requests remain missing and are not replayed. Unacknowledged native submissions need their existing call ID. On a paused comparison select a local/external stage, or its exact recorded native call_id.",
             ResumeComparisonInput,
             WorkflowOutput,
             resume_comparison,
@@ -497,7 +517,7 @@ def register_model_workflow_tools(catalog):
         (
             "create_training_experiment",
             "Save training experiment",
-            "Save explicit candidate recipes and frozen data versions under one purpose and optional evaluation protocol. Does not launch training.",
+            "Save candidate recipes and frozen data. Bind training_plan with stage=full to train directly, or stage=pilot for an explicitly requested bounded quality experiment. Full training validates task/data/partition and audit/baseline/sanity evidence without requiring a pilot. An optional pilot selection limits recipe changes to declared budget fields. Hardware profiles remain separate. Creation does not launch training.",
             CreateExperimentInput,
             WorkflowOutput,
             create_experiment,

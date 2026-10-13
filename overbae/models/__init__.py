@@ -71,8 +71,10 @@ from .optimizer import (
 )
 from .traces import BacktestRun, Conversation, Span
 from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
+from .training_plan import TrainingPlan
 
 __all__ = [
+    "TrainingPlan",
     "TrainingCheckpoint",
     "TrainingValidationRun",
     "DatasetTransfer",

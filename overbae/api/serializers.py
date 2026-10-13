@@ -61,6 +61,7 @@ from overbae.services.training_contract import (
 )
 from overbae.services.training_monitoring import resolve as resolve_monitoring_policy
 from overbae.services.training_policies import profile_options
+from overbae.services.training_preparation import setup_job_for_launch
 from overbae.services.training_record import requested_configuration, run_record
 
 logger = logging.getLogger(__name__)
@@ -1336,6 +1337,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         )
         requested = requested_configuration(
             validated_data,
+            training_plan=self.context.get("training_plan"),
             runtime=(prior.requested_configuration or {}).get("runtime")
             if prior
             else self.context.get("training_runtime"),
@@ -1382,6 +1384,18 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 )
             except DatasetError as exc:
                 raise serializers.ValidationError({field: exc.detail}) from exc
+        setup = setup_job_for_launch(validated_data, requested.get("runtime"))
+        if setup is not None:
+            # Launch defaults replace the incomplete setup recipe, preserving its identity.
+            job = FinetuningJob(**validated_data)
+            job.pk = setup.pk
+            job.preparation_id = setup.preparation_id
+            job.created_at = setup.created_at
+            job.provider = setup.provider
+            job.name = job.name or setup.name
+            job.progress = {**setup.progress, "phase": "queued"}
+            job.save(force_update=True)
+            return job
         return super().create(validated_data)
 
     def validate(self, attrs):

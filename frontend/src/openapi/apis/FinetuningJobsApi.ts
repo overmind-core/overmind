@@ -1763,10 +1763,12 @@ export type FinetuningJobsEventsListProviderEnum = typeof FinetuningJobsEventsLi
  * @export
  */
 export const FinetuningJobsEventsListStatusEnum = {
+    awaiting_launch: 'awaiting_launch',
     cancelled: 'cancelled',
     deploying: 'deploying',
     failed: 'failed',
     preparing: 'preparing',
+    preprocessing: 'preprocessing',
     queued: 'queued',
     running: 'running',
     submission_unknown: 'submission_unknown',
@@ -1788,10 +1790,12 @@ export type FinetuningJobsListProviderEnum = typeof FinetuningJobsListProviderEn
  * @export
  */
 export const FinetuningJobsListStatusEnum = {
+    awaiting_launch: 'awaiting_launch',
     cancelled: 'cancelled',
     deploying: 'deploying',
     failed: 'failed',
     preparing: 'preparing',
+    preprocessing: 'preprocessing',
     queued: 'queued',
     running: 'running',
     submission_unknown: 'submission_unknown',
@@ -1851,10 +1855,12 @@ export type FinetuningJobsRunsListProviderEnum = typeof FinetuningJobsRunsListPr
  * @export
  */
 export const FinetuningJobsRunsListStatusEnum = {
+    awaiting_launch: 'awaiting_launch',
     cancelled: 'cancelled',
     deploying: 'deploying',
     failed: 'failed',
     preparing: 'preparing',
+    preprocessing: 'preprocessing',
     queued: 'queued',
     running: 'running',
     submission_unknown: 'submission_unknown',

@@ -13,6 +13,7 @@ import {
   SourceDetails,
   SourceLanding,
 } from "@/components/datasets/notebook/source";
+import { TracePreparation } from "@/components/datasets/notebook/trace-preparation";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -51,7 +52,11 @@ export function DatasetNotebook({
   const guard = useGuestGate();
   const datasetQuery = useDatasetQuery(datasetId);
   const dataset = datasetQuery.data;
-  const preparationQuery = useDatasetPreparationQuery(datasetId, cellParam);
+  const preparationQuery = useDatasetPreparationQuery(
+    datasetId,
+    cellParam,
+    dataset?.updatedAt?.getTime()
+  );
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const capabilities = capabilitiesQuery.data?.results ?? [];
 
@@ -74,8 +79,8 @@ export function DatasetNotebook({
     }, 250);
   }, [qc, datasetId]);
 
-  useDatasetEvents(datasetId, (_event: DatasetEvent, meta) => {
-    if (meta.live) refresh();
+  useDatasetEvents(datasetId, (event: DatasetEvent, meta) => {
+    if (meta.live || event.type === "replay.done") refresh();
   });
 
   const nodes = preparationQuery.data?.nodes;
@@ -193,11 +198,16 @@ export function DatasetNotebook({
           selected={cell.id === selectedId}
           sourceDetails={
             local ? (
-              <SourceDetails
-                datasetId={datasetId}
-                kind={dataset.sourceKind}
-                spec={dataset.sourceSpec}
-              />
+              <>
+                <SourceDetails
+                  datasetId={datasetId}
+                  kind={dataset.sourceKind}
+                  spec={dataset.sourceSpec}
+                />
+                {dataset.sourceKind === "traces" && cell.position === 0 && !busy && (
+                  <TracePreparation dataset={dataset} source={cell} />
+                )}
+              </>
             ) : undefined
           }
         />

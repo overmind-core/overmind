@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import imports, review, transformation
+from overbae.services.datasets import analytics, imports, review, transformation
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -189,6 +189,7 @@ class CellTransformation(MCPModel):
 
 
 class CellSummary(MCPModel):
+    analytics: dict[str, Any] = Field(default_factory=dict)
     preparation_plan: dict[str, Any] = Field(default_factory=dict)
     id: str
     position: int = Field(ge=0)
@@ -619,6 +620,7 @@ def _cell_summary(
         capability_report=_jsonable(cell.capability_report or {}),
         review=_bounded(cell.review),
         quality_report=_jsonable(_quality_summary(cell.quality_report)),
+        analytics=analytics.describe(cell),
         preparation_plan=_bounded(cell.preparation_plan),
         readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
@@ -877,6 +879,7 @@ def serialize_dataset_detail(
                 [f"cells.{cell.id}.script", f"cells.{cell.id}.note", f"cells.{cell.id}.columns"]
             )
             for name in (
+                "analytics",
                 "review",
                 "quality_report",
                 "preparation_plan",
@@ -887,7 +890,10 @@ def serialize_dataset_detail(
                 setattr(
                     cell,
                     name,
-                    _bounded(getattr(cell, name), 6000 if name == "quality_report" else 500),
+                    _bounded(
+                        getattr(cell, name),
+                        6000 if name in {"analytics", "quality_report"} else 500,
+                    ),
                 )
                 result.truncated_fields.append(f"cells.{cell.id}.{name}")
     result.cell_page.has_more = cell_offset + len(result.cells) < len(chain)

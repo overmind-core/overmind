@@ -77,19 +77,19 @@ function buildSeries(
   for (const name of metrics) {
     const byVariant = byMetric.get(name);
     if (!byVariant) continue;
-    for (const v of ordered) {
+    for (const [index, v] of ordered.entries()) {
       const values = byVariant.get(v.id);
       if (!values?.length) continue;
       const displayName = humanizeKey(name);
       series.push({
-        color: "", // assigned below so palette indices stay dense
+        color: seriesColor(index),
         key: `${name}::${v.id}`,
         label: multiModel ? `${v.label} · ${displayName}` : displayName,
         values,
       });
     }
   }
-  return series.map((s, i) => ({ ...s, color: seriesColor(i) }));
+  return series;
 }
 
 const seriesMean = (s: Series): number => s.values.reduce((a, b) => a + b, 0) / s.values.length;

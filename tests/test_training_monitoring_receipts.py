@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -119,7 +120,7 @@ def test_collector_failure_preserves_quality_and_late_receipt_does_not_resume_jo
     with patch.object(
         training_monitoring, "collect", side_effect=TimeoutError("storage unavailable")
     ):
-        observation = training_monitoring.observe(monitoring_job, payload)
+        observation = training_monitoring.observe(monitoring_job, payload, collect_examples=True)
     assert observation["collection"]["state"] == "unavailable"
     assert monitoring_job.validation_runs.get().metrics["eval_loss"] == 0.5
     assert not monitoring_job.validation_runs.get().evidence
@@ -132,6 +133,85 @@ def test_collector_failure_preserves_quality_and_late_receipt_does_not_resume_jo
     monitoring_job.refresh_from_db()
     assert monitoring_job.status == "cancelled"
     assert monitoring_job.validation_runs.get(key=pending["key"]).state == "completed"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("objective", ["assistant_cross_entropy", "decision_supervised"])
+def test_status_observation_never_downloads_examples(monitoring_job, fake_modal, objective):
+    monitoring_job.provider = "modal"
+    monitoring_job.hyperparameters = {"objective": objective}
+    monitoring_job.save()
+    payload = {"checks": [receipt(artifact={"path": "examples.json", "sha256": "a" * 64})]}
+
+    summary = training_monitoring.observe(monitoring_job, payload)
+
+    assert summary["collection"]["state"] == "pending"
+    assert monitoring_job.validation_runs.get().metrics["eval_loss"] == 0.5
+    assert not monitoring_job.validation_runs.get().evidence
+    assert fake_modal.log == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("objective", ["assistant_cross_entropy", "decision_supervised"])
+def test_background_collection_reads_full_artifact_once(monitoring_job, fake_modal, objective):
+    from overbae.tasks.finetuning import collect_training_evidence
+
+    monitoring_job.provider = "modal"
+    monitoring_job.remote_job_id = "run:fc-monitoring"
+    monitoring_job.status = "succeeded"
+    monitoring_job.hyperparameters = {"objective": objective}
+    monitoring_job.requested_configuration = {"runtime": {"app": "sft", "environment": "test"}}
+    monitoring_job.progress = {"monitoring": {"optimizer_seconds": 999}}
+    monitoring_job.save()
+    examples = [{"row": n, "probabilities": [0.2, 0.8]} for n in range(27989)]
+    artifact = {"path": "examples.json", "sha256": fingerprint(examples)}
+    payload = {"checks": [receipt(artifact=artifact)], "optimizer_seconds": 1}
+    fake_modal.deploy("sft", "get_progress", lambda _: {"monitoring": payload})
+    fake_modal.adopt("fc-monitoring")
+    fake_modal.files["/runs/run/examples.json"] = json.dumps(
+        {**artifact, "examples": examples}
+    ).encode()
+
+    collect_training_evidence.run(str(monitoring_job.pk))
+    check = monitoring_job.validation_runs.get()
+    saved_name = check.evidence.name
+    page = training_monitoring.examples(monitoring_job, str(check.pk), offset=27980, limit=10)
+    assert page["items"] == examples[27980:]
+    assert page["next_offset"] is None
+    # A terminal job still collects evidence, without replacing newer monitoring facts.
+    monitoring_job.refresh_from_db()
+    assert monitoring_job.status == "succeeded"
+    assert monitoring_job.progress["monitoring"]["optimizer_seconds"] == 999
+    assert monitoring_job.progress["monitoring"]["collection"]["state"] == "observed"
+    fake_modal.files.clear()
+    collect_training_evidence.run(str(monitoring_job.pk))
+    check.refresh_from_db()
+    assert check.evidence.name == saved_name
+    assert fake_modal.spawns() == []
+    assert all(name != "get_monitoring_examples" for _, name, _, _ in fake_modal.log)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("failure", ["missing", "checksum", "path"])
+def test_failed_evidence_download_preserves_metrics(monitoring_job, fake_modal, failure):
+    monitoring_job.provider = "modal"
+    monitoring_job.remote_job_id = "run:fc-monitoring"
+    monitoring_job.requested_configuration = {"runtime": {"app": "sft", "environment": "test"}}
+    monitoring_job.save()
+    examples = [{"row": 1}]
+    artifact = {"path": "examples.json", "sha256": fingerprint(examples)}
+    if failure == "checksum":
+        fake_modal.files["/runs/run/examples.json"] = json.dumps(
+            {**artifact, "examples": [{"row": 2}]}
+        ).encode()
+    if failure == "path":
+        artifact["path"] = "../another-run/examples.json"
+    summary = training_monitoring.observe(
+        monitoring_job, {"checks": [receipt(artifact=artifact)]}, collect_examples=True
+    )
+    assert summary["collection"]["state"] == "unavailable"
+    assert monitoring_job.validation_runs.get().metrics["eval_loss"] == 0.5
+    assert not monitoring_job.validation_runs.get().evidence
 
 
 @pytest.mark.django_db

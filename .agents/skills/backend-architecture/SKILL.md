@@ -149,6 +149,8 @@ Workshop findings are advisory before model-specific work: incomplete task/evide
 
 Workshop is model-independent. Native agents inspect before transforming; historical source-bound plans and measured reviews stay attached to their exact versions. New pipeline/import runs record source bindings, impact and external attribution; no automatic semantic audit is scheduled. `services/training_preparation.py` caches exact Modal preprocessing by training/validation cell fingerprints, model, training type, context length, training stack and the SFT asset code fingerprint. REST `POST /api/training-preparations/` and MCP `prepare_training_data` share the service; MCP returns a `training_preparation` job receipt readable through `get_job` and the jobs resource. Preparation stages checksummed gzip JSONL through Modal Volume uploads and uses CPU-only `prepare_<train_function>` in the matching training image; it does not start GPU training. Tokenization writes artifacts incrementally. All Modal launches upload ordered binary SHA-256 row selections instead of the source rows a second time. The worker verifies each selection checksum and count plus the caller-pinned token artifact, then materializes training/validation through a bounded disk index, preserving order and duplicate visits. Initial source decompression and selection construction stream without retaining the corpus in memory.
 
+Explicit preparation atomically creates a `FinetuningJob` linked by `preparation`, before the preprocessing task is queued. `preprocessing` and `awaiting_launch` are dashboard-visible setup states excluded from the training dispatcher and launch quota. The preprocessing observer updates setup progress and failures, without changing launched or cancelled jobs. A matching REST/MCP launch promotes the same job under the project lock, applies normal budget admission and freezes the complete recipe; repeating its launch key remains idempotent. Retrying a setup failure never launches GPU training. MCP preparation returns both preparation and training job receipts.
+
 Console setup does not submit or await preprocessing and has no per-model preparation cards or workshop review recommendations. `run_finetuning` requests or reuses the exact artifact after launch, records its ID, state and report in job progress, and starts GPU training only when ready. Provider observations and finalization preserve that receipt and submission recovery history. Explicit REST/MCP preparation remains available.
 
 Explicit preparation rejects unsupported context lengths rather than silently rounding them to a supported bucket. Model-specific recommendation and internal context selection happen before requesting that exact preparation.
@@ -208,6 +210,13 @@ link to `TrainingValidationRun`; `TrainingCheckpoint` records checksums, reload
 verification and explicit resume limitations. A locally interrupted check may gain
 late terminal evidence without resurrecting a cancelled training job. Retained
 checkpoints prevent volume cleanup; intermediate download/pruning is not yet exposed.
+
+Status observation ingests metrics and checkpoints without downloading examples.
+Missing evidence is `pending` until the per-job-locked IO collector reads each sealed
+Modal Volume artifact once, with a 30-second read deadline and checksum verification.
+Each verified check is persisted independently; duplicate collection skips saved
+files and cannot overwrite newer monitoring facts. This keeps large development
+sets and unavailable evidence downloads out of the shared training status loop.
 
 The shared policy is accepted in readiness, preparation, estimates and launch;
 Console setup uses the same hyperparameter payload. Defaults are adaptive with
@@ -486,6 +495,23 @@ from retained predictions and their checksums, never a new inference run.
 
 ## Data-first model workflows
 
+### Evidence-linked training plans
+
+`training_plans.py` saves immutable `TrainingPlan` snapshots via shared REST and
+MCP. Strict `training_plan_contract.py` defines task, attributable evidence and
+pilot selection. Saved source/prepared/partition identities are frozen. A quality
+pilot binds an experiment to those identities, with explicit bounded steps and
+development-loss selection when a pilot is requested. Full experiments require
+audit/baseline/sanity reports but no pilot job or pilot selection. Optional pilot
+selection requires a measured task metric from a matching settled pilot's fully
+scored development check with a verified checkpoint; when supplied, only declared
+exposure/time fields can change from that recipe. Final/calibration data never
+selects a recipe. Launch
+rechecks bindings and records the snapshot in requested configuration. Changed
+upstream identities need matching evidence; historical snapshots remain readable.
+This is not a universal semantic-approval gate for exploratory jobs. Hardware
+profiles and forecasts remain separate from task-quality evidence.
+
 Onboarding can create a project directly for uploads; `Dataset.brief` retains the original task. Workshop exploration proposes per-family meaning with `target_evidence`; structural shape never supplies reference truth. `decision_supervised` combines distribution cross entropy and normalized-axis mean-squared error for mean-only ordinal targets. Their denominators stay separate in evaluation.
 
 `datasets/partition_plans.py` saves seeded role fractions, grouping, stratification and explicit holdout rules. It writes durable assignments and derived source cells, retaining every observation and inherited identity. Typed training `decision` and evaluation `input.decision` share the same input-content key. Group/content checks report exact overlap only. Scientific overlap findings remain advisory.
@@ -503,3 +529,26 @@ The public MCP catalog adds partition creation/retry, native comparison creation
 Training experiment validation names the variant and field requiring correction. Prepared reports expose `launch_readiness` against the saved training constraints; unmeasured or over-budget quotes do not recommend launch. Launch rechecks the same authorization. Every routed or scheduled task must be registered by a fresh worker importing `overbae.tasks`; the cold-start topology regression prevents test imports from masking missing task registration.
 
 A paused native evaluation collector can resume an explicit stage with its exact recorded `call_id`. Missing or different IDs are rejected; recovery fences the interrupted lease and observes the same provider call without a new submission.
+
+Native evaluation transient stage failures automatically enter `retrying` while the
+plan remains `running`. Durable `retry_at` and recovery history drive 15/30-second
+backoff with three consecutive attempts; independent eligible stages continue.
+Native collection reuses its saved call and local stages reuse frozen inputs.
+External read-only prediction timeouts, capacity outages and 429/5xx responses
+retry only missing rows, at most three attempts per input, preserving unknown
+costs in the attempt ledger. Saved responses are consumed first. Bare submission
+intents, unacknowledged native launches, invalid data/identity and permanent errors
+do not auto-replay. Paused plans stay paused; explicit resume honors request budgets.
+
+Exhausted/permanent collection errors settle the affected work and allow scoring
+of available verified predictions. External failed rows do not block later chunks;
+native partials use checksum- and identity-verified retained monitor predictions.
+Failed preparation skips dependent provider submission. Incomplete calibration
+is unavailable per arm; final raw scores continue, with calibrated comparisons
+only for fitted pairs. Results and reports expose `completion.status`, per-suite
+coverage and issues; partial results are `completed_with_issues`, never silent
+success or zero-filled scores. Input verification and report failures still stop.
+Orphaned external intents are retained as `submission_unknown`, excluded from
+scoring and never replayed; the collector continues subsequent inputs. Resuming
+a paused external stage fences its interrupted lease without requiring a native
+call ID. Native unknown submissions still require their original call ID.

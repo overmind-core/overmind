@@ -230,6 +230,7 @@ JobKind = Literal[
     "data_exploration",
     "data_partition",
     "training_experiment",
+    "training_plan",
     "native_evaluation",
     "training_preparation",
     "dataset_run",

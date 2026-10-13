@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DatasetAnalytics } from './DatasetAnalytics';
+import {
+    DatasetAnalyticsFromJSON,
+    DatasetAnalyticsFromJSONTyped,
+    DatasetAnalyticsToJSON,
+    DatasetAnalyticsToJSONTyped,
+} from './DatasetAnalytics';
 import type { CellTransformation } from './CellTransformation';
 import {
     CellTransformationFromJSON,
@@ -152,6 +159,12 @@ export interface Cell {
     readonly stats: any | null;
     /**
      *
+     * @type {DatasetAnalytics}
+     * @memberof Cell
+     */
+    readonly analytics: DatasetAnalytics;
+    /**
+     *
      * @type {any}
      * @memberof Cell
      */
@@ -230,6 +243,7 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('capabilityReport' in value) || value['capabilityReport'] === undefined) return false;
     if (!('fits' in value) || value['fits'] === undefined) return false;
     if (!('stats' in value) || value['stats'] === undefined) return false;
+    if (!('analytics' in value) || value['analytics'] === undefined) return false;
     if (!('review' in value) || value['review'] === undefined) return false;
     if (!('qualityReport' in value) || value['qualityReport'] === undefined) return false;
     if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
@@ -270,6 +284,7 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'capabilityReport': json['capability_report'],
         'fits': json['fits'],
         'stats': json['stats'],
+        'analytics': DatasetAnalyticsFromJSON(json['analytics']),
         'review': json['review'],
         'qualityReport': json['quality_report'],
         'preparationPlan': json['preparation_plan'],
@@ -286,7 +301,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'transformation'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'usage'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'transformation'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'analytics'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'usage'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

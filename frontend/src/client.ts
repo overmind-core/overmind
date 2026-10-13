@@ -55,6 +55,7 @@ import {
   TaskExecutionsApi,
   TracesApi,
   TrainingExperimentsApi,
+  TrainingPlansApi,
   TrainingPreparationsApi,
   UploadsApi,
   VerdictsApi,
@@ -437,6 +438,7 @@ export class API {
   dataPartitions: DataPartitionsApi;
   nativeEvaluations: NativeEvaluationsApi;
   trainingExperiments: TrainingExperimentsApi;
+  trainingPlans: TrainingPlansApi;
   decisionPerformance: DecisionPerformanceApi;
   optimizerExperiments: OptimizerExperimentsApi;
   /** OTLP trace ingestion (`POST /api/v1/traces`). */
@@ -477,6 +479,7 @@ export class API {
     this.dataPartitions = new DataPartitionsApi(this.cfg);
     this.nativeEvaluations = new NativeEvaluationsApi(this.cfg);
     this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
+    this.trainingPlans = new TrainingPlansApi(this.cfg);
     this.decisionPerformance = new DecisionPerformanceApi(this.cfg);
     this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);

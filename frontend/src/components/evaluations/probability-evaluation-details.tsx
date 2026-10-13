@@ -3,6 +3,7 @@ import { EntityRef } from "@/components/entity-ref";
 import { HeaderStat } from "@/components/finetuning/finetuning-chrome";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { WorkflowState } from "@/components/model-workflows/common";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CountChip } from "@/components/ui/count-chip";
 import { DateTime } from "@/components/ui/datetime";
@@ -114,9 +115,11 @@ export function ProbabilityEvaluationDetails({ plan }: { plan: NativeEvaluation 
         <HeaderStat label="Graded against">Dataset references</HeaderStat>
       </div>
       <div className="flex flex-wrap items-center gap-2.5 border-t border-border/70 px-4 py-3">
-        {["draft", "prepared", "waiting_for_checkpoint", "submission_unknown"].includes(
-          plan.state
-        ) ? (
+        {plan.results?.completion?.status === "completed_with_issues" ? (
+          <Badge variant="warning">Completed with issues</Badge>
+        ) : ["draft", "prepared", "waiting_for_checkpoint", "submission_unknown"].includes(
+            plan.state
+          ) ? (
           <WorkflowState state={plan.state} />
         ) : (
           <StatusBadge fallback="queued" status={plan.state} />

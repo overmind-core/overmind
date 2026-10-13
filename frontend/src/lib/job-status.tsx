@@ -20,6 +20,7 @@ export interface StatusMeta {
  * status surface reads too.
  */
 const STATUS_FACE: Record<string, { icon: React.ReactNode; label: string; spinning?: boolean }> = {
+  awaiting_launch: { icon: <Icon.job className="size-3.5" />, label: "Awaiting launch" },
   cancelled: { icon: <Icon.failed className="size-3.5" />, label: "Cancelled" },
   completed: { icon: <Icon.success className="size-3.5" />, label: "Completed" },
   deploying: {
@@ -37,6 +38,11 @@ const STATUS_FACE: Record<string, { icon: React.ReactNode; label: string; spinni
   preparing: {
     icon: <Spinner className="text-current" size="sm" />,
     label: "Preparing",
+    spinning: true,
+  },
+  preprocessing: {
+    icon: <Spinner className="text-current" size="sm" />,
+    label: "Preparing data",
     spinning: true,
   },
   queued: { icon: <Icon.job className="size-3.5" />, label: "Queued" },

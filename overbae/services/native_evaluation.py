@@ -7,10 +7,12 @@ import sqlite3
 import tempfile
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
+import httpx
 import modal
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.utils import timezone
 
@@ -33,9 +35,11 @@ from overbae.services.datasets import paths, rows, use
 from overbae.services.decision_benchmark_scoring import compare_suite, records
 from overbae.services.decision_calibration import fit_decision_calibration
 from overbae.services.decision_providers import (
+    RetryableEvaluationError,
     SubmissionUnknownError,
     external_step,
     qualify_participants,
+    recover_request,
 )
 from overbae.services.evaluation_inputs import artifact_lock
 from overbae.services.training_release import current
@@ -451,6 +455,7 @@ def fit_calibration(plan):
     if plan.calibration:
         return plan.calibration
     source = directory(plan, "calibration")
+    unavailable = {}
     for participant in participants(plan):
         arm = participant["key"]
         comparison = comparison_for_calibration(plan, arm)
@@ -458,7 +463,7 @@ def fit_calibration(plan):
             card["missing_predictions"] or card["invalid_predictions"]
             for card in comparison["candidate"]["benchmarks"].values()
         ):
-            raise InputValidationError("Calibration coverage is incomplete or invalid.")
+            unavailable[arm] = "Calibration coverage is incomplete or invalid. Raw scores only."
     result = {
         "fitted_on": "calibration",
         "method": plan.config["calibration_method"],
@@ -466,6 +471,7 @@ def fit_calibration(plan):
         "source_manifest": digest_file(source / "manifest.json"),
         "frozen_at": timezone.now().isoformat(),
         "arms": {},
+        "unavailable": unavailable,
     }
     with tempfile.TemporaryDirectory() as temporary:
         db = sqlite3.connect(Path(temporary) / "references.sqlite")
@@ -481,6 +487,8 @@ def fit_calibration(plan):
                     ),
                 )
         for arm in (p["key"] for p in participants(plan)):
+            if arm in unavailable:
+                continue
             totals = [0.0] * len(result["grid"])
             count = 0
             db.execute("DROP TABLE IF EXISTS calibration_samples")
@@ -508,9 +516,10 @@ def fit_calibration(plan):
                     )
                 count += 1
             if not count:
-                raise InputValidationError(
-                    "Calibration has no valid probability-labelled decisions."
+                unavailable[arm] = (
+                    "Calibration has no valid probability-labelled decisions. Raw scores only."
                 )
+                continue
             if plan.config["calibration_method"] == "clef_temperature_cross_entropy":
 
                 def samples():
@@ -535,7 +544,7 @@ def fit_calibration(plan):
                 }
             result["arms"][arm]["prediction_sha256"] = digest_file(source / f"{arm}.jsonl")
         db.close()
-    result["decisions"] = min(arm["decisions"] for arm in result["arms"].values())
+    result["decisions"] = min((arm["decisions"] for arm in result["arms"].values()), default=0)
     NativeEvaluationPlan.objects.filter(pk=plan.pk, calibration={}).update(calibration=result)
     plan.refresh_from_db()
     return plan.calibration
@@ -740,12 +749,16 @@ def score(plan):
         "limitations": plan.config["contamination_limits"],
         "costs": cost_record(plan),
     }
-    modes = [False, True] if plan.calibration_cell_id else [False]
+
+    def modes(arm):
+        fitted = plan.calibration.get("arms", {})
+        return [False, True] if arm in fitted and plan.config["baseline"] in fitted else [False]
+
     for participant in participants(plan):
         arm = participant["key"]
         result["comparisons"][arm] = {
             ("calibrated" if mode else "raw"): comparison(plan, "final", arm, mode)
-            for mode in modes
+            for mode in modes(arm)
         }
     if plan.calibration_cell_id:
         result["calibration"] = {
@@ -756,13 +769,51 @@ def score(plan):
                     ("calibrated" if mode else "raw"): comparison(
                         plan, "calibration", p["key"], mode
                     )
-                    for mode in modes
+                    for mode in modes(p["key"])
                 }
                 for p in participants(plan)
             },
         }
     if "candidate" in result["comparisons"]:
         result.update(result["comparisons"]["candidate"])
+    coverage = {}
+    issues = [
+        {
+            "stage": stage,
+            "reason": call.get("error") or "Provider collection was incomplete.",
+            "details": (call.get("receipt") or {}).get("issues", []),
+        }
+        for stage, call in plan.calls.items()
+        if call.get("error") or (call.get("receipt") or {}).get("issues")
+    ]
+    for arm, reason in plan.calibration.get("unavailable", {}).items():
+        issues.append({"stage": "fit_calibration", "participant": arm, "reason": reason})
+    for role in plan.config["suites"]:
+        comparisons = (
+            result["comparisons"] if role == "final" else result["calibration"]["comparisons"]
+        )
+        coverage[role] = {
+            arm: {
+                field: sum(card[field] for card in modes["raw"]["candidate"]["benchmarks"].values())
+                for field in (
+                    "expected",
+                    "scored",
+                    "missing_predictions",
+                    "invalid_predictions",
+                    "incompatible_inputs",
+                )
+            }
+            for arm, modes in comparisons.items()
+        }
+    incomplete = any(
+        c["scored"] < c["expected"] for arms in coverage.values() for c in arms.values()
+    )
+    result["completion"] = {
+        "status": "completed_with_issues" if incomplete or issues else "complete",
+        "coverage": coverage,
+        "issues": issues,
+        "scoring_basis": "Available valid predictions only; paired comparisons use shared scored inputs. Missing outputs are not zero scores. Partial coverage may bias results.",
+    }
     directory(plan, "report").mkdir(parents=True, exist_ok=True)
     report_path = directory(plan, "report") / "results.json"
     atomic_json(report_path, result)
@@ -770,12 +821,25 @@ def score(plan):
         f"# {plan.name}",
         "",
         f"Baseline: {plan.config['baseline']}",
+        "Completed with issues"
+        if result["completion"]["status"] == "completed_with_issues"
+        else "Completed",
+        result["completion"]["scoring_basis"],
         "",
         plan.config["contamination_limits"],
         "",
         "Costs are recorded provider usage, not an all-in invoice.",
         "",
     ]
+    for role, arms in coverage.items():
+        for arm, counts in arms.items():
+            report_lines.append(
+                f"{role} · {arm}: {counts['scored']} / {counts['expected']} scored; {counts['missing_predictions']} missing, {counts['invalid_predictions']} invalid, {counts['incompatible_inputs']} incompatible."
+            )
+    for issue in issues:
+        report_lines.append(
+            f"Issue · {issue['stage']}: {issue['reason']} {json.dumps(issue.get('details', []))}"
+        )
     for participant, modes in result["comparisons"].items():
         for mode, summary in modes.items():
             report_lines += [
@@ -822,6 +886,9 @@ def resume(plan, *, stage=None, call_id=None):
     if (
         plan.state == "paused"
         and stage not in {"verify_inputs", "fit_calibration", "score"}
+        and not (
+            stage in stage_sequence(plan) and provider_stage(plan, stage)[1]["kind"] == "external"
+        )
         and (not call_id or call_id != plan.calls.get(stage, {}).get("id"))
     ):
         raise InputValidationError("Supply the recorded provider call ID to recover collection")
@@ -853,14 +920,10 @@ def resume(plan, *, stage=None, call_id=None):
         requests = DecisionProviderRequest.objects.filter(
             plan=plan, participant=participant["key"], role=role
         )
-        if requests.filter(state__in=["submitting", "submission_unknown"]).exists():
-            raise InputValidationError(
-                "Provider acknowledgement is unresolved; do not replay this request"
-            )
-        if requests.filter(state="failed", response__isnull=True).exists():
-            raise InputValidationError(
-                "Provider requests exhausted the saved technical retry policy"
-            )
+        for request in requests.select_for_update().filter(
+            state__in=["submitting", "submission_unknown"]
+        ):
+            recover_request(request)
         requests.filter(state="failed", response__isnull=False).update(state="received", error="")
     call.pop("observe_started_at", None)
     call.pop("lease", None)
@@ -1003,6 +1066,9 @@ def ready_stages(plan):
     if plan.deleted_at is not None or plan.state in {"draft", "prepared", "paused", "completed"}:
         return []
     if plan.calls.get("verify_inputs", {}).get("state") != "completed":
+        retry_at = plan.calls.get("verify_inputs", {}).get("retry_at")
+        if retry_at and timezone.now() < datetime.fromisoformat(retry_at):
+            return []
         return (
             []
             if plan.calls.get("verify_inputs", {}).get("state") in {"failed", "submission_unknown"}
@@ -1023,6 +1089,8 @@ def ready_stages(plan):
     for stage in sequence:
         call = plan.calls.get(stage, {})
         if call.get("state") in {"completed", "failed", "submission_unknown"}:
+            continue
+        if call.get("retry_at") and timezone.now() < datetime.fromisoformat(call["retry_at"]):
             continue
         if stage == "verify_inputs":
             continue
@@ -1055,12 +1123,22 @@ def pause(plan):
 def settle(plan):
     if plan.state == "paused":
         return
+    if plan.state == "preparing" and plan.calls.get("verify_inputs", {}).get("state") in {
+        "running",
+        "submitting",
+        "retrying",
+    }:
+        return
     failures = [
         call
         for call in plan.calls.values()
         if call.get("state") in {"failed", "submission_unknown"}
     ]
-    if failures and not ready_stages(plan):
+    if (
+        failures
+        and not ready_stages(plan)
+        and not any(call.get("state") == "retrying" for call in plan.calls.values())
+    ):
         plan.state = (
             "submission_unknown"
             if any(c["state"] == "submission_unknown" for c in failures)
@@ -1068,12 +1146,61 @@ def settle(plan):
         )
         plan.error = "An evaluation stage stopped. Independent eligible work is retained; inspect stage receipts before resuming."
     elif plan.state != "completed":
-        plan.state = "running"
+        plan.state, plan.error = "running", ""
+
+
+def record_failure(call, exc, *, can_retry):
+    transient = isinstance(
+        exc,
+        (
+            RetryableEvaluationError,
+            ConnectionError,
+            TimeoutError,
+            httpx.TransportError,
+            SoftTimeLimitExceeded,
+            modal.exception.ConnectionError,
+            modal.exception.ServiceError,
+            modal.exception.InternalError,
+            modal.exception.ResourceExhaustedError,
+        ),
+    )
+    if transient and can_retry:
+        failures = call.get("consecutive_failures", 0) + 1
+        call["consecutive_failures"] = failures
+        call["recovery"] = [
+            *call.get("recovery", []),
+            {
+                "at": timezone.now().isoformat(),
+                "reason": type(exc).__name__,
+                "attempt": failures,
+                "outcome": "retry_scheduled" if failures < 3 else "exhausted",
+            },
+        ]
+        if failures < 3:
+            call.update(
+                state="retrying",
+                retry_at=(timezone.now() + timedelta(seconds=15 * 2 ** (failures - 1))).isoformat(),
+                error="Transient interruption; automatic recovery is scheduled.",
+            )
+            return
+    call.pop("retry_at", None)
+    call.update(
+        state="submission_unknown"
+        if isinstance(exc, SubmissionUnknownError) or not can_retry
+        else "failed",
+        error="Automatic recovery exhausted."
+        if transient and can_retry
+        else "The stage could not be verified. Inspect retained provider receipts and diagnostics.",
+    )
 
 
 def advance(plan_id, *, stage=None):
     # Monitoring reads this service's frozen suite and calibration helpers.
-    from overbae.services.native_evaluation_monitor import collect_progress, refresh_safely
+    from overbae.services.native_evaluation_monitor import (
+        collect_progress,
+        refresh_safely,
+        retain_partial,
+    )
 
     with transaction.atomic():
         plan = (
@@ -1121,7 +1248,14 @@ def advance(plan_id, *, stage=None):
         local = stage in {"verify_inputs", "fit_calibration", "score"}
         reused = not local and provider_stage(plan, stage)[1]["key"] in plan.config.get("reuse", {})
         external = not local and provider_stage(plan, stage)[1]["kind"] == "external"
+        preparation_unavailable = False
+        if not local:
+            role, _, preparing, group = provider_stage(plan, stage)
+            preparation_unavailable = not preparing and bool(
+                (plan.calls.get(f"{role}_{group}", {}).get("receipt") or {}).get("partial")
+            )
         call = dict(plan.calls.get(stage, {}))
+        call.pop("retry_at", None)
         since = call.get("lease_started_at") or call.get("intent_at")
         if call.get("lease") or call.get("state") == "submitting":
             if since and (timezone.now() - datetime.fromisoformat(since)).total_seconds() < 1260:
@@ -1152,6 +1286,7 @@ def advance(plan_id, *, stage=None):
             plan.state = "running"
         plan.save()
     observed_at = time.perf_counter()
+    receipt = None
     try:
         if stage == "verify_inputs":
             receipt = verify_inputs(plan)
@@ -1165,6 +1300,9 @@ def advance(plan_id, *, stage=None):
         elif external:
             role, participant, _, _ = provider_stage(plan, stage)
             receipt = external_step(plan, role, participant)
+        elif preparation_unavailable:
+            receipt = retain_partial(plan, stage)
+            receipt["issues"] = [{"error": "Required input preparation could not be collected."}]
         elif starting:
             call["id"] = submit(plan, stage)
             receipt = None
@@ -1178,12 +1316,15 @@ def advance(plan_id, *, stage=None):
             else "running",
             receipt=receipt["report"] if stage == "score" and receipt is not None else receipt,
         )
-    except TimeoutError:
-        call["state"] = (
-            "submission_unknown"
-            if starting and not local and not external and not reused
-            else "running"
-        )
+        call.pop("error", None)
+        call.pop("consecutive_failures", None)
+    except TimeoutError as exc:
+        if local or external or reused or starting or receipt is not None:
+            record_failure(call, exc, can_retry=local or external or reused or bool(call.get("id")))
+        else:
+            call["state"] = "running"
+            call.pop("error", None)
+            call.pop("consecutive_failures", None)
         if not starting and not local and not external and not reused:
             try:
                 collect_progress(plan, stage, call)
@@ -1194,13 +1335,36 @@ def advance(plan_id, *, stage=None):
                 )
     except Exception as exc:
         logger.exception("Native evaluation stage failed: %s %s", plan_id, stage)
-        call.update(
-            state="submission_unknown"
-            if isinstance(exc, SubmissionUnknownError)
-            or (starting and not local and not external and not reused)
-            else "failed",
-            error="The stage could not be verified. Inspect retained provider receipts and diagnostics.",
+        record_failure(call, exc, can_retry=local or external or reused or bool(call.get("id")))
+    if call["state"] == "failed" and not local:
+        if not external and not reused and call.get("id"):
+            try:
+                collect_progress(plan, stage, call)
+            except Exception:
+                logger.warning(
+                    "Final progress unavailable; retaining verified local results: %s %s",
+                    plan_id,
+                    stage,
+                    exc_info=True,
+                )
+        try:
+            call["receipt"] = retain_partial(plan, stage)
+            call["state"] = "completed"
+        except Exception:
+            logger.exception(
+                "Partial evaluation results could not be retained: %s %s", plan_id, stage
+            )
+    elif call["state"] == "failed" and stage == "fit_calibration":
+        calibration = {
+            "arms": {},
+            "unavailable": {p["key"]: call["error"] for p in participants(plan)},
+            "fitted_on": "calibration",
+            "decisions": 0,
+        }
+        NativeEvaluationPlan.objects.filter(pk=plan.pk, calibration={}).update(
+            calibration=calibration
         )
+        call.update(state="completed", receipt={"partial": True})
     with transaction.atomic():
         locked = NativeEvaluationPlan.objects.select_for_update().get(pk=plan.pk)
         if locked.calls.get(stage, {}).get("lease") != lease:

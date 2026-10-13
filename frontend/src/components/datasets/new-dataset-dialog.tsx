@@ -94,8 +94,11 @@ export function NewDatasetDialog({
   const [name, setName] = useState("");
   const [brief, setBrief] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
-  const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
-  const [purpose, setPurpose] = useState<Purpose>("pending");
+  const defaultCapabilityId =
+    initialCapabilityId ?? (sourceType === "traces" ? NO_CAPABILITY : AUTO_CAPABILITY);
+  const [capabilityId, setCapabilityId] = useState(defaultCapabilityId);
+  const [filePurpose, setPurpose] = useState<Purpose>("pending");
+  const purpose = sourceType === "traces" ? "pending" : filePurpose;
   const [percentInput, setPercentInput] = useState("30");
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
@@ -121,7 +124,7 @@ export function NewDatasetDialog({
     if (!open) return;
     setName("");
     setNameTouched(false);
-    setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
+    setCapabilityId(defaultCapabilityId);
     setPurpose("pending");
     setBrief("");
     setPercentInput("30");
@@ -215,7 +218,7 @@ export function NewDatasetDialog({
     if (!canStart || busy || splitError || (purpose === "split" && !ready)) return;
     setError(null);
     const base = {
-      brief: brief.trim(),
+      brief: sourceType === "traces" ? "" : brief.trim(),
       capabilityId:
         capabilityId === AUTO_CAPABILITY
           ? undefined
@@ -349,17 +352,24 @@ export function NewDatasetDialog({
             <TraceBulkSourcePicker onChange={setPicked} projectId={projectId} />
           ) : null}
 
-          <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-x-5 gap-y-3",
+              sourceType === "file" && "sm:grid-cols-2"
+            )}
+          >
             <div className="flex min-w-0 flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground" htmlFor="dataset-capability">
-                Capability
+                Capability{sourceType === "traces" ? " (optional)" : ""}
               </Label>
               <Select disabled={busy} onValueChange={setCapabilityId} value={capabilityId}>
                 <SelectTrigger className="w-full" id="dataset-capability">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={AUTO_CAPABILITY}>Decide from the rows</SelectItem>
+                  {sourceType === "file" && (
+                    <SelectItem value={AUTO_CAPABILITY}>Decide from the rows</SelectItem>
+                  )}
                   <SelectItem value={NO_CAPABILITY}>None</SelectItem>
                   {capabilities.map((capability) => (
                     <SelectItem key={capability.id} value={capability.id}>
@@ -369,28 +379,30 @@ export function NewDatasetDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
-                Purpose
-              </Label>
-              <Select
-                disabled={busy}
-                onValueChange={(value) => setPurpose(value as Purpose)}
-                required
-                value={purpose}
-              >
-                <SelectTrigger className="w-full" id="dataset-purpose">
-                  <SelectValue placeholder="Select purpose" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PURPOSES.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {sourceType === "file" && (
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
+                  Purpose
+                </Label>
+                <Select
+                  disabled={busy}
+                  onValueChange={(value) => setPurpose(value as Purpose)}
+                  required
+                  value={purpose}
+                >
+                  <SelectTrigger className="w-full" id="dataset-purpose">
+                    <SelectValue placeholder="Select purpose" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PURPOSES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {purpose === "split" && (
@@ -467,21 +479,23 @@ export function NewDatasetDialog({
               )}
             </section>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
-              Intent (optional)
-            </Label>
-            <textarea
-              className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
-              disabled={busy}
-              id="dataset-brief"
-              maxLength={8000}
-              onChange={(event) => setBrief(event.target.value)}
-              placeholder="e.g. Prepare support conversations for fine-tuning."
-              rows={2}
-              value={brief}
-            />
-          </div>
+          {sourceType === "file" && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
+                Intent (optional)
+              </Label>
+              <textarea
+                className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
+                disabled={busy}
+                id="dataset-brief"
+                maxLength={8000}
+                onChange={(event) => setBrief(event.target.value)}
+                placeholder="e.g. Prepare support conversations for fine-tuning."
+                rows={2}
+                value={brief}
+              />
+            </div>
+          )}
           <DismissibleAlert message={error} variant="destructive" />
         </DialogBody>
         <DialogFooter className="flex-wrap">

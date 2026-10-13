@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { StageEnum } from './StageEnum';
+import type { ModelActivationStageEnum } from './ModelActivationStageEnum';
 import {
-    StageEnumFromJSON,
-    StageEnumFromJSONTyped,
-    StageEnumToJSON,
-    StageEnumToJSONTyped,
-} from './StageEnum';
+    ModelActivationStageEnumFromJSON,
+    ModelActivationStageEnumFromJSONTyped,
+    ModelActivationStageEnumToJSON,
+    ModelActivationStageEnumToJSONTyped,
+} from './ModelActivationStageEnum';
 
 /**
  *
@@ -41,10 +41,10 @@ export interface ModelActivation {
     readonly target: string | null;
     /**
      *
-     * @type {StageEnum}
+     * @type {ModelActivationStageEnum}
      * @memberof ModelActivation
      */
-    readonly stage: StageEnum;
+    readonly stage: ModelActivationStageEnum;
     /**
      *
      * @type {string}
@@ -99,7 +99,7 @@ export function ModelActivationFromJSONTyped(json: any, ignoreDiscriminator: boo
 
         'id': json['id'],
         'target': json['target'],
-        'stage': StageEnumFromJSON(json['stage']),
+        'stage': ModelActivationStageEnumFromJSON(json['stage']),
         'failedStage': json['failed_stage'],
         'error': json['error'],
         'startedAt': (new Date(json['started_at'])),

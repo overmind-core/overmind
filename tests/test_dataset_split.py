@@ -131,6 +131,7 @@ def test_raw_decisions_split_by_evidence_and_options_without_splitting_target_va
         row = {
             "question": "Which option follows from the evidence?",
             "state": f"Case {i // 2}",
+            "kind": "choice",
             "options": ["yes", "no"] if i % 2 else ["allow", "deny"],
             "target": [1.0, 0.0],
             "source": "example",

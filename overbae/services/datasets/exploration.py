@@ -9,13 +9,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
-from overbae.models import DataExploration, Dataset, Project
-from overbae.services.datasets import land, paths, profile, rows, sampling, store, use
+from overbae.models import Cell, DataExploration, Dataset, Project
+from overbae.services.datasets import events, land, paths, profile, rows, sampling, store, use
 from overbae.services.datasets.examples import native_decision
 from overbae.services.datasets.partition import preserve_lineage
 
 logger = logging.getLogger(__name__)
-PROFILE_VERSION = 2
+PROFILE_VERSION = 4
 
 
 @transaction.atomic
@@ -169,6 +169,19 @@ def advance(identifier):
                 rows.verify(derived.active_cell)
                 op.output_dataset = derived
                 report["output"] = use.describe(derived.active_cell)
+        if op.kind == "profile":
+            analytics = {**report["profile"]["analytics"], "fingerprint": op.source_fingerprint}
+            with transaction.atomic():
+                cell = Cell.objects.select_for_update().get(pk=op.source_cell_id)
+                if cell.fingerprint != op.source_fingerprint:
+                    raise InputValidationError("The selected source fingerprint changed")
+                Cell.objects.filter(pk=cell.pk).update(
+                    stats={**cell.stats, "analytics": analytics}, updated_at=timezone.now()
+                )
+                Dataset.objects.filter(pk=cell.dataset_id).update(updated_at=timezone.now())
+                transaction.on_commit(
+                    lambda: events.publish(cell.dataset_id, {"type": "dataset_changed"})
+                )
         DataExploration.objects.filter(pk=op.pk).update(
             state="completed",
             report=report,

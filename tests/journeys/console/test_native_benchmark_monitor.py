@@ -315,12 +315,16 @@ def test_native_benchmark_progress_samples_and_completed_backfill(
         f"""() => document.querySelectorAll('[aria-label="Model outputs"] > section').length === {participant_count}"""
     )
     console.wait_until("""() => [...document.querySelectorAll('[aria-label="Output for Qwen 3.5 0.8B"] tbody tr')]
-        .map(row => [...row.cells].map(cell => cell.textContent).join('|')).join(';')
+        .map(row => [...row.cells].map(cell => cell.querySelector('div > span')?.textContent ?? cell.textContent).join('|')).join(';')
         === 'Survived|80.0%|100.0%;Did not survive|20.0%|0.0%'""")
+    console.wait_until("""() => {
+        const row = document.querySelector('[aria-label="Output for Qwen 3.5 0.8B"] tbody tr');
+        return row.textContent.includes('Target') && row.textContent.includes('Predicted');
+    }""")
     if participant_count > 1:
         console.sees("Waiting for this model's prediction.")
         console.wait_until("""() => [...document.querySelectorAll('[aria-label="Output for Qwen 3.5 2B"] tbody tr')]
-            .map(row => [...row.cells].map(cell => cell.textContent).join('|')).join(';')
+            .map(row => [...row.cells].map(cell => cell.querySelector('div > span')?.textContent ?? cell.textContent).join('|')).join(';')
             === 'Survived|—|100.0%;Did not survive|—|0.0%'""")
         console.wait_until("""() => performance.getEntriesByType('resource')
             .filter(entry => entry.name.includes('/monitor/') && entry.name.includes('key=0')).length >= 2""")

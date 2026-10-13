@@ -89,6 +89,7 @@ const STATES_BY_TONE: Array<[StatusTone, readonly string[]]> = [
       "deploying",
       "pending",
       "preparing",
+      "preprocessing",
       "queued",
       "running",
       "scheduled",
@@ -101,7 +102,7 @@ const STATES_BY_TONE: Array<[StatusTone, readonly string[]]> = [
     "warning",
     ["degraded", "dormant", "partially_completed", "paused", "review", "stale", "ungraded"],
   ],
-  ["neutral", ["draft", "skipped", "unknown"]],
+  ["neutral", ["awaiting_launch", "draft", "skipped", "unknown"]],
 ];
 
 const STATE_TONE: Record<string, StatusTone> = Object.fromEntries(

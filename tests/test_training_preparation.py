@@ -14,6 +14,7 @@ from modal_shared.preparation import preparation_failure
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_preparation as preparation
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.plan_limits import usage_count
 from overbae.services.sft_assets.preprocess import preprocess_rows
 from overbae.tasks.finetuning import run_finetuning
 
@@ -293,7 +294,16 @@ def test_preparation_api_is_project_scoped_and_does_not_start_training(cell, mon
     body = {"dataset": str(cell.dataset_id), "model": "Qwen/Qwen3-8B", "context_length": 4096}
     response = client.post("/api/training-preparations/", body, format="json")
     assert response.status_code == 202, response.data
-    queue.assert_called_once()
+    job = FinetuningJob.objects.get(pk=response.data["training_job"])
+    assert job.status == "preprocessing" and str(job.preparation_id) == response.data["id"]
+    assert job.triggered_by == user and not job.requested_configuration
+    repeated = client.post("/api/training-preparations/", body, format="json")
+    assert repeated.data["training_job"] == str(job.pk)
+    assert FinetuningJob.objects.count() == 1
+    listed = client.get("/api/finetuning-jobs/runs/", {"project": str(cell.dataset.project_id)})
+    assert listed.status_code == 200, listed.data
+    assert listed.data["results"][0]["jobs"][0]["id"] == str(job.pk)
+    assert queue.call_count == 2
     assert client.get(f"/api/training-preparations/{response.data['id']}/").status_code == 200
     failure = preparation_failure("worker_out_of_date")
     preparation.TrainingPreparation.objects.filter(pk=response.data["id"]).update(
@@ -305,6 +315,82 @@ def test_preparation_api_is_project_scoped_and_does_not_start_training(cell, mon
     ProjectMembership.objects.filter(user=user).delete()
     assert client.get(f"/api/training-preparations/{response.data['id']}/").status_code == 404
     assert client.post("/api/training-preparations/", body, format="json").status_code == 404
+
+
+def test_preparation_job_waits_for_launch_and_promotes_once(cell, monkeypatch, settings):
+    settings.STRIPE_SECRET_KEY = ""
+    user = User.objects.create_user(email="setup-launch@example.test", password="test")
+    ProjectMembership.objects.create(project=cell.dataset.project, user=user)
+    client = APIClient()
+    client.force_authenticate(user)
+    submit = Mock(return_value=SimpleNamespace(id="training-task"))
+    monkeypatch.setattr(run_finetuning, "apply_async", submit)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    job = prep.training_jobs.get()
+    assert usage_count(user, "training_jobs") == 0
+    assert run_finetuning(job_id=str(job.pk)) == {"status": "preprocessing"}
+    prep.state = "ready"
+    prep.report = {"ready": True}
+    prep.save()
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "awaiting_launch"
+    assert run_finetuning(job_id=str(job.pk)) == {"status": "awaiting_launch"}
+    submit.assert_not_called()
+    launch = {
+        "project": str(cell.dataset.project_id),
+        "dataset": str(cell.dataset_id),
+        "cell": str(cell.pk),
+        "base_model": "Qwen/Qwen3-8B",
+        "hyperparameters": {"context_length": 4096},
+        "eval_model_before": False,
+        "eval_model_after": False,
+        "request_key": "setup-launch",
+    }
+    response = client.post("/api/finetuning-jobs/", launch, format="json")
+    assert response.status_code == 201, response.data
+    assert response.data["id"] == str(job.pk)
+    assert response.data["status"] == "queued"
+    repeated = client.post("/api/finetuning-jobs/", launch, format="json")
+    assert repeated.status_code == 201, repeated.data
+    assert repeated.data["id"] == str(job.pk)
+    assert FinetuningJob.objects.count() == 1
+    submit.assert_called_once()
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "queued" and job.requested_configuration
+    assert usage_count(user, "training_jobs") == 1
+    changed = {**launch, "hyperparameters": {"context_length": 8192}}
+    assert client.post("/api/finetuning-jobs/", changed, format="json").status_code == 400
+
+
+def test_failed_setup_retry_and_cancel_cannot_dispatch_training(cell, monkeypatch, settings):
+    settings.STRIPE_SECRET_KEY = ""
+    user = User.objects.create_user(email="setup-retry@example.test", password="test")
+    ProjectMembership.objects.create(project=cell.dataset.project, user=user)
+    client = APIClient()
+    client.force_authenticate(user)
+    submit, inspect = Mock(), Mock()
+    monkeypatch.setattr(run_finetuning, "apply_async", submit)
+    monkeypatch.setattr("overbae.tasks.training_preparation.inspect_preparation.delay", inspect)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    job = prep.training_jobs.get()
+    prep.state, prep.error, prep.report = "failed", "Worker unavailable", {"retryable": True}
+    prep.save()
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "failed" and job.error_message == "Worker unavailable"
+    retried = client.post(f"/api/finetuning-jobs/{job.pk}/retry/")
+    assert retried.status_code == 200, retried.data
+    assert retried.data["status"] == "preprocessing"
+    inspect.assert_called_once_with(str(prep.pk))
+    cancelled = client.post(f"/api/finetuning-jobs/{job.pk}/cancel/")
+    assert cancelled.status_code == 200, cancelled.data
+    prep.refresh_from_db()
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "cancelled"
+    submit.assert_not_called()
 
 
 @pytest.mark.parametrize("context_length", [128, 5000])

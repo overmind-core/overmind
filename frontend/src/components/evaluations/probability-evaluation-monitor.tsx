@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import apiClient from "@/client";
+import { LabelPerformance } from "@/components/evaluations/label-performance";
 import { MetricBars } from "@/components/evaluations/metric-bars";
 import { ModelOptionLabel } from "@/components/model-option-label";
 import { ModelProviderChip } from "@/components/model-provider-chip";
@@ -16,6 +17,7 @@ import {
   nativePercentageMetrics,
   PairedMetrics,
 } from "@/components/model-workflows/comparison-metrics";
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -143,7 +145,8 @@ function LiveMetric({
 }
 
 function Stage({ call, stopped }: { call: NativeCallProgress; stopped: boolean }) {
-  const active = !stopped && ["running", "submitting"].includes(call.state);
+  const recovering = call.state === "retrying";
+  const active = !stopped && ["running", "submitting", "retrying"].includes(call.state);
   const sourceAt =
     typeof call.progress?.source_at === "number" ? new Date(call.progress.source_at * 1000) : null;
   const stale = active && sourceAt && Date.now() - sourceAt.getTime() > 60_000;
@@ -165,12 +168,26 @@ function Stage({ call, stopped }: { call: NativeCallProgress; stopped: boolean }
       {call.progressError && (
         <p className="max-w-64 whitespace-normal text-warning">{call.progressError}</p>
       )}
-      {call.error && <p className="max-w-64 whitespace-normal text-destructive">{call.error}</p>}
+      {call.error && (
+        <p
+          className={`max-w-64 whitespace-normal ${recovering ? "text-muted-foreground" : "text-destructive"}`}
+        >
+          {call.error}
+        </p>
+      )}
     </div>
   );
 }
 
-function Execution({ data, plan }: { data: NativeMonitor; plan: NativeEvaluation }) {
+function Execution({
+  colorIndices,
+  data,
+  plan,
+}: {
+  colorIndices: Record<string, number>;
+  data: NativeMonitor;
+  plan: NativeEvaluation;
+}) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const metrics = metricsFor(data.arms);
   const stage =
@@ -199,11 +216,11 @@ function Execution({ data, plan }: { data: NativeMonitor; plan: NativeEvaluation
               benchmark="Provisional"
               key={metric}
               percentage={nativePercentageMetrics.has(metric)}
-              rows={data.arms.flatMap((arm, colorIndex) => {
+              rows={data.arms.flatMap((arm) => {
                 const value = mean(arm.benchmarks, metric);
                 return value === undefined
                   ? []
-                  : [{ colorIndex, key: arm.key, name: arm.name, value }];
+                  : [{ colorIndex: colorIndices[arm.key], key: arm.key, name: arm.name, value }];
               })}
               title={nativeMetricLabel(metric)}
             />
@@ -418,7 +435,7 @@ function PredictionSummary({
   );
 }
 
-function SampleModelOutput({
+export function SampleModelOutput({
   sample,
   model,
   stopped,
@@ -434,6 +451,18 @@ function SampleModelOutput({
   const adjusted = output?.error
     ? null
     : (output?.calibrated?.probabilities as number[] | undefined);
+  const predictedIndex = !sample.error && raw?.length ? raw.indexOf(Math.max(...raw)) : -1;
+  const adjustedIndex =
+    !sample.error && adjusted?.length ? adjusted.indexOf(Math.max(...adjusted)) : -1;
+  const tied = raw && raw.filter((value) => value === raw[predictedIndex]).length > 1;
+  const target = reference?.probabilities as number[] | undefined;
+  const targetPeak = !sample.error && target?.length ? Math.max(...target) : 0;
+  const predictionTone =
+    output?.metrics.accuracy === 1
+      ? "success"
+      : output?.metrics.accuracy === 0
+        ? "error"
+        : "neutral";
   const numericColumns =
     1 + Number(!!adjusted) + Number(!!reference?.probabilities) + Number(!!reference?.values);
   return (
@@ -489,31 +518,65 @@ function SampleModelOutput({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {options.map((option, index) => (
-            <TableRow key={index}>
-              <TableCell className="whitespace-normal break-words pl-4 text-xs">
-                {text(option)}
-              </TableCell>
-              {reference?.values && (
+          {options.map((option, index) => {
+            const isTarget = targetPeak > 0 && target?.[index] === targetPeak;
+            const isPredicted = index === predictedIndex;
+            return (
+              <TableRow key={index}>
+                <TableCell className="whitespace-normal break-words pl-4 text-xs">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{text(option)}</span>
+                    <span className="ml-auto flex flex-wrap justify-end gap-x-3 gap-y-1 text-muted-foreground">
+                      {isTarget && (
+                        <span className="text-info">
+                          {targetPeak === 1 ? "Target" : "Target peak"}
+                        </span>
+                      )}
+                      {isPredicted && (
+                        <span
+                          className={
+                            predictionTone === "success"
+                              ? "text-success"
+                              : predictionTone === "error"
+                                ? "text-destructive"
+                                : undefined
+                          }
+                          title={
+                            tied
+                              ? "Tied maximum; the first option in the recorded order is scored."
+                              : undefined
+                          }
+                        >
+                          {tied ? "Predicted · tied" : "Predicted"}
+                        </span>
+                      )}
+                      {index === adjustedIndex && adjustedIndex !== predictedIndex && (
+                        <span>Adjusted prediction</span>
+                      )}
+                    </span>
+                  </div>
+                </TableCell>
+                {reference?.values && (
+                  <TableCell className="font-mono text-xs tabular-nums">
+                    {reference.values[index]}
+                  </TableCell>
+                )}
                 <TableCell className="font-mono text-xs tabular-nums">
-                  {reference.values[index]}
+                  {percent(raw?.[index])}
                 </TableCell>
-              )}
-              <TableCell className="font-mono text-xs tabular-nums">
-                {percent(raw?.[index])}
-              </TableCell>
-              {adjusted && (
-                <TableCell className="font-mono text-xs tabular-nums">
-                  {percent(adjusted[index])}
-                </TableCell>
-              )}
-              {reference?.probabilities && (
-                <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {percent(reference.probabilities[index])}
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
+                {adjusted && (
+                  <TableCell className="font-mono text-xs tabular-nums">
+                    {percent(adjusted[index])}
+                  </TableCell>
+                )}
+                {reference?.probabilities && (
+                  <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
+                    {percent(reference.probabilities[index])}
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
       {!!output && (
@@ -707,6 +770,7 @@ export function ProbabilityEvaluationMonitor({ plan }: { plan: NativeEvaluation 
       participant.name,
     ])
   );
+  const colorIndices = Object.fromEntries(Object.keys(names).map((key, index) => [key, index]));
   const stopped = terminal.has(plan.state);
   const columns = useMemo<ColumnDef<NativeSample>[]>(
     () => [
@@ -785,10 +849,52 @@ export function ProbabilityEvaluationMonitor({ plan }: { plan: NativeEvaluation 
         </span>
       </div>
       <Failure error={data?.samples.length ? (query.error ?? data.error) : undefined} />
+      {plan.results?.completion?.status === "completed_with_issues" && (
+        <Alert variant="warning">
+          <div className="space-y-2">
+            <p className="font-medium">Completed with issues</p>
+            <p>{plan.results.completion.scoring_basis}</p>
+            {Object.entries(
+              (plan.results.completion.coverage?.[role] ?? {}) as Record<
+                string,
+                {
+                  expected: number;
+                  scored: number;
+                  missing_predictions: number;
+                  invalid_predictions: number;
+                  incompatible_inputs: number;
+                }
+              >
+            ).map(([arm, coverage]) => (
+              <p key={arm}>
+                {names[arm] ?? arm}: {coverage.scored.toLocaleString()} /{" "}
+                {coverage.expected.toLocaleString()} scored
+                {" · "}
+                {coverage.missing_predictions.toLocaleString()} missing
+                {" · "}
+                {coverage.invalid_predictions.toLocaleString()} invalid
+                {" · "}
+                {coverage.incompatible_inputs.toLocaleString()} incompatible
+              </p>
+            ))}
+            {(plan.results.completion.issues ?? []).map(
+              (issue: { stage: string; reason: string; participant?: string }, index: number) => (
+                <p key={`${issue.stage}-${index}`}>
+                  {issue.participant
+                    ? (names[issue.participant] ?? issue.participant)
+                    : issue.stage.replaceAll("_", " ")}
+                  : {issue.reason}
+                </p>
+              )
+            )}
+          </div>
+        </Alert>
+      )}
       {plan.state === "completed" && (
         <>
           <ComparisonMetrics
             baselineKey={plan.config?.baseline}
+            colorIndices={colorIndices}
             comparisons={(comparisons ?? {}) as Comparisons}
             names={names}
           />
@@ -797,7 +903,17 @@ export function ProbabilityEvaluationMonitor({ plan }: { plan: NativeEvaluation 
           )}
         </>
       )}
-      {data && plan.state !== "completed" && <Execution data={data} plan={plan} />}
+      {data && plan.state !== "completed" && (
+        <Execution colorIndices={colorIndices} data={data} plan={plan} />
+      )}
+      <LabelPerformance
+        colorIndices={colorIndices}
+        evaluation={plan.id}
+        key={role}
+        names={names}
+        stopped={stopped}
+        suiteRole={role}
+      />
       <section aria-label="Benchmark datapoints" className="min-w-0" ref={datapointsRef}>
         <DataTable
           className="min-w-0"

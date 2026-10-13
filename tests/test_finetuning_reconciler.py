@@ -58,6 +58,15 @@ def test_deploying_job_rescued_with_register_task():
     assert mine == []
 
 
+@pytest.mark.parametrize("status", ["preprocessing", "awaiting_launch"])
+def test_setup_jobs_never_enter_training_reconciliation(status):
+    job = _job(status)
+    job.remote_job_id = ""
+    job.save()
+    _, sent = _run_reconcile(active_tasks=[])
+    assert sent == []
+
+
 def test_lost_submission_task_is_reconciled_without_another_gpu_dispatch():
     job = _job("preparing")
     job.remote_job_id = ""

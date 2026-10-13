@@ -1,7 +1,7 @@
 import logging
 
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -11,7 +11,7 @@ from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.models import Dataset, TrainingPreparation
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.training_preparation import request_preparation, retry_preparation
+from overbae.services.training_preparation import begin_preparation, retry_preparation
 from overbae.tasks.training_preparation import inspect_preparation
 
 logger = logging.getLogger(__name__)
@@ -28,10 +28,18 @@ class TrainingPreparationRequestSerializer(serializers.Serializer):
 
 
 class TrainingPreparationSerializer(serializers.ModelSerializer):
+    training_job = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_training_job(self, obj):
+        job_id = obj.training_jobs.order_by("created_at").values_list("id", flat=True).first()
+        return str(job_id) if job_id else None
+
     class Meta:
         model = TrainingPreparation
         fields = [
             "id",
+            "training_job",
             "cell",
             "validation_cell",
             "state",
@@ -96,10 +104,11 @@ class TrainingPreparationViewSet(mixins.RetrieveModelMixin, viewsets.GenericView
         if cell is None:
             raise ValidationError("Training dataset has no completed version.")
         try:
-            preparation = request_preparation(
+            preparation = begin_preparation(
                 cell,
                 data["model"],
                 data["context_length"],
+                user=request.user,
                 validation_cell=validation_cell,
                 training_type=data["training_type"],
             )

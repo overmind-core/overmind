@@ -15,7 +15,7 @@ from overbae.services.datasets import land
 pytestmark = pytest.mark.django_db
 
 
-def setup_plan(*, prepare=True, question_count=None):
+def setup_plan(*, prepare=True, question_count=None, targets=None):
     project = Project.objects.create(name="Research", slug="research")
     train = Dataset.objects.create(project=project, name="Training", intent="train")
     job = FinetuningJob.objects.create(
@@ -37,14 +37,14 @@ def setup_plan(*, prepare=True, question_count=None):
                             "state": f"{name} evidence {i}",
                             "question": f"Choose for question {i}" if question_count else "Choose",
                             "kind": "choice",
-                            "options": ["yes", "no"],
+                            "options": ["yes", "no", "unused"] if targets else ["yes", "no"],
                         }
                     },
-                    "expected_output": {"probabilities": [1, 0]},
+                    "expected_output": {"probabilities": targets[i] if targets else [1, 0]},
                     "benchmark": "fixture",
                     "group": str(i),
                 }
-                for i in range(question_count or 3)
+                for i in range(len(targets) if targets else question_count or 3)
             ],
         )
         dataset.refresh_from_db()
@@ -211,6 +211,17 @@ def test_monitor_calibrates_every_valid_prediction_across_batches(tmp_path, sett
     }
     assert inspected["arms"][1]["received"] == 0
     assert inspected["arms"][1]["benchmarks"][0]["raw"] == {}
+    labels = native_evaluation_monitor.inspect(plan, view="labels", search="yes")["labels"]
+    assert labels[0]["expected"] == 513
+    assert labels[0]["models"]["base"] == {
+        "support": 512,
+        "predicted": 512,
+        "correct": 512,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+    }
+    assert labels[0]["models"]["candidate"]["f1"] is None
 
 
 def test_unknown_submission_is_not_repeated(tmp_path, settings):
@@ -351,16 +362,16 @@ def test_complete_plan_uses_six_provider_calls_and_retains_paired_coverage(tmp_p
     assert result["metrics"]["cross_entropy"]["candidate_minus_baseline"] < 0
 
 
-def test_incomplete_calibration_cannot_fit_or_start_final(tmp_path, settings):
+def test_incomplete_calibration_records_unavailable_arms(tmp_path, settings):
     settings.MEDIA_ROOT = tmp_path
     plan = setup_plan()
     source = native_evaluation.seal_suite(plan, "calibration").parent
     (source / "base.jsonl").write_text("")
     (source / "candidate.jsonl").write_text("")
-    with pytest.raises(ValueError, match="coverage"):
-        native_evaluation.fit_calibration(plan)
+    native_evaluation.fit_calibration(plan)
     plan.refresh_from_db()
-    assert plan.calibration == {}
+    assert plan.calibration["arms"] == {}
+    assert set(plan.calibration["unavailable"]) == {"base", "candidate"}
     assert not (native_evaluation.directory(plan, "final") / "candidate.jsonl").exists()
 
 

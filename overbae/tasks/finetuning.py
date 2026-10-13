@@ -23,6 +23,7 @@ from overbae.services.compute_costs import record_training_charge
 from overbae.services.finetuning_runner import get_runner
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
+from overbae.tasks.utils.task_lock import acquire_task_lock
 
 logger = logging.getLogger(__name__)
 
@@ -35,26 +36,34 @@ POLL_ERROR_LIMIT = 20
 
 @shared_task(bind=True, max_retries=4, queue="io")
 def collect_training_evidence(self, job_id):
-    job = FinetuningJob.objects.filter(pk=job_id).first()
-    if job is None or not job.remote_job_id:
-        return
-    try:
-        snapshot = get_runner(job.provider, job=job).poll(job.remote_job_id)
-        payload = (snapshot.raw or {}).get("monitoring")
-        if not payload:
+    with acquire_task_lock(f"training_evidence:{job_id}", timeout=30, renew=True) as acquired:
+        if not acquired:
             return
-        summary = training_monitoring.observe(job, payload)
-        with transaction.atomic():
-            current = FinetuningJob.objects.select_for_update().filter(pk=job.pk).first()
-            if current is None:
+        job = FinetuningJob.objects.filter(pk=job_id).first()
+        if job is None or not job.remote_job_id:
+            return
+        try:
+            snapshot = get_runner(job.provider, job=job).poll(job.remote_job_id)
+            payload = (snapshot.raw or {}).get("monitoring")
+            if not payload:
                 return
-            FinetuningJob.objects.filter(pk=job.pk).update(
-                progress={**(current.progress or {}), "monitoring": summary}
-            )
-        if summary["collection"]["state"] == "unavailable":
-            raise RuntimeError(summary["collection"]["error"])
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=min(30 * 2**self.request.retries, 300)) from exc
+            summary = training_monitoring.observe(job, payload, collect_examples=True)
+            with transaction.atomic():
+                current = FinetuningJob.objects.select_for_update().filter(pk=job.pk).first()
+                if current is None:
+                    return
+                progress = current.progress or {}
+                monitoring = {
+                    **(progress.get("monitoring") or summary),
+                    "collection": summary["collection"],
+                }
+                FinetuningJob.objects.filter(pk=job.pk).update(
+                    progress={**progress, "monitoring": monitoring}
+                )
+            if summary["collection"]["state"] == "unavailable":
+                raise RuntimeError(summary["collection"]["error"])
+        except Exception as exc:
+            raise self.retry(exc=exc, countdown=min(30 * 2**self.request.retries, 300)) from exc
 
 
 def _enqueue_baseten_cost_sync(job) -> None:
@@ -264,7 +273,7 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
     monitoring = (snap.raw or {}).get("monitoring") if isinstance(snap.raw, dict) else None
     if monitoring:
         progress["monitoring"] = training_monitoring.observe(job, monitoring)
-        if progress["monitoring"]["collection"]["state"] == "unavailable":
+        if progress["monitoring"]["collection"]["state"] in {"pending", "unavailable"}:
             collect_training_evidence.apply_async(kwargs={"job_id": str(job.pk)}, countdown=30)
     if snap.state in {"failed", "error", "cancelled"}:
         training_monitoring.interrupt(job, reason=snap.state)
@@ -454,6 +463,8 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
         return {"error": f"FinetuningJob {job_id} not found"}
 
     if job.status in (
+        FinetuningJob.Status.PREPROCESSING,
+        FinetuningJob.Status.AWAITING_LAUNCH,
         FinetuningJob.Status.CANCELLED,
         FinetuningJob.Status.FAILED,
         FinetuningJob.Status.SUBMISSION_UNKNOWN,

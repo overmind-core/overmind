@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { seriesColor } from "@/lib/colors";
 import { type DistributionScore, ScoreDistributions } from "./score-distributions";
 
 afterEach(cleanup);
@@ -17,6 +18,26 @@ const scores: DistributionScore[] = [
 ];
 
 describe("ScoreDistributions", () => {
+  it("keeps model colours across metrics, missing scores and metric selection", () => {
+    const variants = [
+      { id: "second", label: "Second", order: 1 },
+      { id: "first", label: "First", order: 0 },
+    ];
+    const scores = [
+      { name: "accuracy", value: 0.8, variant: "second" },
+      { name: "quality", value: 0.9, variant: "first" },
+      { name: "quality", value: 0.7, variant: "second" },
+    ];
+    const { container, rerender } = render(
+      <ScoreDistributions metrics={["accuracy", "quality"]} scores={scores} variants={variants} />
+    );
+    const fills = () =>
+      Array.from(container.querySelectorAll("svg rect"), (bar) => bar.getAttribute("fill"));
+    expect(fills()).toEqual([seriesColor(1), seriesColor(0), seriesColor(1)]);
+    rerender(<ScoreDistributions metrics={["quality"]} scores={scores} variants={variants} />);
+    expect(fills()).toEqual([seriesColor(0), seriesColor(1)]);
+  });
+
   it("defaults to the Scores view with humanized test names and mean labels", () => {
     const { container, getByRole } = render(
       <ScoreDistributions

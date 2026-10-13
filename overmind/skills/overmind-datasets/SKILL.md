@@ -5,6 +5,9 @@ description: Prepare and inspect Overmind datasets through native-agent-authored
 
 # Overmind Datasets
 
+For an end-to-end data-to-training request, start with `model-training-engineering`
+for the cross-stage evidence and launch checks, then use this skill for Datasets.
+
 The calling coding agent owns interpretation, transformation authoring and semantic
 work. Overmind stores sources, executes retained native-agent-authored scripts, measures
 technical compatibility and retains versions. There is no platform Workshop agent.
@@ -14,6 +17,13 @@ on every operation. Read `overmind://interface/current` for the connected contra
 Names are not unique: use returned dataset and cell UUIDs.
 
 ## Sources and inspection
+
+For a training task, retain source-bound input availability, target meaning,
+prediction unit, connected grouping, slices and success metric with
+`save_training_plan`. After Workshop publication and partitioning, save a
+superseding snapshot with exact versions. Keep evidence and uncertainty
+attributable; Training consumes the identities through plan-bound full runs or optional pilot
+experiments. See [model workflows](../overmind/references/model-workflows.md).
 
 Before uploading, inspect the local file's record boundaries, fields, value types
 and expected record count. A JSON wrapper is not itself a dataset row: identify

@@ -79,3 +79,16 @@ Select an exact sample `key` (including `"0"`) or page with `offset`/`limit`.
 Partial scores describe only the returned scored subset, not a final ranking.
 Reads may index retained local evidence but never start inference. Unavailable
 worker telemetry, incompatible inputs and missing outputs remain explicit.
+
+Transient native-evaluation stage failures recover automatically. Poll `get_job`
+while the plan is running; calls retain retry times and recovery history. Completed
+responses and native call IDs are reused. Missing external predictions can retry
+after recorded transport failures, with a bounded budget and unknown prior costs
+retained. Do not restart the entire comparison. Exhausted or permanent collection
+errors finish scoring available verified predictions. Inspect `results.completion`
+for `completed_with_issues`, per-suite/per-participant coverage and stage issues.
+Missing predictions are not zero scores; paired comparisons use shared scored
+inputs. Partial coverage can bias results. Incomplete calibration leaves raw scores
+available; never claim an unfitted calibrated comparison. Verification/report
+failures and unresolved native submissions still need inspection; paused runs require resume.
+Unknown external intents remain missing without replay; later inputs continue.

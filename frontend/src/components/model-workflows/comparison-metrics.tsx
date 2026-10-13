@@ -224,27 +224,21 @@ function withConfidenceMetric(card: Coverage): Coverage {
 function comparisonGroups(
   comparisons: Comparisons,
   names: Record<string, string>,
-  baselineKey: string
+  baselineKey: string,
+  colorIndices: Record<string, number>
 ) {
   const benchmarks = new Map<string, Map<string, ModelRow>>();
-  Object.entries(comparisons).forEach(([key, modes], index) => {
+  Object.entries(comparisons).forEach(([key, modes]) => {
     const comparison = modes.raw;
     if (!comparison?.baseline || !comparison?.candidate) return;
-    for (const [modelKey, name, coverage, adjusted, colorIndex] of [
+    for (const [modelKey, name, coverage, adjusted] of [
       [
         baselineKey,
         names[baselineKey] ?? "Baseline",
         comparison.baseline,
         modes.calibrated?.baseline,
-        0,
       ],
-      [
-        key,
-        names[key] ?? key,
-        comparison.candidate,
-        modes.calibrated?.candidate,
-        key === baselineKey ? 0 : index + 1,
-      ],
+      [key, names[key] ?? key, comparison.candidate, modes.calibrated?.candidate],
     ] as const) {
       for (const [benchmark, card] of Object.entries(coverage.benchmarks)) {
         const adjustedCard = adjusted?.benchmarks[benchmark];
@@ -252,7 +246,7 @@ function comparisonGroups(
         benchmarks.get(benchmark)!.set(modelKey, {
           adjusted: adjustedCard ? withConfidenceMetric(adjustedCard) : undefined,
           card: withConfidenceMetric(card),
-          colorIndex,
+          colorIndex: colorIndices[modelKey],
           delta: modelKey === baselineKey ? undefined : comparison.benchmarks[benchmark]?.metrics,
           key: modelKey,
           name,
@@ -280,16 +274,22 @@ function ConfidenceGroup({ name, rows }: { name: string; rows: ModelRow[] }) {
 }
 
 type ComparisonProps = {
+  colorIndices: Record<string, number>;
   comparisons: Comparisons;
   names: Record<string, string>;
   baselineKey?: string;
 };
 
-export function ComparisonMetrics({ comparisons, names, baselineKey = "base" }: ComparisonProps) {
+export function ComparisonMetrics({
+  colorIndices,
+  comparisons,
+  names,
+  baselineKey = "base",
+}: ComparisonProps) {
   const { sort, setSort, sortRows } = useTableSort<string>();
   const groups = useMemo(
-    () => comparisonGroups(comparisons, names, baselineKey),
-    [comparisons, names, baselineKey]
+    () => comparisonGroups(comparisons, names, baselineKey, colorIndices),
+    [comparisons, names, baselineKey, colorIndices]
   );
   const metrics = useMemo(() => [...new Set(groups.flatMap((group) => group.metrics))], [groups]);
   const rows = groups.flatMap((group) =>

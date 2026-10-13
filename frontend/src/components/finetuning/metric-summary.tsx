@@ -1,4 +1,6 @@
 import type { MetricPoint, MetricSeries } from "@/components/finetuning/loss-chart";
+import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icons";
 
 export type MetricKind = "loss" | "accuracy" | "learningRate" | "gradient";
 
@@ -53,6 +55,13 @@ export function MetricSummary({
         const summary = summarizeMetric(item.points, kind);
         const third = summary?.third;
         const change = kind === "loss" || kind === "accuracy";
+        const delta =
+          change && third != null ? Number(third.toFixed(kind === "accuracy" ? 1 : 4)) : null;
+        const improved = delta != null && (kind === "loss" ? delta < 0 : delta > 0);
+        const changeValue =
+          delta == null
+            ? "—"
+            : `${delta > 0 ? "+" : ""}${kind === "accuracy" ? `${delta.toFixed(1)} pp` : format(delta)}`;
         const values = [
           {
             label: (item.terminal ?? terminal) ? "Last recorded" : "Latest",
@@ -62,11 +71,25 @@ export function MetricSummary({
           {
             label: thirdLabel,
             value:
-              third == null
-                ? "—"
-                : change
-                  ? `${third > 0 ? "+" : ""}${kind === "accuracy" ? `${third.toFixed(1)} pp` : format(third)}`
-                  : format(third),
+              delta != null ? (
+                <Badge
+                  aria-label={`${delta === 0 ? "No change" : improved ? "Improved" : "Worsened"}: ${changeValue} from first`}
+                  className="gap-1 font-mono tabular-nums"
+                  size="chip"
+                  variant={delta === 0 ? "neutral" : improved ? "success" : "error"}
+                >
+                  {delta > 0 ? (
+                    <Icon.chevronUp aria-hidden className="size-3" />
+                  ) : delta < 0 ? (
+                    <Icon.chevronDown aria-hidden className="size-3" />
+                  ) : null}
+                  {changeValue}
+                </Badge>
+              ) : third == null ? (
+                "—"
+              ) : (
+                format(third)
+              ),
           },
         ];
         return (

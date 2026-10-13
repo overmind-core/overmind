@@ -76,11 +76,12 @@ from overbae.models import (
     Span,
     TaskExecution,
     TrainingExperiment,
+    TrainingPlan,
     UserOnboarding,
     Verdict,
 )
 from overbae.models.traces import usage_slice
-from overbae.services import native_evaluation
+from overbae.services import native_evaluation, training_plans
 from overbae.services import sync as sync_service
 from overbae.services.capabilities import identity as capability_identity
 from overbae.services.datasets import exploration as dataset_exploration
@@ -453,6 +454,26 @@ def seed_model_workflows(project):
         ],
     )
     source.refresh_from_db()
+    training_plans.save(
+        project,
+        user=project.memberships.select_related("user").first().user,
+        name="Support task discovery · synthetic demo",
+        request_key="demo-training-task",
+        source_cell=source.active_cell.pk,
+        task={
+            "mode": "decision",
+            "objective": "Classify synthetic support requests into supplied queues",
+            "prediction_unit": "One independent support request",
+            "target_meaning": "Synthetic fixture labels, not measured business truth",
+            "allowed_inputs": ["request text"],
+            "availability_evidence": "Request text is the fixture input before classification",
+            "group_by": ["group_id"],
+            "slices": ["benchmark"],
+            "primary_metric": "/hard_label_accuracy",
+            "success_criterion": "Measure a development improvement over a simple baseline, then confirm on untouched final data",
+        },
+        unresolved=["Demo has no training baseline, quality pilot or model-selection evidence"],
+    )
     exploration = dataset_exploration.request(
         project,
         source_cell=source.active_cell,
@@ -645,6 +666,9 @@ class Command(BaseCommand):
         # Big tables go first, explicitly: the collector's deferred cascade trips the verdict FK.
         for model in (Verdict, ScoringPass, TaskExecution, Span, Conversation):
             model.objects.filter(project__slug__in=slugs).delete()
+        # Newer snapshots protect their predecessors until removed.
+        for plan in TrainingPlan.objects.filter(project__slug__in=slugs).order_by("-created_at"):
+            plan.delete()
         for model in (
             DecisionPerformanceRun,
             TrainingExperiment,

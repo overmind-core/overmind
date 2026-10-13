@@ -5,6 +5,24 @@ description: End-to-end workflow for adding or changing Overmind MCP tools, reso
 
 # Adding or changing MCP
 
+Contract 7.6.2 is MCP-ready: exhausted prediction collection completes scoring
+from verified available outputs. `results.completion` retains per-suite/per-arm
+expected, scored, missing, invalid and incompatible counts, plus stage issues.
+`completed_with_issues` is a result annotation, not a new job lifecycle state.
+Missing outputs are not quality zeros; paired metrics use shared scored inputs.
+Incomplete calibration leaves raw scores available without invented temperatures.
+Verification/report failures and unresolved native submissions still need inspection.
+Unknown external intents remain missing with uncertain costs; they are not replayed
+and do not prevent collecting subsequent inputs. A paused external collector can
+resume its explicit stage without a native call ID.
+
+Contract 7.6.1 makes automatic native-evaluation recovery MCP-ready through existing
+job receipts: stage retry time/history, running state and polling guidance. Shared
+services retry transient local work and collect saved native calls; timed-out
+external predictions retry only missing responses within three attempts and retain
+uncertain prior costs. Bare submission intents remain unresolved. No new tool is
+required; explicit resume uses the same bounded request recovery.
+
 Platform-agent procedure for changing the server. The skill shipped by
 `overmind init` is `overmind/skills/overmind/` — do not copy this file there.
 
@@ -26,6 +44,14 @@ includes `console_url` from `FRONTEND_URL` for ordinary browser navigation.
 Do not make a plugin or a custom UI a prerequisite for platform operations.
 
 ## MCP-impact classification
+
+Contract 7.6.0 adds MCP-ready `save_training_plan` and `training_plan` workflow
+inspection. Pilot/full experiment bindings consume immutable task/data/partition
+and attributed evidence snapshots. Contract 7.6.3 removes mandatory pilot selection
+from full-run eligibility: full runs may launch directly; optional pilot selection
+still requires matching measured development metrics and a verified checkpoint. The bounded discovery budget is 86 KiB
+for 73 tools. Source/package byte transfers remain CLI-guided. Hardware profiles
+are not quality evidence, and exploratory jobs are not universally gated.
 
 For every new or modified Overmind capability, function, API workflow, or
 Console workflow, make an explicit MCP-impact decision in the same change. A
@@ -141,11 +167,17 @@ currently enforces the public `read_only`/`read` versus mutation/`write`
 boundary. If more granular API-key enforcement is introduced, implement it in
 the catalog/auth layer for every tool—do not add one-off handler checks.
 
-The public surface remains permission-scoped read/write. Deliberate lifecycle operations are `cancel_dataset`, `retry_deployment`, `retry_data_partition`, native-comparison pause/resume, and performance resume. Do not infer generic destructive operations from these exceptions. A comparison pause prevents new claims; in-flight work may complete and retain receipts. Unknown provider submissions cannot be replayed without reconciliation.
+The public surface remains permission-scoped read/write. Deliberate lifecycle operations are `cancel_dataset`, `retry_deployment`, `retry_data_partition`, native-comparison pause/resume, and performance resume. Do not infer generic destructive operations from these exceptions. A comparison pause prevents new claims; in-flight work may complete and retain receipts. Unacknowledged native submissions and bare external intents require reconciliation. Recorded external prediction transport failures use the bounded automatic recovery policy, retaining uncertain costs.
 
 Contract 5.1 retains draft → optional background preparation → explicit launch. `run_inference` requires a stable request key and returns an `inference_request` job; read its result with `get_job`. Unknown acknowledgements are reconciled without another submission. `inspect_operation` pages durable operational events; reads never invoke workers. `overmind://interface/current` and `list_projects` return the request-derived MCP endpoint, Console origin and permission-scoped tool count/catalog fingerprint. Compare these with the intended environment and refresh `tools/list` on a mismatch; never silently change endpoints or credentials. The interface resource also returns lifecycle rules; it does not attest that remote GPU images are deployed. Ordinary action receipts stay compact and point to detailed resources. Nested partition, sampling, workload and inference settings are typed; training hyperparameters are an intentional model-dependent extension validated by the training serializer/catalog. Manifest budget is 72 KiB including the five reusable-pipeline lifecycle tools and their typed inputs. Package bytes remain CLI-guided; script execution and binding lifecycle are MCP-ready. Pipeline revisions return explicit `flow` nodes, input edges, conditions and output. Native agents declare script conditions with code-line provenance; measured branch outcomes remain separate run facts. Forks execute from their declared parents; compatible disjoint branches converge through inputs. Cycles and job-level conditional skipping are not supported.
 
 ## Adding or changing a tool
+
+Contract 7.7 adds MCP-ready version-bound Workshop analytics to cell inspection
+and completed pipeline receipts, shared with REST/Console. `explore_dataset`
+backfills older cells; reads never scan. Surface warning/error and `not_checked`
+results before consumer handoff, with exact fingerprint and coverage. This is
+advisory evidence, not a universal quality gate.
 
 Contract 5.2 adds `author-dataset-transformation` and
 `inspect_dataset_workbench(pipeline=REVISION_UUID)` for exact recipe lookup,
@@ -206,7 +238,7 @@ Readiness/preparation/estimate/launch accept the same strict monitoring policy;
 provider capabilities and unmeasured check costs remain explicit. Cancellation
 records intent first and preserves durable evidence. Evidence responses have a
 128 KiB lossless bound and return an error rather than clipping values. The current
-tool-manifest budget is 80 KiB. Refresh the connected catalogue after deployment.
+tool-manifest budget is 86 KiB. Refresh the connected catalogue after deployment.
 Native per-question metrics and assessments have `collections` descriptors in
 check/checkpoint overviews. Pass a descriptor's `field` JSON Pointer with
 `offset`/`limit` for exact retained object entries or array items. Append escaped
@@ -438,3 +470,7 @@ inspection. They apply to the full saved sample index before pagination; outcome
 matching uses raw recorded scores, scoped to a participant or any model. Soft
 targets never count as hard correctness. Aggregate metrics remain unchanged.
 An exact sample key is independent of, and cannot be combined with, these filters.
+
+Contract 7.4.0 adds `view=labels` to `inspect_native_evaluation`: paginated per-label precision, recall, F1 and counts shared with Console/REST. Search labels or benchmark names; order by `label`, `benchmark`, `expected` or `participant-key:precision|recall|f1` with optional `-` for descending. Label inspection cannot combine sample keys or outcomes. Only hard references with fixed benchmark option order qualify; soft targets are not collapsed. Reads can rebuild the local projection for historical results without provider calls. Missing predictions and zero denominators stay explicit.
+
+Contract 7.5.0 makes `prepare_training_data` create the dashboard job atomically and return `training_job` alongside the preparation receipt. `get_job(kind=training_preparation)` also links that job. Matching `start_finetune` calls promote it after normal launch admission; preparing/awaiting-launch jobs and preparation retries cannot dispatch GPU training.

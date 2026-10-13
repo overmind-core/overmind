@@ -1,25 +1,31 @@
 import json
+import math
+from contextlib import closing
 from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
+from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
 from test_decision_provider_recovery import fixture, payload
+from test_native_evaluation_plan import setup_plan
 
 from overbae.models import (
     APIToken,
     Dataset,
     NativeEvaluationPlan,
     Project,
+    ProjectMembership,
     TrainingExperiment,
     User,
 )
-from overbae.services import native_evaluation, training_experiments
+from overbae.services import native_evaluation, native_evaluation_monitor, training_experiments
 from overbae.services.datasets import exploration, land, paths, rows, store
 from overbae.services.datasets.exploration import advance
 from overbae.services.decision_providers import external_step
+from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.native_evaluation import advance_plan
 
@@ -539,6 +545,102 @@ def test_exploration_reports_allocation_and_can_retry_failed_local_work():
     assert op.report["measurement"]["population"] == "whole_source"
 
 
+def test_label_breakdown_is_shared_by_rest_and_mcp_without_soft_target_accuracy(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    settings.STRIPE_SECRET_KEY = ""
+    plan = setup_plan(
+        targets=[
+            [1, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0.7, 0.3, 0],
+            [0, 1, 0],
+        ]
+    )
+    source = native_evaluation.directory(plan, "final")
+    with closing(native_evaluation_monitor.connect(source / "monitor.sqlite")) as db, db:
+        for row in native_evaluation.records(source / "inputs.jsonl"):
+            if row["key"] == "5":
+                continue
+            probabilities = [0.1, 0.8, 0.1] if row["key"] == "3" else [0.8, 0.1, 0.1]
+            native_evaluation_monitor.ingest(
+                db,
+                plan,
+                "base",
+                {
+                    "key": row["key"],
+                    "input_sha256": row["input_sha256"],
+                    "kind": "choice",
+                    "probabilities": probabilities,
+                    "log_probabilities": list(map(math.log, probabilities)),
+                },
+            )
+    native_evaluation_monitor.refresh(plan)
+    user = User.objects.create_user(email="label-breakdown@example.com")
+    ProjectMembership.objects.create(project=plan.project, user=user)
+    key, _ = APIToken.create_for_user(user, project=plan.project, permission=["read"])
+    rest = APIClient()
+    rest.force_authenticate(user=user)
+    endpoint = f"/api/native-evaluations/{plan.pk}/monitor/"
+    query = {"view": "labels", "ordering": "-base:f1", "limit": 1}
+    response = rest.get(endpoint, query)
+    assert response.status_code == 200, response.content
+    data = response.json()
+    assert data["count"] == 3 and len(data["labels"]) == 1 and not data["samples"]
+    yes = data["labels"][0]
+    assert yes["label"] == "yes" and yes["expected"] == 2
+    assert yes["models"]["base"] == {
+        "support": 2,
+        "predicted": 3,
+        "correct": 2,
+        "precision": pytest.approx(2 / 3),
+        "recall": 1,
+        "f1": 0.8,
+    }
+    assert yes["models"]["candidate"]["f1"] is None
+    no = rest.get(endpoint, {**query, "offset": 1}).json()["labels"][0]
+    assert no["label"] == "no" and no["expected"] == 3
+    assert no["models"]["base"]["support"] == 2
+    assert no["models"]["base"]["recall"] == 0.5
+    assert (
+        rest.get(endpoint, {**query, "offset": 2}).json()["labels"][0]["models"]["base"]["f1"]
+        is None
+    )
+    assert rest.get(endpoint, {"view": "labels", "search": "YES"}).json()["count"] == 1
+    assert rest.get(endpoint, {"view": "labels", "outcome": "correct"}).status_code == 400
+    assert rest.get(endpoint, {"view": "labels", "ordering": "base:invalid"}).status_code == 400
+    with TestClient(create_mcp_application()) as client:
+        result = call(
+            client,
+            key,
+            "inspect_native_evaluation",
+            {
+                "evaluation": str(plan.pk),
+                "project_id": str(plan.project_id),
+                **query,
+            },
+        )
+        assert result["monitoring"]["labels"] == data["labels"]
+        assert result["monitoring"]["count"] == 3
+        scoped = call(
+            client,
+            key,
+            "inspect_native_evaluation",
+            {
+                "evaluation": str(plan.pk),
+                "project_id": str(plan.project_id),
+                "view": "labels",
+                "search": "no",
+                "participant": "base",
+            },
+        )
+        assert set(scoped["monitoring"]["labels"][0]["models"]) == {"base"}
+    foreign = Project.objects.create(name="Other label project", slug="other-label-project")
+    NativeEvaluationPlan.objects.filter(pk=plan.pk).update(project=foreign)
+    assert rest.get(endpoint, query).status_code == 404
+
+
 def test_account_client_discovers_interface_without_selecting_a_project():
 
     user = User.objects.create_user(email="interface-only@example.com")
@@ -558,5 +660,5 @@ def test_account_client_discovers_interface_without_selecting_a_project():
         body = response.json()
         assert "error" not in body, body
         resource = json.loads(body["result"]["contents"][0]["text"])
-        assert resource["contract_version"] == "7.3.0"
+        assert resource["contract_version"] == CONTRACT_VERSION
         assert len(resource["catalog_sha256"]) == 64

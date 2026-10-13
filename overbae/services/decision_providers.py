@@ -29,6 +29,26 @@ class SubmissionUnknownError(RuntimeError):
     pass
 
 
+class RetryableEvaluationError(RuntimeError):
+    pass
+
+
+def recover_request(record):
+    if record.state in {"submitting", "submission_unknown"} and record.response is not None:
+        record.state, record.error = "received", ""
+        record.save()
+    elif (
+        record.state == "submission_unknown"
+        and record.attempts
+        and record.attempts[-1].get("error")
+        in {"submission_unknown", "capacity_timeout", "capacity_unavailable"}
+    ):
+        # Only a completed transport attempt can be repeated. A bare submission
+        # intent may still have a live owner and is not evidence of a timeout.
+        record.state = "retryable" if len(record.attempts) < 3 else "failed"
+        record.save()
+
+
 def catalog(project):
     options = [
         {
@@ -323,18 +343,16 @@ def external_step(plan, role, participant):
         record, _ = DecisionProviderRequest.objects.get_or_create(
             plan=plan, participant=participant["key"], role=role, input_sha256=row["input_sha256"]
         )
+        recover_request(record)
         if record.state == "submitting" or record.state == "submission_unknown":
-            raise SubmissionUnknownError(
-                "An external request has an unresolved provider acknowledgement"
-            )
+            record.state = "submission_unknown"
+            record.error = "Provider acknowledgement is unresolved; request was not replayed."
+            record.save()
+            continue
         if record.state == "received":
             meter_attempts(record)
             complete_response(record, row["decision"], participant)
-        elif record.state == "failed":
-            raise InputValidationError(
-                "An external request exhausted its technical retries or has an invalid response"
-            )
-        elif record.state != "completed":
+        elif record.state not in {"completed", "failed", "incompatible"}:
             try:
                 question(row["decision"])
             except ValueError as exc:
@@ -372,42 +390,56 @@ def external_step(plan, role, participant):
                     response_id=payload.get("id"),
                     usage=stats,
                     received_at=timezone.now().isoformat(),
+                    outcome="received",
                 )
                 record.save()
                 meter_attempts(record)
                 complete_response(record, request, participant)
             except decisions.DecisionError as exc:
                 code = exc.stats.get("status_code")
-                retryable = code == 429 or (isinstance(code, int) and 500 <= code < 600)
-                record.attempts[-1].update(error=exc.reason, usage=exc.stats)
+                retryable = (
+                    code == 429
+                    or (isinstance(code, int) and 500 <= code < 600)
+                    or exc.reason
+                    in {"submission_unknown", "capacity_timeout", "capacity_unavailable"}
+                )
+                record.attempts[-1].update(
+                    error=exc.reason,
+                    usage=exc.stats,
+                    outcome="submission_unknown"
+                    if exc.reason == "submission_unknown"
+                    else "failed",
+                    finished_at=timezone.now().isoformat(),
+                )
                 record.state = (
                     "retryable"
                     if retryable and len(record.attempts) < 3
                     else "failed"
-                    if code or exc.reason == "not_configured"
+                    if retryable
+                    or code
+                    or exc.reason
+                    in {
+                        "not_configured",
+                        "capacity_configuration",
+                        "invalid_state",
+                        "invalid_response",
+                    }
                     else "submission_unknown"
                 )
                 record.error = exc.reason
                 record.save()
                 meter_attempts(record)
-                if record.state == "submission_unknown":
-                    errors.append(SubmissionUnknownError(exc.reason))
-                elif record.state == "failed":
-                    errors.append(ValueError(exc.reason))
+                if record.state == "retryable":
+                    errors.append(RetryableEvaluationError(exc.reason))
             except Exception as exc:
                 record.state = "failed" if record.response is not None else "submission_unknown"
                 record.error = str(exc)[:1000]
                 record.save()
-                errors.append(
-                    ValueError(str(exc))
-                    if record.response is not None
-                    else SubmissionUnknownError(str(exc))
-                )
         if errors:
             raise errors[0]
     unresolved = (
         DecisionProviderRequest.objects.filter(pk__in=pending)
-        .exclude(state__in=["completed", "incompatible"])
+        .exclude(state__in=["completed", "incompatible", "failed", "submission_unknown"])
         .exists()
     )
     if not unresolved:
@@ -445,7 +477,7 @@ def external_step(plan, role, participant):
                             )
                             + "\n"
                         )
-                    else:
+                    elif not record or record.state not in {"failed", "submission_unknown"}:
                         raise InputValidationError("Provider collection is incomplete")
         output_path.with_suffix(".partial").replace(output_path)
         failures_path.with_suffix(".partial").replace(failures_path)
@@ -454,6 +486,18 @@ def external_step(plan, role, participant):
         "decisions": offset + len(chunk),
         "served_model": participant.get("served_model"),
         "identity_basis": "provider_reported",
+        "issues": list(
+            DecisionProviderRequest.objects.filter(
+                plan=plan,
+                participant=participant["key"],
+                role=role,
+                state__in=["failed", "submission_unknown"],
+            )
+            .values("error")
+            .annotate(requests=Count("id"))
+        )
+        if completed
+        else [],
         **(
             usage(plan, participant["key"], role)
             if completed

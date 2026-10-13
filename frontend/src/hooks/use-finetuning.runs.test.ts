@@ -90,6 +90,20 @@ describe("useTrainingBenchmarksQuery", () => {
 });
 
 describe("useFinetuningRunsQuery", () => {
+  it("discovers jobs started outside the Console even when history is empty or finished", () => {
+    const options = optionsOf(() =>
+      useFinetuningRunsQuery({ page: 1, pageSize: 25, projectId: "proj-1" })
+    );
+    const poll = options.refetchInterval;
+    if (typeof poll !== "function") throw new Error("Expected adaptive history polling");
+    const query = (jobs: { status: string }[], fetchFailureCount = 0) =>
+      ({ state: { data: { results: [{ jobs }] }, fetchFailureCount } }) as never;
+    expect(poll(query([]))).toBe(10_000);
+    expect(poll(query([{ status: "succeeded" }]))).toBe(10_000);
+    expect(poll(query([{ status: "preprocessing" }]))).toBe(5_000);
+    expect(poll(query([], 3))).toBe(false);
+  });
+
   it("keys every param and sends none of the empty ones", async () => {
     const options = optionsOf(() =>
       useFinetuningRunsQuery({ page: 2, pageSize: 25, projectId: "proj-1", search: "   " })
