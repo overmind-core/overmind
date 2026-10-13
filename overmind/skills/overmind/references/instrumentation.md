@@ -21,8 +21,10 @@ implies on its decorator; `/overmind setup` writes them from the capability
 card and decorates every tool, retrieval step, mode and helper the card names,
 not only the plan's anchors. Judge criteria live only on decorators.
 Deterministic checks (required keys, field rules, budgets) live in the toml's
-`eval_matrix` or are added in the Console. Capability-wide judge metrics beyond
-the decorators go through `create_eval_matrix_row`:
+`eval_matrix`. After changing decorator expectations, run `overmind sync`: it
+copies the expectations on entry points, workflows and plain `observe` spans
+into the capability's Default eval set, which dataset runs, backtests, the
+optimizer and training grade with. See [evals.md](evals.md#configure).
 
 ```python
 @overmind.tool(expectations=["Returns the order for the given id"])

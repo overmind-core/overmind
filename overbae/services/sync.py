@@ -37,6 +37,7 @@ _META_SYSTEM_PROMPT = "system_prompt"
 _META_EVAL_METRICS = "eval_metrics"
 _META_CAPABILITY_CARD = "capability_card"
 _META_EVAL_MATRIX = "eval_matrix"
+_META_EXPECTATIONS = "expectations"
 
 
 def _as_uuid(value) -> uuid.UUID | None:
@@ -112,6 +113,8 @@ def _fill(cap: Capability, data: dict) -> None:
         # Keep the flat wire metrics in sync when only the matrix is sent.
         if "eval_metrics" not in data:
             meta[_META_EVAL_METRICS] = list(data["eval_matrix"] or [])
+    if "expectations" in data:
+        meta[_META_EXPECTATIONS] = [dict(entry) for entry in data["expectations"] or []]
     cap.improvement_metadata = meta
 
 

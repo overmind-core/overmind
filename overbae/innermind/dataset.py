@@ -35,6 +35,12 @@ class DatasetRowProcessor(SpanProcessor):
         self.run = run
         self.capability_id = run.dataset.capability_id if run.dataset_id else None
 
+    def applies(self, row: EvalMatrix, span: Span) -> bool:
+        """A dataset row is the capability's answer, so it takes every answer-level matrix
+        row; a ``span_name`` names where that answer is produced live, which no dataset row
+        is called."""
+        return row.span_type in ("", span.span_type)
+
     def process(self, row: row_store.DatasetRow, run_row: EvalRunRow) -> Span:
         row = generation.prepared(row)
         seed = generation.row_seed(row)

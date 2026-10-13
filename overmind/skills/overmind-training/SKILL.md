@@ -22,7 +22,10 @@ workshop findings rather than assuming a sample describes the whole corpus.
 
 Use `get_model_catalog` for initial model discovery, then
 `check_finetune_readiness` for the selected dataset. A capability is optional;
-held-out evaluation data and an applicable eval set are required. Use the
+held-out evaluation data and an applicable eval set are required. With a
+capability, its active set is the default: the Default set `overmind sync`
+builds from the code's expectations and toml checks. Before and after
+evaluations use the same rows. Use the
 returned requirements to identify technical blockers. Quality findings,
 overlap and incomplete semantic reviews remain visible advisory warnings.
 

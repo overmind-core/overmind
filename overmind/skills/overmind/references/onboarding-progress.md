@@ -32,9 +32,9 @@ connection are verified; do not reinstall or resync just to fill the checklist.
 1. **Write snapshot** — save the capability descriptions incrementally.
 1. **Validate configuration** — convert and check the local `overmind.toml`.
 1. **Sync capabilities** — send the snapshot to the configured Overmind project.
-1. **Instrument capabilities** — decorate every function, tool, retrieval step and model call the scan found, and declare each span's expectations in the code.
+1. **Instrument capabilities** — decorate every function, tool, retrieval step and model call the scan found, declare each span's expectations in the code, and sync again so they join each capability's eval set.
 
-The roadmap ends at the applied decorators. Running the application, the
+The roadmap ends at the applied decorators and that sync. Running the application, the
 verification trace, and server-side scoring of that trace are separate work; do
 not imply they have happened.
 
@@ -92,7 +92,7 @@ the server. On resume, verify earlier outputs before marking them complete.
 
 ## Outcome and next action
 
-After the decorators are applied, finish with **Onboarding complete · 10 of 10 stages**.
+After the decorators are applied and synced, finish with **Onboarding complete · 10 of 10 stages**.
 Give the user a compact outcome, not another recap of the steps:
 
 - What landed: capability names/count, destination, a link to the local
@@ -124,7 +124,7 @@ is not the model performing the scan.
 
 - **Coding-agent model:** repository excerpts and tool results read during the scan enter the coding agent's context and may be sent to its configured provider. Local AST inventory and TOML conversion do not themselves call a model.
 - **Overmind destination:** name the resolved API host and project. The initial connection sends project setup data and any existing snapshot. The final sync sends the repository summary, capability descriptions, source paths/references, captured prompt text, tool descriptions/schemas, and deterministic check definitions. It does not send a repository archive.
-- **Decorators:** the instrumentation stage edits source files on this machine. Expectation sentences written there stay in the repository and reach Overmind only as span attributes when the application runs.
+- **Decorators:** the instrumentation stage edits source files on this machine. The sync after it sends the expectation sentences declared on entry-point, workflow and `observe` decorators, each with the function name it is declared on; no other source leaves. All expectations also travel as span attributes when the application runs.
 - **Credentials:** the CLI uses the Overmind API key to authenticate to that host. The configuration's API-key field is excluded from the capability snapshot. Do not read secret files into model context or copy credential values into capability descriptions. Arbitrary prompt/card text is not automatically secret-free.
 - **After instrumentation:** the declared expectations travel with ingested spans, and Overmind scores those spans with its configured judge. If this deployment's exact judge model is not available, say **Server judge model not available in this session**; do not guess from SDK defaults or call this local-only processing.
 

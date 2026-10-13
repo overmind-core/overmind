@@ -317,8 +317,11 @@ Typical loop (local setup once, then MCP):
 1. **Shape it** — use `message_dataset_agent`, poll
    `get_job(kind=dataset_run)`, inspect with `inspect_dataset`, and accept a
    proposed cell with `run_dataset` only after user approval.
-1. **Grade it** — [evals.md](references/evals.md) when you want an
-   eval-vs-eval comparison you drive yourself. Finetune and optimizer runs
+1. **Grade it** — the capability's active eval set (its Default set, built by
+   `overmind sync` from decorator expectations and toml checks) grades live
+   traces, eval runs, backtests, the optimizer and training alike; change it in
+   code or the toml and sync. [evals.md](references/evals.md) covers that and
+   the eval-vs-eval comparisons you drive yourself. Finetune and optimizer runs
    create their own incumbent / experiment baselines automatically — do not
    spend a manual eval run just to give them a comparison point.
 1. **Improve** — [finetuning.md](references/finetuning.md) (**train** dataset;

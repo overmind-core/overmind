@@ -1,5 +1,5 @@
-"""The Default eval set sync keeps for each capability: its toml expectations and
-deterministic checks plus the seeded checks that apply to its spans."""
+"""The Default eval set sync keeps for each capability: the expectations its code declares,
+its toml expectations and deterministic checks, plus the seeded checks that apply to its spans."""
 
 from __future__ import annotations
 
@@ -65,6 +65,36 @@ def expectation_rows(capability: Capability) -> list[EvalMatrix]:
     return rows
 
 
+def declared_rows(capability: Capability) -> list[EvalMatrix]:
+    """Upserts one llm row per ``expectations=`` sentence the synced checkout declares, scoped
+    to its span, and deletes the rows of sentences the code no longer declares. The sentence
+    is the row's name, so a live span carrying the same expectation is judged once."""
+    meta = capability.improvement_metadata or {}
+    declared: dict[str, str] = {}
+    for entry in meta.get("expectations") or []:
+        sentence = str(entry.get("expectation") or "").strip()[:EXPECTATION_LIMIT]
+        if sentence:
+            declared.setdefault(sentence, str(entry.get("span_name") or "")[:255])
+    rows = []
+    for sentence, span_name in declared.items():
+        row, _ = EvalMatrix.objects.update_or_create(
+            project_id=capability.project_id,
+            capability=capability,
+            name=sentence[:255],
+            defaults={"type": EvalMatrix.Type.LLM, "source": sentence, "span_name": span_name},
+        )
+        rows.append(row)
+    names = {row.name for row in rows}
+    dropped = set((meta.get("eval_preload") or {}).get("declared") or []) - names
+    EvalMatrix.objects.filter(
+        project_id=capability.project_id,
+        capability=capability,
+        type=EvalMatrix.Type.LLM,
+        name__in=dropped,
+    ).delete()
+    return rows
+
+
 def deterministic_rows(capability: Capability) -> list[EvalMatrix]:
     """Upserts one deterministic row per toml entry that names a catalog ``check``; the toml
     owns the script's constants (``params``) and its span scope."""
@@ -115,7 +145,8 @@ def check_rows(capability: Capability) -> list[EvalMatrix]:
 def upsert(capability: Capability) -> EvalSet:
     """Rebuilds the Default set's rows and activates it when the capability has no set."""
     started = timezone.now()
-    expectations = expectation_rows(capability)
+    declared = declared_rows(capability)
+    expectations = [*expectation_rows(capability), *declared]
     seeded = [*deterministic_rows(capability), *check_rows(capability)]
     eval_set, _ = EvalSet.objects.get_or_create(
         project_id=capability.project_id, capability=capability, name=NAME
@@ -130,6 +161,7 @@ def upsert(capability: Capability) -> EvalSet:
         "finished_at": timezone.now().isoformat(),
         "error": None,
         "counts": {"expectations": len(expectations), "checks": len(seeded)},
+        "declared": sorted(row.name for row in declared),
     }
     capability.improvement_metadata = meta
     capability.save(update_fields=["active_eval_set", "improvement_metadata", "updated_at"])

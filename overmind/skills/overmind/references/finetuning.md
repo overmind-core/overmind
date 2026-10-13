@@ -46,7 +46,11 @@ eval set, and the same train and eval cells. A model that is not in
    training never converts worker targets into orchestrator targets.
 1. Call `check_finetune_readiness` after selecting the training dataset/cell.
    Capability is optional; omit it or pass null for no association. An eval
-   dataset and an eval set with enabled eval matrix rows are still required.
+   dataset and an eval set with enabled eval matrix rows are still required;
+   with a capability, its active set is the default, built by `overmind sync`
+   from the code's expectations and toml checks
+   ([evals.md](evals.md#configure)). The before and after evaluations use the
+   same rows.
    It may narrow or recommend candidates;
    use its `catalog` and `recommendations` for `base_model` values and fix
    every reported missing prerequisite.

@@ -445,7 +445,12 @@ class OptimizerExperiment(models.Model):
         from overbae.services.datasets import rows as row_store  # noqa: PLC0415
 
         eval_set = self.eval_set or self.capability.active_eval_set
-        matrix = runs.freeze_matrix(eval_set=eval_set, capability=self.capability)
+        first = EvalRun.objects.filter(group=self.id).order_by("created_at").first()
+        matrix = (
+            first.matrix
+            if first
+            else runs.freeze_matrix(eval_set=eval_set, capability=self.capability)
+        )
         if not matrix or self.cell_id is None:
             return None
         datapoints = list(row_store.iter_rows(self.cell))

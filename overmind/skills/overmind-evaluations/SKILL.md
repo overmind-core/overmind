@@ -27,12 +27,27 @@ available. Use `check_evaluation_readiness` with the selected cell and proposed
 targets. Resolve reported eval set rows, dataset and credit requirements. Read
 `overmind://eval-sets/{eval_set}` for set details.
 
-When metric changes are requested, collect the actual expectation and use
-`create_eval_matrix_row` (an llm row is one checkable sentence; a deterministic
-row is an audited `evaluate(span)` check); group rows with `create_eval_set`
-when needed. A row cannot be edited: `delete_eval_matrix_row`, then create the
-replacement. Preserve existing evaluation semantics unless the user asks to
-change them.
+A run grades with the capability's active eval set unless given another. In a
+repository that set is the Default set `overmind sync` keeps: an llm row per
+`expectations=[...]` sentence on entry-point, workflow and `observe`
+decorators, and a deterministic row per toml `eval_matrix` entry naming a
+catalog `check` with its `params`. Read `eval_preload` on
+`overmind://capabilities/{capability}` to see what it holds. Use it as is; do
+not recreate it or copy its rows into a new set to prepare a run.
+
+When metric changes are requested, collect the actual expectation. In a
+repository, edit the decorator's `expectations` or the toml entry and run
+`overmind sync`. Without the repository, or for a rule no catalog check
+expresses, use `create_eval_matrix_row` (an llm row is one checkable sentence;
+a deterministic row is an audited `evaluate(span)` check) and add it to the
+active set with `create_eval_set(..., activate=True)`. A row cannot be edited:
+`delete_eval_matrix_row`, then create the replacement. Preserve existing
+evaluation semantics unless the user asks to change them.
+
+Over a dataset, rows whose `span_type` is blank or `llm_call` score each row's
+answer whatever their `span_name`; tool, timing and cost checks abstain.
+Live span and trajectory scores and eval-run scores are different
+observations of the same criteria.
 
 ## Run and compare
 

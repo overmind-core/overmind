@@ -182,6 +182,107 @@ def stamp_capability_cards(data: dict[str, Any], repo_root: str | Path) -> None:
             verify_trajectory_claims(raw["capability_card"], chassis)
 
 
+_ANSWER_DECORATORS = {"observe", "entry_point", "workflow"}
+_STEP_TYPES = {"tool", "tool_call", "retrieval", "TOOL", "RETRIEVAL"}
+
+
+@dataclass
+class _Declared:
+    qualname: str
+    span_name: str
+    expectations: list[str]
+    capability_id: str = ""
+
+
+def _literal_str(node: ast.expr | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _literal_strings(node: ast.expr | None) -> list[str]:
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    return [
+        item.value.strip()
+        for item in node.elts
+        if isinstance(item, ast.Constant) and isinstance(item.value, str) and item.value.strip()
+    ]
+
+
+def _declared_on(func: ast.FunctionDef | ast.AsyncFunctionDef, qualname: str) -> _Declared | None:
+    """The ``expectations=`` and ``capability_id`` on an Overmind decorator. Tool and
+    retrieval expectations are skipped: they describe a step, not the answer."""
+    for decorator in func.decorator_list:
+        if not isinstance(decorator, ast.Call):
+            continue
+        name = _dotted(decorator.func).rsplit(".", 1)[-1]
+        if name not in _ANSWER_DECORATORS:
+            continue
+        kwargs = {kw.arg: kw.value for kw in decorator.keywords if kw.arg}
+        span_type = kwargs.get("type")
+        if isinstance(span_type, ast.Constant) and span_type.value in _STEP_TYPES:
+            return None
+        if isinstance(span_type, ast.Attribute) and span_type.attr in _STEP_TYPES:
+            return None
+        expectations = _literal_strings(kwargs.get("expectations"))
+        capability_id = _literal_str(kwargs.get("capability_id")) or ""
+        if not expectations and not capability_id:
+            return None
+        span_name = kwargs.get("span_name", decorator.args[0] if decorator.args else None)
+        return _Declared(
+            qualname=qualname,
+            # A span named per call by a callable has no static name to scope to.
+            span_name=qualname if span_name is None else _literal_str(span_name) or "",
+            expectations=expectations,
+            capability_id=capability_id,
+        )
+    return None
+
+
+def declared_expectations(repo_root: str | Path) -> dict[str, list[dict[str, str]]]:
+    """Capability id -> the ``expectations=`` its decorators declare, each with the span it
+    is declared on. A decorator without ``capability_id`` belongs to every entry point
+    whose call graph reaches it."""
+    chassis = extract_chassis(str(repo_root))
+    declared: list[_Declared] = []
+    root = Path(repo_root)
+    for file in root.rglob("*.py"):
+        rel_parts = file.relative_to(root).parts
+        if any(part in _SKIP_DIRS for part in rel_parts):
+            continue
+        try:
+            tree = ast.parse(file.read_text(encoding="utf-8", errors="ignore"))
+        except (OSError, SyntaxError):
+            continue
+
+        def visit(node: ast.AST, prefix: str) -> None:
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    qualname = f"{prefix}{child.name}"
+                    if found := _declared_on(child, qualname):
+                        declared.append(found)
+                    visit(child, f"{qualname}.<locals>.")
+                elif isinstance(child, ast.ClassDef):
+                    visit(child, f"{prefix}{child.name}.")
+                else:
+                    visit(child, prefix)
+
+        visit(tree, "")
+
+    reach = {entry.capability_id: reachable_names(entry.qualname, chassis) for entry in declared if entry.capability_id}
+    by_capability: dict[str, list[dict[str, str]]] = {}
+    for entry in declared:
+        owners = (
+            [entry.capability_id]
+            if entry.capability_id
+            else [cap for cap, names in reach.items() if entry.qualname.rsplit(".", 1)[-1] in names]
+        )
+        for owner in owners:
+            by_capability.setdefault(owner, []).extend(
+                {"expectation": text, "span_name": entry.span_name} for text in entry.expectations
+            )
+    return by_capability
+
+
 def chassis(
     root: Annotated[Path, typer.Option(help="Repository root to parse")] = Path("."),
 ) -> None:

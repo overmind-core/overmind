@@ -19,6 +19,11 @@ entries here cover the SDK surface.
   declares each span's `expectations` in code. The scan's `eval_matrix` holds only
   deterministic checks (`check` plus `params`), which sync turns into rows; a bad
   `check` or `params` makes sync return a 400 naming the entry.
+- `overmind sync` reads the `expectations=` declared on the checkout's `entry_point`,
+  `workflow` and `observe` decorators and sends them with each synced capability; they never
+  enter `overmind.toml`. The platform adds them to the capability's Default eval set, so
+  `overmind backtest`, optimiser runs and training evaluations judge the same criteria as
+  live scoring. Run `overmind sync` again after decorating.
 - `overmind backtest` creates one run per target in a single eval-run group
   (`targets`, a `recorded` baseline plus one `generate` run per model) and gates
   on each candidate's `/comparison/` against the baseline.

@@ -14,6 +14,11 @@ Use the native `compare-models` prompt. This is optimizer mode
    **eval** contracts (see
    [SKILL.md](../SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)
    and [datasets.md](datasets.md)). Train and pending datasets are refused.
+1. **Grade with the active eval set.** Every model is scored with the rows of
+   the experiment's first run, by default the capability's active set. Confirm
+   it holds the code's expectations and toml checks (`eval_preload` on
+   `overmind://capabilities/{capability}`; `overmind sync` after changing
+   either). See [evals.md](evals.md#configure).
 1. Pull the experiment's used version once to
    `.overmind/datasets/<cell_id>.jsonl` — never re-fetch per model.
 

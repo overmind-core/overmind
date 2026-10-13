@@ -282,6 +282,50 @@ def test_a_trace_served_by_another_model_fails_the_datapoint(eager, target, obse
         assert observed in command.error
 
 
+@pytest.mark.django_db(transaction=True)
+def test_candidates_share_the_first_rubric_and_score_answer_rows_scoped_to_a_span(eager):
+    experiment = _experiment()
+    make_matrix_row(
+        experiment.project,
+        "Answer matches",
+        capability=experiment.capability,
+        type=EvalMatrix.Type.DETERMINISTIC,
+        source=EXACT_MATCH,
+        span_name="SupportAgent.run",
+    )
+    make_matrix_row(
+        experiment.project,
+        "Tool step",
+        capability=experiment.capability,
+        type=EvalMatrix.Type.DETERMINISTIC,
+        source="def evaluate(span):\n    return False\n",
+        span_type="tool_call",
+    )
+
+    def grade(order: int, model: str):
+        iteration = create_iteration(experiment, order=order, candidates=[{"target_model": model}])
+        posted = iteration.candidates.get()
+        post_results(
+            experiment,
+            [
+                {"candidate_id": str(posted.id), "datapoint_index": 0, "output": "a"},
+                {"candidate_id": str(posted.id), "datapoint_index": 1, "output": "b"},
+            ],
+        )
+        evaluate_iteration(experiment, order)
+        posted.refresh_from_db()
+        return posted
+
+    first = grade(1, MODELS[0])
+    make_matrix_row(experiment.project, "Added later", capability=experiment.capability)
+    second = grade(2, MODELS[1])
+
+    assert [row["name"] for row in second.eval_run.matrix] == ["Answer matches", "Tool step"]
+    assert second.eval_run.matrix == first.eval_run.matrix
+    assert set(first.scores["metrics"]) == {"Answer matches"}
+    assert first.score == pytest.approx(100.0)
+
+
 @pytest.mark.parametrize(
     ("mode", "candidate", "label", "model_name"),
     [

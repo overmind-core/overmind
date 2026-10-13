@@ -41,12 +41,15 @@ class SpanProcessor:
         """Unscoped llm rows describe the capability's answer."""
         return answers_for_capability(span, trace)
 
+    def applies(self, row: EvalMatrix, span: Span) -> bool:
+        return matches(row, span)
+
     def rows(
         self, span: Span, matrix: list[EvalMatrix], trace: dict[str, Span]
     ) -> list[EvalMatrix]:
         rows: dict[str, EvalMatrix] = {}
         for row in matrix:
-            if not matches(row, span):
+            if not self.applies(row, span):
                 continue
             unscoped = not row.span_type and not row.span_name
             if (

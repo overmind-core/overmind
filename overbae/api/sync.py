@@ -29,6 +29,13 @@ class EvalMetricSerializer(serializers.Serializer):
     managed_name = serializers.CharField(required=False, allow_blank=True)
 
 
+class DeclaredExpectationSerializer(serializers.Serializer):
+    """One ``expectations=`` sentence read from a decorator in the synced checkout."""
+
+    expectation = serializers.CharField(max_length=1000)
+    span_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
 class CapabilitySerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False, allow_null=True)
     slug = serializers.SlugField()
@@ -42,6 +49,9 @@ class CapabilitySerializer(serializers.Serializer):
     eval_metrics = EvalMetricSerializer(many=True, required=False)
     capability_card = serializers.DictField(required=False)
     eval_matrix = serializers.ListField(child=serializers.DictField(), required=False)
+    expectations = DeclaredExpectationSerializer(
+        many=True, required=False, write_only=True, max_length=200
+    )
     archived = serializers.BooleanField(required=False, default=False)
     status = serializers.CharField(read_only=True)
 

@@ -308,6 +308,29 @@ def test_toml_deterministic_entry_becomes_a_parameterised_row_in_the_default_set
 
 
 @pytest.mark.django_db
+def test_code_expectations_become_span_scoped_rows_and_leave_with_the_code(client):
+    declared = [
+        {"expectation": "Cites the order id", "span_name": "SupportAgent.run"},
+        {"expectation": "Lists the refund steps", "span_name": "summarize"},
+    ]
+    client.post("/api/v1/sync", _snapshot([_cap(expectations=declared)]), format="json")
+
+    cap = Capability.objects.get(slug="support-agent")
+    rows = {row.name: row for row in cap.active_eval_set.rows.filter(capability=cap)}
+    assert {name: (row.type, row.source, row.span_name) for name, row in rows.items()} == {
+        "Cites the order id": ("llm", "Cites the order id", "SupportAgent.run"),
+        "Lists the refund steps": ("llm", "Lists the refund steps", "summarize"),
+    }
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 2
+
+    client.post("/api/v1/sync", _snapshot([_cap(expectations=declared[:1])]), format="json")
+    assert set(cap.eval_matrix.values_list("name", flat=True)) == {"Cites the order id"}
+
+    client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
+    assert set(cap.eval_matrix.values_list("name", flat=True)) == {"Cites the order id"}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "entry",
     [
