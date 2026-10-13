@@ -27,6 +27,11 @@ const STATUS_FACE: Record<string, { icon: React.ReactNode; label: string; spinni
     label: "Deploying",
     spinning: true,
   },
+  evaluating: {
+    icon: <Spinner className="text-current" size="sm" />,
+    label: "Evaluating",
+    spinning: true,
+  },
   failed: { icon: <Icon.failed className="size-3.5" />, label: "Failed" },
   partially_completed: {
     icon: <Icon.success className="size-3.5" />,

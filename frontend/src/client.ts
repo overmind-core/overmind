@@ -30,6 +30,8 @@ import {
   Configuration,
   ConnectorCredentialsApi,
   DatasetsApi,
+  DecisionJobsApi,
+  DecisionModelsApi,
   DeployedModelsApi,
   EvalRunsApi,
   EvalSamplesApi,
@@ -409,6 +411,8 @@ export class API {
   billing: BillingApi;
   connectorCredentials: ConnectorCredentialsApi;
   datasets: DatasetsApi;
+  decisionJobs: DecisionJobsApi;
+  decisionModels: DecisionModelsApi;
   deployedModels: DeployedModelsApi;
   feedback: FeedbackApi;
   finetuningJobs: FinetuningJobsApi;
@@ -440,6 +444,8 @@ export class API {
     this.billing = new BillingApi(this.cfg);
     this.connectorCredentials = new ConnectorCredentialsApi(this.cfg);
     this.datasets = new DatasetsApi(this.cfg);
+    this.decisionJobs = new DecisionJobsApi(this.cfg);
+    this.decisionModels = new DecisionModelsApi(this.cfg);
     this.deployedModels = new DeployedModelsApi(this.cfg);
     this.feedback = new FeedbackApi(this.cfg);
     this.finetuningJobs = new FinetuningJobsApi(this.cfg);

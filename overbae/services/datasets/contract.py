@@ -2,7 +2,9 @@
 
 ``train`` needs a ``messages`` column whose every row is a valid chat transcript
 with an assistant turn. ``eval`` needs an ``input`` column present on every row
-plus an ``expected_output`` column with at least one reference.
+plus an ``expected_output`` column with at least one reference. ``decision`` needs
+every row to be a decision request with its answers (``datasets.decisions``); such
+rows train and evaluate decision models, never chat models.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import re
 from collections import Counter
 from typing import Any
 
+from overbae.services.datasets import decisions
 from overbae.services.datasets.store import Frame
 from overbae.services.datasets.text import approx_tokens
 from overbae.services.finetuning_tool_validation import tool_schema_errors
@@ -65,6 +68,8 @@ def _as_obj(value: Any) -> Any:
 
 def eval_input_type(value: Any) -> str:
     value = _as_obj(value)
+    if decisions.is_request(value):
+        return "decision"
     if (
         isinstance(value, list)
         and value
@@ -188,6 +193,13 @@ def _eval_check(frame: Frame) -> dict[str, Any]:
             "failures": [{"row": i, "reason": "input is empty"} for i in empty_rows],
             "has_reference": False,
         }
+    if types["decision"]:
+        return {
+            "ok": False,
+            "reason": "decision rows evaluate decision models, not chat models",
+            "input_type": "decision",
+            "has_reference": True,
+        }
     input_type = types.most_common(1)[0][0] if types else "text"
     reference_rows = (
         sum(1 for v in frame.values("expected_output") if not _missing(v))
@@ -232,12 +244,44 @@ def measure(frame: Frame) -> dict[str, Any]:
             "rows": 0,
             "train": {"ok": False, "reason": "no rows"},
             "eval": {"ok": False, "reason": "no rows"},
+            "decision": {"ok": False, "reason": "no rows"},
         }
-    report = {"rows": rows, "train": _train_check(frame), "eval": _eval_check(frame)}
+    report = {
+        "rows": rows,
+        "train": _train_check(frame),
+        "eval": _eval_check(frame),
+        "decision": _decision_check(frame),
+    }
     if not (report["train"]["ok"] or report["eval"]["ok"]) and not _has_text(frame):
         for shape in (report["train"], report["eval"]):
             shape["fixable"] = False
     return report
+
+
+def _decision_check(frame: Frame) -> dict[str, Any]:
+    if "input" not in frame or "expected_output" not in frame:
+        return {"ok": False, "reason": "no decision rows"}
+    failures: list[dict[str, Any]] = []
+    failed = decision_rows = 0
+    for index, record in enumerate(frame.records(["input", "expected_output"])):
+        if decisions.is_request(record.get("input")):
+            decision_rows += 1
+        try:
+            decisions.record(record.get("input"), record.get("expected_output"))
+        except decisions.DecisionRowError as exc:
+            failed += 1
+            if len(failures) < _FAILURE_SAMPLES:
+                failures.append({"row": index, "reason": str(exc)})
+    if not decision_rows:
+        return {"ok": False, "reason": "no decision rows"}
+    if failed:
+        first = failures[0]
+        return {
+            "ok": False,
+            "reason": f"{failed} rows are not valid decisions; row {first['row']}: {first['reason']}",
+            "failures": failures,
+        }
+    return {"ok": True, "reason": "", "rows": decision_rows}
 
 
 def _has_text(frame: Frame) -> bool:
@@ -256,8 +300,9 @@ def _has_text(frame: Frame) -> bool:
 
 def propose_intent(frame: Frame, report: dict[str, Any]) -> str:
     """What the rows look like: a transcript table is ``train``, an input with a
-    reference is ``eval``, anything else stays ``pending``."""
-    if (report.get("train") or {}).get("ok"):
+    reference is ``eval``, decision rows are ``train`` (they mostly train a decision
+    model), anything else stays ``pending``."""
+    if (report.get("train") or {}).get("ok") or (report.get("decision") or {}).get("ok"):
         return TRAIN
     if (report.get("eval") or {}).get("ok"):
         return EVAL

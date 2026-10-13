@@ -325,3 +325,66 @@ class ServingBackend:
     def _pre_warm(self, *, model_id: str, **_) -> dict:
         self.warmed.append(model_id)
         return {"ok": True}
+
+
+DECISION_APP = "overmind-decision"
+
+
+def _decision_answer(question: dict) -> dict:
+    if question["type"] == "noul":
+        return {"type": "noul", "noul": 0.7}
+    keys = (
+        list(question["criteria"])
+        if question["type"] == "choice"
+        else [str(i) for i in range(len(question["criteria"]))]
+    )
+    weights = {key: 0.1 / max(1, len(keys) - 1) for key in keys}
+    weights[keys[0]] = 0.9 if len(keys) > 1 else 1.0
+    return {"type": question["type"], "probabilities": weights}
+
+
+@dataclass
+class DecisionBackend:
+    """The ``overmind-decision`` app: staged records, training, evaluation and scoring.
+    Training and evaluation are held until released; scoring answers each question with
+    its first option at 0.9."""
+
+    cloud: FakeModal
+    staged: dict[str, dict[str, str | None]] = field(default_factory=dict)
+    trained: list[dict] = field(default_factory=list)
+    scored: list[dict] = field(default_factory=list)
+
+    def install(self, *, warm: bool = True) -> DecisionBackend:
+        self.cloud.deploy(DECISION_APP, "upload_records", self._upload)
+        self.cloud.deploy(DECISION_APP, "train_decision", self._train, held=True)
+        self.cloud.deploy(DECISION_APP, "evaluate_decision", self._evaluate, held=True)
+        for server in ("ClefServer", "D3Server"):
+            self.cloud.deploy(DECISION_APP, f"{server}.score", self._score, held=not warm)
+        return self
+
+    def _upload(self, job_id: str, records_jsonl: str, eval_jsonl: str | None = None) -> dict:
+        self.staged[job_id] = {"records": records_jsonl, "eval": eval_jsonl}
+        return {"records": records_jsonl.count("\n")}
+
+    def _train(self, payload: dict) -> dict:
+        self.trained.append(payload)
+        return {"model": payload["repo"], "saved": f"/artifacts/{payload['job_id']}/adapter"}
+
+    def _records(self, job_id: str, name: str) -> list[dict]:
+        import json
+
+        return [json.loads(line) for line in (self.staged[job_id][name] or "").splitlines()]
+
+    def _evaluate(self, payload: dict) -> dict:
+        answers = [
+            {key: _decision_answer(q) for key, q in record["questions"].items()}
+            for record in self._records(payload["job_id"], "eval")
+        ]
+        return {"base": answers, "trained": answers}
+
+    def _score(self, payload: dict) -> dict:
+        self.scored.append(payload)
+        return {
+            "answers": {key: _decision_answer(q) for key, q in payload["questions"].items()},
+            "usage": {"input_tokens": 12, "output_tokens": 0},
+        }

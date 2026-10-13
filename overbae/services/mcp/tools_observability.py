@@ -69,6 +69,8 @@ from overbae.services.mcp.resources import (
     resource_link,
     safe_json,
 )
+from overbae.services.mcp.tools_decisions import decision_job_contract
+from overbae.services.mcp.tools_decisions import project_job as project_decision_job
 from overbae.services.model_activation import activation_progress
 
 _HEALTH_EVALUATOR_CAP = 50
@@ -676,6 +678,13 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "finetune_job_id": str(job.finetuning_job_id) if job.finetuning_job_id else None,
         }
         primary = _link("deployments", str(job.id), label)
+    elif kind == "decision_job":
+        job = project_decision_job(context, ref)
+        contract = decision_job_contract(job)
+        created_at, completed_at = job.created_at, job.completed_at
+        label, status, job_error = f"Decision job {job.model_id}", job.status, job.error or None
+        details = contract.model_dump(mode="json", exclude={"resource"})
+        primary = contract.resource
     elif kind == "connector_sync":
         job = (
             ConnectorCredential.objects.filter(project=context.project, id=normalized_id).first()

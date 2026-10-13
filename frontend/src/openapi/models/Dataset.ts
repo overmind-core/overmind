@@ -145,6 +145,12 @@ export interface Dataset {
      */
     readonly importBlocked: boolean;
     /**
+     * The active version is valid decision rows, for decision models.
+     * @type {boolean}
+     * @memberof Dataset
+     */
+    readonly decisionReady: boolean;
+    /**
      *
      * @type {Array<Cell>}
      * @memberof Dataset
@@ -189,6 +195,7 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('running' in value) || value['running'] === undefined) return false;
     if (!('importBlocked' in value) || value['importBlocked'] === undefined) return false;
+    if (!('decisionReady' in value) || value['decisionReady'] === undefined) return false;
     if (!('cells' in value) || value['cells'] === undefined) return false;
     if (!('createdBy' in value) || value['createdBy'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
@@ -222,6 +229,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'error': json['error'],
         'running': json['running'],
         'importBlocked': json['import_blocked'],
+        'decisionReady': json['decision_ready'],
         'cells': ((json['cells'] as Array<any>).map(CellFromJSON)),
         'createdBy': json['created_by'],
         'createdAt': (new Date(json['created_at'])),
@@ -233,7 +241,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'state'|'error'|'running'|'import_blocked'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'state'|'error'|'running'|'import_blocked'|'decision_ready'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

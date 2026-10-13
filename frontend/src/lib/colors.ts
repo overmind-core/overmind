@@ -87,6 +87,7 @@ const STATES_BY_TONE: Array<[StatusTone, readonly string[]]> = [
     [
       "analysing",
       "deploying",
+      "evaluating",
       "pending",
       "preparing",
       "queued",

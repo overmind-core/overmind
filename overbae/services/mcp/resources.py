@@ -21,6 +21,7 @@ from overbae.models import (
     Capability,
     Dataset,
     DatasetImport,
+    DecisionJob,
     DeployedModel,
     EvalSet,
     FinetuningJob,
@@ -141,6 +142,34 @@ def _connector_setup_resource(uri: str) -> dict:
             "configure_connector (stage mapping.names, present alternatives, wait, confirm_mapping=true)",
             "sync_connector",
         ],
+    }
+
+
+def _decision_models_resource(uri: str) -> dict:
+    from overbae.modal.decision_catalog import models
+
+    return {
+        "uri": uri,
+        "kind": "decision_models",
+        "models": [
+            {
+                "id": row["id"],
+                "family": row["family"],
+                "params": row["params"],
+                "max_context_length": row["max_context_length"],
+            }
+            for row in models().values()
+        ],
+        "rows": (
+            "A decision row has input = {state, questions} and expected_output = {question: "
+            "answer}. A question is {type, instructions, criteria}: choice criteria map option "
+            "keys to descriptions; noul has the options true and false; score criteria list "
+            "levels and its options are the level indexes 0, 1, …. An answer is one option or "
+            "an object of option weights. Add such a version with add_dataset_version; "
+            "inspect_dataset reports the decision fit. Start training with start_decision_job "
+            "on a train dataset and poll get_job with kind decision_job. A trained model "
+            "answers System One requests at POST /api/decision-jobs/{id}/systemone/."
+        ),
     }
 
 
@@ -1094,6 +1123,18 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         }
     if kind == "eval_run":
         return _eval_run_resource(project, value, uri)
+    if kind == "decision_job":
+        # tools_decisions builds links with this module.
+        from overbae.services.mcp.tools_decisions import decision_job_contract
+
+        job = (
+            DecisionJob.objects.select_related("cell", "eval_cell")
+            .filter(pk=_uuid_ref(value), project=project)
+            .first()
+        )
+        if job is None:
+            raise _not_found("decision job", value)
+        return {"kind": kind, **decision_job_contract(job).model_dump(mode="json", by_alias=True)}
     if kind in {"finetune", "finetune_job"}:
         return _finetune_resource(project, value, uri)
     if kind in {"deployment", "model_deployment"}:
@@ -1126,6 +1167,8 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         return _project_resource(project, raw_uri)
     if host == "dataset-upload" and not segments:
         return _dataset_upload_resource(raw_uri)
+    if host == "decision-models" and not segments:
+        return _decision_models_resource(raw_uri)
     if host == "dataset-export" and not segments:
         return _dataset_export_resource(raw_uri)
     if host == "checkpoint-download" and not segments:
@@ -1180,6 +1223,13 @@ def resource_list() -> list[types.Resource]:
             title="Local dataset upload",
             uri="overmind://dataset-upload",
             description="CLI guidance for uploading local dataset bytes.",
+            mimeType=JSON_MIME,
+        ),
+        types.Resource(
+            name="decision-models",
+            title="Decision models",
+            uri="overmind://decision-models",
+            description="Trainable decision models and the decision row format.",
             mimeType=JSON_MIME,
         ),
         types.Resource(
@@ -1247,6 +1297,7 @@ async def read_resource(uri: AnyUrl) -> Iterable[ReadResourceContents]:
             raise MCPError("invalid_input", "Pass exactly one project_id.")
         static = parsed.netloc in {
             "dataset-upload",
+            "decision-models",
             "dataset-export",
             "checkpoint-download",
             "connector-setup",

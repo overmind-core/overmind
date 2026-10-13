@@ -85,7 +85,7 @@ The API refuses to start until every required key is set, and the error names ea
 | `OPENAI_API_KEY`    | The `embedding_cosine` evaluator                                        |
 | `STRIPE_SECRET_KEY` | Paid plans and the credit cap; without it, usage is metered with no cap |
 
-Fine-tuning and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py` and `modal_sft_worker.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
+Fine-tuning, decision models and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py`, `modal_sft_worker.py` and `modal_decision_worker.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
 
 </details>
 

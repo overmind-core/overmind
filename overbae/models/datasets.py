@@ -197,6 +197,12 @@ class Cell(models.Model):
             return False, str(shape.get("reason") or f"the table is not a {intent} table")
         return True, ""
 
+    def fits_decision(self) -> tuple[bool, str]:
+        shape = (self.intent_report or {}).get("decision") or {}
+        if not shape.get("ok"):
+            return False, str(shape.get("reason") or "no decision rows")
+        return True, ""
+
 
 class Execution(models.Model):
     """One script run, successful or failed. Kept 30 days. Transitions use

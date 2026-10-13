@@ -259,6 +259,10 @@ from overbae.services.mcp.tools_model_catalog import (  # noqa: E402
 
 register_model_catalog_tools(CATALOG)
 
+from overbae.services.mcp.tools_decisions import register_decision_tools  # noqa: E402
+
+register_decision_tools(CATALOG)
+
 from overbae.services.mcp.tools_optimizer import register_optimizer_tools  # noqa: E402
 
 register_optimizer_tools(CATALOG)

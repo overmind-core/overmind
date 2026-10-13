@@ -7,6 +7,8 @@ on:
       - "overbae/modal/modal_vllm_worker.py"
       - "overbae/modal/modal_sft_worker.py"
       - "overbae/modal/register_model.py"
+      - "overbae/modal/modal_decision_worker.py"
+      - "overbae/modal/decision_*"
       - "overbae/modal/weight_ops.py"
       - "overbae/modal/models.json"
       - "modal_shared/**"
@@ -75,3 +77,8 @@ jobs:
         env:
           MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
         run: modal deploy overbae/modal/modal_sft_worker.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy decision worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_decision_worker.py --env ${{ matrix.modal_env }}

@@ -88,6 +88,8 @@ def _capability_link(capability) -> ResourceLinkContract:
 class FitReport(MCPModel):
     ok: bool
     reason: str = Field(default="", max_length=500)
+    # Present only for decision rows, which decision models read instead of chat consumers.
+    format: Literal["decision"] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class CapabilityRef(MCPModel):
@@ -480,6 +482,10 @@ def mutation_output(
 
 
 def _fit(cell: Cell, intent: str) -> FitReport:
+    decision = (cell.intent_report or {}).get("decision") or {}
+    if decision.get("reason") != "no decision rows" and decision:
+        ok, reason = cell.fits_decision()
+        return FitReport(ok=ok, reason=sanitize_error(reason, 500), format="decision")
     ok, reason = cell.fits(intent)
     return FitReport(ok=ok, reason=sanitize_error(reason, 500))
 

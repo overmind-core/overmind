@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
+import { DecisionJobSheet, DecisionJobsTable } from "@/components/decision-models/decision-jobs";
+import { NewDecisionJobDialog } from "@/components/decision-models/new-decision-job-dialog";
 import { JobDetailDrawer } from "@/components/finetuning/job-detail";
 import { JobsHistory } from "@/components/finetuning/jobs-history";
 import { TrainWizard } from "@/components/finetuning/train/train-wizard";
@@ -11,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { featureFlags } from "@/lib/feature-flags";
 import { type TrainingSearch, trainingSearchSchema } from "@/lib/schemas";
@@ -25,7 +28,7 @@ export const Route = createFileRoute("/_auth/training")({
 
 const TRAINING_HEADER = (
   <PageHeader
-    description="Fine-tune models on your own datasets."
+    description="Train chat and decision models on your own datasets."
     icon={<Icon.finetuning className="[image-rendering:pixelated] invert" />}
     title="Training"
   />
@@ -44,6 +47,9 @@ function TrainingPage() {
     capabilityId: trainCapabilityId,
     datasetId: trainDatasetId,
     evalDatasetId: trainEvalDatasetId,
+    models,
+    decision: newDecision,
+    decisionJob,
   } = search;
   const navigate = Route.useNavigate();
   // URL state, not local: the wizard is deep-linkable and the breadcrumb pops
@@ -129,11 +135,71 @@ function TrainingPage() {
     );
   }
 
+  const kindTabs = (
+    <Tabs
+      onValueChange={(value) =>
+        navigate({
+          replace: true,
+          search: (prev) => ({
+            ...prev,
+            models: value === "decision" ? "decision" : undefined,
+            page: 1,
+          }),
+        })
+      }
+      value={models ?? "chat"}
+    >
+      <TabsList>
+        <TabsTrigger value="chat">Chat models</TabsTrigger>
+        <TabsTrigger value="decision">Decision models</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
+  if (models === "decision") {
+    return (
+      <PageShell header={TRAINING_HEADER} variant="full">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {kindTabs}
+          <DecisionJobsTable
+            action={
+              <Button onClick={() => patchSearch({ decision: true })}>
+                <Icon.ai /> New decision job
+              </Button>
+            }
+            onOpenJob={(id) => patchSearch({ decisionJob: id })}
+            onPageChange={(p) => patchSearch({ page: p })}
+            onPageSizeChange={(size) => patchSearch({ page: 1, page_size: size })}
+            page={page}
+            pageSize={pageSize}
+            projectId={projectId}
+          />
+        </div>
+        <DecisionJobSheet
+          jobId={decisionJob ?? null}
+          onOpenChange={(open) => !open && patchSearch({ decisionJob: undefined })}
+        />
+        <NewDecisionJobDialog
+          initialDatasetId={trainDatasetId}
+          onOpenChange={(open) =>
+            patchSearch({ datasetId: undefined, decision: open ? true : undefined })
+          }
+          onStarted={(id) =>
+            patchSearch({ datasetId: undefined, decision: undefined, decisionJob: id })
+          }
+          open={newDecision === true}
+          projectId={projectId}
+        />
+      </PageShell>
+    );
+  }
+
   return (
     <>
       <TooltipProvider>
         <PageShell header={TRAINING_HEADER} variant="full">
           <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {kindTabs}
             <JobsHistory
               action={
                 <Button onClick={openTrainWizard}>

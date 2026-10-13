@@ -235,6 +235,7 @@ JobKind = Literal[
     "optimizer_experiment",
     "deployment",
     "model_activation",
+    "decision_job",
 ]
 
 

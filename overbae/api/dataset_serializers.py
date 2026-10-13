@@ -51,6 +51,9 @@ class DatasetSerializer(serializers.ModelSerializer):
     rows = serializers.SerializerMethodField()
     running = serializers.SerializerMethodField()
     import_blocked = serializers.SerializerMethodField()
+    decision_ready = serializers.SerializerMethodField(
+        help_text="The active version is valid decision rows, for decision models."
+    )
     expected_active = serializers.PrimaryKeyRelatedField(
         queryset=Cell.objects.all(),
         write_only=True,
@@ -78,6 +81,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "error",
             "running",
             "import_blocked",
+            "decision_ready",
             "cells",
             "created_by",
             "created_at",
@@ -101,6 +105,10 @@ class DatasetSerializer(serializers.ModelSerializer):
         if self.context.get("summary"):
             return []
         return CellSerializer(self._versions(obj), many=True, context={"intent": obj.intent}).data
+
+    def get_decision_ready(self, obj) -> bool:
+        active = self._active(obj)
+        return bool(active is not None and active.fits_decision()[0])
 
     def get_running(self, obj) -> int:
         if hasattr(obj, "running_count"):

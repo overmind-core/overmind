@@ -106,7 +106,12 @@ export function DatasetNotebook({
   const handOff = useCallback(
     (purpose: UsePurpose) => {
       const capabilityId = dataset?.capability ?? undefined;
-      if (purpose === "train")
+      if (purpose === "decision")
+        void navigate({
+          search: { datasetId, decision: true, models: "decision", projectId },
+          to: "/training",
+        });
+      else if (purpose === "train")
         void navigate({
           search: { capabilityId, datasetId, projectId, train: true },
           to: "/training",

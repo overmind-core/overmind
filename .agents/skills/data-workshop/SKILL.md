@@ -51,6 +51,10 @@ A document split groups by `_overmind_document_id` unless `group_by` is given.
 
 Modal jobs run exact CPU preprocessing after launch for the selected model, training type, context and dataset versions. Setup does not start, display or wait for this step. Technical incompatibilities fail preparation before GPU training; repairs are new workshop versions, and a job using revised versions is checked again. Explicit REST/MCP preparation remains available. See backend-architecture § Training preparation.
 
+## Decision rows
+
+A decision row is `input = {state, questions}` and `expected_output = {question key: answer}` (`services/datasets/decisions.py`, the one validator shared by the contract, `decision_jobs` and the API). A question is `{type, instructions, criteria}`: `choice` criteria map option keys to descriptions, `noul` has the options `true`/`false` (criteria optional), `score` criteria list levels and its options are the indexes `"0"`, `"1"`, …. An answer is one option or `{option: weight}` (normalised). The rules match the pinned unsloth `_target_for`/`_clef_question` and the decision server, so a valid row trains and scores. `contract.measure` adds `intent_report["decision"]` (`ok`, `reason` naming the first bad row, `rows`); the `train` and `eval` checks stay chat-only and an `eval` check refuses decision inputs, so no chat consumer reads them. Landing proposes `train` for decision rows. `use.use(..., decision=True)` gates on `Cell.fits_decision()`. `DatasetSerializer.decision_ready` is the list-level flag. The Console card shows **Ready for decision training** / **evaluation** and **Train a decision model** (`/training?models=decision&decision=true&datasetId=`); MCP agents read `overmind://decision-models` and start `start_decision_job`.
+
 ## Consumers
 
 - A train version hands off to the training wizard (`/training?train=true&datasetId=`); an eval version to the optimiser (`/optimiser?optimize=true&datasetId=`) or to the training wizard as the eval dataset (`/training?train=true&evalDatasetId=`). There is no single-run eval flow.

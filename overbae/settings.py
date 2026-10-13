@@ -429,6 +429,8 @@ WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY"
 
 CELERY_TASK_ROUTES = {
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
+    "overbae.tasks.decision_jobs.start": {"queue": "batch"},
+    "overbae.tasks.decision_jobs.advance": {"queue": "io"},
     "overbae.tasks.datasets.execute": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
     # Model warm-up and judge authoring block for minutes; control stays free for
@@ -465,6 +467,11 @@ CELERY_BEAT_SCHEDULE = {
     "training-preparation": {
         "task": "overbae.tasks.training_preparation.reconcile",
         "schedule": 15.0,
+    },
+    "decision-jobs": {
+        "task": "overbae.tasks.decision_jobs.reconcile",
+        "schedule": 15.0,
+        "options": {"expires": 14.0},
     },
     # Observe remote training independently of its submitting worker.
     "reconcile-finetuning-jobs": {

@@ -137,6 +137,8 @@ export const trainingSearchSchema = projectIdSearchSchema.extend({
   capabilityId: z.string().optional(),
   /** `datasetId` preselects the train dataset; `evalDatasetId` the eval one. */
   datasetId: z.string().optional(),
+  decision: z.boolean().optional(),
+  decisionJob: z.string().optional(),
   evalDatasetId: z.string().optional(),
   // Free-form ids: a dataset uuid and a base-model slug.
   ft_dataset: z.string().optional().default("all"),
@@ -153,6 +155,8 @@ export const trainingSearchSchema = projectIdSearchSchema.extend({
   groupId: z.string().optional(),
   job: z.string().optional(),
   jobId: z.string().optional(),
+  /** The decision-model tab, its New decision job dialog and an open decision job. */
+  models: z.enum(["chat", "decision"]).optional().catch(undefined),
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
   train: z.boolean().optional(),

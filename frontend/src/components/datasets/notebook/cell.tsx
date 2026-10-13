@@ -23,7 +23,7 @@ const count = (n: number) => n.toLocaleString();
 const plural = (n: number, noun: string) => `${count(n)} ${n === 1 ? noun : `${noun}s`}`;
 
 /** `train_eval`: the eval dataset that scores a training job. */
-export type UsePurpose = "train" | "train_eval" | "optimise";
+export type UsePurpose = "train" | "train_eval" | "optimise" | "decision";
 
 interface VersionActions {
   onActivate: () => void;
@@ -304,6 +304,84 @@ function CheckRow({ check, present }: { check: Check; present: Set<string> }) {
   );
 }
 
+/** Decision rows: present when the version's rows look like decision requests. */
+function decisionReport(cell: Cell): Report | null {
+  const report = ((cell.intentReport ?? {}) as Record<string, Report>).decision;
+  return report && report.reason !== "no decision rows" ? report : null;
+}
+
+function DecisionChip({
+  report,
+  intent,
+  present,
+  onIntent,
+}: {
+  report: Report;
+  intent: string;
+  present: Set<string>;
+  onIntent?: (intent: "train" | "eval") => void;
+}) {
+  const pending = intent !== "train" && intent !== "eval";
+  const ok = !!report.ok && !pending;
+  const headline = !report.ok
+    ? "Not valid decision rows"
+    : pending
+      ? "Purpose not set"
+      : intent === "eval"
+        ? "Ready for decision evaluation"
+        : "Ready for decision training";
+  const check: Check = {
+    columns: ["input", "expected_output"],
+    found: report.ok ? plural(report.rows ?? 0, "row") : sentence(report.reason ?? ""),
+    label: "Decision format",
+    ok: !!report.ok,
+    requires: "A state and questions in input, and an answer for every question in expected_output",
+    ...(report.ok ? {} : { fix: "Ask your coding agent to fix the rows named above." }),
+  };
+  return (
+    <HoverCard openDelay={250}>
+      <HoverCardTrigger asChild>
+        <button
+          className={cn(
+            "nodrag inline-flex h-6 min-w-0 max-w-96 cursor-default items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-xs",
+            ok
+              ? "border-success/40 bg-success/10 text-success"
+              : "border-warning/40 bg-warning/10 text-warning"
+          )}
+          type="button"
+        >
+          {ok ? (
+            <Icon.success className="size-3 shrink-0" />
+          ) : (
+            <Icon.warning className="size-3 shrink-0" />
+          )}
+          <span className="truncate">{headline}</span>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-[28rem] p-2.5">
+        <ul className="flex flex-col gap-3">
+          <CheckRow check={check} present={present} />
+        </ul>
+        {report.ok && pending && onIntent && (
+          <div className="mt-3 flex flex-col gap-1 border-t border-border/70 pt-2">
+            {(["train", "eval"] as const).map((choice) => (
+              <button
+                className="flex w-full items-start gap-2 rounded-sm border border-border/70 px-2 py-1.5 text-left hover:bg-accent/50"
+                key={choice}
+                onClick={() => onIntent(choice)}
+                type="button"
+              >
+                <Icon.target className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-xs text-foreground">Use for {PURPOSE[choice]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
 function FitChip({
   cell,
   intent,
@@ -538,6 +616,7 @@ export function VersionCard({
   const [outputOpen, setOutputOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(active);
   const fit = fitOf(cell);
+  const decision = decisionReport(cell);
   const columns = columnsOf(cell).length;
   const changes = (cell.impact ?? {}) as Impact;
 
@@ -602,15 +681,36 @@ export function VersionCard({
                 <Icon.success className="size-3" />
                 Active
               </span>
-              <FitChip
-                actions={editable ? actions : undefined}
-                capabilities={capabilities}
-                capabilityName={capabilityName}
-                cell={cell}
-                intent={intent}
-              />
+              {decision ? (
+                <DecisionChip
+                  intent={intent}
+                  onIntent={editable ? actions.onIntent : undefined}
+                  present={new Set(columnsOf(cell).map((c) => c.name))}
+                  report={decision}
+                />
+              ) : (
+                <FitChip
+                  actions={editable ? actions : undefined}
+                  capabilities={capabilities}
+                  capabilityName={capabilityName}
+                  cell={cell}
+                  intent={intent}
+                />
+              )}
               <span className="flex-1" />
-              {intent === "train" && (
+              {decision && intent === "train" && (
+                <Button
+                  className={CONSUMER_BUTTON}
+                  disabled={!decision.ok}
+                  onClick={() => actions.onUse("decision")}
+                  size="xs"
+                  variant="outline"
+                >
+                  <Icon.training />
+                  Train a decision model
+                </Button>
+              )}
+              {!decision && intent === "train" && (
                 <Button
                   className={CONSUMER_BUTTON}
                   disabled={!fit.ok}
@@ -622,7 +722,7 @@ export function VersionCard({
                   Train a model
                 </Button>
               )}
-              {intent === "eval" && (
+              {!decision && intent === "eval" && (
                 <>
                   <Button
                     className={CONSUMER_BUTTON}

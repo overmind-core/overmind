@@ -26,6 +26,7 @@ from overbae.api.billing import (
 from overbae.api.capabilities import AgentGraphView, CapabilityViewSet
 from overbae.api.completions import chat_completions, model_detail, models_list
 from overbae.api.datasets import DatasetViewSet
+from overbae.api.decision import DecisionJobViewSet, DecisionModelListView, DecisionSystemOneView
 from overbae.api.eval_views import (
     EvalRunViewSet,
     EvalSampleViewSet,
@@ -89,6 +90,7 @@ router.register(
 )
 router.register(r"optimizer-candidates", OptimizerCandidateViewSet, basename="optimizer-candidate")
 router.register(r"finetuning-jobs", FinetuningJobViewSet, basename="finetuningjob")
+router.register(r"decision-jobs", DecisionJobViewSet, basename="decision-job")
 router.register(r"deployed-models", DeployedModelViewSet, basename="deployedmodel")
 router.register(r"evaluators", EvaluatorViewSet, basename="evaluator")
 router.register(r"eval-sets", EvalSetViewSet, basename="evalset")
@@ -110,6 +112,12 @@ urlpatterns = [
     path("api/v1/models", models_list, name="v1-models"),
     path("api/v1/models/<path:model_id>", model_detail, name="v1-model-detail"),
     path("api/", include(router.urls)),
+    path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
+    path(
+        "api/decision-models/<path:model_id>/systemone",
+        DecisionSystemOneView.as_view(),
+        name="decision-systemone",
+    ),
     path("api/agent/", AgentGraphView.as_view(), name="agent-graph"),
     path("api/v1/sync", SyncView.as_view(), name="toml-sync"),
     path("api/models/catalog/", ModelCatalogView.as_view(), name="model-catalog"),

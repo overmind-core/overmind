@@ -47,3 +47,22 @@ export function buildPythonSnippet({
     `print(resp.choices[0].message.content)`,
   ].join("\n");
 }
+
+export function buildDecisionCurlSnippet({
+  apiUrl = config.apiUrl,
+  jobId,
+}: {
+  apiUrl?: string;
+  jobId: string;
+}): string {
+  return [
+    `curl ${apiUrl.replace(/\/$/, "")}/api/decision-jobs/${jobId}/systemone/ \\`,
+    `  -H "Authorization: Bearer $OVERMIND_API_KEY" \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -d '{`,
+    `    "state": "Ticket: I was charged twice for order 1002.",`,
+    `    "questions": {"route": {"type": "choice", "instructions": "Which team handles this?",`,
+    `      "criteria": {"billing": "Billing", "shipping": "Shipping"}}}`,
+    `  }'`,
+  ].join("\n");
+}

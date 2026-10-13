@@ -277,6 +277,8 @@ PROMPTS = (
             "11. Preparation is done when the version exists in Overmind and is active. "
             "12. Document rows are text elements: group them into pages or chunks with a script; "
             "OCR text may be wrong. "
+            "13. For a decision model, build decision rows as overmind://decision-models "
+            "describes; never mix them with chat rows. "
             "When a run returns queued or running, repeat the identical call. Finish with the "
             "active version, its row count and its fit."
         ),

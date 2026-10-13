@@ -21,7 +21,11 @@ def describe_frame(dataset, path, *, report=None):
         "rows": len(frame),
         "columns": [{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in frame.manifest],
         "fingerprint": store.file_sha256(path),
-        "intent_report": {"train": report["train"], "eval": report["eval"]},
+        "intent_report": {
+            "train": report["train"],
+            "eval": report["eval"],
+            "decision": report["decision"],
+        },
         "capability_report": capability_report,
         "stats": contract.stats(frame),
         "updated_at": timezone.now(),
