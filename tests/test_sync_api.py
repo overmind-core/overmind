@@ -11,7 +11,6 @@ from rest_framework.test import APIClient
 
 from overbae.models import (
     APIToken,
-    Behaviour,
     Capability,
     Project,
     ProjectMembership,
@@ -257,65 +256,30 @@ def test_system_prompt_and_capability_card_roundtrip(client):
     cap = Capability.objects.get(slug="support-agent")
     assert cap.improvement_metadata.get("system_prompt") == "You are helpful."
     assert cap.improvement_metadata["capability_card"]["trajectory_map"][0]["id"] == "happy-path"
-    assert Behaviour.objects.filter(capability=cap, key="happy-path").exists()
+    assert cap.active_eval_set.name == "Default"
+    assert cap.active_eval_set.rows.get(name="Answer quality").source == "correctness"
 
 
 @pytest.mark.django_db
-def test_sync_enqueues_preload_on_commit(client, django_capture_on_commit_callbacks):
-    card = {
-        "task": "Answer product questions",
-        "trajectory_map": [
-            {
-                "id": "happy-path",
-                "name": "Happy path",
-                "claim": "code_path",
-                "anchors": [],
-                "terminal": {"kind": "emits_record"},
-            }
-        ],
-    }
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay") as delay,
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(capability_card=card)]),
-            format="json",
-        )
-    assert posted.status_code == 200, posted.data
-    cap = Capability.objects.get(slug="support-agent")
-    delay.assert_called_once_with(capability_id=str(cap.id))
-
-
-@pytest.mark.django_db
-def test_eval_matrix_is_metadata_only_not_materialized(client, django_capture_on_commit_callbacks):
-    from overbae.models import Evaluator
-
+def test_resync_rebuilds_the_default_set_from_the_toml(client):
     matrix = [
-        {
-            "name": "Answer quality",
-            "type": "custom_judge",
-            "rubric": "Score 1 if the answer is correct.",
-        }
+        {"name": "Grounded", "managed_name": "faithfulness"},
+        {"name": "Valid JSON", "managed_name": "json validity"},
     ]
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay"),
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(eval_matrix=matrix)]),
-            format="json",
-        )
-    assert posted.status_code == 200, posted.data
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
     cap = Capability.objects.get(slug="support-agent")
-    assert cap.improvement_metadata["eval_matrix"][0]["name"] == "Answer quality"
-    assert not Evaluator.objects.filter(capability=cap).exists()
+    default = cap.active_eval_set
+    assert set(default.rows.filter(capability=cap).values_list("name", flat=True)) == {"Grounded"}
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 1
+
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix[1:])]), format="json")
+
+    assert not default.rows.filter(capability=cap).exists()
+    assert Capability.objects.get(pk=cap.pk).active_eval_set_id == default.id
 
 
 @pytest.mark.django_db
-def test_sync_normalizes_string_constraints_to_dicts(client, django_capture_on_commit_callbacks):
+def test_sync_normalizes_string_constraints_to_dicts(client):
     constraints = [
         "Answer must be plain English",
         {"rule": "At most 5 tool calls", "type": "budget", "params": {"max_calls": 5}},
@@ -333,15 +297,11 @@ def test_sync_normalizes_string_constraints_to_dicts(client, django_capture_on_c
         ],
         "constraints": constraints,
     }
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay"),
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(capability_card=card)]),
-            format="json",
-        )
+    posted = client.post(
+        "/api/v1/sync",
+        _snapshot([_cap(capability_card=card)]),
+        format="json",
+    )
     assert posted.status_code == 200, posted.data
     cap = Capability.objects.get(slug="support-agent")
     stored = cap.improvement_metadata["capability_card"]["constraints"]

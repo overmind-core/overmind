@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { ScopeEnum } from './ScopeEnum';
+import {
+    ScopeEnumFromJSON,
+    ScopeEnumFromJSONTyped,
+    ScopeEnumToJSON,
+    ScopeEnumToJSONTyped,
+} from './ScopeEnum';
 import type { PermissionEnum } from './PermissionEnum';
 import {
     PermissionEnumFromJSON,
@@ -20,13 +27,6 @@ import {
     PermissionEnumToJSON,
     PermissionEnumToJSONTyped,
 } from './PermissionEnum';
-import type { APITokenScopeScopeEnum } from './APITokenScopeScopeEnum';
-import {
-    APITokenScopeScopeEnumFromJSON,
-    APITokenScopeScopeEnumFromJSONTyped,
-    APITokenScopeScopeEnumToJSON,
-    APITokenScopeScopeEnumToJSONTyped,
-} from './APITokenScopeScopeEnum';
 
 /**
  *
@@ -36,10 +36,10 @@ import {
 export interface APITokenScope {
     /**
      *
-     * @type {APITokenScopeScopeEnum}
+     * @type {ScopeEnum}
      * @memberof APITokenScope
      */
-    scope: APITokenScopeScopeEnum;
+    scope: ScopeEnum;
     /**
      *
      * @type {Array<string>}
@@ -74,7 +74,7 @@ export function APITokenScopeFromJSONTyped(json: any, ignoreDiscriminator: boole
     }
     return {
 
-        'scope': APITokenScopeScopeEnumFromJSON(json['scope']),
+        'scope': ScopeEnumFromJSON(json['scope']),
         'resourceIds': json['resourceIds'] == null ? undefined : json['resourceIds'],
         'permission': json['permission'] == null ? undefined : ((json['permission'] as Array<any>).map(PermissionEnumFromJSON)),
     };
@@ -91,7 +91,7 @@ export function APITokenScopeToJSONTyped(value?: APITokenScope | null, ignoreDis
 
     return {
 
-        'scope': APITokenScopeScopeEnumToJSON(value['scope']),
+        'scope': ScopeEnumToJSON(value['scope']),
         'resourceIds': value['resourceIds'],
         'permission': value['permission'] == null ? undefined : ((value['permission'] as Array<any>).map(PermissionEnumToJSON)),
     };

@@ -20,9 +20,9 @@ from django.utils.dateparse import parse_datetime
 from overbae.models.traces import Span
 from overbae.services.datasets.contract import cut_at_landing, training_line
 from overbae.services.datasets.land import STATUS_ERROR, LandError, Landing, bounded_row
-from overbae.services.eval import chatml
 from overbae.services.finetuning_tool_validation import tool_schema_errors
 from overbae.services.finetuning_validator import validate_rows
+from overbae.services.transcripts import chatml
 
 CANDIDATE_CAP = 10_000
 DEFAULT_LIMIT = 200

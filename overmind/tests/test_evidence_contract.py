@@ -42,6 +42,33 @@ def test_attribute_keys_are_pinned():
     assert attrs.GROUNDED_BY == "overmind.grounded_by"
 
 
+def test_live_scoring_keys_are_pinned():
+    assert attrs.INTENT == "overmind.intent"
+    assert attrs.EXPECTATIONS == "overmind.expectations"
+    assert attrs.REFERENCE_TRAJECTORY == "overmind.reference_trajectory"
+
+
+def test_observe_declares_what_live_scoring_reads(exporter):
+    @entry_point(
+        intent="Refund order 42",
+        expectations=["Cites the order id", " "],
+        reference_trajectory=["lookup_order", "issue_refund"],
+    )
+    def handle(message: str) -> str:
+        return message
+
+    handle("refund please")
+    attributes = _only_span(exporter).attributes
+    assert attributes[attrs.INTENT] == "Refund order 42"
+    assert list(attributes[attrs.EXPECTATIONS]) == ["Cites the order id"]
+    assert list(attributes[attrs.REFERENCE_TRAJECTORY]) == ["lookup_order", "issue_refund"]
+
+
+def test_a_bare_string_expectation_is_rejected():
+    with pytest.raises(TypeError, match="list of strings"):
+        observe(expectations="Cites the order id")
+
+
 def test_retrieval_span_auto_tags_environment(exporter):
     @retrieval()
     def fetch_docs(query: str) -> list[str]:

@@ -43,7 +43,7 @@ PROMPTS = (
         template=(
             "Investigate capability {capability} in the authenticated project. "
             "Use inspect_capability_health, query_failures, query_traces, "
-            "query_task_executions, and get_instrumentation_plan only as needed. "
+            "and get_instrumentation_plan only as needed. "
             "Read overmind://capabilities/{capability} and any returned "
             "overmind://traces/{{trace_id}} or overmind://sessions/{{session}} resource. "
             "Return evidence, current health, instrumentation gaps, and the checkpoint "
@@ -59,13 +59,13 @@ PROMPTS = (
             "Instrument this repository project-wide when the capability filter below is blank; "
             'otherwise scope the work to it. Capability filter: "{capability}". Start with '
             "get_instrumentation_plan. If it returns human_action or no placements, report its "
-            "instruction and stop this attempt. Preserve every ticket field verbatim, "
-            "including key, behaviour_id, version_id, version_analyzed_sha, contract_fingerprint, "
-            "capability, capability_id, placement_mode, allowed_keys, grain, target, required_scope, "
-            "required_spans, and required_identity. When delegating, compute each ticket's files from "
-            "target.file and required_spans[].target.file, and give overlapping tickets one owner so "
-            "two workers never edit the same file. The MCP server does not edit the repository or "
-            "ingest traces. After applying the changes, report the tickets, changed files, and local "
+            "instruction and stop this attempt. Apply each placement's required_decorator verbatim "
+            "at target.qualname in target.file, keeping capability_id exact. Expectations that "
+            "describe one span go on @overmind.observe(expectations=[...]); capability-wide "
+            "expectations belong in the eval matrix, not the code. When delegating, give each file "
+            "one owner so two workers never edit the same file. The MCP server does not edit the "
+            "repository or ingest traces. After applying the changes, report the placements, "
+            "changed files, and local "
             "checks. Generate a unique verification correlation value, then ask the user to choose "
             "Real run (recommended) or Smoke run. For each choice, present the exact command or input, "
             "capability, environment, provider/model, expected side effects, correlation value, and "
@@ -82,7 +82,7 @@ PROMPTS = (
     PromptDefinition(
         name="prepare-evaluation",
         title="Prepare evaluation",
-        description="Check dataset, evaluator, eval-set, binding, and credit readiness before an evaluation run.",
+        description="Check dataset, eval-matrix, eval-set, and credit readiness before an evaluation run.",
         arguments=(
             _argument("dataset", "Evaluation dataset UUID from list_datasets."),
             _argument("eval_set", "Evaluation set name or id."),
@@ -92,19 +92,18 @@ PROMPTS = (
             "Resolve it with list_datasets and pass its UUID to inspect_dataset. Use "
             "message_dataset_agent for intent, capability, name, or cell changes; poll with "
             "get_job(kind=dataset_run), inspect again, and use query_dataset to verify the "
-            "chosen cell. Run check_evaluation_readiness with that dataset, cell and proposed variants. "
+            "chosen cell. Run check_evaluation_readiness with that dataset, cell and proposed targets. "
             "Report context_checks as advisory estimates, never as launch blockers. "
             "Present fitting suggestions and cost_basis with cost deltas before launch; never switch models automatically. "
             "Preview an alternative with judge_model, then pass the approved choice as judge_model "
-            "to run_evaluation. Omit it to preserve saved judges; do not edit evaluators for a run-only change. "
+            "to run_evaluation. Omit it to use the default judge. "
             "For semantic row checks, ask message_dataset_agent to use check_semantic_quality "
             "with separate evidence and answer columns; inspect measured coverage and unknowns. "
-            "Quality findings are advisory. Rubric judges default to generative. "
-            "config.decision on upsert_evaluator can opt into Jev for qualified bounded decisions; "
-            "judge_model is the generative judge or fallback. "
-            "If readiness identifies missing evaluator configuration, collect the human "
-            "rubric and use upsert_evaluator. Do not start a run until dataset intent, "
-            "evaluator applicability and bindings, eval set, and credits are ready. "
+            "Quality findings are advisory. "
+            "If the eval set has no enabled rows, collect the human expectation and use "
+            "upsert_eval_matrix_row (llm rows are one-sentence expectations; deterministic "
+            "rows are audited Python checks), then create_eval_set. Do not start a run until "
+            "dataset intent, eval set rows, and credits are ready. "
             "Return the exact next checkpoint; if a prerequisite has no current MCP tool, "
             "name the human action."
         ),
@@ -120,15 +119,15 @@ PROMPTS = (
         template=(
             "Evaluate a change using dataset {dataset} against baseline {baseline}. "
             "Use list_datasets, inspect_dataset, and query_dataset to choose and verify a "
-            "fitting eval cell. Run check_evaluation_readiness with that dataset, cell and variants, "
+            "fitting eval cell. Run check_evaluation_readiness with that dataset, cell and targets, "
             "report context_checks as advisory warnings that do not prevent launch, "
             "present fitting suggestions with their cost_basis and cost deltas without changing model selection, "
             "then run_evaluation only when ready, passing any approved judge_model from the preview. "
-            "This freezes the override for the run without changing saved evaluators. Track "
+            "Pass the baseline as one target with is_baseline and the change as another to score "
+            "both in one group. Track "
             "the run with get_job using kind eval_run and read "
             "overmind://eval-runs/{{eval_run}}. When complete, use compare_evaluations with "
-            "the baseline; report overall and evaluator deltas plus trust flags. Use "
-            "annotate_evaluation_sample only for explicit human labels. End with an "
+            "the baseline; report overall and per-metric deltas plus trust flags. End with an "
             "improved, regressed, or unchanged checkpoint."
         ),
     ),
@@ -154,8 +153,8 @@ PROMPTS = (
             "incomplete reviews, capability mismatch and overlap, but allow preprocessing and "
             "launch without quality approval. Only unreadable or technically incompatible data blocks use. "
             "Begin with get_model_catalog for dataset-independent model discovery. "
-            "Capability is optional. An eval dataset and eval set with generative evaluators "
-            "are required; use create_eval_set to group existing evaluators if needed. "
+            "Capability is optional. An eval dataset and an eval set with enabled eval matrix rows "
+            "are required; use create_eval_set to group existing rows if needed. "
             "For incumbent comparisons, read benchmark_model on the capability resource. "
             "It selects the codebase incumbent or a trained benchmark independently of the live "
             "serving model; new jobs pin this choice. Change it with set_benchmark_model only "
@@ -168,8 +167,8 @@ PROMPTS = (
             "without sampling or a row cap. Include that full-dataset cost in the approval. "
             "Preview evaluation context with check_evaluation_readiness; judge_models lists "
             "fit and per-pass judge budgets. An approved judge_model preview can be passed "
-            "as eval_judge_model to start_finetune without editing the set; omission preserves "
-            "its per-evaluator choices. Context warnings never gate launch. "
+            "as eval_judge_model to start_finetune without editing the set; omission uses the "
+            "default judge. Context warnings never gate launch. "
             "For Modal training, call prepare_training_data after choosing a model and context length, "
             "then poll get_job(kind=training_preparation). Inspect exact token counts, supervised content "
             "and incompatible rows. Send concrete row-level fixes to message_dataset_agent, with no "

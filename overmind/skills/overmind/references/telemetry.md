@@ -10,12 +10,11 @@ the SDK and the local coding workflow instrument the repository.
 
 ## Inspect production evidence
 
-- `inspect_capability_health(capability, days)` returns offline score health,
-  live trace-score health, trace count, error rate, and latency.
-- `query_failures(capability, since_days, limit)` returns failing traces,
-  evaluator reasons, tool names, and violated fields.
-- `query_task_executions` is the behaviour-keyed unit view; inspect it before
-  walking raw spans.
+- `inspect_capability_health(capability, days)` returns live scoring health
+  (coverage, average score, pass rate, trajectory score, per-metric rows with
+  deltas), trace count, error rate, and latency.
+- `query_failures(capability, since_days, limit)` returns failing traces with
+  each failed metric's score and reason, and the tools called.
 - `query_traces` supports capability, session, trace/span, status, model,
   duration, time, cost, search, ordering, and bounded pagination filters.
   `all_spans=true` includes child spans.
@@ -35,25 +34,20 @@ the server's summary/page fields; do not sum a partial page as a project total.
 ## Get and apply a plan
 
 Call `get_instrumentation_plan` with no capability for project-wide work, or
-with a capability and optional behaviour for a scoped change. Treat each
-returned placement as an edit ticket and preserve its exact fields:
-`key`, `behaviour_id`, `version_id`, `version_analyzed_sha`,
-`contract_fingerprint`, `capability`, `capability_id`, `placement_mode`,
-`allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and
-`required_identity`. File + qualname locates the function. A missing
-registry returns an explicit human action; report it and stop this attempt.
+with a capability for a scoped change. Each placement names a `target`
+(`file`, `qualname`), its `kind` and the exact `required_decorator`; see
+[instrumentation.md](instrumentation.md). A missing registry returns an
+explicit human action; report it and stop this attempt.
 Do not continue when `placements` is empty. If recovery is needed, run local
 `/overmind setup` followed by `overmind sync`, then request the plan again in a
 new attempt.
 
 When subagents are available and repository policy permits coding delegation,
-derive each ticket's touched files from its primary `target.file` and every
-`required_spans[].target.file`. Group overlapping tickets under one owner so
-two workers never edit the same file. The parent integrates the groups and owns
-all verification.
+group placements by `target.file` under one owner so two workers never edit the
+same file. The parent integrates the groups and owns all verification.
 
-The MCP server does not edit files. Apply the tickets locally and preserve the
-required identity. Current SDK decorators include:
+The MCP server does not edit files. Apply the placements locally and preserve
+the capability id. Current SDK decorators include:
 
 ```python
 @overmind.run(...)
@@ -65,10 +59,10 @@ required identity. Current SDK decorators include:
 @overmind.observe(...)
 ```
 
-Use the decorator named by the ticket. A run boundary should cover one
-execution; use a turn-grain task for an independently scored phase and do not
-wrap a run-grain task in a turn unit. Keep specialized spans nested under the
-run. Do not guess keys, anchors, grains, or identity.
+Use the decorator named by the placement. A run boundary should cover one
+execution; keep specialized spans nested under the run. `observe` and its
+variants accept `intent`, `expectations` and `reference_trajectory` for
+live scoring. Do not guess anchors or identity.
 
 ## Local SDK configuration
 
@@ -88,13 +82,13 @@ If the app already owns an OpenTelemetry `TracerProvider`, add the Overmind
 OTLP exporter to that provider and enable the SDK's instrumentation rather than
 replacing the existing provider. Preserve the app's existing exporter.
 
-Useful local helpers are `overmind.set_conversation_id`, `overmind.set_user`,
-`overmind.capture_exception`, `overmind.start_span`, and
-`overmind.force_flush_traces`.
+Useful local helpers are `overmind.session`, `overmind.set_conversation_id`,
+`overmind.set_user`, `overmind.record_llm_call`, `overmind.capture_exception`,
+`overmind.start_span`, and `overmind.force_flush_traces`.
 
 ## Explicit run approval
 
-After applying the ticketed code changes, report the changed files and local
+After applying the placements, report the changed files and local
 checks. Generate a unique verification correlation value, then ask the user to
 approve one fully specified choice. Fill every field; when a value is unknown,
 write `needs user input` and do not run:
@@ -120,7 +114,7 @@ Both modes use the same verification boundary. The smoke branch uses synthetic
 or read-only input. The real branch uses only the execution envelope presented
 for approval. In either branch:
 
-1. Use each ticket's exact `capability_id` in the instrumented run boundary.
+1. Use each placement's exact `capability_id` in the instrumented run boundary.
    For scoped work, it may also be used as a query filter. For project-wide
    work, rely on the unique session correlation instead of inventing one
    capability filter.
@@ -153,8 +147,7 @@ for approval. In either branch:
    successful application run does not prove instrumentation quality, and a
    failed application run does not necessarily mean instrumentation failed.
 
-If identity, nesting, payload, binding, correlation, truncation, or coverage
-is wrong, report the repair required and return to the change/smoke path before
+If identity, nesting, payload, correlation, truncation, or coverage is wrong, report the repair required and return to the change/smoke path before
 requesting another real run. Verification is read-only: it does not ingest
 spans or write scores.
 

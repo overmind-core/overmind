@@ -338,7 +338,6 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
-        "DecisionPolicyBackendEnum": [("jev", "jev"), ("generative", "generative")],
         "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
@@ -352,21 +351,15 @@ SPECTACULAR_SETTINGS = {
         ],
         "CapabilityStatusEnum": "overbae.models.capabilities.Capability.Status",
         "SpanTypeEnum": "overbae.models.traces.Span.SpanType",
-        "BacktestRunStatusEnum": "overbae.models.traces.BacktestRun.RunStatus",
         "FinetuningJobStatusEnum": "overbae.models.finetuning.FinetuningJob.Status",
         "SignOnMethodEnum": "overbae.models.iam.SignOnMethod",
-        "ModelRefProviderEnum": "overbae.models.evaluation.ModelRef.Provider",
-        "EvaluatorKindEnum": "overbae.models.evaluation.Evaluator.Kind",
-        "EvaluatorScopeEnum": "overbae.models.evaluation.Evaluator.Scope",
+        "ModelRefProviderEnum": "overbae.models.innermind.ModelRef.Provider",
         # EvalRun.Status is absent on purpose: its members match another status
         # enum and it reuses that component.
-        "EvalRunDataSourceEnum": "overbae.models.evaluation.EvalRun.DataSource",
-        "EvalVariantModeEnum": "overbae.models.evaluation.EvalVariant.Mode",
-        # Evaluator.ScoreType shares members with Score.DataType, so this one
-        # override name covers both.
-        "ScoreDataTypeEnum": "overbae.models.evaluation.Score.DataType",
-        "ScoreFailureRoleEnum": "overbae.models.evaluation.Score.FailureRole",
-        "ScoreSourceEnum": "overbae.models.evaluation.Score.Source",
+        "EvalRunModeEnum": "overbae.models.innermind.EvalRun.Mode",
+        "EvalMatrixTypeEnum": "overbae.models.innermind.EvalMatrix.Type",
+        "EvalRunRowStateEnum": "overbae.models.innermind.EvalRunRow.State",
+        "EvalScoreSourceTypeEnum": "overbae.models.innermind.EvalScore.SourceType",
         "DatasetSourceKindEnum": "overbae.models.datasets.Dataset.SourceKind",
     },
     "APPEND_COMPONENTS": {
@@ -430,20 +423,20 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.run": {"queue": "interactive"},
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
-    "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
-    # Model warm-up and judge authoring block for minutes; control stays free for
-    # reconcilers and metrics.
-    "overbae.tasks.eval.run_eval_run": {"queue": "io"},
-    "overbae.tasks.eval.preload_capability_eval_set": {"queue": "io"},
+    "overbae.tasks.innermind.generate_row": {"queue": "batch"},
+    "overbae.tasks.innermind.score_eval_run": {"queue": "batch"},
+    # Model warm-up blocks for minutes; control stays free for reconcilers and metrics.
+    "overbae.tasks.innermind.run_eval_run": {"queue": "io"},
     "overbae.tasks.datasets.land": {"queue": "landing"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
-    "overbae.tasks.eval.execute_evaluator": {"queue": "io"},
     "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
-    "overbae.tasks.behaviour.rebind_parked_executions": {"queue": "io"},
-    "overbae.tasks.trace_scoring.score_trace": {"queue": "io_traces"},
+    "overbae.tasks.innermind.score_spans": {"queue": "io_traces"},
+    "overbae.tasks.innermind.sweep_unscored_spans": {"queue": "io_traces"},
+    "overbae.tasks.innermind.score_trajectories": {"queue": "io_traces"},
+    "overbae.tasks.innermind.run_signals": {"queue": "io_traces"},
 }
 
 CELERY_BEAT_SCHEDULE = {
@@ -453,7 +446,7 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"expires": 25.0},
     },
     "dispatch-evaluation-generation": {
-        "task": "overbae.tasks.eval.dispatch_generation",
+        "task": "overbae.tasks.innermind.dispatch_generation",
         "schedule": 30.0,
         "options": {"expires": 25.0},
     },
@@ -476,10 +469,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.baseten_billing_sync.sync_baseten_finetuning_costs",
         "schedule": 3600.0,
     },
-    # Reaps runs stuck in RUNNING with no DB progress, i.e. a lost chord barrier.
+    # Fails runs stuck in RUNNING with no row progress and no healthy generation wait.
     "reap-stalled-eval-runs": {
-        "task": "overbae.tasks.eval_watchdog.reap_stalled_eval_runs",
-        "schedule": 600.0,
+        "task": "overbae.tasks.innermind.reap_stalled_runs",
+        "schedule": 300.0,
     },
     # Reaps notebook runs orphaned by a killed worker.
     "reap-stuck-dataset-runs": {
@@ -511,10 +504,21 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.inference_controller.reconcile_deployments",
         "schedule": 15.0,
     },
-    # Backstop for stragglers whose live scoring enqueue was lost.
-    "sweep-unscored-traces": {
-        "task": "overbae.tasks.trace_scoring.sweep_unscored_traces",
+    # Re-drives spans still waiting for an ancestor, stale claims and lost enqueues.
+    "sweep-unscored-spans": {
+        "task": "overbae.tasks.innermind.sweep_unscored_spans",
         "schedule": 120.0,
+        "options": {"expires": 110.0},
+    },
+    "score-trajectories": {
+        "task": "overbae.tasks.innermind.score_trajectories",
+        "schedule": 300.0,
+        "options": {"expires": 290.0},
+    },
+    "run-signals": {
+        "task": "overbae.tasks.innermind.run_signals",
+        "schedule": 300.0,
+        "options": {"expires": 290.0},
     },
     # This cadence is only the outer tick: per-credential pacing and backoff are
     # gated by ConnectorCredential.next_poll_at. Kept at 60s so the fastest

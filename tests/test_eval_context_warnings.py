@@ -4,9 +4,10 @@ from pydantic import BaseModel
 
 from overbae.core import llms
 from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS
-from overbae.models import DeployedModel, Evaluator, Project
+from overbae.innermind import context, replay
+from overbae.models import DeployedModel, Project
 from overbae.services import llm_context
-from overbae.services.eval import context_check, funnel, runner
+from overbae.services.judging import funnel
 
 
 class Verdict(BaseModel):
@@ -21,7 +22,6 @@ def _judge(model="gpt-5.6-luna"):
         "all evidence",
         judge=funnel.ResolvedJudge(model, None, "openai"),
         response_format=Verdict,
-        use_cache=False,
     )
 
 
@@ -113,9 +113,9 @@ def test_generation_warning_does_not_skip_provider_call(fake_llm):
     fake_llm.limits["openai/gpt-4.1"] = 100
     fake_llm.output_limits["openai/gpt-4.1"] = 100
     fake_llm.on(lambda r: r.model == "openai/gpt-4.1", "answer")
-    result = runner.generate_decision(
+    result = replay.generate_decision(
         input_messages=[{"role": "user", "content": "full input"}],
-        tool_provider=runner.ReplayToolProvider(),
+        tool_provider=replay.ReplayToolProvider(),
         model="gpt-4.1",
     )
     assert len(_sent(fake_llm, "openai/gpt-4.1")) == 1
@@ -127,23 +127,29 @@ def test_generation_warning_does_not_skip_provider_call(fake_llm):
 def test_preflight_profiles_generation_and_judge_from_selected_version(fake_llm):
     project = Project.objects.create(name="Context")
     dataset = frozen_dataset(project, [{"input": "input" * 5000, "expected_output": "answer"}])
-    evaluator = Evaluator.objects.create(
-        project=project,
-        name="Quality",
-        kind="llm_judge",
-        rubric_md="Assess evidence",
-        checklist=[{"id": "correct", "q": "Correct?"}],
-    )
     fake_llm.limits = dict.fromkeys(OPENROUTER_MODEL_SLUGS.values(), 1000)
     fake_llm.output_limits = dict.fromkeys(OPENROUTER_MODEL_SLUGS.values(), 5000)
-    checks = context_check.check_context(
+    checks = context.check_context(
         dataset=dataset,
         cell=dataset.active_cell,
-        variants=[{"model_name": "gpt-4.1"}],
-        evaluators=[evaluator],
+        targets=[{"model_name": "gpt-4.1"}],
+        has_llm_rows=True,
     )
     assert [check["role"] for check in checks] == ["generation", "judge"]
     assert all(check["status"] == "warning" and check["checked_rows"] == 1 for check in checks)
+
+
+@pytest.mark.django_db
+def test_preflight_skips_the_judge_without_llm_rows(fake_llm):
+    project = Project.objects.create(name="Checks only")
+    dataset = frozen_dataset(project, [{"input": "question", "expected_output": "answer"}])
+    checks = context.check_context(
+        dataset=dataset,
+        cell=dataset.active_cell,
+        targets=[{"mode": "recorded"}],
+        has_llm_rows=False,
+    )
+    assert checks == []
 
 
 def test_wire_budget_override_is_sent_once_and_the_caller_keeps_its_params(fake_llm):
@@ -175,27 +181,3 @@ def test_exhausted_judge_does_not_retry_without_known_extra_capacity(fake_llm, l
     assert outcome.parsed is None
     assert outcome.stats["error_kind"] == "output_limit"
     assert "output token limit" in funnel.failure_reason(outcome)
-
-
-@pytest.mark.django_db
-def test_preflight_includes_custom_judge_bindings(fake_llm):
-    project = Project.objects.create(name="Bindings")
-    dataset = frozen_dataset(
-        project, [{"input": "question", "expected_output": "answer", "evidence": "x" * 30000}]
-    )
-    evaluator = Evaluator.objects.create(
-        project=project,
-        name="Grounding",
-        kind="llm_judge",
-        variable_mapping=[
-            {"var": "evidence", "source": "metadata", "jsonpath": "$.row_extra.evidence"}
-        ],
-        checklist=[{"id": "grounded", "q": "Is the answer grounded?"}],
-    )
-    fake_llm.limits = dict.fromkeys(OPENROUTER_MODEL_SLUGS.values(), 8000)
-    fake_llm.output_limits = dict.fromkeys(OPENROUTER_MODEL_SLUGS.values(), 5000)
-    checks = context_check.check_context(
-        dataset=dataset, cell=dataset.active_cell, variants=[], evaluators=[evaluator]
-    )
-    assert checks[0]["estimated_input_tokens"] > 10000
-    assert checks[0]["status"] == "warning"

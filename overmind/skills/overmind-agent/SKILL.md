@@ -1,6 +1,6 @@
 ---
 name: overmind-agent
-description: Inspect an Overmind project's agent map, capabilities, behaviour contracts, repository provenance and evaluation coverage. Use for understanding what the agent does or choosing which capability to improve.
+description: Inspect an Overmind project's agent map, capabilities, repository provenance and evaluation coverage. Use for understanding what the agent does or choosing which capability to improve.
 ---
 
 # Overmind Agent
@@ -33,17 +33,16 @@ request. MCP cannot create capability cards by scanning a repository.
 ## Connect contracts to evidence
 
 When prompts are supported, use `investigate-capability` with the resolved
-capability. Otherwise combine `inspect_capability_health` and
-`query_task_executions` as needed. Follow relevant trace resource links.
+capability. Otherwise combine `inspect_capability_health` and `query_failures`
+as needed. Follow relevant trace resource links.
 
-Distinguish capability, behaviour and task execution: a behaviour is a scanned
-contract; an execution is one observed, bound unit. Separate `declared`,
-`anchor_join` and `unbound` executions. Unbound executions indicate a mapping
-gap; missing scores do not demonstrate success. There is no behaviour resource
-or behaviour-list tool to invent.
+The capability resource lists the `eval_matrix` rows that score it and the
+Default set's `eval_preload` counts. Spans without a capability id indicate a
+mapping gap; low scoring coverage means spans arrive without evidence the
+matrix can judge. Missing scores do not demonstrate success.
 
 Choose the next action from the evidence: refresh the repository map, instrument
-an uncovered behaviour, prepare data, repair evaluation coverage or investigate
+an uncovered entry point, prepare data, repair evaluation coverage or investigate
 a measured failure. Do not automatically start those mutations during a map review.
 
 ## Changes and handoffs

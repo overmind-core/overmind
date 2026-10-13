@@ -3,9 +3,9 @@ from collections.abc import Sequence
 from typing import Any
 
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
-from factories import make_project, make_user
+from factories import make_matrix_row, make_project, make_user
 
-from overbae.models import APIToken, Capability, EvalSet, EvalSetMember, Evaluator
+from overbae.models import APIToken, Capability, EvalMatrix, EvalSet
 from overbae.services.mcp.context import MCPContext
 
 EXPECTED_TOOL_NAMES = {
@@ -13,7 +13,6 @@ EXPECTED_TOOL_NAMES = {
     "inspect_capability_health",
     "query_failures",
     "query_traces",
-    "query_task_executions",
     "get_job",
     "list_datasets",
     "inspect_dataset",
@@ -23,11 +22,10 @@ EXPECTED_TOOL_NAMES = {
     "message_dataset_agent",
     "run_dataset",
     "check_evaluation_readiness",
-    "upsert_evaluator",
+    "upsert_eval_matrix_row",
     "create_eval_set",
     "run_evaluation",
     "compare_evaluations",
-    "annotate_evaluation_sample",
     "check_finetune_readiness",
     "prepare_training_data",
     "estimate_finetune",
@@ -46,6 +44,8 @@ EXPECTED_TOOL_NAMES = {
     "get_instrumentation_plan",
     "verify_instrumentation",
     "get_model_catalog",
+    "list_signals",
+    "set_signal_subscription",
 }
 
 
@@ -84,15 +84,12 @@ def training_setup(context: MCPContext):
         capability=capability,
         name="Default evals",
     )
-    evaluator = Evaluator.objects.create(
-        project=context.project,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set,
-        evaluator=evaluator,
-        role=EvalSetMember.Role.GENERATIVE,
+    eval_set.rows.add(
+        make_matrix_row(
+            context.project,
+            "Exact match",
+            type=EvalMatrix.Type.DETERMINISTIC,
+            source="def evaluate(span):\n    return span.output == span.expected\n",
+        )
     )
     return capability, train, evaluation, eval_set

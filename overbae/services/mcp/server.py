@@ -61,7 +61,7 @@ mcp_server = Server(
         "Tools return the same data as structured content and JSON text. Treat isError and "
         "structured error fields as failures; follow resource links and poll get_job with "
         "the returned kind and id for asynchronous work. Preserve pagination, truncation, "
-        "missing scores, evaluator errors and pinned dataset/model identities in conclusions. "
+        "missing scores, metric errors and pinned dataset/model identities in conclusions. "
         "Inspection does not authorize mutations or paid runs. Check readiness and costs "
         "before an authorized evaluation or training launch. Use message_dataset_agent for "
         "dataset preparation; semantic replacements require a reviewed proposal, while "

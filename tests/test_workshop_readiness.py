@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from factories import make_matrix_row
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.serializers import FinetuningJobSerializer
@@ -9,8 +10,6 @@ from overbae.models import (
     Capability,
     Dataset,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     Project,
     ProjectMembership,
@@ -215,14 +214,8 @@ def test_training_create_allows_warnings_and_freezes_pair_atomically(capability)
     complete_review(train)
     user = User.objects.create_user(email="validation@example.com", password="test")
     ProjectMembership.objects.create(user=user, project=capability.project)
-    evaluator = Evaluator.objects.create(
-        project=capability.project,
-        name="Match",
-        kind="deterministic",
-        config={"check": "exact_match"},
-    )
     eval_set = EvalSet.objects.create(project=capability.project, name="Screening")
-    EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
+    eval_set.rows.add(make_matrix_row(eval_set.project))
 
     payload = {
         "project": str(capability.project_id),

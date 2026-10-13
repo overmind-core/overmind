@@ -46,7 +46,7 @@ eval set, and the same train and eval cells. A model that is not in
    training never converts worker targets into orchestrator targets.
 1. Call `check_finetune_readiness` after selecting the training dataset/cell.
    Capability is optional; omit it or pass null for no association. An eval
-   dataset and an eval set with generative evaluators are still required.
+   dataset and an eval set with enabled eval matrix rows are still required.
    It may narrow or recommend candidates;
    use its `catalog` and `recommendations` for `base_model` values and fix
    every reported missing prerequisite.
@@ -103,8 +103,8 @@ does not change live routing or capability defaults. If omitted, the capability'
 All checks can be disabled, but the eval dataset and eval set are still
 required. Baseline evaluations launch concurrently with training and do not gate
 training submission. The fine-tune resource exposes the saved `evaluation_plan`.
-Before/after runs share a pinned dataset version, a prompt snapshot and evaluator
-snapshots. Every selected evaluation runs every row of that version, without
+Before/after runs share a pinned dataset version, a prompt snapshot and one
+frozen eval matrix snapshot, in one run group. Every selected evaluation runs every row of that version, without
 sampling or a row cap. Include the full dataset in evaluation cost approval.
 These are model evaluations using recorded evidence, not live application runs.
 

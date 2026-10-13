@@ -89,18 +89,18 @@ forbid extra fields. `tests/test_mcp_analytics.py` holds these invariants.
 
 ## Layer ownership
 
-| Layer              | Location                            | Responsibility                                                                                                     |
-| ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Transport          | `services/mcp/server.py`            | MCP protocol, allowed hosts/origins, request-size limit, SDK callbacks.                                            |
-| Authentication     | `services/mcp/auth.py`              | Authenticate an account/project API key or MCP OAuth token, enforce credential limits, and bind context.           |
-| Context            | `services/mcp/context.py`           | Make immutable `{user, token, project, client_ip}` available only during the request.                              |
-| Catalog            | `services/mcp/catalog.py`           | Publish a curated visible tool set, validate contracts, invoke handlers, and turn known failures into MCP results. |
-| Contracts          | `services/mcp/contracts/`           | Strict Pydantic input/output models, resource links, page metadata, and job receipts.                              |
-| Feature adapters   | `services/mcp/tools_*.py`           | Resolve project-scoped references and adapt a semantic MCP intent onto domain services.                            |
-| Domain logic       | existing `services/`, models, tasks | Own business rules, persistence, authorization-sensitive state transitions, and background work.                   |
-| Results and errors | `result_compat.py`, `errors.py`     | Preserve all typed output for every client and emit safe, stable error values.                                     |
-| Resources          | `resources.py`                      | Read-only, project-scoped entity state and static CLI handoff guidance.                                            |
-| Prompts            | `prompts.py`                        | Native multi-step workflow instructions composed from the public catalog.                                          |
+| Layer              | Location                                 | Responsibility                                                                                                                                                                              |
+| ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport          | `services/mcp/server.py`                 | MCP protocol, allowed hosts/origins, request-size limit, SDK callbacks.                                                                                                                     |
+| Authentication     | `services/mcp/auth.py`                   | Authenticate an account/project API key or MCP OAuth token, enforce credential limits, and bind context.                                                                                    |
+| Context            | `services/mcp/context.py`                | Make immutable `{user, token, project, client_ip}` available only during the request.                                                                                                       |
+| Catalog            | `services/mcp/catalog.py`                | Publish a curated visible tool set, validate contracts, invoke handlers, and turn known failures into MCP results.                                                                          |
+| Contracts          | `services/mcp/contracts/`                | Strict Pydantic input/output models, resource links, page metadata, and job receipts.                                                                                                       |
+| Feature adapters   | `services/mcp/tools_*.py`                | Resolve project-scoped references and adapt a semantic MCP intent onto domain services.                                                                                                     |
+| Domain logic       | `services/`, `innermind/`, models, tasks | Own business rules, persistence, authorization-sensitive state transitions, and background work. Evaluation and signal tools call `innermind` (runs, comparison, context, health, signals). |
+| Results and errors | `result_compat.py`, `errors.py`          | Preserve all typed output for every client and emit safe, stable error values.                                                                                                              |
+| Resources          | `resources.py`                           | Read-only, project-scoped entity state and static CLI handoff guidance.                                                                                                                     |
+| Prompts            | `prompts.py`                             | Native multi-step workflow instructions composed from the public catalog.                                                                                                                   |
 
 Tools must call the domain layer directly. They may share serializers or
 entity-resolution helpers where those express domain semantics, but must not

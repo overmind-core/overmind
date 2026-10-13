@@ -7,7 +7,7 @@ import z from "zod";
 import apiClient from "@/client";
 import { CapabilityNameEditor } from "@/components/capability-detail/CapabilityNameEditor";
 import { DatasetTab } from "@/components/capability-detail/DatasetTab";
-import { EvaluatorsTab } from "@/components/capability-detail/EvaluatorsTab";
+import { EvalMatrixTab } from "@/components/capability-detail/EvalMatrixTab";
 import { ModelsTab } from "@/components/capability-detail/ModelsTab";
 import { CapabilityNextStepNudge } from "@/components/capability-detail/next-step-nudge";
 import { CapabilityFactsBar } from "@/components/capability-overview/CapabilityFactsBar";
@@ -254,7 +254,7 @@ function CapabilityDetailPage() {
         <DatasetTab capabilityId={capabilityId} projectId={projectId} />
       </section>
 
-      {featureFlags.evaluations && (
+      {featureFlags.evaluations && projectId && (
         <>
           <hr className="border-border/60" />
           <section
@@ -263,9 +263,9 @@ function CapabilityDetailPage() {
             id="evaluators"
           >
             <h2 className={TITLE.section} id="capability-evaluators-heading">
-              Eval metrics
+              Eval matrix
             </h2>
-            <EvaluatorsTab
+            <EvalMatrixTab
               capability={capability}
               capabilityId={capabilityId}
               projectId={projectId}

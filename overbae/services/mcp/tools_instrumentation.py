@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from asgiref.sync import sync_to_async
 
+from overbae.innermind import instrumentation
 from overbae.models import Span
-from overbae.services.behaviour import dry_run
-from overbae.services.behaviour.instrumentation import instrumentation_tickets
 from overbae.services.capabilities import identity
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.instrumentation import (
     MAX_INSTRUMENTATION_SPANS,
+    MAX_INSTRUMENTATION_TICKETS,
     MAX_VERIFY_TRACE_SPANS,
     GetInstrumentationPlanInput,
     GetInstrumentationPlanOutput,
@@ -39,20 +39,16 @@ def _plan_sync(
     payload: GetInstrumentationPlanInput, context: MCPContext
 ) -> GetInstrumentationPlanOutput:
     capability = _resolve_capability(context, payload.capability)
-    result = instrumentation_tickets(
-        context.project,
-        capability,
-        payload.behaviour or "",
+    placements = instrumentation.plan(context.project, capability)[:MAX_INSTRUMENTATION_TICKETS]
+    summary = (
+        {"id": str(capability.id), "name": capability.name, "slug": capability.slug}
+        if capability is not None
+        else None
     )
-    if result.get("error"):
-        if payload.behaviour:
-            raise MCPError(
-                "instrumentation_plan_not_found",
-                "The requested instrumentation behaviour was not found in this project.",
-            )
+    if not placements:
         return GetInstrumentationPlanOutput(
             summary="Instrumentation plan is unavailable.",
-            capability=result.get("capability"),
+            capability=summary,
             placements=[],
             human_action=InstrumentationHumanAction(
                 code="instrumentation_registry_empty",
@@ -62,9 +58,9 @@ def _plan_sync(
             instruction=_REGISTRY_INSTRUCTION,
         )
     return GetInstrumentationPlanOutput(
-        summary="Instrumentation plan returned.",
-        capability=result.get("capability"),
-        placements=result.get("placements") or [],
+        summary=f"{len(placements)} placements.",
+        capability=summary,
+        placements=placements,
     )
 
 
@@ -83,19 +79,20 @@ def _verify_sync(
                 f"The trace has {span_count} spans; verification accepts at most "
                 f"{MAX_VERIFY_TRACE_SPANS}. Verify a smaller run.",
             )
-        result = dry_run.verify_trace(project_id, payload.trace_id, capability=capability)
+        results = instrumentation.verify_trace(project_id, payload.trace_id, capability)
+        errors = []
     else:
-        result = dry_run.verify_spans(
+        spans, errors = instrumentation.build_spans(
             project_id,
             [span.model_dump(mode="python", exclude_none=True) for span in payload.spans],
-            capability=capability,
         )
+        results = instrumentation.grade(project_id, spans, capability)
+    ok = bool(results) and not errors and all(not result["punch_list"] for result in results)
     return VerifyInstrumentationOutput(
-        summary="Instrumentation verified." if result.get("ok") else "Instrumentation gaps found.",
-        ok=bool(result.get("ok")),
-        tasks=(result.get("tasks") or [])[:MAX_INSTRUMENTATION_SPANS],
-        capabilities=(result.get("capabilities") or [])[:MAX_INSTRUMENTATION_SPANS],
-        errors=result.get("errors") or [],
+        summary="Instrumentation verified." if ok else "Instrumentation gaps found.",
+        ok=ok,
+        capabilities=results[:MAX_INSTRUMENTATION_SPANS],
+        errors=errors,
     )
 
 
@@ -113,7 +110,7 @@ def register_instrumentation_tools(catalog) -> None:
         (
             "get_instrumentation_plan",
             "Get instrumentation plan",
-            "Return exact registered instrumentation tickets for a project capability or behaviour.",
+            "Return where to place each SDK decorator for a capability, from its scanned anchors.",
             GetInstrumentationPlanInput,
             GetInstrumentationPlanOutput,
             _plan_sync,
@@ -121,7 +118,9 @@ def register_instrumentation_tools(catalog) -> None:
         (
             "verify_instrumentation",
             "Verify instrumentation",
-            "Grade an ingested trace (trace_id) or caller-supplied spans without writes.",
+            "Check an ingested trace (trace_id) or caller-supplied spans for capability identity, "
+            "a root, captured input and output, tool spans and the matrix rows that would score "
+            "them. No writes.",
             VerifyInstrumentationInput,
             VerifyInstrumentationOutput,
             _verify_sync,

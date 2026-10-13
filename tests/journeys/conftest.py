@@ -42,11 +42,6 @@ def _inline_dataset_tasks():
 
 
 @pytest.fixture(autouse=True)
-def _rubric_compiler():
-    yield
-
-
-@pytest.fixture(autouse=True)
 def _journey_db(transactional_db):
     yield
 
@@ -143,30 +138,11 @@ def answer_turn(request) -> dict:
 GOOD_REPLY = "Order 42 was delivered. Your refund is on its way."
 
 
-def _judged_output(request) -> str:
-    return request.text.split("\noutput:\n", 1)[-1]
-
-
 @pytest.fixture
-def rubric_judges(fake_llm):
-    fake_llm.on_json(
-        lambda r: r.schema_name == "JudgeResult",
-        lambda r: {"score": 1.0 if GOOD_REPLY in r.text else 0.0, "reasoning": "fake judge"},
-    )
-    fake_llm.on_json(
-        lambda r: r.schema_name == "ChecklistResult",
-        lambda r: {
-            "items": [
-                {
-                    "id": item,
-                    "reasoning": "fake judge",
-                    "not_applicable": False,
-                    "verdict": GOOD_REPLY in _judged_output(r),
-                }
-                for item in re.findall(r"^- \(([^)]+)\)", r.text, re.M)
-            ],
-            "reasoning": "fake judge",
-        },
+def judges(fake_llm):
+    """Jev meets an expectation only when the judged output is the good reply."""
+    fake_llm.decide = lambda key, question, state: (
+        "yes" if GOOD_REPLY in str(state.get("output") or "") else "no"
     )
 
 
@@ -231,7 +207,7 @@ def _digest(path: Path) -> str:
 
 
 @pytest.fixture
-def workshop(cli, mcp_for, sample_agent, worker, fake_llm, rubric_judges):
+def workshop(cli, mcp_for, sample_agent, worker, fake_llm, judges):
     fake_llm.extra_models.append("fake/candidate")
     fake_llm.on(lambda r: r.model == "fake/candidate", GOOD_REPLY)
     cli.scan(sample_agent)

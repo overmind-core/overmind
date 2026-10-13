@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
-from django.db import connections
+from django.db import connections, transaction
 from fakes.clerk import ClerkAPI
 from fakes.http import ScriptedAPI
 from fakes.llm import FakeLLM, Network
@@ -65,6 +65,16 @@ def _no_outside_sockets(monkeypatch):
         monkeypatch.setenv(proxy, "http://127.0.0.1:9")
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+
+
+@pytest.fixture
+def eager(monkeypatch):
+    """Celery tasks and on-commit hooks run inline; the test transaction never commits."""
+    from overbae.celery import app as celery_app  # noqa: PLC0415 — Django is configured per test
+
+    monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
+    monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
+    monkeypatch.setattr(transaction, "on_commit", lambda func, *args, **kwargs: func())
 
 
 @pytest.fixture(autouse=True)
@@ -243,20 +253,6 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     run_svc.execute(dataset, user=user)
     dataset.refresh_from_db()
     return dataset
-
-
-@pytest.fixture(autouse=True)
-def _rubric_compiler(fake_llm):
-    fake_llm.on_json(
-        lambda r: r.schema_name == "_Checklist",
-        lambda r: {
-            "items": [
-                {"id": "criterion_1", "q": "Does the output satisfy the rubric?", "weight": 0.5},
-                {"id": "criterion_2", "q": "Is the output free of errors?", "weight": 0.5},
-            ],
-            "variables": ["input", "output"],
-        },
-    )
 
 
 @pytest.fixture

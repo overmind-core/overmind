@@ -7,6 +7,7 @@ import uuid
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.test import override_settings
+from factories import make_matrix_row
 
 from overbae.models import (
     DeployedModel,
@@ -29,7 +30,7 @@ GATEWAY = "https://gateway.example.modal.run"
 
 
 def _job(*, incumbent: str = "") -> FinetuningJob:
-    from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
+    from overbae.models import Capability, EvalMatrix, EvalSet
 
     project = Project.objects.create(name=f"bt-{uuid.uuid4().hex[:6]}")
     capability = Capability.objects.create(
@@ -38,12 +39,13 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
     dataset = frozen_dataset(project, TRAIN_ROWS, name="train")
     eval_ds = frozen_dataset(project, EVAL_ROWS, name="eval")
     eset = EvalSet.objects.create(project=project, capability=capability, name="set")
-    EvalSetMember.objects.create(
-        eval_set=eset,
-        evaluator=Evaluator.objects.create(
-            project=project, name="Match", kind="deterministic", config={"check": "exact_match"}
-        ),
-        role=EvalSetMember.Role.GENERATIVE,
+    eset.rows.add(
+        make_matrix_row(
+            project,
+            "Match",
+            type=EvalMatrix.Type.DETERMINISTIC,
+            source="def evaluate(span):\n    return span.output == span.expected\n",
+        )
     )
     return FinetuningJob.objects.create(
         project=project,
@@ -62,7 +64,7 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
 
 def _baseline_route(job):
     row = ensure_target_eval(job, kind="baseline")
-    return row.eval_run.variants.get().model_ref if row else None
+    return row.eval_run.model_ref if row else None
 
 
 @pytest.mark.parametrize(
@@ -160,7 +162,7 @@ def test_delta_is_finetuned_minus_incumbent():
         dataset=job.eval_dataset,
         eval_set=job.eval_set,
         status=EvalRun.Status.COMPLETED,
-        summary={"variants": {"v": {"metrics": {"m": {"mean": 0.60}}}}},
+        summary={"score": 0.60},
     )
     final_run = EvalRun.objects.create(
         project=job.project,
@@ -168,7 +170,7 @@ def test_delta_is_finetuned_minus_incumbent():
         dataset=job.eval_dataset,
         eval_set=job.eval_set,
         status=EvalRun.Status.COMPLETED,
-        summary={"variants": {"v": {"metrics": {"m": {"mean": 0.75}}}}},
+        summary={"score": 0.75},
     )
     FinetuningJobEval.objects.create(
         job=job,

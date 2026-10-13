@@ -21,7 +21,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Cell, Dataset, TaskExecution
+from overbae.models import Cell, Dataset
 from overbae.models.traces import Span
 from overbae.services.datasets import (
     alignment,
@@ -211,9 +211,6 @@ def publish(dataset, prepared, *, user=None):
         **prepared.dataset_fields, updated_at=timezone.now()
     )
     dataset.refresh_from_db()
-    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-    maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
 
 
@@ -320,7 +317,7 @@ def _root(spans: list[Span]) -> Span:
 
 
 def _delivered(spans: list[Span]) -> Any:
-    from overbae.services.eval import chatml
+    from overbae.services.transcripts import chatml
 
     for span in sorted(spans, key=lambda s: s.start_time_ns or 0, reverse=True):
         if str(_attr(span, "overmind.delivery")).lower() == "true":
@@ -342,7 +339,7 @@ def _first(usage: dict[str, Any], keys: tuple[str, ...]) -> float:
 def _usage(spans: list[Span]) -> dict[str, Any]:
     """Summed over the trace from ``Span.usage``, which keeps the attribute names
     as sent (``genai.prompt_tokens``, ``gen_ai.usage.input_tokens``, ...)."""
-    from overbae.services.eval import chatml
+    from overbae.services.transcripts import chatml
 
     prompt = completion = 0
     cost = 0.0
@@ -377,7 +374,7 @@ def _error(root: Span, spans: list[Span]) -> str | None:
 def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
     """One row for one trace: the traces-table facts, the wire transcript and the
     capability's delivered I/O. ``spans`` is the whole trace in start order."""
-    from overbae.services.eval import chatml, normalizer
+    from overbae.services.transcripts import chatml, normalizer
 
     root = _root(spans)
     trajectory = normalizer.reconstruct_spans(spans, promote_harness=True)
@@ -425,16 +422,11 @@ def _chunks(items: Iterable[str], size: int) -> Iterator[list[str]]:
         yield batch
 
 
-def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, float]:
-    """The trace's score is its last scored task execution: the terminal unit of a
-    single-task trace, the latest turn of a session."""
-    rows = (
-        TaskExecution.objects.filter(project_id=project_id, trace_id__in=trace_ids)
-        .exclude(success_score=None)
-        .order_by("started_at", "created_at")
-        .values_list("trace_id", "success_score")
-    )
-    return dict(rows)
+def _score(spans: list[Span]) -> float | None:
+    """The trace's score is its root's trajectory score, else the root's span score."""
+    root = next((span for span in spans if span.is_root), None)
+    attrs = root.eval_attributes if root else {}
+    return (attrs.get("trajectory") or {}).get("score", attrs.get("score"))
 
 
 def iter_trace_rows(
@@ -452,13 +444,12 @@ def iter_trace_rows(
         by_trace: dict[str, list[Span]] = {}
         for span in spans:
             by_trace.setdefault(span.trace_id, []).append(span)
-        scores = _scores(project_id, chunk)
         for trace_id in chunk:
             trace_spans = by_trace.get(trace_id)
             if not trace_spans:
                 continue
             try:
-                row = trace_row(trace_spans, score=scores.get(trace_id))
+                row = trace_row(trace_spans, score=_score(trace_spans))
             except Exception:  # noqa: BLE001 — one unreadable trace must not sink the batch
                 logger.warning("trace %s did not land", trace_id, exc_info=True)
                 continue

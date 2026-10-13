@@ -211,6 +211,12 @@ DELIVERY = "overmind.delivery"  # true on the span carrying the terminal deliver
 GROUNDED_BY = "overmind.grounded_by"  # JSON array of span_id hex strings
 # Declared Behaviour.slug. Optional; the server binds structurally without it.
 BEHAVIOUR_KEY = "overmind.behaviour.key"
+# Live scoring reads these off the span: the nearest declared intent up the
+# ancestry, one-sentence expectations judged against this span's output, and
+# the tool names the span's subtree is expected to call, in order.
+INTENT = "overmind.intent"
+EXPECTATIONS = "overmind.expectations"
+REFERENCE_TRAJECTORY = "overmind.reference_trajectory"
 
 # Evaluator (overmind/optimize/evaluator.py)
 EVAL_BATCH_SIZE = "overmind.eval.batch_size"

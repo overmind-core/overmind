@@ -15,7 +15,7 @@ from django.db.models.expressions import RawSQL
 
 from overbae.models import Conversation, Span
 
-SPAN_USAGE_ORDERING_FIELDS = frozenset({"total_tokens", "total_cost", "model", "trace_scores"})
+SPAN_USAGE_ORDERING_FIELDS = frozenset({"total_tokens", "total_cost", "model", "eval_score"})
 SESSION_USAGE_ORDERING_FIELDS = frozenset({"total_tokens", "total_cost", "model", "timespan"})
 
 _MODEL_KEYS = (
@@ -167,22 +167,25 @@ def genai_evidence_predicate(alias: str = "") -> str:
     )
 
 
-def _trace_scores_sql(table: str) -> str:
-    """The Task Execution Score (``trace_scoring._execution.score``), so the
-    Scores column orders by quality rather than chip count. NULL when unscored."""
-    col = f"{table}.feedback_score"
+def _eval_score_sql(table: str) -> str:
+    """The trajectory score, else the span's own score; NULL when unscored."""
+    col = f"{table}.eval_attributes"
     if connection.vendor == "postgresql":
         return f"""(
             CASE
-                WHEN jsonb_typeof({col}->'trace_scoring'->'_execution'->'score') = 'number'
-                    THEN ({col}->'trace_scoring'->'_execution'->>'score')::float8
+                WHEN jsonb_typeof({col}->'trajectory'->'score') = 'number'
+                    THEN ({col}->'trajectory'->>'score')::float8
+                WHEN jsonb_typeof({col}->'score') = 'number'
+                    THEN ({col}->>'score')::float8
                 ELSE NULL
             END
         )"""
     return f"""(
         CASE
-            WHEN json_type({col}, '$.trace_scoring._execution.score') IN ('integer', 'real')
-                THEN json_extract({col}, '$.trace_scoring._execution.score')
+            WHEN json_type({col}, '$.trajectory.score') IN ('integer', 'real')
+                THEN json_extract({col}, '$.trajectory.score')
+            WHEN json_type({col}, '$.score') IN ('integer', 'real')
+                THEN json_extract({col}, '$.score')
             ELSE NULL
         END
     )"""
@@ -223,8 +226,8 @@ def annotate_spans_for_ordering(queryset, ordering: str, *, all_spans: bool):
                 )
             )
 
-    if "trace_scores" in needed:
-        queryset = queryset.annotate(trace_scores=RawSQL(_trace_scores_sql(table), []))
+    if "eval_score" in needed:
+        queryset = queryset.annotate(eval_score=RawSQL(_eval_score_sql(table), []))
 
     return queryset
 

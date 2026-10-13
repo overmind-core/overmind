@@ -3,7 +3,7 @@
 The incumbent is snapshotted at submission; the training model is its untouched
 base for the baseline and its served checkpoint afterward. Baseline evaluations
 launch alongside training. All evaluations reuse the first run's data cell and
-evaluator snapshots. Grouped jobs share identical incumbent baseline runs.
+frozen matrix. Grouped jobs share identical incumbent baseline runs.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.model_registry import PROVIDERS
-from overbae.models import FinetuningJob
-from overbae.services.eval.context import model_context
+from overbae.innermind import comparison, runs
+from overbae.models import EvalRun, FinetuningJob
 from overbae.services.model_catalog import resolve_training_openrouter_slug
 from overbae.services.serving_context import evaluation_budget
 
@@ -48,32 +48,12 @@ def job_wants_evals(job) -> bool:
     )
 
 
-def _metric_scores_for_run(eval_run_id) -> list[dict[str, Any]]:
-    """Per-metric mean judge scores (0–1) for one EvalRun.
-
-    The same means ``summary.variants[..].metrics`` reports, but computed from the
-    persisted Score rows so it also works while the run is still in flight.
-    """
-    from django.db.models import Avg
-
-    from overbae.models import Score
-
+def _metric_scores_for_run(run: EvalRun) -> list[dict[str, Any]]:
     return [
-        {"name": r["name"], "score": round(float(r["avg"]), 6)}
-        for r in Score.objects.filter(run_id=eval_run_id, outcome=Score.Outcome.SCORED)
-        .exclude(sample__degraded=True)
-        .values("name")
-        .annotate(avg=Avg("value"))
-        .order_by("name")
-        if r["avg"] is not None and r["name"]
+        {"name": name, "score": round(float(metric["mean"]), 6)}
+        for name, metric in sorted(((run.summary or {}).get("metrics") or {}).items())
+        if metric.get("mean") is not None
     ]
-
-
-def _sample_count_for_run(eval_run_id) -> int | None:
-    from overbae.models import EvalSample
-
-    n = EvalSample.objects.filter(run_id=eval_run_id).count()
-    return n or None
 
 
 def serialize_job_evals(job) -> list[dict[str, Any]]:
@@ -87,7 +67,11 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
         "incumbent_after": "Incumbent · after",
         "final": "Trained model · after",
     }
-    for row in FinetuningJobEval.objects.filter(job=job).order_by("checkpoint_step", "created_at"):
+    for row in (
+        FinetuningJobEval.objects.filter(job=job)
+        .select_related("eval_run")
+        .order_by("checkpoint_step", "created_at")
+    ):
         rows.append(
             {
                 "id": str(row.id),
@@ -107,12 +91,10 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
                 "error_message": row.error_message or None,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-                "metric_scores": (
-                    _metric_scores_for_run(row.eval_run_id) if row.eval_run_id else []
-                ),
-                "sample_count": (
-                    _sample_count_for_run(row.eval_run_id) if row.eval_run_id else None
-                ),
+                "metric_scores": _metric_scores_for_run(row.eval_run) if row.eval_run else [],
+                "sample_count": ((row.eval_run.summary or {}).get("rows") or None)
+                if row.eval_run
+                else None,
             }
         )
     return rows
@@ -120,7 +102,7 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
 
 def sync_eval_scores(job) -> list[dict[str, Any]]:
     """Pull completed EvalRun summaries onto FinetuningJobEval rows."""
-    from overbae.models import EvalRun, FinetuningJobEval
+    from overbae.models import FinetuningJobEval
 
     baseline = comparison_eval(job)
     baseline_score = baseline.aggregate_score if baseline else None
@@ -167,19 +149,15 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
             if baseline is not None and row.pk == baseline.pk:
                 baseline_score = None
             continue
-        score = _aggregate_from_summary(summary)
-        ec = summary.get("error_counts") or {}
-        all_errored = (
-            score is None
-            and (summary.get("completed_empty") or ec.get("error_rate") == 1.0)
-            and (ec.get("total") or 0) > 0
-        )
-        if all_errored:
+        headline = comparison.headline(summary)
+        score = None if headline is None else round(headline, 6)
+        total = summary.get("rows") or 0
+        if score is None and total and summary.get("errored") == total:
             FinetuningJobEval.objects.filter(pk=row.pk).update(
                 status=FinetuningJobEval.Status.FAILED,
                 error_message=(
-                    f"All {ec.get('total')} samples errored during generation — "
-                    "no gradable output (see eval run for per-sample errors)"
+                    f"All {total} rows errored during generation — "
+                    "no gradable output (see eval run for per-row errors)"
                 )[:2000],
             )
             continue
@@ -190,7 +168,7 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
             status=FinetuningJobEval.Status.COMPLETED,
             aggregate_score=score,
             baseline_delta=delta,
-            class_metrics=row.class_metrics or _class_metrics_from_run(run),
+            class_metrics=summary.get("class_metrics"),
             error_message="",
         )
         if baseline is not None and row.pk == baseline.pk and score is not None:
@@ -218,45 +196,13 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
     return rows
 
 
-def _class_metrics_from_run(run) -> dict[str, Any] | None:
-    """Per-class classification metrics stamped at eval finalize, if any.
-
-    ``aggregate_run`` appends ``{"class_metrics": …}`` to the dataset-scope Score's
-    sub_scores for label-referenced datasets; non-label runs have none.
-    """
-    from overbae.models import Score
-
-    for score in Score.objects.filter(run=run, scope="dataset").only("sub_scores"):
-        for entry in score.sub_scores or []:
-            if isinstance(entry, dict) and entry.get("class_metrics"):
-                return entry["class_metrics"]
-    return None
-
-
-def _aggregate_from_summary(summary: dict[str, Any]) -> float | None:
-    """The run headline: same number ``overall_aggregate`` reports, gate-only
-    evaluators excluded. A summary that never built the ``metrics`` list still
-    averages every named cell (tests and in-flight rows)."""
-    from overbae.services.eval.comparison import overall_aggregate
-
-    payload = dict(summary or {})
-    if not payload.get("metrics"):
-        names: set[str] = set()
-        for variant in (payload.get("variants") or {}).values():
-            names.update((variant or {}).get("metrics") or {})
-        payload["metrics"] = sorted(names)
-    mean = overall_aggregate(payload).mean
-    return None if mean is None else round(mean, 6)
-
-
 def cancel_related_evals(job) -> int:
     """Cancel in-flight EvalRuns linked to this fine-tune job.
 
     A baseline EvalRun shared across a wizard group keeps running while any sibling
     still needs it; only this job's FinetuningJobEval row is cancelled.
     """
-    from overbae.models import EvalRun, FinetuningJob, FinetuningJobEval
-    from overbae.tasks.eval import cancel_run
+    from overbae.models import FinetuningJobEval
 
     revoked = 0
     qs = FinetuningJobEval.objects.filter(job=job, eval_run_id__isnull=False).select_related(
@@ -292,12 +238,11 @@ def cancel_related_evals(job) -> int:
             )
             continue
         try:
-            revoked += cancel_run(run)
+            revoked += runs.cancel(run)
         except Exception:  # noqa: BLE001 — best-effort on FT cancel
             logger.warning(
                 "Failed to cancel eval run %s for FT job %s", run.id, job.id, exc_info=True
             )
-            EvalRun.objects.filter(pk=run.pk).update(status=EvalRun.Status.CANCELLED)
         FinetuningJobEval.objects.filter(pk=row.pk).update(
             status=FinetuningJobEval.Status.CANCELLED
         )
@@ -509,14 +454,13 @@ def _base_target(job) -> _BaselineTarget:
     kinds = ["model_before"] if resolve_baseline_model(job) else ["model_before", "baseline"]
     existing = (
         job.job_evals.filter(kind__in=kinds, eval_run__isnull=False)
-        .select_related("eval_run")
+        .select_related("eval_run__model_ref")
         .order_by("created_at")
         .first()
     )
     if existing:
-        variant = existing.eval_run.variants.select_related("model_ref").first()
-        if variant and variant.model_ref:
-            ref = variant.model_ref
+        ref = existing.eval_run.model_ref
+        if ref is not None:
             return _BaselineTarget(
                 "base_deploy" if ref.api_key_ref == "INFERENCE_API_KEY" else "provider",
                 ref.model_id,
@@ -795,30 +739,6 @@ def _get_or_create_model_ref(
     )
 
 
-def _copy_baseline_snapshots(job, run) -> int:
-    """Checkpoint/final runs grade with the exact snapshots the baseline used —
-    a rubric refreshed mid-training must not move the bar between before/after."""
-    from overbae.models import FinetuningJobEval, RunEvaluator
-
-    baseline = (
-        FinetuningJobEval.objects.filter(job=job, eval_run_id__isnull=False)
-        .order_by("created_at")
-        .first()
-    )
-    if baseline is None:
-        return 0
-    by_evaluator = {
-        r.evaluator_id: r.snapshot for r in RunEvaluator.objects.filter(run_id=baseline.eval_run_id)
-    }
-    copied = 0
-    for row in run.run_evaluators.all():
-        snap = by_evaluator.get(row.evaluator_id)
-        if snap and snap != row.snapshot:
-            RunEvaluator.objects.filter(pk=row.pk).update(snapshot=snap)
-            copied += 1
-    return copied
-
-
 def _launch_eval(
     job,
     *,
@@ -829,9 +749,7 @@ def _launch_eval(
     checkpoint_step: int | None,
     target: _BaselineTarget | None = None,
 ):
-    from overbae.models import EvalRun, EvalVariant, FinetuningJobEval
-    from overbae.services.eval.eval_set import expand_to_run_evaluators
-    from overbae.tasks.eval import run_eval_run
+    from overbae.models import FinetuningJobEval
 
     if not model_id or not job.eval_dataset_id or not job.eval_set_id:
         return None
@@ -875,55 +793,43 @@ def _launch_eval(
         ref = _get_or_create_model_ref(
             job, model_id=model_id, label=label, kind=kind, target=target
         )
-        run = EvalRun.objects.create(
-            project=job.project,
-            name=label[:255],
-            description=f"Auto in-training eval ({kind}) for FinetuningJob {job.id}",
-            data_source=EvalRun.DataSource.DATASET,
-            dataset_id=job.eval_dataset_id,
-            cell=cell,
-            eval_set_id=job.eval_set_id,
-            judge_model=job.eval_judge_model,
-            max_items=0,
-            sampling=1.0,
-            triggered_by=job.triggered_by,
-            status=EvalRun.Status.PENDING,
+        # Every evaluation of a job grades with the first run's frozen matrix and
+        # system prompt, so a rubric refreshed mid-training never moves the bar.
+        matrix = previous.eval_run.matrix if previous else runs.freeze_matrix(eval_set=job.eval_set)
+        params = (
+            {"system_prompt": previous.eval_run.params["system_prompt"]}
+            if previous and "system_prompt" in (previous.eval_run.params or {})
+            else {}
         )
-        expand_to_run_evaluators(run, job.eval_set, judge_model=job.eval_judge_model)
-        _copy_baseline_snapshots(job, run)
-        if not run.run_evaluators.exists():
-            run.delete()
-            row = FinetuningJobEval.objects.create(
+        params["label"] = label[:255]
+        try:
+            run = runs.create_run(
+                project=job.project,
+                name=label[:255],
+                description=f"Auto in-training eval ({kind}) for FinetuningJob {job.id}",
+                dataset=job.eval_dataset,
+                cell=cell,
+                eval_set=job.eval_set,
+                matrix=matrix,
+                mode=EvalRun.Mode.GENERATE,
+                model_ref=ref,
+                params=params,
+                judge_model=job.eval_judge_model,
+                group=job.group_id or job.id,
+                is_baseline=kind
+                in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.MODEL_BEFORE),
+                triggered_by=job.triggered_by,
+            )
+        except runs.RunError as exc:
+            return FinetuningJobEval.objects.create(
                 job=job,
                 kind=kind,
                 status=FinetuningJobEval.Status.FAILED,
                 checkpoint_id=checkpoint_id,
                 checkpoint_step=checkpoint_step,
                 model_id=model_id,
-                error_message="Eval set has no runnable evaluators",
+                error_message=str(exc),
             )
-            return row
-
-        previous_variant = (
-            previous.eval_run.variants.order_by("order").first() if previous else None
-        )
-        context = model_context(run, capability=job.capability)
-        if previous_variant and "system_prompt" in (previous_variant.params or {}):
-            context = {
-                key: previous_variant.params[key]
-                for key in ("system_prompt", "execution_mode")
-                if key in previous_variant.params
-            }
-        EvalVariant.objects.create(
-            run=run,
-            label=label[:255],
-            model_ref=ref,
-            mode=EvalVariant.Mode.GENERATE,
-            is_baseline=kind
-            in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.MODEL_BEFORE),
-            params=context,
-            order=0,
-        )
         row = FinetuningJobEval.objects.create(
             job=job,
             eval_run=run,
@@ -934,22 +840,11 @@ def _launch_eval(
             model_id=model_id,
         )
 
-    def _enqueue() -> None:
-        result = run_eval_run.apply_async(kwargs={"eval_run_id": str(run.id)})
-        EvalRun.objects.filter(pk=run.pk).update(celery_task_id=result.id)
-        FinetuningJobEval.objects.filter(pk=row.pk).update(status=FinetuningJobEval.Status.RUNNING)
-        logger.info(
-            "Launched FT %s eval for job %s → EvalRun %s (model=%s, max_items=%s)",
-            kind,
-            job.id,
-            run.id,
-            model_id,
-            run.max_items,
+    runs.launch(run)
+    transaction.on_commit(
+        lambda: FinetuningJobEval.objects.filter(pk=row.pk).update(
+            status=FinetuningJobEval.Status.RUNNING
         )
-
-    # Enqueue only after the EvalRun row is COMMITTED: a caller holding an open
-    # transaction lets the worker pick up run_eval_run before the row is visible, and
-    # it exits "not found", orphaning the eval. Runs immediately outside atomic.
-    transaction.on_commit(_enqueue)
+    )
     row.status = FinetuningJobEval.Status.RUNNING
     return row

@@ -4,15 +4,14 @@ import uuid
 
 import pytest
 from conftest import frozen_dataset
-from factories import make_span
+from factories import make_matrix_row, make_span
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.optimizer import OptimizerCandidateSerializer, OptimizerExperimentSerializer
-from overbae.celery import app as celery_app
 from overbae.models import (
     Capability,
     DeployedModel,
-    Evaluator,
+    EvalMatrix,
     OptimizerCandidate,
     OptimizerCommand,
     OptimizerExperiment,
@@ -31,6 +30,8 @@ from overbae.services.optimizer_ledger import (
 )
 
 pytestmark = pytest.mark.django_db
+
+EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
 
 MODE = OptimizerExperiment.Mode.MODEL_COMPARISON
 MODELS = ["openai/gpt-5", "anthropic/claude-sonnet-4"]
@@ -201,22 +202,13 @@ def test_read_serializers_expose_comparison_fields():
     assert str(candidate_data["experiment"]) == str(experiment.id)
 
 
-@pytest.fixture
-def eager(monkeypatch):
-    monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
-    monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
-
-
 def _grade(experiment, candidate: dict, results: list[dict], *, order: int = 1):
-    Evaluator.objects.create(
-        project=experiment.project,
+    make_matrix_row(
+        experiment.project,
+        "Exact match",
         capability=experiment.capability,
-        name="ExactMatch",
-        kind="deterministic",
-        scope="final_output",
-        config={"check": "exact_match"},
-        pass_threshold=1.0,
-        version=1,
+        type=EvalMatrix.Type.DETERMINISTIC,
+        source=EXACT_MATCH,
     )
     iteration = create_iteration(experiment, order=order, candidates=[candidate])
     posted = iteration.candidates.get()
@@ -226,27 +218,18 @@ def _grade(experiment, candidate: dict, results: list[dict], *, order: int = 1):
     return posted
 
 
-def test_failed_and_empty_outputs_are_excluded_from_the_stub_score():
+def test_failed_outputs_are_excluded_from_the_score(eager):
     experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
-    iteration = create_iteration(experiment, order=1, candidates=[{"candidate_index": 0}])
-    candidate = iteration.candidates.get()
-    post_results(
+    candidate = _grade(
         experiment,
+        {"candidate_index": 0},
         [
-            {"candidate_id": str(candidate.id), "datapoint_index": 0, "output": "valid output"},
-            {
-                "candidate_id": str(candidate.id),
-                "datapoint_index": 1,
-                "success": False,
-                "error": "provider timeout",
-            },
+            {"datapoint_index": 0, "output": "a"},
+            {"datapoint_index": 1, "success": False, "error": "provider timeout"},
         ],
     )
 
-    evaluate_iteration(experiment, 1)
-
-    candidate.refresh_from_db()
-    assert 60 <= candidate.score <= 85
+    assert candidate.score == pytest.approx(50.0)
     assert candidate.scores["coverage"] == {
         "excluded_commands": 1,
         "errors": ["provider timeout"],
@@ -319,12 +302,12 @@ def test_a_trace_served_by_another_model_fails_the_datapoint(eager, target, obse
     ],
     ids=["comparison", "baseline", "hybrid", "optimize"],
 )
-def test_the_eval_variant_carries_the_candidate_identity(eager, mode, candidate, label, model_name):
+def test_the_eval_run_carries_the_candidate_identity(eager, mode, candidate, label, model_name):
     experiment = _experiment(mode=mode)
     graded = _grade(experiment, candidate, [{"datapoint_index": 0, "output": "a"}])
 
-    variant = graded.eval_run.variants.get()
-    assert (variant.label, variant.model_name) == (label, model_name)
+    run = graded.eval_run
+    assert (run.params["label"], run.model_name) == (label, model_name)
 
 
 def test_comparison_scores_report_the_incumbent_when_it_wins():
@@ -422,35 +405,3 @@ def test_model_comparison_winner_breaks_score_tie_on_coverage():
     complete_experiment(experiment)
 
     assert experiment.state["model_comparison"]["selected_winner"] == MODELS[0]
-
-
-def test_model_comparison_blocks_winner_when_suite_incomplete_and_all_tied():
-    experiment = _experiment()
-    iteration = OptimizerIteration.objects.create(
-        experiment=experiment,
-        order=1,
-        status=OptimizerIteration.Status.EVALUATED,
-    )
-    tied_scores = {
-        "coverage_rate": 1.0,
-        "coverage": {"coverage_rate": 1.0, "excluded_commands": 0},
-        "measurement": {"uncovered_card_claims": ["Returned label matches the gold intent"]},
-    }
-    for index, model in enumerate(MODELS):
-        OptimizerCandidate.objects.create(
-            experiment=experiment,
-            iteration=iteration,
-            candidate_index=index,
-            target_model=model,
-            score=100.0,
-            scores=tied_scores,
-            status=OptimizerCandidate.Status.EVALUATED,
-        )
-
-    complete_experiment(experiment)
-
-    comparison = experiment.state["model_comparison"]
-    assert comparison["suite_incomplete"] is True
-    assert comparison["selected_winner"] == ""
-    assert comparison["overall_winner"] == "incumbent"
-    assert "winner_note" in comparison

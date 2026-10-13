@@ -14,7 +14,7 @@ from overbae.core.decisions import DecisionError, question_batches
 from overbae.services.billing_ledger import charge_llm_usage, ensure_credits
 from overbae.services.datasets import paths, review, rows, store
 from overbae.services.datasets.context import context_fingerprint, preparation_context
-from overbae.services.eval import decisions, funnel
+from overbae.services.judging import decisions, funnel
 
 MAX_ROWS_PER_CALL = 200
 

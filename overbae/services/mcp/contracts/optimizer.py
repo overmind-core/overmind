@@ -30,7 +30,7 @@ class OptimizerEvalSetReadiness(MCPModel):
     name: str
     capability: str
     active: bool
-    member_count: int = Field(ge=0)
+    row_count: int = Field(ge=0)
 
 
 class OptimizerExecutionerState(MCPModel):
@@ -148,8 +148,6 @@ class OptimizerCandidateResult(MCPModel):
     coverage_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     graded_rows: int | None = Field(default=None, ge=0)
     total_rows: int | None = Field(default=None, ge=0)
-    suite_incomplete: bool = False
-    uncovered_card_claims: list[str] = Field(default_factory=list, max_length=50)
     scores: dict[str, Any] = Field(default_factory=dict, max_length=100)
     patch: str | None = Field(default=None, max_length=4_000)
     patch_truncated: bool = False

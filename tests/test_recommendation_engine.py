@@ -317,7 +317,7 @@ def test_selected_capability_overrides_dataset_context_and_mapping(dataset):
             return_value=('{"task_type":"creative_writing"}', {}),
         ),
         mock.patch("overbae.services.recommendation._resolve_task_type") as from_dataset,
-        mock.patch("overbae.services.eval.context_extractor.enqueue_refresh") as refresh,
+        mock.patch("overbae.services.datasets.profiler.enqueue_refresh") as refresh,
     ):
         analysis = get_recommendation(str(dataset.id), str(selected.id))
 

@@ -20,13 +20,13 @@ import {
     ChatTurnStatusEnumToJSON,
     ChatTurnStatusEnumToJSONTyped,
 } from './ChatTurnStatusEnum';
-import type { ChatTurnRoleEnum } from './ChatTurnRoleEnum';
+import type { RoleEnum } from './RoleEnum';
 import {
-    ChatTurnRoleEnumFromJSON,
-    ChatTurnRoleEnumFromJSONTyped,
-    ChatTurnRoleEnumToJSON,
-    ChatTurnRoleEnumToJSONTyped,
-} from './ChatTurnRoleEnum';
+    RoleEnumFromJSON,
+    RoleEnumFromJSONTyped,
+    RoleEnumToJSON,
+    RoleEnumToJSONTyped,
+} from './RoleEnum';
 
 /**
  *
@@ -42,10 +42,10 @@ export interface ChatTurn {
     id?: string;
     /**
      *
-     * @type {ChatTurnRoleEnum}
+     * @type {RoleEnum}
      * @memberof ChatTurn
      */
-    role: ChatTurnRoleEnum;
+    role: RoleEnum;
     /**
      *
      * @type {string}
@@ -119,7 +119,7 @@ export function ChatTurnFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
     return {
 
         'id': json['id'] == null ? undefined : json['id'],
-        'role': ChatTurnRoleEnumFromJSON(json['role']),
+        'role': RoleEnumFromJSON(json['role']),
         'text': json['text'],
         'error': json['error'] == null ? undefined : json['error'],
         'cells': json['cells'] == null ? undefined : json['cells'],
@@ -143,7 +143,7 @@ export function ChatTurnToJSONTyped(value?: ChatTurn | null, ignoreDiscriminator
     return {
 
         'id': value['id'],
-        'role': ChatTurnRoleEnumToJSON(value['role']),
+        'role': RoleEnumToJSON(value['role']),
         'text': value['text'],
         'error': value['error'],
         'cells': value['cells'],

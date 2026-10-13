@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.test import override_settings
+from factories import make_matrix_row
 
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
@@ -16,7 +17,7 @@ from overbae.modal.model_registry import (
     get_training_context_policy,
     min_sft_context_length,
 )
-from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
+from overbae.models import Capability, EvalSet
 from overbae.services.finetuning_runner import baseten_context_length
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.constraints import eligible_models
@@ -220,8 +221,7 @@ class TestJobSerializerContextValidation:
         )
         capability = Capability.objects.create(project=project, name="Judge", slug="judge")
         eval_set = EvalSet.objects.create(project=project, capability=capability, name="Judges")
-        evaluator = Evaluator.objects.create(project=project, name="Accuracy", kind="llm_judge")
-        EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
+        eval_set.rows.add(make_matrix_row(eval_set.project))
         version = dataset.active_cell
         version.stats = {**version.stats, "max_token_length": max_token_length}
         version.save(update_fields=["stats"])

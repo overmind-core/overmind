@@ -16,23 +16,17 @@
 import * as runtime from '../runtime';
 import type {
   EvalSet,
-  EvalSetAddMembersRequestRequest,
   EvalSetRequest,
   PaginatedEvalSetList,
-  PatchedEvalSetMemberUpdateRequest,
   PatchedEvalSetRequest,
 } from '../models/index';
 import {
     EvalSetFromJSON,
     EvalSetToJSON,
-    EvalSetAddMembersRequestRequestFromJSON,
-    EvalSetAddMembersRequestRequestToJSON,
     EvalSetRequestFromJSON,
     EvalSetRequestToJSON,
     PaginatedEvalSetListFromJSON,
     PaginatedEvalSetListToJSON,
-    PatchedEvalSetMemberUpdateRequestFromJSON,
-    PatchedEvalSetMemberUpdateRequestToJSON,
     PatchedEvalSetRequestFromJSON,
     PatchedEvalSetRequestToJSON,
 } from '../models/index';
@@ -56,22 +50,6 @@ export interface EvalSetsListRequest {
     search?: string;
 }
 
-export interface EvalSetsMembersCreateRequest {
-    id: string;
-    evalSetAddMembersRequestRequest?: EvalSetAddMembersRequestRequest;
-}
-
-export interface EvalSetsMembersDestroyRequest {
-    id: string;
-    memberId: string;
-}
-
-export interface EvalSetsMembersPartialUpdateRequest {
-    id: string;
-    memberId: string;
-    patchedEvalSetMemberUpdateRequest?: PatchedEvalSetMemberUpdateRequest;
-}
-
 export interface EvalSetsPartialUpdateRequest {
     id: string;
     patchedEvalSetRequest?: PatchedEvalSetRequest;
@@ -81,18 +59,13 @@ export interface EvalSetsRetrieveRequest {
     id: string;
 }
 
-export interface EvalSetsUpdateRequest {
-    id: string;
-    evalSetRequest: EvalSetRequest;
-}
-
 /**
  *
  */
 export class EvalSetsApi extends runtime.BaseAPI {
 
     /**
-     * Point the owning capability\'s ``active_eval_set`` at this set.
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
      * Activate this set on its capability
      */
     async evalSetsActivateCreateRaw(requestParameters: EvalSetsActivateCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
@@ -142,7 +115,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Point the owning capability\'s ``active_eval_set`` at this set.
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
      * Activate this set on its capability
      */
     async evalSetsActivateCreate(requestParameters: EvalSetsActivateCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
@@ -151,8 +124,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Create an eval set for a capability
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Create an eval set
      */
     async evalSetsCreateRaw(requestParameters: EvalSetsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
         if (requestParameters['evalSetRequest'] == null) {
@@ -203,8 +176,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Create an eval set for a capability
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Create an eval set
      */
     async evalSetsCreate(requestParameters: EvalSetsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
         const response = await this.evalSetsCreateRaw(requestParameters, initOverrides);
@@ -212,7 +185,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
      * Delete an eval set
      */
     async evalSetsDestroyRaw(requestParameters: EvalSetsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -262,7 +235,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
      * Delete an eval set
      */
     async evalSetsDestroy(requestParameters: EvalSetsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -270,8 +243,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * List eval sets (capability-grouped rubric sets)
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * List eval sets
      */
     async evalSetsListRaw(requestParameters: EvalSetsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedEvalSetList>> {
         const queryParameters: any = {};
@@ -328,8 +301,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * List eval sets (capability-grouped rubric sets)
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * List eval sets
      */
     async evalSetsList(requestParameters: EvalSetsListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalSetList> {
         const response = await this.evalSetsListRaw(requestParameters, initOverrides);
@@ -337,207 +310,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Add members to the set (authored specs and/or existing evaluators)
-     */
-    async evalSetsMembersCreateRaw(requestParameters: EvalSetsMembersCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalSetsMembersCreate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-sets/{id}/members/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: EvalSetAddMembersRequestRequestToJSON(requestParameters['evalSetAddMembersRequestRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalSetFromJSON(jsonValue));
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Add members to the set (authored specs and/or existing evaluators)
-     */
-    async evalSetsMembersCreate(requestParameters: EvalSetsMembersCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
-        const response = await this.evalSetsMembersCreateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update or remove one set member
-     */
-    async evalSetsMembersDestroyRaw(requestParameters: EvalSetsMembersDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalSetsMembersDestroy().'
-            );
-        }
-
-        if (requestParameters['memberId'] == null) {
-            throw new runtime.RequiredError(
-                'memberId',
-                'Required parameter "memberId" was null or undefined when calling evalSetsMembersDestroy().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-sets/{id}/members/{member_id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-        urlPath = urlPath.replace(`{${"member_id"}}`, encodeURIComponent(String(requestParameters['memberId'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'DELETE',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalSetFromJSON(jsonValue));
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update or remove one set member
-     */
-    async evalSetsMembersDestroy(requestParameters: EvalSetsMembersDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
-        const response = await this.evalSetsMembersDestroyRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update or remove one set member
-     */
-    async evalSetsMembersPartialUpdateRaw(requestParameters: EvalSetsMembersPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalSetsMembersPartialUpdate().'
-            );
-        }
-
-        if (requestParameters['memberId'] == null) {
-            throw new runtime.RequiredError(
-                'memberId',
-                'Required parameter "memberId" was null or undefined when calling evalSetsMembersPartialUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-sets/{id}/members/{member_id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-        urlPath = urlPath.replace(`{${"member_id"}}`, encodeURIComponent(String(requestParameters['memberId'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PATCH',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PatchedEvalSetMemberUpdateRequestToJSON(requestParameters['patchedEvalSetMemberUpdateRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalSetFromJSON(jsonValue));
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update or remove one set member
-     */
-    async evalSetsMembersPartialUpdate(requestParameters: EvalSetsMembersPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
-        const response = await this.evalSetsMembersPartialUpdateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Partially update an eval set
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Update an eval set\'s name or rows
      */
     async evalSetsPartialUpdateRaw(requestParameters: EvalSetsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
         if (requestParameters['id'] == null) {
@@ -589,8 +363,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Partially update an eval set
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Update an eval set\'s name or rows
      */
     async evalSetsPartialUpdate(requestParameters: EvalSetsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
         const response = await this.evalSetsPartialUpdateRaw(requestParameters, initOverrides);
@@ -598,8 +372,8 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Get an eval set with its members
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Get an eval set
      */
     async evalSetsRetrieveRaw(requestParameters: EvalSetsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
         if (requestParameters['id'] == null) {
@@ -648,80 +422,11 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Get an eval set with its members
+     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * Get an eval set
      */
     async evalSetsRetrieve(requestParameters: EvalSetsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
         const response = await this.evalSetsRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update an eval set
-     */
-    async evalSetsUpdateRaw(requestParameters: EvalSetsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalSetsUpdate().'
-            );
-        }
-
-        if (requestParameters['evalSetRequest'] == null) {
-            throw new runtime.RequiredError(
-                'evalSetRequest',
-                'Required parameter "evalSetRequest" was null or undefined when calling evalSetsUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-sets/{id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PUT',
-            headers: headerParameters,
-            query: queryParameters,
-            body: EvalSetRequestToJSON(requestParameters['evalSetRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalSetFromJSON(jsonValue));
-    }
-
-    /**
-     * A set groups a capability\'s runnable evaluators by role. The *active* set drives the optimizer, the backtest, and the run wizard\'s default selection — see ``runnable_capability_evaluators``.
-     * Update an eval set
-     */
-    async evalSetsUpdate(requestParameters: EvalSetsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
-        const response = await this.evalSetsUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

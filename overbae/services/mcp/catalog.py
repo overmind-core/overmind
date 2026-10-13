@@ -268,3 +268,7 @@ from overbae.services.mcp.tools_instrumentation import (  # noqa: E402
 )
 
 register_instrumentation_tools(CATALOG)
+
+from overbae.services.mcp.tools_signals import register_signal_tools  # noqa: E402
+
+register_signal_tools(CATALOG)

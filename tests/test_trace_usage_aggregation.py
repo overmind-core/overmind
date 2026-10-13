@@ -292,40 +292,23 @@ def test_list_orders_by_aggregated_total_tokens():
     assert desc_ids == [high, low]
 
 
-def test_list_orders_by_model_and_execution_score():
-    """``-trace_scores`` sorts on the Task Execution Score, not the chip count:
-    a trace scored by many evaluators can still rank below a better one."""
+def test_list_orders_by_model_and_eval_score():
     client, project = _client_and_project()
     a = uuid.uuid4().hex[:32]
     b = uuid.uuid4().hex[:32]
     root_a = _span(project, trace_id=a, attributes={"genai.model": "aaa-model"})
     root_b = _span(project, trace_id=b, attributes={"genai.model": "zzz-model"})
     Span.objects.filter(pk=root_a.pk).update(
-        feedback_score={
-            "trace_scoring": {
-                "eval_one": {"score": 0.2, "outcome": "scored"},
-                "eval_two": {"score": 0.4, "outcome": "scored"},
-                "_execution": {"score": 0.3, "evaluations": 2},
-                "_scored_at": "2026-01-01T00:00:00Z",
-            }
-        }
+        eval_attributes={"score": 0.95, "trajectory": {"score": 0.3}}
     )
-    Span.objects.filter(pk=root_b.pk).update(
-        feedback_score={
-            "trace_scoring": {
-                "eval_one": {"score": 0.9, "outcome": "scored"},
-                "_execution": {"score": 0.9, "evaluations": 1},
-                "_scored_at": "2026-01-01T00:00:00Z",
-            }
-        }
-    )
+    Span.objects.filter(pk=root_b.pk).update(eval_attributes={"score": 0.9})
 
     by_model = client.get(TRACES_URL, {"ordering": "model", "project": project.id})
     assert by_model.status_code == 200
     model_ids = [r["trace_id"] for r in by_model.json()["results"] if r["trace_id"] in {a, b}]
     assert model_ids == [a, b]
 
-    by_scores = client.get(TRACES_URL, {"ordering": "-trace_scores", "project": project.id})
+    by_scores = client.get(TRACES_URL, {"ordering": "-eval_score", "project": project.id})
     assert by_scores.status_code == 200
     score_ids = [r["trace_id"] for r in by_scores.json()["results"] if r["trace_id"] in {a, b}]
     assert score_ids == [b, a]

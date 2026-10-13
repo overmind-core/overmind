@@ -4,9 +4,11 @@ import json
 from types import SimpleNamespace
 
 from overbae.api import overmind_attrs as oc_attrs
-from overbae.services.eval import envelope, normalizer
-from overbae.services.eval.evaluators import base
-from tests.factories import expectation
+from overbae.services.transcripts import envelope, normalizer
+
+
+def expectation(exp_id="currency", kind="contains", spec="USD", scope="trace", gate=True):
+    return {"id": exp_id, "kind": kind, "spec": spec, "scope": scope, "gate": gate}
 
 
 def _event(name, payload, *, version=1, ts=1, raw=None):
@@ -239,50 +241,35 @@ def test_reconstruct_spans_attaches_runtime_and_prompt_records():
     assert "conversation_end" not in runtime
 
 
-def test_resolver_runtime_sources():
-    unit = base.EvalUnit(
-        trajectory={
-            "final_output": "100 USD",
-            "messages": [],
-            "runtime": {
-                "expectations": [{"id": "currency", "kind": "contains"}],
-                "context": {"user_tier": "premium"},
-                "checkpoints": [{"name": "cp", "span_id": "s"}],
-                "prompt_records": [
-                    {"span_id": "s", "template": "T {x}", "kwargs": {"x": 1}, "rendered": "T 1"}
+def test_compact_conversation_clips_and_keeps_tools():
+    turns = envelope.compact_conversation(
+        [
+            SimpleNamespace(pk="1", role="user", content="I want to fine-tune", parts=[]),
+            SimpleNamespace(
+                pk="2",
+                role="assistant",
+                content="ok",
+                parts=[
+                    {"type": "activity", "phase": "tool_done", "tool": "create_finetune_job"},
+                    {"type": "activity", "phase": "tool_start", "tool": "ignored"},
                 ],
-            },
-        }
+            ),
+            SimpleNamespace(pk="3", role="user", content="now the curves", parts=[]),
+        ],
+        exclude_ids=["3"],
     )
-    assert base._source_object(unit, "runtime_expectations") == [
-        {"id": "currency", "kind": "contains"}
+    assert turns == [
+        {"role": "user", "text": "I want to fine-tune"},
+        {"role": "assistant", "text": "ok", "tools": ["create_finetune_job"]},
     ]
-    assert base._source_object(unit, "runtime_context") == {"user_tier": "premium"}
-    assert base._source_object(unit, "runtime_checkpoints") == [{"name": "cp", "span_id": "s"}]
-    assert base._source_object(unit, "prompt_template") == "T {x}"
-    assert base._source_object(unit, "prompt_kwargs") == {"x": 1}
 
 
-def test_resolver_runtime_sources_absent_on_plain_trajectory():
-    unit = base.EvalUnit(trajectory={"final_output": "x", "messages": []})
-    assert base._source_object(unit, "runtime_expectations") == []
-    assert base._source_object(unit, "runtime_context") == {}
-    assert base._source_object(unit, "runtime_checkpoints") == []
-    assert base._source_object(unit, "prompt_template") is None
-    assert base._source_object(unit, "prompt_kwargs") is None
-    rv = base.resolve_one(unit, "prompt_template", source="prompt_template")
-    assert rv.shape == "empty"
-
-
-def test_resolver_multi_record_prompt_template_returns_ordered_list():
-    unit = base.EvalUnit(
-        trajectory={
-            "runtime": {
-                "prompt_records": [
-                    {"span_id": "a", "template": "first", "kwargs": {}, "rendered": "first"},
-                    {"span_id": "b", "template": "second", "kwargs": {}, "rendered": "second"},
-                ]
-            }
-        }
+def test_parse_conversation_context_from_envelope_facts():
+    facts = envelope.conversation_context_facts(
+        conversation_id="sess-1",
+        prior_turns=[{"role": "user", "text": "fine-tune"}],
     )
-    assert base._source_object(unit, "prompt_template") == ["first", "second"]
+    turns, running, cid = envelope.parse_conversation_context(facts)
+    assert cid == "sess-1"
+    assert running == ""
+    assert turns == [{"role": "user", "text": "fine-tune"}]

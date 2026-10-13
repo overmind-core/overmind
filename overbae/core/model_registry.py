@@ -347,11 +347,13 @@ def is_inference_model(model_id: str) -> bool:
 class Role(StrEnum):
     FAST = "fast"
     AGENT = "agent"
+    EXPLAIN = "explain"
 
 
 ROLE_CHAINS: dict[Role, tuple[str, ...]] = {
     Role.FAST: ("gpt-5.6-luna", "claude-sonnet-5", "gemini-3.8-flash"),
     Role.AGENT: ("gpt-5.6-terra", "claude-sonnet-5", "gemini-3.1-pro-preview"),
+    Role.EXPLAIN: ("gpt-5-mini", "gpt-5.6-luna", "gemini-3.8-flash"),
 }
 
 
@@ -359,6 +361,7 @@ class TaskType(StrEnum):
     JUDGE_SCORING = "judge_scoring"
     CRITERIA_GENERATION = "criteria_generation"
     EVAL_RECOMMENDATION = "eval_recommendation"
+    EVAL_EXPLANATION = "eval_explanation"
     WORKSHOP = "workshop"
     DEFAULT = "default"
 
@@ -367,6 +370,7 @@ TASK_ROLES: dict[TaskType, Role] = {
     TaskType.JUDGE_SCORING: Role.FAST,
     TaskType.CRITERIA_GENERATION: Role.FAST,
     TaskType.EVAL_RECOMMENDATION: Role.FAST,
+    TaskType.EVAL_EXPLANATION: Role.EXPLAIN,
     TaskType.WORKSHOP: Role.AGENT,
     TaskType.DEFAULT: Role.FAST,
 }

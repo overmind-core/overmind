@@ -13,14 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { EvalSetMember } from './EvalSetMember';
-import {
-    EvalSetMemberFromJSON,
-    EvalSetMemberFromJSONTyped,
-    EvalSetMemberToJSON,
-    EvalSetMemberToJSONTyped,
-} from './EvalSetMember';
-
 /**
  *
  * @export
@@ -62,37 +54,13 @@ export interface EvalSet {
      * @type {Array<string>}
      * @memberof EvalSet
      */
-    prompts?: Array<string>;
+    rows?: Array<string>;
     /**
      *
      * @type {boolean}
      * @memberof EvalSet
      */
     readonly isActive: boolean;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalSet
-     */
-    readonly generativeCount: number;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalSet
-     */
-    readonly traceScoringCount: number;
-    /**
-     *
-     * @type {Array<EvalSetMember>}
-     * @memberof EvalSet
-     */
-    readonly members: Array<EvalSetMember>;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalSet
-     */
-    readonly createdBy: number | null;
     /**
      *
      * @type {Date}
@@ -115,10 +83,6 @@ export function instanceOfEvalSet(value: object): value is EvalSet {
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('isActive' in value) || value['isActive'] === undefined) return false;
-    if (!('generativeCount' in value) || value['generativeCount'] === undefined) return false;
-    if (!('traceScoringCount' in value) || value['traceScoringCount'] === undefined) return false;
-    if (!('members' in value) || value['members'] === undefined) return false;
-    if (!('createdBy' in value) || value['createdBy'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -139,12 +103,8 @@ export function EvalSetFromJSONTyped(json: any, ignoreDiscriminator: boolean): E
         'capability': json['capability'] == null ? undefined : json['capability'],
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
-        'prompts': json['prompts'] == null ? undefined : json['prompts'],
+        'rows': json['rows'] == null ? undefined : json['rows'],
         'isActive': json['is_active'],
-        'generativeCount': json['generative_count'],
-        'traceScoringCount': json['trace_scoring_count'],
-        'members': ((json['members'] as Array<any>).map(EvalSetMemberFromJSON)),
-        'createdBy': json['created_by'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -154,7 +114,7 @@ export function EvalSetToJSON(json: any): EvalSet {
     return EvalSetToJSONTyped(json, false);
 }
 
-export function EvalSetToJSONTyped(value?: Omit<EvalSet, 'id'|'is_active'|'generative_count'|'trace_scoring_count'|'members'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalSetToJSONTyped(value?: Omit<EvalSet, 'id'|'is_active'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -165,6 +125,6 @@ export function EvalSetToJSONTyped(value?: Omit<EvalSet, 'id'|'is_active'|'gener
         'capability': value['capability'],
         'name': value['name'],
         'description': value['description'],
-        'prompts': value['prompts'],
+        'rows': value['rows'],
     };
 }

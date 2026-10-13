@@ -355,12 +355,11 @@ export function useTrainWizard({
     queryFn: () =>
       apiClient.evalRuns.evalRunsContextCheckCreate({
         evaluationContextRequestRequest: {
-          capability: capabilityId || null,
           dataset: evalDatasetId,
           evalSet: evalSetId,
           judgeModel: judgeModel as EvaluationContextRequestRequest["judgeModel"],
           project: projectId,
-          variants: contextVariants,
+          targets: contextVariants,
         },
       }),
     queryKey: [

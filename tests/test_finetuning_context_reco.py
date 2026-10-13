@@ -6,14 +6,12 @@ from unittest.mock import patch
 import pytest
 from conftest import frozen_dataset
 from django.urls import reverse
-from factories import auth_client, make_user
+from factories import auth_client, make_matrix_row, make_user
 
 from overbae.models import (
     Capability,
     Dataset,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     Project,
     ProjectMembership,
@@ -291,17 +289,7 @@ def test_job_create_persists_eval_dataset_and_eval_set():
     train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2"])
     eval_ds = _dataset(p, a, intent="eval", trace_ids=["t3"])
     eval_set = EvalSet.objects.create(project=p, capability=a, name="active set")
-    ev = Evaluator.objects.create(
-        project=p,
-        capability=a,
-        name="gate",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        scope=Evaluator.Scope.FINAL_OUTPUT,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set, evaluator=ev, role=EvalSetMember.Role.GENERATIVE, order=0
-    )
+    eval_set.rows.add(make_matrix_row(eval_set.project))
 
     with patch(CELERY_PATH, return_value=type("R", (), {"id": "task-1"})()):
         r = auth_client(u).post(
@@ -378,13 +366,7 @@ def test_job_create_allows_evaluation_that_may_exceed_serving_context():
     u, project, capability = _setup()
     train = _dataset(project, capability, intent="ft", trace_ids=["train"])
     eval_set = EvalSet.objects.create(project=project, capability=capability, name="Evaluation")
-    evaluator = Evaluator.objects.create(
-        project=project,
-        name="Reference match",
-        kind="deterministic",
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
+    eval_set.rows.add(make_matrix_row(eval_set.project))
     evaluation = frozen_dataset(
         project,
         [{"input": "x" * 120000, "expected_output": "answer"}],

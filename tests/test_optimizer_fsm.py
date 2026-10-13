@@ -9,21 +9,20 @@ from contextlib import contextmanager
 import pytest
 from conftest import frozen_dataset
 from django.urls import reverse
-from factories import auth_client, make_project, make_user
+from factories import auth_client, make_matrix_row, make_project, make_user
 
-from overbae.celery import app as celery_app
 from overbae.models import (
     Capability,
+    EvalMatrix,
     EvalRun,
-    Evaluator,
     OptimizerCandidate,
     OptimizerCommand,
     OptimizerExperiment,
     OptimizerIteration,
 )
 from overbae.models.optimizer import (
+    on_candidate_eval_finished,
     optimize_capability,
-    optimizer_on_candidate_eval_complete,
     run_experiment_advance,
 )
 from overbae.services.optimizer_create import create_optimizer_experiment
@@ -37,14 +36,10 @@ from overbae.tasks.optimizer_reconciler import reconcile_optimizer_experiments
 
 pytestmark = pytest.mark.django_db
 
+EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
+
 ROWS = [({"q": "2+2"}, "four"), ({"q": "capital of France"}, "paris")]
 S = OptimizerExperiment.Status
-
-
-@pytest.fixture
-def eager(monkeypatch):
-    monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
-    monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
 
 
 def _experiment(*, graded: bool = True, user=None) -> OptimizerExperiment:
@@ -58,15 +53,12 @@ def _experiment(*, graded: bool = True, user=None) -> OptimizerExperiment:
         capability=capability,
     )
     if graded:
-        Evaluator.objects.create(
-            project=project,
+        make_matrix_row(
+            project,
+            "Exact match",
             capability=capability,
-            name="ExactMatch",
-            kind="deterministic",
-            scope="final_output",
-            config={"check": "exact_match"},
-            pass_threshold=1.0,
-            version=1,
+            type=EvalMatrix.Type.DETERMINISTIC,
+            source=EXACT_MATCH,
         )
     return create_optimizer_experiment(user=user, capability=capability, dataset=dataset)
 
@@ -118,7 +110,7 @@ def test_posted_outputs_are_graded_by_a_real_eval_run(eager, outputs, score, cov
     assert exp.scores["baseline"] == pytest.approx(score)
 
 
-def test_without_evaluators_the_stub_still_scores_the_iteration():
+def test_without_matrix_rows_the_experiment_fails():
     exp = _experiment(graded=False)
     candidate = _run(exp, 0, ["four", "paris"])
 
@@ -126,9 +118,8 @@ def test_without_evaluators_the_stub_still_scores_the_iteration():
 
     exp.refresh_from_db()
     candidate.refresh_from_db()
-    assert exp.status == S.EVALUATED_BASELINE_OUTPUTS
+    assert exp.status == S.FAILED
     assert candidate.eval_run is None
-    assert candidate.score > 0
 
 
 @pytest.mark.parametrize(
@@ -232,9 +223,8 @@ def test_a_grading_run_that_finishes_after_cancel_does_not_revive_the_experiment
     evaluate_iteration(exp, 0)
     auth_client(user).post(reverse("optimizer-experiment-cancel", kwargs={"id": exp.id}))
 
-    optimizer_on_candidate_eval_complete(
-        experiment_id=str(exp.id), candidate_id=str(candidate.id), iteration_order=0
-    )
+    candidate.refresh_from_db()
+    on_candidate_eval_finished(candidate.eval_run)
 
     exp.refresh_from_db()
     assert exp.status == S.CANCELLED

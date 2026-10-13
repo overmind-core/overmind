@@ -2,9 +2,10 @@ import logging
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.db.models import Avg, Count, Max, Min, OuterRef, Q, Subquery, Sum
+from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Q, Subquery, Sum
 from django.db.models.expressions import RawSQL
-from django.db.models.functions import Coalesce
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -70,10 +71,8 @@ from overbae.api.serializers import (
     SpanSerializer,
     TraceDetailSerializer,
     conversation_usage_totals,
-    eligible_scoring_capabilities,
     trace_status,
     trace_usage_totals,
-    traces_with_finished_scoring_pass,
 )
 from overbae.api.span_ordering import (
     annotate_sessions_for_ordering,
@@ -95,7 +94,6 @@ from overbae.models import (
     ProjectInvite,
     ProjectMembership,
     Span,
-    TaskExecution,
     User,
 )
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
@@ -387,7 +385,7 @@ class SpanViewSet(
         "total_tokens",
         "total_cost",
         "model",
-        "trace_scores",
+        "eval_score",
     ]
     # ``retrieve`` keys off ``trace_id`` (URL says /traces/{trace_id}/) — the
     # row's UUID PK is never user-visible.
@@ -435,12 +433,6 @@ class SpanViewSet(
         trace_usage = getattr(self, "_trace_usage", None)
         if trace_usage is not None:
             context["trace_usage"] = trace_usage
-        eligible_capabilities = getattr(self, "_eligible_scoring_capabilities", None)
-        if eligible_capabilities is not None:
-            context["eligible_scoring_capabilities"] = eligible_capabilities
-        finished_passes = getattr(self, "_traces_with_finished_pass", None)
-        if finished_passes is not None:
-            context["traces_with_finished_pass"] = finished_passes
         return context
 
     def list(self, request, *args, **kwargs):
@@ -459,12 +451,6 @@ class SpanViewSet(
         if not all_spans:
             project_ids = _user_project_ids(request.user)
             self._trace_usage = trace_usage_totals(project_ids, [span.trace_id for span in rows])
-            self._eligible_scoring_capabilities = eligible_scoring_capabilities(
-                project_ids, [span.capability_id for span in rows if span.capability_id]
-            )
-            self._traces_with_finished_pass = traces_with_finished_scoring_pass(
-                project_ids, [span.trace_id for span in rows]
-            )
         serializer = self.get_serializer(rows, many=True)
         if page is not None:
             return self.get_paginated_response(serializer.data)
@@ -607,18 +593,22 @@ class SessionViewSet(
                 span_count=Count("spans"),
                 first_span_ns=Min("spans__start_time_ns"),
                 last_span_ns=Max("spans__end_time_ns"),
-                # The ledger fold writes the same session score to every
-                # execution of the conversation; the newest row is current.
                 session_score=Subquery(
-                    TaskExecution.objects.filter(
-                        project_id=OuterRef("project_id"),
-                        conversation_id=OuterRef("external_id"),
+                    Span.objects.filter(conversation_id=OuterRef("pk"), parent_span_id__isnull=True)
+                    .order_by()
+                    .values("conversation_id")
+                    .annotate(
+                        mean=Avg(
+                            Coalesce(
+                                Cast(
+                                    KeyTextTransform("score", "eval_attributes__trajectory"),
+                                    FloatField(),
+                                ),
+                                Cast(KeyTextTransform("score", "eval_attributes"), FloatField()),
+                            )
+                        )
                     )
-                    # A blank external_id must not join the executions that
-                    # simply have no conversation.
-                    .exclude(conversation_id="")
-                    .order_by("-started_at")
-                    .values("session_score")[:1]
+                    .values("mean")[:1]
                 ),
             )
         )

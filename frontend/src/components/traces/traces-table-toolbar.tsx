@@ -132,15 +132,14 @@ function presetIsActive(existing: FilterEntry[], needed: FilterEntry[]): boolean
 }
 
 /** Mirrors the `?view=` search param. */
-export type TracesViewMode = "executions" | "roots" | "sessions";
+export type TracesViewMode = "roots" | "sessions";
 
 const VIEW_LABELS: Record<TracesViewMode, string> = {
-  executions: "Task executions",
   roots: "Root traces",
   sessions: "Sessions",
 };
 
-const VIEW_MODES: TracesViewMode[] = ["executions", "roots", "sessions"];
+const VIEW_MODES: TracesViewMode[] = ["roots", "sessions"];
 
 const ALL_CAPABILITIES = "__all__";
 
@@ -161,9 +160,6 @@ interface TracesTableToolbarProps<TData> {
 
   view: TracesViewMode;
   onViewChange: (value: TracesViewMode) => void;
-
-  groupByConversation?: boolean;
-  onGroupByConversationChange?: (value: boolean) => void;
 
   projectId: string;
 
@@ -189,8 +185,6 @@ export function TracesTableToolbar<TData>({
   onFiltersChange,
   view,
   onViewChange,
-  groupByConversation = true,
-  onGroupByConversationChange,
   projectId,
   onResetAll,
   onRefresh,
@@ -201,7 +195,6 @@ export function TracesTableToolbar<TData>({
 }: TracesTableToolbarProps<TData>) {
   const [spinning, setSpinning] = useState(false);
   const isSessionsView = view === "sessions";
-  const isExecutionsView = view === "executions";
 
   // The poll cadence is shorter than a minute, so an absolute clock time reads
   // as identical to "updated" — count down instead.
@@ -221,9 +214,7 @@ export function TracesTableToolbar<TData>({
     filters.find((f) => f.field === "capability" && f.lookup === "eq")?.value || undefined;
   // Also fetched in trace views, so the filter chip can show a name, not a UUID.
   const { data: capabilitiesData } = useQuery({
-    enabled:
-      !!projectId &&
-      (isSessionsView || isExecutionsView || filters.some((f) => f.field === "capability")),
+    enabled: !!projectId && (isSessionsView || filters.some((f) => f.field === "capability")),
     queryFn: () => apiClient.capabilities.capabilitiesList({ pageSize: 100, project: projectId }),
     queryKey: ["capabilities", projectId],
   });
@@ -365,14 +356,6 @@ export function TracesTableToolbar<TData>({
                 onFiltersChange={onFiltersChange}
                 projectId={projectId}
               />
-              {isExecutionsView && onGroupByConversationChange && (
-                <Chip
-                  onClick={() => onGroupByConversationChange(!groupByConversation)}
-                  selected={groupByConversation}
-                >
-                  Group by conversation
-                </Chip>
-              )}
               <DataTableViewOptions table={table} />
             </>
           )
@@ -391,22 +374,10 @@ export function TracesTableToolbar<TData>({
         search={
           <SearchInput
             className="min-w-[220px] flex-1"
-            label={
-              isSessionsView
-                ? "Search sessions"
-                : isExecutionsView
-                  ? "Search executions"
-                  : "Search traces"
-            }
+            label={isSessionsView ? "Search sessions" : "Search traces"}
             onChange={(e) => onSearchChange(e.target.value)}
             onClear={() => onSearchChange("")}
-            placeholder={
-              isSessionsView
-                ? "Search sessions…"
-                : isExecutionsView
-                  ? "Search executions…"
-                  : "Search traces…"
-            }
+            placeholder={isSessionsView ? "Search sessions…" : "Search traces…"}
             value={searchValue}
           />
         }

@@ -7,8 +7,7 @@ from datetime import timedelta
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
-from overbae.models import Dataset, DatasetImport
-from overbae.models.eval_generation import EvalGenerationWork
+from overbae.models import Dataset, DatasetImport, EvalRunRow
 
 NAMESPACE = "Overmind/Queues"
 WORKER_SERVICES = {
@@ -34,11 +33,11 @@ def read_workloads():
         blocked=Count("pk", filter=newly_blocked),
         oldest=Min("queued_at", filter=Q(state="queued")),
     )
-    evaluation = EvalGenerationWork.objects.filter(sample__run__status="running").aggregate(
+    evaluation = EvalRunRow.objects.filter(run__status="running").aggregate(
         waiting=Count("pk", filter=Q(state__in=["waiting", "queued"])),
         running=Count("pk", filter=Q(state="running")),
         blocked=Count("pk", filter=Q(state="unknown")),
-        oldest_waiting=Min("sample__created_at", filter=Q(state="waiting")),
+        oldest_waiting=Min("created_at", filter=Q(state="waiting")),
         oldest_queued=Min("queued_at", filter=Q(state="queued")),
     )
     ages = [evaluation.pop(key) for key in ("oldest_waiting", "oldest_queued")]

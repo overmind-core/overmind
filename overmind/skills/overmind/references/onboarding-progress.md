@@ -35,7 +35,7 @@ connection are verified; do not reinstall or resync just to fill the checklist.
 1. **Sync capabilities** — send the snapshot to the configured Overmind project.
 
 The roadmap ends at a successful capability sync. Instrumentation, running the
-application, and completion of asynchronous server-side evaluator preparation
+application, and completion of server-side Default eval set preparation
 are separate work; do not imply they have happened.
 
 ## Stage updates
@@ -102,7 +102,7 @@ Give the user a compact outcome, not another recap of the steps:
   such as dropped metadata or an unverified path. Never turn a potential risk
   into a confirmed runtime bug without evidence.
 - What has not been verified: instrumentation, a real application run, and
-  asynchronous evaluator readiness are separate from a successful sync.
+  Default eval set readiness are separate from a successful sync.
 - One recommended next action based on the remaining gap. For example, when
   tracing has not been checked: "Next: inspect instrumentation coverage before
   running an example question." Recommend it; do not automatically instrument,
@@ -125,7 +125,7 @@ is not the model performing the scan.
 - **Coding-agent model:** repository excerpts and tool results read during the scan enter the coding agent's context and may be sent to its configured provider. Local AST inventory and TOML conversion do not themselves call a model.
 - **Overmind destination:** name the resolved API host and project. The initial connection sends project setup data and any existing snapshot. The final sync sends the repository summary, capability descriptions, source paths/references, captured prompt text, tool descriptions/schemas, and evaluation specifications. It does not send a repository archive.
 - **Credentials:** the CLI uses the Overmind API key to authenticate to that host. The configuration's API-key field is excluded from the capability snapshot. Do not read secret files into model context or copy credential values into capability descriptions. Arbitrary prompt/card text is not automatically secret-free.
-- **After sync:** Overmind can use the synced capability metadata to prepare evaluators with its configured model providers. If this deployment's exact models/providers are not available, say **Server evaluator models not available in this session**; do not guess from SDK defaults or call this local-only processing.
+- **After sync:** Overmind turns the synced `eval_matrix` into the capability's Default eval set and scores new traces with its configured judge. If this deployment's exact judge model is not available, say **Server judge model not available in this session**; do not guess from SDK defaults or call this local-only processing.
 
 Before the final sync, check the generated snapshot for accidentally copied
 secrets without echoing their values. If one is found, remove the secret value

@@ -307,7 +307,7 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
                           <span className="text-xs text-muted-foreground">Active</span>
                         )}
                         <span className="text-xs text-muted-foreground">
-                          {count(set.generativeCount, "grader")}
+                          {count(set.rows?.length ?? 0, "row")}
                         </span>
                       </SelectItem>
                     ))}

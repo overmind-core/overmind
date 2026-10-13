@@ -24,7 +24,8 @@ def test_an_uploaded_file_with_warnings_is_usable_and_use_freezes_its_version(
     drain(worker)
     assert run["cell"]["version"] == "2.0"
     assert run["cell"]["fingerprint"] == prepared["fingerprint"]
-    assert workshop.read(run["resource"]["uri"])["status"] == "completed"
+    [candidate] = run["runs"]
+    assert workshop.read(candidate["resource"]["uri"])["status"] == "completed"
 
     frozen = next(
         c
@@ -59,9 +60,7 @@ def test_personal_data_in_traces_is_redacted_in_the_dataset(
         llm_url=support_desk_llm,
     )
     drain(worker)
-    [execution] = workshop.call("query_task_executions", {"capability": "answer"})[
-        "task_executions"
-    ]
+    [execution] = workshop.call("query_traces", {})["traces"]
     created = workshop.call(
         "create_dataset_from_traces",
         {"name": "with pii", "trace_ids": [execution["trace_id"]], "intent": "eval"},
@@ -83,9 +82,7 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
     sample_agent.run("Refund order 42 please", api_url=live_api.url, llm_url=support_desk_llm)
     drain(worker)
     answer = workshop.capability("answer")
-    [execution] = workshop.call("query_task_executions", {"capability": "answer"})[
-        "task_executions"
-    ]
+    [execution] = workshop.call("query_traces", {})["traces"]
     created = workshop.call(
         "create_dataset_from_traces",
         {

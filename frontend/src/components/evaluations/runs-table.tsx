@@ -1,13 +1,11 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
-import { toast } from "sonner";
 
 import { EntityRef } from "@/components/entity-ref";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { asRunSummary, ScoreChip } from "@/components/evaluations/run-comparison";
+import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
 import { DateTime } from "@/components/ui/datetime";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,22 +21,16 @@ import {
 } from "@/components/ui/select";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
-  useDeleteEvalRunMutation,
   useEvalRunDatasetsQuery,
   useEvalRunsQuery,
   useProjectCapabilitiesQuery,
 } from "@/hooks/use-evaluations";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { StatusBadge as JobStatusBadge } from "@/lib/job-status";
-import { sentenceCase } from "@/lib/label-case";
-import { notify } from "@/lib/notify";
 import type { EvaluationsSearch } from "@/lib/schemas";
 import { clearUnseenCompletion, useUnseenCompletionKeys } from "@/lib/unseen-job-completions";
-import { cn } from "@/lib/utils";
-import type { EvalRunList, EvalRunProgress } from "@/openapi";
+import type { EvalRun, EvalRunProgress } from "@/openapi";
 import { EvalRunsListStatusEnum } from "@/openapi";
-
-const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 const STATUS_FILTER_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
@@ -53,12 +45,15 @@ export function StatusBadge({ status, progress }: { status: string; progress?: n
 }
 
 function runProgressPercent(progress?: EvalRunProgress | null): number | null {
-  if (!progress) return null;
-  const isGenerating = progress.phase === "generating" || progress.phase === "pending";
-  const done = isGenerating ? progress.prepared : progress.scored;
-  const total = isGenerating ? progress.total : progress.scoreTotal;
-  return progress.phase === "aggregating" ? 100 : total > 0 ? (done / total) * 100 : null;
+  if (!progress || progress.rows === 0) return null;
+  return ((progress.done + progress.errored) / progress.rows) * 100;
 }
+
+const MODE_LABEL: Record<string, string> = {
+  generate: "Generated",
+  provided: "Provided",
+  recorded: "Recorded",
+};
 
 type RunsFilters = Pick<
   EvaluationsSearch,
@@ -66,29 +61,15 @@ type RunsFilters = Pick<
 >;
 interface RunsTableProps {
   projectId: string;
-  /** Toolbar CTA rendered before the search input. */
-  action?: ReactNode;
   page: number;
   pageSize: number;
   filters: RunsFilters;
   onSearchChange: (updates: Partial<RunsFilters> & { page?: number; page_size?: number }) => void;
 }
 
-export function RunsTable({
-  projectId,
-  action,
-  page,
-  pageSize,
-  filters,
-  onSearchChange,
-}: RunsTableProps) {
+export function RunsTable({ projectId, page, pageSize, filters, onSearchChange }: RunsTableProps) {
   const navigate = useNavigate();
   const unseenKeys = useUnseenCompletionKeys();
-  const deleteRun = useDeleteEvalRunMutation(projectId);
-  // Rows hidden while their undoable delete window is open.
-  const [pendingDelete, setPendingDelete] = useState<Set<string>>(() => new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const {
     run_capability: capabilityFilter,
     run_dataset: datasetFilter,
@@ -118,13 +99,6 @@ export function RunsTable({
     search: searchParam,
     status: statusFilter !== "all" ? (statusFilter as EvalRunsListStatusEnum) : undefined,
   });
-
-  const pageData = useMemo(() => {
-    if (!data) return data;
-    if (pendingDelete.size === 0) return data;
-    const results = data.results.filter((r) => !r.id || !pendingDelete.has(r.id));
-    return { ...data, results };
-  }, [data, pendingDelete]);
 
   const resetToFirstPage = () => {
     if (page !== 1) onSearchChange({ page: 1 });
@@ -176,99 +150,7 @@ export function RunsTable({
     });
   };
 
-  const pageRows = pageData?.results ?? [];
-  const allSelected = pageRows.length > 0 && pageRows.every((r) => selectedIds.has(r.id!));
-  const someSelected = pageRows.some((r) => selectedIds.has(r.id!));
-
-  const toggleSelect = (id: string) =>
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
-  const toggleSelectAll = () =>
-    setSelectedIds(allSelected ? new Set() : new Set(pageRows.map((r) => r.id!)));
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
-
-  const handleBulkDelete = async () => {
-    setBulkDeletePending(true);
-    try {
-      await Promise.all(
-        [...selectedIds].map(
-          (id) =>
-            new Promise<void>((resolve, reject) =>
-              deleteRun.mutate(id, { onError: reject, onSuccess: () => resolve() })
-            )
-        )
-      );
-      toast.success(`${plural(selectedIds.size, "run")} deleted`);
-      clearSelection();
-    } catch (e) {
-      notify.error(e, "Couldn't delete some of the selected runs");
-    } finally {
-      setBulkDeletePending(false);
-    }
-  };
-
-  const removePending = (id: string) =>
-    setPendingDelete((p) => {
-      const next = new Set(p);
-      next.delete(id);
-      return next;
-    });
-  const handleDelete = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    notify.undoable({
-      commit: () =>
-        deleteRun.mutate(id, {
-          onError: (e) => {
-            notify.error(e, "Couldn't delete run");
-            removePending(id);
-          },
-        }),
-      message: "Run deleted",
-      optimistic: () => setPendingDelete((p) => new Set(p).add(id)),
-      rollback: () => removePending(id),
-    });
-  };
-
-  const columns: ColumnDef<EvalRunList>[] = [
-    {
-      cell: ({ row }) => (
-        <div className="pl-1">
-          <Checkbox
-            aria-label={`Select run ${row.original.name}`}
-            checked={selectedIds.has(row.original.id!)}
-            onCheckedChange={() => toggleSelect(row.original.id!)}
-            // The row navigates from its own `onClick`, so the guard has to be on
-            // the click: stopping `pointerdown` leaves the later click untouched.
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      ),
-      enableResizing: false,
-      header: () => (
-        <div className="flex h-8 items-center pl-1">
-          <Checkbox
-            aria-label="Select all runs"
-            checked={allSelected ? true : someSelected ? "indeterminate" : false}
-            onCheckedChange={toggleSelectAll}
-          />
-        </div>
-      ),
-      id: "select",
-      maxSize: 48,
-      minSize: 40,
-      size: 40,
-    },
+  const columns: ColumnDef<EvalRun>[] = [
     {
       accessorKey: "name",
       cell: ({ row }) => (
@@ -319,9 +201,7 @@ export function RunsTable({
         return r.dataset ? (
           <EntityRef id={r.dataset} kind="dataset" name={r.datasetName} projectId={projectId} />
         ) : (
-          <span className="truncate text-xs text-muted-foreground">
-            {r.dataSource ? sentenceCase(r.dataSource) : "—"}
-          </span>
+          <span className="text-muted-foreground">—</span>
         );
       },
       header: "Dataset",
@@ -330,22 +210,33 @@ export function RunsTable({
       size: 144,
     },
     {
-      accessorKey: "variantCount",
-      cell: ({ row }) => (
-        <span className="tabular-nums text-muted-foreground">{row.original.variantCount}</span>
-      ),
-      header: "Variants",
-      minSize: 80,
-      size: 100,
+      accessorKey: "label",
+      cell: ({ row }) => {
+        const r = row.original;
+        return (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm" title={r.resolvedModel || r.modelName}>
+              {r.label || MODE_LABEL[r.mode] || r.mode}
+            </span>
+            {r.isBaseline && (
+              <Badge size="chip" variant="neutral">
+                Baseline
+              </Badge>
+            )}
+          </span>
+        );
+      },
+      header: "Target",
+      meta: { noTruncate: true },
+      minSize: 120,
+      size: 180,
     },
     {
-      accessorKey: "evaluatorCount",
-      cell: ({ row }) => (
-        <span className="tabular-nums text-muted-foreground">{row.original.evaluatorCount}</span>
-      ),
-      header: "Evaluators",
-      minSize: 90,
-      size: 112,
+      cell: ({ row }) => <ScoreChip value={asRunSummary(row.original.summary).score} />,
+      header: "Score",
+      id: "score",
+      minSize: 72,
+      size: 88,
     },
     {
       accessorKey: "createdAt",
@@ -358,30 +249,6 @@ export function RunsTable({
       meta: { orderingField: "created_at" },
       minSize: 120,
       size: 136,
-    },
-    {
-      cell: ({ row }) => (
-        <Button
-          aria-label="Delete run"
-          className="text-muted-foreground hover:text-destructive"
-          // Same click guard as the select checkbox — see that cell.
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete(row.original.id!);
-          }}
-          size="icon-xs"
-          title="Delete run"
-          variant="ghost"
-        >
-          <Icon.delete />
-        </Button>
-      ),
-      enableResizing: false,
-      header: "Actions",
-      id: "actions",
-      maxSize: 72,
-      minSize: 64,
-      size: 64,
     },
   ];
 
@@ -450,7 +317,6 @@ export function RunsTable({
       }
       hasActiveFilters={hasActiveFilters}
       onClearFilters={clearFilters}
-      primary={action}
       search={
         <SearchInput
           className="min-w-[200px] flex-1"
@@ -469,48 +335,14 @@ export function RunsTable({
     />
   );
 
-  const banner = someSelected ? (
-    <div className="flex shrink-0 items-center gap-2 rounded-md border bg-wash-subtle px-3 py-2 text-sm">
-      <Checkbox
-        aria-label="Select all runs"
-        checked={allSelected ? true : someSelected ? "indeterminate" : false}
-        onCheckedChange={toggleSelectAll}
-      />
-      <span className="flex-1 text-muted-foreground">{selectedIds.size} selected</span>
-      <ConfirmDialog
-        confirmLabel={`Delete ${plural(selectedIds.size, "run")}`}
-        description={`This permanently deletes ${plural(selectedIds.size, "selected run")}.`}
-        destructive
-        isPending={bulkDeletePending}
-        onConfirm={handleBulkDelete}
-        title={`Delete ${plural(selectedIds.size, "run")}?`}
-        trigger={
-          <Button className="px-2 text-xs" size="sm" variant="destructive">
-            <Icon.delete /> Delete {selectedIds.size}
-          </Button>
-        }
-      />
-      <Button
-        aria-label="Clear selection"
-        className="px-2 text-xs"
-        onClick={clearSelection}
-        size="sm"
-        variant="ghost"
-      >
-        <Icon.close />
-      </Button>
-    </div>
-  ) : null;
-
   return (
     <DataTable
-      banner={banner}
       columns={columns}
-      data={pageData}
+      data={data}
       emptyState={
         <EmptyState
           className="flex-1"
-          description="Evaluation runs appear here as they are launched."
+          description="Runs appear here when started from MCP, the CLI, training or the optimiser."
           icon={Icon.evaluations}
           iconClassName="invert [image-rendering:pixelated]"
           size="section"
@@ -544,12 +376,7 @@ export function RunsTable({
       ordering={ordering || undefined}
       page={page}
       pageSize={pageSize}
-      rowClassName={(r) =>
-        cn(
-          selectedIds.has(r.id!) && "bg-primary/5",
-          r.id && unseenKeys.has(`eval:${r.id}`) && "bg-wash-subtle"
-        )
-      }
+      rowClassName={(r) => (r.id && unseenKeys.has(`eval:${r.id}`) ? "bg-wash-subtle" : undefined)}
       storageKey="evaluations:runs-table-cols"
       toolbar={toolbar}
     />

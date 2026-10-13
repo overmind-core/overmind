@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from overbae.services.eval import context_suggestions as suggestions
+from overbae.innermind import context as suggestions
 
 
 @pytest.fixture

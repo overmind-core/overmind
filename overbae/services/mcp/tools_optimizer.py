@@ -218,7 +218,7 @@ def _eval_set_readiness(
         name=eval_set.name,
         capability=capability.slug,
         active=capability.active_eval_set_id == eval_set.id,
-        member_count=eval_set.members.filter(enabled=True).count(),
+        row_count=eval_set.rows.filter(enabled=True).count(),
     )
 
 
@@ -400,14 +400,10 @@ def _start_sync(payload: StartOptimizerInput, context: MCPContext) -> StartOptim
 def _candidate_coverage_fields(candidate: OptimizerCandidate) -> dict:
     scores = candidate.scores or {}
     coverage = scores.get("coverage") or {}
-    measurement = scores.get("measurement") or {}
-    uncovered = list(measurement.get("uncovered_card_claims") or [])
     return {
         "coverage_rate": scores.get("coverage_rate", coverage.get("coverage_rate")),
         "graded_rows": scores.get("graded_rows", coverage.get("graded_rows")),
         "total_rows": scores.get("total_rows", coverage.get("total_rows")),
-        "suite_incomplete": bool(uncovered),
-        "uncovered_card_claims": uncovered,
     }
 
 

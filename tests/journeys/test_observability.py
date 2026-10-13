@@ -14,38 +14,37 @@ def synced(cli, mcp_for, rest_for, sample_agent, worker):
 
 
 def test_traces_are_scored_on_arrival_and_every_surface_reads_the_same_scores(
-    synced, sample_agent, live_api, support_desk_llm, rubric_judges, worker
+    synced, sample_agent, live_api, support_desk_llm, judges, worker
 ):
     mcp, rest = synced
-    answer = mcp.capability("answer")
-
     sample_agent.run(*TICKETS, api_url=live_api.url, llm_url=support_desk_llm)
     drain(worker)
 
     over_mcp = {
-        e["trace_id"]: e["success_score"]
-        for e in mcp.call("query_task_executions", {"capability": "answer"})["task_executions"]
+        row["trace_id"]: (row["eval_score"], row["trajectory_score"])
+        for row in mcp.call("query_traces", {"limit": 10})["traces"]
     }
-    project = mcp.project()["id"]
-    page = rest.request(
-        "GET", "/api/task-executions/", params={"project": project, "capability": answer["id"]}
-    )
-    over_rest = {e["trace_id"]: e["success_score"] for e in page["results"]}
+    page = rest.request("GET", "/api/traces/", params={"project": mcp.project()["id"]})
+    over_rest = {
+        row["trace_id"]: (
+            row["eval_attributes"]["score"],
+            row["eval_attributes"]["trajectory"]["score"],
+        )
+        for row in page["results"]
+    }
     assert len(over_mcp) == len(TICKETS)
     assert over_rest == over_mcp
-    assert all(score < 1 for score in over_mcp.values())
+    assert all(trajectory < 1 for _, trajectory in over_mcp.values())
 
+    failures = mcp.call("query_failures", {"capability": "answer"})
+    assert {f["trace_id"] for f in failures["failures"]} == set(over_mcp)
+    assert mcp.call("inspect_capability_health", {})["scoring"]["trajectories"] == len(TICKETS)
     health = mcp.call("inspect_capability_health", {"capability": "answer"})
-    assert health["live_trace_scores"]["traces_scored"] == len(TICKETS)
-    assert all(
-        row["avg_value"] < 1
-        for row in health["live_trace_scores"]["evaluators"]
-        if "success" in row["evaluator"]
-    )
+    assert health["scoring"]["pass_rate"] < 1
 
 
 def test_a_silent_capability_is_named_with_the_fix_that_instruments_it(
-    synced, sample_agent, live_api, support_desk_llm, rubric_judges, worker
+    synced, sample_agent, live_api, support_desk_llm, judges, worker
 ):
     mcp, rest = synced
     agent = sample_agent.repo / "support_desk" / "agent.py"
@@ -63,7 +62,7 @@ def test_a_silent_capability_is_named_with_the_fix_that_instruments_it(
     plan = mcp.call("get_instrumentation_plan", {"capability": "triage"})
     [placement] = plan["placements"]
     assert placement["target"]["qualname"] == "support_desk.agent.triage"
-    fix = placement["required_scope"]
+    fix = placement["required_decorator"]
     source = agent.read_text()
     agent.write_text(source.replace("def triage(", f"{fix}\ndef triage(", 1))
 

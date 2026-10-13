@@ -9,17 +9,11 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import (
-    Capability,
-    EvalSet,
-    EvalSetMember,
-    Evaluator,
     Project,
     ProjectMembership,
     Span,
-    TaskExecution,
     User,
 )
-from overbae.services.eval.trace_scoring import score_trace
 
 pytestmark = pytest.mark.django_db
 
@@ -37,33 +31,6 @@ def _client_and_project() -> tuple[APIClient, Project]:
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
     return client, project
-
-
-def _capability(project, *, with_set=True) -> Capability:
-    capability = Capability.objects.create(
-        project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
-    )
-    if with_set:
-        eval_set = EvalSet.objects.create(project=project, capability=capability, name="Default")
-        capability.active_eval_set = eval_set
-        capability.save(update_fields=["active_eval_set"])
-        evaluator = Evaluator.objects.create(
-            project=project,
-            capability=capability,
-            name=f"contains-{uuid.uuid4().hex[:6]}",
-            kind=Evaluator.Kind.DETERMINISTIC,
-            scope=Evaluator.Scope.TRAJECTORY,
-            version=1,
-            pass_threshold=1.0,
-            config={"check": "contains", "reference": "Paris"},
-        )
-        EvalSetMember.objects.create(
-            eval_set=eval_set,
-            evaluator=evaluator,
-            role=EvalSetMember.Role.TRACE_SCORING,
-            order=0,
-        )
-    return capability
 
 
 def _span(project, *, trace_id, parent=None, capability=None, start_ns=0, attributes=None) -> Span:
@@ -231,109 +198,3 @@ def test_trace_detail_reports_status():
     _span(project, trace_id=trace_id)
     response = client.get(f"{TRACES_URL}{trace_id}/")
     assert response.data["trace_status"] == "completed"
-
-
-def _swept(monkeypatch) -> list[str]:
-    from overbae.tasks import trace_scoring as trace_scoring_tasks
-
-    enqueued: list[str] = []
-    monkeypatch.setattr(
-        trace_scoring_tasks.score_trace,
-        "delay",
-        lambda *, trace_id, project_id: enqueued.append(trace_id),
-    )
-    trace_scoring_tasks.sweep_unscored_traces()
-    return enqueued
-
-
-def test_sweep_enqueues_stale_rootless_trace(monkeypatch, settings):
-    settings.TRACE_SETTLE_SECONDS = 60
-    _, project = _client_and_project()
-    capability = _capability(project)
-    trace_id = uuid.uuid4().hex[:32]
-    span = _span(project, trace_id=trace_id, parent="a" * 16, capability=capability)
-    _age(span, minutes=5)
-
-    assert _swept(monkeypatch) == [trace_id]
-
-
-def test_sweep_skips_rootless_trace_inside_settle_window(monkeypatch, settings):
-    settings.TRACE_SETTLE_SECONDS = 3600
-    _, project = _client_and_project()
-    capability = _capability(project)
-    _span(project, trace_id=uuid.uuid4().hex[:32], parent="a" * 16, capability=capability)
-
-    assert _swept(monkeypatch) == []
-
-
-def test_sweep_skips_rootless_trace_without_agent(monkeypatch, settings):
-    settings.TRACE_SETTLE_SECONDS = 60
-    _, project = _client_and_project()
-    span = _span(project, trace_id=uuid.uuid4().hex[:32], parent="a" * 16)
-    _age(span, minutes=5)
-
-    assert _swept(monkeypatch) == []
-
-
-def test_sweep_skips_rootless_orphan_function_fragment(monkeypatch, settings):
-    """Skipped without a ScoringPass, so the backstop must not re-enqueue it forever."""
-    settings.TRACE_SETTLE_SECONDS = 60
-    _, project = _client_and_project()
-    capability = _capability(project)
-    trace_id = uuid.uuid4().hex[:32]
-    span = _span(project, trace_id=trace_id, parent="a" * 16, capability=capability)
-    Span.objects.filter(pk=span.pk).update(span_type="function")
-    _age(span, minutes=5)
-
-    assert _swept(monkeypatch) == []
-    assert score_trace(trace_id, str(project.id))["reason"] == "orphan_fragment"
-
-
-def test_sweep_without_eval_set_stops_once_execution_exists(monkeypatch, settings):
-    settings.TRACE_SETTLE_SECONDS = 60
-    _, project = _client_and_project()
-    capability = _capability(project, with_set=False)
-    trace_id = uuid.uuid4().hex[:32]
-    span = _span(project, trace_id=trace_id, parent="a" * 16, capability=capability)
-    _age(span, minutes=5)
-
-    assert _swept(monkeypatch) == [trace_id]
-    score_trace(trace_id, str(project.id))
-    assert TaskExecution.objects.filter(project=project, trace_id=trace_id).exists()
-    assert _swept(monkeypatch) == []
-
-
-def test_score_trace_mints_interrupted_execution_for_rootless_trace():
-    _, project = _client_and_project()
-    capability = _capability(project, with_set=False)
-    trace_id = uuid.uuid4().hex[:32]
-    head = _span(project, trace_id=trace_id, parent="a" * 16, capability=capability, start_ns=1)
-    _span(project, trace_id=trace_id, parent="a" * 16, capability=capability, start_ns=2)
-
-    score_trace(trace_id, str(project.id))
-
-    execution = TaskExecution.objects.get(project=project, trace_id=trace_id)
-    assert execution.unit_span_id == head.span_id
-    assert execution.status == TaskExecution.Status.INTERRUPTED
-    assert execution.terminal_kind == "interrupted"
-
-
-def test_root_arrival_rekeys_execution_instead_of_duplicating():
-    _, project = _client_and_project()
-    capability = _capability(project, with_set=False)
-    trace_id = uuid.uuid4().hex[:32]
-    _span(project, trace_id=trace_id, parent="a" * 16, capability=capability, start_ns=5)
-
-    score_trace(trace_id, str(project.id))
-    original = TaskExecution.objects.get(project=project, trace_id=trace_id)
-    assert original.status == TaskExecution.Status.INTERRUPTED
-
-    root = _span(project, trace_id=trace_id, capability=capability, start_ns=1)
-    score_trace(trace_id, str(project.id))
-
-    executions = TaskExecution.objects.filter(project=project, trace_id=trace_id)
-    assert executions.count() == 1
-    rekeyed = executions.get()
-    assert rekeyed.pk == original.pk
-    assert rekeyed.unit_span_id == root.span_id
-    assert rekeyed.status == TaskExecution.Status.COMPLETED

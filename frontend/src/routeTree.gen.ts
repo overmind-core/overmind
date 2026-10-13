@@ -16,6 +16,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as AuthTrainingRouteImport } from './routes/_auth/training'
+import { Route as AuthSignalsRouteImport } from './routes/_auth/signals'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
 import { Route as AuthInferenceRouteImport } from './routes/_auth/inference'
@@ -65,6 +66,11 @@ const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
 const AuthTrainingRoute = AuthTrainingRouteImport.update({
   id: '/training',
   path: '/training',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthSignalsRoute = AuthSignalsRouteImport.update({
+  id: '/signals',
+  path: '/signals',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthSettingsRoute = AuthSettingsRouteImport.update({
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/inference': typeof AuthInferenceRoute
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
+  '/signals': typeof AuthSignalsRoute
   '/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
@@ -186,6 +193,7 @@ export interface FileRoutesByTo {
   '/inference': typeof AuthInferenceRoute
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
+  '/signals': typeof AuthSignalsRoute
   '/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/': typeof AuthIndexRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/_auth/inference': typeof AuthInferenceRoute
   '/_auth/observability': typeof AuthObservabilityRouteWithChildren
   '/_auth/settings': typeof AuthSettingsRoute
+  '/_auth/signals': typeof AuthSignalsRoute
   '/_auth/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_auth/': typeof AuthIndexRoute
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
     | '/inference'
     | '/observability'
     | '/settings'
+    | '/signals'
     | '/training'
     | '/oauth/authorize'
     | '/capabilities/$capabilityId'
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/inference'
     | '/observability'
     | '/settings'
+    | '/signals'
     | '/training'
     | '/oauth/authorize'
     | '/'
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/_auth/inference'
     | '/_auth/observability'
     | '/_auth/settings'
+    | '/_auth/signals'
     | '/_auth/training'
     | '/oauth/authorize'
     | '/_auth/'
@@ -362,6 +374,13 @@ declare module '@tanstack/react-router' {
       path: '/training'
       fullPath: '/training'
       preLoaderRoute: typeof AuthTrainingRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/signals': {
+      id: '/_auth/signals'
+      path: '/signals'
+      fullPath: '/signals'
+      preLoaderRoute: typeof AuthSignalsRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/settings': {
@@ -494,6 +513,7 @@ interface AuthRouteChildren {
   AuthInferenceRoute: typeof AuthInferenceRoute
   AuthObservabilityRoute: typeof AuthObservabilityRouteWithChildren
   AuthSettingsRoute: typeof AuthSettingsRoute
+  AuthSignalsRoute: typeof AuthSignalsRoute
   AuthTrainingRoute: typeof AuthTrainingRoute
   AuthIndexRoute: typeof AuthIndexRoute
   AuthCapabilitiesCapabilityIdRoute: typeof AuthCapabilitiesCapabilityIdRoute
@@ -514,6 +534,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthInferenceRoute: AuthInferenceRoute,
   AuthObservabilityRoute: AuthObservabilityRouteWithChildren,
   AuthSettingsRoute: AuthSettingsRoute,
+  AuthSignalsRoute: AuthSignalsRoute,
   AuthTrainingRoute: AuthTrainingRoute,
   AuthIndexRoute: AuthIndexRoute,
   AuthCapabilitiesCapabilityIdRoute: AuthCapabilitiesCapabilityIdRoute,

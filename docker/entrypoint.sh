@@ -1,5 +1,5 @@
 #!/bin/sh
-# Bootstrap DB before any Django process (migrate + idempotent data seeds).
+# Migrate before any Django process.
 # Disable with RUN_DB_BOOTSTRAP=0 (e.g. production where migrate runs in CI).
 set -e
 
@@ -19,8 +19,6 @@ fi
 if [ "${RUN_DB_BOOTSTRAP:-1}" = "1" ]; then
   echo "==> migrate"
   python manage.py migrate --noinput
-  echo "==> seed_evaluators"
-  python manage.py seed_evaluators
 fi
 
 # Instrument with New Relic only when the license key is injected (production:

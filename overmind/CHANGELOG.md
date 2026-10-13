@@ -8,11 +8,21 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- `overmind backtest` creates one run per target in a single eval-run group
+  (`targets`, a `recorded` baseline plus one `generate` run per model) and gates
+  on each candidate's `/comparison/` against the baseline.
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 
 ### Added
 
+- `observe(intent=, expectations=[...], reference_trajectory=[...])` (and the
+  `entry_point` / `workflow` / `tool` / `retrieval` variants) stamp
+  `overmind.intent`, `overmind.expectations` and
+  `overmind.reference_trajectory` for live scoring.
+- `overmind.session(conversation_id)`: scoped `conversation.id` for a block.
+- `overmind.record_llm_call(model, total_tokens, cost)`: usage on the current
+  span for LLM clients without a provider instrumentation.
 - Codex (`.agents/plugins/marketplace.json`) and Cursor (`.cursor-plugin/marketplace.json`)
   marketplaces at the repository root, so all three clients install the plugin
   from `overmind-core/overmind`.

@@ -263,10 +263,6 @@ def set_intent(dataset: Dataset, intent: str, *, agent: bool = False) -> Dataset
     if intent != dataset.intent:
         _touch(dataset, intent=intent)
         measure.capability_only(dataset)
-        if intent == Dataset.Intent.EVAL:
-            from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-            maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
 
 
@@ -285,9 +281,6 @@ def set_capability(dataset: Dataset, capability: Any, *, agent: bool = False) ->
     if getattr(capability, "id", None) != dataset.capability_id:
         _touch(dataset, capability=capability)
         measure.capability_only(dataset)
-        from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-        maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
 
 

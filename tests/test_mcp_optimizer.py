@@ -134,7 +134,6 @@ def test_inspect_exposes_candidate_coverage_fields():
             "graded_rows": 19,
             "total_rows": 20,
             "coverage": {"coverage_rate": 0.95, "graded_rows": 19, "total_rows": 20},
-            "measurement": {"uncovered_card_claims": ["label matches gold"]},
         },
     )
 
@@ -146,8 +145,6 @@ def test_inspect_exposes_candidate_coverage_fields():
     assert candidate.coverage_rate == pytest.approx(0.95)
     assert candidate.graded_rows == 19
     assert candidate.total_rows == 20
-    assert candidate.suite_incomplete is True
-    assert candidate.uncovered_card_claims == ["label matches gold"]
 
 
 def test_inspect_is_bounded_typed_and_exposes_winner_state():

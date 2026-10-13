@@ -930,6 +930,28 @@ def set_conversation_id(conversation_id: str) -> None:
     attach(set_value(attrs.CONVERSATION_ID, conversation_id))
 
 
+@contextmanager
+def session(conversation_id: str):
+    """Tag spans created inside the block with ``conversation.id``, then restore
+    the outer conversation on exit."""
+    token = attach(set_value(attrs.CONVERSATION_ID, conversation_id))
+    try:
+        yield
+    finally:
+        detach(token)
+
+
+def record_llm_call(model: str, total_tokens: int | None = None, cost: float | None = None) -> None:
+    """Stamp model, token and cost usage on the current span, for LLM clients the
+    provider instrumentations do not cover. Call once the response is back."""
+    span = trace.get_current_span()
+    _safe_set_attribute(span, attrs.LLM_MODEL, model)
+    if total_tokens is not None:
+        _safe_set_attribute(span, attrs.LLM_TOTAL_TOKENS, total_tokens)
+    if cost is not None:
+        _safe_set_attribute(span, attrs.LLM_COST, cost)
+
+
 # Matches the platform's slug convention (Capability.slug, Behaviour.slug):
 # lowercase, non-alphanumeric runs collapse to single hyphens. The one copy —
 # langgraph behaviour keys and handoff detection must agree.
@@ -1254,6 +1276,21 @@ def _validate_provenance(value: str | None) -> None:
         raise ValueError(f"provenance must be one of {sorted(_PROVENANCE_VALUES)}, got {value!r}")
 
 
+def _evaluation_attributes(
+    intent: str | None, expectations: Iterable[str], reference_trajectory: Iterable[str]
+) -> dict[str, Any]:
+    if isinstance(expectations, str) or isinstance(reference_trajectory, str):
+        raise TypeError("expectations and reference_trajectory take a list of strings")
+    declared: dict[str, Any] = {}
+    if intent is not None and intent.strip():
+        declared[attrs.INTENT] = intent.strip()
+    if items := [item.strip() for item in expectations if item.strip()]:
+        declared[attrs.EXPECTATIONS] = items
+    if names := [name.strip() for name in reference_trajectory if name.strip()]:
+        declared[attrs.REFERENCE_TRAJECTORY] = names
+    return declared
+
+
 def _validate_unit(value: str | None) -> None:
     if value is not None and value not in _UNIT_KINDS:
         raise ValueError(f"unit must be one of {sorted(_UNIT_KINDS)}, got {value!r}")
@@ -1396,6 +1433,22 @@ def _capture_output(
         logger.debug("observe(): output capture failed", exc_info=True)
 
 
+def capture_call_inputs(otel_span, func: Callable, args: tuple, kwargs: dict) -> dict[str, Any]:
+    """Stamp a decorated call's arguments as ``inputs``; returns them for the output capture."""
+    try:
+        bound = _bound_arguments(func, args, kwargs, frozenset())
+    except Exception:
+        logger.debug("capture: argument binding failed", exc_info=True)
+        return {}
+    _capture_inputs(otel_span, bound, "auto", None)
+    return bound
+
+
+def capture_call_output(otel_span, result: Any, bound: dict[str, Any]) -> None:
+    """Stamp a decorated call's return value as ``outputs``."""
+    _capture_output(otel_span, result, bound=bound)
+
+
 def code_identity_attributes(func: Callable) -> dict[str, str]:
     """``code.namespace`` / ``code.function.name`` from the *unwrapped*
     function so the server can bind the span to a code-symbol anchor
@@ -1440,7 +1493,7 @@ def _traced_call(
     name: str,
     tool_name: str,
     span_type: SpanType,
-    declared: Mapping[str, str],
+    declared: Mapping[str, Any],
     capability_name: str | None,
     capability_id: str | None,
     capture: str,
@@ -1499,6 +1552,9 @@ def observe(
     ignore: Iterable[str] = (),
     format_input: Callable[[dict[str, Any]], Any] | None = None,
     format_output: Callable[[Any, dict[str, Any]], Any] | None = None,
+    intent: str | None = None,
+    expectations: Iterable[str] = (),
+    reference_trajectory: Iterable[str] = (),
 ) -> Callable[[F], F]:
     """Decorator (sync or async) that traces a function with the full
     evidence contract. No-op call-through when the SDK is not initialised.
@@ -1531,8 +1587,15 @@ def observe(
             capture.
         format_output: Optional ``fn(result, bound_args) -> payload``
             overriding output capture.
+        intent: What the user asked for, when the span's input does not say
+            it plainly; descendants inherit it.
+        expectations: One-sentence expectations the platform judges against
+            this span's output, e.g. ``["Cites the order id"]``.
+        reference_trajectory: Tool names this span's subtree should call, in
+            order; trajectory metrics compare the actual calls against it.
     """
     span_type = _coerce_span_type(type)
+    evaluation = _evaluation_attributes(intent, expectations, reference_trajectory)
     _validate_provenance(provenance)
     _validate_unit(unit)
     if capture not in _CAPTURE_MODES:
@@ -1545,7 +1608,7 @@ def observe(
             name=static_name or func.__qualname__,
             tool_name=static_name or func.__name__,
             span_type=span_type,
-            declared=_declared_attributes(span_type, provenance, unit) | code_identity_attributes(func),
+            declared=_declared_attributes(span_type, provenance, unit) | code_identity_attributes(func) | evaluation,
             capability_name=capability,
             capability_id=capability_id,
             capture=capture,

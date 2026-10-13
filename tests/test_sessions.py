@@ -165,27 +165,21 @@ def test_sessions_list_aggregates():
     assert row["total_cost"] == 0.02
 
 
-def test_sessions_list_reports_the_ledger_session_score():
-    from django.utils import timezone
-
-    from overbae.models import TaskExecution
-
+def test_sessions_list_reports_the_mean_root_score():
     client, project = _client_and_project()
     scored = _session_with_traces(project, "conv-scored")
     unscored = _session_with_traces(project, "conv-unscored")
-    TaskExecution.objects.create(
-        project=project,
-        trace_id=uuid.uuid4().hex,
-        unit_span_id=uuid.uuid4().hex[:16],
-        conversation_id="conv-scored",
-        started_at=timezone.now(),
-        session_score=0.3,
+    roots = Span.objects.filter(conversation=scored, parent_span_id__isnull=True).order_by("pk")
+    first, second = roots
+    Span.objects.filter(pk=first.pk).update(
+        eval_attributes={"score": 0.9, "trajectory": {"score": 0.2}}
     )
+    Span.objects.filter(pk=second.pk).update(eval_attributes={"score": 0.4})
 
     res = client.get(SESSIONS_URL)
     assert res.status_code == 200
     rows = {r["id"]: r for r in res.json()["results"]}
-    assert rows[str(scored.id)]["session_score"] == 0.3
+    assert rows[str(scored.id)]["session_score"] == pytest.approx(0.3)
     assert rows[str(unscored.id)]["session_score"] is None
 
 

@@ -32,7 +32,6 @@ from overbae.models import (
     Span,
 )
 from overbae.models.traces import usage_slice
-from overbae.services.behaviour.binder import attach_inferred_vcs_sha
 from overbae.services.capabilities import identity
 from overbae.services.span_pricing import (
     COMPLETION_TOKEN_KEYS,
@@ -759,8 +758,6 @@ def _build_spans_for_resource(
     if str(project.id) not in allowed_ids:
         return JsonResponse({"error": "Project access denied."}, status=403)
 
-    resource_attrs = attach_inferred_vcs_sha(str(project.id), resource_attrs)
-
     spans: list[Span] = []
     for scope_span in resource_span.scope_spans:
         scope_name = scope_span.scope.name
@@ -793,6 +790,9 @@ _SPAN_UPSERT_FIELDS = [
     "usage",
     "events",
     "links",
+    # A re-ingested span is scored again; its earlier scores stay in EvalScore.
+    "eval_attributes",
+    "eval_claimed_at",
 ]
 
 
@@ -855,12 +855,7 @@ def otlp_traces(request):
         except Exception:
             logger.exception("post-processing failed for span %s", span.span_id)
 
-    try:
-        _update_evidence_profiles(all_spans)
-    except Exception:  # noqa: BLE001 — profile grading must never fail ingest
-        logger.warning("evidence profile update failed", exc_info=True)
-
-    enqueue_trace_scoring(all_spans)
+    enqueue_scoring(all_spans)
 
     return JsonResponse(
         {
@@ -870,49 +865,13 @@ def otlp_traces(request):
     )
 
 
-def _update_evidence_profiles(spans: list[Span]) -> None:
-    """One hysteresis-damped EvidenceProfile update per capability per batch. Capability
-    ids are re-read: the in-memory batch objects predate ``process_span``'s assignment."""
-    from overbae.services.eval import profiles
+def enqueue_scoring(spans: list[Span]) -> None:
+    """Also called by connector sync, whose ``bulk_create`` has no other enqueue path.
+    A broker hiccup never fails ingest; the beat sweep re-drives unscored spans."""
+    # overbae.tasks imports this module at package init.
+    from overbae.tasks.innermind import enqueue_span_scoring  # noqa: PLC0415
 
-    if not spans:
-        return
-    capability_by_span = dict(
-        Span.objects.filter(span_id__in=[s.span_id for s in spans])
-        .exclude(capability__isnull=True)
-        .values_list("span_id", "capability_id")
-    )
-    by_capability: dict[Any, list[Span]] = {}
-    for span in spans:
-        capability_id = capability_by_span.get(span.span_id)
-        if capability_id is not None:
-            by_capability.setdefault(capability_id, []).append(span)
-    for capability_id, capability_spans in by_capability.items():
-        profiles.observe_batch(capability_id, capability_spans)
-
-
-def enqueue_trace_scoring(spans: list[Span]) -> None:
-    """Fire trace scoring for each root span landed in this batch.
-
-    Keyed on the root span because in OTel the root ends last, so its arrival
-    signals the trace is complete enough to score. ``score_trace`` is idempotent
-    and does its own capability/eval-set gating, so a re-fire is a cheap no-op. A
-    broker hiccup must never fail ingest — durability outranks scoring.
-
-    Also called by connector sync: ``bulk_create`` fires no signals, so imports
-    have no other enqueue path and the beat sweep only looks back 2h.
-    """
-    from overbae.tasks.trace_scoring import score_trace
-
-    seen: set[tuple[str, str]] = set()
-    for span in spans:
-        if span.parent_span_id is not None:
-            continue
-        key = (span.trace_id, str(span.project_id))
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            score_trace.delay(trace_id=span.trace_id, project_id=str(span.project_id))
-        except Exception:  # noqa: BLE001 — scoring is best-effort; ingest must not fail
-            logger.warning("Failed to enqueue live scoring for trace %s", span.trace_id)
+    try:
+        enqueue_span_scoring([span.span_id for span in spans])
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to enqueue scoring for %d spans", len(spans), exc_info=True)

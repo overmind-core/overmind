@@ -14,7 +14,7 @@
 
 import { mapValues } from '../runtime';
 /**
- * ``id`` is the OpenRouter slug and exactly what ``EvalVariant.model_name``
+ * ``id`` is the OpenRouter slug and exactly what ``EvalRun.model_name``
  * carries — ``call_llm`` routes slash-style slugs through OpenRouter verbatim.
  * @export
  * @interface CatalogModel

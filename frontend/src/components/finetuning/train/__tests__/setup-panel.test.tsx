@@ -70,9 +70,9 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
     evalDatasets: [EVAL_SET],
     evalDatasetsQuery: { error: null, isLoading: false },
     evalPreload: { data: undefined },
-    evalSet: { generativeCount: 3, id: "es-1", isActive: true, name: "Default" },
+    evalSet: { id: "es-1", isActive: true, name: "Default", rows: ["r1", "r2", "r3"] },
     evalSetId: "es-1",
-    evalSets: [{ generativeCount: 3, id: "es-1", isActive: true, name: "Default" }],
+    evalSets: [{ id: "es-1", isActive: true, name: "Default", rows: ["r1", "r2", "r3"] }],
     evalSetsQuery: { error: null, isLoading: false },
     evaluationPlan: {
       evalIncumbentAfter: false,

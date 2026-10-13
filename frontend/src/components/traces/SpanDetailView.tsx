@@ -1,22 +1,16 @@
 import type React from "react";
 import { Fragment, useMemo, useState } from "react";
 
+import { MetricList } from "@/components/evaluations/metric-list";
+import { ScoreChip } from "@/components/evaluations/run-comparison";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { useTraceData } from "@/components/traces/contexts/TraceDataContext";
-import {
-  conflictSummary,
-  parseInvocationsRationale,
-  traceScoreChipLabel,
-  traceScoreTone,
-} from "@/components/traces/trace-score-chips";
 import { BlockActions } from "@/components/ui/block-actions";
-import { Icon } from "@/components/ui/icons";
 import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
-import type { ExecutionConflict, SpanEvent, SpanRow, TraceScoreEntry } from "@/hooks/use-traces";
+import type { SpanEvent, SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
-import { TONE_CHIP } from "@/lib/colors";
 import { PROSE, TITLE } from "@/lib/typography";
-import { cn, scorePct } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { ToolCallItem, TranscriptMessage } from "@/types/chat";
 
 const NOOP = () => undefined;
@@ -610,104 +604,26 @@ function JsonBlock({
   );
 }
 
-function TraceScoreRow({ name, entry }: { name: string; entry: TraceScoreEntry }) {
-  const scoreLabel = traceScoreChipLabel(name, entry);
-  const isSummary = entry.lane === "summary" || name === "invocations";
-  const summaryDetail = (() => {
-    const parsed = parseInvocationsRationale(entry.rationale);
-    return parsed ? `${parsed.ok} of ${parsed.total} invocations passed` : entry.rationale;
-  })();
-  const badgeClass = cn(
-    "chip-label inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-xs font-semibold",
-    // Coverage chip, not a pass/fail grade.
-    isSummary
-      ? "border-foreground/30 bg-secondary text-secondary-foreground"
-      : TONE_CHIP[traceScoreTone(entry)]
-  );
-  return (
-    <div className="rounded-sm border border-border/60 bg-wash-subtle px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-medium">{isSummary ? "invocations" : name}</span>
-        <span className={badgeClass}>
-          {isSummary && <Icon.files className="size-3 shrink-0 opacity-80" />}
-          {scoreLabel}
-        </span>
-      </div>
-      {(isSummary ? summaryDetail : entry.rationale) && (
-        <p
-          className={cn(
-            PROSE,
-            "mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground"
-          )}
-        >
-          {isSummary ? summaryDetail : entry.rationale}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ScoreConflictRow({ conflict }: { conflict: ExecutionConflict }) {
-  return (
-    <div className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-xs font-medium text-warning">
-        <Icon.warning className="size-3.5 shrink-0" />
-        {conflictSummary(conflict)}
-      </div>
-      <dl className="mt-1 space-y-0.5 text-xs text-warning">
-        {Object.entries(conflict.members).map(([name, value]) => (
-          <div className="flex items-center justify-between gap-3" key={name}>
-            <dt className="font-mono">{name}</dt>
-            <dd className="tabular-nums">{scorePct(value)}%</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function SkippedMemberRow({ name }: { name: string }) {
-  return (
-    <div className="rounded-sm border border-border/60 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-muted-foreground">{name}</span>
-        <span className="chip-label inline-flex items-center rounded-sm border border-muted-foreground/50 bg-wash-raised px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-          Skipped
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">Not run for this unit. Retryable.</p>
-    </div>
-  );
-}
-
-function TraceScoresSection({
-  scores,
-  conflict,
-  skipped,
-}: {
-  scores: Record<string, TraceScoreEntry>;
-  conflict: ExecutionConflict | null;
-  skipped: string[];
-}) {
-  const entries = Object.entries(scores);
-  if (entries.length === 0 && skipped.length === 0) return null;
+function TraceScoresSection({ span }: { span: SpanRow }) {
+  const count = Object.keys(span.traceScores).length;
+  if (count === 0 && span.trajectoryScore == null) return null;
   return (
     <Section
       badge={
         <span className="chip-label inline-flex items-center rounded-sm border border-border/60 bg-wash-raised px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-          {entries.length}
+          {count}
         </span>
       }
-      label="Trace scores"
+      label="Eval scores"
     >
       <div className="space-y-2">
-        {conflict && <ScoreConflictRow conflict={conflict} />}
-        {entries.map(([name, entry]) => (
-          <TraceScoreRow entry={entry} key={name} name={name} />
-        ))}
-        {skipped.map((name) => (
-          <SkippedMemberRow key={name} name={name} />
-        ))}
+        {span.trajectoryScore != null && (
+          <div className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-wash-subtle px-3 py-2">
+            <span className="text-xs font-medium">Trajectory</span>
+            <ScoreChip value={span.trajectoryScore} />
+          </div>
+        )}
+        <MetricList metrics={span.evalMetrics} />
       </div>
     </Section>
   );
@@ -840,13 +756,7 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="divide-y divide-border/70">
           {span.events.length > 0 && <ExceptionEventsSection events={span.events} />}
-          {(Object.keys(span.traceScores).length > 0 || span.skippedMembers.length > 0) && (
-            <TraceScoresSection
-              conflict={span.executionConflict}
-              scores={span.traceScores}
-              skipped={span.skippedMembers}
-            />
-          )}
+          <TraceScoresSection span={span} />
           <JsonBlock id="span-input" title="Input" value={span.inputs} />
           <JsonBlock
             badge={

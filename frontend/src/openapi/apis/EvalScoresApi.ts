@@ -15,36 +15,31 @@
 
 import * as runtime from '../runtime';
 import type {
-  PaginatedScoreList,
-  Score,
+  EvalScore,
+  PaginatedEvalScoreList,
 } from '../models/index';
 import {
-    PaginatedScoreListFromJSON,
-    PaginatedScoreListToJSON,
-    ScoreFromJSON,
-    ScoreToJSON,
+    EvalScoreFromJSON,
+    EvalScoreToJSON,
+    PaginatedEvalScoreListFromJSON,
+    PaginatedEvalScoreListToJSON,
 } from '../models/index';
 
 export interface EvalScoresListRequest {
-    dataType?: EvalScoresListDataTypeEnum;
-    evaluator?: string;
-    failureRole?: EvalScoresListFailureRoleEnum;
-    name?: string;
     ordering?: string;
     page?: number;
     pageSize?: number;
+    project?: string;
     run?: string;
-    sample?: string;
-    scope?: string;
     search?: string;
-    source?: EvalScoresListSourceEnum;
-    valueMax?: number;
-    valueMin?: number;
-    variant?: string;
+    sourceId?: string;
+    sourceIdIn?: Array<string>;
+    sourceType?: EvalScoresListSourceTypeEnum;
+    traceId?: string;
 }
 
 export interface EvalScoresRetrieveRequest {
-    id: string;
+    id: number;
 }
 
 /**
@@ -53,26 +48,10 @@ export interface EvalScoresRetrieveRequest {
 export class EvalScoresApi extends runtime.BaseAPI {
 
     /**
-     * List scores
+     * List scores for spans, trajectories or run rows
      */
-    async evalScoresListRaw(requestParameters: EvalScoresListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedScoreList>> {
+    async evalScoresListRaw(requestParameters: EvalScoresListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedEvalScoreList>> {
         const queryParameters: any = {};
-
-        if (requestParameters['dataType'] != null) {
-            queryParameters['data_type'] = requestParameters['dataType'];
-        }
-
-        if (requestParameters['evaluator'] != null) {
-            queryParameters['evaluator'] = requestParameters['evaluator'];
-        }
-
-        if (requestParameters['failureRole'] != null) {
-            queryParameters['failure_role'] = requestParameters['failureRole'];
-        }
-
-        if (requestParameters['name'] != null) {
-            queryParameters['name'] = requestParameters['name'];
-        }
 
         if (requestParameters['ordering'] != null) {
             queryParameters['ordering'] = requestParameters['ordering'];
@@ -86,36 +65,32 @@ export class EvalScoresApi extends runtime.BaseAPI {
             queryParameters['page_size'] = requestParameters['pageSize'];
         }
 
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
+        }
+
         if (requestParameters['run'] != null) {
             queryParameters['run'] = requestParameters['run'];
-        }
-
-        if (requestParameters['sample'] != null) {
-            queryParameters['sample'] = requestParameters['sample'];
-        }
-
-        if (requestParameters['scope'] != null) {
-            queryParameters['scope'] = requestParameters['scope'];
         }
 
         if (requestParameters['search'] != null) {
             queryParameters['search'] = requestParameters['search'];
         }
 
-        if (requestParameters['source'] != null) {
-            queryParameters['source'] = requestParameters['source'];
+        if (requestParameters['sourceId'] != null) {
+            queryParameters['source_id'] = requestParameters['sourceId'];
         }
 
-        if (requestParameters['valueMax'] != null) {
-            queryParameters['value_max'] = requestParameters['valueMax'];
+        if (requestParameters['sourceIdIn'] != null) {
+            queryParameters['source_id__in'] = requestParameters['sourceIdIn']!.join(runtime.COLLECTION_FORMATS["csv"]);
         }
 
-        if (requestParameters['valueMin'] != null) {
-            queryParameters['value_min'] = requestParameters['valueMin'];
+        if (requestParameters['sourceType'] != null) {
+            queryParameters['source_type'] = requestParameters['sourceType'];
         }
 
-        if (requestParameters['variant'] != null) {
-            queryParameters['variant'] = requestParameters['variant'];
+        if (requestParameters['traceId'] != null) {
+            queryParameters['trace_id'] = requestParameters['traceId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -150,21 +125,21 @@ export class EvalScoresApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedScoreListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedEvalScoreListFromJSON(jsonValue));
     }
 
     /**
-     * List scores
+     * List scores for spans, trajectories or run rows
      */
-    async evalScoresList(requestParameters: EvalScoresListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedScoreList> {
+    async evalScoresList(requestParameters: EvalScoresListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalScoreList> {
         const response = await this.evalScoresListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Get score
+     * Get one score
      */
-    async evalScoresRetrieveRaw(requestParameters: EvalScoresRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Score>> {
+    async evalScoresRetrieveRaw(requestParameters: EvalScoresRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalScore>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -207,13 +182,13 @@ export class EvalScoresApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ScoreFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvalScoreFromJSON(jsonValue));
     }
 
     /**
-     * Get score
+     * Get one score
      */
-    async evalScoresRetrieve(requestParameters: EvalScoresRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Score> {
+    async evalScoresRetrieve(requestParameters: EvalScoresRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalScore> {
         const response = await this.evalScoresRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -223,27 +198,9 @@ export class EvalScoresApi extends runtime.BaseAPI {
 /**
  * @export
  */
-export const EvalScoresListDataTypeEnum = {
-    boolean: 'boolean',
-    categorical: 'categorical',
-    numeric: 'numeric'
+export const EvalScoresListSourceTypeEnum = {
+    dataset_row: 'dataset_row',
+    span: 'span',
+    trajectory: 'trajectory'
 } as const;
-export type EvalScoresListDataTypeEnum = typeof EvalScoresListDataTypeEnum[keyof typeof EvalScoresListDataTypeEnum];
-/**
- * @export
- */
-export const EvalScoresListFailureRoleEnum = {
-    none: 'none',
-    propagated: 'propagated',
-    root_cause: 'root_cause'
-} as const;
-export type EvalScoresListFailureRoleEnum = typeof EvalScoresListFailureRoleEnum[keyof typeof EvalScoresListFailureRoleEnum];
-/**
- * @export
- */
-export const EvalScoresListSourceEnum = {
-    api: 'api',
-    eval: 'eval',
-    human_annotation: 'human_annotation'
-} as const;
-export type EvalScoresListSourceEnum = typeof EvalScoresListSourceEnum[keyof typeof EvalScoresListSourceEnum];
+export type EvalScoresListSourceTypeEnum = typeof EvalScoresListSourceTypeEnum[keyof typeof EvalScoresListSourceTypeEnum];

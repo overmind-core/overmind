@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
     default_retry_delay=30,
 )
 def refresh_dataset_context(self, dataset_id: str) -> dict:  # noqa: ANN001
-    """Dispatched by ``eval.context_extractor.enqueue_refresh``; the API keeps serving the stale
+    """Dispatched by ``profiler.enqueue_refresh``; the API keeps serving the stale
     context until this lands."""
     from overbae.models import Dataset
-    from overbae.services.eval.context_extractor import extract_and_save
+    from overbae.services.datasets.profiler import extract_and_save
 
     try:
         dataset = Dataset.objects.get(id=dataset_id)

@@ -5,8 +5,9 @@ from unittest.mock import patch
 import pytest
 from conftest import read_table
 from django.db import close_old_connections
+from factories import make_matrix_row
 
-from overbae.models import Behaviour, BehaviourVersion, Capability, Dataset, Project
+from overbae.models import Capability, Dataset, Project
 from overbae.services.datasets import land, lifecycle, paths, review, rows, store, synthetic, use
 from overbae.services.datasets.context import preparation_context
 from overbae.services.datasets.notebook import agent, run
@@ -275,11 +276,10 @@ def test_quality_review_is_tied_to_data_intent_and_capability_context():
     ds.intent = "train"
     assert not review.readiness(ds, cell)["quality_reviewed"]
     capability = Capability.objects.create(project=ds.project, name="Task", slug="task")
-    behaviour = Behaviour.objects.create(project=ds.project, capability=capability, key="route")
-    BehaviourVersion.objects.create(
-        behaviour=behaviour, analyzed_sha="abc", contract={"terminal": "answer"}
-    )
-    assert preparation_context(capability)["behaviours"][0]["contract"] == {"terminal": "answer"}
+    make_matrix_row(ds.project, "Routes", capability=capability, source="Routes to one team.")
+    assert preparation_context(capability)["expectations"] == [
+        {"name": "Routes", "expectation": "Routes to one team."}
+    ]
 
 
 def test_split_clusters_content_and_groups_and_reports_stratification():

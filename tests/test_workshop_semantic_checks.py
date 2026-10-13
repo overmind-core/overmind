@@ -30,8 +30,8 @@ def dataset():
 
 
 def _supported(fake_llm):
-    def decide(key, question):
-        row = fake_llm.decisions[-1]["state"]["rows"][key.split("_")[0][1:]]
+    def decide(key, question, state):
+        row = state["rows"][key.split("_")[0][1:]]
         return "pass" if row["expected_output"] == "blue" else "fail"
 
     return decide
@@ -225,11 +225,11 @@ def test_concurrent_audit_checkpoint_cannot_be_overwritten(dataset, provider):
     cell = dataset.active_cell
     original = provider.decide
 
-    def race(key, question):
+    def race(key, question, state):
         Cell.objects.filter(pk=cell.pk).update(
             quality_report={"semantic_audit": {"contract": "another audit"}}
         )
-        return original(key, question)
+        return original(key, question, state)
 
     provider.decide = race
     with pytest.raises(ValueError, match="semantic audit changed"):
@@ -264,9 +264,9 @@ def test_completed_batch_billing_is_idempotent_on_resume(dataset, provider):
 def test_stale_result_spend_is_not_lost(dataset, provider):
     original = provider.decide
 
-    def change_intent(key, question):
+    def change_intent(key, question, state):
         Dataset.objects.filter(pk=dataset.pk).update(intent="train")
-        return original(key, question)
+        return original(key, question, state)
 
     provider.decide = change_intent
     user = get_user_model().objects.create_user(email="semantic-stale@example.com", password="x")

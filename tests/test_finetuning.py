@@ -8,15 +8,13 @@ from unittest.mock import patch
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
 from django.urls import reverse
-from factories import auth_client, make_capability, make_project, make_user
+from factories import auth_client, make_capability, make_matrix_row, make_project, make_user
 from rest_framework.test import APIClient
 
 from overbae.models import (
     Capability,
     Dataset,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     FinetuningJobEvent,
     Project,
@@ -46,16 +44,7 @@ def _job_payload(*, project_id: str, dataset_id: str, **overrides) -> dict:
     project = Project.objects.get(pk=project_id)
     evaluation = frozen_dataset(project, EVAL_ROWS, contract="eval")
     eval_set = EvalSet.objects.create(project=project, name="Test evaluations")
-    evaluator = Evaluator.objects.create(
-        project=project,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        scope=Evaluator.Scope.FINAL_OUTPUT,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
-    )
+    eval_set.rows.add(make_matrix_row(eval_set.project))
     payload = {
         "project": project_id,
         "dataset": dataset_id,

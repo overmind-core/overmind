@@ -89,6 +89,29 @@ def test_capability_defaults_to_the_only_toml_entry():
     assert resolve_capability(Config(), raw)[0] == raw
 
 
+def _group(*labels: str) -> dict:
+    return {
+        "group": "group-1",
+        "runs": [
+            {"id": f"run-{index}", "label": label, "is_baseline": index == 0} for index, label in enumerate(labels)
+        ],
+    }
+
+
+def _finished(index: int, label: str, *, errors: int = 0) -> dict:
+    return {
+        "id": f"run-{index}",
+        "label": label,
+        "is_baseline": index == 0,
+        "status": "completed",
+        "summary": {"score": 0.5, "metrics": {"faithful": {"errors": errors}}},
+    }
+
+
+def _overall(status: str, candidate: float, delta: float) -> dict:
+    return {"overall": {"baseline": candidate - delta, "candidate": candidate, "delta": delta, "status": status}}
+
+
 def test_backtest_scores_each_model_and_exits_on_regression():
     session_client = _client(
         Response({
@@ -98,33 +121,12 @@ def test_backtest_scores_each_model_and_exits_on_regression():
         Response({"active_eval_set": "set-1"}),
         Response({"id": "ds-1"}),
         Response(_dataset("ds-1")),
-        Response({"id": "run-1", "run_evaluators": [{"id": "judge"}]}),
-        Response({
-            "id": "run-1",
-            "status": "completed",
-            "summary": {
-                "baseline_comparison": {
-                    "variants": [
-                        {
-                            "label": "openai/gpt-5-mini",
-                            "overall": {
-                                "status": "regressed",
-                                "delta": -0.2,
-                                "current": {"primary": 0.4},
-                            },
-                        },
-                        {
-                            "label": "anthropic/claude-sonnet-4.5",
-                            "overall": {
-                                "status": "improved",
-                                "delta": 0.1,
-                                "current": {"primary": 0.9},
-                            },
-                        },
-                    ]
-                }
-            },
-        }),
+        Response(_group("recorded", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.5")),
+        Response(_finished(0, "recorded")),
+        Response(_finished(1, "openai/gpt-5-mini")),
+        Response(_finished(2, "anthropic/claude-sonnet-4.5")),
+        Response(_overall("regressed", 0.4, -0.2)),
+        Response(_overall("improved", 0.9, 0.1)),
     )
     code = run_backtest(
         session_client,
@@ -140,39 +142,23 @@ def test_backtest_scores_each_model_and_exits_on_regression():
     )
     assert code == 1
     created = next(body for _method, url, body in session_client.session.calls if url.endswith("/api/eval-runs/"))
-    labels = [variant["label"] for variant in created["variants_input"]]
+    labels = [target["label"] for target in created["targets"]]
     assert labels == ["recorded", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]
-    assert created["variants_input"][1]["params"] == {"generation_strategy": "single_completion"}
-    assert created["variants_input"][0]["mode"] == "existing"
-    assert created["variants_input"][0]["is_baseline"] is True
+    assert created["targets"][1]["params"] == {"generation_strategy": "single_completion"}
+    assert created["targets"][0]["mode"] == "recorded"
+    assert created["targets"][0]["is_baseline"] is True
 
 
-def test_backtest_fails_when_a_judge_does_not_score():
+def test_backtest_fails_when_a_metric_does_not_score():
     session_client = _client(
         Response({"upstream_available": True, "models": [{"id": "openai/gpt-5-mini"}]}),
         Response({"active_eval_set": "set-1"}),
         Response({"id": "ds-1"}),
         Response(_dataset("ds-1")),
-        Response({"id": "run-1", "run_evaluators": [{"id": "judge"}]}),
-        Response({
-            "id": "run-1",
-            "status": "completed",
-            "summary": {
-                "baseline_comparison": {
-                    "variants": [
-                        {
-                            "label": "openai/gpt-5-mini",
-                            "overall": {
-                                "status": "unchanged",
-                                "delta": 0.0,
-                                "current": {"primary": 1.0},
-                            },
-                        }
-                    ]
-                },
-                "error_counts": {"by_variant": {"candidate": {"label": "openai/gpt-5-mini", "evaluator_errors": 1}}},
-            },
-        }),
+        Response(_group("recorded", "openai/gpt-5-mini")),
+        Response(_finished(0, "recorded")),
+        Response(_finished(1, "openai/gpt-5-mini", errors=1)),
+        Response(_overall("unchanged", 1.0, 0.0)),
     )
     code = run_backtest(
         session_client,
@@ -284,8 +270,8 @@ def test_backtest_times_out_while_the_run_is_still_going():
         Response({"active_eval_set": "set-1"}),
         Response({"id": "ds-1"}),
         Response(_dataset("ds-1")),
-        Response({"id": "run-1", "run_evaluators": [{"id": "judge"}]}),
-        Response({"id": "run-1", "status": "running"}),
+        Response(_group("recorded", "openai/gpt-5-mini")),
+        Response({"id": "run-0", "status": "running"}),
         clock=lambda: 100.0,
     )
     with pytest.raises(LayerError, match="Timed out") as exc:

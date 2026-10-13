@@ -168,10 +168,10 @@ export interface RootSpanList {
     readonly source: string;
     /**
      *
-     * @type {boolean}
+     * @type {any}
      * @memberof RootSpanList
      */
-    readonly scoringPending: boolean;
+    readonly evalAttributes: any | null;
     /**
      *
      * @type {TraceStatusEnum}
@@ -209,7 +209,7 @@ export function instanceOfRootSpanList(value: object): value is RootSpanList {
     if (!('feedbackScore' in value) || value['feedbackScore'] === undefined) return false;
     if (!('receivedAt' in value) || value['receivedAt'] === undefined) return false;
     if (!('source' in value) || value['source'] === undefined) return false;
-    if (!('scoringPending' in value) || value['scoringPending'] === undefined) return false;
+    if (!('evalAttributes' in value) || value['evalAttributes'] === undefined) return false;
     if (!('traceStatus' in value) || value['traceStatus'] === undefined) return false;
     return true;
 }
@@ -247,7 +247,7 @@ export function RootSpanListFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'feedbackScore': json['feedback_score'],
         'receivedAt': (new Date(json['received_at'])),
         'source': json['source'],
-        'scoringPending': json['scoring_pending'],
+        'evalAttributes': json['eval_attributes'],
         'traceStatus': TraceStatusEnumFromJSON(json['trace_status']),
     };
 }
@@ -256,7 +256,7 @@ export function RootSpanListToJSON(json: any): RootSpanList {
     return RootSpanListToJSONTyped(json, false);
 }
 
-export function RootSpanListToJSONTyped(value?: Omit<RootSpanList, 'trace_id'|'span_id'|'project'|'capability'|'capability_name'|'span_type'|'operation'|'name'|'service_name'|'kind'|'status_code'|'status_message'|'start_time_ns'|'end_time_ns'|'duration_ns'|'total_tokens'|'total_cost'|'cache_read_tokens'|'model'|'conversation'|'feedback_score'|'received_at'|'source'|'scoring_pending'|'trace_status'> | null, ignoreDiscriminator: boolean = false): any {
+export function RootSpanListToJSONTyped(value?: Omit<RootSpanList, 'trace_id'|'span_id'|'project'|'capability'|'capability_name'|'span_type'|'operation'|'name'|'service_name'|'kind'|'status_code'|'status_message'|'start_time_ns'|'end_time_ns'|'duration_ns'|'total_tokens'|'total_cost'|'cache_read_tokens'|'model'|'conversation'|'feedback_score'|'received_at'|'source'|'eval_attributes'|'trace_status'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

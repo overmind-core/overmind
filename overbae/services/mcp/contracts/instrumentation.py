@@ -20,32 +20,12 @@ class InstrumentationTarget(MCPModel):
     import_line: str = Field(max_length=1_024)
 
 
-class RequiredInstrumentationSpan(MCPModel):
-    target: InstrumentationTarget
-    required_decorator: str = Field(min_length=1, max_length=255)
-
-
-class RequiredInstrumentationIdentity(MCPModel):
-    capability_id: str = Field(min_length=1, max_length=64)
-    capability_name: str = Field(min_length=1, max_length=255)
-    how: str = Field(min_length=1, max_length=1_000)
-
-
-class InstrumentationTicket(MCPModel):
-    key: str = Field(min_length=1, max_length=255)
-    behaviour_id: str = Field(min_length=1, max_length=64)
-    version_id: str | None = Field(default=None, min_length=1, max_length=64)
-    version_analyzed_sha: str = Field(max_length=128)
-    contract_fingerprint: str = Field(max_length=128)
+class InstrumentationPlacement(MCPModel):
     capability: str = Field(min_length=1, max_length=255)
     capability_id: str = Field(min_length=1, max_length=64)
-    placement_mode: Literal["fixed", "dynamic_key"]
-    allowed_keys: list[str] = Field(default_factory=list, max_length=100)
-    grain: Literal["run", "turn"]
+    kind: Literal["entry_point", "workflow", "tool", "retrieval", "function"]
     target: InstrumentationTarget
-    required_scope: str = Field(min_length=1, max_length=1_000)
-    required_spans: list[RequiredInstrumentationSpan] = Field(max_length=100)
-    required_identity: RequiredInstrumentationIdentity
+    required_decorator: str = Field(min_length=1, max_length=255)
 
 
 class InstrumentationCapabilitySummary(MCPModel):
@@ -62,19 +42,12 @@ class InstrumentationHumanAction(MCPModel):
 
 class GetInstrumentationPlanInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
-    behaviour: str | None = Field(default=None, min_length=1, max_length=255)
-
-    @model_validator(mode="after")
-    def behaviour_requires_capability(self) -> GetInstrumentationPlanInput:
-        if self.behaviour and not self.capability:
-            raise ValueError("behaviour requires capability")
-        return self
 
 
 class GetInstrumentationPlanOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     capability: InstrumentationCapabilitySummary | None = None
-    placements: list[InstrumentationTicket] = Field(max_length=MAX_INSTRUMENTATION_TICKETS)
+    placements: list[InstrumentationPlacement] = Field(max_length=MAX_INSTRUMENTATION_TICKETS)
     human_action: InstrumentationHumanAction | None = None
     instruction: str | None = Field(default=None, max_length=1_000)
 
@@ -98,35 +71,26 @@ class InstrumentationSpanError(MCPModel):
     error: str = Field(min_length=1, max_length=500)
 
 
-class InstrumentationSeenSpan(MCPModel):
-    name: str = Field(max_length=255)
-    behaviour_key: str | None = Field(default=None, max_length=255)
-    unit_kind: str | None = Field(default=None, max_length=32)
-    qualname: str | None = Field(default=None, max_length=512)
-
-
-class InstrumentationTask(MCPModel):
-    behaviour_key: str | None = Field(default=None, max_length=255)
-    binding_source: Literal["anchor_join", "declared", "unbound"]
-    declared_key: str | None = Field(default=None, max_length=255)
-    route_flags: list[str] = Field(max_length=20)
-    unit_span_id: str = Field(min_length=1, max_length=16)
-    trace_id: str = Field(min_length=1, max_length=32)
-    capability: str | None = Field(default=None, max_length=255)
-    capability_id: str | None = Field(default=None, max_length=64)
-    spans_seen: list[InstrumentationSeenSpan] = Field(max_length=20)
-
-
 class InstrumentationPunchListItem(MCPModel):
-    grade: str = Field(min_length=1, max_length=64)
+    check: str = Field(min_length=1, max_length=64)
     instruction: str = Field(min_length=1, max_length=1_000)
+
+
+class InstrumentationSpanRows(MCPModel):
+    span_id: str = Field(max_length=16)
+    name: str = Field(max_length=255)
+    span_type: str = Field(max_length=40)
+    rows: list[str] = Field(
+        max_length=20, description="Eval matrix rows that would score this span live."
+    )
 
 
 class InstrumentationCapabilityResult(MCPModel):
     capability: str | None = Field(default=None, max_length=255)
     capability_id: str | None = Field(default=None, max_length=64)
-    grades: dict[str, str] = Field(max_length=20)
+    checks: dict[str, Literal["ok", "missing"]] = Field(max_length=20)
     punch_list: list[InstrumentationPunchListItem] = Field(max_length=20)
+    spans: list[InstrumentationSpanRows] = Field(max_length=50)
 
 
 class VerifyInstrumentationInput(MCPModel):
@@ -146,7 +110,6 @@ class VerifyInstrumentationInput(MCPModel):
 class VerifyInstrumentationOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     ok: bool
-    tasks: list[InstrumentationTask] = Field(max_length=MAX_INSTRUMENTATION_SPANS)
     capabilities: list[InstrumentationCapabilityResult] = Field(
         max_length=MAX_INSTRUMENTATION_SPANS
     )

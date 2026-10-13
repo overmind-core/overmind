@@ -8,7 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
 from django.urls import reverse
-from factories import auth_client, make_capability, make_project, make_user, prepare_training
+from factories import (
+    auth_client,
+    make_capability,
+    make_matrix_row,
+    make_project,
+    make_user,
+    prepare_training,
+)
 from rest_framework.test import APIClient
 
 from overbae.modal.model_registry import baseten_finetuning_catalog
@@ -16,8 +23,6 @@ from overbae.models import (
     Capability,
     Dataset,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     FinetuningJobEvent,
     Project,
@@ -78,15 +83,7 @@ def _dataset_with_pairs(capability: Capability, *, n: int = 3) -> Dataset:
 def _ft_job_payload(project: Project, dataset: Dataset, **overrides) -> dict:
     evaluation = frozen_dataset(project, EVAL_ROWS)
     eval_set = EvalSet.objects.create(project=project, name="Training evals")
-    evaluator = Evaluator.objects.create(
-        project=project,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
-    )
+    eval_set.rows.add(make_matrix_row(eval_set.project))
     payload = {
         "project": str(project.id),
         "dataset": str(dataset.id),

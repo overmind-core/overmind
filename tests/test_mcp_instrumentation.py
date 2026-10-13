@@ -4,69 +4,40 @@ import asyncio
 import uuid
 
 import pytest
+from factories import make_matrix_row
 from mcp_fixtures import mcp_context
 
-from overbae.models import (
-    Behaviour,
-    BehaviourVersion,
-    Capability,
-    EvidenceProfile,
-    Span,
-    TaskExecution,
-)
-from overbae.services.behaviour.instrumentation import instrumentation_tickets
+from overbae.models import Capability, EvalScore, Span
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-SHA = "a" * 40
+TOOLS = ("get_instrumentation_plan", "verify_instrumentation")
 
 
-def _capability(context: MCPContext, name: str = "Support") -> Capability:
+def _capability(context: MCPContext, name: str = "Support", anchors=None) -> Capability:
+    card = {"anchors": anchors} if anchors is not None else {}
     return Capability.objects.create(
         project=context.project,
         name=name,
         slug=f"{name.lower()}-{uuid.uuid4().hex[:8]}",
+        improvement_metadata={"capability_card": card},
     )
 
 
-def _behaviour(capability: Capability, key: str = "support-task") -> Behaviour:
-    behaviour = Behaviour.objects.create(
-        project=capability.project,
-        capability=capability,
-        key=key,
-        display_name=key,
-        entry_anchor="app.agent.run",
-        grain=Behaviour.Grain.RUN,
-        first_seen_sha=SHA,
-        last_seen_sha=SHA,
-    )
-    BehaviourVersion.objects.create(
-        behaviour=behaviour,
-        analyzed_sha=SHA,
-        contract={
-            "entry_anchor": "app.agent.run",
-            "anchor_sequence": ["app.agent.run", "app.agent.emit"],
-            "anchors": [
-                {"qualname": "app.agent.run", "kind": "entry_point", "file": "app/agent.py"},
-                {"qualname": "app.agent.emit", "kind": "function", "file": "app/agent.py"},
-            ],
-        },
-    )
-    return behaviour
-
-
-def _span(*, span_id: str | None = None, trace_id: str | None = None, **extra) -> dict:
+def _span(
+    *, span_id=None, trace_id=None, parent_span_id=None, span_type="entry_point", **attrs
+) -> dict:
     return {
         "span_id": span_id or uuid.uuid4().hex[:16],
         "trace_id": trace_id or uuid.uuid4().hex,
+        "parent_span_id": parent_span_id,
         "name": "run",
-        "span_type": "entry_point",
+        "span_type": span_type,
         "start_time_ns": 1,
         "end_time_ns": 1_000_001,
-        "attributes": extra,
-        "resource_attrs": {"vcs.ref.head.revision": SHA},
+        "attributes": attrs,
         "status_code": 0,
     }
 
@@ -75,226 +46,166 @@ def _call(name: str, context: MCPContext, arguments: dict):
     return asyncio.run(CATALOG.call(name, arguments, context))
 
 
-def test_catalog_has_exact_instrumentation_slice_and_read_annotations():
-    assert len(CATALOG.definitions()) <= 37
+def test_catalog_exposes_both_tools_as_read_only():
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
-    assert {"get_instrumentation_plan", "verify_instrumentation"} <= set(definitions)
-    assert all(
-        definitions[name].read_only
-        for name in ("get_instrumentation_plan", "verify_instrumentation")
-    )
-    assert {tool.name for tool in CATALOG.tools(frozenset({"read"}))} >= {
-        "get_instrumentation_plan",
-        "verify_instrumentation",
-    }
-    for name in ("get_instrumentation_plan", "verify_instrumentation"):
+    assert {tool.name for tool in CATALOG.tools(frozenset({"read"}))} >= set(TOOLS)
+    for name in TOOLS:
         tool = definitions[name].as_mcp_tool()
         assert tool.annotations.readOnlyHint is True
         assert tool.annotations.destructiveHint is False
-        assert tool.annotations.idempotentHint is True
         assert tool.annotations.openWorldHint is False
 
 
-def test_plan_preserves_exact_registered_ticket_fields():
+def test_plan_places_decorators_from_card_anchors_entry_point_first():
     context = mcp_context()
-    capability = _capability(context)
-    _behaviour(capability)
-
-    expected = instrumentation_tickets(
-        context.project,
-        capability,
-        "support-task",
-    )["placements"]
-    result = _call(
-        "get_instrumentation_plan",
+    capability = _capability(
         context,
-        {"capability": capability.slug, "behaviour": "support-task"},
+        anchors=[
+            {"qualname": "support.tools.lookup", "kind": "tool", "file": "support/tools.py"},
+            {
+                "qualname": "support.agent.Agent.run",
+                "kind": "entry_point",
+                "file": "support/agent.py#L4",
+            },
+            {"qualname": "support.misc.helper", "kind": "unknown", "file": "support/misc.py"},
+        ],
     )
 
-    assert result.isError is False
-    placement = result.structuredContent["placements"][0]
-    assert placement["key"] == expected[0]["key"]
-    assert placement["behaviour_id"] == expected[0]["behaviour_id"]
-    assert placement["version_id"] == expected[0]["version_id"]
-    assert placement["version_analyzed_sha"] == expected[0]["version_analyzed_sha"]
-    assert placement["contract_fingerprint"] == expected[0]["contract_fingerprint"]
-    assert placement["capability_id"] == expected[0]["capability_id"]
-    assert placement["target"]["file"] == expected[0]["target"]["file"]
-    assert placement["target"]["qualname"] == expected[0]["target"]["qualname"]
-    assert placement["required_scope"] == expected[0]["required_scope"]
-    assert (
-        placement["required_identity"]["capability_id"]
-        == expected[0]["required_identity"]["capability_id"]
+    placements = _call("get_instrumentation_plan", context, {"capability": capability.slug})
+
+    assert placements.isError is False
+    rows = placements.structuredContent["placements"]
+    assert [row["kind"] for row in rows] == ["entry_point", "function", "tool"]
+    assert rows[0]["required_decorator"] == (
+        f'@overmind.entry_point(capability_id="{capability.id}")'
     )
-    assert (
-        placement["required_spans"][0]["required_decorator"]
-        == expected[0]["required_spans"][0]["required_decorator"]
-    )
-
-
-def test_plan_defaults_to_project_wide_and_capability_scopes_when_supplied():
-    context = mcp_context()
-    support = _capability(context, "Support")
-    sales = _capability(context, "Sales")
-    _behaviour(support, "support-task")
-    _behaviour(sales, "sales-task")
-
-    project_wide = _call("get_instrumentation_plan", context, {})
-    scoped = _call(
-        "get_instrumentation_plan",
-        context,
-        {"capability": support.slug},
-    )
-
-    assert project_wide.isError is False
-    assert {
-        placement["capability_id"] for placement in project_wide.structuredContent["placements"]
-    } == {str(support.id), str(sales.id)}
-    assert scoped.isError is False
-    assert {placement["capability_id"] for placement in scoped.structuredContent["placements"]} == {
-        str(support.id)
+    assert rows[0]["target"] == {
+        "file": "support/agent.py",
+        "qualname": "support.agent.Agent.run",
+        "module": "support.agent",
+        "import_line": "from support.agent import Agent",
     }
 
 
-def test_plan_requires_capability_for_behaviour_and_empty_registry_is_actionable():
+def test_plan_is_project_wide_without_a_capability():
     context = mcp_context()
+    for name in ("Billing", "Support"):
+        _capability(context, name, anchors=[{"qualname": f"{name}.run", "kind": "entry_point"}])
 
-    invalid = _call("get_instrumentation_plan", context, {"behaviour": "support-task"})
-    assert invalid.isError is True
-    assert invalid.structuredContent["error"]["code"] == "invalid_input"
+    result = _call("get_instrumentation_plan", context, {})
 
-    empty = _call("get_instrumentation_plan", context, {})
-    assert empty.isError is False
-    assert empty.structuredContent["placements"] == []
-    assert empty.structuredContent["human_action"]["code"] == "instrumentation_registry_empty"
-    assert empty.structuredContent["instruction"]
+    assert [row["capability"] for row in result.structuredContent["placements"]] == [
+        "Billing",
+        "Support",
+    ]
+
+
+def test_plan_without_anchors_asks_for_setup():
+    context = mcp_context()
+    _capability(context)
+
+    output = _call("get_instrumentation_plan", context, {}).structuredContent
+
+    assert output["placements"] == []
+    assert output["human_action"]["code"] == "instrumentation_registry_empty"
 
 
 def test_plan_and_verify_are_project_isolated():
     context = mcp_context()
-    other = mcp_context()
-    foreign = _capability(other, "Foreign")
+    foreign = _capability(mcp_context(), "Foreign")
 
     plan = _call("get_instrumentation_plan", context, {"capability": foreign.slug})
     verify = _call(
-        "verify_instrumentation",
-        context,
-        {"capability": str(foreign.id), "spans": [_span()]},
+        "verify_instrumentation", context, {"capability": str(foreign.id), "spans": [_span()]}
     )
 
-    assert plan.isError is True
-    assert verify.isError is True
     assert plan.structuredContent["error"]["code"] == "capability_not_found"
     assert verify.structuredContent["error"]["code"] == "capability_not_found"
 
 
-def test_verify_returns_typed_binding_grades_and_punch_list_without_writes():
+def test_verify_passes_a_complete_run_without_writes():
     context = mcp_context()
     capability = _capability(context)
-    _behaviour(capability)
-    spans = [_span(**{"overmind.behaviour.key": "support-task"})]
-    counts = (
-        Span.objects.count(),
-        TaskExecution.objects.count(),
-        EvidenceProfile.objects.count(),
-    )
+    make_matrix_row(context.project, "Answers", capability=capability)
+    root = _span(**{"overmind.capability.id": str(capability.id), "input": "hi", "output": "hello"})
+    counts = (Span.objects.count(), EvalScore.objects.count())
 
-    result = _call(
-        "verify_instrumentation",
-        context,
-        {"capability": capability.slug, "spans": spans},
-    )
+    output = _call("verify_instrumentation", context, {"spans": [root]}).structuredContent
 
-    assert result.isError is False
-    output = result.structuredContent
     assert output["ok"] is True
-    assert output["errors"] == []
-    assert output["tasks"][0]["binding_source"] == "declared"
-    assert output["tasks"][0]["capability_id"] == str(capability.id)
-    assert set(output["capabilities"][0]["grades"]) == {
-        "task",
-        "units",
-        "tool_ops",
-        "provenance",
-        "observations",
-        "delivery",
-    }
-    assert "punch_list" in output["capabilities"][0]
-    assert counts == (
-        Span.objects.count(),
-        TaskExecution.objects.count(),
-        EvidenceProfile.objects.count(),
+    [result] = output["capabilities"]
+    assert result["capability_id"] == str(capability.id)
+    assert set(result["checks"].values()) == {"ok"}
+    assert result["spans"][0]["rows"] == ["Answers"]
+    assert counts == (Span.objects.count(), EvalScore.objects.count())
+
+
+def test_verify_names_each_missing_piece():
+    context = mcp_context()
+    capability = _capability(context)
+    Capability.objects.filter(pk=capability.pk).update(
+        improvement_metadata={"capability_card": {"tool_spec": [{"name": "lookup"}]}}
     )
+    trace_id = uuid.uuid4().hex
+    spans = [_span(trace_id=trace_id), _span(trace_id=trace_id)]
+
+    output = _call(
+        "verify_instrumentation", context, {"capability": capability.slug, "spans": spans}
+    ).structuredContent
+
+    assert output["ok"] is False
+    [result] = output["capabilities"]
+    assert {item["check"] for item in result["punch_list"]} == {
+        "root",
+        "input",
+        "output",
+        "tools",
+        "scored_rows",
+    }
 
 
-def test_verify_reports_malformed_typed_span_and_rejects_json_string():
+def test_verify_reports_malformed_spans_and_rejects_a_json_string():
     context = mcp_context()
 
-    malformed = _call(
-        "verify_instrumentation",
-        context,
-        {"spans": [{"trace_id": "missing-fields"}]},
-    )
-    encoded = _call(
-        "verify_instrumentation",
-        context,
-        {"spans": "[]"},
-    )
+    malformed = _call("verify_instrumentation", context, {"spans": [{"trace_id": "x"}]})
+    encoded = _call("verify_instrumentation", context, {"spans": "[]"})
 
-    assert malformed.isError is False
     assert malformed.structuredContent["ok"] is False
     assert malformed.structuredContent["errors"][0]["index"] == 0
-    assert encoded.isError is True
     assert encoded.structuredContent["error"]["code"] == "invalid_input"
-    assert "ValidationError" not in encoded.content[0].text
 
 
-def test_verify_enforces_span_bound_and_redacts_unexpected_failures(monkeypatch):
+def test_verify_bounds_caller_spans():
     context = mcp_context()
-    at_limit = _call(
-        "verify_instrumentation",
-        context,
-        {"spans": [_span() for _ in range(100)]},
-    )
-    too_many = _call(
-        "verify_instrumentation",
-        context,
-        {"spans": [{} for _ in range(101)]},
-    )
+
+    at_limit = _call("verify_instrumentation", context, {"spans": [_span() for _ in range(100)]})
+    too_many = _call("verify_instrumentation", context, {"spans": [{} for _ in range(101)]})
+
     assert at_limit.isError is False
-    assert too_many.isError is True
     assert too_many.structuredContent["error"]["code"] == "invalid_input"
 
 
-def test_verify_grades_an_ingested_trace_by_id_beyond_the_caller_span_bound():
+def test_verify_grades_an_ingested_trace_beyond_the_caller_bound():
     context = mcp_context()
     capability = _capability(context)
-    _behaviour(capability)
+    make_matrix_row(context.project, "Answers", capability=capability)
     trace_id = uuid.uuid4().hex
-    root = _span(trace_id=trace_id, **{"overmind.behaviour.key": "support-task"})
+    root = _span(
+        trace_id=trace_id,
+        **{"overmind.capability.id": str(capability.id), "input": "hi", "output": "hello"},
+    )
     rows = [root] + [
-        {
-            **_span(trace_id=trace_id),
-            "parent_span_id": root["span_id"],
-            "span_type": "function",
-            "name": f"step-{i}",
-        }
-        for i in range(150)
+        _span(trace_id=trace_id, parent_span_id=root["span_id"], span_type="function")
+        for _ in range(150)
     ]
     Span.objects.bulk_create(
         [Span(project=context.project, duration_ns=1_000_000, **row) for row in rows]
     )
-    counts = (Span.objects.count(), TaskExecution.objects.count())
 
-    result = _call(
-        "verify_instrumentation", context, {"capability": capability.slug, "trace_id": trace_id}
-    )
+    result = _call("verify_instrumentation", context, {"trace_id": trace_id})
     foreign = _call("verify_instrumentation", mcp_context(), {"trace_id": trace_id})
     both = _call("verify_instrumentation", context, {"trace_id": trace_id, "spans": [_span()]})
 
-    assert result.isError is False
     assert result.structuredContent["ok"] is True
-    assert result.structuredContent["tasks"][0]["binding_source"] == "declared"
-    assert counts == (Span.objects.count(), TaskExecution.objects.count())
     assert foreign.structuredContent["error"]["code"] == "resource_not_found"
     assert both.structuredContent["error"]["code"] == "invalid_input"

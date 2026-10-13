@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { EvaluationContextVariantRequest } from './EvaluationContextVariantRequest';
+import type { EvalRunTargetRequest } from './EvalRunTargetRequest';
 import {
-    EvaluationContextVariantRequestFromJSON,
-    EvaluationContextVariantRequestFromJSONTyped,
-    EvaluationContextVariantRequestToJSON,
-    EvaluationContextVariantRequestToJSONTyped,
-} from './EvaluationContextVariantRequest';
+    EvalRunTargetRequestFromJSON,
+    EvalRunTargetRequestFromJSONTyped,
+    EvalRunTargetRequestToJSON,
+    EvalRunTargetRequestToJSONTyped,
+} from './EvalRunTargetRequest';
 
 /**
  *
@@ -27,12 +27,6 @@ import {
  * @interface EvaluationContextRequestRequest
  */
 export interface EvaluationContextRequestRequest {
-    /**
-     *
-     * @type {string}
-     * @memberof EvaluationContextRequestRequest
-     */
-    judgeModel?: EvaluationContextRequestRequestJudgeModelEnum;
     /**
      *
      * @type {string}
@@ -58,17 +52,26 @@ export interface EvaluationContextRequestRequest {
      */
     evalSet?: string | null;
     /**
+     * Explanation judge for this run. Blank uses the configured default.
      *
+     * * `` -
+     * * `gpt-5.6-luna` - gpt-5.6-luna
+     * * `gpt-5.6-terra` - gpt-5.6-terra
+     * * `claude-sonnet-5` - claude-sonnet-5
+     * * `claude-haiku-4-5` - claude-haiku-4-5
+     * * `gemini-3.1-pro-preview` - gemini-3.1-pro-preview
+     * * `gemini-3.8-flash` - gemini-3.8-flash
+     * * `deepseek-v3.2` - deepseek-v3.2
      * @type {string}
      * @memberof EvaluationContextRequestRequest
      */
-    capability?: string | null;
+    judgeModel?: EvaluationContextRequestRequestJudgeModelEnum;
     /**
      *
-     * @type {Array<EvaluationContextVariantRequest>}
+     * @type {Array<EvalRunTargetRequest>}
      * @memberof EvaluationContextRequestRequest
      */
-    variants?: Array<EvaluationContextVariantRequest>;
+    targets?: Array<EvalRunTargetRequest>;
 }
 
 
@@ -107,13 +110,12 @@ export function EvaluationContextRequestRequestFromJSONTyped(json: any, ignoreDi
     }
     return {
 
-        'judgeModel': json['judge_model'] == null ? undefined : json['judge_model'],
         'project': json['project'],
         'dataset': json['dataset'],
         'cell': json['cell'] == null ? undefined : json['cell'],
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
-        'capability': json['capability'] == null ? undefined : json['capability'],
-        'variants': json['variants'] == null ? undefined : ((json['variants'] as Array<any>).map(EvaluationContextVariantRequestFromJSON)),
+        'judgeModel': json['judge_model'] == null ? undefined : json['judge_model'],
+        'targets': json['targets'] == null ? undefined : ((json['targets'] as Array<any>).map(EvalRunTargetRequestFromJSON)),
     };
 }
 
@@ -128,12 +130,11 @@ export function EvaluationContextRequestRequestToJSONTyped(value?: EvaluationCon
 
     return {
 
-        'judge_model': value['judgeModel'],
         'project': value['project'],
         'dataset': value['dataset'],
         'cell': value['cell'],
         'eval_set': value['evalSet'],
-        'capability': value['capability'],
-        'variants': value['variants'] == null ? undefined : ((value['variants'] as Array<any>).map(EvaluationContextVariantRequestToJSON)),
+        'judge_model': value['judgeModel'],
+        'targets': value['targets'] == null ? undefined : ((value['targets'] as Array<any>).map(EvalRunTargetRequestToJSON)),
     };
 }

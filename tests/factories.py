@@ -4,7 +4,6 @@ domain-specific wrappers on top of these."""
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 from typing import Any
 
 from django.utils import timezone
@@ -13,19 +12,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import (
     APIToken,
-    Behaviour,
-    BehaviourVersion,
     Capability,
     ConnectorCredential,
     ConnectorSyncConfig,
+    EvalMatrix,
     EvalSet,
     Project,
     ProjectMembership,
     Span,
     User,
-    Verdict,
 )
-from overbae.services.behaviour.ledger import TurnTransitions
 
 
 def make_user(email: str | None = None, **fields: Any) -> User:
@@ -152,36 +148,6 @@ def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str
     return sent
 
 
-def classifier_replies(fake_llm, *outcomes):
-    """Script the classifier's replies in order: a list of transitions, None for an
-    unparsable reply, or an exception for a provider failure. The last repeats."""
-    fake_llm.forget()
-    sent = []
-
-    def current():
-        outcome = outcomes[min(len(sent), len(outcomes) - 1)]
-        return getattr(outcome, "parsed", outcome)
-
-    def failing(request):
-        if request.schema_name == "TurnTransitions" and isinstance(current(), Exception):
-            sent.append(request)
-            return True
-        return False
-
-    def reply(request):
-        outcome = current()
-        sent.append(request)
-        if outcome is None:
-            return "not json"
-        if isinstance(outcome, TurnTransitions):
-            return outcome.model_dump_json()
-        return TurnTransitions(transitions=outcome).model_dump_json()
-
-    fake_llm.fail(failing, 400, "down")
-    fake_llm.on(lambda r: r.schema_name == "TurnTransitions", reply)
-    return sent
-
-
 def ingest_spans(project: Project, spans: list[dict[str, Any]], resource: dict | None = None):
     """POST spans to the OTLP endpoint as a real exporter would. Each span is
     ``{"name", "attributes", "trace_id"?, "span_id"?, "parent"?}``; ids are hex."""
@@ -240,10 +206,12 @@ def ingest_spans(project: Project, spans: list[dict[str, Any]], resource: dict |
 def make_capability(
     project: Project, name: str = "A", *, with_set: bool = False, **fields: Any
 ) -> Capability:
+    """``with_set`` gives it an active eval set holding one llm row."""
     fields.setdefault("slug", f"{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}")
     capability = Capability.objects.create(project=project, name=name, **fields)
     if with_set:
         eval_set = EvalSet.objects.create(project=project, capability=capability, name="Default")
+        eval_set.rows.add(make_matrix_row(project, capability=capability))
         capability.active_eval_set = eval_set
         capability.save(update_fields=["active_eval_set"])
     return capability
@@ -275,98 +243,15 @@ def make_span(
     )
 
 
-def make_behaviour(
-    capability: Capability,
-    key: str,
-    entry: str,
-    sequence: list[str],
-    *,
-    grain: str = Behaviour.Grain.TURN,
-    claim: str = "code_path",
-) -> Behaviour:
-    behaviour = Behaviour.objects.create(
-        project=capability.project,
-        capability=capability,
-        key=key,
-        display_name=key,
-        entry_anchor=entry,
-        grain=grain,
-    )
-    BehaviourVersion.objects.create(
-        behaviour=behaviour,
-        analyzed_sha="a" * 40,
-        contract={
-            "key": key,
-            "entry_anchor": entry,
-            "claim": claim,
-            "anchor_sequence": sequence,
-            "anchors": [
-                {"qualname": q, "kind": "function", "file": "app/agent.py#L1-L10"} for q in sequence
-            ],
-            "terminal": {"kind": "emits_record", "description": ""},
-        },
-    )
-    return behaviour
-
-
-def make_verdict(
+def make_matrix_row(
     project: Project,
+    name: str = "Answers the question",
     *,
-    target_id: str,
-    evaluator_name: str,
-    score: float | None = None,
-    passed: bool | None = None,
-    outcome: str = Verdict.Outcome.SCORED,
-    explanation: str = "",
-    unmet: list[str] | None = None,
-    metadata: dict[str, Any] | None = None,
+    capability: Capability | None = None,
+    type: str = EvalMatrix.Type.LLM,
+    source: str = "The output answers the question.",
     **fields: Any,
-) -> Verdict:
-    meta = {"passed": passed, "scope": "final_output", "grain": "terminal", "gate": False}
-    if metadata:
-        meta.update(metadata)
-    return Verdict.objects.create(
-        project=project,
-        evaluator_name=evaluator_name,
-        target_kind=Verdict.TargetKind.SPAN,
-        target_id=target_id,
-        score=score,
-        outcome=outcome,
-        explanation=explanation,
-        unmet=unmet or [],
-        metadata=meta,
-        **fields,
+) -> EvalMatrix:
+    return EvalMatrix.objects.create(
+        project=project, capability=capability, name=name, type=type, source=source, **fields
     )
-
-
-def evaluator_stub(**overrides: Any) -> SimpleNamespace:
-    """Evaluator lookalike for scoring code paths that never touch the DB."""
-    fields: dict[str, Any] = {
-        "name": "test",
-        "kind": "deterministic",
-        "scope": "final_output",
-        "config": {},
-        "score_min": 0.0,
-        "score_max": 1.0,
-        "pass_threshold": None,
-        "choices": [],
-        "score_type": "numeric",
-        "rubric_md": "",
-        "checklist": [],
-        "variable_mapping": [],
-        "judge_model": "",
-        "judge_panel": [],
-        "requires_reference": False,
-    }
-    fields.update(overrides)
-    return SimpleNamespace(**fields)
-
-
-def expectation(
-    exp_id: str = "currency",
-    kind: str = "contains",
-    spec: Any = "USD",
-    scope: str = "trace",
-    gate: bool = True,
-) -> dict[str, Any]:
-    return {"id": exp_id, "kind": kind, "spec": spec, "scope": scope, "gate": gate}

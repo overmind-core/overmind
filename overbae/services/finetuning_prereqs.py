@@ -142,7 +142,9 @@ def finetune_prerequisite_report(
             "(wizard needs it for in-training judge evals)"
         )
     if eval_set is None:
-        missing.append("eval set — create an eval set with generative evaluators in this project")
+        missing.append(
+            "eval set — create an eval set with enabled eval matrix rows in this project"
+        )
 
     overlap_count = None
     eval_product = eval_dataset.active_cell if eval_dataset is not None else None

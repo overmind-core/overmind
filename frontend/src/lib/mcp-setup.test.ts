@@ -84,11 +84,8 @@ describe("mcp setup snippets", () => {
     expect(prompt).toContain("Smoke run");
     expect(prompt).toContain("explicit approval");
     expect(prompt).toContain("human_action");
-    expect(prompt).toContain("version_analyzed_sha");
-    expect(prompt).toContain("required_spans[].target.file");
-    expect(prompt).toContain("version_id");
-    expect(prompt).toContain("contract_fingerprint");
-    expect(prompt).toContain("required_identity");
+    expect(prompt).toContain("required_decorator");
+    expect(prompt).toContain("target.qualname");
     expect(prompt).toContain("exact command or input");
     expect(prompt).toContain("conversation.id");
     expect(prompt).toContain("query_traces(session=<correlation>, all_spans=false, limit=2)");

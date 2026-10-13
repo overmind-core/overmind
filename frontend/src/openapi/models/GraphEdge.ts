@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { GraphEdgeKindEnum } from './GraphEdgeKindEnum';
+import type { KindEnum } from './KindEnum';
 import {
-    GraphEdgeKindEnumFromJSON,
-    GraphEdgeKindEnumFromJSONTyped,
-    GraphEdgeKindEnumToJSON,
-    GraphEdgeKindEnumToJSONTyped,
-} from './GraphEdgeKindEnum';
+    KindEnumFromJSON,
+    KindEnumFromJSONTyped,
+    KindEnumToJSON,
+    KindEnumToJSONTyped,
+} from './KindEnum';
 
 /**
  *
@@ -29,10 +29,10 @@ import {
 export interface GraphEdge {
     /**
      *
-     * @type {GraphEdgeKindEnum}
+     * @type {KindEnum}
      * @memberof GraphEdge
      */
-    kind: GraphEdgeKindEnum;
+    kind: KindEnum;
     /**
      *
      * @type {string}
@@ -99,7 +99,7 @@ export function GraphEdgeFromJSONTyped(json: any, ignoreDiscriminator: boolean):
     }
     return {
 
-        'kind': GraphEdgeKindEnumFromJSON(json['kind']),
+        'kind': KindEnumFromJSON(json['kind']),
         'source': json['source'],
         'target': json['target'],
         'sourceName': json['source_name'] == null ? undefined : json['source_name'],
@@ -121,7 +121,7 @@ export function GraphEdgeToJSONTyped(value?: GraphEdge | null, ignoreDiscriminat
 
     return {
 
-        'kind': GraphEdgeKindEnumToJSON(value['kind']),
+        'kind': KindEnumToJSON(value['kind']),
         'source': value['source'],
         'target': value['target'],
         'source_name': value['sourceName'],

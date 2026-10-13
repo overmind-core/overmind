@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.1.85"
+__version__ = "0.1.86"
 
 from .client import Client, ModelDeleted, OvermindInferenceError
 
@@ -29,7 +29,9 @@ if TYPE_CHECKING:
         init,
         normalize_messages,
         observe,
+        record_llm_call,
         retrieval,
+        session,
         set_conversation_id,
         set_tag,
         set_user,
@@ -60,8 +62,10 @@ __all__ = [
     "intent",
     "normalize_messages",
     "observe",
+    "record_llm_call",
     "retrieval",
     "run",
+    "session",
     "set_conversation_id",
     "set_tag",
     "set_user",
@@ -84,7 +88,9 @@ _TRACING = frozenset({
     "init",
     "normalize_messages",
     "observe",
+    "record_llm_call",
     "retrieval",
+    "session",
     "set_conversation_id",
     "set_tag",
     "set_user",

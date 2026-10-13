@@ -45,9 +45,6 @@ def frame(
         **{**describe_frame(dataset, path, report=report), **fields}
     )
     cell.refresh_from_db()
-    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-    maybe_enqueue_card_evaluator_sync(dataset)
     return cell
 
 

@@ -79,11 +79,7 @@ export const tracesSearchSchema = z.object({
   trace_group: z.string().optional(),
   trace_group__icontains: z.string().optional(),
   trace_id: z.string().optional(),
-  view: z
-    .enum(["executions", "roots", "sessions"])
-    .optional()
-    .catch("executions")
-    .default("executions"),
+  view: z.enum(["roots", "sessions"]).optional().catch("roots").default("roots"),
 });
 
 /**
@@ -96,9 +92,7 @@ const runFilterShape = {
   run_status: z.string().optional().default("all"),
 };
 
-/** `capability` presets the library's filter and is separate from `run_capability`. */
 export const evaluationsSearchSchema = projectIdSearchSchema.extend({
-  capability: z.string().optional(),
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
   ...runFilterShape,
@@ -113,7 +107,7 @@ export const evaluationsSearchSchema = projectIdSearchSchema.extend({
     .optional()
     .default("all")
     .catch("all"),
-  view: z.enum(["runs", "sets", "library"]).optional().default("runs"),
+  view: z.enum(["runs", "sets", "matrix"]).optional().default("runs").catch("runs"),
 });
 
 export type EvaluationsSearch = z.infer<typeof evaluationsSearchSchema>;

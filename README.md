@@ -64,7 +64,7 @@ cp .env.example .env    # set the required keys below
 docker compose up -d    # Postgres, Redis, API on :8000, Console on :5173, Celery workers, beat, Grafana on :3001
 ```
 
-On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec api python manage.py seed_demo --owner <your email>` loads a full demo workspace.
+On first boot the API runs migrations; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec api python manage.py seed_demo --owner <your email>` loads a full demo workspace.
 
 <details>
 <summary><b>What the API needs to boot</b></summary>
@@ -79,12 +79,11 @@ The API refuses to start until every required key is set, and the error names ea
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` | The fine-tuning checkpoint archive                                                     |
 | `HF_TOKEN`                                                      | Gated Hugging Face base models; also set it in the Modal secret                        |
 
-| Optional                              | Effect                                                                                 |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| `CURSOR_API_KEY`                      | Recommended for the Data Workshop: runs the dataset agent as a Cursor Composer session |
-| `OPENAI_API_KEY`                      | The `embedding_cosine` evaluator                                                       |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Fallback engines for the Data Workshop; unused while `OPENROUTER_API_KEY` is set       |
-| `STRIPE_SECRET_KEY`                   | Paid plans and the credit cap; without it, usage is metered with no cap                |
+| Optional                                                | Effect                                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `CURSOR_API_KEY`                                        | Recommended for the Data Workshop: runs the dataset agent as a Cursor Composer session |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Fallback engines for the Data Workshop; unused while `OPENROUTER_API_KEY` is set       |
+| `STRIPE_SECRET_KEY`                                     | Paid plans and the credit cap; without it, usage is metered with no cap                |
 
 Fine-tuning and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py` and `modal_sft_worker.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
 
@@ -118,7 +117,7 @@ def handle(request: dict, session_id: str) -> dict:
         return answer
 ```
 
-`providers="auto"` instruments the LLM SDKs you already use over OpenTelemetry; without a key, tracing is off and nothing breaks. Any OTel exporter can `POST /api/v1/traces` instead, and existing traces in Langfuse, LangSmith, Braintrust or Galileo can be synced through a connector. Open **Observability → Task executions** to see the trace and its score.
+`providers="auto"` instruments the LLM SDKs you already use over OpenTelemetry; without a key, tracing is off and nothing breaks. Any OTel exporter can `POST /api/v1/traces` instead, and existing traces in Langfuse, LangSmith, Braintrust or Galileo can be synced through a connector. Open **Observability** to see the trace and its score.
 
 ## Connect your coding agent
 
@@ -189,9 +188,10 @@ http_headers = { "X-Api-Key" = "ovr_…" }
 | Domain          | Tools                                                                                                                                                      |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Projects        | `list_projects`                                                                                                                                            |
-| Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `query_task_executions`, `get_job`                                                          |
+| Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `get_job`                                                                                   |
 | Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`, `message_dataset_agent`, `run_dataset` |
-| Evaluations     | `check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`, `compare_evaluations`, `annotate_evaluation_sample`                                    |
+| Evaluations     | `upsert_eval_matrix_row`, `create_eval_set`, `check_evaluation_readiness`, `run_evaluation`, `compare_evaluations`                                         |
+| Signals         | `list_signals`, `set_signal_subscription`                                                                                                                  |
 | Training        | `check_finetune_readiness`, `estimate_finetune`, `start_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt`        |
 | Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                                 |
 | Connectors      | `inspect_connectors`, `configure_connector`, `sync_connector`                                                                                              |

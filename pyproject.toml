@@ -138,6 +138,10 @@ ignore = [
     "C408"
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Sandbox sources: the runner injects json and re instead of allowing imports.
+"overbae/innermind/checks/scripts/*.py" = ["F821"]
+
 [tool.ruff.format]
 quote-style = "double"
 

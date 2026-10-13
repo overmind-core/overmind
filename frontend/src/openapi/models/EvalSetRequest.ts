@@ -48,13 +48,7 @@ export interface EvalSetRequest {
      * @type {Array<string>}
      * @memberof EvalSetRequest
      */
-    prompts?: Array<string>;
-    /**
-     * Library evaluators to include on creation, in all applicable roles.
-     * @type {Array<string>}
-     * @memberof EvalSetRequest
-     */
-    evaluatorIds?: Array<string>;
+    rows?: Array<string>;
 }
 
 /**
@@ -80,8 +74,7 @@ export function EvalSetRequestFromJSONTyped(json: any, ignoreDiscriminator: bool
         'capability': json['capability'] == null ? undefined : json['capability'],
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
-        'prompts': json['prompts'] == null ? undefined : json['prompts'],
-        'evaluatorIds': json['evaluator_ids'] == null ? undefined : json['evaluator_ids'],
+        'rows': json['rows'] == null ? undefined : json['rows'],
     };
 }
 
@@ -100,7 +93,6 @@ export function EvalSetRequestToJSONTyped(value?: EvalSetRequest | null, ignoreD
         'capability': value['capability'],
         'name': value['name'],
         'description': value['description'],
-        'prompts': value['prompts'],
-        'evaluator_ids': value['evaluatorIds'],
+        'rows': value['rows'],
     };
 }

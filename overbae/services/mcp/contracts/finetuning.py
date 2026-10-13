@@ -50,13 +50,13 @@ class FineTuneEvalSetReadiness(MCPModel):
     name: str
     capability: str | None
     active: bool
-    member_count: int = Field(ge=0)
+    row_count: int = Field(ge=0)
 
 
-class FineTuneEvaluatorReadiness(MCPModel):
+class FineTuneMatrixReadiness(MCPModel):
     ready: bool
     eval_set: FineTuneEvalSetReadiness | None = None
-    evaluators: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    rows: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
 
 
 class FineTuneCreditReadiness(MCPModel):
@@ -82,7 +82,7 @@ class CheckFinetuneReadinessOutput(MCPModel):
     task_type_source: str | None = None
     excluded: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     recommendation_error: str | None = Field(default=None, max_length=500)
-    evaluator_readiness: FineTuneEvaluatorReadiness
+    matrix_readiness: FineTuneMatrixReadiness
     credits: FineTuneCreditReadiness
     resource_links: list[ResourceLinkContract] = Field(max_length=4)
 
