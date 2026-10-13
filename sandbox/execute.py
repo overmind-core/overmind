@@ -27,10 +27,14 @@ EXTRACT_CPU_SECONDS = 1200
 EXTRACT_WALL_SECONDS = 1260
 FILE_SIZE_BYTES = 2 * GIB
 PROCESSES = 256
+FILE_DESCRIPTORS = 1024
+MAX_FILES = 50_000
 STDOUT_CHARS = 4000
 ERROR_CHARS = 1200
 RESERVE_WAIT_SECONDS = 120
 KILL_SECONDS = 10
+# Longer than any run plus its reply; a reservation a lost request left behind expires.
+RESERVATION_SECONDS = 2 * 60 * 60
 EXTRACTION_BYTES = 1024**2
 UIDS = range(20000, 21000)
 SHARED_DIRS = ("/tmp", "/var/tmp", "/dev/shm")
@@ -41,7 +45,7 @@ _GROWTH = 1.5
 _BUDGET_SHARE = 0.6
 _WATCH_SECONDS = 0.2
 _DISK_EVERY = 5
-_KILLED = (-signal.SIGKILL, -signal.SIGXCPU, 128 + signal.SIGKILL)
+_KILLED = (-signal.SIGKILL, -signal.SIGXCPU)
 
 _FORBIDDEN_CALLS = frozenset(
     {"open", "exec", "eval", "compile", "__import__", "input", "breakpoint", "exit", "quit"}
@@ -172,6 +176,14 @@ def input_matches(header: dict, path: Path) -> bool:
         return False
 
 
+def can_trace() -> bool:
+    """Root reads another uid's /proc/<pid>/fd only with CAP_SYS_PTRACE."""
+    for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+        if line.startswith("CapEff:"):
+            return bool(int(line.split()[1], 16) & (1 << 19))
+    return False
+
+
 def shared_uid() -> bool:
     return os.geteuid() != 0
 
@@ -202,7 +214,12 @@ def _alive(pid: int) -> bool:
 
 @contextlib.contextmanager
 def _ledger() -> Iterator[dict]:
-    with open(runs_dir() / "ledger.json", "a+", encoding="utf-8") as fh:
+    # flock needs no write access: a run that could open the ledger could hold its lock.
+    fd = os.open(
+        runs_dir() / "ledger.json", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600
+    )
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "r+", encoding="utf-8") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:
             fh.seek(0)
@@ -210,8 +227,14 @@ def _ledger() -> Iterator[dict]:
                 saved = json.loads(fh.read() or "{}")
             except ValueError:
                 saved = {}
+            now = time.time()
             ledger = {
-                "runs": {k: v for k, v in saved.get("runs", {}).items() if _alive(int(v["pid"]))},
+                "runs": {
+                    k: v
+                    for k, v in saved.get("runs", {}).items()
+                    if _alive(int(v["pid"]))
+                    and now - float(v.get("since", now)) < RESERVATION_SECONDS
+                },
                 "released": saved.get("released", {}),
             }
             yield ledger
@@ -293,7 +316,12 @@ def reserve(need: int, budget: int) -> Slot:
             if sum(int(entry["bytes"]) for entry in runs.values()) + need <= budget:
                 uid = None if shared_uid() else _free_uid(ledger)
                 if shared_uid() or uid is not None:
-                    runs[token] = {"pid": os.getpid(), "bytes": need, "uid": uid}
+                    runs[token] = {
+                        "pid": os.getpid(),
+                        "bytes": need,
+                        "uid": uid,
+                        "since": time.time(),
+                    }
                     return Slot(token, uid, int(need * _GROWTH))
         if time.monotonic() > deadline:
             raise BusyError
@@ -307,27 +335,60 @@ def release(slot: Slot) -> None:
             ledger["released"][str(slot.uid)] = time.time()
 
 
-def _allocated(root: str | Path, uid: int | None) -> int:
+class TooManyFilesError(Exception):
+    pass
+
+
+def _allocated(root: str | Path, uid: int | None, seen: list[int]) -> int:
     skip = str(runs_dir())
     total = 0
     for parent, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if os.path.join(parent, d) != skip]
-        for name in files:
+        for name in [*dirs, *files]:
             try:
                 info = os.lstat(os.path.join(parent, name))
             except OSError:
                 continue
-            if uid is None or info.st_uid == uid:
+            if uid is not None and info.st_uid != uid:
+                continue
+            total += info.st_blocks * 512
+            seen[0] += 1
+            # Empty files use inodes, which cost kernel memory, and slow every walk.
+            if seen[0] > MAX_FILES:
+                raise TooManyFilesError
+    return total
+
+
+def _unlinked_bytes(pids: list[int]) -> int:
+    """An open file with no name (a memfd, or a file unlinked while open) is memory no
+    directory walk finds."""
+    total = 0
+    counted: set[tuple[int, int]] = set()
+    for pid in pids:
+        try:
+            fds = os.listdir(f"/proc/{pid}/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                info = os.stat(f"/proc/{pid}/fd/{fd}")
+            except OSError:
+                continue
+            key = (info.st_dev, info.st_ino)
+            if stat.S_ISREG(info.st_mode) and info.st_nlink == 0 and key not in counted:
+                counted.add(key)
                 total += info.st_blocks * 512
     return total
 
 
-def _files_bytes(scratch: Path, uid: int | None) -> int:
+def _files_bytes(scratch: Path, uid: int | None, pids: list[int], held: list[BinaryIO]) -> int:
     # /tmp is a tmpfs: what a run writes there is memory the RSS sum does not see.
-    total = _allocated(scratch, None)
+    seen = [0]
+    total = _allocated(scratch, None, seen)
     if uid is not None:
-        total += sum(_allocated(shared, uid) for shared in SHARED_DIRS)
-    return total
+        total += sum(_allocated(shared, uid, seen) for shared in SHARED_DIRS)
+    total += sum(os.fstat(fh.fileno()).st_blocks * 512 for fh in held)
+    return total + _unlinked_bytes(pids)
 
 
 def hand_over(scratch: Path, uid: int | None) -> None:
@@ -394,12 +455,18 @@ class Child:
     noun: str
     cpu_seconds: int
     wall_seconds: int
+    env: dict[str, str] | None = None
 
 
 def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
     uid = slot.uid
     hand_over(scratch, uid)
-    rlimits = [child.cpu_seconds, FILE_SIZE_BYTES, 0 if uid is None else PROCESSES]
+    rlimits = [
+        child.cpu_seconds,
+        FILE_SIZE_BYTES,
+        0 if uid is None else PROCESSES,
+        FILE_DESCRIPTORS,
+    ]
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -409,6 +476,7 @@ def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
         "HOME": str(scratch),
         "TMPDIR": str(scratch),
         "TIKTOKEN_CACHE_DIR": "/opt/sandbox/tiktoken",
+        **(child.env or {}),
     }
     identity = {} if uid is None else {"user": uid, "group": uid, "extra_groups": []}
     started = time.monotonic()
@@ -437,10 +505,18 @@ def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
                     break
                 except subprocess.TimeoutExpired:
                     pass
+                members = _members(proc.pid, uid)
                 if tick % _DISK_EVERY == 0:
-                    files = _files_bytes(scratch, uid)
+                    try:
+                        files = _files_bytes(scratch, uid, [pid for pid, _ in members], [out, err])
+                    except TooManyFilesError:
+                        stopped = (
+                            f"The {child.noun} created more than {MAX_FILES:,} files "
+                            "and was stopped."
+                        )
+                        break
                 tick += 1
-                rss = sum(rss for _, rss in _members(proc.pid, uid))
+                rss = sum(rss for _, rss in members)
                 if time.monotonic() > deadline:
                     stopped = (
                         f"The {child.noun} ran longer than {child.wall_seconds}s and was stopped."
@@ -509,13 +585,14 @@ def _extract(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
         argv=[
             str(Path(__file__).with_name("documents") / "child.py"),
             source.name,
-            header["filename"],
             "output.parquet",
             "extraction.json",
         ],
         noun="document extraction",
         cpu_seconds=EXTRACT_CPU_SECONDS,
         wall_seconds=EXTRACT_WALL_SECONDS,
+        # Any process can read another's command line; only its own uid can read its environment.
+        env={"SANDBOX_FILENAME": header["filename"]},
     )
     outcome = spawn(child, scratch, slot)
     if not outcome.ok:

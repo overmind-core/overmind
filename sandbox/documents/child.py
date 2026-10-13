@@ -1,4 +1,5 @@
 import json
+import os
 import resource
 import sys
 import traceback
@@ -14,10 +15,12 @@ MANIFEST = [
 
 
 def main(argv: list[str]) -> None:
-    limits, document, filename, output, extraction = argv
-    cpu_seconds, file_bytes, processes = json.loads(limits)
+    limits, document, output, extraction = argv
+    filename = os.environ["SANDBOX_FILENAME"]
+    cpu_seconds, file_bytes, processes, descriptors = json.loads(limits)
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
     resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (descriptors, descriptors))
     if processes:
         resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
     # -I keeps the working directory off sys.path; import the code next to this file.

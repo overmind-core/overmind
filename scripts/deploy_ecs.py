@@ -60,6 +60,12 @@ def render_task_definition(document, *, service, image, cluster):
         app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
     elif service != "api":
         raise ValueError(f"No reviewed command for service {service!r}")
+    if service == "sandbox":
+        # init reaps the children a killed run leaves; SYS_PTRACE lets the root server
+        # read a run's open files. Runs drop every capability with their uid.
+        linux = app.setdefault("linuxParameters", {})
+        linux["initProcessEnabled"] = True
+        linux.setdefault("capabilities", {})["add"] = ["SYS_PTRACE"]
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
     if service in HEALTH_CHECKS:

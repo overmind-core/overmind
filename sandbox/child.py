@@ -6,10 +6,14 @@ import traceback
 from pathlib import Path
 
 
-def _limit(cpu_seconds: int, file_bytes: int, processes: int) -> None:
+def _limit(cpu_seconds: int, file_bytes: int, processes: int, descriptors: int) -> None:
     # No RLIMIT_AS: allocators reserve far more address space than they use; the
     # server's watchdog bounds the process group's RSS instead.
-    limits = [(resource.RLIMIT_CPU, cpu_seconds), (resource.RLIMIT_FSIZE, file_bytes)]
+    limits = [
+        (resource.RLIMIT_CPU, cpu_seconds),
+        (resource.RLIMIT_FSIZE, file_bytes),
+        (resource.RLIMIT_NOFILE, descriptors),
+    ]
     if processes:
         limits.append((resource.RLIMIT_NPROC, processes))
     for which, ceiling in limits:

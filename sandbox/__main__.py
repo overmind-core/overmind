@@ -4,6 +4,8 @@ import sys
 
 import uvicorn
 
+from sandbox import execute
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m sandbox")
@@ -17,6 +19,8 @@ def main() -> None:
             "The sandbox runs as root to start each run as its own user. "
             "Set SANDBOX_ALLOW_SHARED_UID=1 only for tests and local workers."
         )
+    if os.geteuid() == 0 and not execute.can_trace():
+        sys.exit("The sandbox needs CAP_SYS_PTRACE to see the files a run holds open.")
     uvicorn.run("sandbox.server:app", host=args.host, port=args.port, workers=1)
 
 

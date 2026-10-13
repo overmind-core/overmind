@@ -228,6 +228,8 @@ services:
     entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
     command: python -m sandbox
     init: true
+    cap_add:
+      - SYS_PTRACE
     restart: unless-stopped
     environment:
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}

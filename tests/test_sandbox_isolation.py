@@ -47,6 +47,19 @@ for pid in (os.getppid(), 1):
     assert "read" not in header["stdout"]
 
 
+def test_a_script_holds_no_capabilities(frame):
+    script = """
+import pathlib
+status = pathlib.Path("/proc/self/status").read_text()
+print([line.split()[1] for line in status.splitlines() if line.startswith(("CapEff", "CapPrm", "CapAmb"))])
+"""
+
+    _, header, _ = run(URL, TOKEN, script, frame, mode="inspect")
+
+    assert header["ok"] is True, header["error"]
+    assert header["stdout"].strip() == str(["0000000000000000"] * 3)
+
+
 def test_a_script_has_no_route_out(frame):
     script = """
 import multiprocessing.connection
@@ -181,6 +194,60 @@ for i in range(16):
     assert header["error"] == (
         "The script used more than 1.5 GiB of memory and scratch files and was stopped."
     )
+
+
+def test_a_script_cannot_read_the_ledger_of_other_runs(frame):
+    script = """
+import pathlib
+try:
+    pathlib.Path("/tmp/sandbox/ledger.json").read_bytes()
+    print("read")
+except PermissionError:
+    print("denied")
+"""
+
+    _, header, _ = run(URL, TOKEN, script, frame, mode="inspect")
+
+    assert header["ok"] is True, header["error"]
+    assert header["stdout"].strip() == "denied"
+
+
+HIDDEN_FILES = {
+    "memfd": "import os\nfd = os.memfd_create('fill')\nwrite = lambda b: os.write(fd, b)\n",
+    "unlinked": (
+        "import io, pathlib\nfh = io.FileIO('held', 'w')\npathlib.Path('held').unlink()\n"
+        "write = fh.write\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("opening", HIDDEN_FILES.values(), ids=HIDDEN_FILES.keys())
+def test_files_no_directory_lists_count_against_the_reservation(frame, opening):
+    script = opening + (
+        "import time\nblock = b'x' * (256 * 1024**2)\nfor _ in range(7):\n"
+        "    write(block)\n    time.sleep(0.5)\ntime.sleep(10)\n"
+    )
+
+    _, header, _ = run(URL, TOKEN, script, frame, mode="inspect")
+
+    assert header["ok"] is False
+    assert header["error"] == (
+        "The script used more than 1.5 GiB of memory and scratch files and was stopped."
+    )
+
+
+def test_a_run_that_creates_too_many_files_is_stopped(frame):
+    script = """
+import pathlib, time
+for i in range(60_000):
+    pathlib.Path(f"f{i}").touch()
+time.sleep(10)
+"""
+
+    _, header, _ = run(URL, TOKEN, script, frame, mode="inspect")
+
+    assert header["ok"] is False
+    assert header["error"] == "The script created more than 50,000 files and was stopped."
 
 
 def test_a_document_is_extracted_with_no_route_out():
