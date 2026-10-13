@@ -90,7 +90,9 @@ class Console:
 
     def choose(self, trigger: str, option: str) -> None:
         self._browser.call(self._page.click, trigger)
-        self._browser.call(lambda: self._page.get_by_role("option", name=option, exact=True).click())
+        self._browser.call(
+            lambda: self._page.get_by_role("option", name=option, exact=True).click()
+        )
 
     def sees(self, text: str) -> None:
         self._browser.call(lambda: self._page.get_by_text(text, exact=True).first.wait_for())
