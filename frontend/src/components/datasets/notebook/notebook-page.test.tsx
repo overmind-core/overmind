@@ -255,7 +255,8 @@ it("counts running scripts and lists recent runs in Activity", async () => {
     ExecutionFromJSON({
       cell: null,
       created_by: null,
-      error: "KeyError: 'messages'\nTraceback (most recent call last):",
+      error:
+        "File \"<script>\", line 1, in <module>\n    df = df.drop(columns=['messages'])\nKeyError: 'messages'\n",
       finished_at: "2026-10-12T10:00:03Z",
       id: "run-failed",
       mode: "try",

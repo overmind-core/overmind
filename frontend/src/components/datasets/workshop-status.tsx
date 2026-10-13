@@ -82,7 +82,15 @@ function RunLine({
   run: Execution;
   onShowVersion: (label: string) => void;
 }) {
-  const failure = run.state === "failed" ? run.error.split("\n")[0] : "";
+  // A traceback ends with the exception; its first line only names the frame.
+  const failure =
+    run.state === "failed"
+      ? (run.error
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .at(-1) ?? "")
+      : "";
   return (
     <li className="flex flex-col gap-0.5 border-b border-border/70 px-3 py-2 last:border-b-0">
       <div className="flex items-center gap-2 text-xs">

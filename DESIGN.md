@@ -684,7 +684,7 @@ or remove the capability. The chip is a button, so focus opens the card. Then th
 **Train a model**, or **Run the optimiser** and **Use in a training job**.
 Every other card shows **Set active** as a plain outline on the right.
 
-A dataset with only its source shows a panel at the top left of the canvas:
+A dataset with only its source shows a panel at the bottom left of the canvas, clear of the framed card:
 **No versions yet**, "Add versions from a coding agent connected over MCP.",
 and **Connect an agent** (the MCP docs). New versions fade in where the layout
 places them; a re-measured card flashes `wash-raised` back to `card`.
@@ -692,7 +692,7 @@ places them; a re-measured card flashes `wash-raised` back to `card`.
 The workshop status reads **Running N scripts** while runs are queued or
 running, else **Activity**. It opens a popover with the last 20 runs, newest
 first: kind (Try, Probe, Add, Synthetic), title or first script line, a
-status badge, run time, when, the parent version, the first error line in
+status badge, run time, when, the parent version, the last error line (the exception) in
 `destructive` for a failure, and a button to the version a run created.
 
 The switcher opens the project's datasets in a 248px column at the card's

@@ -240,7 +240,7 @@ export function DatasetNotebook({
         {cells.length === 1 && dataset.state === "idle" && !dataset.running && (
           <section
             aria-label="No versions yet"
-            className="absolute top-3 left-3 z-10 flex max-w-80 flex-col gap-2 rounded-md border border-border bg-card p-3"
+            className="absolute bottom-3 left-3 z-10 flex max-w-80 flex-col gap-2 rounded-md border border-border bg-card p-3"
           >
             <p className="text-sm text-foreground">No versions yet</p>
             <p className="text-xs text-muted-foreground">
