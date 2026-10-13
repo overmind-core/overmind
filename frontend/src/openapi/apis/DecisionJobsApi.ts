@@ -17,6 +17,8 @@ import * as runtime from '../runtime';
 import type {
   DecisionJob,
   DecisionJobCreateRequest,
+  DecisionRecommendRequest,
+  DecisionRecommendation,
   DecisionRequestRequest,
   DecisionResponse,
   PaginatedDecisionJobList,
@@ -26,6 +28,10 @@ import {
     DecisionJobToJSON,
     DecisionJobCreateRequestFromJSON,
     DecisionJobCreateRequestToJSON,
+    DecisionRecommendRequestFromJSON,
+    DecisionRecommendRequestToJSON,
+    DecisionRecommendationFromJSON,
+    DecisionRecommendationToJSON,
     DecisionRequestRequestFromJSON,
     DecisionRequestRequestToJSON,
     DecisionResponseFromJSON,
@@ -48,6 +54,10 @@ export interface DecisionJobsListRequest {
     pageSize?: number;
     project?: string;
     search?: string;
+}
+
+export interface DecisionJobsRecommendCreateRequest {
+    decisionRecommendRequest: DecisionRecommendRequest;
 }
 
 export interface DecisionJobsRetrieveRequest {
@@ -240,6 +250,63 @@ export class DecisionJobsApi extends runtime.BaseAPI {
      */
     async decisionJobsList(requestParameters: DecisionJobsListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedDecisionJobList> {
         const response = await this.decisionJobsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async decisionJobsRecommendCreateRaw(requestParameters: DecisionJobsRecommendCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DecisionRecommendation>> {
+        if (requestParameters['decisionRecommendRequest'] == null) {
+            throw new runtime.RequiredError(
+                'decisionRecommendRequest',
+                'Required parameter "decisionRecommendRequest" was null or undefined when calling decisionJobsRecommendCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/decision-jobs/recommend/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DecisionRecommendRequestToJSON(requestParameters['decisionRecommendRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DecisionRecommendationFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async decisionJobsRecommendCreate(requestParameters: DecisionJobsRecommendCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DecisionRecommendation> {
+        const response = await this.decisionJobsRecommendCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

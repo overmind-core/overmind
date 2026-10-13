@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient from "@/client";
-import type { DecisionJob, DecisionJobCreateRequest } from "@/openapi";
+import type { DecisionJob, DecisionJobCreateRequest, DecisionRecommendRequest } from "@/openapi";
 
 const ACTIVE = new Set(["queued", "running", "evaluating"]);
 
@@ -39,6 +39,21 @@ export function useDecisionJobQuery(id: string | null) {
     queryKey: keys.detail(id ?? ""),
     refetchInterval: (query) =>
       query.state.data && isActiveDecisionJob(query.state.data) ? 5000 : false,
+  });
+}
+
+export function useDecisionRecommendation(projectId: string, datasetId: string) {
+  return useQuery({
+    enabled: !!projectId && !!datasetId,
+    queryFn: () =>
+      apiClient.decisionJobs.decisionJobsRecommendCreate({
+        decisionRecommendRequest: {
+          dataset: datasetId,
+          project: projectId,
+        } satisfies DecisionRecommendRequest,
+      }),
+    queryKey: ["decision-jobs", "recommend", projectId, datasetId],
+    staleTime: 60_000,
   });
 }
 

@@ -21,7 +21,11 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { datasetDisplayName, intentOf, useDatasetInventoryQuery } from "@/hooks/use-datasets";
-import { useCreateDecisionJobMutation, useDecisionModelsQuery } from "@/hooks/use-decision-jobs";
+import {
+  useCreateDecisionJobMutation,
+  useDecisionModelsQuery,
+  useDecisionRecommendation,
+} from "@/hooks/use-decision-jobs";
 import { errorMessage } from "@/lib/notify";
 import type { Dataset } from "@/openapi";
 
@@ -50,9 +54,11 @@ export function NewDecisionJobDialog({
   const evaluation = useMemo(() => datasets.filter((d) => decisionReady(d, "eval")), [datasets]);
   const [datasetId, setDatasetId] = useState(initialDatasetId ?? "");
   const [evalDatasetId, setEvalDatasetId] = useState(NO_EVAL);
-  const [modelId, setModelId] = useState("");
+  const [pick, setPick] = useState<{ dataset: string; model: string } | null>(null);
   const listed = train.some((dataset) => dataset.id === datasetId) ? datasetId : "";
   const chosen = listed || (train.length === 1 ? train[0].id : "");
+  const recommendation = useDecisionRecommendation(projectId, chosen);
+  const modelId = pick?.dataset === chosen ? pick.model : (recommendation.data?.model ?? "");
 
   const submit = () =>
     create.mutate(
@@ -110,7 +116,7 @@ export function NewDecisionJobDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="decision-model">Base model</Label>
-            <Select onValueChange={setModelId} value={modelId}>
+            <Select onValueChange={(model) => setPick({ dataset: chosen, model })} value={modelId}>
               <SelectTrigger className="w-full" id="decision-model">
                 <SelectValue placeholder="Choose a model" />
               </SelectTrigger>
@@ -122,6 +128,9 @@ export function NewDecisionJobDialog({
                 ))}
               </SelectContent>
             </Select>
+            {recommendation.data?.reason && (
+              <p className="text-xs text-muted-foreground">{recommendation.data.reason}</p>
+            )}
           </div>
           {create.error && (
             <p className="text-xs text-destructive" role="alert">

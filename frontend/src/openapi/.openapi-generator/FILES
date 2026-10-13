@@ -131,6 +131,8 @@ models/DecisionModelRequestRequest.ts
 models/DecisionPolicy.ts
 models/DecisionPolicyBackendEnum.ts
 models/DecisionPolicyRequest.ts
+models/DecisionRecommendRequest.ts
+models/DecisionRecommendation.ts
 models/DecisionRequestRequest.ts
 models/DecisionResponse.ts
 models/DecisionUsage.ts

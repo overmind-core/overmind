@@ -100,6 +100,8 @@ export * from './DecisionModelRequestRequest';
 export * from './DecisionPolicy';
 export * from './DecisionPolicyBackendEnum';
 export * from './DecisionPolicyRequest';
+export * from './DecisionRecommendRequest';
+export * from './DecisionRecommendation';
 export * from './DecisionRequestRequest';
 export * from './DecisionResponse';
 export * from './DecisionUsage';

@@ -7,7 +7,9 @@
       "params": 27400000000,
       "hidden_size": 5120,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 53.08,
+      "decision_index_edition": "0.3.1"
     },
     {
       "id": "Cloudflare/clef-flash",
@@ -16,7 +18,9 @@
       "params": 9410000000,
       "hidden_size": 4096,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 47.61,
+      "decision_index_edition": "0.3.1"
     },
     {
       "id": "OvermindLab/qwen-3.5-0.8B-decision",
@@ -43,7 +47,9 @@
       "params": 594321600,
       "hidden_size": 1024,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 20.2,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "vllm-sr/d3-lite",
@@ -52,7 +58,9 @@
       "params": 852985920,
       "hidden_size": 1024,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 32.3,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "vllm-sr/d3-nano",
@@ -61,7 +69,9 @@
       "params": 2213241664,
       "hidden_size": 2048,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 38.9,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "vllm-sr/d3-mini",
@@ -70,7 +80,9 @@
       "params": 4539265536,
       "hidden_size": 2560,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 52.6,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "vllm-sr/d3-flash",
@@ -79,7 +91,9 @@
       "params": 8392695024,
       "hidden_size": 4096,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 55.8,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "vllm-sr/d3",
@@ -88,7 +102,9 @@
       "params": 26085330160,
       "hidden_size": 5120,
       "architecture_context": 262144,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "decision_index": 66.3,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "LiquidAI/d1-omni-600M",
@@ -98,7 +114,9 @@
       "hidden_size": 1024,
       "architecture_context": 16384,
       "max_context_length": 16384,
-      "inference_gpu": "L4"
+      "inference_gpu": "L4",
+      "decision_index": 9.1,
+      "decision_index_edition": "0.3.2"
     },
     {
       "id": "LiquidAI/d1-3B",
@@ -108,7 +126,9 @@
       "hidden_size": 2048,
       "architecture_context": 32768,
       "max_context_length": 32768,
-      "inference_gpu": "L4"
+      "inference_gpu": "L4",
+      "decision_index": 38.9,
+      "decision_index_edition": "0.3.2"
     }
   ]
 }

@@ -157,6 +157,14 @@ def _decision_models_resource(uri: str) -> dict:
                 "family": row["family"],
                 "params": row["params"],
                 "max_context_length": row["max_context_length"],
+                **(
+                    {
+                        "decision_index": row["decision_index"],
+                        "decision_index_edition": row["decision_index_edition"],
+                    }
+                    if row.get("decision_index") is not None
+                    else {}
+                ),
             }
             for row in models().values()
         ],
@@ -167,7 +175,9 @@ def _decision_models_resource(uri: str) -> dict:
             "levels and its options are the level indexes 0, 1, …. An answer is one option or "
             "an object of option weights. Add such a version with add_dataset_version; "
             "inspect_dataset reports the decision fit. Start training with start_decision_job "
-            "on a train dataset and poll get_job with kind decision_job. A trained model "
+            "on a train dataset and poll get_job with kind decision_job. Recommend the model "
+            "with the highest decision_index whose max_context_length holds the longest row; "
+            "a model without decision_index has no published score. A trained model "
             "answers System One requests at POST /api/decision-jobs/{id}/systemone/."
         ),
     }

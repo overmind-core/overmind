@@ -12,8 +12,9 @@ from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.modal.decision_catalog import models as decision_models
 from overbae.models import Dataset, DecisionJob, Project
-from overbae.services import decision_jobs
+from overbae.services import decision_jobs, decision_recommend
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.datasets.rows import RowStoreError
 
 
 class DecisionWarming(APIException):
@@ -37,6 +38,18 @@ class DecisionModelSerializer(serializers.Serializer):
     hidden_size = serializers.IntegerField()
     architecture_context = serializers.IntegerField()
     max_context_length = serializers.IntegerField()
+
+
+class DecisionRecommendSerializer(serializers.Serializer):
+    project = serializers.UUIDField()
+    dataset = serializers.UUIDField()
+    version = serializers.CharField(max_length=80, required=False, allow_blank=True)
+
+
+class DecisionRecommendationSerializer(serializers.Serializer):
+    model = serializers.CharField(allow_null=True)
+    longest_row_tokens = serializers.IntegerField()
+    reason = serializers.CharField()
 
 
 class DecisionJobCreateSerializer(serializers.Serializer):
@@ -164,6 +177,27 @@ class DecisionJobViewSet(
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        request=DecisionRecommendSerializer, responses={200: DecisionRecommendationSerializer}
+    )
+    @action(detail=False, methods=["post"])
+    def recommend(self, request):
+        body = DecisionRecommendSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        project = get_object_or_404(
+            Project.objects.filter(id__in=project_ids_for(request.user, request.auth)),
+            pk=data["project"],
+        )
+        dataset = get_object_or_404(Dataset, pk=data["dataset"], project=project)
+        try:
+            result = decision_recommend.recommend(dataset, data.get("version"))
+        except DatasetError as exc:
+            raise ValidationError({exc.field or "dataset": [exc.detail]}) from exc
+        except RowStoreError as exc:
+            raise ValidationError({"dataset": ["The dataset version cannot be read."]}) from exc
+        return Response(DecisionRecommendationSerializer(result).data)
 
     @extend_schema(request=DecisionJobCreateSerializer, responses={202: DecisionJobSerializer})
     def create(self, request, *args, **kwargs):
