@@ -285,8 +285,10 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
             unreachable += 1
         except executions.SandboxRefusedError as exc:
             logger.error("sandbox refused extraction of %s: %s", filename, exc)
+            # Resumable: a fixed token or deployment lets the retained upload land.
             raise LandError(
-                "The sandbox refused the document. Retry the import.", code="sandbox_unavailable"
+                "The sandbox refused the document. The reason is in the worker log.",
+                code="sandbox_refused",
             ) from None
     if not reply.get("ok"):
         raise LandError(reply.get("error") or "The document could not be extracted.")

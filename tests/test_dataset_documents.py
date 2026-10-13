@@ -216,6 +216,24 @@ def test_an_unreadable_document_fails_the_landing_with_no_rows(
     assert (retried.status_code, retried.data["code"]) == (409, "not_resumable")
 
 
+def test_a_refused_extraction_can_be_retried_once_the_sandbox_accepts_it(client_project, settings):
+    client, project = client_project
+    token = settings.SANDBOX_TOKEN
+    settings.SANDBOX_TOKEN = "wrong"
+    upload_id = _upload(client, "native.pdf", (FIXTURES / "native.pdf").read_bytes())
+
+    dataset = _land(client, project, [upload_id])
+
+    assert dataset.state == Dataset.State.ERROR
+    assert dataset.error == "The sandbox refused the document. The reason is in the worker log."
+    assert client.get(f"/api/datasets/{dataset.id}/").data["import_blocked"] is True
+    settings.SANDBOX_TOKEN = token
+    assert client.post(f"/api/datasets/{dataset.id}/resume-import/").status_code == 202
+    dataset.refresh_from_db()
+    assert dataset.state == Dataset.State.IDLE, dataset.error
+    assert len(_rows(dataset)) == 2
+
+
 def test_a_gzipped_document_is_refused_at_upload(client_project):
     client, _ = client_project
 
