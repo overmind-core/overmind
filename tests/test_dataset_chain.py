@@ -166,15 +166,16 @@ def test_scripts_that_do_not_fit_together_take_turns(narrow_sandbox, tmp_path):
     frame = tmp_path / "in.parquet"
     store.write_rows(frame, [{"source_row": 0, "x": 1}])
 
-    def timed(_):
-        started = time.monotonic()
-        _status, header, _ = run(url, token, "total = sum(range(40_000_000))\n", frame)
-        return header["ok"], time.monotonic() - started
+    script = "import time\nstart = time.time()\ntotal = sum(range(20_000_000))\nprint(start, time.time())\n"
+
+    def span(_):
+        _status, header, _ = run(url, token, script, frame)
+        assert header["ok"], header["error"]
+        return tuple(float(value) for value in header["stdout"].split())
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        (first_ok, first), (second_ok, second) = pool.map(timed, range(2))
-    assert first_ok and second_ok
-    assert max(first, second) > 1.6 * min(first, second)
+        first, second = sorted(pool.map(span, range(2)))
+    assert first[1] <= second[0]
 
 
 def test_the_audit_refuses_imports_and_calls_outside_the_list():
