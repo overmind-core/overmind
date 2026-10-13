@@ -25,8 +25,10 @@ from overbae.api.billing import (
 )
 from overbae.api.capabilities import AgentGraphView, CapabilityViewSet
 from overbae.api.completions import chat_completions, model_detail, models_list
+from overbae.api.data_partitions import DataPartitionViewSet
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.decision import DecisionJobViewSet, DecisionModelListView, DecisionSystemOneView
+from overbae.api.decision_performance import DecisionPerformanceViewSet
 from overbae.api.eval_views import (
     EvalRunViewSet,
     EvalSampleViewSet,
@@ -39,10 +41,12 @@ from overbae.api.eval_views import (
 from overbae.api.guest import GuestClaimView, GuestStartView
 from overbae.api.health import health_check
 from overbae.api.mcp_oauth import MCPConsentView
+from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.sync import SyncView
+from overbae.api.training_experiments import TrainingExperimentViewSet
 from overbae.api.training_preparation import TrainingPreparationViewSet
 from overbae.api.uploads import UploadViewSet
 from overbae.api.views import (
@@ -91,6 +95,12 @@ router.register(
 router.register(r"optimizer-candidates", OptimizerCandidateViewSet, basename="optimizer-candidate")
 router.register(r"finetuning-jobs", FinetuningJobViewSet, basename="finetuningjob")
 router.register(r"decision-jobs", DecisionJobViewSet, basename="decision-job")
+router.register(r"native-evaluations", NativeEvaluationViewSet, basename="native-evaluation")
+router.register(
+    r"decision-performance", DecisionPerformanceViewSet, basename="decision-performance"
+)
+router.register(r"training-experiments", TrainingExperimentViewSet, basename="training-experiment")
+router.register(r"data-partitions", DataPartitionViewSet, basename="data-partition")
 router.register(r"deployed-models", DeployedModelViewSet, basename="deployedmodel")
 router.register(r"evaluators", EvaluatorViewSet, basename="evaluator")
 router.register(r"eval-sets", EvalSetViewSet, basename="evalset")

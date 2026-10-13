@@ -265,6 +265,16 @@ def _request(body: dict, *, deadline: float, account: str) -> dict:
     raise DecisionError("provider_overloaded")
 
 
+def request_once(body: dict) -> tuple[dict, dict]:
+    provider = PROVIDERS["openrouter"]
+    if not provider.configured():
+        raise DecisionError("not_configured")
+    account = hashlib.sha256(provider.key().encode()).hexdigest()[:24]
+    started = time.monotonic()
+    payload = _request(body, deadline=started + _TIMEOUT, account=account)
+    return payload, _usage(payload, time.monotonic() - started)
+
+
 def decide(
     state: Any,
     questions: dict[str, ChoiceQuestion],

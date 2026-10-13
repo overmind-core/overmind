@@ -7,9 +7,38 @@ from pathlib import Path
 
 def processor_fingerprint(assets: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".jinja"}):
+    modules = {
+        "prepare_training.py",
+        "prepare_native_training.py",
+        "decision_tokenizer.py",
+        "preprocess.py",
+        "pretok.py",
+        "catalog.py",
+        "training_chat_template.py",
+    }
+    for path in sorted(p for p in assets.rglob("*") if p.name in modules or p.suffix == ".jinja"):
         digest.update(str(path.relative_to(assets)).encode())
         digest.update(path.read_bytes())
+    shared = Path(__file__).parent
+    paths = [
+        shared / name
+        for name in ("decisions.py", "decision_encoding.py", "training_data.py", "preparation.py")
+    ]
+    paths.extend(sorted((shared / "modelfam").rglob("*.py")))
+    for path in paths:
+        digest.update(str(path.relative_to(shared)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def training_fingerprint(assets: Path) -> str:
+    digest = hashlib.sha256(processor_fingerprint(assets).encode())
+    for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".sh"}):
+        digest.update(str(path.relative_to(assets)).encode())
+        digest.update(path.read_bytes())
+    for name in ("decision_batching.py", "training_telemetry.py"):
+        digest.update(name.encode())
+        digest.update(Path(__file__).with_name(name).read_bytes())
     return digest.hexdigest()
 
 
@@ -42,7 +71,9 @@ def validate_preparation_report(report) -> dict:
     return report
 
 
-def run_preparation_process(assets: Path, request_path: Path, destination: Path) -> dict:
+def run_preparation_process(
+    assets: Path, request_path: Path, destination: Path, *, commit=None
+) -> dict:
     destination.mkdir(parents=True, exist_ok=True)
     report_path = destination / "report.json"
     # A retry must not accept the previous attempt's report after a subprocess failure.
@@ -68,6 +99,13 @@ def run_preparation_process(assets: Path, request_path: Path, destination: Path)
             print(line, end="", flush=True)
             log.write(line)
             log.flush()
+            if commit is not None:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("preparation_shard_committed") is True:
+                    commit()
         process.wait()
     if process.returncode:
         report = preparation_failure("process_failed")

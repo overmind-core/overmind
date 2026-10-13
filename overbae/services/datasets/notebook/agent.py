@@ -1097,23 +1097,34 @@ def iter_turn(
         "Checking the dataset and deciding the next step.",
         started_at=started,
     )
-    engine = engines.select()
+    choices = engines.ordered()
     outcome = engines.Outcome()
     turn_started = time.monotonic()
     tools.think()
-    if engine is None:
+    if not choices:
         outcome.error = engines.NOT_CONFIGURED
     else:
-        try:
-            if automatic and dataset.intent in {"train", "eval"}:
-                tools.handlers()["prepare_examples"]({})
-                while pending:
-                    yield pending.pop(0)
-                dataset = _dataset(dataset_id)
-            outcome = yield from engine.run(dataset, message, tools, pending)
-        except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
-            logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
-            outcome.error = engine.describe_error(exc)
+        if automatic and dataset.intent in {"train", "eval"}:
+            tools.handlers()["prepare_examples"]({})
+            while pending:
+                yield pending.pop(0)
+            dataset = _dataset(dataset_id)
+        for index, engine in enumerate(choices):
+            try:
+                outcome = yield from engine.run(dataset, message, tools, pending)
+                break
+            except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
+                rejected = type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}
+                if rejected and index + 1 < len(choices):
+                    logger.warning(
+                        "dataset %s: %s rejected credentials, trying the next engine",
+                        dataset_id,
+                        engine.name,
+                    )
+                    continue
+                logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
+                outcome.error = engine.describe_error(exc)
+                break
     tools.stop_thinking()
     generated = tools.progress.get("generated_rows", 0)
     awaiting_approval = Cell.objects.filter(

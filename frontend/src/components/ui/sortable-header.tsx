@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Icon } from "@/components/ui/icons";
 import { TableHead } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,7 @@ export interface SortState<K extends string> {
  *  off-centre from its column's values. */
 export function SortableHeader<K extends string>({
   centered,
+  children,
   className,
   label,
   onSort,
@@ -21,16 +24,17 @@ export function SortableHeader<K extends string>({
   sortKey,
 }: {
   centered?: boolean;
+  children?: ReactNode;
   className?: string;
   label: string;
   onSort: (key: K) => void;
-  sort: SortState<K>;
+  sort: SortState<K> | null;
   sortKey: K;
 }) {
-  const active = sort.key === sortKey;
+  const active = sort?.key === sortKey;
   return (
     <TableHead
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      aria-sort={active ? (sort?.dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(centered && "text-center", className)}
       scope="col"
     >
@@ -38,14 +42,17 @@ export function SortableHeader<K extends string>({
           this carries the column name. */}
       <button
         aria-label={`Sort by ${label}`}
-        className="group -mx-1 inline-flex items-center gap-1 rounded-sm px-1 align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "group flex min-h-6 w-full items-center gap-1 rounded-sm text-left align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          centered && "justify-center text-center"
+        )}
         onClick={() => onSort(sortKey)}
         type="button"
       >
         {centered && <span aria-hidden className="size-4 shrink-0" />}
-        <span>{label}</span>
+        <span>{children ?? label}</span>
         {active ? (
-          sort.dir === "asc" ? (
+          sort?.dir === "asc" ? (
             <Icon.chevronUp className="size-4 text-foreground" />
           ) : (
             <Icon.chevronDown className="size-4 text-foreground" />

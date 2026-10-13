@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -10,6 +10,7 @@ import { WARNING_SELECT } from "@/components/finetuning/train/context-checks";
 import { Field } from "@/components/finetuning/train/field";
 import { EvaluationStartButton } from "@/components/finetuning/train/start-button";
 import { ModelOptionLabel } from "@/components/model-option-label";
+import { NewComparison } from "@/components/model-workflows/decision-comparisons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +25,7 @@ import {
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   useEvalSetsQuery,
@@ -37,6 +39,16 @@ import type { EvalRunRequest, EvaluationContextRequestRequest } from "@/openapi"
 
 export function CreateRunDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("generative");
+  const navigate = useNavigate();
+  const modeControl = (
+    <Tabs onValueChange={setMode} value={mode}>
+      <TabsList>
+        <TabsTrigger value="generative">Generated responses</TabsTrigger>
+        <TabsTrigger value="decision">Model probabilities</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
@@ -45,12 +57,41 @@ export function CreateRunDialog({ projectId }: { projectId: string }) {
           New evaluation
         </Button>
       </DialogTrigger>
-      {open && <CreateRunForm onClose={() => setOpen(false)} projectId={projectId} />}
+      {open && mode === "decision" && (
+        <NewComparison
+          modeControl={modeControl}
+          onClose={() => setOpen(false)}
+          onCreated={(id) => {
+            setOpen(false);
+            navigate({
+              params: { runId: id },
+              search: { format: "decision", projectId },
+              to: "/evaluations/runs/$runId",
+            });
+          }}
+          projectId={projectId}
+        />
+      )}
+      {open && mode === "generative" && (
+        <CreateRunForm
+          modeControl={modeControl}
+          onClose={() => setOpen(false)}
+          projectId={projectId}
+        />
+      )}
     </Dialog>
   );
 }
 
-function CreateRunForm({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+function CreateRunForm({
+  projectId,
+  onClose,
+  modeControl,
+}: {
+  projectId: string;
+  onClose: () => void;
+  modeControl: ReactNode;
+}) {
   const datasets = useProjectDatasetsForEvalQuery(projectId);
   const sets = useEvalSetsQuery(projectId);
   const catalog = useModelCatalogQuery();
@@ -166,6 +207,7 @@ function CreateRunForm({ projectId, onClose }: { projectId: string; onClose: () 
       </DialogHeader>
       <TooltipProvider>
         <DialogBody className="space-y-4">
+          {modeControl}
           <fieldset className="grid min-w-0 gap-4 sm:grid-cols-2" disabled={create.isPending}>
             <Field className="sm:col-span-2" htmlFor="eval-run-name" label="Name">
               <Input

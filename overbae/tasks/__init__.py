@@ -9,8 +9,11 @@ from . import (  # noqa: E402
     cleanup_modal,
     cleanup_tmp,
     connector_sync,
+    data_exploration,
+    data_partitions,
     dataset_context,
     datasets,
+    decision_performance,
     eval,
     eval_watchdog,
     finetuning,
@@ -18,9 +21,11 @@ from . import (  # noqa: E402
     guest_cleanup,
     inference_controller,
     model_deployment,
+    native_evaluation,
     optimizer_reconciler,
     queue_metrics,
     trace_scoring,
+    training_experiments,
     training_preparation,
 )
 from .dataset_context import refresh_dataset_context
@@ -47,4 +52,9 @@ __all__ = [
     "refresh_dataset_context",
     "trace_scoring",
     "training_preparation",
+    "data_exploration",
+    "data_partitions",
+    "decision_performance",
+    "native_evaluation",
+    "training_experiments",
 ]

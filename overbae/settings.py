@@ -431,6 +431,12 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
+    "overbae.tasks.training_experiments.prepare_experiment": {"queue": "batch"},
+    "overbae.tasks.data_exploration.run": {"queue": "batch"},
+    "overbae.tasks.data_partitions.build_plan": {"queue": "batch"},
+    "overbae.tasks.decision_performance.measure": {"queue": "batch"},
+    "overbae.tasks.native_evaluation.advance_plan": {"queue": "batch"},
+    "overbae.tasks.native_evaluation.refresh_monitor": {"queue": "batch"},
     # Model warm-up and judge authoring block for minutes; control stays free for
     # reconcilers and metrics.
     "overbae.tasks.eval.run_eval_run": {"queue": "io"},
@@ -456,6 +462,26 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.eval.dispatch_generation",
         "schedule": 30.0,
         "options": {"expires": 25.0},
+    },
+    "training-experiment-preparation": {
+        "task": "overbae.tasks.training_experiments.reconcile",
+        "schedule": 30.0,
+    },
+    "data-exploration-reconcile": {
+        "task": "overbae.tasks.data_exploration.reconcile",
+        "schedule": 30.0,
+    },
+    "data-partition-reconciliation": {
+        "task": "overbae.tasks.data_partitions.reconcile",
+        "schedule": 60.0,
+    },
+    "decision-performance-reconcile": {
+        "task": "overbae.tasks.decision_performance.reconcile",
+        "schedule": 60.0,
+    },
+    "native-evaluation-reconciliation": {
+        "task": "overbae.tasks.native_evaluation.reconcile",
+        "schedule": 30.0,
     },
     "queue-capacity-metrics": {
         "task": "overbae.tasks.queue_metrics.publish",

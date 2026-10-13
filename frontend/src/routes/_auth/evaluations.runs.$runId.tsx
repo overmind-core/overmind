@@ -13,6 +13,7 @@ import {
 } from "@/components/evaluations/datapoint-filter";
 import { EvalWinnerCallout, PerModelOps } from "@/components/evaluations/eval-results-overview";
 import { renderPayload, type ViewMode } from "@/components/evaluations/payload-format";
+import { ProbabilityEvaluationPage } from "@/components/evaluations/probability-evaluation-page";
 import { RunComparison } from "@/components/evaluations/run-comparison";
 import { RunJudges } from "@/components/evaluations/run-judges";
 import { StatusBadge } from "@/components/evaluations/runs-table";
@@ -87,7 +88,7 @@ import { scoreChipClass, scoreFillClass, TONE_CHIP } from "@/lib/colors";
 import { formatElapsed } from "@/lib/formatters";
 import { humanizeKey } from "@/lib/label-case";
 import { notify } from "@/lib/notify";
-import { projectIdSearchSchema } from "@/lib/schemas";
+import { evaluationRunSearchSchema } from "@/lib/schemas";
 import { PROSE } from "@/lib/typography";
 import { cn, paginationFromPageLimit, paginationItems, scorePct } from "@/lib/utils";
 import type {
@@ -104,9 +105,16 @@ const DATA_SOURCE_LABEL: Record<string, string> = {
 };
 
 export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
-  component: EvalRunDetailPage,
-  validateSearch: projectIdSearchSchema,
+  component: EvaluationRunPage,
+  validateSearch: evaluationRunSearchSchema,
 });
+
+function EvaluationRunPage() {
+  const { runId } = Route.useParams();
+  const { format } = Route.useSearch();
+  if (format === "decision") return <ProbabilityEvaluationPage id={runId} />;
+  return <EvalRunDetailPage />;
+}
 
 // Per-turn judge dimension columns (see per_turn_judge.py) — their presence is
 // what marks a run as teacher-forced replay.

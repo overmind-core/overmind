@@ -29,9 +29,11 @@ import {
   CapabilitiesApi,
   Configuration,
   ConnectorCredentialsApi,
+  DataPartitionsApi,
   DatasetsApi,
   DecisionJobsApi,
   DecisionModelsApi,
+  DecisionPerformanceApi,
   DeployedModelsApi,
   EvalRunsApi,
   EvalSamplesApi,
@@ -42,12 +44,14 @@ import {
   FinetuningJobsApi,
   McpOauthApi,
   ModelsApi,
+  NativeEvaluationsApi,
   OptimizerExperimentsApi,
   ProjectsApi,
   ResponseError,
   SessionsApi,
   TaskExecutionsApi,
   TracesApi,
+  TrainingExperimentsApi,
   TrainingPreparationsApi,
   UploadsApi,
   VerdictsApi,
@@ -413,6 +417,10 @@ export class API {
   datasets: DatasetsApi;
   decisionJobs: DecisionJobsApi;
   decisionModels: DecisionModelsApi;
+  decisionPerformance: DecisionPerformanceApi;
+  dataPartitions: DataPartitionsApi;
+  nativeEvaluations: NativeEvaluationsApi;
+  trainingExperiments: TrainingExperimentsApi;
   deployedModels: DeployedModelsApi;
   feedback: FeedbackApi;
   finetuningJobs: FinetuningJobsApi;
@@ -446,6 +454,10 @@ export class API {
     this.datasets = new DatasetsApi(this.cfg);
     this.decisionJobs = new DecisionJobsApi(this.cfg);
     this.decisionModels = new DecisionModelsApi(this.cfg);
+    this.decisionPerformance = new DecisionPerformanceApi(this.cfg);
+    this.dataPartitions = new DataPartitionsApi(this.cfg);
+    this.nativeEvaluations = new NativeEvaluationsApi(this.cfg);
+    this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
     this.deployedModels = new DeployedModelsApi(this.cfg);
     this.feedback = new FeedbackApi(this.cfg);
     this.finetuningJobs = new FinetuningJobsApi(this.cfg);

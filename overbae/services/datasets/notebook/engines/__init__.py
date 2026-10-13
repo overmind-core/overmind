@@ -29,10 +29,7 @@ class Engine(Protocol):
     def describe_error(self, exc: Exception) -> str: ...
 
 
-def select() -> Engine | None:
-    choice = workshop_engine()
-    if choice is None:
-        return None
+def _wrap(choice) -> Engine:
     if choice.provider.name == "cursor":
         from overbae.services.datasets.notebook.engines.cursor import CursorEngine
 
@@ -40,3 +37,14 @@ def select() -> Engine | None:
     from overbae.services.datasets.notebook.engines.native import NativeEngine
 
     return NativeEngine(choice)
+
+
+def select() -> Engine | None:
+    choice = workshop_engine()
+    return None if choice is None else _wrap(choice)
+
+
+def ordered() -> list[Engine]:
+    from overbae.core.model_registry import WORKSHOP_ENGINES
+
+    return [_wrap(choice) for choice in WORKSHOP_ENGINES if choice.provider.configured()]

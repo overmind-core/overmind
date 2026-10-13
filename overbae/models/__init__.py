@@ -3,7 +3,14 @@ from .billing import BillingService, BillingTelemetry, Subscription, Subscriptio
 from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
-from .datasets import Cell, Dataset, DatasetImport
+from .datasets import (
+    Cell,
+    DataExploration,
+    DataPartitionMember,
+    DataPartitionPlan,
+    Dataset,
+    DatasetImport,
+)
 from .decision import DecisionJob
 from .eval_generation import EvalGenerationRun, EvalGenerationScheduler, EvalGenerationWork
 from .evaluation import (
@@ -24,9 +31,14 @@ from .evaluation import (
 )
 from .feedback import Feedback
 from .finetuning import (
+    DecisionPerformanceRequest,
+    DecisionPerformanceRun,
+    DecisionProviderRequest,
     FinetuningJob,
     FinetuningJobEval,
     FinetuningJobEvent,
+    NativeEvaluationPlan,
+    TrainingExperiment,
     TrainingPreparation,
 )
 from .iam import (
@@ -80,6 +92,9 @@ __all__ = [
     "ConnectorSyncRun",
     "Dataset",
     "DatasetImport",
+    "DataExploration",
+    "DataPartitionPlan",
+    "DataPartitionMember",
     "DecisionJob",
     "Cell",
     "DatasetContext",
@@ -96,6 +111,11 @@ __all__ = [
     "FinetuningJobEval",
     "FinetuningJobEvent",
     "TrainingPreparation",
+    "TrainingExperiment",
+    "NativeEvaluationPlan",
+    "DecisionProviderRequest",
+    "DecisionPerformanceRun",
+    "DecisionPerformanceRequest",
     "DeployedModel",
     "InferenceCall",
     "ModelActivation",

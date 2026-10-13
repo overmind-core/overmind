@@ -13,6 +13,10 @@ export const projectIdSearchSchema = z.object({
   projectId: z.string().optional(),
 });
 
+export const evaluationRunSearchSchema = projectIdSearchSchema.extend({
+  format: z.enum(["generative", "decision"]).optional(),
+});
+
 export const onboardingSearchSchema = z.object({
   message: z.string().optional(),
 });

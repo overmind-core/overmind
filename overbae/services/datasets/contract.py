@@ -14,6 +14,7 @@ import re
 from collections import Counter
 from typing import Any
 
+from modal_shared.decisions import decision_reference
 from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.store import Frame
 from overbae.services.datasets.text import approx_tokens
@@ -72,6 +73,8 @@ def eval_input_type(value: Any) -> str:
     ):
         return "messages"
     if isinstance(value, dict):
+        if isinstance(value.get("decision"), dict):
+            return "decision"
         if isinstance(value.get("messages"), list):
             return "messages"
         return "object"
@@ -167,7 +170,9 @@ def _eval_check(frame: Frame) -> dict[str, Any]:
     failures: list[dict[str, Any]] = []
     failed = 0
     identifiers = 0
+    expected = frame.values("expected_output") if "expected_output" in frame else iter(())
     for index, value in enumerate(frame.values("input")):
+        reference = next(expected, None)
         if _missing(value):
             empty += 1
             if len(empty_rows) < _FAILURE_SAMPLES:
@@ -176,6 +181,13 @@ def _eval_check(frame: Frame) -> dict[str, Any]:
         types[eval_input_type(value)] += 1
         identifiers += identifier_only(value)
         payload = normalize_record({"input": value})["input"]
+        if isinstance(payload, dict) and isinstance(payload.get("decision"), dict):
+            try:
+                decision_reference(payload["decision"], _as_obj(reference))
+            except (TypeError, ValueError) as exc:
+                failed += 1
+                if len(failures) < _FAILURE_SAMPLES:
+                    failures.append({"row": index, "reason": str(exc)})
         if isinstance(payload, dict) and "messages" in payload:
             for reason in tool_schema_errors(payload.get("tools")):
                 failed += 1

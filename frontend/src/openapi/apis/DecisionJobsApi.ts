@@ -17,6 +17,8 @@ import * as runtime from '../runtime';
 import type {
   DecisionJob,
   DecisionJobCreateRequest,
+  DecisionJobInferRequest,
+  DecisionSystemOneResponse,
   PaginatedDecisionJobList,
 } from '../models/index';
 import {
@@ -24,6 +26,10 @@ import {
     DecisionJobToJSON,
     DecisionJobCreateRequestFromJSON,
     DecisionJobCreateRequestToJSON,
+    DecisionJobInferRequestFromJSON,
+    DecisionJobInferRequestToJSON,
+    DecisionSystemOneResponseFromJSON,
+    DecisionSystemOneResponseToJSON,
     PaginatedDecisionJobListFromJSON,
     PaginatedDecisionJobListToJSON,
 } from '../models/index';
@@ -41,6 +47,11 @@ export interface DecisionJobsListRequest {
 
 export interface DecisionJobsRetrieveRequest {
     id: string;
+}
+
+export interface DecisionJobsSystemoneCreateRequest {
+    id: string;
+    decisionJobInferRequest: DecisionJobInferRequest;
 }
 
 /**
@@ -220,6 +231,73 @@ export class DecisionJobsApi extends runtime.BaseAPI {
      */
     async decisionJobsRetrieve(requestParameters: DecisionJobsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DecisionJob> {
         const response = await this.decisionJobsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Score a trained decision checkpoint
+     */
+    async decisionJobsSystemoneCreateRaw(requestParameters: DecisionJobsSystemoneCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DecisionSystemOneResponse>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling decisionJobsSystemoneCreate().'
+            );
+        }
+
+        if (requestParameters['decisionJobInferRequest'] == null) {
+            throw new runtime.RequiredError(
+                'decisionJobInferRequest',
+                'Required parameter "decisionJobInferRequest" was null or undefined when calling decisionJobsSystemoneCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/decision-jobs/{id}/systemone/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DecisionJobInferRequestToJSON(requestParameters['decisionJobInferRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DecisionSystemOneResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Score a trained decision checkpoint
+     */
+    async decisionJobsSystemoneCreate(requestParameters: DecisionJobsSystemoneCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DecisionSystemOneResponse> {
+        const response = await this.decisionJobsSystemoneCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

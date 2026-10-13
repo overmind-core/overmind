@@ -11,6 +11,7 @@ class BillingService(models.TextChoices):
     STRIPE_TOPUP = "stripe-topup", "Stripe top-up"
     FINETUNING_JOB = "finetuning-job", "Finetuning job"
     INFERENCE = "inference", "Inference"
+    EVALUATION = "evaluation", "Evaluation"
     INFERENCE_FT_MODEL = "inference-ft-model", "Fine-tuned inference"
     DATA_WORKSHOP = "data-workshop", "Data workshop"
     CURSOR_AGENT = "cursor-agent", "Cursor agent"

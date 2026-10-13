@@ -181,6 +181,7 @@ class FakeLLM:
         ]
 
     decisions: list[dict[str, Any]] = field(default_factory=list)
+    decision_script: list[Any] = field(default_factory=list)
     decide: Callable[[str, dict[str, Any]], str] | None = None
     decision_cost: float = 0.0
     decision_confidence: float = 0.9
@@ -342,6 +343,15 @@ class FakeLLM:
             body = json.loads(raw or b"{}")
             with self._lock:
                 self.decisions.append(body)
+                scripted = self.decision_script.pop(0) if self.decision_script else None
+            if isinstance(scripted, BaseException):
+                raise scripted
+            if scripted is not None:
+                return (
+                    200,
+                    {"content-type": "application/json"},
+                    json.dumps(scripted).encode(),
+                )
             answers = {
                 key: self._decide(key, question)
                 for key, question in (body.get("questions") or {}).items()

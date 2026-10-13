@@ -24,22 +24,26 @@ const CHIP =
 /** TanStack types `to` against `params`, so each kind needs its own literal
  * branch — a generic route table would need a cast. */
 export function EntityLink({
+  cellId,
   children,
   className,
+  evaluationFormat,
   id,
   kind,
   onClick,
   projectId,
   ...rest
 }: {
+  cellId?: string;
   children: ReactNode;
   className: string;
+  evaluationFormat?: "decision";
   id: string;
   kind: EntityKind;
   onClick: (e: MouseEvent) => void;
   projectId?: string;
 } & Record<string, unknown>) {
-  const search = projectId ? { projectId } : undefined;
+  const projectSearch = projectId ? { projectId } : {};
   switch (kind) {
     case "capability":
       return (
@@ -59,7 +63,11 @@ export function EntityLink({
           className={className}
           onClick={onClick}
           params={{ datasetId: id }}
-          search={search}
+          search={
+            cellId || projectId
+              ? { ...projectSearch, ...(cellId ? { cell: cellId } : {}) }
+              : undefined
+          }
           to="/datasets/$datasetId"
           {...rest}
         >
@@ -72,6 +80,11 @@ export function EntityLink({
           className={className}
           onClick={onClick}
           params={{ runId: id }}
+          search={
+            evaluationFormat || projectId
+              ? { ...projectSearch, ...(evaluationFormat ? { format: evaluationFormat } : {}) }
+              : undefined
+          }
           to="/evaluations/runs/$runId"
           {...rest}
         >
@@ -159,14 +172,18 @@ const CARDS: Record<EntityKind, ComponentType<{ id: string; name: string }>> = {
 };
 
 export function EntityRef({
+  cellId,
   className,
+  evaluationFormat,
   id,
   kind,
   name,
   projectId,
   showIcon = true,
 }: {
+  cellId?: string;
   className?: string;
+  evaluationFormat?: "decision";
   id: string;
   kind: EntityKind;
   name?: string | null;
@@ -181,7 +198,9 @@ export function EntityRef({
     <HoverCard>
       <HoverCardTrigger asChild>
         <EntityLink
+          cellId={cellId}
           className={cn(CHIP, className)}
+          evaluationFormat={evaluationFormat}
           id={id}
           kind={kind}
           onClick={(e) => e.stopPropagation()}

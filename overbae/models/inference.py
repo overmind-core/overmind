@@ -51,6 +51,10 @@ class DeployedModel(models.Model):
         default=Status.QUEUED,
         db_index=True,
     )
+    inference_contract = models.CharField(
+        max_length=16, choices=[("chat", "Chat"), ("decision", "Decision")], default="chat"
+    )
+    serving_runtime = models.JSONField(default=dict, blank=True)
     quantization = models.CharField(
         max_length=10,
         choices=Quantization.choices,

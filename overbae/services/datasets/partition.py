@@ -8,10 +8,38 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from contextlib import suppress
 
-from overbae.services.datasets.examples import input_objects
+from overbae.services.datasets.examples import field_value, input_objects
+
+GROUP_ALIASES = {
+    "source_trace_id": "trace_id",
+    "_overmind_document_id": "document_id",
+    # A declared content column must not share the input-fingerprint namespace.
+    "content": "group:content",
+}
 
 _IDENTITY = {"source_row", "trace_id", "source_trace_id", "conversation_id", "_overmind_provenance"}
-_OUTPUT = {"output", "expected_output", "answer", "response", "completion", "label", "score"}
+_OUTPUT = {
+    "output",
+    "expected_output",
+    "answer",
+    "response",
+    "completion",
+    "label",
+    "score",
+    "target",
+}
+_RAW_INPUT = (
+    "question",
+    "prompt",
+    "instruction",
+    "state",
+    "context",
+    "evidence",
+    "passage",
+    "text",
+    "options",
+    "choices",
+)
 
 
 def _canonical(value) -> str:
@@ -47,14 +75,20 @@ def content_key(row: dict, *, include_output: bool = False) -> str:
             turns[0].get("content") if len(turns) == 1 and turns[0].get("role") == "user" else turns
         )
     else:
-        value = next(
-            (
-                row[k]
-                for k in ("input", "question", "prompt", "instruction")
-                if row.get(k) is not None
-            ),
-            None,
+        value = source
+        decision = (
+            source.get("decision")
+            if isinstance(source, dict) and set(source) == {"decision"}
+            else row.get("decision")
+            if source is None
+            else None
         )
+        if isinstance(decision, dict):
+            value = {key: decision.get(key) for key in ("state", "question", "kind", "options")}
+        if value is None:
+            fields = {k: row[k] for k in _RAW_INPUT if row.get(k) is not None}
+            # A generic question alone can be shared by millions of distinct cases.
+            value = next(iter(fields.values())) if len(fields) == 1 else fields or None
         if value is None:
             value = {k: v for k, v in row.items() if k not in _IDENTITY | _OUTPUT}
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
@@ -68,10 +102,22 @@ def present(value) -> bool:
 
 def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
     keys = {("content", content_key(row))}
-    for column in {"trace_id", "source_trace_id", "conversation_id", *group_by}:
-        if present(row.get(column)):
-            kind = "trace_id" if column == "source_trace_id" else column
-            keys.add((kind, _canonical(row[column])))
+    for column in {
+        "trace_id",
+        "source_trace_id",
+        "conversation_id",
+        "group_id",
+        "document_id",
+        "_overmind_document_id",
+        *group_by,
+    }:
+        try:
+            value = field_value(row, column)
+        except ValueError:
+            continue
+        if present(value):
+            kind = GROUP_ALIASES.get(column, column)
+            keys.add((kind, _canonical(value)))
     for value in input_objects(row):
         for column in ("packet_id", "onboarding_packet_id", "case_id", "example_id"):
             if present(value.get(column)) and isinstance(value[column], (str, int)):
@@ -90,12 +136,12 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
     return keys
 
 
-def preserve_lineage(row: dict) -> dict:
+def preserve_lineage(row: dict, *, group_by=()) -> dict:
     provenance = row.get("_overmind_provenance")
     if isinstance(provenance, str):
         with suppress(ValueError):
             provenance = json.loads(provenance)
-    keys = contamination_keys(row)
+    keys = contamination_keys(row, group_by)
     return {
         **(provenance if isinstance(provenance, dict) else {}),
         "source_content_keys": sorted(value for kind, value in keys if kind == "content"),
@@ -149,7 +195,7 @@ def split_positions(
         return index
 
     owners = {}
-    groups = set(group_by) | ({"conversation_id"} & columns) | ({"trace_id"} & columns)
+    groups = set(group_by) | ({"conversation_id", "trace_id", "group_id"} & columns)
     for index, found in enumerate(keys):
         for key in found:
             if key in owners:

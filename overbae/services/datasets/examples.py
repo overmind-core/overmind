@@ -99,12 +99,204 @@ def identifier_only(value) -> bool:
     return bool(keys) and all(key == "id" or key.endswith("_id") for key in keys)
 
 
-def prepare_examples(frame: pd.DataFrame, intent: str) -> pd.DataFrame:
+def native_decision(record):
+    decision = decode(record.get("decision"))
+    if isinstance(decision, dict):
+        return decision
+    payload = decode(record.get("input"))
+    if isinstance(payload, dict) and isinstance(payload.get("decision"), dict):
+        reference = decode(record.get("expected_output"))
+        if isinstance(reference, dict) and set(reference) == {"mean", "values"}:
+            return {
+                **payload["decision"],
+                "target_mean": reference["mean"],
+                "option_values": reference["values"],
+                "target_semantics": "ordinal_mean",
+            }
+        return {
+            **payload["decision"],
+            "target_probabilities": reference.get("probabilities")
+            if isinstance(reference, dict)
+            else None,
+        }
+    if not {"state", "question", "kind", "options", "target"} <= record.keys():
+        return None
+    if not isinstance(record.get("kind"), str):
+        return None
+    target = decode(record["target"])
+    options = decode(record["options"])
+    if record["kind"] == "noul":
+        if isinstance(target, list) and len(target) == 1 and type(target[0]) in {int, float}:
+            options, target = ["No", "Yes"], [1 - target[0], target[0]]
+        else:
+            # Ambiguous binary wire data stays technically invalid, never silently reinterpreted.
+            options = []
+    return {
+        "state": "" if record["state"] is None else record["state"],
+        "question": record["question"],
+        "kind": record["kind"],
+        "options": options,
+        "target_probabilities": target,
+        **{
+            key: record[key] if key == "target_semantics" else decode(record[key])
+            for key in (
+                "weight",
+                "target_semantics",
+                "target_provenance",
+                "target_mean",
+                "option_values",
+            )
+            if key in record and not missing(record[key])
+        },
+    }
+
+
+MAPPING_FIELDS = {
+    "messages",
+    "tools",
+    "input",
+    "expected_output",
+    "model_expected_output",
+    "decision.state",
+    "decision.question",
+    "decision.kind",
+    "decision.options",
+    "decision.target_probabilities",
+    "decision.target_mean",
+    "decision.option_values",
+    "decision.target_semantics",
+    "decision.target_provenance",
+    "decision.weight",
+}
+
+TEXT_MAPPING_FIELDS = {
+    "decision.state",
+    "decision.question",
+    "decision.kind",
+    "decision.target_semantics",
+}
+
+CONSTANT_FIELDS = {
+    "decision.state",
+    "decision.kind",
+    "decision.options",
+    "decision.option_values",
+    "decision.target_semantics",
+}
+
+
+def validate_mapping(mapping, constants):
+    if not isinstance(mapping, dict) or not isinstance(constants, dict):
+        raise ValueError("Mappings and constants must be objects.")
+    overlap = sorted(set(mapping) & set(constants))
+    unsupported = sorted((set(mapping) | set(constants)) - MAPPING_FIELDS)
+    if overlap or unsupported:
+        detail = []
+        if overlap:
+            detail.append("mapped and constant: " + ", ".join(overlap))
+        if unsupported:
+            detail.append("unsupported: " + ", ".join(unsupported))
+        raise ValueError(
+            "Mappings and constants must use distinct supported destinations ("
+            + "; ".join(detail)
+            + "). Choose from: "
+            + ", ".join(sorted(MAPPING_FIELDS))
+        )
+    if any(
+        not isinstance(path, str) or not path.strip() or len(path) > 300
+        for path in mapping.values()
+    ):
+        raise ValueError("Each mapped source must be a nonempty column path.")
+    unsupported_constants = sorted(set(constants) - CONSTANT_FIELDS)
+    if unsupported_constants:
+        raise ValueError(
+            "Unsupported constant fields: "
+            + ", ".join(unsupported_constants)
+            + ". Constants may only declare "
+            + ", ".join(sorted(CONSTANT_FIELDS))
+            + ". Move per-row fields such as decision.question and targets into a custom transform."
+        )
+
+
+def field_value(record, path, *, decode_result=True):
+    if path in record:
+        return decode(record[path]) if decode_result else record[path]
+    value = record
+    for part in path.split("."):
+        value = decode(value)
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+        elif (
+            isinstance(value, list)
+            and part.isdecimal()
+            and part == str(int(part))
+            and int(part) < len(value)
+        ):
+            value = value[int(part)]
+        else:
+            raise ValueError(f"Missing mapped field: {path}")
+    return decode(value) if decode_result else value
+
+
+def mapped_record(record, mapping, constants):
+    row = copy.deepcopy(record)
+    assignments = {
+        **{
+            target: field_value(record, source, decode_result=target not in TEXT_MAPPING_FIELDS)
+            for target, source in mapping.items()
+        },
+        **constants,
+    }
+    for target, value in assignments.items():
+        parts = target.split(".")
+        parent = row
+        for part in parts[:-1]:
+            existing = decode(parent.get(part))
+            if missing(existing):
+                parent[part] = {}
+            elif isinstance(existing, dict):
+                parent[part] = existing
+            else:
+                raise ValueError(f"Mapping conflicts with existing {part}.")
+            parent = parent[part]
+        key = parts[-1]
+        existing = parent.get(key)
+        if target not in TEXT_MAPPING_FIELDS:
+            existing = decode(existing)
+        if key in parent and not missing(parent[key]) and existing != value:
+            raise ValueError(f"Mapping conflicts with existing {target}.")
+        parent[key] = value
+    return row
+
+
+def prepare_native_record(row: dict, decision: dict, intent: str) -> dict:
+    row["decision"] = decision
+    if intent == "eval":
+        row["input"] = {
+            "decision": {key: decision.get(key) for key in ("state", "question", "kind", "options")}
+        }
+        row["expected_output"] = (
+            {"mean": decision["target_mean"], "values": decision.get("option_values")}
+            if "target_mean" in decision
+            else {"probabilities": decision.get("target_probabilities")}
+        )
+    return row
+
+
+def prepare_examples(
+    frame: pd.DataFrame, intent: str, mapping=None, constants=None
+) -> pd.DataFrame:
     if intent not in {"train", "eval"}:
         raise ValueError("Choose train or eval before preparing examples.")
     prepared = []
+    mapping, constants = mapping or {}, constants or {}
+    validate_mapping(mapping, constants)
     for record in frame.to_dict(orient="records"):
-        row = normalize_record(record)
+        row = normalize_record(mapped_record(record, mapping, constants))
+        decision = native_decision(row)
+        if decision is not None:
+            prepared.append(prepare_native_record(row, decision, intent))
+            continue
         transcript = messages(row.get("messages"))
         complete_transcript = bool(transcript)
         if not transcript:

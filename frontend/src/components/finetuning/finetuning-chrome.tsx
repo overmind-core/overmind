@@ -75,17 +75,20 @@ export function EvalScoreChip({ value }: { value: number | null | undefined }) {
 export function FtStatusBadge({
   status,
   fallback,
+  label,
   solidProgress = false,
   progress,
   className,
 }: {
   status: string | null | undefined;
   fallback: string;
+  label?: string;
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
 }) {
   const cfg = resolveStatus(status, fallback);
+  const shown = label ? { ...cfg, label } : cfg;
   const icon =
     cfg.tone === "success" ? (
       <Icon.success className="size-3.5" />
@@ -96,7 +99,7 @@ export function FtStatusBadge({
     );
   return (
     <ResolvedStatusBadge
-      cfg={cfg}
+      cfg={shown}
       className={className}
       icon={icon}
       progress={progress}
