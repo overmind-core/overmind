@@ -7,6 +7,7 @@ import uuid
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.test import override_settings
+from factories import make_matrix_row
 
 from overbae.models import (
     DeployedModel,
@@ -29,7 +30,7 @@ GATEWAY = "https://gateway.example.modal.run"
 
 
 def _job(*, incumbent: str = "") -> FinetuningJob:
-    from overbae.models import Capability, EvalSet
+    from overbae.models import Capability, EvalMatrix, EvalSet
 
     project = Project.objects.create(name=f"bt-{uuid.uuid4().hex[:6]}")
     capability = Capability.objects.create(
@@ -38,6 +39,14 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
     dataset = frozen_dataset(project, TRAIN_ROWS, name="train", contract="train")
     eval_ds = frozen_dataset(project, EVAL_ROWS, name="eval", contract="eval")
     eset = EvalSet.objects.create(project=project, capability=capability, name="set")
+    eset.rows.add(
+        make_matrix_row(
+            project,
+            "Match",
+            type=EvalMatrix.Type.DETERMINISTIC,
+            source="def evaluate(span):\n    return span.output == span.expected\n",
+        )
+    )
     return FinetuningJob.objects.create(
         project=project,
         capability=capability,
@@ -160,7 +169,7 @@ def test_delta_is_finetuned_minus_incumbent():
         dataset=job.eval_dataset,
         eval_set=job.eval_set,
         status=EvalRun.Status.COMPLETED,
-        summary={"variants": {"v": {"metrics": {"m": {"mean": 0.60}}}}},
+        summary={"score": 0.60},
     )
     final_run = EvalRun.objects.create(
         project=job.project,
@@ -168,7 +177,7 @@ def test_delta_is_finetuned_minus_incumbent():
         dataset=job.eval_dataset,
         eval_set=job.eval_set,
         status=EvalRun.Status.COMPLETED,
-        summary={"variants": {"v": {"metrics": {"m": {"mean": 0.75}}}}},
+        summary={"score": 0.75},
     )
     FinetuningJobEval.objects.create(
         job=job,

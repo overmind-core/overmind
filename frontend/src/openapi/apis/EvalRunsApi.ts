@@ -16,20 +16,28 @@
 import * as runtime from '../runtime';
 import type {
   EvalRun,
-  EvalRunRequest,
+  EvalRunComparison,
+  EvalRunCreateRequest,
+  EvalRunDetail,
+  EvalRunGroup,
   EvalRunsDatasetsRetrieve200ResponseInner,
   EvaluationActivityDataset,
   EvaluationContextReport,
   EvaluationContextRequestRequest,
-  PaginatedEvalRunListList,
+  PaginatedEvalRunList,
   PaginatedEvaluationActivityList,
-  PatchedEvalRunRequest,
 } from '../models/index';
 import {
     EvalRunFromJSON,
     EvalRunToJSON,
-    EvalRunRequestFromJSON,
-    EvalRunRequestToJSON,
+    EvalRunComparisonFromJSON,
+    EvalRunComparisonToJSON,
+    EvalRunCreateRequestFromJSON,
+    EvalRunCreateRequestToJSON,
+    EvalRunDetailFromJSON,
+    EvalRunDetailToJSON,
+    EvalRunGroupFromJSON,
+    EvalRunGroupToJSON,
     EvalRunsDatasetsRetrieve200ResponseInnerFromJSON,
     EvalRunsDatasetsRetrieve200ResponseInnerToJSON,
     EvaluationActivityDatasetFromJSON,
@@ -38,12 +46,10 @@ import {
     EvaluationContextReportToJSON,
     EvaluationContextRequestRequestFromJSON,
     EvaluationContextRequestRequestToJSON,
-    PaginatedEvalRunListListFromJSON,
-    PaginatedEvalRunListListToJSON,
+    PaginatedEvalRunListFromJSON,
+    PaginatedEvalRunListToJSON,
     PaginatedEvaluationActivityListFromJSON,
     PaginatedEvaluationActivityListToJSON,
-    PatchedEvalRunRequestFromJSON,
-    PatchedEvalRunRequestToJSON,
 } from '../models/index';
 
 export interface EvalRunsActivityDatasetsListRequest {
@@ -79,7 +85,7 @@ export interface EvalRunsContextCheckCreateRequest {
 }
 
 export interface EvalRunsCreateRequest {
-    evalRunRequest: EvalRunRequest;
+    evalRunCreateRequest: EvalRunCreateRequest;
 }
 
 export interface EvalRunsDatasetsRetrieveRequest {
@@ -94,8 +100,10 @@ export interface EvalRunsListRequest {
     capability?: string;
     createdAfter?: Date;
     createdBefore?: Date;
-    dataSource?: EvalRunsListDataSourceEnum;
     dataset?: string;
+    group?: string;
+    isBaseline?: boolean;
+    mode?: EvalRunsListModeEnum;
     ordering?: string;
     page?: number;
     pageSize?: number;
@@ -104,22 +112,12 @@ export interface EvalRunsListRequest {
     status?: EvalRunsListStatusEnum;
 }
 
-export interface EvalRunsPartialUpdateRequest {
-    id: string;
-    patchedEvalRunRequest?: PatchedEvalRunRequest;
-}
-
 export interface EvalRunsRetrieveRequest {
     id: string;
 }
 
 export interface EvalRunsRunCreateRequest {
     id: string;
-}
-
-export interface EvalRunsUpdateRequest {
-    id: string;
-    evalRunRequest: EvalRunRequest;
 }
 
 /**
@@ -298,7 +296,7 @@ export class EvalRunsApi extends runtime.BaseAPI {
     /**
      * Cancel a run
      */
-    async evalRunsCancelCreateRaw(requestParameters: EvalRunsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async evalRunsCancelCreateRaw(requestParameters: EvalRunsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -341,20 +339,22 @@ export class EvalRunsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.VoidApiResponse(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
     }
 
     /**
      * Cancel a run
      */
-    async evalRunsCancelCreate(requestParameters: EvalRunsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.evalRunsCancelCreateRaw(requestParameters, initOverrides);
+    async evalRunsCancelCreate(requestParameters: EvalRunsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
+        const response = await this.evalRunsCancelCreateRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
-     * Get the comparison summary (runs-as-columns)
+     * 404 until a completed baseline exists in the run\'s group.
+     * Compare this run with its group\'s baseline
      */
-    async evalRunsComparisonRetrieveRaw(requestParameters: EvalRunsComparisonRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
+    async evalRunsComparisonRetrieveRaw(requestParameters: EvalRunsComparisonRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRunComparison>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -397,13 +397,14 @@ export class EvalRunsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunComparisonFromJSON(jsonValue));
     }
 
     /**
-     * Get the comparison summary (runs-as-columns)
+     * 404 until a completed baseline exists in the run\'s group.
+     * Compare this run with its group\'s baseline
      */
-    async evalRunsComparisonRetrieve(requestParameters: EvalRunsComparisonRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
+    async evalRunsComparisonRetrieve(requestParameters: EvalRunsComparisonRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRunComparison> {
         const response = await this.evalRunsComparisonRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -468,13 +469,14 @@ export class EvalRunsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create + launch an evaluation run
+     * One run per target, all sharing a `group`. The baseline target is compared with every other target once both complete.
+     * Create and launch evaluation runs
      */
-    async evalRunsCreateRaw(requestParameters: EvalRunsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
-        if (requestParameters['evalRunRequest'] == null) {
+    async evalRunsCreateRaw(requestParameters: EvalRunsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRunGroup>> {
+        if (requestParameters['evalRunCreateRequest'] == null) {
             throw new runtime.RequiredError(
-                'evalRunRequest',
-                'Required parameter "evalRunRequest" was null or undefined when calling evalRunsCreate().'
+                'evalRunCreateRequest',
+                'Required parameter "evalRunCreateRequest" was null or undefined when calling evalRunsCreate().'
             );
         }
 
@@ -512,23 +514,23 @@ export class EvalRunsApi extends runtime.BaseAPI {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: EvalRunRequestToJSON(requestParameters['evalRunRequest']),
+            body: EvalRunCreateRequestToJSON(requestParameters['evalRunCreateRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunGroupFromJSON(jsonValue));
     }
 
     /**
-     * Create + launch an evaluation run
+     * One run per target, all sharing a `group`. The baseline target is compared with every other target once both complete.
+     * Create and launch evaluation runs
      */
-    async evalRunsCreate(requestParameters: EvalRunsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
+    async evalRunsCreate(requestParameters: EvalRunsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRunGroup> {
         const response = await this.evalRunsCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Option list for the runs table\'s dataset filter: one entry per dataset that has at least one eval run. Not the project\'s dataset list — a dataset with no runs is not an offerable filter value.
-     * List distinct datasets used by evaluation runs visible to the caller
+     * List the datasets evaluation runs used
      */
     async evalRunsDatasetsRetrieveRaw(requestParameters: EvalRunsDatasetsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<EvalRunsDatasetsRetrieve200ResponseInner>>> {
         const queryParameters: any = {};
@@ -573,8 +575,7 @@ export class EvalRunsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Option list for the runs table\'s dataset filter: one entry per dataset that has at least one eval run. Not the project\'s dataset list — a dataset with no runs is not an offerable filter value.
-     * List distinct datasets used by evaluation runs visible to the caller
+     * List the datasets evaluation runs used
      */
     async evalRunsDatasetsRetrieve(requestParameters: EvalRunsDatasetsRetrieveRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<EvalRunsDatasetsRetrieve200ResponseInner>> {
         const response = await this.evalRunsDatasetsRetrieveRaw(requestParameters, initOverrides);
@@ -638,7 +639,7 @@ export class EvalRunsApi extends runtime.BaseAPI {
     /**
      * List evaluation runs
      */
-    async evalRunsListRaw(requestParameters: EvalRunsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedEvalRunListList>> {
+    async evalRunsListRaw(requestParameters: EvalRunsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedEvalRunList>> {
         const queryParameters: any = {};
 
         if (requestParameters['capability'] != null) {
@@ -653,12 +654,20 @@ export class EvalRunsApi extends runtime.BaseAPI {
             queryParameters['created_before'] = (requestParameters['createdBefore'] as any).toISOString();
         }
 
-        if (requestParameters['dataSource'] != null) {
-            queryParameters['data_source'] = requestParameters['dataSource'];
-        }
-
         if (requestParameters['dataset'] != null) {
             queryParameters['dataset'] = requestParameters['dataset'];
+        }
+
+        if (requestParameters['group'] != null) {
+            queryParameters['group'] = requestParameters['group'];
+        }
+
+        if (requestParameters['isBaseline'] != null) {
+            queryParameters['is_baseline'] = requestParameters['isBaseline'];
+        }
+
+        if (requestParameters['mode'] != null) {
+            queryParameters['mode'] = requestParameters['mode'];
         }
 
         if (requestParameters['ordering'] != null) {
@@ -717,79 +726,21 @@ export class EvalRunsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedEvalRunListListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedEvalRunListFromJSON(jsonValue));
     }
 
     /**
      * List evaluation runs
      */
-    async evalRunsList(requestParameters: EvalRunsListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalRunListList> {
+    async evalRunsList(requestParameters: EvalRunsListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalRunList> {
         const response = await this.evalRunsListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
+     * Get an evaluation run
      */
-    async evalRunsPartialUpdateRaw(requestParameters: EvalRunsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalRunsPartialUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-runs/{id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PATCH',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PatchedEvalRunRequestToJSON(requestParameters['patchedEvalRunRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
-    }
-
-    /**
-     */
-    async evalRunsPartialUpdate(requestParameters: EvalRunsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
-        const response = await this.evalRunsPartialUpdateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Get evaluation run (with variants + summary)
-     */
-    async evalRunsRetrieveRaw(requestParameters: EvalRunsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
+    async evalRunsRetrieveRaw(requestParameters: EvalRunsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRunDetail>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -832,21 +783,21 @@ export class EvalRunsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunDetailFromJSON(jsonValue));
     }
 
     /**
-     * Get evaluation run (with variants + summary)
+     * Get an evaluation run
      */
-    async evalRunsRetrieve(requestParameters: EvalRunsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
+    async evalRunsRetrieve(requestParameters: EvalRunsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRunDetail> {
         const response = await this.evalRunsRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Re-launch a run
+     * Re-launch a finished run
      */
-    async evalRunsRunCreateRaw(requestParameters: EvalRunsRunCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+    async evalRunsRunCreateRaw(requestParameters: EvalRunsRunCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -889,78 +840,14 @@ export class EvalRunsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * Re-launch a run
-     */
-    async evalRunsRunCreate(requestParameters: EvalRunsRunCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.evalRunsRunCreateRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     */
-    async evalRunsUpdateRaw(requestParameters: EvalRunsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalRun>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalRunsUpdate().'
-            );
-        }
-
-        if (requestParameters['evalRunRequest'] == null) {
-            throw new runtime.RequiredError(
-                'evalRunRequest',
-                'Required parameter "evalRunRequest" was null or undefined when calling evalRunsUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-runs/{id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PUT',
-            headers: headerParameters,
-            query: queryParameters,
-            body: EvalRunRequestToJSON(requestParameters['evalRunRequest']),
-        }, initOverrides);
-
         return new runtime.JSONApiResponse(response, (jsonValue) => EvalRunFromJSON(jsonValue));
     }
 
     /**
+     * Re-launch a finished run
      */
-    async evalRunsUpdate(requestParameters: EvalRunsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
-        const response = await this.evalRunsUpdateRaw(requestParameters, initOverrides);
+    async evalRunsRunCreate(requestParameters: EvalRunsRunCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
+        const response = await this.evalRunsRunCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1045,11 +932,12 @@ export type EvalRunsActivityListStatusEnum = typeof EvalRunsActivityListStatusEn
 /**
  * @export
  */
-export const EvalRunsListDataSourceEnum = {
-    dataset: 'dataset',
-    trace_filter: 'trace_filter'
+export const EvalRunsListModeEnum = {
+    generate: 'generate',
+    provided: 'provided',
+    recorded: 'recorded'
 } as const;
-export type EvalRunsListDataSourceEnum = typeof EvalRunsListDataSourceEnum[keyof typeof EvalRunsListDataSourceEnum];
+export type EvalRunsListModeEnum = typeof EvalRunsListModeEnum[keyof typeof EvalRunsListModeEnum];
 /**
  * @export
  */

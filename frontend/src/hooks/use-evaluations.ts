@@ -4,16 +4,12 @@ import apiClient from "@/client";
 import { notify } from "@/lib/notify";
 import { backoffPolling } from "@/lib/poll";
 import type {
-  AuthorJudgeEvaluatorRequestRequest,
-  EvalRunList,
+  EvalMatrixRequest,
+  EvalRun,
   EvalRunsActivityListOrderingEnum,
   EvalRunsActivityListStatusEnum,
-  EvalSetAddMembersRequestRequest,
-  EvalSetRequest,
   EvaluationActivity,
-  GenerateEvaluatorPromptRequestRequest,
-  PaginatedEvalRunListList,
-  PatchedEvalSetMemberUpdateRequest,
+  PaginatedEvalRunList,
 } from "@/openapi";
 
 /** Cached server-side for ~1h; mirror that here. */
@@ -49,79 +45,42 @@ export const useProjectDatasetsForEvalQuery = (projectId: string | undefined) =>
     queryKey: ["datasets", "list", projectId, "eval"],
   });
 
-/** Unpaginated — a flat array, not a DRF page. Internal sentinel evaluators are
- *  excluded server-side. */
-export const useEvaluatorCatalogQuery = (
-  projectId: string | undefined,
-  capabilityId?: string | undefined
-) =>
+/** Project-wide rows have a null capability; a capability-scoped query returns
+ *  both its own rows and the project-wide ones. */
+export const useEvalMatrixQuery = (projectId: string | undefined, capabilityId?: string) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
-      apiClient.evaluators.evaluatorsCatalogList({ capability: capabilityId, project: projectId }),
-    queryKey: ["evaluator-catalog", projectId, capabilityId ?? null],
+      apiClient.evalMatrix.evalMatrixList({ ordering: "name", pageSize: 500, project: projectId }),
+    queryKey: ["eval-matrix", projectId],
+    select: (data) =>
+      capabilityId
+        ? data.results.filter((row) => !row.capability || row.capability === capabilityId)
+        : data.results,
   });
 
-/** One series per evaluator, `points` ordered oldest→newest with scores
- *  normalised to 0–100. The whole history arrives once; charts window it. */
-export const useEvaluatorScoreHistoryQuery = (capabilityId: string | undefined) =>
-  useQuery({
-    enabled: !!capabilityId,
-    queryFn: () => apiClient.evaluators.evaluatorsScoreHistoryList({ capability: capabilityId! }),
-    queryKey: ["evaluator-score-history", capabilityId],
-  });
+const invalidateMatrix = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ["eval-matrix"] });
+  qc.invalidateQueries({ queryKey: ["eval-sets"] });
+};
 
-/** The list endpoint serves a slim EvaluatorList without
- *  config/checklist/rubric; this fetches the full row on demand. */
-export const useEvaluatorDetailQuery = (id: string | undefined, enabled: boolean) =>
-  useQuery({
-    enabled: !!id && enabled,
-    queryFn: () => apiClient.evaluators.evaluatorsRetrieve({ id: id! }),
-    queryKey: ["evaluator", id],
-    staleTime: 60_000,
-  });
-
-export const useAuthorJudgeEvaluatorMutation = (projectId: string | undefined) => {
+export const useCreateEvalMatrixRowMutation = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: AuthorJudgeEvaluatorRequestRequest) =>
-      apiClient.evaluators.evaluatorsAuthorCreate({
-        authorJudgeEvaluatorRequestRequest: input,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["evaluators", projectId] });
-      qc.invalidateQueries({ queryKey: ["evaluator-catalog", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-sets"] });
-    },
+    mutationFn: (input: EvalMatrixRequest) =>
+      apiClient.evalMatrix.evalMatrixCreate({ evalMatrixRequest: input }),
+    onSuccess: () => invalidateMatrix(qc),
   });
 };
 
-export const useEditJudgeEvaluatorMutation = (projectId: string | undefined) => {
+export const useDeleteEvalMatrixRowMutation = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: AuthorJudgeEvaluatorRequestRequest }) =>
-      apiClient.evaluators.evaluatorsAuthorUpdate({
-        authorJudgeEvaluatorRequestRequest: input,
-        id,
-      }),
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: ["evaluators", projectId] });
-      qc.invalidateQueries({ queryKey: ["evaluator-catalog", projectId] });
-      qc.invalidateQueries({ queryKey: ["evaluator", id] });
-      // Eval-set detail embeds its members, so refresh sets + set detail too.
-      qc.invalidateQueries({ queryKey: ["eval-sets"] });
-      qc.invalidateQueries({ queryKey: ["eval-set"] });
-    },
+    mutationFn: (id: string) => apiClient.evalMatrix.evalMatrixDestroy({ id }),
+    onError: (e) => notify.error(e, "Couldn't delete the row"),
+    onSuccess: () => invalidateMatrix(qc),
   });
 };
-
-export const useGenerateEvaluatorPromptMutation = () =>
-  useMutation({
-    mutationFn: (input: GenerateEvaluatorPromptRequestRequest) =>
-      apiClient.evaluators.evaluatorsGeneratePromptCreate({
-        generateEvaluatorPromptRequestRequest: input,
-      }),
-  });
 
 /** Membership-scoped server-side, with no project/capability filter — `projectId`
  *  only keys the cache; consumers narrow `.results` themselves. */
@@ -132,103 +91,20 @@ export const useEvalSetsQuery = (projectId: string | undefined) =>
     queryKey: ["eval-sets", projectId],
   });
 
-export const useCreateEvalSetMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: EvalSetRequest) =>
-      apiClient.evalSets.evalSetsCreate({ evalSetRequest: input }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["eval-sets", projectId] }),
-  });
-};
-
-/** The backend re-points the owning capability's `active_eval_set` first, so the
- *  capability detail goes stale too. */
-export const useDeleteEvalSetMutation = (
-  projectId: string | undefined,
-  capabilityId?: string | undefined
-) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (setId: string) => apiClient.evalSets.evalSetsDestroy({ id: setId }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["eval-sets", projectId] });
-      if (capabilityId) qc.invalidateQueries({ queryKey: ["capability-detail", capabilityId] });
-    },
-  });
-};
-
-export const useAddEvalSetMembersMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { setId: string; body: EvalSetAddMembersRequestRequest }) =>
-      apiClient.evalSets.evalSetsMembersCreate({
-        evalSetAddMembersRequestRequest: input.body,
-        id: input.setId,
-      }),
-    onSuccess: (_d, input) => {
-      qc.invalidateQueries({ queryKey: ["eval-sets", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-set", input.setId] });
-    },
-  });
-};
-
-export const useUpdateEvalSetMemberMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      setId: string;
-      memberId: string;
-      body: PatchedEvalSetMemberUpdateRequest;
-    }) =>
-      apiClient.evalSets.evalSetsMembersPartialUpdate({
-        id: input.setId,
-        memberId: input.memberId,
-        patchedEvalSetMemberUpdateRequest: input.body,
-      }),
-    onSuccess: (_d, input) => {
-      qc.invalidateQueries({ queryKey: ["eval-sets", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-set", input.setId] });
-    },
-  });
-};
-
-export const useRemoveEvalSetMemberMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { setId: string; memberId: string }) =>
-      apiClient.evalSets.evalSetsMembersDestroy({ id: input.setId, memberId: input.memberId }),
-    onSuccess: (_d, input) => {
-      qc.invalidateQueries({ queryKey: ["eval-sets", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-set", input.setId] });
-    },
-  });
-};
-
-/** Point the owning capability's `active_eval_set` at this set. */
-export const useActivateEvalSetMutation = (
-  projectId: string | undefined,
-  capabilityId: string | undefined
-) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (setId: string) => apiClient.evalSets.evalSetsActivateCreate({ id: setId }),
-    onSuccess: (_d, setId) => {
-      qc.invalidateQueries({ queryKey: ["eval-sets", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-set", setId] });
-      qc.invalidateQueries({ queryKey: ["capability-detail", capabilityId] });
-    },
-  });
-};
-
-const isActiveRunStatus = (status: string | undefined) =>
+export const isActiveRunStatus = (status: string | undefined) =>
   status === "running" || status === "pending";
+
+const runsPolling = (results: EvalRun[] | undefined) => {
+  if (!results) return 6_000;
+  return results.some((r) => isActiveRunStatus(r.status)) ? 3_500 : false;
+};
 
 /** DRF default max_page_size for eval-runs list (see PageNumberPagination). */
 const EVAL_RUNS_API_PAGE_SIZE = 100;
 const EVAL_RUNS_MAX_PAGES = 50;
 
-export const fetchAllEvalRuns = async (projectId: string): Promise<PaginatedEvalRunListList> => {
-  const results: EvalRunList[] = [];
+export const fetchAllEvalRuns = async (projectId: string): Promise<PaginatedEvalRunList> => {
+  const results: EvalRun[] = [];
   let page = 1;
   let count = 0;
 
@@ -253,12 +129,7 @@ export const useAllEvalRunsQuery = (projectId: string | undefined) =>
     enabled: !!projectId,
     queryFn: () => fetchAllEvalRuns(projectId!),
     queryKey: ["eval-runs", "all", projectId],
-    refetchInterval: (q) =>
-      backoffPolling(q, () => {
-        const results = q.state.data?.results;
-        if (!results) return 6_000;
-        return results.some((r) => isActiveRunStatus(r.status)) ? 3_500 : false;
-      }),
+    refetchInterval: (q) => backoffPolling(q, () => runsPolling(q.state.data?.results)),
   });
 
 export type EvalRunsQueryParams = {
@@ -327,74 +198,62 @@ export const useEvalRunDatasetsQuery = (projectId: string | undefined) =>
     queryKey: ["eval-runs", "datasets", projectId],
   });
 
-/** Runs of the same dataset, newest first. Capability-mode runs (null dataset) fall
- *  back to the project-wide list — the run detail exposes no capability id to match
- *  on. */
-export const useComparableEvalRunsQuery = (
-  projectId: string | undefined,
-  datasetId: string | null | undefined
-) =>
-  useQuery({
-    enabled: !!projectId,
-    queryFn: () =>
-      apiClient.evalRuns.evalRunsList({
-        dataset: datasetId ?? undefined,
-        ordering: "-created_at",
-        pageSize: 100,
-        project: projectId,
-      }),
-    queryKey: ["eval-runs-comparable", projectId, datasetId ?? null],
-    staleTime: 30_000,
-  });
-
 export const useEvalRunQuery = (id: string | undefined) =>
   useQuery({
     enabled: !!id,
     queryFn: () => apiClient.evalRuns.evalRunsRetrieve({ id: id! }),
     queryKey: ["eval-run", id],
     refetchInterval: (q) =>
-      backoffPolling(q, () => {
-        const status = (q.state.data as { status?: string } | undefined)?.status;
-        return status === "completed" || status === "failed" || status === "cancelled"
-          ? false
-          : 5_000;
-      }),
+      backoffPolling(q, () => (isActiveRunStatus(q.state.data?.status) ? 4_000 : false)),
   });
 
-export const useEvalRunComparisonQuery = (id: string | undefined, status?: string) =>
+/** 404s when the run has no baseline in its group, so it never retries. */
+export const useEvalRunComparisonQuery = (
+  id: string | undefined,
+  enabled: boolean,
+  active = false
+) =>
   useQuery({
-    enabled: !!id,
+    enabled: !!id && enabled,
     queryFn: () => apiClient.evalRuns.evalRunsComparisonRetrieve({ id: id! }),
     queryKey: ["eval-run-comparison", id],
-    refetchInterval: (q) =>
-      backoffPolling(q, status === "running" || status === "pending" ? 4_000 : false),
+    refetchInterval: (q) => backoffPolling(q, active ? 4_000 : false),
+    retry: false,
   });
 
-export const useRelaunchEvalRunMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiClient.evalRuns.evalRunsRunCreate({ id }),
-    onError: (e) => notify.error(e, "Couldn't re-launch the run"),
-    onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ["eval-runs", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-runs", "all", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-run", id] });
-    },
+export const useEvalRunRowsQuery = (runId: string | undefined, active = false) =>
+  useQuery({
+    enabled: !!runId,
+    queryFn: () =>
+      apiClient.evalRunRows.evalRunRowsList({ ordering: "row_index", pageSize: 1000, run: runId }),
+    queryKey: ["eval-run-rows", runId],
+    refetchInterval: (q) => backoffPolling(q, active ? 4_000 : false),
   });
-};
 
-export const useCancelEvalRunMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiClient.evalRuns.evalRunsCancelCreate({ id }),
-    onError: (e) => notify.error(e, "Couldn't cancel the run"),
-    onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ["eval-runs", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-runs", "all", projectId] });
-      qc.invalidateQueries({ queryKey: ["eval-run", id] });
-    },
+export const useEvalRunRowQuery = (id: number | undefined) =>
+  useQuery({
+    enabled: id !== undefined,
+    queryFn: () => apiClient.evalRunRows.evalRunRowsRetrieve({ id: id! }),
+    queryKey: ["eval-run-row", id],
   });
-};
+
+/** Live trace scores (`sourceType` span/trace/session) and run scores share
+ *  the table; `traceId` narrows to one trace's spans. */
+export const useTraceEvalScoresQuery = (
+  projectId: string | undefined,
+  traceId: string | undefined
+) =>
+  useQuery({
+    enabled: !!projectId && !!traceId,
+    queryFn: () =>
+      apiClient.evalScores.evalScoresList({
+        ordering: "-created_at",
+        pageSize: 500,
+        project: projectId,
+        traceId,
+      }),
+    queryKey: ["eval-scores", "trace", projectId, traceId],
+  });
 
 export const useDeleteEvalRunMutation = (projectId: string | undefined) => {
   const qc = useQueryClient();
@@ -418,53 +277,31 @@ export const useDeleteEvalRunMutation = (projectId: string | undefined) => {
   });
 };
 
-export const useDeleteEvaluatorMutation = (projectId: string | undefined) => {
-  const qc = useQueryClient();
+export const useEvalRunGroupQuery = (projectId: string | undefined, group: string | undefined) =>
+  useQuery({
+    enabled: !!projectId && !!group,
+    queryFn: () =>
+      apiClient.evalRuns.evalRunsList({
+        group,
+        ordering: "created_at",
+        pageSize: 50,
+        project: projectId,
+      }),
+    queryKey: ["eval-runs", "group", projectId, group],
+    refetchInterval: (q) => backoffPolling(q, () => runsPolling(q.state.data?.results)),
+  });
+
+export const useRelaunchEvalRunMutation = () => {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiClient.evaluators.evaluatorsDestroy({ id }),
-    onError: (e) => notify.error(e, "Couldn't delete the evaluator"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["evaluators", projectId] });
-      qc.invalidateQueries({ queryKey: ["evaluator-catalog", projectId] });
-      // Deleting cascades any eval-set memberships, so set detail/member lists go stale too.
-      qc.invalidateQueries({ queryKey: ["eval-sets"] });
-      qc.invalidateQueries({ queryKey: ["eval-set"] });
-      // Bare (no id) so this matches every capabilityId/behaviourId variant — the
-      // Task Eval Library's per-capability and per-behaviour evaluator lists.
-      qc.invalidateQueries({ queryKey: ["capability-evaluators"] });
-      qc.invalidateQueries({ queryKey: ["behaviour-evaluators"] });
-      qc.invalidateQueries({ queryKey: ["capability-detail"] });
-    },
+    mutationFn: (id: string) => apiClient.evalRuns.evalRunsRunCreate({ id }),
+    onError: (error) => notify.error(error, "Couldn't re-launch the run"),
+    onSuccess: (_, id) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["eval-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["eval-run", id] }),
+        queryClient.invalidateQueries({ queryKey: ["eval-run-rows", id] }),
+        queryClient.invalidateQueries({ queryKey: ["eval-run-comparison", id] }),
+      ]),
   });
 };
-
-export const useEvalSamplesQuery = (runId: string | undefined, isRunActive = false) =>
-  useQuery({
-    enabled: !!runId,
-    queryFn: () => apiClient.evalSamples.evalSamplesList({ pageSize: 1000, run: runId }),
-    queryKey: ["eval-samples", runId],
-    refetchInterval: (q) => backoffPolling(q, isRunActive ? 4_000 : false),
-  });
-
-export const useEvalSampleQuery = (id: string | undefined) =>
-  useQuery({
-    enabled: !!id,
-    queryFn: () => apiClient.evalSamples.evalSamplesRetrieve({ id: id! }),
-    queryKey: ["eval-sample", id],
-  });
-
-export const useEvalScoresQuery = (
-  params: { runId?: string; sampleId?: string },
-  isRunActive = false
-) =>
-  useQuery({
-    enabled: !!(params.runId || params.sampleId),
-    queryFn: () =>
-      apiClient.evalScores.evalScoresList({
-        pageSize: 2000,
-        run: params.runId,
-        sample: params.sampleId,
-      }),
-    queryKey: ["eval-scores", params.runId, params.sampleId],
-    refetchInterval: (q) => backoffPolling(q, isRunActive ? 5_000 : false),
-  });

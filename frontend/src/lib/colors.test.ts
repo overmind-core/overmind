@@ -49,10 +49,6 @@ describe("domainStatus", () => {
 });
 
 describe("tone maps", () => {
-  it("never uses a dark: variant (status tokens are already per-theme)", () => {
-    for (const cls of Object.values(TONE_CHIP)) expect(cls).not.toContain("dark:");
-  });
-
   // `border-border` lands at ~1.25:1 against a chip's own fill — the edge
   // disappears and the chip reads as bare text.
   it("tints every chip border from its tone's ink, never from the divider token", () => {

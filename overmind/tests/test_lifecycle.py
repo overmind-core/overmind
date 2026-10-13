@@ -81,6 +81,25 @@ def test_run_stamps_capability_intent_conversation_and_tags(exporter):
     assert "Answer the question" in event.attributes[attrs.EVAL_PAYLOAD]
 
 
+def test_spans_inherit_the_run_intent_unless_they_declare_their_own(exporter):
+    def _main():
+        with run("my-run", intent="Answer the question"), start_span("child"):
+            with start_span("grandchild"):
+                pass
+            with start_span("own", attributes={attrs.INTENT: "Look up the order"}), start_span("below"):
+                pass
+
+    _in_fresh_context(_main)
+    intents = {s.name: s.attributes.get(attrs.INTENT) for s in exporter.get_finished_spans()}
+    assert intents == {
+        "my-run": "Answer the question",
+        "child": "Answer the question",
+        "grandchild": "Answer the question",
+        "own": "Look up the order",
+        "below": "Look up the order",
+    }
+
+
 def test_run_capability_falls_back_to_env(exporter, monkeypatch):
     monkeypatch.setenv("OVERMIND_CAPABILITY_NAME", "Env Agent")
     monkeypatch.setenv("OVERMIND_CAPABILITY_ID", "env-id")

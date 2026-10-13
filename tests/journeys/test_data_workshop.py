@@ -24,7 +24,8 @@ def test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version(
     drain(worker)
     assert run["cell"]["version"] == "1.0"
     assert run["cell"]["fingerprint"] == prepared["fingerprint"]
-    assert workshop.read(run["resource"]["uri"])["status"] == "completed"
+    [candidate] = run["runs"]
+    assert workshop.read(candidate["resource"]["uri"])["status"] == "completed"
 
     frozen = next(
         c
@@ -56,9 +57,7 @@ def test_trace_landing_preserves_source_text_for_explicit_transformation(
         llm_url=support_desk_llm,
     )
     drain(worker)
-    [execution] = workshop.call("query_task_executions", {"capability": "answer"})[
-        "task_executions"
-    ]
+    [execution] = workshop.call("query_traces", {"capability": "answer"})["traces"]
     created = workshop.call(
         "create_dataset_from_traces",
         {"name": "with pii", "trace_ids": [execution["trace_id"]], "intent": "eval"},
@@ -100,9 +99,10 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
     sample_agent.run(ticket, api_url=live_api.url, llm_url=support_desk_llm)
     drain(worker)
     capability = workshop.capability(slug)
-    executions = workshop.call("query_task_executions", {"capability": slug})["task_executions"]
-    trace = workshop.read(f"overmind://traces/{executions[0]['trace_id']}")
-    [execution] = [e for e in executions if e["unit_span_id"] != trace["root"]["span_id"]]
+    [execution] = workshop.call(
+        "query_traces",
+        {"capability": slug, "all_spans": True, "span_type": "entry_point", "name": slug},
+    )["traces"]
     arguments = {"name": slug, "intent": "eval", "capability": capability["id"]}
     source = {"trace_ids": [execution["trace_id"]]}
     if selection == "filter":
@@ -123,12 +123,11 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
         {"dataset": dataset, "sql": "select * from t"},
     )["rows"]
     assert row["capability_id"] == capability["id"]
-    if capture:
-        assert row["input"]["ticket"] == ticket, row
-    else:
-        assert row["input"] is None
-        assert row["output"] is None
-    assert row["score"] == execution["success_score"]
+    assert row["input"]["ticket"] == ticket, row
+    expected_score = execution["trajectory_score"]
+    if expected_score is None:
+        expected_score = execution["eval_score"]
+    assert row["score"] == expected_score
     prefix = "You triage" if slug == "triage" else "You are a support agent."
     assert row["prompt_tokens"] + row["completion_tokens"] == sum(
         request.total_tokens for request in fake_llm.requests if request.system.startswith(prefix)
@@ -138,14 +137,12 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
         ticket if slug == "triage" else f"[refund] {ticket}"
     ]
     if slug == "triage":
-        if capture:
-            assert row["output"] == "refund"
+        assert row["output"] == "refund"
         assert row["tools"] is None
         assert messages[-1]["content"] == "refund"
     else:
-        if capture:
-            assert row["input"]["category"] == "refund"
-            assert row["output"] == "Your refund is on its way. The order was delivered."
+        assert row["input"]["category"] == "refund"
+        assert row["output"] == "Your refund is on its way. The order was delivered."
         assert row["tools"][0]["function"]["name"] == "lookup_order"
         assert any(m["role"] == "tool" for m in messages)
 

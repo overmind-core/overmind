@@ -33,6 +33,7 @@ import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { useOptimizerExperimentsQuery } from "@/hooks/use-optimizer";
 import { useOnboardingStatus } from "@/hooks/use-query";
+import { useUnseenSignalCountQuery } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { isMac } from "@/lib/platform";
@@ -68,6 +69,7 @@ const flagOn = (flag: Flag | null): boolean => flag === null || featureFlags[fla
 const platformNavTree: NavEntry[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
   { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
+  { flag: null, icon: Icon.bell, label: "Signals", to: "/signals" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
   {
     icon: Icon.agentTesting,
@@ -133,6 +135,7 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const evalQuery = useAllEvalRunsQuery(projectId);
   const optimizerQuery = useOptimizerExperimentsQuery(projectId);
   const unseen = useUnseenCompletions();
+  const unseenSignals = useUnseenSignalCountQuery(projectId).data ?? 0;
 
   const running = buildRunningJobs({
     evalRuns: evalQuery.data?.results,
@@ -162,6 +165,7 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
     const runningCount = runningByRoute[route] ?? 0;
     if (runningCount > 0) badges[route] = { count: runningCount, tone: "running" };
   }
+  if (unseenSignals > 0) badges["/signals"] = { count: unseenSignals, tone: "success" };
   return badges;
 }
 

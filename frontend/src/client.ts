@@ -24,7 +24,6 @@ import type { ModelSwapPrompt } from "./openapi";
 import {
   AgentApi,
   AuthApi,
-  BehavioursApi,
   BillingApi,
   CapabilitiesApi,
   Configuration,
@@ -37,11 +36,11 @@ import {
   DatasetTransfersApi,
   DecisionPerformanceApi,
   DeployedModelsApi,
+  EvalMatrixApi,
+  EvalRunRowsApi,
   EvalRunsApi,
-  EvalSamplesApi,
   EvalScoresApi,
   EvalSetsApi,
-  EvaluatorsApi,
   FeedbackApi,
   FinetuningJobsApi,
   InferenceRequestsApi,
@@ -52,13 +51,13 @@ import {
   ProjectsApi,
   ResponseError,
   SessionsApi,
-  TaskExecutionsApi,
+  SignalEventsApi,
+  SignalSubscriptionsApi,
   TracesApi,
   TrainingExperimentsApi,
   TrainingPlansApi,
   TrainingPreparationsApi,
   UploadsApi,
-  VerdictsApi,
 } from "./openapi";
 import type { Middleware } from "./openapi/runtime";
 
@@ -421,7 +420,6 @@ export class API {
   agent: AgentApi;
   capabilities: CapabilitiesApi;
   auth: AuthApi;
-  behaviours: BehavioursApi;
   billing: BillingApi;
   connectorCredentials: ConnectorCredentialsApi;
   datasets: DatasetsApi;
@@ -445,24 +443,23 @@ export class API {
   projects: ProjectsApi;
   /** Traces grouped by `conversation.id`. */
   sessions: SessionsApi;
-  taskExecutions: TaskExecutionsApi;
   traces: TracesApi;
-  verdicts: VerdictsApi;
   request = request;
   /** OpenRouter catalogue proxy — not this project's deployed models. */
   models: ModelsApi;
-  evaluators: EvaluatorsApi;
+  evalMatrix: EvalMatrixApi;
   evalSets: EvalSetsApi;
   evalRuns: EvalRunsApi;
-  evalSamples: EvalSamplesApi;
+  evalRunRows: EvalRunRowsApi;
   evalScores: EvalScoresApi;
+  signalEvents: SignalEventsApi;
+  signalSubscriptions: SignalSubscriptionsApi;
 
   constructor(private cfg: Configuration) {
     this.mcpOauth = new McpOauthApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);
     this.auth = new AuthApi(this.cfg);
-    this.behaviours = new BehavioursApi(this.cfg);
     this.billing = new BillingApi(this.cfg);
     this.connectorCredentials = new ConnectorCredentialsApi(this.cfg);
     this.datasets = new DatasetsApi(this.cfg);
@@ -484,15 +481,15 @@ export class API {
     this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);
     this.sessions = new SessionsApi(this.cfg);
-    this.taskExecutions = new TaskExecutionsApi(this.cfg);
     this.traces = new TracesApi(this.cfg);
-    this.verdicts = new VerdictsApi(this.cfg);
     this.models = new ModelsApi(this.cfg);
-    this.evaluators = new EvaluatorsApi(this.cfg);
+    this.evalMatrix = new EvalMatrixApi(this.cfg);
     this.evalSets = new EvalSetsApi(this.cfg);
     this.evalRuns = new EvalRunsApi(this.cfg);
-    this.evalSamples = new EvalSamplesApi(this.cfg);
+    this.evalRunRows = new EvalRunRowsApi(this.cfg);
     this.evalScores = new EvalScoresApi(this.cfg);
+    this.signalEvents = new SignalEventsApi(this.cfg);
+    this.signalSubscriptions = new SignalSubscriptionsApi(this.cfg);
   }
 }
 

@@ -157,8 +157,13 @@ class Span(models.Model):
         related_name="spans",
     )
 
-    # Keyed by signal name; live scores live under the "trace_scoring" block.
+    # Human feedback only, keyed by signal name.
     feedback_score = models.JSONField(null=True, blank=True, default=None)
+    # The latest innermind result: {metrics, score, trajectory?, retry?}. A present
+    # "score" key (even null) marks the span final; ``EvalScore`` keeps the history.
+    eval_attributes = models.JSONField(default=dict, blank=True)
+    # A claim older than the sweep window is abandoned and re-driven.
+    eval_claimed_at = models.DateTimeField(null=True, blank=True)
 
     received_at = models.DateTimeField(auto_now_add=True)
 
@@ -183,6 +188,11 @@ class Span(models.Model):
                 fields=["project", "-start_time_ns"],
                 condition=Q(parent_span_id__isnull=True),
                 name="span_root_recent_idx",
+            ),
+            models.Index(
+                fields=["project", "received_at"],
+                condition=~Q(eval_attributes__has_key="score"),
+                name="span_unscored_idx",
             ),
         ]
 
@@ -215,32 +225,3 @@ class Span(models.Model):
             .values("span_id")[:1]
         )
         return queryset.filter(project_id__in=project_ids, span_id=models.Subquery(head))
-
-
-class BacktestRun(models.Model):
-    class RunStatus(models.TextChoices):
-        PENDING = "pending"
-        RUNNING = "running"
-        COMPLETED = "completed"
-        FAILED = "failed"
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    capability = models.ForeignKey(
-        "overbae.Capability",
-        on_delete=models.CASCADE,
-        related_name="backtest_runs",
-        null=True,
-        blank=True,
-    )
-    prompt_id = models.CharField(max_length=512, blank=True, default="")
-    models_config = models.JSONField(default=list, blank=True)
-    status = models.CharField(max_length=20, choices=RunStatus.choices, default=RunStatus.PENDING)
-    celery_task_id = models.CharField(max_length=255, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"BacktestRun {self.id} ({self.status})"

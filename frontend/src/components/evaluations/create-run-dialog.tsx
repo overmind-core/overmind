@@ -35,7 +35,7 @@ import {
 } from "@/hooks/use-evaluations";
 import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import type { EvalRunRequest, EvaluationContextRequestRequest } from "@/openapi";
+import type { EvalRunCreateRequest, EvaluationContextRequestRequest } from "@/openapi";
 
 export function CreateRunDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
@@ -110,23 +110,24 @@ function CreateRunForm({
   const evalSets = (sets.data?.results ?? []).filter(
     (row) =>
       row.project === projectId &&
-      row.generativeCount > 0 &&
+      (row.rows?.length ?? 0) > 0 &&
       (!dataset?.capability || !row.capability || row.capability === dataset.capability)
   );
   const evalSet = evalSets.find((row) => row.id === evalSetId);
-  const variants = model ? [{ label: model, mode: "generate", model_name: model }] : [];
+  const targets: EvalRunCreateRequest["targets"] = model
+    ? [{ label: model, mode: "generate", modelName: model }]
+    : [];
   const preview = useQuery({
     enabled: !!dataset && !!evalSet && !!model,
     queryFn: () =>
       api.evalRuns.evalRunsContextCheckCreate({
         evaluationContextRequestRequest: {
-          capability: dataset?.capability ?? evalSet?.capability,
           cell: dataset?.active,
           dataset: datasetId,
           evalSet: evalSetId,
           judgeModel: judgeModel as EvaluationContextRequestRequest["judgeModel"],
           project: projectId,
-          variants: [{ modelName: model }],
+          targets,
         },
       }),
     queryKey: [
@@ -145,24 +146,23 @@ function CreateRunForm({
   const create = useMutation({
     mutationFn: () =>
       api.evalRuns.evalRunsCreate({
-        evalRunRequest: {
+        evalRunCreateRequest: {
           cell: dataset?.active,
-          dataSource: "dataset",
           dataset: datasetId,
           evalSet: evalSetId,
-          judgeModel: judgeModel as EvalRunRequest["judgeModel"],
+          judgeModel: judgeModel as EvalRunCreateRequest["judgeModel"],
           maxItems,
           name: name.trim(),
           project: projectId,
           sampling: 1,
-          variantsInput: variants,
+          targets,
         },
       }),
-    onSuccess: (run) => {
+    onSuccess: (group) => {
       void queryClient.invalidateQueries({ queryKey: ["eval-runs"] });
       onClose();
       void navigate({
-        params: { runId: run.id },
+        params: { runId: group.runs[0].id },
         search: { projectId },
         to: "/evaluations/runs/$runId",
       });

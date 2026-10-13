@@ -50,7 +50,7 @@ def test_failing_traces_become_a_measured_winning_diff(
     worker,
     live_api,
     support_desk_llm,
-    rubric_judges,
+    judges,
     fake_llm,
     tmp_path,
 ):
@@ -62,15 +62,14 @@ def test_failing_traces_become_a_measured_winning_diff(
 
     sample_agent.run(*TICKETS, api_url=live_api.url, llm_url=support_desk_llm)
     drain(worker)
-    executions = mcp.call("query_task_executions", {"capability": "answer"})["task_executions"]
-    assert len(executions) == len(TICKETS)
-    assert all(e["success_score"] < 1 for e in executions)
+    failures = mcp.call("query_failures", {"capability": "answer"})["failures"]
+    assert len(failures) == len(TICKETS)
 
     created = mcp.call(
         "create_dataset_from_traces",
         {
             "name": "answer misses",
-            "trace_ids": [e["trace_id"] for e in executions],
+            "trace_ids": [f["trace_id"] for f in failures],
             "intent": "eval",
             "capability": answer["id"],
         },

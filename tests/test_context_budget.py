@@ -7,22 +7,18 @@ from pydantic import BaseModel
 
 from modal_shared.context_budget import DEFAULT_OUTPUT_TOKENS, completion_body, reserve_output
 from overbae.core import llms
+from overbae.innermind import generation, replay, runs
 from overbae.models import (
     EvalRun,
-    EvalSample,
-    Evaluator,
-    EvalVariant,
+    EvalRunRow,
     FinetuningJob,
     FinetuningJobEval,
     Project,
-    RunEvaluator,
-    Score,
 )
 from overbae.services import deployment, serving_context
-from overbae.services.eval import funnel, runner, snapshots
-from overbae.services.eval.comparison import compare_runs
+from overbae.services.finetuning_eval import sync_eval_scores
 from overbae.services.inference_client import ContextBudgetError, InferenceClient
-from overbae.tasks import eval as eval_tasks
+from overbae.services.judging import funnel
 
 
 @pytest.mark.parametrize("payload", [{}, {"max_tokens": None}, {"max_completion_tokens": None}])
@@ -95,7 +91,7 @@ def test_llm_preserves_incomplete_output_and_usage_without_json_repair(fake_llm,
     assert len(fake_llm.requests) == 1
 
 
-@pytest.mark.parametrize("generate", [runner.run_capability, runner.generate_decision])
+@pytest.mark.parametrize("generate", [replay.run_capability, replay.generate_decision])
 def test_incomplete_tool_call_is_never_executed(fake_llm, generate):
     tool = Mock()
     tool.tool_definitions.return_value = []
@@ -149,53 +145,34 @@ def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(fake_l
         dataset=evaluation,
         cell=evaluation.active_cell,
         name="run",
-        status="running",
+        status=EvalRun.Status.RUNNING,
+        mode=EvalRun.Mode.GENERATE,
+        model_name="gpt-4.1",
+        matrix=[{"name": "Report", "type": "llm", "source": "The output is the report."}],
     )
-    variant = EvalVariant.objects.create(run=run, label="model", mode="generate")
-    sample = EvalSample.objects.create(run=run, variant=variant, row_index=0)
-    evaluator = Evaluator.objects.create(
-        project=project, name="Quality", kind="deterministic", config={"check": "json_valid"}
-    )
-    run_evaluator = RunEvaluator.objects.create(
-        run=run, evaluator=evaluator, snapshot=snapshots.build_snapshot(evaluator)
-    )
+    row = EvalRunRow.objects.create(run=run, row_index=0)
     train = frozen_dataset(project, TRAIN_ROWS, contract="train")
     job = FinetuningJob.objects.create(
         project=project, dataset=train, base_model="Qwen/Qwen3.5-27B", status="succeeded"
     )
     link = FinetuningJobEval.objects.create(job=job, kind="final", eval_run=run, status="running")
     _cut_off(fake_llm, '{"report":', prompt_tokens=3000, completion_tokens=1096)
-    eval_tasks.prepare_sample.run(sample_id=str(sample.pk))
-    sample.refresh_from_db()
-    assert sample.degraded is True
-    assert sample.degraded_reason.startswith("output_token_limit:")
-    assert sample.trajectory["metadata"]["truncated"] is True
-    assert sample.trajectory["metadata"]["finish_reasons"] == ["length"]
-    eval_tasks.execute_evaluator.run(
-        sample_id=str(sample.pk), run_evaluator_id=str(run_evaluator.pk)
-    )
-    score = Score.objects.get(sample=sample)
-    assert score.outcome == "skipped" and score.value is None
-    eval_tasks.aggregate_run.run(eval_run_id=str(run.pk))
+
+    generation.generate(EvalRunRow.objects.select_related("run__cell").get(pk=row.pk))
+
+    row.refresh_from_db()
+    assert row.degraded is True
+    assert row.degraded_reason.startswith("output_token_limit:")
+    assert row.metadata["truncated"] is True
+    assert row.metadata["finish_reasons"] == ["length"]
+    runs.finish(run)
     run.refresh_from_db()
+    assert run.summary["trust"] == {"trusted": False, "errored": 0, "degraded": 1}
+    assert run.scores.count() == 0
+    sync_eval_scores(job)
     link.refresh_from_db()
-    assert run.summary["trust"]["degraded"] == 1
-    assert compare_runs(run.summary, run.summary)["trust"]["current"]["trusted"] is False
     assert link.status == "failed" and link.aggregate_score is None
     assert "incomplete or degraded" in link.error_message
-
-
-def test_per_turn_truncation_cannot_be_hidden_by_other_successful_turns():
-    degraded, reason = eval_tasks._assess_degradation(
-        {
-            "metadata": {"generation_strategy": "per_assistant_turn", "output_truncated": True},
-            "final_output": "later valid output",
-        },
-        {"per_turn": [{"generated": "valid"}]},
-        [],
-        is_generate=True,
-    )
-    assert degraded and reason.startswith("output_token_limit:")
 
 
 def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(fake_llm):
@@ -208,7 +185,6 @@ def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(fake_llm)
     outcome = funnel.invoke_judge(
         "evidence",
         response_format=Result,
-        use_cache=False,
         judge=funnel.ResolvedJudge("gpt-4.1", None, "openai"),
     )
     assert outcome.parsed is None

@@ -105,10 +105,9 @@ def test_instrument_repository_supports_project_wide_and_scoped_workflows():
     assert "Real run (recommended)" in text
     assert "Smoke run" in text
     assert "human_action or no placements" in text
-    assert "version_analyzed_sha" in text
-    assert "required_spans[].target.file" in text
-    assert "contract_fingerprint" in text
-    assert "required_identity" in text
+    assert "target.qualname in target.file" in text
+    assert "expectations=[...]" in text
+    assert "capability_id exact" in text
     assert "Do not run either mode before approval" in text
     assert "exact command or input" in text
     assert "conversation.id" in text

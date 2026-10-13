@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { InferenceMessageRoleEnum } from './InferenceMessageRoleEnum';
+import type { RoleEnum } from './RoleEnum';
 import {
-    InferenceMessageRoleEnumFromJSON,
-    InferenceMessageRoleEnumFromJSONTyped,
-    InferenceMessageRoleEnumToJSON,
-    InferenceMessageRoleEnumToJSONTyped,
-} from './InferenceMessageRoleEnum';
+    RoleEnumFromJSON,
+    RoleEnumFromJSONTyped,
+    RoleEnumToJSON,
+    RoleEnumToJSONTyped,
+} from './RoleEnum';
 
 /**
  *
@@ -29,10 +29,10 @@ import {
 export interface InferenceMessageRequest {
     /**
      *
-     * @type {InferenceMessageRoleEnum}
+     * @type {RoleEnum}
      * @memberof InferenceMessageRequest
      */
-    role: InferenceMessageRoleEnum;
+    role: RoleEnum;
     /**
      *
      * @type {string}
@@ -62,7 +62,7 @@ export function InferenceMessageRequestFromJSONTyped(json: any, ignoreDiscrimina
     }
     return {
 
-        'role': InferenceMessageRoleEnumFromJSON(json['role']),
+        'role': RoleEnumFromJSON(json['role']),
         'content': json['content'],
     };
 }
@@ -78,7 +78,7 @@ export function InferenceMessageRequestToJSONTyped(value?: InferenceMessageReque
 
     return {
 
-        'role': InferenceMessageRoleEnumToJSON(value['role']),
+        'role': RoleEnumToJSON(value['role']),
         'content': value['content'],
     };
 }

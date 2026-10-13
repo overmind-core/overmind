@@ -99,9 +99,7 @@ def test_evaluations_share_runs_navigation_and_probability_metrics(console, work
     )
     console.click("Response evaluation fixture")
     console.sees("Re-run")
-    console.wait_until(
-        """() => ![...document.querySelectorAll('button, a')].some(el => el.textContent.trim() === 'Optimise')"""
-    )
+    console.sees("Optimise")
     console.goto(f"/evaluations?projectId={project}")
     console.click("Probability evaluation fixture")
     console.sees("Evaluation navigation fixture")

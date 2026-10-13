@@ -68,7 +68,7 @@ model when available, the Overmind destination, and the data included in sync.
 Before sync it summarizes the destination, payload, credential checks, and
 configuration to review. Setup finishes after `overmind sync` succeeds with
 the mapped capabilities, outstanding verification, and one recommended next
-action. Instrumentation, application runs, and server-side evaluator preparation
+action. Instrumentation, application runs, and server-side eval set preparation
 remain separate work.
 
 Use the project's runner for these commands (`uv run overmind` or
@@ -117,7 +117,7 @@ def call_model(messages: list[dict]) -> dict: ...
 
 That is the whole integration: no init guards (everything no-ops without a key), no hand-rolled scrubbing (captured payloads redact secret-named keys and base64 blobs automatically, text is kept in full), and no evidence bookkeeping (`deliver()` grounds itself in the environment-provenance spans of the run — pass `grounded_by=[...]` to override). On `KeyboardInterrupt`/cancellation the entry-point span flushes before re-raising, so interrupted runs still land.
 
-Decorators: `entry_point`, `workflow`, `tool`, `retrieval`, and the general `observe` (sync and async). All accept `capture=` (`"auto"` scrubbed args/result, `"none"`, `"messages"`), `ignore=` (argument names never captured), `format_input=` / `format_output=` hooks for custom payload shapes, `provenance=`, `unit=`, and `capability=`. `start_span(...)` is the context-manager companion; `set_tag`, `set_user`, `set_conversation_id`, and `capture_exception` annotate the current span Sentry-style.
+Decorators: `entry_point`, `workflow`, `tool`, `retrieval`, and the general `observe` (sync and async). All accept `capture=` (`"auto"` scrubbed args/result, `"none"`, `"messages"`), `ignore=` (argument names never captured), `self_attrs=` (instance attributes recorded as inputs), `format_input=` / `format_output=` hooks for custom payload shapes, `provenance=`, `unit=`, and `capability=`. `start_span(...)` is the context-manager companion; `set_tag`, `set_user`, `set_conversation_id`, and `capture_exception` annotate the current span Sentry-style.
 
 The span name may be a callable receiving the call's arguments — for polymorphic dispatchers, where one function executes named actions and each invocation must emit its own tool span (`tool.name` follows the resolved name):
 
@@ -260,17 +260,17 @@ repositories.
 `overmind init` installs the complete skill set. Plugins bundle the same source;
 `overmind skills sync` refreshes selected skills in an existing installation.
 
-| Skill                    | What it does                                                       |
-| ------------------------ | ------------------------------------------------------------------ |
-| `overmind`               | Local setup, repository discovery and workflows across surfaces    |
-| `overmind-agent`         | Inspect capabilities, behaviour coverage and repository provenance |
-| `overmind-observability` | Investigate traces, failures, latency and instrumentation gaps     |
-| `overmind-datasets`      | Prepare, verify, generate and export Data Workshop versions        |
-| `overmind-evaluations`   | Author evaluators, prepare runs and compare results                |
-| `overmind-optimiser`     | Run prompt/code experiments and model comparisons                  |
-| `overmind-training`      | Prepare exact inputs, estimate costs and inspect fine-tuning       |
-| `overmind-inference`     | Inspect serving metrics, worker state and live routing             |
-| `overmind-integrations`  | Configure provider mappings and verify imported traces             |
+| Skill                    | What it does                                                    |
+| ------------------------ | --------------------------------------------------------------- |
+| `overmind`               | Local setup, repository discovery and workflows across surfaces |
+| `overmind-agent`         | Inspect capabilities, eval coverage and repository provenance   |
+| `overmind-observability` | Investigate traces, failures, latency and instrumentation gaps  |
+| `overmind-datasets`      | Prepare, verify, generate and export Data Workshop versions     |
+| `overmind-evaluations`   | Author eval matrix rows, prepare runs and compare results       |
+| `overmind-optimiser`     | Run prompt/code experiments and model comparisons               |
+| `overmind-training`      | Prepare exact inputs, estimate costs and inspect fine-tuning    |
+| `overmind-inference`     | Inspect serving metrics, worker state and live routing          |
+| `overmind-integrations`  | Configure provider mappings and verify imported traces          |
 
 ## Anonymous usage analytics
 

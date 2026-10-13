@@ -6,17 +6,13 @@ import datetime as dt
 from typing import Any
 
 from asgiref.sync import sync_to_async
-from django.db.models import Avg, Count, Q
+from django.db.models import Q
 from django.http import QueryDict
 from django.utils import timezone
 
-from overbae.api.filters import SpanFilter, TaskExecutionFilter
-from overbae.api.serializers import (
-    eligible_scoring_capabilities,
-    trace_status_map,
-    trace_usage_totals,
-    traces_with_finished_scoring_pass,
-)
+from overbae.api.filters import SpanFilter
+from overbae.api.serializers import trace_status_map, trace_usage_totals
+from overbae.innermind import health
 from overbae.models import (
     Capability,
     ConnectorCredential,
@@ -28,9 +24,7 @@ from overbae.models import (
     InferenceRequest,
     ModelActivation,
     OptimizerExperiment,
-    Score,
     Span,
-    TaskExecution,
     TrainingPreparation,
 )
 from overbae.services import (
@@ -42,15 +36,9 @@ from overbae.services import (
 from overbae.services.datasets import transfers, workbench
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
-    resolve_behaviour,
     resolve_capability,
     resolve_eval_run,
     resolve_session,
-)
-from overbae.services.live_trace_scores import (
-    aggregate_live_scores,
-    collect_capability_failure_rows,
-    spans_with_live_scores,
 )
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.common import PageContract, ResourceLinkContract
@@ -58,17 +46,14 @@ from overbae.services.mcp.contracts.observability import (
     FailureRow,
     GetJobInput,
     GetJobOutput,
-    HealthEvaluator,
+    HealthMetric,
     InspectCapabilityHealthInput,
     InspectCapabilityHealthOutput,
-    LiveTraceHealth,
+    LiveScoring,
     QueryFailuresInput,
     QueryFailuresOutput,
-    QueryTaskExecutionsInput,
-    QueryTaskExecutionsOutput,
     QueryTracesInput,
     QueryTracesOutput,
-    TaskExecutionRow,
     TraceHealth,
     TraceRow,
 )
@@ -83,7 +68,7 @@ from overbae.services.mcp.resources import (
 )
 from overbae.services.model_activation import activation_progress
 
-_HEALTH_EVALUATOR_CAP = 50
+_HEALTH_METRIC_CAP = 50
 _NS_PER_SECOND = 1_000_000_000
 
 
@@ -102,59 +87,18 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 3) if denominator else None
 
 
-def _health_rows(rows: dict[str, dict[str, Any]]) -> list[HealthEvaluator]:
-    values: list[dict[str, Any]] = []
-    for name, row in rows.items():
-        avg_value = round(row["avg_value"], 3) if row["avg_value"] is not None else None
-        values.append(
-            {
-                "evaluator": name,
-                "n": row["n"],
-                "avg_value": avg_value,
-                "pass_rate": _rate(row["n_passed"], row["n_graded"]),
-                "n_failed": row["n_failed"],
-            }
-        )
-    values.sort(
-        key=lambda row: next(
-            (row[field] for field in ("pass_rate", "avg_value") if row[field] is not None),
-            1.0,
-        )
-    )
-    return [HealthEvaluator.model_validate(row) for row in values[:_HEALTH_EVALUATOR_CAP]]
-
-
-def _add_health_deltas(current: list[HealthEvaluator], previous: list[HealthEvaluator]) -> None:
-    previous_by_name = {row.evaluator: row for row in previous}
-    for row in current:
-        old = previous_by_name.get(row.evaluator)
-        if old is None:
-            continue
-        if row.pass_rate is not None and old.pass_rate is not None:
-            row.pass_rate_delta = round(row.pass_rate - old.pass_rate, 3)
-        if row.avg_value is not None and old.avg_value is not None:
-            row.avg_value_delta = round(row.avg_value - old.avg_value, 3)
-
-
-def _health_aggregates(project, capability, start, end) -> dict[str, dict[str, Any]]:
-    query = Score.objects.filter(
-        project=project,
-        outcome=Score.Outcome.SCORED,
-        created_at__gte=start,
-        created_at__lt=end,
-    )
-    if capability is not None:
-        query = query.filter(evaluator__capability=capability)
-    return {
-        row["name"]: row
-        for row in query.values("name").annotate(
-            n=Count("id"),
-            avg_value=Avg("value"),
-            n_passed=Count("id", filter=Q(passed=True)),
-            n_failed=Count("id", filter=Q(passed=False)),
-            n_graded=Count("id", filter=Q(passed__isnull=False)),
-        )
-    }
+def _health_metrics(current: dict[str, dict], previous: dict[str, dict]) -> list[HealthMetric]:
+    rows = []
+    for name, row in current.items():
+        metric = HealthMetric.model_validate(row)
+        old = previous.get(name)
+        if old and row["pass_rate"] is not None and old["pass_rate"] is not None:
+            metric.pass_rate_delta = round(row["pass_rate"] - old["pass_rate"], 3)
+        if old and row["avg_score"] is not None and old["avg_score"] is not None:
+            metric.avg_score_delta = round(row["avg_score"] - old["avg_score"], 3)
+        rows.append(metric)
+    rows.sort(key=lambda m: next((v for v in (m.pass_rate, m.avg_score) if v is not None), 1.0))
+    return rows[:_HEALTH_METRIC_CAP]
 
 
 def _inspect_capability_health_sync(
@@ -166,19 +110,8 @@ def _inspect_capability_health_sync(
     now = timezone.now()
     current_start = now - dt.timedelta(days=payload.days)
     previous_start = now - dt.timedelta(days=2 * payload.days)
-    current = _health_aggregates(context.project, capability, current_start, now)
-    previous = _health_aggregates(context.project, capability, previous_start, current_start)
-    evaluators = _health_rows(current)
-    _add_health_deltas(evaluators, _health_rows(previous))
-
-    outcome_query = Score.objects.filter(project=context.project, created_at__gte=current_start)
-    if capability is not None:
-        outcome_query = outcome_query.filter(evaluator__capability=capability)
-    outcomes = {
-        row["outcome"]: row["n"] for row in outcome_query.values("outcome").annotate(n=Count("id"))
-    }
-    total_passed = sum(row["n_passed"] for row in current.values())
-    total_graded = sum(row["n_graded"] for row in current.values())
+    current = health.summarize(context.project, capability, current_start, now)
+    previous = health.summarize(context.project, capability, previous_start, current_start)
 
     cutoff_ns = int(current_start.timestamp() * _NS_PER_SECOND)
     roots = Span.objects.filter(
@@ -201,51 +134,19 @@ def _inspect_capability_health_sync(
         p95_index = min(len(durations) - 1, -(-95 * len(durations) // 100) - 1)
         trace_values["p95_duration_ms"] = round(durations[p95_index] / 1_000_000, 1)
 
-    current_live = list(
-        spans_with_live_scores(
-            context.project, capability=capability, since=current_start, until=now
-        )
+    scoring = LiveScoring.model_validate(
+        {**current, "metrics": _health_metrics(current["metrics"], previous["metrics"])}
     )
-    previous_live = list(
-        spans_with_live_scores(
-            context.project,
-            capability=capability,
-            since=previous_start,
-            until=current_start,
-        )
-    )
-    live_values = aggregate_live_scores(
-        context.project.id,
-        current_live,
-        previous_scored_spans=previous_live,
-        traces_in_window=trace_values["n"],
-    )
-    live_evaluators = [
-        HealthEvaluator.model_validate(row) for row in live_values["evaluators"][:50]
-    ]
     return InspectCapabilityHealthOutput(
         days=payload.days,
         capability=capability.slug if capability is not None else None,
-        scores={
-            "total": sum(row["n"] for row in current.values()),
-            "graded": total_graded,
-            "overall_pass_rate": _rate(total_passed, total_graded),
-            "outcomes": outcomes,
-            "evaluators": evaluators,
-        },
-        live_trace_scores=LiveTraceHealth(
-            traces_in_window=live_values["traces_in_window"] or 0,
-            traces_scored=live_values["traces_scored"],
-            coverage=live_values["coverage"],
-            overall_pass_rate=live_values["overall_pass_rate"],
-            evaluators=live_evaluators,
-        ),
+        scoring=scoring,
         traces=TraceHealth(**trace_values),
         resource_links=[_link("capabilities", str(capability.id), capability.name)]
         if capability is not None
         else [],
         summary=(
-            f"{trace_values['n']} traces, {sum(row['n'] for row in current.values())} scores"
+            f"{trace_values['n']} traces, {scoring.scored} scored spans"
             + (f" for {capability.name}." if capability is not None else ".")
         ),
     )
@@ -253,26 +154,19 @@ def _inspect_capability_health_sync(
 
 def _query_failures_sync(payload: QueryFailuresInput, context: MCPContext) -> QueryFailuresOutput:
     capability = _capability_or_error(context.project, payload.capability)
-    raw_rows = collect_capability_failure_rows(
-        context.project,
-        capability=capability,
-        since_days=payload.since_days,
-        limit=payload.limit,
-    )
+    since = timezone.now() - dt.timedelta(days=payload.since_days)
     failures: list[FailureRow] = []
     links = [_link("capabilities", str(capability.id), capability.name)]
-    for raw in raw_rows[: payload.limit]:
-        trace_id = str(
-            raw.get("trace_id") or str(raw.get("trace_ref") or "").removeprefix("traces:")
-        )
-        if not trace_id:
-            continue
+    for raw in health.failures(context.project, capability, since, payload.limit):
+        trace_id = raw["trace_id"]
         row = FailureRow(
-            trace_ref=str(raw.get("trace_ref") or f"traces:{trace_id}"),
+            trace_ref=f"traces:{trace_id}",
             trace_id=trace_id,
-            summary=str(raw.get("summary") or "")[:500],
-            failed_scores=raw.get("failed_scores") or [],
-            tools=[str(tool) for tool in (raw.get("tools") or [])[:100]],
+            summary=raw["summary"][:500],
+            failed_scores=[
+                {**failed, "reason": failed["reason"][:500]} for failed in raw["failed"][:50]
+            ],
+            tools=raw["tools"][:100],
             resource=_link("traces", trace_id, f"Trace {trace_id}"),
         )
         failures.append(row)
@@ -405,6 +299,8 @@ def _query_traces_sync(payload: QueryTracesInput, context: MCPContext) -> QueryT
             total_cost=(usage.get(span.trace_id) or {}).get("total_cost"),
             model=(usage.get(span.trace_id) or {}).get("model"),
             trace_status=statuses.get(span.trace_id, "live"),
+            eval_score=(span.eval_attributes or {}).get("score"),
+            trajectory_score=((span.eval_attributes or {}).get("trajectory") or {}).get("score"),
             resource=_link("traces", span.trace_id, f"Trace {span.trace_id}"),
         )
         for span in spans
@@ -416,115 +312,6 @@ def _query_traces_sync(payload: QueryTracesInput, context: MCPContext) -> QueryT
         all_spans=payload.all_spans,
         resource_links=[row.resource for row in rows],
         summary=f"{len(rows)} of {total} trace{'s' if total != 1 else ''}.",
-    )
-
-
-def _execution_filter_data(
-    payload: QueryTaskExecutionsInput, context: MCPContext
-) -> dict[str, str]:
-    data = {"project": str(context.project.id)}
-    for ref, key, resolver in (
-        (payload.capability, "capability", resolve_capability),
-        (payload.behaviour, "behaviour", resolve_behaviour),
-    ):
-        if ref:
-            value, error = resolver(context.project, ref)
-            if value is None:
-                raise MCPError("invalid_filter", error or "The task filter is invalid.")
-            data[key] = str(value.id)
-    values = payload.model_dump(exclude_none=True, mode="json")
-    mapping = {
-        "binding_source": "binding_source",
-        "trace_id": "trace_id",
-        "status": "status",
-        "started_after": "started_at__gte",
-        "started_before": "started_at__lte",
-        "min_duration_ms": "min_duration_ms",
-        "max_duration_ms": "max_duration_ms",
-        "service_name": "service_name",
-        "operation": "operation",
-        "span_type": "span_type",
-        "status_code": "status_code",
-        "model": "model",
-        "has_model": "has_model",
-        "total_tokens_gte": "total_tokens__gte",
-        "total_tokens_lte": "total_tokens__lte",
-        "total_cost_gte": "total_cost__gte",
-        "total_cost_lte": "total_cost__lte",
-        "has_error": "has_error",
-    }
-    for source, target in mapping.items():
-        if source in values:
-            data[target] = (
-                str(values[source]).lower()
-                if isinstance(values[source], bool)
-                else str(values[source])
-            )
-    return data
-
-
-def _query_task_executions_sync(
-    payload: QueryTaskExecutionsInput, context: MCPContext
-) -> QueryTaskExecutionsOutput:
-    query = TaskExecution.objects.filter(project=context.project).select_related(
-        "capability", "behaviour"
-    )
-    execution_filter = TaskExecutionFilter(
-        data=_query_dict(_execution_filter_data(payload, context)), queryset=query
-    )
-    if not execution_filter.is_valid():
-        raise MCPError("invalid_filter", "The task execution filters are invalid.")
-    query = execution_filter.qs.order_by("-started_at", "-created_at")
-    offset = payload.offset
-    total = query.count()
-    executions = list(query[offset : offset + payload.limit])
-    trace_ids = list(dict.fromkeys(execution.trace_id for execution in executions))
-    usage = trace_usage_totals([context.project.id], trace_ids)
-    capability_ids = [
-        execution.capability_id for execution in executions if execution.capability_id
-    ]
-    eligible = eligible_scoring_capabilities([context.project.id], capability_ids)
-    finished = traces_with_finished_scoring_pass([context.project.id], trace_ids)
-    rows = []
-    for execution in executions:
-        execution_usage = usage.get(execution.trace_id) or {}
-        pending = (
-            execution.success_score is None
-            and execution.status != TaskExecution.Status.ERROR
-            and execution.trace_id not in finished
-            and str(execution.capability_id) in eligible
-        )
-        rows.append(
-            TaskExecutionRow(
-                id=str(execution.id),
-                capability=str(execution.capability_id) if execution.capability_id else None,
-                behaviour=str(execution.behaviour_id) if execution.behaviour_id else None,
-                behaviour_key=execution.behaviour.key if execution.behaviour_id else "",
-                trace_id=execution.trace_id,
-                unit_span_id=execution.unit_span_id,
-                conversation_id=execution.conversation_id,
-                binding_source=execution.binding_source,
-                success_score=execution.success_score,
-                session_score=execution.session_score,
-                session_rationale=execution.session_rationale[:500],
-                route_flags=safe_json(execution.route_flags or []),
-                terminal_kind=execution.terminal_kind,
-                status=execution.status,
-                started_at=execution.started_at,
-                duration_ms=execution.duration_ms,
-                total_tokens=execution_usage.get("total_tokens"),
-                total_cost=execution_usage.get("total_cost"),
-                model=execution_usage.get("model"),
-                scoring_pending=pending,
-                resource=_link("traces", execution.trace_id, f"Trace {execution.trace_id}"),
-            )
-        )
-    return QueryTaskExecutionsOutput(
-        task_executions=rows,
-        n=len(rows),
-        page=_page(payload.limit, offset, total, len(rows)),
-        resource_links=[row.resource for row in rows],
-        summary=f"{len(rows)} of {total} task execution{'s' if total != 1 else ''}.",
     )
 
 
@@ -616,7 +403,10 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         created_at, updated_at, completed_at = job.created_at, job.updated_at, job.completed_at
         label, status, job_error = job.name, job.status, job.error or None
         details = {
-            "data_source": job.data_source,
+            "mode": job.mode,
+            "label": job.label,
+            "group": str(job.group),
+            "is_baseline": job.is_baseline,
             "dataset_id": str(job.dataset_id) if job.dataset_id else None,
             "summary": safe_json(job.summary or {}),
         }
@@ -847,7 +637,8 @@ def register_observability_tools(catalog) -> None:
         (
             "inspect_capability_health",
             "Inspect capability health",
-            "Aggregate evaluator, live-score, trace-volume, error-rate and latency health.",
+            "Aggregate live span scores per metric, scoring coverage, trace volume, error rate "
+            "and latency, with deltas against the previous window.",
             InspectCapabilityHealthInput,
             InspectCapabilityHealthOutput,
             _inspect_capability_health_sync,
@@ -856,7 +647,8 @@ def register_observability_tools(catalog) -> None:
         (
             "query_failures",
             "Query capability failures",
-            "Return recent scored failures for one project capability.",
+            "Return recent traces with a failing span or trajectory score for one capability, "
+            "with the failing metrics and their reasons.",
             QueryFailuresInput,
             QueryFailuresOutput,
             _query_failures_sync,
@@ -869,15 +661,6 @@ def register_observability_tools(catalog) -> None:
             QueryTracesInput,
             QueryTracesOutput,
             _query_traces_sync,
-            "free",
-        ),
-        (
-            "query_task_executions",
-            "Query task executions",
-            "Query bounded behaviour-keyed task executions with filters.",
-            QueryTaskExecutionsInput,
-            QueryTaskExecutionsOutput,
-            _query_task_executions_sync,
             "free",
         ),
         (

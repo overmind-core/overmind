@@ -14,23 +14,15 @@
 
 
 /**
- * * `pending` - pending
+ * * `preparing` - preparing
  * * `generating` - generating
  * * `scoring` - scoring
- * * `aggregating` - aggregating
- * * `completed` - completed
- * * `failed` - failed
- * * `cancelled` - cancelled
  * @export
  */
 export const PhaseEnum = {
-    pending: 'pending',
+    preparing: 'preparing',
     generating: 'generating',
-    scoring: 'scoring',
-    aggregating: 'aggregating',
-    completed: 'completed',
-    failed: 'failed',
-    cancelled: 'cancelled'
+    scoring: 'scoring'
 } as const;
 export type PhaseEnum = typeof PhaseEnum[keyof typeof PhaseEnum];
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -94,45 +95,63 @@ def row_uses_tool_calling(row: dict[str, Any]) -> bool:
     )
 
 
+class ToolCallingCheck:
+    def __init__(self, *, max_errors: int = 10) -> None:
+        self.max_errors = max_errors
+        self.issues = 0
+        self.shown: list[str] = []
+        self.affected = 0
+        self.tool_rows = 0
+        self.index = 0
+
+    def _report(self, issues: list[str]) -> None:
+        self.issues += len(issues)
+        self.shown.extend(issues[: max(self.max_errors - len(self.shown), 0)])
+
+    def add(self, row: Any) -> None:
+        example_idx = self.index
+        self.index += 1
+        if not isinstance(row, dict):
+            return
+        affected = False
+        schema_issues = tool_schema_errors(row.get("tools"))
+        if schema_issues:
+            affected = True
+            self._report([f"Example {example_idx + 1}: {issue}" for issue in schema_issues])
+        messages = row.get("messages")
+        if isinstance(messages, list) and row_uses_tool_calling(row):
+            self.tool_rows += 1
+            example_issues = _validate_example_messages(example_idx, messages, row)
+            if example_issues:
+                affected = True
+                self._report(example_issues)
+        self.affected += affected
+
+    def result(self) -> ToolCallingCheckResult:
+        errors = list(self.shown)
+        if self.issues > self.max_errors:
+            errors.append(f"... and {self.issues - self.max_errors} more tool-calling issue(s).")
+        return ToolCallingCheckResult(
+            issue_count=self.issues,
+            affected_examples=self.affected,
+            errors=errors,
+            stats={
+                "tool_calling_examples": self.tool_rows,
+                "tool_calling_issues": self.issues,
+                "tool_calling_affected_examples": self.affected,
+            },
+        )
+
+
 def check_tool_calling_rows(
-    rows: list[dict[str, Any]],
+    rows: Iterable[dict[str, Any]],
     *,
     max_errors: int = 10,
 ) -> ToolCallingCheckResult:
-    issues: list[str] = []
-    affected: set[int] = set()
-    tool_rows = 0
-
-    for example_idx, row in enumerate(rows):
-        if not isinstance(row, dict):
-            continue
-        schema_issues = tool_schema_errors(row.get("tools"))
-        if schema_issues:
-            affected.add(example_idx)
-            issues.extend(f"Example {example_idx + 1}: {issue}" for issue in schema_issues)
-        messages = row.get("messages")
-        if not isinstance(messages, list) or not row_uses_tool_calling(row):
-            continue
-        tool_rows += 1
-        example_issues = _validate_example_messages(example_idx, messages, row)
-        if example_issues:
-            affected.add(example_idx)
-            issues.extend(example_issues)
-
-    errors = issues[:max_errors]
-    if len(issues) > max_errors:
-        errors.append(f"... and {len(issues) - max_errors} more tool-calling issue(s).")
-
-    return ToolCallingCheckResult(
-        issue_count=len(issues),
-        affected_examples=len(affected),
-        errors=errors,
-        stats={
-            "tool_calling_examples": tool_rows,
-            "tool_calling_issues": len(issues),
-            "tool_calling_affected_examples": len(affected),
-        },
-    )
+    check = ToolCallingCheck(max_errors=max_errors)
+    for row in rows:
+        check.add(row)
+    return check.result()
 
 
 def _validate_example_messages(

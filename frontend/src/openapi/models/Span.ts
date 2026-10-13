@@ -166,6 +166,12 @@ export interface Span {
     readonly feedbackScore: any | null;
     /**
      *
+     * @type {any}
+     * @memberof Span
+     */
+    readonly evalAttributes: any | null;
+    /**
+     *
      * @type {Date}
      * @memberof Span
      */
@@ -200,6 +206,7 @@ export function instanceOfSpan(value: object): value is Span {
     if (!('capability' in value) || value['capability'] === undefined) return false;
     if (!('conversation' in value) || value['conversation'] === undefined) return false;
     if (!('feedbackScore' in value) || value['feedbackScore'] === undefined) return false;
+    if (!('evalAttributes' in value) || value['evalAttributes'] === undefined) return false;
     if (!('receivedAt' in value) || value['receivedAt'] === undefined) return false;
     return true;
 }
@@ -238,6 +245,7 @@ export function SpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): Span
         'capability': json['capability'],
         'conversation': json['conversation'],
         'feedbackScore': json['feedback_score'],
+        'evalAttributes': json['eval_attributes'],
         'receivedAt': (new Date(json['received_at'])),
     };
 }
@@ -246,7 +254,7 @@ export function SpanToJSON(json: any): Span {
     return SpanToJSONTyped(json, false);
 }
 
-export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'eval_attributes'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -4,6 +4,9 @@
 ``overmind sync down``   GET the server snapshot; overwrite the local file.
 ``overmind sync``        up, then down.
 
+``up`` also sends each synced capability's decorator ``expectations=``, read from the
+checkout next to the toml; they never enter the toml.
+
 When ``project-id`` is missing and the API key is account-scoped, ``up`` /
 ``sync`` creates a project via ``POST /api/projects/`` and writes the id back
 before pushing. Project-scoped keys still require an explicit ``project-id``.
@@ -20,6 +23,7 @@ import requests
 import typer
 from rich.console import Console
 
+from overmind.chassis import declared_expectations
 from overmind.config import (
     DEFAULT_PATH,
     Config,
@@ -223,7 +227,12 @@ def run_up(path: Path, api_key: str, api_url: str) -> Config:
         config, _ = ensure_project_id(config, path, key, url)
     except (SecretFileError, OSError, ValueError) as exc:
         raise SyncError(f"Could not persist the local project configuration: {exc}") from exc
-    snapshot = post_snapshot(url, key, config.to_snapshot())
+    snapshot = config.to_snapshot()
+    declared = declared_expectations(path.resolve().parent)
+    for body in snapshot["capabilities"]:
+        if body.get("id"):
+            body["expectations"] = declared.get(body["id"], [])
+    snapshot = post_snapshot(url, key, snapshot)
     config.apply_snapshot(snapshot)
     try:
         dump(config, path)

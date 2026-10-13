@@ -13,7 +13,6 @@ from rest_framework.routers import DefaultRouter
 from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APITokenListCreateView
 from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
-from overbae.api.behaviours import BehaviourViewSet, TaskExecutionViewSet
 from overbae.api.billing import (
     BillingLedgerView,
     CancelSubscriptionView,
@@ -31,13 +30,12 @@ from overbae.api.dataset_transfers import DatasetTransferViewSet
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.decision_performance import DecisionPerformanceViewSet
 from overbae.api.eval_views import (
+    EvalMatrixViewSet,
+    EvalRunRowViewSet,
     EvalRunViewSet,
-    EvalSampleViewSet,
+    EvalScoreViewSet,
     EvalSetViewSet,
-    EvaluatorViewSet,
     ModelCatalogView,
-    ScoreViewSet,
-    VerdictViewSet,
 )
 from overbae.api.guest import GuestClaimView, GuestStartView
 from overbae.api.health import health_check
@@ -47,6 +45,7 @@ from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
+from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
 from overbae.api.training_plans import TrainingPlanViewSet
@@ -119,14 +118,13 @@ router.register(
 router.register(r"optimizer-candidates", OptimizerCandidateViewSet, basename="optimizer-candidate")
 router.register(r"finetuning-jobs", FinetuningJobViewSet, basename="finetuningjob")
 router.register(r"deployed-models", DeployedModelViewSet, basename="deployedmodel")
-router.register(r"evaluators", EvaluatorViewSet, basename="evaluator")
+router.register(r"eval-matrix", EvalMatrixViewSet, basename="evalmatrix")
 router.register(r"eval-sets", EvalSetViewSet, basename="evalset")
 router.register(r"eval-runs", EvalRunViewSet, basename="evalrun")
-router.register(r"eval-samples", EvalSampleViewSet, basename="evalsample")
-router.register(r"eval-scores", ScoreViewSet, basename="evalscore")
-router.register(r"verdicts", VerdictViewSet, basename="verdict")
-router.register(r"behaviours", BehaviourViewSet, basename="behaviour")
-router.register(r"task-executions", TaskExecutionViewSet, basename="taskexecution")
+router.register(r"eval-run-rows", EvalRunRowViewSet, basename="evalrunrow")
+router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
+router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
+router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
 urlpatterns = [
     path(

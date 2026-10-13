@@ -36,9 +36,7 @@ def evaluate(mcp, dataset):
             "name": "candidate",
             "dataset": dataset,
             "judge_model": JUDGE,
-            "variants": [
-                {"mode": "generate", "model_name": "fake/candidate", "label": "candidate"}
-            ],
+            "targets": [{"mode": "generate", "model_name": "fake/candidate", "label": "candidate"}],
         },
     )
 

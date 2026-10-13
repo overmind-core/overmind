@@ -21,11 +21,13 @@ SECRET_INPUT_PARTS = {
 FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
 ALLOWED_LIFECYCLE_TOOLS = {
     "retry_deployment",
+    "delete_eval_matrix_row",
     "cancel_dataset",
     "retry_data_partition",
     "cancel_dataset_pipeline_run",
     "cancel_finetune",
 }
+DESTRUCTIVE_TOOLS = {"cancel_dataset", "delete_eval_matrix_row"}
 
 
 def _serialized_tools(permissions: frozenset[str]) -> bytes:
@@ -122,9 +124,8 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
     }
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
 
-    assert all(
-        definition.destructive == (definition.name == "cancel_dataset")
-        for definition in definitions.values()
+    assert {name for name, definition in definitions.items() if definition.destructive} == (
+        DESTRUCTIVE_TOOLS
     )
     assert all(
         definition.name in ALLOWED_LIFECYCLE_TOOLS

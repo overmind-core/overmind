@@ -7,11 +7,12 @@ description: Run or modify the seed_demo management command (the one-project Sup
 
 Seeds one project — **Support Copilot** at Ledgerline, a fictional payments
 company — with thirty days of traffic across three capabilities (ticket triage,
-KB answering, dispute resolution) and every downstream surface filled: tasks,
-executions and verdicts, sessions, datasets with immutable cell chains, eval
-runs, optimiser runs (harness, backtest, hybrid), training jobs with judge
-evals and class metrics, deployed models with inference traffic, and the
-credits ledger.
+KB answering, dispute resolution) and every downstream surface filled: an eval
+matrix and eval sets, live span and trajectory scores with `EvalScore` history,
+signal subscriptions and events, sessions, datasets with immutable cell chains,
+grouped eval runs, optimiser runs (harness, model comparison), training jobs
+with judge evals and class metrics, deployed models with inference traffic, and
+the credits ledger.
 
 ## Run
 
@@ -34,23 +35,19 @@ workers to re-drive seeded rows against **real providers** and spend credits:
 
 - Every `EvalRun` / `FinetuningJob` / `OptimizerExperiment` / dataset `Cell`
   is TERMINAL (reconcilers re-drive non-terminal rows within 10–60s).
-- `sweep_unscored_traces` selects roots by a two-hour `received_at` lookback
-  and re-scores a trace whose latest `ScoringPass.started` precedes the root's
-  `received_at`. So every trace is at least three hours old, every span's
-  `received_at` is backdated **in the same `_flush()` that inserts it** (the
-  sweep runs every two minutes; a batch left at "now" for even one tick gets
-  scored and its `TaskExecution` collides with the seed's), and every scored
-  trace has a `ScoringPass` whose `started` is after its spans landed.
-- A capability sync fires the evaluator preload and rebind hooks
-  (`sync_card_evaluators_task`, `preload_capability_eval_set`,
-  `enqueue_capability_eval_preload_on_commit`, `identity.enqueue_rebind`) and
-  the `sync_evaluators_on_card_change` signal; the seed patches them to no-ops
-  and disconnects the signal. Evaluator `updated_at` is backdated too, or the
-  "contract changed after the pass" rule rescores everything.
+- The span sweep re-scores any span whose `eval_attributes` lacks a `score`
+  key, and the trajectory sweep any root from the last day with a `score` but
+  no `trajectory`. So every span is written with a final `eval_attributes`
+  (children `score: None`), every root carries a `trajectory` block, and every
+  span's `received_at` is backdated **in the same `_flush()` that inserts it**.
+- Signal subscriptions are deterministic signals only; `plan_drift` calls the
+  judge on every run of the signal beat.
+- A capability sync fires the rebind hook (`identity.enqueue_rebind`); the seed
+  patches it to a no-op. The Default eval set upsert is synchronous and calls
+  no model.
 - The training monitor syncs each `FinetuningJobEval` score from its own
-  `EvalRun` summary, so every job eval links to a single-variant run
-  (`bench_runs`); a shared two-variant run collapses baseline and final to
-  the pooled score.
+  `EvalRun` summary, so every job eval links to its own single-target run
+  (`bench_runs`).
 - Connectors keep `auto_sync_enabled=False`.
 
 ## Mechanics
@@ -63,9 +60,9 @@ workers to re-drive seeded rows against **real providers** and spend credits:
   including each training job's `eval_cell`; it does not fabricate a semantic
   quality review. Live use reports missing reviews as warnings. The reset deletes
   jobs, experiments and eval runs before the project.
-- Eval run summaries come from the real `aggregate_run` task applied inline;
-  scores per variant are `Score` rows, so per-variant numbers are read from
-  `run.scores`, never recomputed from the summary.
+- An eval run is one target; a comparison is runs sharing a `group` with one
+  `is_baseline`. Each run's rows are `EvalRunRow`s with `dataset_row`
+  `EvalScore`s, and its summary comes from the real `innermind.runs.aggregate`.
 - When building the file in parts, formatter tooling can prune imports that are
   only used by later parts — restore the import block at the end.
 

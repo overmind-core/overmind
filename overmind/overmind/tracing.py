@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager, nullcontext
 from enum import Enum
-from functools import wraps
+from functools import partial, wraps
 from pathlib import Path, PurePath
 from typing import Any, TypeVar
 
@@ -392,12 +392,20 @@ def _declared_attributes(
     return declared
 
 
+def _parent_intent(parent_context: trace.Context | None) -> str | None:
+    """The intent the parent span carries, so a span is scored from its own attributes
+    before its ancestors reach the platform (children export before their parents)."""
+    intent = (getattr(trace.get_current_span(parent_context), "attributes", None) or {}).get(attrs.INTENT)
+    return intent if isinstance(intent, str) and intent else None
+
+
 def _span_processor_on_start(span: trace.Span, parent_context: trace.Context | None = None):
     """Resolve every newborn span's final stamps — the one place unit and key
     decisions are made. States, from the span's declared attributes plus the
     ambient context:
 
-    - every span: identity / workflow / conversation context values;
+    - every span: identity / workflow / conversation context values, and the
+      parent's intent unless the span declared its own;
     - handoff boundary (first span in a pending-turn capability scope):
       ``unit_kind="turn"``, overriding even a declared run — a sub-run
       entered through a handoff is that handoff's unit;
@@ -419,6 +427,8 @@ def _span_processor_on_start(span: trace.Span, parent_context: trace.Context | N
         span.set_attribute("conversation.id", str(conversation_id))
 
     declared = getattr(span, "attributes", None) or {}
+    if attrs.INTENT not in declared and (intent := _parent_intent(parent_context)):
+        span.set_attribute(attrs.INTENT, intent)
     kind = _boundary_kind(declared)
     pending = get_value(_CTX_KEY_PENDING_TURN)
     if isinstance(pending, _PendingTurn) and not pending.consumed:
@@ -930,6 +940,28 @@ def set_conversation_id(conversation_id: str) -> None:
     attach(set_value(attrs.CONVERSATION_ID, conversation_id))
 
 
+@contextmanager
+def session(conversation_id: str):
+    """Tag spans created inside the block with ``conversation.id``, then restore
+    the outer conversation on exit."""
+    token = attach(set_value(attrs.CONVERSATION_ID, conversation_id))
+    try:
+        yield
+    finally:
+        detach(token)
+
+
+def record_llm_call(model: str, total_tokens: int | None = None, cost: float | None = None) -> None:
+    """Stamp model, token and cost usage on the current span, for LLM clients the
+    provider instrumentations do not cover. Call once the response is back."""
+    span = trace.get_current_span()
+    _safe_set_attribute(span, attrs.LLM_MODEL, model)
+    if total_tokens is not None:
+        _safe_set_attribute(span, attrs.LLM_TOTAL_TOKENS, total_tokens)
+    if cost is not None:
+        _safe_set_attribute(span, attrs.LLM_COST, cost)
+
+
 # Matches the platform's slug convention (Capability.slug, Behaviour.slug):
 # lowercase, non-alphanumeric runs collapse to single hyphens. The one copy —
 # langgraph behaviour keys and handoff detection must agree.
@@ -1254,6 +1286,21 @@ def _validate_provenance(value: str | None) -> None:
         raise ValueError(f"provenance must be one of {sorted(_PROVENANCE_VALUES)}, got {value!r}")
 
 
+def _evaluation_attributes(
+    intent: str | None, expectations: Iterable[str], reference_trajectory: Iterable[str]
+) -> dict[str, Any]:
+    if isinstance(expectations, str) or isinstance(reference_trajectory, str):
+        raise TypeError("expectations and reference_trajectory take a list of strings")
+    declared: dict[str, Any] = {}
+    if intent is not None and intent.strip():
+        declared[attrs.INTENT] = intent.strip()
+    if items := [item.strip() for item in expectations if item.strip()]:
+        declared[attrs.EXPECTATIONS] = items
+    if names := [name.strip() for name in reference_trajectory if name.strip()]:
+        declared[attrs.REFERENCE_TRAJECTORY] = names
+    return declared
+
+
 def _validate_unit(value: str | None) -> None:
     if value is not None and value not in _UNIT_KINDS:
         raise ValueError(f"unit must be one of {sorted(_UNIT_KINDS)}, got {value!r}")
@@ -1299,6 +1346,7 @@ def _pop_evidence(trace_id: int | None) -> list[str]:
 
 # Type names never serialised into span attributes; matched by name to
 # avoid importing rich / opentelemetry for an isinstance check.
+_MISSING = object()
 _SKIP_INPUT_TYPES = frozenset({
     "Console",
     "Progress",
@@ -1357,6 +1405,17 @@ def _bound_arguments(func: Callable, args: tuple, kwargs: dict, ignore: frozense
     return {k: v for k, v in bound.items() if k not in ignore and not _should_skip_value(v)}
 
 
+def _receiver_state(func: Callable, args: tuple, names: tuple[str, ...], ignore: frozenset[str]) -> dict[str, Any]:
+    """Declared attributes of the bound receiver (``self``/``cls``); absent ones are skipped."""
+    if not names or not args:
+        return {}
+    first = next(iter(inspect.signature(func).parameters), None)
+    if first not in ("self", "cls"):
+        return {}
+    state = {name: getattr(args[0], name, _MISSING) for name in names if name not in ignore}
+    return {k: v for k, v in state.items() if v is not _MISSING and not _should_skip_value(v)}
+
+
 def _capture_inputs(
     otel_span,
     bound: dict[str, Any],
@@ -1394,6 +1453,22 @@ def _capture_output(
         otel_span.set_attribute("outputs", _json_dumps(payload))
     except Exception:
         logger.debug("observe(): output capture failed", exc_info=True)
+
+
+def capture_call_inputs(otel_span, func: Callable, args: tuple, kwargs: dict) -> dict[str, Any]:
+    """Stamp a decorated call's arguments as ``inputs``; returns them for the output capture."""
+    try:
+        bound = _bound_arguments(func, args, kwargs, frozenset())
+    except Exception:
+        logger.debug("capture: argument binding failed", exc_info=True)
+        return {}
+    _capture_inputs(otel_span, bound, "auto", None)
+    return bound
+
+
+def capture_call_output(otel_span, result: Any, bound: dict[str, Any]) -> None:
+    """Stamp a decorated call's return value as ``outputs``."""
+    _capture_output(otel_span, result, bound=bound)
 
 
 def code_identity_attributes(func: Callable) -> dict[str, str]:
@@ -1440,11 +1515,12 @@ def _traced_call(
     name: str,
     tool_name: str,
     span_type: SpanType,
-    declared: Mapping[str, str],
+    declared: Mapping[str, Any],
     capability_name: str | None,
     capability_id: str | None,
     capture: str,
     ignore: frozenset[str],
+    self_attrs: tuple[str, ...],
     format_input: Callable | None,
     format_output: Callable | None,
 ):
@@ -1463,6 +1539,10 @@ def _traced_call(
             if span_type is SpanType.TOOL:
                 _stamp_tool_metadata(otel_span, tool_name, bound)
             if capture != "none":
+                try:
+                    bound = {**_receiver_state(func, args, self_attrs, ignore), **bound}
+                except Exception:
+                    logger.debug("observe(): receiver capture failed for %s", name, exc_info=True)
                 _capture_inputs(otel_span, bound, capture, format_input)
             outcome = _Outcome()
             start = time.monotonic()
@@ -1497,8 +1577,12 @@ def observe(
     capability_id: str | None = None,
     capture: str = "auto",
     ignore: Iterable[str] = (),
+    self_attrs: Iterable[str] = (),
     format_input: Callable[[dict[str, Any]], Any] | None = None,
     format_output: Callable[[Any, dict[str, Any]], Any] | None = None,
+    intent: str | None = None,
+    expectations: Iterable[str] = (),
+    reference_trajectory: Iterable[str] = (),
 ) -> Callable[[F], F]:
     """Decorator (sync or async) that traces a function with the full
     evidence contract. No-op call-through when the SDK is not initialised.
@@ -1527,17 +1611,29 @@ def observe(
             list result into role/content chat evidence).
         ignore: Argument names never captured (heavy runtime objects,
             sessions, model handles).
+        self_attrs: Attributes of ``self``/``cls`` recorded as inputs next to
+            the arguments, for methods whose input lives on the instance,
+            e.g. ``self_attrs=["query"]`` on ``GPTResearcher.conduct_research``.
+            Missing attributes are skipped; the same scrubbing applies.
         format_input: Optional ``fn(bound_args) -> payload`` overriding input
-            capture.
+            capture; ``bound_args`` includes the ``self_attrs``.
         format_output: Optional ``fn(result, bound_args) -> payload``
             overriding output capture.
+        intent: What the user asked for, when the span's input does not say
+            it plainly; descendants inherit it.
+        expectations: One-sentence expectations the platform judges against
+            this span's output, e.g. ``["Cites the order id"]``.
+        reference_trajectory: Tool names this span's subtree should call, in
+            order; trajectory metrics compare the actual calls against it.
     """
     span_type = _coerce_span_type(type)
+    evaluation = _evaluation_attributes(intent, expectations, reference_trajectory)
     _validate_provenance(provenance)
     _validate_unit(unit)
     if capture not in _CAPTURE_MODES:
         raise ValueError(f"capture must be one of {sorted(_CAPTURE_MODES)}, got {capture!r}")
     ignore_set = frozenset(ignore)
+    self_attr_names = tuple(self_attrs)
 
     def decorator(func: F) -> F:
         static_name = span_name if isinstance(span_name, str) else None
@@ -1545,11 +1641,12 @@ def observe(
             name=static_name or func.__qualname__,
             tool_name=static_name or func.__name__,
             span_type=span_type,
-            declared=_declared_attributes(span_type, provenance, unit) | code_identity_attributes(func),
+            declared=_declared_attributes(span_type, provenance, unit) | code_identity_attributes(func) | evaluation,
             capability_name=capability,
             capability_id=capability_id,
             capture=capture,
             ignore=ignore_set,
+            self_attrs=self_attr_names,
             format_input=format_input,
             format_output=format_output,
         )
@@ -1647,29 +1744,10 @@ def _start_child_span(
             detach(token)
 
 
-def entry_point(name: str | None = None, **kwargs) -> Callable[[F], F]:
-    """Decorator that traces an entry point span (marked ``unit_kind = "run"``)."""
-    return observe(span_name=name, type=SpanType.ENTRY_POINT, **kwargs)
-
-
-def workflow(name: str | None = None, **kwargs) -> Callable[[F], F]:
-    """Decorator that traces a workflow span."""
-    return observe(span_name=name, type=SpanType.WORKFLOW, **kwargs)
-
-
-def tool(name: str | Callable[..., str] | None = None, **kwargs) -> Callable[[F], F]:
-    """Decorator that traces a tool span (adds ``tool.name`` / ``tool.arg_keys``).
-
-    ``name`` may be a callable receiving each call's arguments, so a
-    polymorphic dispatcher emits per-action tool spans from one decoration:
-    ``@tool(name=lambda self, action, **p: action)``. The span name and
-    ``tool.name`` both follow the resolved value."""
-    return observe(span_name=name, type=SpanType.TOOL, **kwargs)
-
-
-def retrieval(name: str | None = None, **kwargs) -> Callable[[F], F]:
-    """Decorator that traces a retrieval / RAG step span."""
-    return observe(span_name=name, type=SpanType.RETRIEVAL, **kwargs)
+entry_point = partial(observe, type=SpanType.ENTRY_POINT)  # decorator for entry point spans
+workflow = partial(observe, type=SpanType.WORKFLOW)  # decorator for workflow spans
+tool = partial(observe, type=SpanType.TOOL)  # decorator for tool spans
+retrieval = partial(observe, type=SpanType.RETRIEVAL)  # decorator for retrieval spans
 
 
 def _grounding_span_id(handle: Any) -> str:

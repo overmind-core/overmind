@@ -1,18 +1,17 @@
 import json
-from copy import deepcopy
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 from conftest import frozen_dataset, import_version
+from factories import make_matrix_row
 
-from overbae.models import Capability, Dataset, EvalRun, EvalVariant, Project
+from overbae.innermind import generation, runs
+from overbae.models import Capability, Dataset, EvalRun, Project
 from overbae.services.datasets import alignment, contract, land, paths, review, rows, store, use
 from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.partition import contamination_keys, split_rows
-from overbae.services.eval.context import snapshot_context
-from overbae.services.eval.sampling import select_rows
-from overbae.tasks.eval import _resolve_items, _sample_reference, _seed_from_datapoint
+from overbae.services.datasets.sampling import select_rows
 
 
 def example(index=1, mode="extraction"):
@@ -42,8 +41,7 @@ def test_eval_conversion_preserves_complete_request_and_is_idempotent():
         original = source.iloc[index]["messages"]
         assert record["input"]["messages"] == original[:-1]
         assert record["expected_output"] == original[-1]["content"]
-        seed, _, _ = _seed_from_datapoint(rows.row_from_record(index, record))
-        assert seed == original[:-1]
+        assert generation.row_seed(rows.row_from_record(index, record)).messages == original[:-1]
     assert prepared.equals(prepare_examples(prepared, "eval"))
     restored = prepare_examples(prepared, "train")
     assert restored["messages"].tolist() == source["messages"].tolist()
@@ -98,7 +96,7 @@ def test_eval_conversion_keeps_tool_results_and_schemas():
     prepared = prepare_examples(pd.DataFrame([record]), "eval").iloc[0].to_dict()
     assert prepared["input"]["messages"] == record["messages"][:-1]
     assert prepared["input"]["tools"] == record["tools"]
-    seed, _, _ = _seed_from_datapoint(rows.row_from_record(0, prepared))
+    seed = generation.row_seed(rows.row_from_record(0, prepared)).messages
     assert [turn["role"] for turn in seed] == ["system", "user", "assistant", "tool"]
     assert seed[-1]["content"] == "Entity 1 registered in GB"
     assert prepare_examples(pd.DataFrame([prepared]), "train").iloc[0]["tools"] == record["tools"]
@@ -120,12 +118,9 @@ def test_model_and_application_targets_remain_separate():
     prepared = prepare_examples(pd.DataFrame([record]), "eval").iloc[0].to_dict()
     assert prepared["expected_output"] == record["expected_output"]
     assert prepared["model_expected_output"] == record["messages"][-1]["content"]
-    item = {
-        "expected": prepared["expected_output"],
-        "model_expected": prepared["model_expected_output"],
-    }
-    assert _sample_reference(item, is_generate=True) == record["messages"][-1]["content"]
-    assert _sample_reference(item, is_generate=False) == record["expected_output"]
+    row = rows.row_from_record(0, prepared)
+    assert generation.reference_of(row, EvalRun.Mode.GENERATE) == record["messages"][-1]["content"]
+    assert generation.reference_of(row, EvalRun.Mode.RECORDED) == record["expected_output"]
     assert (
         prepare_examples(pd.DataFrame([prepared]), "train").iloc[0]["messages"]
         == record["messages"]
@@ -137,7 +132,7 @@ def test_prepared_request_keeps_prior_assistant_context_on_repeat_preparation():
     record["messages"].insert(-1, {"role": "assistant", "content": "Prior context"})
     prepared = prepare_examples(pd.DataFrame([record]), "eval")
     assert prepare_examples(prepared, "eval").equals(prepared)
-    seed, _, _ = _seed_from_datapoint(rows.row_from_record(0, prepared.iloc[0].to_dict()))
+    seed = generation.row_seed(rows.row_from_record(0, prepared.iloc[0].to_dict())).messages
     assert seed[-1]["content"] == "Prior context"
     assert prepare_examples(prepared, "train").iloc[0]["messages"] == record["messages"]
 
@@ -228,9 +223,7 @@ def test_mechanical_preparation_and_context_loss_record_impact_and_keep_source()
 def test_sampling_covers_the_whole_dataset_and_matches_across_runs():
     project = Project.objects.create(name="Sampling", slug="sampling-contract")
     source = pd.DataFrame([example(i, f"worker-{i // 30}") for i in range(90)])
-    dataset = frozen_dataset(
-        project, prepare_examples(source, "eval").to_dict(orient="records"), contract="eval"
-    )
+    dataset = frozen_dataset(project, prepare_examples(source, "eval").to_dict(orient="records"))
     selected = select_rows(dataset.active_cell, limit=12)
     assert len(selected) == 12
     assert {row.extra["mode"] for row in selected} == {"worker-0", "worker-1", "worker-2"}
@@ -239,16 +232,14 @@ def test_sampling_covers_the_whole_dataset_and_matches_across_runs():
         dataset=dataset,
         cell=dataset.active_cell,
         max_items=12,
-        data_source="dataset",
     )
     after = EvalRun.objects.create(
         project=project,
         dataset=dataset,
         cell=dataset.active_cell,
         max_items=12,
-        data_source="dataset",
     )
-    assert _resolve_items(before) == _resolve_items(after)
+    assert runs.selected_rows(before) == runs.selected_rows(after)
     assert len(select_rows(dataset.active_cell, limit=12, fraction=0.1)) == 9
 
 
@@ -262,21 +253,16 @@ def test_prompt_snapshot_does_not_follow_capability_edits():
         improvement_metadata={"system_prompt": "Canonical instruction"},
     )
     dataset = frozen_dataset(
-        project,
-        [{"input": "Evidence", "expected_output": "Entity"}],
-        capability=capability,
-        contract="eval",
+        project, [{"input": "Evidence", "expected_output": "Entity"}], capability=capability
     )
-    run = EvalRun.objects.create(project=project, dataset=dataset, cell=dataset.active_cell)
-    variant = EvalVariant.objects.create(run=run, mode="generate")
-    snapshot_context(run, [variant])
-    first = deepcopy(variant.params)
+    run = runs.create_run(
+        project=project,
+        cell=dataset.active_cell,
+        mode=EvalRun.Mode.GENERATE,
+        model_name="openai/gpt-5-mini",
+        matrix=[make_matrix_row(project, capability=capability).snapshot()],
+    )
     capability.improvement_metadata = {"system_prompt": "Changed instruction"}
     capability.save()
     run.refresh_from_db()
-    snapshot_context(run, [variant])
-    assert (
-        variant.params
-        == first
-        == {"execution_mode": "model", "system_prompt": "Canonical instruction"}
-    )
+    assert run.params == {"system_prompt": "Canonical instruction"}

@@ -111,7 +111,7 @@ establish full optimizer resume. Intermediate checkpoint byte export remains
 unavailable; the existing download handoff covers archived final deployments.
 
 Launch only the authorized model/configuration with `start_finetune`. Keep the
-selected data, benchmark, evaluator choices and expected spend in the receipt.
+selected data, benchmark, judge choice and expected spend in the receipt.
 Poll `get_job(kind=finetune_job, id=...)`, then inspect the linked deployment
 separately. Training completion, evaluation completion and serving readiness
 are distinct outcomes.

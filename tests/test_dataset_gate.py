@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.utils import timezone
+from factories import make_matrix_row
 from rest_framework.test import APIClient
 
 from overbae.api.serializers import FinetuningJobSerializer
@@ -18,8 +19,6 @@ from overbae.models import (
     Cell,
     Dataset,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
     Project,
     ProjectMembership,
     User,
@@ -46,17 +45,7 @@ def _job(project, capability, user, train, evaluation, **fields):
     eval_set = EvalSet.objects.create(
         project=project, capability=capability, name="Test evaluations"
     )
-    evaluator = Evaluator.objects.create(
-        project=project,
-        capability=capability,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        scope=Evaluator.Scope.FINAL_OUTPUT,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
-    )
+    eval_set.rows.add(make_matrix_row(project, capability=capability))
     return FinetuningJobSerializer(
         data={
             "project": str(project.id),

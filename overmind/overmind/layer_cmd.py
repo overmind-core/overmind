@@ -211,31 +211,25 @@ def _require_models(client: Client, models: list[str], *, finetune: bool) -> Non
         raise LayerError(f"Unknown model: {', '.join(missing)}.")
 
 
-def _judge_errors(run: dict[str, Any], label: str) -> int:
-    by_variant = ((run.get("summary") or {}).get("error_counts") or {}).get("by_variant") or {}
-    for row in by_variant.values():
-        if isinstance(row, dict) and row.get("label") == label:
-            return int(row.get("evaluator_errors") or 0)
-    return 0
+def _metric_errors(run: dict[str, Any]) -> int:
+    metrics = (run.get("summary") or {}).get("metrics") or {}
+    return sum(int(row.get("errors") or 0) for row in metrics.values() if isinstance(row, dict))
 
 
-def _gate(run: dict[str, Any], models: list[str]) -> int:
-    comparison = (run.get("summary") or {}).get("baseline_comparison") or {}
-    rows = {row.get("label"): row for row in comparison.get("variants") or []}
-    failed = _judge_errors(run, "recorded") > 0
+def _gate(client: Client, baseline: dict[str, Any], candidates: list[dict[str, Any]]) -> int:
+    failed = _metric_errors(baseline) > 0
     console.print(f"{'recorded':<40} {'unscored' if failed else 'baseline'}")
-    for model in models:
-        row = rows.get(model)
-        overall = (row or {}).get("overall") or {}
+    for run in candidates:
+        overall = client.get(f"/api/eval-runs/{run['id']}/comparison/").get("overall") or {}
         status = overall.get("status") or "missing"
-        errors = _judge_errors(run, model)
+        errors = _metric_errors(run)
         if errors and status in _PASS:
             status = "unscored"
-        current = (overall.get("current") or {}).get("primary")
+        candidate = overall.get("candidate")
         delta = overall.get("delta")
-        score = "" if current is None else f"{current:.3f}"
+        score = "" if candidate is None else f"{candidate:.3f}"
         change = "" if delta is None else f"{delta:+.3f}"
-        console.print(f"{model:<40} {score:<8} {status:<12} {change}")
+        console.print(f"{run['label']:<40} {score:<8} {status:<12} {change}")
         if status not in _PASS or errors:
             failed = True
     return 1 if failed else 0
@@ -283,21 +277,19 @@ def run_backtest(
     kept = (dataset.get("source_spec") or {}).get("kept")
     skipped = (dataset.get("source_spec") or {}).get("skipped")
     console.print(f"{kept if kept is not None else dataset.get('rows')} calls, {skipped or 0} skipped")
-    variants = [
-        {"label": "recorded", "mode": "existing", "is_baseline": True, "order": 0},
+    targets = [
+        {"label": "recorded", "mode": "recorded", "is_baseline": True},
         *[
             {
                 "label": model,
                 "mode": "generate",
                 "model_name": model,
-                "is_baseline": False,
-                "order": index + 1,
                 "params": {"generation_strategy": "single_completion"},
             }
-            for index, model in enumerate(models)
+            for model in models
         ],
     ]
-    run = client.post(
+    group = client.post(
         "/api/eval-runs/",
         {
             "project": project_id,
@@ -306,13 +298,12 @@ def run_backtest(
             "cell": _cell_id(dataset),
             "eval_set": eval_set,
             "max_items": int(dataset.get("rows") or limit),
-            "variants_input": variants,
+            "targets": targets,
         },
     )
-    if not run.get("run_evaluators"):
-        raise LayerError("The eval set has no generative evaluators.")
-    finished = client.wait_eval(str(run["id"]), deadline=deadline)
-    return _gate(finished, models)
+    finished = [client.wait_eval(str(run["id"]), deadline=deadline) for run in group["runs"]]
+    baseline = next(run for run in finished if run.get("is_baseline"))
+    return _gate(client, baseline, [run for run in finished if not run.get("is_baseline")])
 
 
 def run_finetune(

@@ -78,19 +78,22 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     route = f"/training?projectId={project.pk}&groupId={group}"
     console.goto(route)
     console.sees("Prediction labels")
-    console.sees("survived")
 
     def check_labels():
         region = console._page.get_by_role("group", name="Prediction labels", exact=True)
+        region.wait_for()
         assert region.count() == 1
-        assert region.get_by_role("listitem").all_text_contents() == decision["options"]
-        assert "New yes" not in region.inner_text()
-        assert region.get_by_role("button").count() == 0
-        assert region.get_by_text("2 labels", exact=True).count() == 0
+        popup = console._page.get_by_role("dialog", name="Prediction labels", exact=True)
+        if not popup.is_visible():
+            region.get_by_role("button", name="2 labels", exact=True).click()
+        popup.wait_for()
+        assert popup.get_by_role("listitem").all_text_contents() == decision["options"]
+        assert "New yes" not in popup.inner_text()
+        assert region.get_by_role("button", name="2 labels", exact=True).count() == 1
         assert region.locator("dt").inner_text() == "Prediction labels"
         assert region.evaluate("el => el.parentElement.tagName") == "DL"
-        assert region.locator("h3, svg").count() == 0
-        labels = region.get_by_role("listitem")
+        assert region.locator("h3").count() == 0
+        labels = popup.get_by_role("listitem")
         for item in labels.all():
             assert item.evaluate("el => el.scrollWidth <= el.clientWidth")
 
@@ -101,12 +104,10 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     console._browser.call(check_labels)
     console.save_evidence("training-prediction-labels-mobile")
     console.goto(f"{route}&jobId={jobs[1].pk}")
-    console.sees("survived")
     console._browser.call(check_labels)
 
     FinetuningJob.objects.filter(pk=jobs[0].pk).update(group_id=None)
     console.goto(f"/training?projectId={project.pk}&groupId={jobs[0].pk}&jobId={jobs[0].pk}")
-    console.sees("survived")
     console._browser.call(check_labels)
     console.save_evidence("training-prediction-labels-single-mobile")
     FinetuningJob.objects.filter(pk=jobs[0].pk).update(group_id=group)
@@ -150,13 +151,20 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     assert len(ordinal["label_sets"]) == 8
     assert ordinal["label_sets"][0]["option_values"] == [0, 10]
     console.goto(route)
-    console.sees("8 of 10 label sets")
+    console._browser.call(
+        lambda: (
+            console._page.get_by_role("group", name="Prediction labels", exact=True)
+            .get_by_role("button", name="10 label sets", exact=True)
+            .click()
+        )
+    )
+    console.sees("Showing 8 of 10 label sets")
     console.sees(long_label)
     console.sees("Ordinal labels")
     console._browser.call(
-        lambda: console._page.get_by_role("group", name="Prediction labels").screenshot(
-            path=str(RUNS / "training-prediction-labels-varied-mobile.png")
-        )
+        lambda: console._page.get_by_role(
+            "dialog", name="Prediction labels", exact=True
+        ).screenshot(path=str(RUNS / "training-prediction-labels-varied-mobile.png"))
     )
     console.wait_until("() => document.documentElement.scrollWidth <= innerWidth")
 

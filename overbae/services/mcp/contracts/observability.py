@@ -18,30 +18,30 @@ class InspectCapabilityHealthInput(MCPModel):
     days: int = Field(default=30, ge=1, le=365)
 
 
-class HealthEvaluator(MCPModel):
-    evaluator: str
+class HealthMetric(MCPModel):
+    metric: str
+    type: str = ""
     n: int = Field(ge=0)
-    avg_value: float | None = None
+    avg_score: float | None = None
     pass_rate: float | None = None
     n_failed: int = Field(ge=0)
+    n_errors: int = Field(ge=0)
     pass_rate_delta: float | None = None
-    avg_value_delta: float | None = None
+    avg_score_delta: float | None = None
 
 
-class HealthScores(MCPModel):
-    total: int = Field(ge=0)
-    graded: int = Field(ge=0)
-    overall_pass_rate: float | None = None
-    outcomes: dict[str, int] = Field(default_factory=dict)
-    evaluators: list[HealthEvaluator] = Field(max_length=50)
-
-
-class LiveTraceHealth(MCPModel):
-    traces_in_window: int = Field(ge=0)
-    traces_scored: int = Field(ge=0)
+class LiveScoring(MCPModel):
+    spans: int = Field(ge=0)
+    scored: int = Field(ge=0)
+    abstained: int = Field(ge=0)
+    errored: int = Field(ge=0)
+    pending: int = Field(ge=0)
     coverage: float | None = None
-    overall_pass_rate: float | None = None
-    evaluators: list[HealthEvaluator] = Field(max_length=50)
+    avg_score: float | None = None
+    pass_rate: float | None = None
+    trajectories: int = Field(ge=0)
+    avg_trajectory_score: float | None = None
+    metrics: list[HealthMetric] = Field(max_length=50)
 
 
 class TraceHealth(MCPModel):
@@ -55,8 +55,7 @@ class TraceHealth(MCPModel):
 class InspectCapabilityHealthOutput(MCPModel):
     days: int = Field(ge=1, le=365)
     capability: str | None = None
-    scores: HealthScores
-    live_trace_scores: LiveTraceHealth
+    scoring: LiveScoring
     traces: TraceHealth
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=1)
     summary: str = Field(min_length=1, max_length=240)
@@ -69,8 +68,9 @@ class QueryFailuresInput(MCPModel):
 
 
 class FailureScore(MCPModel):
-    evaluator: str = ""
-    reasoning: str = ""
+    metric: str
+    score: float | None = None
+    reason: str = ""
 
 
 class FailureRow(MCPModel):
@@ -154,6 +154,8 @@ class TraceRow(MCPModel):
     total_cost: float | None = None
     model: str | None = None
     trace_status: str
+    eval_score: float | None = None
+    trajectory_score: float | None = None
     resource: ResourceLinkContract
 
 
@@ -162,63 +164,6 @@ class QueryTracesOutput(MCPModel):
     n: int = Field(ge=0, le=MAX_ROWS)
     page: PageContract
     all_spans: bool
-    resource_links: list[ResourceLinkContract] = Field(max_length=MAX_ROWS)
-    summary: str = Field(min_length=1, max_length=240)
-
-
-class QueryTaskExecutionsInput(MCPModel):
-    capability: str | None = Field(default=None, min_length=1, max_length=255)
-    behaviour: str | None = Field(default=None, min_length=1, max_length=255)
-    binding_source: str | None = Field(default=None, min_length=1, max_length=20)
-    trace_id: str | None = Field(default=None, min_length=1, max_length=32)
-    status: str | None = Field(default=None, min_length=1, max_length=20)
-    started_after: datetime | None = None
-    started_before: datetime | None = None
-    min_duration_ms: int | None = Field(default=None, ge=0)
-    max_duration_ms: int | None = Field(default=None, ge=0)
-    has_error: bool | None = None
-    service_name: str | None = Field(default=None, min_length=1, max_length=255)
-    operation: str | None = Field(default=None, min_length=1, max_length=512)
-    span_type: str | None = Field(default=None, min_length=1, max_length=40)
-    status_code: int | None = Field(default=None, ge=0, le=2)
-    model: str | None = Field(default=None, min_length=1, max_length=255)
-    has_model: bool | None = None
-    total_tokens_gte: float | None = Field(default=None, ge=0)
-    total_tokens_lte: float | None = Field(default=None, ge=0)
-    total_cost_gte: float | None = Field(default=None, ge=0)
-    total_cost_lte: float | None = Field(default=None, ge=0)
-    limit: int = Field(default=20, ge=1, le=MAX_ROWS)
-    offset: int = Field(default=0, ge=0)
-
-
-class TaskExecutionRow(MCPModel):
-    id: str
-    capability: str | None = None
-    behaviour: str | None = None
-    behaviour_key: str = ""
-    trace_id: str
-    unit_span_id: str
-    conversation_id: str = ""
-    binding_source: str
-    success_score: float | None = None
-    session_score: float | None = None
-    session_rationale: str = ""
-    route_flags: list[Any] = Field(default_factory=list)
-    terminal_kind: str = ""
-    status: str
-    started_at: datetime | None = None
-    duration_ms: int | None = None
-    total_tokens: int | None = None
-    total_cost: float | None = None
-    model: str | None = None
-    scoring_pending: bool = False
-    resource: ResourceLinkContract
-
-
-class QueryTaskExecutionsOutput(MCPModel):
-    task_executions: list[TaskExecutionRow] = Field(max_length=MAX_ROWS)
-    n: int = Field(ge=0, le=MAX_ROWS)
-    page: PageContract
     resource_links: list[ResourceLinkContract] = Field(max_length=MAX_ROWS)
     summary: str = Field(min_length=1, max_length=240)
 

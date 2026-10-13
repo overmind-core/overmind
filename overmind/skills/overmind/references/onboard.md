@@ -38,6 +38,7 @@ To recreate a project: delete it in the Console, clear `project-id` in the toml,
 
 ## Scan and sync capabilities
 
-Follow [setup.md](setup.md) end-to-end, retaining the shared stage numbering
-and final `overmind sync`. That workflow owns scan progress and completion;
-do not run an additional sync after it succeeds.
+Follow [setup.md](setup.md) end-to-end, retaining the shared stage numbering,
+the `overmind sync`, the decorators it applies afterwards and the sync that
+follows them. That workflow owns
+scan progress and completion; do not run an additional sync after it succeeds.

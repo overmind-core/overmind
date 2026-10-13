@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
-import type { Span, TraceDetail, TracesListRequest, Verdict } from "@/openapi";
+import type { Span, TraceDetail, TracesListRequest } from "@/openapi";
 
 export function spanStatusLabel(statusCode: number): string {
   if (statusCode === 2) return "error";
@@ -16,14 +16,11 @@ export interface SpanEvent {
   timeUnixNano?: number;
 }
 
-// Per-evaluator grade on a span: a Verdict row, or the invocations-summary
-// entry the scorer leaves in `Span.feedback_score.trace_scoring`.
+/** One eval matrix row's grade on a span, from `Span.eval_attributes.metrics`. */
 export interface TraceScoreEntry {
   score: number | null;
-  passed: boolean | null;
-  outcome: string;
+  outcome: "scored" | "abstained" | "error";
   rationale: string;
-  lane?: string;
 }
 
 export interface SpanRow {
@@ -52,125 +49,51 @@ export interface SpanRow {
   capability: string | null;
   capabilityName: string | null;
 
-  // Keyed by evaluator name.
+  // Keyed by matrix row name.
   traceScores: Record<string, TraceScoreEntry>;
-  executionConflict: ExecutionConflict | null;
-  skippedMembers: string[];
+  evalMetrics: unknown;
+  evalScore: number | null;
+  trajectoryScore: number | null;
 }
 
-function extractTraceScores(feedbackScore: unknown): Record<string, TraceScoreEntry> {
-  if (feedbackScore == null || typeof feedbackScore !== "object") return {};
-  const block = (feedbackScore as Record<string, unknown>).trace_scoring;
-  if (block == null || typeof block !== "object") return {};
+function evalBlock(evalAttributes: unknown): Record<string, unknown> {
+  return evalAttributes != null && typeof evalAttributes === "object"
+    ? (evalAttributes as Record<string, unknown>)
+    : {};
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function extractTraceScores(evalAttributes: unknown): Record<string, TraceScoreEntry> {
+  const metrics = evalBlock(evalAttributes).metrics;
+  if (metrics == null || typeof metrics !== "object") return {};
   const out: Record<string, TraceScoreEntry> = {};
-  for (const [name, entry] of Object.entries(block as Record<string, unknown>)) {
-    // `_`-prefixed keys are composed markers, not evaluator entries.
-    if (name.startsWith("_") || entry == null || typeof entry !== "object") continue;
-    out[name] = entry as TraceScoreEntry;
-  }
-  return out;
-}
-
-/** Enabled members the pass excluded persist as `not_applicable` rows with a
- *  `skip:*` clause — display surfaces never show them as grades. */
-function isSkipVerdict(verdict: Verdict): boolean {
-  return (
-    verdict.outcome === "not_applicable" &&
-    Array.isArray(verdict.unmet) &&
-    verdict.unmet.some((clause) => typeof clause === "string" && clause.startsWith("skip:"))
-  );
-}
-
-/**
- * Latest displayable verdicts keyed by span id then evaluator name. Expects
- * the API's newest-first ordering (`-updated_at`), so the first row per
- * (span, evaluator) is the latest rescore series.
- */
-function verdictScoresBySpan(
-  verdicts: readonly Verdict[]
-): Record<string, Record<string, TraceScoreEntry>> {
-  const out: Record<string, Record<string, TraceScoreEntry>> = {};
-  for (const verdict of verdicts) {
-    if (isSkipVerdict(verdict)) continue;
-    if (verdict.evaluatorName === "grounding" && verdict.outcome !== "scored") continue;
-    out[verdict.targetId] ??= {};
-    const spanScores = out[verdict.targetId];
-    if (spanScores[verdict.evaluatorName]) continue;
-    spanScores[verdict.evaluatorName] = {
-      outcome: verdict.outcome,
-      passed: verdict.passed,
-      rationale: verdict.explanation,
-      score: verdict.score,
+  for (const [name, raw] of Object.entries(metrics as Record<string, unknown>)) {
+    if (raw == null || typeof raw !== "object") continue;
+    const m = raw as Record<string, unknown>;
+    const error = typeof m.error === "string" ? m.error : "";
+    const reason = typeof m.reason === "string" ? m.reason : "";
+    out[name] = {
+      outcome: error ? "error" : m.verdict === "abstain" ? "abstained" : "scored",
+      rationale: error || reason,
+      score: finiteOrNull(m.score),
     };
   }
   return out;
 }
 
-// Stamped by the composer into `trace_scoring._execution.conflict` when
-// outcome-lane judges land >0.5 apart instead of averaging silently.
-export interface ExecutionConflict {
-  lane: string;
-  spread: number;
-  members: Record<string, number>;
+function extractTrajectoryScore(evalAttributes: unknown): number | null {
+  const trajectory = evalBlock(evalAttributes).trajectory;
+  return trajectory != null && typeof trajectory === "object"
+    ? finiteOrNull((trajectory as Record<string, unknown>).score)
+    : null;
 }
 
-export function extractExecutionConflict(feedbackScore: unknown): ExecutionConflict | null {
-  if (feedbackScore == null || typeof feedbackScore !== "object") return null;
-  const block = (feedbackScore as Record<string, unknown>).trace_scoring;
-  if (block == null || typeof block !== "object") return null;
-  const execution = (block as Record<string, unknown>)._execution;
-  if (execution == null || typeof execution !== "object") return null;
-  const conflict = (execution as Record<string, unknown>).conflict;
-  if (conflict == null || typeof conflict !== "object") return null;
-  const { lane, spread, members } = conflict as Record<string, unknown>;
-  if (typeof spread !== "number" || members == null || typeof members !== "object") return null;
-  const numeric = Object.entries(members as Record<string, unknown>).filter(
-    (pair): pair is [string, number] => typeof pair[1] === "number"
-  );
-  if (numeric.length < 2) return null;
-  return {
-    lane: typeof lane === "string" ? lane : "",
-    members: Object.fromEntries(numeric),
-    spread,
-  };
-}
-
-/** Names only — the skip reason lives on the Verdict row. */
-export function extractSkippedMembers(feedbackScore: unknown): string[] {
-  if (feedbackScore == null || typeof feedbackScore !== "object") return [];
-  const block = (feedbackScore as Record<string, unknown>).trace_scoring;
-  if (block == null || typeof block !== "object") return [];
-  const skipped = (block as Record<string, unknown>)._skipped_members;
-  if (!Array.isArray(skipped)) return [];
-  return skipped.filter((name): name is string => typeof name === "string");
-}
-
-/**
- * The task execution score for a trace: the scorer-persisted
- * `trace_scoring._execution.score`. The only score copy on the span —
- * per-evaluator grades live on Verdict rows.
- */
-function extractExecutionScore(feedbackScore: unknown): number | null {
-  if (feedbackScore == null || typeof feedbackScore !== "object") return null;
-  const block = (feedbackScore as Record<string, unknown>).trace_scoring;
-  if (block == null || typeof block !== "object") return null;
-  const execution = (block as Record<string, unknown>)._execution;
-  if (execution == null || typeof execution !== "object") return null;
-  const score = (execution as Record<string, unknown>).score;
-  return typeof score === "number" && Number.isFinite(score) ? score : null;
-}
-
-/** How many evaluators graded the unit — `trace_scoring._execution.evaluations`. */
-function extractEvaluationsCount(feedbackScore: unknown): number {
-  if (feedbackScore == null || typeof feedbackScore !== "object") return 0;
-  const block = (feedbackScore as Record<string, unknown>).trace_scoring;
-  if (block == null || typeof block !== "object") return 0;
-  const execution = (block as Record<string, unknown>)._execution;
-  if (execution != null && typeof execution === "object") {
-    const evaluations = (execution as Record<string, unknown>).evaluations;
-    if (typeof evaluations === "number" && Number.isFinite(evaluations)) return evaluations;
-  }
-  return Object.keys(extractTraceScores(feedbackScore)).length;
+/** The trace's headline: the trajectory score when the root carries one, else the span score. */
+function extractEvalScore(evalAttributes: unknown): number | null {
+  return extractTrajectoryScore(evalAttributes) ?? finiteOrNull(evalBlock(evalAttributes).score);
 }
 
 function pickNumber(attrs: Record<string, unknown>, ...keys: string[]): number | null {
@@ -241,8 +164,9 @@ const transformSpan = (span: Span): SpanRow => {
     capabilityName,
     durationNano,
     endTimeUnixNano: endNano,
+    evalMetrics: evalBlock(span.evalAttributes).metrics ?? null,
+    evalScore: finiteOrNull(evalBlock(span.evalAttributes).score),
     events: Array.isArray(span.events) ? (span.events as SpanEvent[]) : [],
-    executionConflict: extractExecutionConflict(span.feedbackScore),
     inputs:
       attrs["overmind.input_data"] ??
       attrs["overmind.input.data"] ??
@@ -260,7 +184,6 @@ const transformSpan = (span: Span): SpanRow => {
     parentSpanId: span.parentSpanId || null,
     policyOutcome: (attrs.policy_outcome as string) ?? null,
     scopeName,
-    skippedMembers: extractSkippedMembers(span.feedbackScore),
     spanAttributes: attrs,
     spanId: span.spanId,
     spanType: pickSpanType(attrs, scopeName),
@@ -280,7 +203,8 @@ const transformSpan = (span: Span): SpanRow => {
       reportedTotalTokens ??
       (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null),
     traceId: span.traceId ?? "",
-    traceScores: extractTraceScores(span.feedbackScore),
+    traceScores: extractTraceScores(span.evalAttributes),
+    trajectoryScore: extractTrajectoryScore(span.evalAttributes),
   };
 };
 
@@ -307,9 +231,7 @@ export interface TraceRow {
   model?: string | null;
   score?: number;
   evaluations?: number;
-  conflict?: ExecutionConflict | null;
   error?: string | null;
-  scoringPending?: boolean;
   source?: string;
   readonly createdAt: string;
   readonly startTimeNs: number;
@@ -409,9 +331,8 @@ function mapTraceListRow(row: {
   totalCost?: number | null;
   totalTokens?: number | null;
   traceId: string;
-  feedbackScore?: unknown;
+  evalAttributes?: unknown;
   source?: string | null;
-  scoringPending?: boolean | null;
   traceStatus?: string | null;
 }): TraceRow {
   const createdAt =
@@ -421,17 +342,15 @@ function mapTraceListRow(row: {
     applicationName: row.name ?? undefined,
     capability: row.capability,
     capabilityName: row.capabilityName ?? null,
-    conflict: extractExecutionConflict(row.feedbackScore),
     createdAt,
     durationNs: row.durationNs ?? undefined,
     error: row.statusCode === 2 ? statusMessage || "error" : null,
-    evaluations: extractEvaluationsCount(row.feedbackScore),
+    evaluations: Object.keys(extractTraceScores(row.evalAttributes)).length,
     model: row.model ?? null,
     operation: row.operation ?? undefined,
     parentSpanId: null,
     project: row.project,
-    score: extractExecutionScore(row.feedbackScore) ?? undefined,
-    scoringPending: row.scoringPending ?? undefined,
+    score: extractEvalScore(row.evalAttributes) ?? undefined,
     serviceName: row.serviceName ?? undefined,
     source: row.source ?? undefined,
     spanId: row.spanId,
@@ -479,20 +398,8 @@ export function useTracesList(params: TracesListParams) {
 export type TraceDetailView = TraceDetail & { transformedSpans: SpanRow[] };
 
 async function fetchTraceDetail(traceId: string): Promise<TraceDetailView> {
-  const [data, verdictPage] = await Promise.all([
-    apiClient.traces.tracesRetrieve({ traceId }),
-    apiClient.verdicts.verdictsList({ pageSize: 1000, traceId }),
-  ]);
-  const verdictScores = verdictScoresBySpan(verdictPage.results ?? []);
-  return {
-    ...data,
-    transformedSpans: (data.spans ?? []).map((span) => {
-      const row = transformSpan(span);
-      // Verdict rows carry the per-evaluator grades; the slim block only
-      // contributes the invocations summary on a multi-entry root.
-      return { ...row, traceScores: { ...verdictScores[row.spanId], ...row.traceScores } };
-    }),
-  };
+  const data = await apiClient.traces.tracesRetrieve({ traceId });
+  return { ...data, transformedSpans: (data.spans ?? []).map(transformSpan) };
 }
 
 // A live trace refetches until the root span arrives or the settle window passes.

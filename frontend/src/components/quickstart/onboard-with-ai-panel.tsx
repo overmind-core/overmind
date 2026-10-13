@@ -21,7 +21,7 @@ import {
 import { writeAccountApiKey } from "@/lib/project-api-key";
 import { LABEL } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { APITokenScopeScopeEnum } from "@/openapi";
+import { ScopeEnum } from "@/openapi";
 
 export function OnboardWithAiPanel({
   className,
@@ -58,7 +58,7 @@ export function OnboardWithAiPanel({
       const response = await apiClient.auth.authApiKeysCreate({
         aPITokenCreateRequestRequest: {
           name: `Onboarding — ${new Date().toISOString().slice(0, 10)}`,
-          scope: { scope: APITokenScopeScopeEnum.account },
+          scope: { scope: ScopeEnum.account },
         },
       });
       writeAccountApiKey(response.key, apiUrl);

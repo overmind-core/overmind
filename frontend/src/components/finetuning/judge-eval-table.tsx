@@ -4,11 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { EntityRef } from "@/components/entity-ref";
-import {
-  aggregateEvaluator,
-  type ComparisonSummary,
-  primaryValue,
-} from "@/components/evaluations/run-comparison";
+import { asRunSummary, metricEntries } from "@/components/evaluations/run-comparison";
 import type { EvaluationDisplayRow } from "@/components/finetuning/evaluation-plan";
 import { DeltaChip, EvalScoreChip, FtStatusBadge } from "@/components/finetuning/finetuning-chrome";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
@@ -115,9 +111,8 @@ function EvalRunBreakdownRows({
     queryKey: ["eval-run", runId],
   });
   if (isPending) return <BreakdownNoteRow cols={cols}>Loading test scores…</BreakdownNoteRow>;
-  const summary = (data?.summary ?? null) as ComparisonSummary | null;
-  const metrics = (summary?.metrics ?? [])
-    .map((name) => ({ name, score: primaryValue(aggregateEvaluator(summary!, name)) }))
+  const metrics = metricEntries(asRunSummary(data?.summary))
+    .map(([name, metric]) => ({ name, score: metric.mean }))
     .filter((m): m is { name: string; score: number } => m.score != null);
   if (metrics.length === 0) {
     return <BreakdownNoteRow cols={cols}>No per-test scores for this run.</BreakdownNoteRow>;

@@ -127,11 +127,11 @@ def handle(request: dict, session_id: str) -> dict:
         return answer
 ```
 
-`providers="auto"` instruments the LLM SDKs you already use over OpenTelemetry; without a key, tracing is off and nothing breaks. Any OTel exporter can `POST /api/v1/traces` instead, and existing traces in Langfuse, LangSmith, Braintrust or Galileo can be synced through a connector. Open **Observability → Task executions** to see the trace and its score.
+`providers="auto"` instruments the LLM SDKs you already use over OpenTelemetry; without a key, tracing is off and nothing breaks. Any OTel exporter can `POST /api/v1/traces` instead, and existing traces in Langfuse, LangSmith, Braintrust or Galileo can be synced through a connector. Open **Observability** to see the trace and its score.
 
 ## Connect your coding agent
 
-Overmind ships an MCP server at `/api/mcp/` with tools, resources and prompts for the platform's agent workflows. Account API keys and OAuth connections can access every active project their account is authorized to use: call `list_projects`, then pass the selected `project_id` on project tools and resource URIs. Membership is checked on every operation. Project API keys remain limited to their configured project. Every tool declares what it costs to run (`free`, `compute`, `llm`, `gpu`) and none can delete anything.
+Overmind ships an MCP server at `/api/mcp/` with tools, resources and prompts for the platform's agent workflows. Account API keys and OAuth connections can access every active project their account is authorized to use: call `list_projects`, then pass the selected `project_id` on project tools and resource URIs. Membership is checked on every operation. Project API keys remain limited to their configured project. Every tool declares what it costs to run (`free`, `compute`, `llm`, `gpu`) and whether it is destructive. Evaluation matrix rows can be deleted through their scoped lifecycle tool.
 
 The [optional plugin](overmind/README.md#mcp-and-optional-plugins) packages the MCP connection, Overmind branding and nine workflow skills. OAuth connections remain authorized until revoked; access tokens expire after one hour and refresh tokens rotate. Direct MCP connections can use an API key without OAuth or a plugin.
 

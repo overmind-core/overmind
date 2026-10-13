@@ -104,8 +104,8 @@ does not change live routing or capability defaults. If omitted, the capability'
 `set_benchmark_model` changes that API default only. Existing jobs retain their selection.
 All chat checks can be disabled; no chat eval dataset or eval set is then required. Baseline evaluations launch concurrently with training and do not gate
 training submission. The fine-tune resource exposes the saved `evaluation_plan`.
-Before/after runs share a pinned dataset version, a prompt snapshot and evaluator
-snapshots. Every selected evaluation runs every row of that version, without
+Before/after runs share a pinned dataset version, a prompt snapshot and one
+frozen eval matrix snapshot, in one run group. Every selected evaluation runs every row of that version, without
 sampling or a row cap. Include the full dataset in evaluation cost approval.
 These are model evaluations using recorded evidence, not live application runs.
 

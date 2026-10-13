@@ -1,9 +1,7 @@
 from types import SimpleNamespace
 
-from overbae.services.eval.evaluators.base import EvalUnit, resolve_variables
-from overbae.services.eval.normalizer import reconstruct_spans
-from overbae.services.eval.rubric_compiler import build_judge_prompt
-from overbae.services.eval.span_evidence import (
+from overbae.services.transcripts.normalizer import reconstruct_spans
+from overbae.services.transcripts.span_evidence import (
     build_span_tree,
     produced_identity_fields,
     render_span_tree,
@@ -125,66 +123,6 @@ def test_reconstruct_spans_attaches_span_tree():
     traj = reconstruct_spans([llm])
     assert traj["span_tree"]
     assert traj["span_tree"][0]["id"] == "llm"
-
-
-def test_binding_finds_rows_on_span_tree_not_chatml_wrapper():
-    unit = EvalUnit(
-        trajectory={
-            "messages": [
-                {
-                    "role": "tool",
-                    "content": '{"status":"success","value":{"content":[{"text":{"text":""}}]}}',
-                }
-            ],
-            "span_tree": [
-                {
-                    "name": "workshop.tool.mcp",
-                    "tool": "sample_rows",
-                    "outputs": {"rows": [{"id": "40767A"}], "n": 1},
-                    "children": [],
-                }
-            ],
-            "final_output": "analysis",
-        }
-    )
-    resolved = resolve_variables(unit, [{"var": "rows", "source": "span_tree"}])
-    assert "40767A" in resolved["rows"]
-
-
-def test_judge_prompt_defaults_to_span_tree():
-    ev = SimpleNamespace(
-        rubric_md="grade it",
-        checklist=[{"id": "a", "q": "ok?", "weight": 1}],
-        score_type="numeric",
-        score_min=0,
-        score_max=1,
-        choices=None,
-        config={},
-    )
-    prompt = build_judge_prompt(ev, {"output": "hi"}, span_tree="- workshop.tool.mcp → sample_rows")
-    assert "span_tree (full execution graph" in prompt
-    assert "sample_rows" in prompt
-    assert prompt.index("span_tree") < prompt.index("output:")
-
-
-def test_judge_prompt_omits_trajectory_when_span_tree_rendered():
-    ev = SimpleNamespace(
-        rubric_md="grade it",
-        checklist=[{"id": "a", "q": "ok?", "weight": 1}],
-        score_type="numeric",
-        score_min=0,
-        score_max=1,
-        choices=None,
-        config={},
-    )
-    huge = "x" * 50_000
-    prompt = build_judge_prompt(
-        ev,
-        {"trajectory": huge, "output": "hi"},
-        span_tree="- tool → act",
-    )
-    assert "trajectory:\n" not in prompt
-    assert "output:\nhi" in prompt
 
 
 def test_produced_identity_fields_from_nested_outputs():

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from overbae.api.authentication import APITokenBackend
 from overbae.api.scoping import project_ids_for
+from overbae.innermind import checks
 from overbae.models import APIToken, Project
 from overbae.services.sync import apply_snapshot, snapshot_of
 
@@ -28,6 +29,13 @@ class EvalMetricSerializer(serializers.Serializer):
     managed_name = serializers.CharField(required=False, allow_blank=True)
 
 
+class DeclaredExpectationSerializer(serializers.Serializer):
+    """One ``expectations=`` sentence read from a decorator in the synced checkout."""
+
+    expectation = serializers.CharField(max_length=1000)
+    span_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
 class CapabilitySerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False, allow_null=True)
     slug = serializers.SlugField()
@@ -41,8 +49,21 @@ class CapabilitySerializer(serializers.Serializer):
     eval_metrics = EvalMetricSerializer(many=True, required=False)
     capability_card = serializers.DictField(required=False)
     eval_matrix = serializers.ListField(child=serializers.DictField(), required=False)
+    expectations = DeclaredExpectationSerializer(
+        many=True, required=False, write_only=True, max_length=200
+    )
     archived = serializers.BooleanField(required=False, default=False)
     status = serializers.CharField(read_only=True)
+
+    def validate_eval_matrix(self, entries):
+        for entry in entries:
+            if entry.get("type") != "deterministic":
+                continue
+            try:
+                checks.render(str(entry.get("check") or ""), entry.get("params") or {})
+            except ValueError as exc:
+                raise serializers.ValidationError(f"{entry.get('name') or 'entry'}: {exc}") from exc
+        return entries
 
 
 class RepositorySnapshotSerializer(serializers.Serializer):

@@ -29,14 +29,14 @@ connection are verified; do not reinstall or resync just to fill the checklist.
 1. **Discover capabilities** — identify the distinct AI purposes in the repository.
 1. **Describe capabilities** — capture each capability's prompts, tools, inputs, and outputs.
 1. **Verify source references** — check the descriptions against the source.
-1. **Prepare evaluations** — draft the starter evaluation criteria.
 1. **Write snapshot** — save the capability descriptions incrementally.
 1. **Validate configuration** — convert and check the local `overmind.toml`.
 1. **Sync capabilities** — send the snapshot to the configured Overmind project.
+1. **Instrument capabilities** — decorate every function, tool, retrieval step and model call the scan found, declare each span's expectations in the code, and sync again so they join each capability's eval set.
 
-The roadmap ends at a successful capability sync. Instrumentation, running the
-application, and completion of asynchronous server-side evaluator preparation
-are separate work; do not imply they have happened.
+The roadmap ends at the applied decorators and that sync. Running the application, the
+verification trace, and server-side scoring of that trace are separate work; do
+not imply they have happened.
 
 ## Stage updates
 
@@ -92,21 +92,21 @@ the server. On resume, verify earlier outputs before marking them complete.
 
 ## Outcome and next action
 
-After sync succeeds, finish with **Onboarding complete · 10 of 10 stages**.
+After the decorators are applied and synced, finish with **Onboarding complete · 10 of 10 stages**.
 Give the user a compact outcome, not another recap of the steps:
 
-- What landed: capability names/count, destination, and a link to the local
-  `overmind.toml`. Count tools and proposed evaluation criteria only when those
-  details survived conversion and sync.
+- What landed: capability names/count, destination, a link to the local
+  `overmind.toml`, and the files the decorators changed. Count tools and
+  declared expectations only when those details survived conversion, sync and
+  the edit.
 - One useful source-grounded finding, when available, and any material caveat
   such as dropped metadata or an unverified path. Never turn a potential risk
   into a confirmed runtime bug without evidence.
-- What has not been verified: instrumentation, a real application run, and
-  asynchronous evaluator readiness are separate from a successful sync.
-- One recommended next action based on the remaining gap. For example, when
-  tracing has not been checked: "Next: inspect instrumentation coverage before
-  running an example question." Recommend it; do not automatically instrument,
-  run the application, or start evaluations as part of onboarding.
+- What has not been verified: a real application run and the scoring of its
+  trace are separate from applying the decorators.
+- One recommended next action based on the remaining gap. For example: "Next:
+  run one example question and verify its trace." Recommend it; do not
+  automatically run the application or start evaluations as part of onboarding.
 
 On a rerun, report preserved identities or no capability changes when verified.
 Use factual, repository-specific copy without celebration, marketing claims,
@@ -123,9 +123,10 @@ model not exposed to this session**. A model ID found in the customer's code
 is not the model performing the scan.
 
 - **Coding-agent model:** repository excerpts and tool results read during the scan enter the coding agent's context and may be sent to its configured provider. Local AST inventory and TOML conversion do not themselves call a model.
-- **Overmind destination:** name the resolved API host and project. The initial connection sends project setup data and any existing snapshot. The final sync sends the repository summary, capability descriptions, source paths/references, captured prompt text, tool descriptions/schemas, and evaluation specifications. It does not send a repository archive.
+- **Overmind destination:** name the resolved API host and project. The initial connection sends project setup data and any existing snapshot. The final sync sends the repository summary, capability descriptions, source paths/references, captured prompt text, tool descriptions/schemas, and deterministic check definitions. It does not send a repository archive.
+- **Decorators:** the instrumentation stage edits source files on this machine. The sync after it sends the expectation sentences declared on entry-point, workflow and `observe` decorators, each with the function name it is declared on; no other source leaves. All expectations also travel as span attributes when the application runs.
 - **Credentials:** the CLI uses the Overmind API key to authenticate to that host. The configuration's API-key field is excluded from the capability snapshot. Do not read secret files into model context or copy credential values into capability descriptions. Arbitrary prompt/card text is not automatically secret-free.
-- **After sync:** Overmind can use the synced capability metadata to prepare evaluators with its configured model providers. If this deployment's exact models/providers are not available, say **Server evaluator models not available in this session**; do not guess from SDK defaults or call this local-only processing.
+- **After instrumentation:** the declared expectations travel with ingested spans, and Overmind scores those spans with its configured judge. If this deployment's exact judge model is not available, say **Server judge model not available in this session**; do not guess from SDK defaults or call this local-only processing.
 
 Before the final sync, check the generated snapshot for accidentally copied
 secrets without echoing their values. If one is found, remove the secret value

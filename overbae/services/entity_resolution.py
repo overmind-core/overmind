@@ -11,7 +11,6 @@ from __future__ import annotations
 import uuid
 
 from overbae.models import (
-    Behaviour,
     Capability,
     ConnectorCredential,
     Conversation,
@@ -94,35 +93,6 @@ def resolve_eval_run(project, ref: str) -> tuple[EvalRun | None, str | None]:
     if run is not None:
         return run, None
     return None, f"no eval run named {ref!r} in this project"
-
-
-def resolve_behaviour(
-    project, ref: str, *, capability: Capability | None = None
-) -> tuple[Behaviour | None, str | None]:
-    ref = str(ref or "").strip()
-    if not ref:
-        return None, "provide a task key or display name (from list_behaviours)"
-    if ref.startswith("behaviours:"):
-        ref = ref.split(":", 1)[1].strip()
-    qs = Behaviour.objects.filter(project=project).select_related("capability")
-    if capability is not None:
-        qs = qs.filter(capability=capability)
-    if is_uuid(ref):
-        behaviour = qs.filter(id=ref).first()
-        return (behaviour, None) if behaviour else (None, f"no task {ref!r} in this project")
-    for field in ("key", "display_name"):
-        matches = list(qs.filter(**{f"{field}__iexact": ref}).order_by("created_at"))
-        if len(matches) == 1:
-            return matches[0], None
-        if len(matches) > 1:
-            options = ", ".join(
-                f"{b.display_name or b.key} ({b.capability.slug})" for b in matches[:5]
-            )
-            return None, f"multiple tasks match {ref!r}: {options}"
-    behaviour = qs.filter(key__icontains=ref).order_by("created_at").first()
-    if behaviour is not None:
-        return behaviour, None
-    return None, f"no task {ref!r} in this project — call list_behaviours first"
 
 
 def resolve_session(project, ref: str) -> tuple[Conversation | None, str | None]:

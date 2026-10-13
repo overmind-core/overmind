@@ -289,7 +289,7 @@ code {
 }
 
 /* Fixed categorical chart slots, never per-render or hash-derived, so a given
-   slot is always the same colour. Tuned for ≥AA as text on the warm panels.
+   slot is always the same colour. Tuned for ≥AA as text on the dark panels.
    `--cat-N` and `--chart-N` alias them. */
 :root {
   --instrument-cat-1: #6fa8dc;

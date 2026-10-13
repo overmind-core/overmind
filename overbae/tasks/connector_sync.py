@@ -11,6 +11,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import Q
 from django.utils import timezone
 
+from overbae.api.otlp import enqueue_scoring
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
 from overbae.services.span_pricing import stamp_span_cost
 
@@ -150,12 +151,10 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
         Span.objects.bulk_update(updated_spans, [*_UPDATE_FIELDS, "conversation"])
 
     if new_spans:
-        from overbae.api.otlp import enqueue_trace_scoring
-
         _match_capabilities_by_name(project, new_spans)
         _stamp_conversations(project, new_spans)
         Span.objects.bulk_create(new_spans, ignore_conflicts=True)
-        enqueue_trace_scoring(new_spans)
+        enqueue_scoring(new_spans)
     return len(new_spans)
 
 

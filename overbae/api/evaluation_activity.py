@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from overbae.api.eval_serializers import EvalRunListSerializer, EvalRunProgressSerializer
+from overbae.api.eval_serializers import EvalRunProgressSerializer, EvalRunSerializer
 from overbae.models import EvalRun
 
 
@@ -61,8 +61,13 @@ class EvaluationActivitySerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         if isinstance(instance, EvalRun):
-            data = dict(EvalRunListSerializer(instance, context=self.context).data)
-            data["kind"] = "generative"
+            data = dict(EvalRunSerializer(instance, context=self.context).data)
+            data.update(
+                kind="generative",
+                variant_count=1,
+                evaluator_count=len(instance.matrix),
+                data_source="dataset",
+            )
         else:
             dataset = instance.final_cell.dataset
             data = {

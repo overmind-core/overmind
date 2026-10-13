@@ -155,7 +155,7 @@ def test_makefile_worker_drains_every_routed_queue():
 
 def test_landing_has_dedicated_prefork_capacity():
     landing_queue = settings.CELERY_TASK_ROUTES["overbae.tasks.datasets.land"]["queue"]
-    bulk_queue = settings.CELERY_TASK_ROUTES["overbae.tasks.eval.prepare_sample"]["queue"]
+    bulk_queue = settings.CELERY_TASK_ROUTES["overbae.tasks.innermind.generate_row"]["queue"]
     assert landing_queue != bulk_queue, "Evaluation fanout must not queue ahead of source landing"
     services = _compose_services()
     dedicated = {

@@ -11,7 +11,6 @@ from rest_framework.test import APIClient
 
 from overbae.models import (
     APIToken,
-    Behaviour,
     Capability,
     Project,
     ProjectMembership,
@@ -257,65 +256,104 @@ def test_system_prompt_and_capability_card_roundtrip(client):
     cap = Capability.objects.get(slug="support-agent")
     assert cap.improvement_metadata.get("system_prompt") == "You are helpful."
     assert cap.improvement_metadata["capability_card"]["trajectory_map"][0]["id"] == "happy-path"
-    assert Behaviour.objects.filter(capability=cap, key="happy-path").exists()
+    assert cap.active_eval_set.name == "Default"
+    assert cap.active_eval_set.rows.get(name="Answer quality").source == "correctness"
 
 
 @pytest.mark.django_db
-def test_sync_enqueues_preload_on_commit(client, django_capture_on_commit_callbacks):
-    card = {
-        "task": "Answer product questions",
-        "trajectory_map": [
-            {
-                "id": "happy-path",
-                "name": "Happy path",
-                "claim": "code_path",
-                "anchors": [],
-                "terminal": {"kind": "emits_record"},
-            }
-        ],
-    }
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay") as delay,
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(capability_card=card)]),
-            format="json",
-        )
-    assert posted.status_code == 200, posted.data
+def test_resync_rebuilds_the_default_set_from_the_toml(client):
+    matrix = [
+        {"name": "Grounded", "managed_name": "faithfulness"},
+        {"name": "Valid JSON", "managed_name": "json validity"},
+    ]
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
     cap = Capability.objects.get(slug="support-agent")
-    delay.assert_called_once_with(capability_id=str(cap.id))
+    default = cap.active_eval_set
+    assert set(default.rows.filter(capability=cap).values_list("name", flat=True)) == {"Grounded"}
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 1
+
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix[1:])]), format="json")
+
+    assert not default.rows.filter(capability=cap).exists()
+    assert Capability.objects.get(pk=cap.pk).active_eval_set_id == default.id
 
 
 @pytest.mark.django_db
-def test_eval_matrix_is_metadata_only_not_materialized(client, django_capture_on_commit_callbacks):
-    from overbae.models import Evaluator
-
+def test_toml_deterministic_entry_becomes_a_parameterised_row_in_the_default_set(client):
     matrix = [
         {
-            "name": "Answer quality",
-            "type": "custom_judge",
-            "rubric": "Score 1 if the answer is correct.",
+            "name": "Reply carries ticket keys",
+            "type": "deterministic",
+            "check": "json_required_keys",
+            "params": {"REQUIRED_KEYS": ["ticket_id", "status"]},
+            "span_name": "SupportAgent.run",
         }
     ]
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay"),
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(eval_matrix=matrix)]),
-            format="json",
-        )
-    assert posted.status_code == 200, posted.data
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
+
     cap = Capability.objects.get(slug="support-agent")
-    assert cap.improvement_metadata["eval_matrix"][0]["name"] == "Answer quality"
-    assert not Evaluator.objects.filter(capability=cap).exists()
+    row = cap.active_eval_set.rows.get(name="Reply carries ticket keys")
+    assert row.type == "deterministic"
+    assert row.span_name == "SupportAgent.run"
+    assert "REQUIRED_KEYS = ['ticket_id', 'status']" in row.source
+    assert "def evaluate(span)" in row.source
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 0
+
+    matrix[0]["params"] = {"REQUIRED_KEYS": ["ticket_id"]}
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
+    assert (
+        "REQUIRED_KEYS = ['ticket_id']"
+        in cap.active_eval_set.rows.get(name="Reply carries ticket keys").source
+    )
 
 
 @pytest.mark.django_db
-def test_sync_normalizes_string_constraints_to_dicts(client, django_capture_on_commit_callbacks):
+def test_code_expectations_become_span_scoped_rows_and_leave_with_the_code(client):
+    declared = [
+        {"expectation": "Cites the order id", "span_name": "SupportAgent.run"},
+        {"expectation": "Lists the refund steps", "span_name": "summarize"},
+    ]
+    client.post("/api/v1/sync", _snapshot([_cap(expectations=declared)]), format="json")
+
+    cap = Capability.objects.get(slug="support-agent")
+    rows = {row.name: row for row in cap.active_eval_set.rows.filter(capability=cap)}
+    assert {name: (row.type, row.source, row.span_name) for name, row in rows.items()} == {
+        "Cites the order id": ("llm", "Cites the order id", "SupportAgent.run"),
+        "Lists the refund steps": ("llm", "Lists the refund steps", "summarize"),
+    }
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 2
+
+    client.post("/api/v1/sync", _snapshot([_cap(expectations=declared[:1])]), format="json")
+    assert set(cap.eval_matrix.values_list("name", flat=True)) == {"Cites the order id"}
+
+    client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
+    assert set(cap.eval_matrix.values_list("name", flat=True)) == {"Cites the order id"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"name": "x", "type": "deterministic", "check": "nope"},
+        {"name": "x", "type": "deterministic", "check": "regex", "params": {"MISSING": 1}},
+        {
+            "name": "x",
+            "type": "deterministic",
+            "check": "schema_field_conformance",
+            "params": {"TYPE_CHECKS": {}},
+        },
+        {"name": "x", "type": "deterministic", "check": "regex", "params": ["PATTERN"]},
+    ],
+)
+def test_toml_deterministic_entry_with_a_bad_check_is_refused(client, entry):
+    response = client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=[entry])]), format="json")
+
+    assert response.status_code == 400
+    assert not Capability.objects.filter(slug="support-agent").exists()
+
+
+@pytest.mark.django_db
+def test_sync_normalizes_string_constraints_to_dicts(client):
     constraints = [
         "Answer must be plain English",
         {"rule": "At most 5 tool calls", "type": "budget", "params": {"max_calls": 5}},
@@ -333,15 +371,11 @@ def test_sync_normalizes_string_constraints_to_dicts(client, django_capture_on_c
         ],
         "constraints": constraints,
     }
-    with (
-        patch("overbae.tasks.eval.preload_capability_eval_set.delay"),
-        django_capture_on_commit_callbacks(execute=True),
-    ):
-        posted = client.post(
-            "/api/v1/sync",
-            _snapshot([_cap(capability_card=card)]),
-            format="json",
-        )
+    posted = client.post(
+        "/api/v1/sync",
+        _snapshot([_cap(capability_card=card)]),
+        format="json",
+    )
     assert posted.status_code == 200, posted.data
     cap = Capability.objects.get(slug="support-agent")
     stored = cap.improvement_metadata["capability_card"]["constraints"]

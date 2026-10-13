@@ -10,7 +10,7 @@ from overbae.services.datasets import files
 def _read(tmp_path, name: str, body: str | bytes):
     path = tmp_path / name
     path.write_bytes(body if isinstance(body, bytes) else body.encode())
-    return files.read_file_rows(path, filename=name)
+    return list(files.FileRows(path, filename=name))
 
 
 @pytest.mark.parametrize(

@@ -28,7 +28,7 @@ import {
 export class ModelsApi extends runtime.BaseAPI {
 
     /**
-     * Trimmed OpenRouter model list for the eval wizard\'s model picker. Each `id` is the exact `model_name` an eval variant should use. On upstream failure `upstream_available` is false and `models` is empty.
+     * Trimmed OpenRouter model list for the evaluation model picker. Each `id` is the exact `model_name` a run target should use. On upstream failure `upstream_available` is false and `models` is empty.
      * Browse the OpenRouter model catalog
      */
     async modelsCatalogRetrieveRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ModelCatalogResponse>> {
@@ -70,7 +70,7 @@ export class ModelsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Trimmed OpenRouter model list for the eval wizard\'s model picker. Each `id` is the exact `model_name` an eval variant should use. On upstream failure `upstream_available` is false and `models` is empty.
+     * Trimmed OpenRouter model list for the evaluation model picker. Each `id` is the exact `model_name` a run target should use. On upstream failure `upstream_available` is false and `models` is empty.
      * Browse the OpenRouter model catalog
      */
     async modelsCatalogRetrieve(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ModelCatalogResponse> {

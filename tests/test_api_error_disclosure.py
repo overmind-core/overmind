@@ -47,7 +47,7 @@ def request_context(db, monkeypatch):
 @pytest.mark.parametrize(
     ("surface", "service"),
     [
-        ("prepare", "overbae.api.training_preparation.request_preparation"),
+        ("prepare", "overbae.api.training_preparation.begin_preparation"),
         ("retry_preparation", "overbae.api.training_preparation.retry_preparation"),
         ("retry_training", "overbae.api.views.retry_training_preparation"),
         ("recommend", "overbae.services.recommendation.get_recommendation"),

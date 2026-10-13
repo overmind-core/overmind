@@ -10,17 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from random import randint
 
 from celery import shared_task
 from django.conf import settings
 from django.db import models, transaction
-
-from overbae.services.eval import funnel as judging
-from overbae.services.eval.evaluators import judge
-from overbae.services.eval.evaluators.base import JudgeResult
-from overbae.services.eval.rubric_compiler import build_judge_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -79,53 +72,6 @@ def optimizer_dataset_error(capability, dataset, cell=None) -> str | None:
     except DatasetError as exc:
         return exc.detail
     return None
-
-
-def _command_trajectory(command_input, output: str) -> tuple[dict, dict]:
-    """Build a canonical (trajectory, structured) pair from one command run.
-
-    The input becomes the user turns and the produced output the graded assistant
-    turn; assistant turns embedded in the input are dropped so a reference answer
-    never leaks in as the graded output. Goes through the eval normalizer so the
-    shape matches what the pipeline reconstructs from a real trace.
-    """
-    from overbae.services.eval import chatml, normalizer  # noqa: PLC0415 — avoid import cycle
-
-    messages = chatml.parse_messages(command_input)
-    if not messages:
-        if isinstance(command_input, str):
-            content = command_input.strip()
-        else:
-            content = json.dumps(command_input, default=str) if command_input is not None else ""
-        messages = [{"role": "user", "content": content}]
-    messages = [m for m in messages if m.get("role") != "assistant"]
-    out_str = (
-        output if isinstance(output, str) else json.dumps(output, default=str, ensure_ascii=False)
-    )
-    messages.append({"role": "assistant", "content": out_str})
-
-    normalized = normalizer.normalize_messages(messages)
-    structured = normalizer.structure_trajectory(normalized)
-    return normalized, structured
-
-
-def _variant_score_from_summary(summary: dict, variant_id: str) -> float:
-    """Collapse an eval run summary into one 0..100 candidate score.
-
-    Uses the same ``overall_aggregate`` headline as finetuning evals so
-    gate-only metrics stay out of the mean. ``variant_id`` is kept for callers
-    that already pass it; optimizer runs carry a single variant.
-    """
-    from overbae.services.eval.comparison import overall_aggregate  # noqa: PLC0415
-
-    payload = dict(summary or {})
-    if not payload.get("metrics"):
-        names: set[str] = set()
-        for variant in (payload.get("variants") or {}).values():
-            names.update((variant or {}).get("metrics") or {})
-        payload["metrics"] = sorted(names)
-    mean = overall_aggregate(payload).mean
-    return (mean * 100) if mean is not None else 0.0
 
 
 def _usable_output(command) -> str:
@@ -192,10 +138,9 @@ class OptimizerExperiment(models.Model):
     class Status(models.TextChoices):
         SCHEDULED = "scheduled"
         BASELINE = "baseline"
-        # Wait-states: the FSM parks in EVALUATING_* while an iteration's EvalRun
-        # grades on the worker, and the eval-complete callback moves it to
-        # EVALUATED_*. Reached only when the capability has runnable evaluators;
-        # otherwise evaluate_iteration scores inline.
+        # Wait-states: the FSM parks in EVALUATING_* while an iteration's EvalRuns
+        # grade on the worker, and ``on_candidate_eval_finished`` moves it to
+        # EVALUATED_*.
         EVALUATING_BASELINE_OUTPUTS = "evaluating_baseline_outputs"
         EVALUATED_BASELINE_OUTPUTS = "evaluated_baseline_outputs"
         ITERATING = "iterating"
@@ -288,15 +233,8 @@ class OptimizerExperiment(models.Model):
         S = self.Status  # noqa: N806
 
         if self.status == S.EVALUATING_BASELINE_OUTPUTS:
-            if self._iteration_eval_pending(0):
-                return
-            if self.start_iteration_eval(0):
-                return
-            baseline = self.iterations.filter(order=0).first()
-            if baseline is not None:
-                self._record_eval_scores(baseline)
-            self.status = S.EVALUATED_BASELINE_OUTPUTS
-            self.save()
+            if not self._iteration_eval_pending(0):
+                self.start_iteration_eval(0)
             return
 
         if self.status == S.EVALUATING_CANDIDATE_OUTPUTS:
@@ -306,14 +244,8 @@ class OptimizerExperiment(models.Model):
             active = self.iterations.exclude(order=0).order_by("-order").first()
             if active is None:
                 return
-            order = active.order
-            if self._iteration_eval_pending(order):
-                return
-            if self.start_iteration_eval(order):
-                return
-            self._record_eval_scores(active)
-            self.status = S.EVALUATED_CANDIDATE_OUTPUTS
-            self.save()
+            if not self._iteration_eval_pending(active.order):
+                self.start_iteration_eval(active.order)
             return
 
     def advance(self):
@@ -411,28 +343,14 @@ class OptimizerExperiment(models.Model):
             return f"Candidate {self._harness_index(candidate)} · {model_name}", model_name
         return f"Candidate {candidate.candidate_index + 1}", model_name
 
-    def _runnable_evaluators(self) -> list:
-        """Graders for this experiment: pinned eval_set, else capability active set."""
-        from overbae.services.eval.eval_set import (  # noqa: PLC0415 — avoid import cycle
-            resolve_members,
-            runnable_capability_evaluators,
-        )
-
-        if self.eval_set_id is not None:
-            members = resolve_members(self.eval_set)
-            if members:
-                return members
-        return runnable_capability_evaluators(self.capability)
-
-    def start_iteration_eval(self, iteration_order: int) -> bool:
+    def start_iteration_eval(self, iteration_order: int) -> None:
         """Kick off grading for every candidate in one iteration, one
         :class:`EvalRun` each so they list separately on the evals page.
 
-        ``True`` means at least one run was dispatched and the caller must park in
-        an ``EVALUATING_*`` state; ``False`` means there were no runnable
-        evaluators and the stub already scored every candidate synchronously.
+        The experiment parks in ``EVALUATING_*`` until the runs finish, or fails
+        when there is nothing to score.
         """
-        from overbae.tasks.eval import dispatch_preseeded_eval_run  # noqa: PLC0415 — avoid cycle
+        from overbae.innermind import runs  # noqa: PLC0415 — innermind imports these models
 
         iteration = OptimizerIteration.objects.get(experiment=self, order=iteration_order)
         candidates = list(iteration.candidates.all())
@@ -448,8 +366,8 @@ class OptimizerExperiment(models.Model):
             to_dispatch.append((candidate, run))
 
         if not to_dispatch:
-            self._evaluate_commands_stub(iteration)
-            return False
+            self._fail("Nothing to score: the eval set has no rows or the dataset is empty.")
+            return
 
         # Persist the pending markers BEFORE dispatch so eager Celery callbacks
         # can clear them; saving after dispatch re-stamps already-finished
@@ -457,16 +375,8 @@ class OptimizerExperiment(models.Model):
         self.state["eval_pending"] = pending
         self.save(update_fields=["state", "updated_at"])
 
-        for candidate, run in to_dispatch:
-            dispatch_preseeded_eval_run(
-                run,
-                on_complete=optimizer_on_candidate_eval_complete.s(
-                    experiment_id=str(self.id),
-                    candidate_id=str(candidate.id),
-                    iteration_order=iteration_order,
-                ),
-            )
-        return True
+        for _candidate, run in to_dispatch:
+            runs.launch(run)
 
     def _iteration_eval_pending(self, iteration_order: int) -> bool:
         iteration = OptimizerIteration.objects.filter(
@@ -480,7 +390,7 @@ class OptimizerExperiment(models.Model):
     def on_iteration_eval_complete(self, iteration_order: int) -> None:
         """Finalise iteration scores once every candidate eval run has finished.
 
-        Called by :func:`optimizer_on_candidate_eval_complete` after the last
+        Called by :func:`on_candidate_eval_finished` after the last
         candidate clears its pending marker.
         """
         with transaction.atomic():
@@ -498,39 +408,34 @@ class OptimizerExperiment(models.Model):
             self.save()
 
     def build_candidate_eval_run(self, candidate: OptimizerCandidate):
-        """Create one :class:`EvalRun` for a candidate and pre-seed its samples:
-        one variant, one ``RunEvaluator`` per runnable evaluator, and one sample
-        per datapoint carrying the candidate's produced output. Returns ``None``
-        when there are no runnable evaluators or no data, and the caller then
-        falls back to the stub.
+        """One ``provided`` :class:`EvalRun` per candidate, carrying each command's
+        output. Every candidate of the experiment shares the experiment's group, so
+        each is compared row by row against the baseline. ``None`` when there is
+        nothing to score.
         """
-        from overbae.models import (  # noqa: PLC0415 — avoid model import cycle
-            EvalRun,
-            EvalSample,
-            EvalVariant,
-            RunEvaluator,
-        )
+        from overbae.innermind import runs  # noqa: PLC0415 — innermind imports these models
+        from overbae.models import EvalRun  # noqa: PLC0415 — avoid model import cycle
         from overbae.services.datasets import rows as row_store  # noqa: PLC0415
-        from overbae.services.eval import snapshots  # noqa: PLC0415 — avoid import cycle
-        from overbae.services.eval.eval_set import (  # noqa: PLC0415 — avoid import cycle
-            expand_to_run_evaluators,
-            resolve_members,
+
+        eval_set = self.eval_set or self.capability.active_eval_set
+        first = EvalRun.objects.filter(group=self.id).order_by("created_at").first()
+        matrix = (
+            first.matrix
+            if first
+            else runs.freeze_matrix(eval_set=eval_set, capability=self.capability)
         )
-
-        evaluators = self._runnable_evaluators()
-        if not evaluators or self.cell_id is None:
+        if not matrix or self.cell_id is None:
             return None
-
         datapoints = list(row_store.iter_rows(self.cell))
         if not datapoints:
             return None
 
         commands = {cmd.datapoint_index: cmd for cmd in candidate.commands.all()}
-
-        scored_datapoints = []
+        outputs: dict[int, tuple[str | None, str]] = {}
         for d_index, datapoint in enumerate(datapoints):
             command = commands.get(d_index)
             output = ""
+            trace_id = ""
             if command is not None:
                 result = command.result or {}
                 if command.status != OptimizerCommand.Status.FAILED:
@@ -544,71 +449,35 @@ class OptimizerExperiment(models.Model):
                         command.result = result
                         command.save(update_fields=["result", "updated_at"])
                 output = _usable_output(command)
-            scored_datapoints.append((d_index, datapoint, command, output))
+                trace_id = str(result.get("trace_id") or "")
+            outputs[datapoint.index] = (output or None, trace_id)
 
         coverage = _coverage(commands, len(datapoints))
-
-        # Expand from a real EvalSet when it has generative members, which is what
-        # carries prompt scoping; flat snapshotting is the no-set fallback.
-        source_set = None
-        if self.eval_set_id is not None and resolve_members(self.eval_set):
-            source_set = self.eval_set
-        elif self.eval_set_id is None:
-            active = getattr(self.capability, "active_eval_set", None)
-            if active is not None and resolve_members(active):
-                source_set = active
-
         label, model_name = self._candidate_label(candidate)
         run_label = label if label == model_name else f"{label} · {model_name}"
         with transaction.atomic():
-            run = EvalRun.objects.create(
+            run = runs.create_run(
                 project=self.project,
                 name=f"Optimizer · {self.capability.name} · {run_label}"[:255],
                 description=f"Optimizer experiment {self.id}, {run_label}",
-                data_source=EvalRun.DataSource.DATASET,
                 dataset=self.dataset,
                 cell=self.cell,
-                eval_set=source_set,
-                max_items=len(datapoints),
-                triggered_by=self.triggered_by,
-                status=EvalRun.Status.PENDING,
-            )
-            if source_set is not None:
-                expand_to_run_evaluators(run, source_set)
-            else:
-                for order, evaluator in enumerate(evaluators):
-                    RunEvaluator.objects.create(
-                        run=run,
-                        evaluator=evaluator,
-                        snapshot=snapshots.build_snapshot(evaluator),
-                        order=order,
-                    )
-            variant = EvalVariant.objects.create(
-                run=run,
-                label=label,
-                mode=EvalVariant.Mode.EXISTING,
-                is_baseline=candidate.is_baseline,
-                order=0,
+                eval_set=eval_set,
+                matrix=matrix,
+                mode=EvalRun.Mode.PROVIDED,
                 model_name=model_name,
                 params={
+                    "label": label,
                     "optimizer_candidate_id": str(candidate.id),
                     "optimizer_mode": self.mode,
                     "target_model": candidate.target_model or model_name,
                 },
+                group=self.id,
+                is_baseline=candidate.is_baseline,
+                max_items=len(datapoints),
+                triggered_by=self.triggered_by,
             )
-            for _d_index, datapoint, command, output in scored_datapoints:
-                result = (command.result or {}) if command is not None else {}
-                trace_id = result.get("trace_id", "")
-                trajectory, structured = _command_trajectory(datapoint.input, output)
-                EvalSample.objects.create(
-                    run=run,
-                    variant=variant,
-                    row_index=datapoint.index,
-                    source_trace_id=trace_id,
-                    trajectory=trajectory,
-                    structured=structured,
-                    expected=datapoint.expected_output,
-                )
+            runs.provide_outputs(run, outputs)
             candidate.eval_run = run
             candidate.scores = {
                 **(candidate.scores or {}),
@@ -621,21 +490,18 @@ class OptimizerExperiment(models.Model):
         return run
 
     def _fold_candidate_eval_scores(self, candidate: OptimizerCandidate) -> float:
-        """Fold a finished eval run's scores into its candidate. A candidate owns
-        exactly one run with one variant, so the variant is read straight off it.
-        """
+        from overbae.innermind import runs  # noqa: PLC0415 — innermind imports models
+
         run = candidate.eval_run
         if run is None:
             return 0.0
         run.refresh_from_db()
-        variant = run.variants.first()
-        score = (
-            _variant_score_from_summary(run.summary, str(variant.id))
-            if variant is not None
-            else 0.0
-        )
+        row_scores = runs.row_scores(run)
         coverage = (candidate.scores or {}).get("coverage") or {}
-        measurement = (run.summary or {}).get("measurement") or {}
+        # A failed or unscored datapoint counts as zero, so dropping rows cannot raise a score.
+        total = coverage.get("total_rows") or run.max_items or len(row_scores)
+        scored = sum(value for value in row_scores.values() if value is not None)
+        score = scored / total * 100 if total else 0.0
         candidate.score = score
         candidate.scores = {
             **(candidate.scores or {}),
@@ -643,39 +509,18 @@ class OptimizerExperiment(models.Model):
             "graded_rows": coverage.get("graded_rows"),
             "total_rows": coverage.get("total_rows"),
             "coverage_rate": coverage.get("coverage_rate"),
-            "measurement": measurement,
+            "metrics": (run.summary or {}).get("metrics") or {},
         }
         candidate.status = OptimizerCandidate.Status.EVALUATED
         candidate.save(update_fields=["score", "scores", "status"])
-        if variant is not None:
-            self._fold_command_scores(candidate, variant, run)
+        commands = list(candidate.commands.all())
+        for command in commands:
+            value = row_scores.get(command.datapoint_index)
+            command.score = value * 100 if value is not None else 0.0
+            if command.status != OptimizerCommand.Status.FAILED:
+                command.status = OptimizerCommand.Status.EVALUATED
+        OptimizerCommand.objects.bulk_update(commands, ["score", "status"])
         return score
-
-    def _fold_command_scores(self, candidate, variant, run) -> None:
-        """Mirror each sample's mean score onto its command: grading happens at
-        sample level, and the experiment UI still reads per-command scores.
-        """
-        from overbae.models import EvalSample, Score  # noqa: PLC0415 — avoid cycle
-
-        samples = {s.row_index: s for s in EvalSample.objects.filter(run=run, variant=variant)}
-        for command in candidate.commands.all():
-            sample = samples.get(command.datapoint_index)
-            if sample is None:
-                continue
-            rows = Score.objects.filter(sample=sample, outcome=Score.Outcome.SCORED).exclude(
-                name__endswith="__prediction"
-            )
-            values = [row.value * 100 for row in rows if row.value is not None]
-            command.score = sum(values) / len(values) if values else 0.0
-            command.status = OptimizerCommand.Status.EVALUATED
-            command.save(update_fields=["score", "status"])
-
-    def _evaluate_commands_stub(self, iteration: OptimizerIteration) -> None:
-        """Fallback scorer for capabilities with no runnable evaluators, so the loop
-        still makes progress before evaluators are set up.
-        """
-        for candidate in iteration.candidates.all():
-            candidate.evaluate()
 
     def _record_iteration_scores(self, iteration: OptimizerIteration):
         if self.mode == self.Mode.MODEL_COMPARISON:
@@ -743,18 +588,8 @@ class OptimizerExperiment(models.Model):
             # ``_record_model_comparison_scores`` already maxed ``best`` over
             # these same rows when the iteration was scored.
             candidates = list(self.candidates.filter(is_baseline=False).exclude(target_model=""))
-            uncovered: set[str] = set()
-            for row in candidates:
-                measurement = (row.scores or {}).get("measurement") or {}
-                uncovered.update(measurement.get("uncovered_card_claims") or [])
-            suite_incomplete = bool(uncovered)
-
             ranked = sorted(candidates, key=candidate_comparison_rank, reverse=True)
             selected_winner = ranked[0] if ranked else None
-            if suite_incomplete and len(ranked) > 1 and selected_winner is not None:
-                top_rank = candidate_comparison_rank(selected_winner)
-                if all(candidate_comparison_rank(row) == top_rank for row in ranked):
-                    selected_winner = None
 
             selected_score = selected_winner.score if selected_winner is not None else 0.0
             incumbent_score = self.scores.get("baseline", 0.0)
@@ -770,13 +605,6 @@ class OptimizerExperiment(models.Model):
                 ),
                 "incumbent_wins": incumbent_wins,
             }
-            if suite_incomplete:
-                comparison_state["suite_incomplete"] = True
-                comparison_state["uncovered_card_claims"] = sorted(uncovered)
-                if selected_winner is None:
-                    comparison_state["winner_note"] = (
-                        "All candidates tied; suite has uncovered card claims."
-                    )
             self.state["model_comparison"] = comparison_state
             return
 
@@ -832,7 +660,6 @@ class OptimizerIteration(models.Model):
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING)
     scores = models.JSONField(default=dict, blank=True)
     patch = models.TextField(blank=True, default="")
-    # Null when the capability had no runnable evaluators and the stub scored instead.
     eval_run = models.ForeignKey(
         "overbae.EvalRun",
         on_delete=models.SET_NULL,
@@ -934,54 +761,6 @@ class OptimizerCandidate(models.Model):
         if new != self.status:
             self.status = new
             self.save(update_fields=["status"])
-
-    def evaluate(self):
-        """Score all commands in one batch and store the mean on ``self.score``.
-
-        Judge calls run concurrently and scores are bulk-written, so the DB touch
-        count stays constant regardless of how many commands there are.
-        """
-        from overbae.models.evaluation import Evaluator
-
-        self.status = self.Status.EVALUATING
-        self.save(update_fields=["status"])
-
-        evaluator = Evaluator.objects.filter(
-            project=self.experiment.project, capability=self.experiment.capability
-        ).last()
-        commands = list(self.commands.all())
-        eligible = [command for command in commands if _usable_output(command)]
-        pending = [c for c in eligible if c.status != OptimizerCommand.Status.EVALUATED]
-
-        def _score(cmd):
-            output = _usable_output(cmd)
-            if evaluator is not None:
-                prompt = build_judge_prompt(evaluator, {"input": cmd.input, "output": output})
-                outcome = judging.invoke_judge(
-                    prompt,
-                    response_format=JudgeResult,
-                    judge_model=evaluator.judge_model,
-                    project_id=self.experiment.project_id,
-                    system_prompt=judge.JUDGE_SYSTEM_PROMPT,
-                )
-                cmd.score = evaluator.normalize_score(getattr(outcome.parsed, "score", 0.0) or 0.0)
-            else:
-                cmd.score = 0.0 if output in (None, "") else randint(60, 85)
-            cmd.status = OptimizerCommand.Status.EVALUATED
-
-        if pending:
-            with ThreadPoolExecutor(max_workers=min(20, len(pending))) as executor:
-                for future in as_completed(executor.submit(_score, c) for c in pending):
-                    future.result()
-            OptimizerCommand.objects.bulk_update(pending, ["score", "status"])
-
-        self.score = sum(c.score for c in eligible) / len(eligible) if eligible else 0.0
-        self.scores = {
-            **(self.scores or {}),
-            "coverage": _coverage({c.datapoint_index: c for c in commands}, len(commands)),
-        }
-        self.status = self.Status.EVALUATED
-        self.save(update_fields=["score", "scores", "status"])
 
 
 class OptimizerCommand(models.Model):
@@ -1136,64 +915,34 @@ class OptimizerCommand(models.Model):
             )
         return ""
 
-    def evaluate(self) -> float:
-        """Score this command's output on 0..100 and set ``status=EVALUATED``."""
-        output = self.result.get("output") if isinstance(self.result, dict) else self.output
 
-        # Lazy: evaluation models may import optimizer types.
-        from overbae.models.evaluation import Evaluator
-
-        evaluator = Evaluator.objects.filter(
-            project=self.experiment.project, capability=self.experiment.capability
-        ).last()
-        if evaluator is not None:
-            prompt = build_judge_prompt(evaluator, {"input": self.input, "output": output})
-            outcome = judging.invoke_judge(
-                prompt,
-                response_format=JudgeResult,
-                judge_model=evaluator.judge_model,
-                project_id=self.experiment.project.id,
-                system_prompt=judge.JUDGE_SYSTEM_PROMPT,
-            )
-            self.score = evaluator.normalize_score(getattr(outcome.parsed, "score", 0.0) or 0.0)
-        else:
-            self.score = 0.0 if output in (None, "") else randint(60, 85)
-
-        self.status = self.Status.EVALUATED
-        return self.score
-
-
-@shared_task(name="overbae.models.optimizer.optimizer_on_candidate_eval_complete")
-def optimizer_on_candidate_eval_complete(
-    _aggregate_result=None,
-    *,
-    experiment_id: str,
-    candidate_id: str,
-    iteration_order: int,
-) -> None:
-    """Eval-chord callback, chained after ``aggregate_run`` for each candidate.
-
-    Folds that candidate's scores in and clears its pending marker; the last
-    candidate of an iteration also finalises the iteration and resumes the FSM.
+def on_candidate_eval_finished(run) -> None:
+    """Called once a candidate's run is terminal. Folds its scores and clears its
+    pending marker; the last candidate of an iteration finalises it and resumes the FSM.
     """
-    experiment = OptimizerExperiment.objects.filter(id=experiment_id).first()
-    if experiment is None or experiment.status in experiment.TERMINAL:
+    candidate = (
+        OptimizerCandidate.objects.filter(eval_run=run)
+        .select_related("experiment", "iteration")
+        .first()
+    )
+    if candidate is None:
         return
-
-    candidate = OptimizerCandidate.objects.filter(id=candidate_id).first()
-    if candidate is not None:
-        experiment._fold_candidate_eval_scores(candidate)
+    experiment = candidate.experiment
+    if experiment.status in experiment.TERMINAL:
+        return
+    experiment._fold_candidate_eval_scores(candidate)
+    iteration_order = candidate.iteration.order
 
     with transaction.atomic():
         experiment.refresh_from_db()
         pending = dict(experiment.state.get("eval_pending", {}))
-        pending.pop(candidate_id, None)
+        pending.pop(str(candidate.id), None)
         experiment.state["eval_pending"] = pending
         experiment.save(update_fields=["state", "updated_at"])
 
     if not experiment._iteration_eval_pending(iteration_order):
         experiment.on_iteration_eval_complete(iteration_order)
-        run_experiment_advance.delay(experiment_id)
+        run_experiment_advance.delay(str(experiment.id))
 
 
 @shared_task(name="overbae.models.optimizer.run_experiment_advance")

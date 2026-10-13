@@ -57,10 +57,7 @@ export function StatusBadge({ status, progress }: { status: string; progress?: n
 
 function runProgressPercent(progress?: EvalRunProgress | null): number | null {
   if (!progress) return null;
-  const isGenerating = progress.phase === "generating" || progress.phase === "pending";
-  const done = isGenerating ? progress.prepared : progress.scored;
-  const total = isGenerating ? progress.total : progress.scoreTotal;
-  return progress.phase === "aggregating" ? 100 : total > 0 ? (done / total) * 100 : null;
+  return progress.rows > 0 ? (progress.done / progress.rows) * 100 : null;
 }
 
 type RunsFilters = Pick<

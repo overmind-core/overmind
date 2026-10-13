@@ -80,8 +80,11 @@ def eval_context(**facts: Any) -> None:
 
 def intent(text: str, *, source: str = "declared") -> None:
     """Declare what the user asked for in this run; the platform grounds judge
-    scoring in it. Undeclared runs fall back server-side to the first user
-    message."""
+    scoring in it. Spans started inside inherit it as ``overmind.intent``.
+    Undeclared runs fall back server-side to the first user message."""
+    span = trace.get_current_span()
+    if span.is_recording():
+        span.set_attribute(attrs.INTENT, str(text))
     _emit(attrs.EVAL_INTENT_EVENT, {"text": str(text), "source": str(source)})
 
 

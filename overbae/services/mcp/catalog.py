@@ -28,12 +28,14 @@ _FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
 _ALLOWED_LIFECYCLE_TOOLS = frozenset(
     {
         "retry_deployment",
+        "delete_eval_matrix_row",
         "cancel_dataset",
         "retry_data_partition",
         "cancel_dataset_pipeline_run",
         "cancel_finetune",
     }
 )
+_DESTRUCTIVE_TOOLS = frozenset({"cancel_dataset", "delete_eval_matrix_row"})
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -91,7 +93,7 @@ class ToolDefinition(BaseModel):
             part in self.name for part in _FORBIDDEN_NAME_PARTS
         ):
             raise CatalogError("destructive lifecycle tools are not supported")
-        if self.destructive and self.name != "cancel_dataset":
+        if self.destructive != (self.name in _DESTRUCTIVE_TOOLS):
             raise CatalogError("destructive tools are not supported")
 
     def as_mcp_tool(self) -> types.Tool:
@@ -297,3 +299,7 @@ register_instrumentation_tools(CATALOG)
 from overbae.services.mcp.tools_model_workflows import register_model_workflow_tools  # noqa: E402
 
 register_model_workflow_tools(CATALOG)
+
+from overbae.services.mcp.tools_signals import register_signal_tools  # noqa: E402
+
+register_signal_tools(CATALOG)

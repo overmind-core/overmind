@@ -14,7 +14,6 @@ from overbae.services.datasets import review
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.eval.eval_set import snapshot_readiness
 from overbae.services.finetuning_validator import validate_dataset
 from overbae.services.recommendation import (
     get_recommendation,
@@ -171,10 +170,10 @@ def finetune_prerequisite_report(
             "eval dataset — create an eval dataset whose version fits the eval contract "
             "(wizard needs it for in-training judge evals)"
         )
-    if evaluate and eval_set is None:
-        missing.append("eval set — create an eval set with generative evaluators in this project")
-    elif evaluate:
-        missing.extend(error["message"] for error in snapshot_readiness(eval_set)["errors"])
+    if evaluate and (eval_set is None or not eval_set.rows.filter(enabled=True).exists()):
+        missing.append(
+            "eval set — select an eval set with enabled eval matrix rows in this project"
+        )
 
     overlap_count = None
     eval_product = eval_cell or (eval_dataset.active_cell if eval_dataset is not None else None)

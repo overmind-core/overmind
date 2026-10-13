@@ -3,9 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from django.db.models import Prefetch
-
-from overbae.models import Behaviour, BehaviourVersion
+from overbae.models import EvalMatrix
 from overbae.services.codebase.flow import build_capability_flow
 from overbae.services.datasets import paths, store
 from overbae.services.datasets.profile import profile_records
@@ -83,17 +81,11 @@ def workshop_context(dataset, *, measure_missing=True) -> dict:
 
 def preparation_context(capability) -> dict:
     if capability is None:
-        return {"capability": None, "behaviours": []}
+        return {"capability": None, "expectations": []}
     flow = build_capability_flow(capability)
     metadata = capability.improvement_metadata or {}
     card = metadata.get("capability_card") or {}
-    behaviours = capability.behaviours.filter(status=Behaviour.Status.ACTIVE).prefetch_related(
-        Prefetch(
-            "versions",
-            queryset=BehaviourVersion.objects.order_by("-created_at")[:1],
-            to_attr="latest_versions",
-        )
-    )
+    expectations = capability.eval_matrix.filter(enabled=True, type=EvalMatrix.Type.LLM)
     return {
         "capability": str(capability.id),
         "name": capability.name,
@@ -115,15 +107,8 @@ def preparation_context(capability) -> dict:
                 "failure_modes",
             )
         },
-        "behaviours": [
-            {
-                "key": behaviour.key,
-                "name": behaviour.display_name,
-                "version": str(versions[0].id) if versions else None,
-                "contract": versions[0].contract if versions else {},
-            }
-            for behaviour in behaviours
-            for versions in [behaviour.latest_versions]
+        "expectations": [
+            {"name": row.name, "expectation": row.source} for row in expectations.order_by("name")
         ],
     }
 

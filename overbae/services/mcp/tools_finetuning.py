@@ -21,7 +21,6 @@ from overbae.models import (
     Dataset,
     DeployedModel,
     EvalSet,
-    EvalSetMember,
     FinetuningJob,
 )
 from overbae.services import inference_requests, native_evaluation, training_monitoring
@@ -32,7 +31,6 @@ from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.rows import RowStoreError
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
-from overbae.services.eval.eval_set import active_members, snapshot_readiness
 from overbae.services.finetuning_mcp import FineTuneDispatchError, launch_finetune
 from overbae.services.finetuning_prereqs import (
     default_eval_dataset,
@@ -59,8 +57,8 @@ from overbae.services.mcp.contracts.finetuning import (
     FineTuneDatasetReadiness,
     FineTuneEvalDatasetReadiness,
     FineTuneEvalSetReadiness,
-    FineTuneEvaluatorReadiness,
     FineTuneJobReference,
+    FineTuneMatrixReadiness,
     FineTuneTimeEstimate,
     InspectTrainingProgressInput,
     InspectTrainingProgressOutput,
@@ -263,37 +261,23 @@ def _deployment_reference(model: DeployedModel) -> DeploymentReference:
     )
 
 
-def _evaluator_readiness(
+def _matrix_readiness(
     capability: Capability | None, eval_set: EvalSet | None
-) -> FineTuneEvaluatorReadiness:
+) -> FineTuneMatrixReadiness:
     if eval_set is None:
-        return FineTuneEvaluatorReadiness(ready=False)
-    members = list(
-        active_members(eval_set, EvalSetMember.Role.GENERATIVE).select_related("evaluator")
-    )
-    evaluators = [
-        {
-            "id": str(member.evaluator_id),
-            "name": member.evaluator.name,
-            "kind": member.evaluator.kind,
-            "enabled": member.enabled,
-        }
-        for member in members
-        if member.evaluator_id and member.evaluator is not None
+        return FineTuneMatrixReadiness(ready=False)
+    rows = [
+        {"id": str(row.id), "name": row.name, "type": row.type}
+        for row in eval_set.rows.filter(enabled=True).order_by("name")
     ]
     eval_set_data = FineTuneEvalSetReadiness(
         id=str(eval_set.id),
         name=eval_set.name,
         capability=eval_set.capability.slug if eval_set.capability_id else None,
         active=capability is not None and capability.active_eval_set_id == eval_set.id,
-        member_count=len(evaluators),
+        row_count=len(rows),
     )
-    return FineTuneEvaluatorReadiness(
-        ready=snapshot_readiness(eval_set)["ready"],
-        eval_set=eval_set_data,
-        evaluators=evaluators,
-        errors=snapshot_readiness(eval_set)["errors"],
-    )
+    return FineTuneMatrixReadiness(ready=bool(rows), eval_set=eval_set_data, rows=rows)
 
 
 def resolve_selection(payload, context, cell, capability=None):
@@ -431,7 +415,7 @@ def _readiness_sync(
             "excluded": [],
         }
     eval_dataset, eval_set = selected["eval_dataset"], selected["eval_set"]
-    evaluator_readiness = _evaluator_readiness(capability, eval_set)
+    matrix_readiness = _matrix_readiness(capability, eval_set)
     credits = FineTuneCreditReadiness(required=True, available=_credits_available(context))
     missing = [
         item
@@ -470,8 +454,8 @@ def _readiness_sync(
                 0,
                 "training dataset — fix the rows the validator lists, then run the notebook again",
             )
-    if selected["evaluate"] and not evaluator_readiness.ready:
-        missing.append("evaluator — select at least one active generative evaluator")
+    if selected["evaluate"] and not matrix_readiness.ready:
+        missing.append("eval set — enable at least one eval matrix row in the active eval set")
     if not credits.available:
         missing.append("credits — add credits before starting fine-tuning")
     ready = not missing
@@ -541,7 +525,7 @@ def _readiness_sync(
             else None
         ),
         eval_dataset=eval_dataset_data,
-        eval_set=evaluator_readiness.eval_set,
+        eval_set=matrix_readiness.eval_set,
         overlap_count=report.get("overlap_count"),
         recommendations=safe_json(report.get("recommendations") or []),
         n_candidates=int(report.get("n_candidates") or 0),
@@ -553,7 +537,7 @@ def _readiness_sync(
         recommendation_error=(
             "Model recommendations are unavailable." if report.get("recommendation_error") else None
         ),
-        evaluator_readiness=evaluator_readiness,
+        matrix_readiness=matrix_readiness,
         credits=credits,
         resource_links=links,
     )
@@ -1143,7 +1127,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "check_finetune_readiness",
             "Check fine-tuning readiness",
-            "Inspect fine-tuning prerequisites, dataset shape, catalog models, evaluators, and credits. Ranking uses the capability task, or the dataset task when no capability is selected.",
+            "Inspect fine-tuning prerequisites, dataset shape, catalog models, the eval set, and credits. Ranking uses the capability task, or the dataset task when no capability is selected.",
             CheckFinetuneReadinessInput,
             CheckFinetuneReadinessOutput,
             _readiness_sync,

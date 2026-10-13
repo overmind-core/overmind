@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
@@ -19,8 +19,10 @@ from pydantic import AnyUrl
 
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.training_telemetry import STARTUP_LABELS
-from overbae.api.eval_serializers import compute_run_progress
+from overbae.api.eval_serializers import run_progress
 from overbae.core.errors import InputValidationError
+from overbae.innermind import comparison
+from overbae.innermind import context as eval_context
 from overbae.models import (
     Capability,
     Cell,
@@ -31,12 +33,16 @@ from overbae.models import (
     DatasetPipelineRun,
     DatasetTransfer,
     DeployedModel,
+    EvalMatrix,
+    EvalRun,
     EvalSet,
     FinetuningJob,
     InferenceRequest,
     ModelActivation,
     OptimizerCandidate,
     OptimizerExperiment,
+    SignalEvent,
+    SignalSubscription,
     Span,
     TrainingPreparation,
 )
@@ -57,9 +63,6 @@ from overbae.services.entity_resolution import (
     resolve_eval_run,
     resolve_session,
 )
-from overbae.services.eval.context_check import run_context_checks
-from overbae.services.eval.preload_status import read_eval_preload
-from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
 from overbae.services.mcp import CONTRACT_VERSION
@@ -334,6 +337,8 @@ def _checkpoint_download_resource(uri: str) -> dict:
 def resource_uri(kind: str, value: str) -> str:
     if kind == "project":
         return "overmind://project/current"
+    if kind == "signal-events":
+        return "overmind://signal-events"
     if kind in {"job", "jobs"}:
         job_kind, job_id = value.split("/", 1)
         return f"overmind://jobs/{quote(job_kind, safe='')}/{quote(job_id, safe='')}"
@@ -613,7 +618,33 @@ def _capability_resource(project, value: str, uri: str) -> dict:
         "active_eval_set": str(capability.active_eval_set_id)
         if capability.active_eval_set_id
         else None,
-        "eval_preload": read_eval_preload(capability),
+        "eval_preload": (capability.improvement_metadata or {}).get("eval_preload"),
+        "eval_matrix": [
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "type": row.type,
+                "source": row.source[:2_000],
+                "span_type": row.span_type,
+                "span_name": row.span_name,
+                "enabled": row.enabled,
+                "scope": "capability" if row.capability_id else "project",
+            }
+            for row in EvalMatrix.objects.filter(project=project)
+            .filter(Q(capability=capability) | Q(capability__isnull=True))
+            .order_by("name")[:_MAX_LIST]
+        ],
+        "signal_subscriptions": [
+            {
+                "signal_type": sub.signal_type,
+                "enabled": sub.enabled,
+                "config": sub.config,
+                "scope": "capability" if sub.capability_id else "project",
+            }
+            for sub in SignalSubscription.objects.filter(project=project).filter(
+                Q(capability=capability) | Q(capability__isnull=True)
+            )[:_MAX_LIST]
+        ],
         "active_model": (
             {
                 "id": str(active_model.id),
@@ -811,7 +842,7 @@ def _eval_set_resource(project, value: str, uri: str) -> dict:
     )
     if eval_set is None:
         raise _not_found("eval set", value)
-    members = list(eval_set.members.select_related("evaluator", "evaluator__capability")[:101])
+    rows = list(eval_set.rows.order_by("name")[:101])
     return {
         "uri": uri,
         "kind": "eval_set",
@@ -821,24 +852,19 @@ def _eval_set_resource(project, value: str, uri: str) -> dict:
         "is_active": bool(
             eval_set.capability_id and eval_set.capability.active_eval_set_id == eval_set.id
         ),
-        "members": [
+        "rows": [
             {
-                "id": str(member.id),
-                "evaluator_id": str(member.evaluator_id),
-                "name": member.evaluator.display_name or member.evaluator.name,
-                "kind": member.evaluator.kind,
-                "role": member.role,
-                "enabled": member.enabled,
-                "capability": str(member.evaluator.capability_id)
-                if member.evaluator.capability_id
-                else None,
-                "capability_name": member.evaluator.capability.name
-                if member.evaluator.capability_id
-                else None,
+                "id": str(row.id),
+                "name": row.name,
+                "type": row.type,
+                "source": row.source[:2_000],
+                "span_type": row.span_type,
+                "span_name": row.span_name,
+                "enabled": row.enabled,
             }
-            for member in members[:100]
+            for row in rows[:100]
         ],
-        "members_truncated": len(members) > 100,
+        "rows_truncated": len(rows) > 100,
     }
 
 
@@ -846,71 +872,83 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
     run, _ = resolve_eval_run(project, value)
     if run is None:
         raise _not_found("eval run", value)
-    variants = list(run.variants.order_by("order", "created_at")[:_MAX_LIST])
-    samples = list(
-        run.samples.select_related("run__cell", "variant").prefetch_related("scores")[:5]
-    )
-    sample_count = run.samples.count()
+    run = EvalRun.objects.select_related("dataset", "cell", "model_ref").get(pk=run.pk)
+    scores = comparison.latest_scores(run)
+    rows = list(run.rows.order_by("row_index")[:5])
+    baseline = comparison.baseline_of(run.group)
     return {
         "uri": uri,
         "kind": "eval_run",
         "id": str(run.id),
         "name": run.name,
+        "label": run.label,
         "description": run.description[:1_000],
         "status": run.status,
-        "data_source": run.data_source,
+        "mode": run.mode,
+        "model": run.resolved_model,
+        "group": str(run.group),
+        "is_baseline": run.is_baseline,
         "dataset": str(run.dataset_id) if run.dataset_id else None,
+        "cell": str(run.cell_id) if run.cell_id else None,
         "max_items": run.max_items,
         "sampling": run.sampling,
         "error": run.error[:1_000],
         "summary": safe_json(run.summary or {}),
-        "context_checks": safe_json(run_context_checks(run)),
+        "context_checks": safe_json(eval_context.run_context_checks(run)),
         "judge_model": run.judge_model,
-        "run_evaluators": [
-            {
-                "id": str(row.id),
-                "name": (row.snapshot or {}).get("name", ""),
-                "kind": (row.snapshot or {}).get("kind", ""),
-                "judge_model": (row.snapshot or {}).get("judge_model", ""),
-                "enabled": row.enabled,
-            }
-            for row in run.run_evaluators.order_by("order", "id")[:_MAX_LIST]
+        "matrix": [
+            {"name": row.get("name"), "type": row.get("type")} for row in run.matrix[:_MAX_LIST]
         ],
-        "progress": safe_json(compute_run_progress(run)),
-        "sample_count": sample_count,
-        "samples": [
+        "progress": None if run.is_terminal else safe_json(run_progress(run)),
+        "row_count": run.rows.count(),
+        "rows": [
             {
-                "id": str(sample.id),
-                "row_index": sample.row_index,
-                "variant": sample.variant.label,
-                "io": safe_json(sample_io(sample)),
-                "error": sample.error[:_ERROR_CAP],
-                "scores": safe_json(
-                    [
-                        {
-                            "name": score.name,
-                            "value": score.value,
-                            "passed": score.passed,
-                            "reasoning": score.reasoning,
-                        }
-                        for score in sample.scores.all()[:50]
-                    ]
-                ),
+                "row_index": row.row_index,
+                "state": row.state,
+                "output": safe_json(row.output),
+                "error": row.error[:_ERROR_CAP],
+                "degraded": row.degraded,
+                "degraded_reason": row.degraded_reason,
+                "score": found.score
+                if (found := scores.get(f"{run.cell_id}:{row.row_index}"))
+                else None,
+                "metrics": safe_json(found.metrics) if found else {},
             }
-            for sample in samples
+            for row in rows
         ],
-        "samples_truncated": sample_count > len(samples),
-        "variants": [
-            {
-                "id": str(variant.id),
-                "label": variant.label,
-                "mode": variant.mode,
-                "is_baseline": variant.is_baseline,
-            }
-            for variant in variants
-        ],
+        "baseline": (
+            resource_link("eval-runs", str(baseline.id), baseline.name)
+            if baseline is not None and baseline.pk != run.pk
+            else None
+        ),
         "created_at": run.created_at,
         "completed_at": run.completed_at,
+    }
+
+
+def _signal_events_resource(project, uri: str) -> dict:
+    events = list(
+        SignalEvent.objects.filter(project=project).select_related("capability")[:_MAX_LIST]
+    )
+    return {
+        "uri": uri,
+        "kind": "signal_events",
+        "unseen": SignalEvent.objects.filter(project=project, seen_at__isnull=True).count(),
+        "events": [
+            {
+                "id": str(event.id),
+                "signal_type": event.signal_type,
+                "capability": event.capability.slug if event.capability_id else None,
+                "message": event.message[:1_000],
+                "details": safe_json(event.details),
+                "trace": resource_link("traces", event.trace_id, f"Trace {event.trace_id}")
+                if event.trace_id
+                else None,
+                "occurred_at": event.occurred_at,
+                "seen": event.seen_at is not None,
+            }
+            for event in events
+        ],
     }
 
 
@@ -1496,6 +1534,8 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             raise _not_found("operation", segments[0]) from None
         except ValueError:
             raise MCPError("invalid_input", "Invalid operational event cursor or limit") from None
+    if host == "signal-events" and not segments:
+        return _signal_events_resource(project, raw_uri)
     if (
         host
         in {
@@ -1599,6 +1639,13 @@ def resource_list() -> list[types.Resource]:
             description="CLI guidance for adding provider credentials without putting them in MCP.",
             mimeType=JSON_MIME,
         ),
+        types.Resource(
+            name="signal-events",
+            title="Signal events",
+            uri="overmind://signal-events",
+            description="The project's newest signal events and its unseen count. Account connections must add ?project_id=ID.",
+            mimeType=JSON_MIME,
+        ),
     ]
 
 
@@ -1629,7 +1676,7 @@ def resource_templates() -> list[types.ResourceTemplate]:
             "Untrusted script diagnostics; step, channel, offset and limit",
         ),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
-        ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and evaluator members"),
+        ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and its matrix rows"),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
         ("deployment", "overmind://deployments/{deployment}", "Deployment status"),
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),

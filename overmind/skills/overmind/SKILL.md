@@ -5,9 +5,10 @@ description: Connect and set up Overmind, discover capabilities from a local rep
 
 # Overmind MCP
 
-Overmind models production work as **Capability > behaviour > task
-execution**. A capability is the product AI surface, a behaviour is a
-scanned contract, and a task execution is a carved, scored unit of a trace.
+Overmind models production work as **capabilities** scored by an **eval
+matrix**. A capability is the product AI surface; each of its spans is scored
+live against the matrix rows that apply, and each trace's trajectory is scored
+once its spans are.
 
 MCP prompts are the native guided workflows. Invoke the matching prompt when
 the client lets the agent invoke prompts. Otherwise, or when local repository
@@ -32,7 +33,7 @@ reference and follow it:
 
 Route guided work to these exact prompt names:
 
-- `investigate-capability` — health, failures, traces, task executions, and instrumentation gaps.
+- `investigate-capability` — health, failures, traces, and instrumentation gaps.
 - `instrument-repository` — translate an instrumentation plan into a human-applied code change and verify supplied spans.
 - `upload-dataset-file` — upload local data through the CLI, then land the dataset through MCP or REST.
 - `author-dataset-transformation` — retain, inspect, test, reuse and adapt versioned transformations with explicit conditional flow.
@@ -40,7 +41,7 @@ Route guided work to these exact prompt names:
 - `download-checkpoint` — download an archived fine-tuned deployment checkpoint through the local CLI; MCP carries guidance, not checkpoint bytes.
 - `connect-traces` — connect a tracing provider, review capability boundaries and verify imported traces.
 - `develop-model-from-data` — establish a generative or decision task, retain a training plan and data evidence, train and evaluate the requested recipe, with bounded quality pilots only when requested.
-- `prepare-evaluation` — check evaluation dataset, evaluators, eval set, bindings, and credits.
+- `prepare-evaluation` — check evaluation dataset, eval matrix rows, eval set, and credits.
 - `evaluate-change` — run an evaluation and compare it with a supplied baseline.
 - `finetune-capability` — check, estimate, launch, and verify fine-tuning.
 - `optimize-capability` — schedule and inspect prompt/code optimization.
@@ -70,10 +71,10 @@ Each works directly with the configured MCP connection and can be used on its ow
 
 | Skill                                               | Use it for                                                    |
 | --------------------------------------------------- | ------------------------------------------------------------- |
-| [Agent](../overmind-agent/SKILL.md)                 | Capability map, behaviour coverage and repository provenance  |
+| [Agent](../overmind-agent/SKILL.md)                 | Capability map, eval coverage and repository provenance       |
 | [Observability](../overmind-observability/SKILL.md) | Traces, failures, latency and instrumentation gaps            |
 | [Datasets](../overmind-datasets/SKILL.md)           | Native-authored transformations, lineage, versions and export |
-| [Evaluations](../overmind-evaluations/SKILL.md)     | Rubrics, eval sets, runs and baseline comparisons             |
+| [Evaluations](../overmind-evaluations/SKILL.md)     | Eval matrix, eval sets, runs and baseline comparisons         |
 | [Optimiser](../overmind-optimiser/SKILL.md)         | Prompt/code experiments and model comparisons                 |
 | [Training](../overmind-training/SKILL.md)           | Model selection, exact preparation, cost and fine-tuning      |
 | [Inference](../overmind-inference/SKILL.md)         | Serving metrics, worker state and approved activation         |
@@ -102,7 +103,7 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    workflow lives in the reference.
 1. **Discover, then pass the id the schema asks for.** There are no
    `list_capabilities`, `list_traces`, `get_trace`, `get_capability`,
-   `list_eval_sets`, `list_evaluators`, `list_eval_runs`, `list_finetune_jobs`,
+   `list_eval_sets`, `list_eval_runs`, `list_finetune_jobs`,
    `list_deployed_models`, or `job_status` tools. Use `list_datasets`,
    `query_*`, `inspect_*`, `get_job`, and resource reads. Never paste raw
    UUIDs to the user when a name/slug exists.
@@ -112,8 +113,6 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    Capability tools accept name, slug, or id. Stamp the capability resource
    `id` into the SDK. Pass a READY deployed-model UUID to `set_active_model`
    (omit to clear), then poll the returned `model_activation` job until verification and routing complete. See [references/capabilities.md](references/capabilities.md).
-1. **Behaviours have no resource.** There is no
-   `overmind://behaviours/...`; read them from `query_task_executions`.
 1. **Datasets may start from written intent.** Use `start_dataset` with a brief when no source or capability is chosen. Attach data later with `overmind dataset upload FILE --dataset ID --json`. Original documents and row evidence remain inspectable; extraction does not establish answer correctness.
 1. **Contracts gate dataset consumption.** Intent is **`train`**,
    **`eval`**, or **`pending`** — never `ft` or `surface`. Fine-tuning needs
@@ -128,19 +127,15 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    derive a separate dataset or create role-specific partitions instead of retagging a used chain.
    Read the contracts section below.
 1. **Follow structured errors and durable receipts.** Read the error code, fields and retryability. Creation and paid launch are separate where the schema specifies a draft. Authorization already granted for an unchanged saved scope persists through routine continuation. Unresolved provider submissions require receipt recovery; never blindly repeat them.
-1. **Ticketed instrumentation.** Call `get_instrumentation_plan` with no
+1. **Planned instrumentation.** Call `get_instrumentation_plan` with no
    capability for project-wide work, or with a capability for scoped work, and
-   treat each placement as an edit ticket. If the result has `human_action` or
-   no placements, report its instruction and stop this attempt. Copy every
-   ticket field verbatim, including `key`, `behaviour_id`, `version_id`,
-   `version_analyzed_sha`, `contract_fingerprint`, `capability`,
-   `capability_id`, `placement_mode`, `allowed_keys`, `grain`, `target`,
-   `required_scope`, `required_spans`, and `required_identity`. File + qualname
-   is enough to locate the function. Keep a primary scope outermost when a
-   specialized span targets the same function. When coding subagents are
-   available and permitted, group tickets by every file they touch, including
-   `required_spans[].target.file`, so one worker owns each overlapping group.
-1. **Explicit run approval.** After applying the ticketed code changes, report
+   treat each placement as one edit. If the result has `human_action` or
+   no placements, report its instruction and stop this attempt. Apply each
+   `required_decorator` verbatim at `target.qualname` in `target.file`, keeping
+   `capability_id` exact. When coding subagents are available and permitted,
+   group placements by file so one worker owns each file. See
+   [references/instrumentation.md](references/instrumentation.md).
+1. **Explicit run approval.** After applying the placements, report
    the changed files and local checks, generate a unique verification
    correlation, then ask the user to choose a real run or bounded smoke run.
    Present each choice's exact command or input, capability, environment,
@@ -159,19 +154,18 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 ## Use-case references
 
 - Local setup (`overmind chassis` → scan repo → capability cards / trajectory
-  maps / eval matrix → `overmind.toml` → `overmind sync`):
+  maps → `overmind.toml` → `overmind sync` → decorators with span expectations):
   [references/setup.md](references/setup.md)
 - Resolving / updating agents, prompts, and eval spec:
   [references/capabilities.md](references/capabilities.md)
-- Tasks (behaviour registry, task executions, eval coverage):
-  [references/behaviours.md](references/behaviours.md)
+- Instrumentation (decorator placements, declared expectations, verification):
+  [references/instrumentation.md](references/instrumentation.md)
 - Telemetry (add tracing, inspect traces / sessions / health, connectors):
   [references/telemetry.md](references/telemetry.md)
 - Landing datasets (from traces, failures, a file or rows), handing a
   version to a consumer, and pulling a version to disk:
   [references/datasets.md](references/datasets.md)
-- Authoring evaluators, grouping them into eval sets, running and comparing
-  eval runs:
+- Live scoring, eval matrix rows, eval sets, running and comparing eval runs:
   [references/evals.md](references/evals.md)
 - Fine-tuning a model (prerequisites, recommended-model sweep, deploy, swap PR):
   [references/finetuning.md](references/finetuning.md)
@@ -185,8 +179,8 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 ## Conventions (read before any workflow)
 
 - **List first.** `list_datasets` for datasets. Everything else:
-  `inspect_capability_health`, `query_traces`, `query_task_executions`,
-  `query_failures`, or a resource read. Pass the UUID `list_datasets`
+  `inspect_capability_health`, `query_traces`, `query_failures`, or a
+  resource read. Pass the UUID `list_datasets`
   returned into dataset inspect/query.
   Capability name/slug/id, eval-set name, and unique dataset names work on
   the tools whose schemas accept them. Read
@@ -204,8 +198,7 @@ Use only these implemented names and inspect their schemas at call time.
 
 Observability:
 
-`inspect_capability_health`, `query_failures`, `query_traces`,
-`query_task_executions`, `get_job`.
+`inspect_capability_health`, `query_failures`, `query_traces`, `get_job`.
 
 `inspect_operation` reads a linked operational receipt, with `after`/`limit`
 pagination over its durable events. It never wakes a worker. Distinguish observed
@@ -221,8 +214,12 @@ Datasets:
 
 Evaluations:
 
-`check_evaluation_readiness`, `upsert_evaluator`, `create_eval_set`, `run_evaluation`,
-`compare_evaluations`, `annotate_evaluation_sample`.
+`check_evaluation_readiness`, `create_eval_matrix_row`, `delete_eval_matrix_row`,
+`create_eval_set`, `run_evaluation`, `compare_evaluations`.
+
+Signals:
+
+`list_signals`, `set_signal_subscription`.
 
 Fine-tuning and serving:
 
@@ -303,27 +300,27 @@ new cell. See [Datasets](../overmind-datasets/SKILL.md) for lineage and limits.
 Typical loop (local setup once, then MCP):
 
 1. **See what's happening** — [telemetry.md](references/telemetry.md)
-   (`inspect_capability_health` → `query_failures` → `query_task_executions`
-   → `query_traces` / `overmind://traces/{trace_id}`). The task-execution layer
-   ([behaviours.md](references/behaviours.md)) sits between the agent and its
-   spans: check it before walking traces by hand, and treat
-   `binding_source: "unbound"` as an instrumentation gap, not a scoring one.
-   Offline `scores.overall_pass_rate` and live `live_trace_scores` are
-   different systems; do not treat a 1.0 offline rate as "no live failures."
+   (`inspect_capability_health` → `query_failures` → `query_traces` /
+   `overmind://traces/{trace_id}`). Span and trajectory scores come from live
+   scoring; eval-run scores come from a frozen dataset version. They are
+   different observations; do not treat a 1.0 eval run as "no live failures."
    Resolve / retarget capabilities via [capabilities.md](references/capabilities.md)
    (`overmind://capabilities/{capability}`, `inspect_capability_health`,
    `set_active_model`). If none
    exist, run [setup.md](references/setup.md) (`overmind chassis` →
    `overmind.toml` → `overmind sync`). If nothing is landing, add tracing in the same file —
-   stamp the capability's `id` and use the ticket fan-out workflow in
+   stamp the capability's `id` and use the placement workflow in
    [references/telemetry.md](references/telemetry.md).
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
    (`create_dataset_from_traces`, or CLI upload).
 1. **Shape it** — author a saved pipeline or an external transformation; publish
    with `run_dataset_pipeline` or `import_dataset_version`. Poll its exact job,
    inspect the new version and report impact and unmeasured quality.
-1. **Grade it** — [evals.md](references/evals.md) when you want an
-   eval-vs-eval comparison you drive yourself. Finetune and optimizer runs
+1. **Grade it** — the capability's active eval set (its Default set, built by
+   `overmind sync` from decorator expectations and toml checks) grades live
+   traces, eval runs, backtests, the optimizer and training alike; change it in
+   code or the toml and sync. [evals.md](references/evals.md) covers that and
+   the eval-vs-eval comparisons you drive yourself. Finetune and optimizer runs
    create their own incumbent / experiment baselines automatically — do not
    spend a manual eval run just to give them a comparison point.
 1. **Improve** — [finetuning.md](references/finetuning.md) (**train** dataset;
@@ -372,6 +369,7 @@ The implemented resource templates are:
 - `overmind://datasets/{dataset}`
 - `overmind://eval-runs/{eval_run}`
 - `overmind://eval-sets/{eval_set}`
+- `overmind://signal-events`
 - `overmind://finetunes/{job_id}`
 - `overmind://deployments/{deployment}`
 - `overmind://optimizer-runs/{experiment}`
@@ -412,7 +410,8 @@ Read the smallest matching reference only when the native prompt is missing or
 local work is needed:
 
 - local repository setup: [references/setup.md](references/setup.md)
-- capability and behaviour orientation: [references/capabilities.md](references/capabilities.md) and [references/behaviours.md](references/behaviours.md)
+- capability orientation: [references/capabilities.md](references/capabilities.md)
+- decorator placement and verification: [references/instrumentation.md](references/instrumentation.md)
 - telemetry and code instrumentation: [references/telemetry.md](references/telemetry.md)
 - dataset landing and shaping: [references/datasets.md](references/datasets.md)
 - evaluation authoring and runs: [references/evals.md](references/evals.md)
@@ -425,7 +424,7 @@ local work is needed:
 - `/overmind setup` scans the local repository and writes capability metadata;
   `overmind sync` sends that snapshot to the configured project. MCP cannot
   scan or edit the repository.
-- `get_instrumentation_plan` is read-only. Apply its exact tickets locally;
+- `get_instrumentation_plan` is read-only. Apply its exact placements locally;
   the MCP server cannot edit files or ingest a smoke trace. Verify an ingested
   run with `verify_instrumentation(trace_id=...)`.
 - MCP does not carry local file bytes. From a coding agent with filesystem

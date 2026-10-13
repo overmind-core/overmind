@@ -19,6 +19,8 @@ from typing import Any
 from overmind.evals import intent as _intent
 from overmind.tracing import (
     SpanType,
+    capture_call_inputs,
+    capture_call_output,
     code_identity_attributes,
     deliver,
     env_identity,
@@ -148,15 +150,21 @@ class _RunScope:
 
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                with self._decorated_scope(func, args, kwargs):
-                    return await func(*args, **kwargs)
+                with self._decorated_scope(func, args, kwargs) as handle:
+                    bound = capture_call_inputs(handle.span, func, args, kwargs)
+                    result = await func(*args, **kwargs)
+                    capture_call_output(handle.span, result, bound)
+                    return result
 
             return async_wrapper
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            with self._decorated_scope(func, args, kwargs):
-                return func(*args, **kwargs)
+            with self._decorated_scope(func, args, kwargs) as handle:
+                bound = capture_call_inputs(handle.span, func, args, kwargs)
+                result = func(*args, **kwargs)
+                capture_call_output(handle.span, result, bound)
+                return result
 
         return sync_wrapper
 
@@ -194,8 +202,9 @@ def run(
     invocation. The span is named *name* (default the function's
     ``__qualname__``) and carries the function's ``code.namespace`` /
     ``code.function.name``, so one decoration satisfies an entry-point
-    scan-contract anchor. The return value is not auto-delivered — call
-    ``overmind.deliver()`` inside the unit that produced it.
+    scan-contract anchor. The arguments and return value are captured as the
+    span's ``inputs`` / ``outputs``; the return value is not auto-delivered —
+    call ``overmind.deliver()`` inside the unit that produced it.
     """
     if callable(name):
         raise TypeError("run() must be called: use @overmind.run(...) with parentheses")

@@ -1,7 +1,7 @@
 # Capabilities
 
 A capability is the project-scoped product AI surface. Use the word
-capability in MCP calls; behaviours and task executions belong underneath it.
+capability in MCP calls; its eval matrix rows and scored traces belong underneath it.
 
 ## Read capability state
 

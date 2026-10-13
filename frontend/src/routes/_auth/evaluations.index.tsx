@@ -1,26 +1,22 @@
 import { useMemo, useState } from "react";
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { toast } from "sonner";
 
-import { CreateEvalSetDialog } from "@/components/evaluations/create-eval-set-dialog";
 import { CreateRunDialog } from "@/components/evaluations/create-run-dialog";
+import { EvalMatrixTable } from "@/components/evaluations/eval-matrix-table";
 import { EvalSetDetailDialog } from "@/components/evaluations/eval-set-detail-dialog";
 import { RunsTable } from "@/components/evaluations/runs-table";
-import { TaskEvalLibrary } from "@/components/evaluations/task-eval-library";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CountChip } from "@/components/ui/count-chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SortableHeader } from "@/components/ui/sortable-header";
 import {
   Table,
   TableBody,
@@ -30,15 +26,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  useDeleteEvalSetMutation,
-  useEvalSetsQuery,
-  useEvaluatorScoreHistoryQuery,
-  useProjectCapabilitiesQuery,
-} from "@/hooks/use-evaluations";
-import { useTableSort } from "@/hooks/use-table-sort";
+import { useEvalSetsQuery, useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { featureFlags } from "@/lib/feature-flags";
-import { errorMessage, notify } from "@/lib/notify";
+import { errorMessage } from "@/lib/notify";
 import { type EvaluationsSearch, evaluationsSearchSchema } from "@/lib/schemas";
 import type { EvalSet } from "@/openapi";
 
@@ -52,7 +42,7 @@ export const Route = createFileRoute("/_auth/evaluations/")({
 
 function EvaluationsPage() {
   const search = Route.useSearch();
-  const { projectId, view, capability, page, page_size: pageSize } = search;
+  const { projectId, view, page, page_size: pageSize } = search;
   const navigate = Route.useNavigate();
 
   const patchSearch = (updates: Partial<EvaluationsSearch>) =>
@@ -89,17 +79,7 @@ function EvaluationsPage() {
     navigate({
       replace: true,
       resetScroll: false,
-      search: (prev) => ({
-        ...prev,
-        capability: next === "library" ? prev.capability : undefined,
-        view: next as "sets" | "runs" | "library",
-      }),
-    });
-  const setCapabilityFilter = (next: string | undefined) =>
-    navigate({
-      replace: true,
-      resetScroll: false,
-      search: (prev) => ({ ...prev, capability: next }),
+      search: (prev) => ({ ...prev, view: next as "sets" | "runs" | "matrix" }),
     });
 
   return (
@@ -107,15 +87,16 @@ function EvaluationsPage() {
       header={
         <PageHeader
           actions={
-            <Tabs className="w-auto min-w-0" onValueChange={setView} value={activeView}>
-              <TabsList className="h-auto min-h-9 flex-wrap justify-start">
-                <TabsTrigger value="runs">Runs</TabsTrigger>
-                <TabsTrigger value="sets">Eval sets</TabsTrigger>
-                <TabsTrigger value="library">Eval library</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center gap-3">
+              <Tabs className="w-auto shrink-0" onValueChange={setView} value={activeView}>
+                <TabsList>
+                  <TabsTrigger value="runs">Runs</TabsTrigger>
+                  <TabsTrigger value="sets">Eval sets</TabsTrigger>
+                  <TabsTrigger value="matrix">Eval matrix</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           }
-          className="flex-col lg:flex-row [&>div:last-child]:max-w-full"
           description="Score capabilities against datasets and graders."
           icon={
             <Icon.evaluations
@@ -129,43 +110,21 @@ function EvaluationsPage() {
       variant="full"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {activeView === "sets" && (
-          <div className="flex flex-col gap-3">
-            <div>
-              <CreateEvalSetDialog key={projectId} projectId={projectId} />
-            </div>
-            <EvalSetsTab projectId={projectId} />
-          </div>
-        )}
+        {activeView === "sets" && <EvalSetsTab projectId={projectId} />}
         {activeView === "runs" && (
           <RunsTable
             action={<CreateRunDialog key={projectId} projectId={projectId} />}
             filters={search}
-            key={projectId}
             onSearchChange={patchSearch}
             page={page}
             pageSize={pageSize}
             projectId={projectId}
           />
         )}
-        {activeView === "library" && (
-          <TaskEvalLibrary
-            capabilityFilter={capability}
-            onCapabilityFilterChange={setCapabilityFilter}
-            projectId={projectId}
-          />
-        )}
+        {activeView === "matrix" && <EvalMatrixTable projectId={projectId} />}
       </div>
     </PageShell>
   );
-}
-
-function setLatestScore(set: EvalSet, latestByName: Map<string, number>): number | null {
-  const scores = set.members
-    .map((m) => latestByName.get(m.evaluatorName))
-    .filter((s): s is number => s != null);
-  if (scores.length === 0) return null;
-  return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
 function EvalSetsTab({ projectId }: { projectId: string }) {
@@ -178,7 +137,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
     return map;
   }, [capabilitiesQuery.data]);
 
-  // Sets whose capability is gone (archived/soft-deleted) would 404 on "Manage sets";
+  // Sets whose capability is gone (archived/soft-deleted) would 404 on "Open capability";
   // gate on the capabilities query so a slow load doesn't hide everything meanwhile.
   const capabilitiesLoaded = !!capabilitiesQuery.data;
   const groups = useMemo(() => {
@@ -221,7 +180,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
       <Card>
         <CardContent className="py-4">
           <EmptyState
-            description="Create an eval set from the evaluator library."
+            description="Each sync creates a capability's Default set."
             icon={Icon.evaluations}
             iconClassName="invert [image-rendering:pixelated]"
             size="section"
@@ -263,30 +222,7 @@ function CapabilitySetsGroup({
   projectId: string;
 }) {
   const navigate = Route.useNavigate();
-  const { sort, onSort, sortRows } = useTableSort<
-    "name" | "generativeCount" | "traceScoringCount" | "isActive" | "score"
-  >();
   const [selectedSet, setSelectedSet] = useState<EvalSet | null>(null);
-  const { data: scoreHistory } = useEvaluatorScoreHistoryQuery(capabilityId);
-  const deleteSet = useDeleteEvalSetMutation(projectId, capabilityId);
-
-  const handleDeleteSet = async (set: EvalSet) => {
-    try {
-      await deleteSet.mutateAsync(set.id);
-      toast.success(`Deleted "${set.name}"`);
-    } catch (e) {
-      notify.error(e, "Failed to delete eval set");
-    }
-  };
-
-  const latestByName = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const series of scoreHistory ?? []) {
-      const last = series.points.at(-1);
-      if (last) map.set(series.name, last.score);
-    }
-    return map;
-  }, [scoreHistory]);
 
   const openCapabilityEvaluations = () =>
     navigate({
@@ -306,50 +242,20 @@ function CapabilitySetsGroup({
         {capabilityId && (
           <Button onClick={openCapabilityEvaluations} size="sm" variant="secondary">
             <Icon.externalLink />
-            Manage sets
+            Open capability
           </Button>
         )}
       </div>
       <Table>
         <TableHeader>
           <TableRow>
-            <SortableHeader label="Set" onSort={onSort} sort={sort} sortKey="name" />
-            <SortableHeader
-              centered
-              label="Generative"
-              onSort={onSort}
-              sort={sort}
-              sortKey="generativeCount"
-            />
-            <SortableHeader
-              centered
-              label="Trace scoring"
-              onSort={onSort}
-              sort={sort}
-              sortKey="traceScoringCount"
-            />
-            <SortableHeader
-              centered
-              label="Status"
-              onSort={onSort}
-              sort={sort}
-              sortKey="isActive"
-            />
-            <SortableHeader
-              centered
-              label="Latest score"
-              onSort={onSort}
-              sort={sort}
-              sortKey="score"
-            />
-            <TableHead className="w-16 text-center">Actions</TableHead>
+            <TableHead>Set</TableHead>
+            <TableHead className="text-center">Rows</TableHead>
+            <TableHead className="text-center">Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortRows(sets, (set, key) =>
-            key === "score" ? setLatestScore(set, latestByName) : set[key]
-          ).map((set) => {
-            const score = setLatestScore(set, latestByName);
+          {sets.map((set) => {
             return (
               <TableRow
                 aria-label={`Open ${set.name} for ${capabilityName}`}
@@ -367,10 +273,7 @@ function CapabilitySetsGroup({
               >
                 <TableCell className="font-mono text-sm">{set.name}</TableCell>
                 <TableCell className="text-center font-mono text-xs tabular-nums">
-                  {set.generativeCount}
-                </TableCell>
-                <TableCell className="text-center font-mono text-xs tabular-nums">
-                  {set.traceScoringCount}
+                  {set.rows?.length ?? 0}
                 </TableCell>
                 <TableCell className="text-center">
                   <div className="flex flex-wrap justify-center gap-1.5">
@@ -380,45 +283,6 @@ function CapabilitySetsGroup({
                       </Badge>
                     ) : null}
                   </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  {score === null ? (
-                    <span className="text-xs text-muted-foreground">No runs yet</span>
-                  ) : (
-                    <span className="font-mono text-sm tabular-nums">{Math.round(score)}%</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-center">
-                  {/* Stops dialog clicks bubbling to the row's navigate handler. */}
-                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: guard only, not interactive */}
-                  <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
-                    <ConfirmDialog
-                      confirmLabel="Delete set"
-                      description={
-                        <>
-                          This permanently removes the set and its members.
-                          {set.isActive
-                            ? " This is the capability's active set. Another set becomes active in its place, or none if this is the last one."
-                            : ""}
-                        </>
-                      }
-                      destructive
-                      isPending={deleteSet.isPending}
-                      onConfirm={() => handleDeleteSet(set)}
-                      title={`Delete "${set.name}"?`}
-                      trigger={
-                        <Button
-                          aria-label={`Delete ${set.name}`}
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={(e) => e.stopPropagation()}
-                          size="icon-sm"
-                          variant="ghost"
-                        >
-                          <Icon.delete />
-                        </Button>
-                      }
-                    />
-                  </span>
                 </TableCell>
               </TableRow>
             );

@@ -21,7 +21,7 @@ import pandas as pd
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Cell, Dataset, TaskExecution
+from overbae.models import Cell, Dataset
 from overbae.models.traces import Span
 from overbae.services.datasets import (
     alignment,
@@ -35,7 +35,6 @@ from overbae.services.datasets import (
     store,
 )
 from overbae.services.datasets.partition import preserve_lineage, split_rows
-from overbae.services.eval import units
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +186,6 @@ def publish(dataset, prepared, *, user=None):
         **prepared.dataset_fields, updated_at=timezone.now()
     )
     dataset.refresh_from_db()
-    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
-
-    maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
 
 
@@ -391,7 +387,7 @@ def _root(spans: list[Span]) -> Span:
 
 
 def _delivered(spans: list[Span]) -> Any:
-    from overbae.services.eval import chatml
+    from overbae.services.transcripts import chatml
 
     for span in sorted(spans, key=lambda s: s.start_time_ns or 0, reverse=True):
         if str(_attr(span, "overmind.delivery")).lower() == "true":
@@ -413,7 +409,7 @@ def _first(usage: dict[str, Any], keys: tuple[str, ...]) -> float:
 def _usage(spans: list[Span]) -> dict[str, Any]:
     """Summed over the trace from ``Span.usage``, which keeps the attribute names
     as sent (``genai.prompt_tokens``, ``gen_ai.usage.input_tokens``, ...)."""
-    from overbae.services.eval import chatml
+    from overbae.services.transcripts import chatml
 
     prompt = completion = 0
     cost = 0.0
@@ -447,7 +443,7 @@ def _error(root: Span, spans: list[Span]) -> str | None:
 
 def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
     """``spans`` is one whole trace or selected invocation in start order."""
-    from overbae.services.eval import chatml, normalizer
+    from overbae.services.transcripts import chatml, normalizer
 
     root = _root(spans)
     trajectory = normalizer.reconstruct_spans(spans, promote_harness=True)
@@ -498,18 +494,22 @@ def _chunks(items: Iterable[str], size: int) -> Iterator[list[str]]:
         yield batch
 
 
-def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, list[tuple[str, float]]]:
-    """Keep span membership so scoped rows cannot borrow a sibling's score."""
-    rows = (
-        TaskExecution.objects.filter(project_id=project_id, trace_id__in=trace_ids)
-        .exclude(success_score=None)
-        .order_by("started_at", "created_at")
-        .values_list("trace_id", "unit_span_id", "success_score")
-    )
-    scores: dict[str, list[tuple[str, float]]] = {}
-    for trace_id, span_id, score in rows:
-        scores.setdefault(trace_id, []).append((span_id, score))
-    return scores
+def _score(spans: list[Span]) -> float | None:
+    # Scoped imports use their invocation root, never a sibling or enclosing trace score.
+    attrs = _root(spans).eval_attributes or {}
+    return (attrs.get("trajectory") or {}).get("score", attrs.get("score"))
+
+
+def _ancestors(spans: list[Span], unit: Span) -> list[Span]:
+    by_id = {span.span_id: span for span in spans}
+    seen = {unit.span_id}
+    chain = []
+    cursor = by_id.get(unit.parent_span_id or "")
+    while cursor is not None and cursor.span_id not in seen:
+        seen.add(cursor.span_id)
+        chain.append(cursor)
+        cursor = by_id.get(cursor.parent_span_id or "")
+    return chain
 
 
 def _preferred_spans(spans: list[Span], capability_id: str | None) -> list[Span]:
@@ -521,14 +521,17 @@ def _preferred_spans(spans: list[Span], capability_id: str | None) -> list[Span]
     roots = [
         s
         for s in matches
-        if not any(str(a.capability_id) == capability_id for a in units.ancestor_chain(spans, s))
+        if not any(str(a.capability_id) == capability_id for a in _ancestors(spans, s))
     ]
     if len(roots) != 1:
         raise LandError(
             f"Trace {spans[0].trace_id} has {len(roots)} separate invocations of the selected "
             "capability. Select LLM calls or import explicit invocation rows."
         )
-    return sorted(units.subtree_spans(spans, roots[0]), key=lambda s: s.start_time_ns or 0)
+    return sorted(
+        [s for s in spans if s == roots[0] or roots[0] in _ancestors(spans, s)],
+        key=lambda s: s.start_time_ns or 0,
+    )
 
 
 def iter_trace_rows(
@@ -538,7 +541,7 @@ def iter_trace_rows(
     on_progress: Any = None,
     preferred_capability_id: str | None = None,
 ) -> Iterator[dict[str, Any]]:
-    """Two queries per chunk of traces, then pure assembly; a trace whose spans
+    """One query per chunk of traces, then pure assembly; a trace whose spans
     are gone is skipped."""
     done = 0
     for chunk in _chunks(trace_ids, TRACE_CHUNK):
@@ -550,21 +553,12 @@ def iter_trace_rows(
         by_trace: dict[str, list[Span]] = {}
         for span in spans:
             by_trace.setdefault(span.trace_id, []).append(span)
-        scores = _scores(project_id, chunk)
         for trace_id in chunk:
             trace_spans = by_trace.get(trace_id)
             if not trace_spans:
                 continue
             scoped = _preferred_spans(trace_spans, preferred_capability_id)
-            ids = {s.span_id for s in scoped}
-            score = next(
-                (
-                    value
-                    for span_id, value in reversed(scores.get(trace_id, []))
-                    if scoped is trace_spans or span_id in ids
-                ),
-                None,
-            )
+            score = _score(scoped)
             try:
                 row = trace_row(scoped, score=score)
             except Exception:  # noqa: BLE001 — one unreadable trace must not sink the batch

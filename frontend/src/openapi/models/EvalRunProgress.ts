@@ -13,13 +13,6 @@
  */
 
 import { mapValues } from '../runtime';
-import type { EvalRunVariantProgress } from './EvalRunVariantProgress';
-import {
-    EvalRunVariantProgressFromJSON,
-    EvalRunVariantProgressFromJSONTyped,
-    EvalRunVariantProgressToJSON,
-    EvalRunVariantProgressToJSONTyped,
-} from './EvalRunVariantProgress';
 import type { PhaseEnum } from './PhaseEnum';
 import {
     PhaseEnumFromJSON,
@@ -27,69 +20,49 @@ import {
     PhaseEnumToJSON,
     PhaseEnumToJSONTyped,
 } from './PhaseEnum';
-import type { EvalRunEvaluatorStat } from './EvalRunEvaluatorStat';
-import {
-    EvalRunEvaluatorStatFromJSON,
-    EvalRunEvaluatorStatFromJSONTyped,
-    EvalRunEvaluatorStatToJSON,
-    EvalRunEvaluatorStatToJSONTyped,
-} from './EvalRunEvaluatorStat';
 
 /**
- * ``prepared/total`` tracks generation; ``scored/score_total`` tracks scoring
- * at (sample × evaluator) granularity.
+ *
  * @export
  * @interface EvalRunProgress
  */
 export interface EvalRunProgress {
     /**
      *
+     * @type {number}
+     * @memberof EvalRunProgress
+     */
+    rows: number;
+    /**
+     *
+     * @type {number}
+     * @memberof EvalRunProgress
+     */
+    waiting: number;
+    /**
+     *
+     * @type {number}
+     * @memberof EvalRunProgress
+     */
+    running: number;
+    /**
+     *
+     * @type {number}
+     * @memberof EvalRunProgress
+     */
+    done: number;
+    /**
+     *
+     * @type {number}
+     * @memberof EvalRunProgress
+     */
+    errored: number;
+    /**
+     *
      * @type {PhaseEnum}
      * @memberof EvalRunProgress
      */
     phase: PhaseEnum;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalRunProgress
-     */
-    prepared: number;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalRunProgress
-     */
-    total: number;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalRunProgress
-     */
-    errors: number;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalRunProgress
-     */
-    scored: number;
-    /**
-     *
-     * @type {number}
-     * @memberof EvalRunProgress
-     */
-    scoreTotal: number;
-    /**
-     *
-     * @type {Array<EvalRunVariantProgress>}
-     * @memberof EvalRunProgress
-     */
-    variants: Array<EvalRunVariantProgress>;
-    /**
-     *
-     * @type {Array<EvalRunEvaluatorStat>}
-     * @memberof EvalRunProgress
-     */
-    evaluatorStats: Array<EvalRunEvaluatorStat>;
 }
 
 
@@ -98,14 +71,12 @@ export interface EvalRunProgress {
  * Check if a given object implements the EvalRunProgress interface.
  */
 export function instanceOfEvalRunProgress(value: object): value is EvalRunProgress {
+    if (!('rows' in value) || value['rows'] === undefined) return false;
+    if (!('waiting' in value) || value['waiting'] === undefined) return false;
+    if (!('running' in value) || value['running'] === undefined) return false;
+    if (!('done' in value) || value['done'] === undefined) return false;
+    if (!('errored' in value) || value['errored'] === undefined) return false;
     if (!('phase' in value) || value['phase'] === undefined) return false;
-    if (!('prepared' in value) || value['prepared'] === undefined) return false;
-    if (!('total' in value) || value['total'] === undefined) return false;
-    if (!('errors' in value) || value['errors'] === undefined) return false;
-    if (!('scored' in value) || value['scored'] === undefined) return false;
-    if (!('scoreTotal' in value) || value['scoreTotal'] === undefined) return false;
-    if (!('variants' in value) || value['variants'] === undefined) return false;
-    if (!('evaluatorStats' in value) || value['evaluatorStats'] === undefined) return false;
     return true;
 }
 
@@ -119,14 +90,12 @@ export function EvalRunProgressFromJSONTyped(json: any, ignoreDiscriminator: boo
     }
     return {
 
+        'rows': json['rows'],
+        'waiting': json['waiting'],
+        'running': json['running'],
+        'done': json['done'],
+        'errored': json['errored'],
         'phase': PhaseEnumFromJSON(json['phase']),
-        'prepared': json['prepared'],
-        'total': json['total'],
-        'errors': json['errors'],
-        'scored': json['scored'],
-        'scoreTotal': json['score_total'],
-        'variants': ((json['variants'] as Array<any>).map(EvalRunVariantProgressFromJSON)),
-        'evaluatorStats': ((json['evaluator_stats'] as Array<any>).map(EvalRunEvaluatorStatFromJSON)),
     };
 }
 
@@ -141,13 +110,11 @@ export function EvalRunProgressToJSONTyped(value?: EvalRunProgress | null, ignor
 
     return {
 
+        'rows': value['rows'],
+        'waiting': value['waiting'],
+        'running': value['running'],
+        'done': value['done'],
+        'errored': value['errored'],
         'phase': PhaseEnumToJSON(value['phase']),
-        'prepared': value['prepared'],
-        'total': value['total'],
-        'errors': value['errors'],
-        'scored': value['scored'],
-        'score_total': value['scoreTotal'],
-        'variants': ((value['variants'] as Array<any>).map(EvalRunVariantProgressToJSON)),
-        'evaluator_stats': ((value['evaluatorStats'] as Array<any>).map(EvalRunEvaluatorStatToJSON)),
     };
 }

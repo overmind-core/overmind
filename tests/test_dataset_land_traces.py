@@ -8,10 +8,11 @@ import uuid
 
 import pandas as pd
 import pytest
+from conftest import read_table
 from factories import make_project
 
-from overbae.models import Capability, Conversation, Dataset, Span, TaskExecution
-from overbae.services.datasets import land, paths, selection, store
+from overbae.models import Capability, Conversation, Dataset, Span
+from overbae.services.datasets import land, paths, selection
 
 pytestmark = pytest.mark.django_db
 
@@ -76,7 +77,7 @@ def _land(project, spec):
     dataset = Dataset.objects.create(project=project, name="t")
     land.land_traces(dataset, spec)
     dataset.refresh_from_db()
-    return dataset, store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    return dataset, read_table(paths.cell_path(dataset.id, dataset.source.id))
 
 
 def test_one_row_per_trace_in_selection_order_with_the_fixed_columns():
@@ -143,18 +144,13 @@ def test_delivered_output_wins_over_the_root_output():
     assert df.iloc[0]["output"] == {"reply": "final"}
 
 
-def test_score_is_the_last_scored_task_execution_and_session_id_is_the_wire_id():
+def test_score_is_the_root_trajectory_score_and_session_id_is_the_wire_id():
     project = make_project()
     conversation = Conversation.objects.create(project=project, external_id="conv-42")
     trace, root = _chat_trace(project, conversation=conversation)
-    for offset, score in ((0, 0.2), (60, 0.9), (120, None)):
-        TaskExecution.objects.create(
-            project=project,
-            trace_id=trace,
-            unit_span_id=uuid.uuid4().hex[:16],
-            started_at=land._ns_to_dt(NS + offset * 10**9),
-            success_score=score,
-        )
+    Span.objects.filter(pk=root.pk).update(
+        eval_attributes={"score": 0.2, "trajectory": {"score": 0.9}}
+    )
     _, df = _land(project, {"trace_ids": [trace]})
     row = df.iloc[0]
     assert row["score"] == pytest.approx(0.9)
@@ -193,10 +189,10 @@ def test_an_interrupted_trace_without_a_root_lands_from_its_longest_span():
     assert df.iloc[0]["messages"][-1]["content"] == "partial"
 
 
-def test_a_chunk_of_traces_costs_two_queries(django_assert_num_queries):
+def test_a_chunk_of_traces_costs_one_query(django_assert_num_queries):
     project = make_project()
     ids = [_chat_trace(project)[0] for _ in range(5)]
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(1):
         rows = list(land.iter_trace_rows(project.id, ids))
     assert len(rows) == 5
 

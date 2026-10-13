@@ -14,12 +14,11 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from overbae.innermind import default_set
 from overbae.models import Capability, Project
-from overbae.services.behaviour.registry import mint_behaviour_registry
 from overbae.services.capabilities import identity
 from overbae.services.capability_card import decision_logic_from_card, tools_summary_from_card
 from overbae.services.codebase.artifacts import normalize_capability_card
-from overbae.tasks.eval import enqueue_capability_eval_preload_on_commit
 
 _CAP_COLUMNS = (
     "slug",
@@ -38,6 +37,7 @@ _META_SYSTEM_PROMPT = "system_prompt"
 _META_EVAL_METRICS = "eval_metrics"
 _META_CAPABILITY_CARD = "capability_card"
 _META_EVAL_MATRIX = "eval_matrix"
+_META_EXPECTATIONS = "expectations"
 
 
 def _as_uuid(value) -> uuid.UUID | None:
@@ -113,6 +113,8 @@ def _fill(cap: Capability, data: dict) -> None:
         # Keep the flat wire metrics in sync when only the matrix is sent.
         if "eval_metrics" not in data:
             meta[_META_EVAL_METRICS] = list(data["eval_matrix"] or [])
+    if "expectations" in data:
+        meta[_META_EXPECTATIONS] = [dict(entry) for entry in data["expectations"] or []]
     cap.improvement_metadata = meta
 
 
@@ -137,13 +139,10 @@ def _project_settings_update(project: Project, snapshot: dict) -> None:
     project.save(update_fields=["settings", "updated_at"])
 
 
-def _after_write(
-    cap: Capability, data: dict, *, created: bool, remounted: bool, version: str
-) -> None:
+def _after_write(cap: Capability, *, created: bool, remounted: bool) -> None:
     if cap.status != Capability.Status.CURRENT:
         return
-    mint_behaviour_registry(cap, version or "")
-    enqueue_capability_eval_preload_on_commit(cap)
+    default_set.upsert(cap)
     if created or remounted:
         identity.enqueue_rebind(cap.project_id)
 
@@ -151,7 +150,6 @@ def _after_write(
 @transaction.atomic
 def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
     _project_settings_update(project, snapshot)
-    version = str(snapshot.get("version") or "")
 
     incoming = list(snapshot.get("capabilities") or [])
     seen: set[uuid.UUID] = set()
@@ -175,7 +173,7 @@ def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
             Capability.Status.LEFTOVER if data.get("archived") else Capability.Status.CURRENT
         )
         cap.save()
-        _after_write(cap, data, created=created, remounted=remounted, version=version)
+        _after_write(cap, created=created, remounted=remounted)
         seen.add(cap.id)
         applied.append(cap)
 

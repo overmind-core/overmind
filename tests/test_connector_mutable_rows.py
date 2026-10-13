@@ -13,7 +13,7 @@ pytestmark = pytest.mark.django_db
 def scored(monkeypatch) -> list[str]:
     queued: list[str] = []
     monkeypatch.setattr(
-        "overbae.tasks.trace_scoring.score_trace.delay", lambda **kw: queued.append(kw["trace_id"])
+        "overbae.tasks.innermind.score_spans.delay", lambda **kw: queued.extend(kw["span_ids"])
     )
     return queued
 
@@ -68,7 +68,7 @@ def test_a_newer_row_version_overwrites_the_stored_span_without_rescoring(braint
     assert span.name == "handler-reviewed"
     assert span.attributes["braintrust.scores"] == {"quality": 0.9}
     assert span.attributes["connector.version"] == "2000"
-    assert scored == [span.trace_id]
+    assert scored == [span.span_id]
 
 
 def test_a_same_or_older_row_version_leaves_the_span_alone(braintrust, scored):

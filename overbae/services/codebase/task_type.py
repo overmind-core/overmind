@@ -14,8 +14,8 @@ from overbae.core.model_registry import TaskType as ModelTask
 from overbae.core.model_registry import model_chain, resolve_model
 from overbae.services.benchmarks.taxonomy import TaskType
 from overbae.services.codebase.flow import build_capability_flow
-from overbae.services.eval import decisions
-from overbae.services.eval.funnel import JudgeOutcome
+from overbae.services.judging import decisions
+from overbae.services.judging.funnel import JudgeOutcome
 
 logger = logging.getLogger(__name__)
 

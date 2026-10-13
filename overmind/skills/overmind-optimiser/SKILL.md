@@ -23,7 +23,10 @@ model list. Check the current schema for `optimize`, `model_comparison` or
 Use `list_datasets`, `inspect_dataset` and `query_dataset` to select a fitting
 eval cell. Call `check_optimizer_readiness` with that cell, capability, mode,
 eval set and requested models. Explain missing executioner, model, credit or
-quota prerequisites. The dataset stays on the server; a local file must be
+quota prerequisites. Every iteration is graded with the rows of the
+experiment's first run, by default the capability's active eval set; confirm
+it holds the code's expectations and toml checks (`eval_preload` on the
+capability, refreshed by `overmind sync`) before starting. The dataset stays on the server; a local file must be
 landed before an experiment can use it.
 
 ## Execute within the approved scope

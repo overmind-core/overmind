@@ -202,17 +202,17 @@ def test_a_manual_sync_runs_with_auto_sync_off(credential, langfuse):
     assert _spans(credential) == 3
 
 
-def test_an_import_queues_scoring_for_every_trace_it_lands(credential, langfuse, monkeypatch):
+def test_an_import_queues_scoring_for_every_span_it_lands(credential, langfuse, monkeypatch):
     queued = []
     monkeypatch.setattr(
-        "overbae.tasks.trace_scoring.score_trace.delay", lambda **kw: queued.append(kw["trace_id"])
+        "overbae.tasks.innermind.score_spans.delay", lambda **kw: queued.extend(kw["span_ids"])
     )
     _traces(langfuse, 3)
 
     sync_until_live(credential)
 
-    roots = Span.objects.filter(project=credential.project, parent_span_id__isnull=True)
-    assert sorted(queued) == sorted(roots.values_list("trace_id", flat=True))
+    landed = Span.objects.filter(project=credential.project)
+    assert sorted(queued) == sorted(landed.values_list("span_id", flat=True))
 
 
 def test_a_sync_request_restarts_a_backfill_that_imported_nothing(credential):

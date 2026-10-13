@@ -1,58 +1,30 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { toast } from "sonner";
 
 import { UsedVersionChip } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
-import {
-  matchesSearch,
-  scoreVerdict,
-  sortRows,
-  type VerdictFilter,
-} from "@/components/evaluations/datapoint-filter";
-import { EvalWinnerCallout, PerModelOps } from "@/components/evaluations/eval-results-overview";
-import { renderPayload, type ViewMode } from "@/components/evaluations/payload-format";
+import { MetricList, metricResults } from "@/components/evaluations/metric-list";
+import { renderPayload } from "@/components/evaluations/payload-format";
 import { ProbabilityEvaluationPage } from "@/components/evaluations/probability-evaluation-page";
-import { RunComparison } from "@/components/evaluations/run-comparison";
-import { RunJudges } from "@/components/evaluations/run-judges";
+import {
+  asRunSummary,
+  metricEntries,
+  RunComparison,
+  ScoreChip,
+} from "@/components/evaluations/run-comparison";
 import { StatusBadge } from "@/components/evaluations/runs-table";
-import { type DatapointRow, indexSamples } from "@/components/evaluations/sample-index";
-import { SampleInput } from "@/components/evaluations/sample-input";
-import {
-  type DistributionScore,
-  ScoreDistributions,
-} from "@/components/evaluations/score-distributions";
-import {
-  DecisionEvidence,
-  type ScoreLike,
-  type ScoreState,
-  scoreState,
-} from "@/components/evaluations/score-reasoning";
-import { FailureCard } from "@/components/failure-card";
-import { isFinetunedServingId } from "@/components/finetuning/finetuned-serving-id";
-import { HeaderStat, HelpTip } from "@/components/finetuning/finetuning-chrome";
+import { HeaderStat } from "@/components/finetuning/finetuning-chrome";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { DetailErrorState } from "@/components/route-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Chip } from "@/components/ui/chip";
-import { CountChip } from "@/components/ui/count-chip";
-import { CreditsAmount } from "@/components/ui/credits";
 import { DateTime } from "@/components/ui/datetime";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { SearchInput } from "@/components/ui/search-input";
 import {
   Select,
   SelectContent,
@@ -60,9 +32,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SortableHeader, type SortState } from "@/components/ui/sortable-header";
-import { LoadingState, Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -76,156 +55,37 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { usedVersionOf } from "@/hooks/use-datasets";
 import { useElapsedSeconds } from "@/hooks/use-elapsed-seconds";
 import {
-  useCancelEvalRunMutation,
-  useEvalRunComparisonQuery,
+  isActiveRunStatus,
+  useEvalRunGroupQuery,
   useEvalRunQuery,
-  useEvalSampleQuery,
-  useEvalSamplesQuery,
-  useEvalScoresQuery,
+  useEvalRunRowQuery,
+  useEvalRunRowsQuery,
   useRelaunchEvalRunMutation,
 } from "@/hooks/use-evaluations";
-import { scoreChipClass, scoreFillClass, TONE_CHIP } from "@/lib/colors";
 import { formatElapsed } from "@/lib/formatters";
-import { humanizeKey } from "@/lib/label-case";
-import { notify } from "@/lib/notify";
 import { evaluationRunSearchSchema } from "@/lib/schemas";
-import { PROSE } from "@/lib/typography";
-import { cn, paginationFromPageLimit, paginationItems, scorePct } from "@/lib/utils";
-import type {
-  EvalRunEvaluatorStat,
-  EvalRunOperationalStat,
-  EvalRunProgress,
-  EvalRunVariantProgress,
-  EvalSampleList,
-} from "@/openapi";
-
-const DATA_SOURCE_LABEL: Record<string, string> = {
-  dataset: "Dataset",
-  trace_filter: "Trace filter",
-};
+import { cn } from "@/lib/utils";
+import type { EvalRun, EvalRunDetail, EvalRunRow } from "@/openapi";
 
 export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
   component: EvaluationRunPage,
   validateSearch: evaluationRunSearchSchema,
 });
 
-// Per-turn judge dimension columns (see per_turn_judge.py) — their presence is
-// what marks a run as teacher-forced replay.
-const TURN_DIM_RE = /:\s*(progress|turn match|tool choice|args grounded|safety)\s*$/i;
+const MODE_LABEL: Record<string, string> = {
+  generate: "Generated",
+  provided: "Provided",
+  recorded: "Recorded",
+};
 
-// True when every variant runs in "existing" mode: captured traces are graded
-// with no golden reference, so an expected_output on the dataset row is not a
-// grading target here and showing it misleads.
-const TraceScoringRunContext = createContext(false);
+const PHASE_LABEL: Record<string, string> = {
+  generating: "Generating",
+  preparing: "Preparing",
+  scoring: "Scoring",
+};
 
-function ViewModeToggle({
-  value,
-  onChange,
-}: {
-  value: ViewMode;
-  onChange: (next: ViewMode) => void;
-}) {
-  return (
-    <div
-      aria-label="Toggle payload format"
-      className="inline-flex items-center gap-0.5 rounded-sm border border-border/60 p-0.5"
-      role="group"
-    >
-      {(["formatted", "raw"] as const).map((option) => (
-        <button
-          aria-pressed={value === option}
-          className={cn(
-            "rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize transition-colors",
-            value === option
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          key={option}
-          onClick={() => onChange(option)}
-          type="button"
-        >
-          {option}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface MetricCell {
-  mean: number | null;
-  /**
-   * Ratio of sums, present only for proportional evaluators. Their rows carry
-   * different denominators, so the mean of per-row fractions favours whichever
-   * model writes least — prefer this whenever it is set.
-   */
-  pooled?: number | null;
-  n: number;
-  pass_rate: number | null;
-  delta?: number;
-  regression?: boolean;
-  ci_low?: number | null;
-  ci_high?: number | null;
-  separable?: boolean;
-}
-interface VariantSummary {
-  label: string;
-  metrics: Record<string, MetricCell>;
-}
-interface ErrorCounts {
-  total: number;
-  errored: number;
-  error_rate: number;
-  evaluator_errors?: number;
-  by_variant: Record<
-    string,
-    { label: string; total: number; errored: number; evaluator_errors?: number }
-  >;
-}
-interface TrustVariant {
-  label: string;
-  total: number;
-  degraded: number;
-  reasons: Record<string, number>;
-  replay_misses: number;
-  replay_fuzzy_hits: number;
-}
-interface TrustSignal {
-  total: number;
-  degraded: number;
-  trusted: number;
-  degraded_rate: number;
-  by_variant: Record<string, TrustVariant>;
-}
-interface ApplicabilitySignal {
-  total: number;
-  by_variant: Record<string, { label: string; not_applicable: number }>;
-  by_evaluator: Record<string, number>;
-}
-interface ItemRate {
-  id: string;
-  passed: number;
-  total: number;
-  pass_rate: number;
-}
-interface RunSummary {
-  metrics?: string[];
-  variants?: Record<string, VariantSummary>;
-  baseline_variant_id?: string | null;
-  error_counts?: ErrorCounts;
-  trust?: TrustSignal;
-  applicability?: ApplicabilitySignal;
-  /** variant id -> evaluator name -> per-checklist-item pass rates. */
-  items?: Record<string, Record<string, ItemRate[]>>;
-}
-interface ComparisonPayload {
-  run_id: string;
-  status: string;
-  summary: RunSummary;
-  variants: Array<{ id: string; label: string }>;
-  progress?: EvalRunProgress | null;
-}
-
-const humanizeMetricName = humanizeKey;
+const targetLabel = (run: Pick<EvalRun, "label" | "mode">) =>
+  run.label || MODE_LABEL[run.mode] || run.mode;
 
 function EvaluationRunPage() {
   const { runId } = Route.useParams();
@@ -237,13 +97,12 @@ function EvalRunDetailPage() {
   const { runId } = Route.useParams();
   const { projectId } = Route.useSearch();
   const { data: run, isLoading, error } = useEvalRunQuery(runId);
-  const relaunch = useRelaunchEvalRunMutation(projectId);
-  const cancel = useCancelEvalRunMutation(projectId);
+  const group = useEvalRunGroupQuery(projectId, run?.group || undefined);
   const [view, setView] = useState<"results" | "compare">("results");
 
   const header = (
     <PageHeader
-      description="Scores, variants and per-sample results for this run."
+      description="Scores and per-row results for this run."
       icon={
         <Icon.evaluations
           aria-hidden
@@ -279,7 +138,6 @@ function EvalRunDetailPage() {
     return (
       <PageShell header={header} variant="full">
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-8 w-64" />
         <div className="grid grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton className="h-20" key={i} />
@@ -289,38 +147,27 @@ function EvalRunDetailPage() {
     );
   }
 
-  const runStatus = run.status ?? "pending";
-  const isTerminal = runStatus !== "running" && runStatus !== "pending";
-  const isTraceScoringRun =
-    (run.variants ?? []).length > 0 && run.variants.every((v) => v.mode === "existing");
-
-  // Fine-tuned variants have no tracked gen cost, so they contribute eval cost
-  // only — same rule as the ops table's per-row totals.
-  const runCreditsUsd = (() => {
-    const ops = run.operational ?? [];
-    if (ops.length === 0) return null;
-    const byVariant = new Map(ops.map((o) => [o.variantId, o]));
-    let total = 0;
-    let seen = false;
-    for (const v of run.variants) {
-      const o = byVariant.get(v.id);
-      if (!o) continue;
-      const finetuned = isFinetunedServingId(v.resolvedModel || v.label);
-      const usd = finetuned ? o.evalCost : o.totalCost;
-      if (usd != null) {
-        total += usd;
-        seen = true;
-      }
-    }
-    return seen ? total : null;
-  })();
+  const active = isActiveRunStatus(run.status);
+  const siblings = group.data?.results ?? [];
+  const hasBaseline = !run.isBaseline && siblings.some((r) => r.isBaseline && r.id !== run.id);
 
   return (
-    <TraceScoringRunContext.Provider value={isTraceScoringRun}>
-      {/* There is no app-wide TooltipProvider; the page's help tips need one. */}
-      <TooltipProvider delayDuration={200}>
-        <PageShell header={header} variant="full">
-          {isTerminal && (
+    <TooltipProvider delayDuration={200}>
+      <PageShell header={header} variant="full">
+        {run.error ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {run.error}
+          </div>
+        ) : null}
+
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto">
+          <RunHeaderCard active={active} projectId={projectId} run={run} />
+
+          {siblings.length > 1 && (
+            <GroupStrip current={run.id} projectId={projectId} runs={siblings} />
+          )}
+
+          {!run.isBaseline && siblings.length > 1 && (
             <Tabs
               className="w-auto self-start"
               onValueChange={(v) => setView(v as "results" | "compare")}
@@ -328,2170 +175,468 @@ function EvalRunDetailPage() {
             >
               <TabsList aria-label="Run view">
                 <TabsTrigger value="results">Results</TabsTrigger>
-                <TabsTrigger value="compare">Compare runs</TabsTrigger>
+                <TabsTrigger value="compare">Baseline comparison</TabsTrigger>
               </TabsList>
             </Tabs>
           )}
 
-          {runStatus === "failed" && run.error ? (
-            <FailureCard
-              alternative={
-                run.dataset ? (
-                  <Link
-                    params={{ datasetId: run.dataset }}
-                    search={{ projectId }}
-                    to="/datasets/$datasetId"
-                  >
-                    View dataset
-                  </Link>
-                ) : undefined
-              }
-              error={run.error}
-              onRetry={() =>
-                relaunch.mutate(runId, {
-                  onSuccess: () => toast.success("Re-launched"),
-                })
-              }
-              retryPending={relaunch.isPending}
-              title="Run failed"
-            />
-          ) : run.error ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {run.error}
+          {view === "compare" && !run.isBaseline ? (
+            <RunComparison active={active} hasBaseline={hasBaseline} runId={runId} />
+          ) : (
+            <>
+              <SummarySection run={run} />
+              <RowsSection active={active} projectId={projectId} runId={runId} />
+            </>
+          )}
+        </div>
+      </PageShell>
+    </TooltipProvider>
+  );
+}
+
+function RunElapsed({ run }: { run: EvalRunDetail }) {
+  const running = isActiveRunStatus(run.status);
+  const live = useElapsedSeconds(running ? run.createdAt : undefined);
+  const seconds = running
+    ? live
+    : Math.floor(((run.completedAt ?? run.updatedAt).getTime() - run.createdAt.getTime()) / 1000);
+  if (seconds == null || seconds <= 0) return null;
+  return (
+    <span className="tabular-nums text-xs text-muted-foreground">{formatElapsed(seconds)}</span>
+  );
+}
+
+function Divider() {
+  return <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />;
+}
+
+function RunHeaderCard({
+  run,
+  projectId,
+  active,
+}: {
+  run: EvalRunDetail;
+  projectId: string | undefined;
+  active: boolean;
+}) {
+  const relaunch = useRelaunchEvalRunMutation();
+  const progress = run.progress;
+  const model = run.resolvedModel || run.modelName;
+  return (
+    <Card className="flex flex-col gap-4 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          <h3 className="text-xs text-foreground">Target</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            {model ? (
+              <ModelProviderChip model={model} />
+            ) : (
+              <span className="text-sm font-medium">{targetLabel(run)}</span>
+            )}
+            <Badge size="chip" variant="neutral">
+              {MODE_LABEL[run.mode] ?? run.mode}
+            </Badge>
+            {run.isBaseline && (
+              <Badge size="chip" variant="neutral">
+                Baseline
+              </Badge>
+            )}
+          </div>
+        </div>
+        <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
+          <div className="flex items-baseline gap-2">
+            <dt className="text-muted-foreground">Created</dt>
+            <dd className="font-medium">
+              <DateTime value={run.createdAt} />
+            </dd>
+          </div>
+          {run.completedAt && (
+            <div className="flex items-baseline gap-2">
+              <dt className="text-muted-foreground">Completed</dt>
+              <dd className="font-medium">
+                <DateTime value={run.completedAt} />
+              </dd>
             </div>
-          ) : null}
+          )}
+        </dl>
+      </div>
 
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Card className="flex flex-col gap-4 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-                <div className="flex min-w-0 flex-col gap-2">
-                  <h3 className="inline-flex items-center gap-1.5 text-xs text-foreground">
-                    {run.variants.length === 1 ? "Model" : "Models"}
-                    {run.variants.length > 1 && <CountChip count={run.variants.length} />}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {[...run.variants]
-                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                      .map((v) => (
-                        <ModelProviderChip key={v.id} model={v.resolvedModel || v.label} />
-                      ))}
-                  </div>
-                </div>
-                <RunJudges evaluators={run.runEvaluators} />
-                <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
-                  <div className="flex items-baseline gap-2">
-                    <dt className="text-muted-foreground">Credits used</dt>
-                    <dd className="font-mono font-medium tabular-nums">
-                      {runCreditsUsd != null ? <CreditsAmount usd={runCreditsUsd} /> : "—"}
-                    </dd>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <dt className="text-muted-foreground">Created</dt>
-                    <dd className="font-medium">
-                      <DateTime value={run.createdAt} />
-                    </dd>
-                  </div>
-                  {run.completedAt && (
-                    <div className="flex items-baseline gap-2">
-                      <dt className="text-muted-foreground">Completed</dt>
-                      <dd className="font-medium">
-                        <DateTime value={run.completedAt} />
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              </div>
-
-              <div className="-mx-4 flex flex-wrap items-stretch gap-y-3 border-t border-border/70 px-4 pt-3.5">
-                {run.capabilityId && (
-                  <>
-                    <HeaderStat label="Capability">
-                      <EntityRef
-                        id={run.capabilityId}
-                        kind="capability"
-                        name={run.capabilityName}
-                      />
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.dataset && (
-                  <>
-                    <HeaderStat label="Dataset">
-                      <span className="inline-flex items-center gap-1.5">
-                        <EntityRef
-                          id={run.dataset}
-                          kind="dataset"
-                          name={run.datasetName}
-                          projectId={projectId}
-                        />
-                        <UsedVersionChip info={usedVersionOf(run.cellInfo)} />
-                      </span>
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.dataSource && (
-                  <>
-                    <HeaderStat label="Source">
-                      {DATA_SOURCE_LABEL[run.dataSource] ?? run.dataSource}
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.maxItems != null && run.maxItems > 0 && (
-                  <>
-                    <HeaderStat label="Max items">{run.maxItems}</HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                <HeaderStat label="Evaluators">
-                  {run.runEvaluators.filter((e) => e.enabled).length}
-                </HeaderStat>
-              </div>
-
-              <div className="-mx-4 flex flex-wrap items-center gap-2.5 border-t border-border/70 px-4 pt-3">
-                <StatusBadge status={runStatus} />
-                <RunElapsed
-                  completedAt={run.completedAt}
-                  createdAt={run.createdAt}
-                  status={runStatus}
-                  updatedAt={run.updatedAt}
-                />
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  <Button
-                    disabled={relaunch.isPending}
-                    onClick={() =>
-                      relaunch.mutate(runId, {
-                        onError: (e) => notify.error(e, "Couldn't re-launch the run"),
-                        onSuccess: () => toast.success("Re-launched"),
-                      })
-                    }
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <Icon.refresh />
-                    Re-run
-                  </Button>
-                  {runStatus === "running" && (
-                    <Button
-                      disabled={cancel.isPending}
-                      onClick={() => cancel.mutate(runId)}
-                      size="sm"
-                      variant="secondary"
-                    >
-                      <Icon.close />
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-
-            {view === "compare" && isTerminal ? (
-              <div className="pt-5">
-                <RunComparison
-                  baseCreatedAt={run.createdAt}
-                  baseName={run.name}
-                  baseRunId={runId}
-                  dataset={run.dataset ?? null}
+      <div className="flex flex-wrap items-stretch gap-y-3 border-t border-border/70 pt-3.5">
+        {run.capabilityId && (
+          <>
+            <HeaderStat label="Capability">
+              <EntityRef id={run.capabilityId} kind="capability" name={run.capabilityName} />
+            </HeaderStat>
+            <Divider />
+          </>
+        )}
+        {run.dataset && (
+          <>
+            <HeaderStat label="Dataset">
+              <span className="inline-flex items-center gap-1.5">
+                <EntityRef
+                  id={run.dataset}
+                  kind="dataset"
+                  name={run.datasetName}
                   projectId={projectId}
                 />
-              </div>
-            ) : (
-              <ComparisonTable
-                operational={run.operational}
-                runEvaluators={run.runEvaluators}
-                runId={runId}
-                runStatus={runStatus}
-                runVariants={run.variants}
-              />
-            )}
-          </div>
-        </PageShell>
-      </TooltipProvider>
-    </TraceScoringRunContext.Provider>
-  );
-}
-
-function SectionHeading({
-  title,
-  subtitle,
-  help,
-}: {
-  title: string;
-  subtitle: string;
-  help?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5 pt-1">
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
-        {help && <HelpTip label={title} text={help} />}
-      </div>
-      <p className="text-xs text-muted-foreground">{subtitle}</p>
-    </div>
-  );
-}
-
-function ScoreChip({
-  value,
-  size = "sm",
-  dimmed = false,
-}: {
-  value: number | null | undefined;
-  size?: "sm" | "lg";
-  dimmed?: boolean;
-}) {
-  if (value == null) return <span className="text-muted-foreground/40">—</span>;
-  const pct = scorePct(value);
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center rounded-sm border font-mono font-semibold tabular-nums",
-        size === "lg" ? "px-2.5 py-1 text-sm" : "px-1.5 py-0.5 text-xs",
-        dimmed ? "opacity-50" : "",
-        scoreChipClass(pct)
-      )}
-      title={dimmed ? "Dataset-level aggregate score (same for all rows)" : undefined}
-    >
-      {pct}%
-    </span>
-  );
-}
-
-/** Per-item pass rates for one evaluator, hidden until asked for: two variants
- *  can share a score while failing different items, which the mean erases. */
-function ItemBreakdown({ items }: { items: ItemRate[] }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="-mx-4 mt-1 border-t border-border/60 px-4 pt-2">
-      <button
-        aria-expanded={open}
-        className="pixel-label flex w-full items-center gap-1.5 text-left text-xs text-muted-foreground"
-        onClick={() => setOpen((v) => !v)}
-        type="button"
-      >
-        {items.length} criteria
-        <Icon.chevronDown
-          className={cn(
-            "size-3 transition-transform duration-200 motion-reduce:transition-none",
-            open && "rotate-180"
-          )}
-        />
-      </button>
-      {open && (
-        <ul className="mt-1.5 flex flex-col gap-1">
-          {items.map((item) => (
-            <li className="flex items-baseline justify-between gap-2 text-xs" key={item.id}>
-              <span className="truncate text-muted-foreground">{humanizeMetricName(item.id)}</span>
-              <span
-                className={cn(
-                  "shrink-0 tabular-nums",
-                  item.pass_rate === 1 ? "text-success" : "text-warning"
-                )}
-              >
-                {Math.round(item.pass_rate * 100)}%
-                <span className="ml-1 text-muted-foreground">
-                  ({item.passed}/{item.total})
-                </span>
+                <UsedVersionChip info={usedVersionOf(run.cellInfo)} />
               </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function VariantCard({
-  label,
-  metrics,
-  activeMetric,
-  isBaseline,
-  status,
-  items,
-}: {
-  label: string;
-  metrics: Record<string, MetricCell> | null;
-  activeMetric: string;
-  isBaseline?: boolean;
-  status?: "scored" | "pending" | "no_data";
-  items?: ItemRate[];
-}) {
-  const cell = metrics?.[activeMetric];
-  const headline = cell?.pooled ?? cell?.mean ?? null;
-  const cardStatus = status ?? (headline != null ? "scored" : "pending");
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-md border border-border bg-card p-4",
-        cardStatus === "pending" && "border-dashed opacity-70"
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span className="truncate text-sm font-medium">{label}</span>
-        {isBaseline && (
-          <Badge className="text-xs" variant="secondary">
-            Baseline
-          </Badge>
+            </HeaderStat>
+            <Divider />
+          </>
         )}
-        {cardStatus === "pending" && (
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Spinner className="size-3" size="sm" /> pending
+        {run.maxItems > 0 && (
+          <>
+            <HeaderStat label="Max items">{run.maxItems}</HeaderStat>
+            <Divider />
+          </>
+        )}
+        <HeaderStat label="Matrix rows">
+          {Array.isArray(run.matrix) ? run.matrix.length : 0}
+        </HeaderStat>
+        {run.judgeModel && (
+          <>
+            <Divider />
+            <HeaderStat label="Judge">
+              <span className="font-mono text-xs">{run.judgeModel}</span>
+            </HeaderStat>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5 border-t border-border/70 pt-3">
+        <StatusBadge status={run.status} />
+        {active && progress && (
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {PHASE_LABEL[progress.phase] ?? progress.phase} · {progress.done}/{progress.rows}
+            {progress.errored > 0 && ` · ${progress.errored} errored`}
           </span>
         )}
-      </div>
-      {headline != null ? (
-        <>
-          <ScoreChip size="lg" value={headline} />
-          {cell?.pass_rate != null && (
-            <span className="text-xs text-muted-foreground">
-              {Math.round(cell.pass_rate * 100)}% pass · {cell.n} samples
-            </span>
-          )}
-          {cell?.pooled != null && (
-            <span className="text-xs text-muted-foreground">pooled across claims</span>
-          )}
-          {items && items.length > 0 && <ItemBreakdown items={items} />}
-        </>
-      ) : cardStatus === "pending" ? (
-        <div className="flex flex-col gap-1.5">
-          <Skeleton className="h-6 w-16" />
-          <Skeleton className="h-3 w-24" />
-        </div>
-      ) : (
-        <span className="text-sm text-muted-foreground/50">—</span>
-      )}
-    </div>
-  );
-}
-
-type DatapointSortKey = "index" | "input" | "output" | `score:${string}`;
-
-interface ScoreRecord {
-  sample?: string | null;
-  variant?: string | null;
-  name?: string | null;
-  value?: number | null;
-  passed?: boolean | null;
-  scope?: string | null;
-  reasoning?: string | null;
-}
-
-function buildIndexes(samples: EvalSampleList[], scores: Array<ScoreRecord>) {
-  const { datapointRows, sampleMap, sampleVariantMap } = indexSamples(samples);
-
-  const scoreIndex = new Map<string, Map<string, number>>();
-  const verdictIndex = new Map<string, Map<string, "passed" | "failed">>();
-  const errorIndex = new Map<string, Map<string, string>>();
-  // Keyed by variant, not sample — dataset-scope scores are one per variant.
-  const datasetScoreIndex = new Map<string, Map<string, number>>();
-  const datasetMetrics = new Set<string>();
-
-  for (const sc of scores) {
-    const name = sc.name;
-    if (!name) continue;
-
-    if (sc.scope === "dataset" && sc.variant && sc.value != null) {
-      if (!datasetScoreIndex.has(sc.variant)) datasetScoreIndex.set(sc.variant, new Map());
-      datasetScoreIndex.get(sc.variant)!.set(name, sc.value);
-      datasetMetrics.add(name);
-      continue;
-    }
-
-    if (!sc.sample) continue;
-
-    if (sc.value != null) {
-      if (!scoreIndex.has(sc.sample)) scoreIndex.set(sc.sample, new Map());
-      scoreIndex.get(sc.sample)!.set(name, sc.value);
-      const verdict = scoreVerdict(sc.value, sc.passed);
-      if (verdict) {
-        if (!verdictIndex.has(sc.sample)) verdictIndex.set(sc.sample, new Map());
-        verdictIndex.get(sc.sample)!.set(name, verdict);
-      }
-    } else if (sc.reasoning && !name.endsWith("__prediction")) {
-      // Null value plus a reasoning is the wire shape for "evaluator errored or skipped".
-      if (!errorIndex.has(sc.sample)) errorIndex.set(sc.sample, new Map());
-      errorIndex.get(sc.sample)!.set(name, sc.reasoning);
-    }
-  }
-
-  return {
-    datapointRows,
-    datasetMetrics,
-    datasetScoreIndex,
-    errorIndex,
-    sampleMap,
-    sampleVariantMap,
-    scoreIndex,
-    verdictIndex,
-  };
-}
-
-const PAGE_SIZE = 20;
-
-function ComparisonTable({
-  runId,
-  runStatus,
-  runEvaluators,
-  runVariants,
-  operational,
-}: {
-  runId: string;
-  runStatus: string;
-  operational: EvalRunOperationalStat[];
-  runEvaluators: Array<{
-    id: string;
-    name: string;
-    kind: string;
-    scopeOverride: string;
-    enabled: boolean;
-    snapshot: unknown;
-  }>;
-  runVariants: Array<{
-    id: string;
-    label: string;
-    isBaseline?: boolean;
-    resolvedModel: string;
-    order?: number;
-  }>;
-}) {
-  const isActive = runStatus === "running" || runStatus === "pending";
-  const { data: cmp, isLoading } = useEvalRunComparisonQuery(runId, runStatus);
-  const { data: samplesData } = useEvalSamplesQuery(runId, isActive);
-  const { data: scoresData } = useEvalScoresQuery({ runId }, isActive);
-
-  const payload = cmp as ComparisonPayload | undefined;
-  const summary = payload?.summary as RunSummary | undefined;
-  const metrics = summary?.metrics ?? [];
-  const variants = summary?.variants ?? {};
-  const variantIds = Object.keys(variants);
-  const isReplayRun = metrics.some((m) => TURN_DIM_RE.test(m));
-  const progress = payload?.progress;
-  const isRunning = runStatus === "running" || runStatus === "pending";
-  const errorCounts = summary?.error_counts;
-  const hasErrors = (errorCounts?.errored ?? 0) > 0;
-  const hasEvaluatorErrors = (errorCounts?.evaluator_errors ?? 0) > 0;
-  const trust = summary?.trust;
-  const hasDegraded = (trust?.degraded ?? 0) > 0;
-  const applicability = summary?.applicability;
-  const hasNotApplicable = (applicability?.total ?? 0) > 0;
-
-  const [activeMetric, setActiveMetric] = useState<string>("");
-  const [page, setPage] = useState(0);
-  const [openRow, setOpenRow] = useState<DatapointRow | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
-  const [sort, setSort] = useState<SortState<DatapointSortKey>>({ dir: "asc", key: "index" });
-
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-    setPage(0);
-  };
-  const handleVerdictChange = (value: VerdictFilter) => {
-    setVerdictFilter(value);
-    setPage(0);
-  };
-  const handleSort = (key: DatapointSortKey) => {
-    setSort((prev) =>
-      prev.key === key
-        ? { dir: prev.dir === "asc" ? "desc" : "asc", key }
-        : // Scores read best worst/best-first from a first click; text ascends.
-          { dir: key.startsWith("score:") ? "desc" : "asc", key }
-    );
-    setPage(0);
-  };
-
-  useEffect(() => {
-    if (metrics.length > 0 && !activeMetric) setActiveMetric(metrics[0]);
-  }, [metrics, activeMetric]);
-
-  const currentMetric = activeMetric || metrics[0] || "";
-
-  const allSamples = samplesData?.results ?? [];
-  const allScores = scoresData?.results ?? [];
-  const {
-    datapointRows,
-    sampleMap,
-    sampleVariantMap,
-    scoreIndex,
-    errorIndex,
-    datasetScoreIndex,
-    datasetMetrics,
-    verdictIndex,
-  } = buildIndexes(allSamples, allScores as ScoreRecord[]);
-
-  // Input is shared across a datapoint's variants; output is per-variant, so the
-  // Output column only exists for single-model runs.
-  const previewBySample = new Map(allSamples.map((s) => [s.id, s]));
-  const singleVariantId = variantIds.length === 1 ? variantIds[0] : null;
-
-  const rowSampleId = (row: DatapointRow, vid: string): string | undefined =>
-    sampleMap.get(row.key)?.get(vid);
-
-  // The samples query fetches the whole run, so filtering can stay in memory.
-  const hasActiveFilter = !!searchQuery.trim() || verdictFilter !== "all";
-  const filteredRows = !hasActiveFilter
-    ? datapointRows
-    : datapointRows.filter((row) => {
-        const texts: Array<string | null | undefined> = [
-          previewBySample.get(row.inputSampleId)?.inputPreview,
-        ];
-        for (const vid of variantIds) {
-          const sid = rowSampleId(row, vid);
-          const s = sid ? previewBySample.get(sid) : undefined;
-          texts.push(s?.outputPreview, s?.error);
-        }
-        if (!matchesSearch(searchQuery, texts)) return false;
-        if (verdictFilter === "all") return true;
-        return variantIds.some((vid) => {
-          const sid = rowSampleId(row, vid);
-          return sid ? verdictIndex.get(sid)?.get(currentMetric) === verdictFilter : false;
-        });
-      });
-
-  // Taken from the unfiltered list so a row keeps its "#" wherever it lands.
-  const ordinalByRow = new Map(datapointRows.map((r, i) => [r, i]));
-
-  // Same resolution as the rendered cell: per-sample score, else the variant's
-  // dataset-level aggregate.
-  const rowScoreValue = (row: DatapointRow, vid: string): number | null => {
-    const sampleId = rowSampleId(row, vid);
-    const perSample = sampleId ? scoreIndex.get(sampleId)?.get(currentMetric) : undefined;
-    if (perSample != null) return perSample;
-    if (!datasetMetrics.has(currentMetric)) return null;
-    const variantId = sampleId ? sampleVariantMap.get(sampleId) : vid;
-    return datasetScoreIndex.get(variantId ?? vid)?.get(currentMetric) ?? null;
-  };
-
-  const sortValue = (row: DatapointRow): number | string | null => {
-    if (sort.key === "index") return ordinalByRow.get(row) ?? null;
-    if (sort.key === "input") return previewBySample.get(row.inputSampleId)?.inputPreview ?? null;
-    if (sort.key === "output") {
-      const sid = singleVariantId ? rowSampleId(row, singleVariantId) : undefined;
-      return sid ? (previewBySample.get(sid)?.outputPreview ?? null) : null;
-    }
-    return rowScoreValue(row, sort.key.slice("score:".length));
-  };
-  const sortedRows = sortRows(filteredRows, sortValue, sort.dir);
-
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
-  // A live refetch can shrink the row set under the active page.
-  const safePage = Math.min(page, totalPages - 1);
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
-  const pageRows = sortedRows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-  const pageInfo = paginationFromPageLimit({
-    count: sortedRows.length,
-    page: safePage + 1,
-    pageSize: PAGE_SIZE,
-  });
-
-  const scoresLoading = isLoading && !summary;
-
-  return (
-    <>
-      <div className="flex flex-col gap-5 pt-4">
-        {isRunning && (
-          <LiveRunMonitor
-            evaluatorErrorCount={errorIndex.size}
-            progress={progress ?? null}
-            samples={allSamples}
-          />
-        )}
-
-        {!isRunning && hasErrors && errorCounts && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-            <p className="font-medium">
-              {errorCounts.errored} of {errorCounts.total} samples failed to process (
-              {Math.round(errorCounts.error_rate * 100)}%)
-            </p>
-            <p className={cn(PROSE, "mt-1 text-xs")}>
-              Cells showing — may be due to model API errors or generation failures. Re-run to
-              retry.
-            </p>
-            {Object.values(errorCounts.by_variant).some((v) => v.errored > 0) && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {Object.values(errorCounts.by_variant)
-                  .filter((v) => v.errored > 0)
-                  .map((v) => (
-                    <span
-                      className="rounded-sm bg-warning/15 px-2 py-0.5 text-xs font-medium"
-                      key={v.label}
-                    >
-                      {v.label}: {v.errored}/{v.total} failed
-                    </span>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isRunning && hasEvaluatorErrors && errorCounts && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-            <p className="font-medium">
-              {errorCounts.evaluator_errors} evaluator call
-              {errorCounts.evaluator_errors === 1 ? "" : "s"} failed (e.g. provider/network errors)
-            </p>
-            <p className={cn(PROSE, "mt-1 text-xs")}>
-              The affected scores are ungraded and excluded from aggregates. Re-run to recover.
-            </p>
-            {Object.values(errorCounts.by_variant).some((v) => (v.evaluator_errors ?? 0) > 0) && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {Object.values(errorCounts.by_variant)
-                  .filter((v) => (v.evaluator_errors ?? 0) > 0)
-                  .map((v) => (
-                    <span
-                      className="rounded-sm bg-warning/15 px-2 py-0.5 text-xs font-medium"
-                      key={v.label}
-                    >
-                      {v.label}: {v.evaluator_errors} ungraded
-                    </span>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isRunning && hasDegraded && trust && (
-          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-            <p className="font-medium">
-              {trust.degraded} of {trust.total} samples were ungraded (
-              {Math.round(trust.degraded_rate * 100)}%) — untrusted reconstruction
-            </p>
-            <p className={cn(PROSE, "mt-1 text-xs")}>
-              These traces could not be faithfully reconstructed (e.g. trajectory lifted from raw
-              I/O, tool steps dropped, or replayed tool calls missed their recorded results), so
-              they are excluded from means and pass-rates rather than scored as failures.
-            </p>
-            {Object.values(trust.by_variant).some((v) => v.degraded > 0) && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {Object.values(trust.by_variant)
-                  .filter((v) => v.degraded > 0)
-                  .map((v) => (
-                    <span
-                      className="rounded-sm bg-warning/15 px-2 py-0.5 text-xs font-medium"
-                      key={v.label}
-                    >
-                      {v.label}: {v.degraded}/{v.total} ungraded
-                      {Object.keys(v.reasons).length > 0
-                        ? ` (${Object.entries(v.reasons)
-                            .map(([reason, count]) => `${reason}×${count}`)
-                            .join(", ")})`
-                        : ""}
-                    </span>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isRunning && hasNotApplicable && applicability && (
-          <div className="rounded-md border border-info/40 bg-info/10 px-4 py-3 text-sm text-info">
-            <p className="font-medium">
-              {applicability.total} evaluator score
-              {applicability.total === 1 ? "" : "s"} marked not applicable
-            </p>
-            <p className={cn(PROSE, "mt-1 text-xs")}>
-              These evaluators need evidence this run's mode cannot produce (e.g. the capability's
-              assembled output, only available in existing mode over captured traces). They are
-              excluded from means and pass-rates — not scored as failures. Re-run in existing mode
-              to grade them.
-            </p>
-            {Object.keys(applicability.by_evaluator).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {Object.entries(applicability.by_evaluator).map(([name, count]) => (
-                  <span
-                    className="rounded-sm bg-info/15 px-2 py-0.5 text-xs font-medium"
-                    key={name}
-                  >
-                    {humanizeMetricName(name)}: {count} N/A
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isRunning && variantIds.length > 0 && metrics.length > 0 && (
-          <SectionHeading subtitle="Scores by model, evaluator and sample" title="Results" />
-        )}
-        {!isRunning && variantIds.length > 0 && (
-          <EvalWinnerCallout
-            metrics={metrics}
-            operational={operational ?? []}
-            replay={isReplayRun}
-            summaryVariants={variants}
-            variants={runVariants}
-          />
-        )}
-
-        {!isRunning && variantIds.length > 0 && (
-          <ScoreDistributions
-            metrics={metrics}
-            scores={allScores as DistributionScore[]}
-            variants={runVariants}
-          />
-        )}
-
-        {!isRunning && variantIds.length > 0 && metrics.length > 0 && (
-          <>
-            <SectionHeading
-              help="Gen is the model under test, in dollars. Eval is LLM-judge scoring, in credits. Generation latency and tokens are recorded for newer runs only. Gen cost for your own fine-tuned models is not tracked and shows as -."
-              subtitle="Cost, latency & tokens per model"
-              title="Operations"
-            />
-            <PerModelOps operational={operational ?? []} variants={runVariants} />
-          </>
-        )}
-
-        {!isRunning && variantIds.length > 0 && (
-          <SectionHeading
-            subtitle="Pick a test, then open a row for the full trace"
-            title="Per-datapoint breakdown"
-          />
-        )}
-
-        {/* Controls stay on the shared 32px ramp: select/search default, chip lg. */}
-        {metrics.length > 0 && (
-          <div className="flex w-full flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Test</span>
-            <Select
-              onValueChange={(m) => {
-                setActiveMetric(m);
-                setPage(0);
-              }}
-              value={currentMetric}
+        <RunElapsed run={run} />
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {!active && (
+            <Button
+              disabled={relaunch.isPending}
+              onClick={() => relaunch.mutate(run.id)}
+              size="sm"
+              variant="secondary"
             >
-              <SelectTrigger aria-label="Evaluation test" className="max-w-72" size="default">
-                <SelectValue placeholder="Pick a test" />
-              </SelectTrigger>
-              <SelectContent>
-                {metrics.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {humanizeMetricName(m)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <SearchInput
-              className="min-w-[220px] flex-1"
-              label="Search datapoints"
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onClear={() => handleSearchChange("")}
-              placeholder="Search input & output…"
-              value={searchQuery}
-            />
-            <span className="text-xs font-medium text-muted-foreground">Score</span>
-            {(["all", "passed", "failed"] as const).map((v) => (
-              <Chip
-                key={v}
-                onClick={() => handleVerdictChange(v)}
-                selected={verdictFilter === v}
-                size="lg"
-              >
-                {v === "all" ? "All" : v === "passed" ? "Passed" : "Failed"}
-              </Chip>
-            ))}
-            {hasActiveFilter && (
-              <span aria-live="polite" className="text-xs text-muted-foreground">
-                {filteredRows.length} of {datapointRows.length} datapoints
-              </span>
-            )}
-          </div>
-        )}
-
-        {isRunning && runVariants.length > 0 && (
-          <div
-            className="grid gap-3"
-            style={{
-              gridTemplateColumns: `repeat(${Math.min(runVariants.length, 4)}, minmax(0,1fr))`,
-            }}
-          >
-            {[...runVariants]
-              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-              .map((rv) => {
-                const summaryVariant = variants[rv.id];
-                return (
-                  <VariantCard
-                    activeMetric={currentMetric}
-                    isBaseline={rv.isBaseline}
-                    items={summary?.items?.[rv.id]?.[currentMetric]}
-                    key={rv.id}
-                    label={rv.label}
-                    metrics={summaryVariant?.metrics ?? null}
-                    status={summaryVariant ? "scored" : isRunning ? "pending" : "no_data"}
-                  />
-                );
-              })}
-          </div>
-        )}
-
-        {variantIds.length === 0 ? (
-          <div className="overflow-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Input</TableHead>
-                  {runEvaluators
-                    .filter((e) => e.enabled)
-                    .map((e) => (
-                      <TableHead className="text-center" key={e.id}>
-                        {humanizeMetricName(e.name)}
-                      </TableHead>
-                    ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {scoresLoading || isRunning ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-xs text-muted-foreground/30">{i + 1}</TableCell>
-                      <TableCell className="text-center">
-                        <Skeleton className="mx-auto h-3 w-20" />
-                      </TableCell>
-                      {runEvaluators
-                        .filter((e) => e.enabled)
-                        .map((e) => (
-                          <TableCell className="text-center" key={e.id}>
-                            <Skeleton className="mx-auto h-5 w-10" />
-                          </TableCell>
-                        ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      className="py-10 text-center text-sm text-muted-foreground"
-                      colSpan={2 + runEvaluators.filter((e) => e.enabled).length}
-                    >
-                      No results yet. Results appear once the evaluation completes.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <>
-            {datasetMetrics.has(currentMetric) && (
-              <div
-                className={cn(
-                  PROSE,
-                  "rounded-md border border-info/40 bg-info/10 px-4 py-2.5 text-xs text-info"
-                )}
-              >
-                <span className="font-medium">{humanizeMetricName(currentMetric)}</span> is a
-                dataset-level metric computed once across all samples — the score shown per row is
-                the aggregate for that model variant. BLEU and chrF++ require multi-word texts; they
-                may be 0 for single-word classification labels.
-              </div>
-            )}
-
-            <div className="overflow-auto rounded-md border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHeader
-                      className="w-10"
-                      label="#"
-                      onSort={handleSort}
-                      sort={sort}
-                      sortKey="index"
-                    />
-                    <SortableHeader label="Input" onSort={handleSort} sort={sort} sortKey="input" />
-                    {singleVariantId ? (
-                      <SortableHeader
-                        label="Output"
-                        onSort={handleSort}
-                        sort={sort}
-                        sortKey="output"
-                      />
-                    ) : null}
-                    {variantIds.map((vid) => (
-                      <SortableHeader
-                        centered
-                        key={vid}
-                        label={singleVariantId ? "Score" : variants[vid].label}
-                        onSort={handleSort}
-                        sort={sort}
-                        sortKey={`score:${vid}`}
-                      />
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageRows.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        className="py-10 text-center text-sm text-muted-foreground"
-                        colSpan={2 + (singleVariantId ? 1 : 0) + variantIds.length}
-                      >
-                        No datapoints match your search or filter.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {pageRows.map((row) => {
-                    const ordinal = ordinalByRow.get(row) ?? 0;
-                    const inputSample = previewBySample.get(row.inputSampleId);
-                    const outSampleId = singleVariantId
-                      ? rowSampleId(row, singleVariantId)
-                      : undefined;
-                    const outSample = outSampleId ? previewBySample.get(outSampleId) : undefined;
-                    return (
-                      <TableRow
-                        className="cursor-pointer hover:bg-wash-raised"
-                        key={row.key}
-                        onClick={() => setOpenRow(row)}
-                      >
-                        <TableCell className="text-xs text-muted-foreground/40">
-                          {ordinal + 1}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className="block max-w-[24rem] truncate text-xs text-muted-foreground"
-                            title={inputSample?.inputPreview || undefined}
-                          >
-                            {inputSample?.inputPreview || "—"}
-                          </span>
-                        </TableCell>
-                        {singleVariantId ? (
-                          <TableCell>
-                            {outSample?.error ? (
-                              <span
-                                className="block max-w-[24rem] truncate text-xs text-warning"
-                                title={outSample.error}
-                              >
-                                {outSample.error}
-                              </span>
-                            ) : (
-                              <span
-                                className="block max-w-[24rem] truncate text-xs text-foreground/90"
-                                title={outSample?.outputPreview || undefined}
-                              >
-                                {outSample?.outputPreview || "—"}
-                              </span>
-                            )}
-                          </TableCell>
-                        ) : null}
-                        {variantIds.map((vid) => {
-                          const sampleId = rowSampleId(row, vid);
-                          const perSampleScore = sampleId
-                            ? scoreIndex.get(sampleId)?.get(currentMetric)
-                            : undefined;
-                          const variantId = sampleId ? sampleVariantMap.get(sampleId) : vid;
-                          const datasetScore =
-                            perSampleScore == null && datasetMetrics.has(currentMetric)
-                              ? datasetScoreIndex.get(variantId ?? vid)?.get(currentMetric)
-                              : undefined;
-                          const score = perSampleScore ?? datasetScore;
-                          const errorReason =
-                            score == null && sampleId
-                              ? errorIndex.get(sampleId)?.get(currentMetric)
-                              : undefined;
-                          return (
-                            <TableCell className="text-center" key={vid}>
-                              {errorReason ? (
-                                <span
-                                  className="inline-flex items-center justify-center rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-warning"
-                                  title={errorReason}
-                                >
-                                  !
-                                </span>
-                              ) : (
-                                <ScoreChip
-                                  dimmed={datasetScore != null && perSampleScore == null}
-                                  value={score}
-                                />
-                              )}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {totalPages > 1 && (
-              <nav
-                aria-label="Datapoint pages"
-                className="flex items-center justify-between text-xs text-muted-foreground"
-              >
-                <span>
-                  {pageInfo.startItem}–{pageInfo.endItem} of {pageInfo.total} datapoints
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    className="px-2 text-xs"
-                    disabled={!pageInfo.hasPrevious}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <Icon.chevronLeft />
-                    Previous
-                  </Button>
-                  {paginationItems(safePage + 1, totalPages).map((item, i) =>
-                    item === "ellipsis" ? (
-                      <span
-                        aria-hidden="true"
-                        className="px-1 text-muted-foreground/50"
-                        key={`ellipsis-${i}`}
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        aria-current={item - 1 === safePage ? "page" : undefined}
-                        aria-label={`Page ${item}`}
-                        className={cn(
-                          "h-7 min-w-7 rounded-sm px-1 text-xs font-medium transition-colors",
-                          item - 1 === safePage
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted text-muted-foreground"
-                        )}
-                        key={item}
-                        onClick={() => setPage(item - 1)}
-                        type="button"
-                      >
-                        {item}
-                      </button>
-                    )
-                  )}
-                  <Button
-                    className="px-2 text-xs"
-                    disabled={!pageInfo.hasNext}
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    Next
-                    <Icon.chevronRight />
-                  </Button>
-                </div>
-              </nav>
-            )}
-          </>
-        )}
-      </div>
-
-      <SampleModal
-        datasetScoreIndex={datasetScoreIndex}
-        onClose={() => setOpenRow(null)}
-        row={openRow}
-        sampleMap={sampleMap}
-        variantIds={variantIds}
-        variants={variants}
-      />
-    </>
-  );
-}
-
-const PHASE_ORDER = ["generating", "scoring", "aggregating"] as const;
-
-function phaseIndex(phase: string): number {
-  const idx = (PHASE_ORDER as readonly string[]).indexOf(phase);
-  if (idx >= 0) return idx;
-  if (phase === "pending") return -1;
-  return PHASE_ORDER.length; // terminal — every phase done
-}
-
-function RunElapsed({
-  status,
-  createdAt,
-  completedAt,
-  updatedAt,
-}: {
-  status: string;
-  createdAt: Date;
-  completedAt: Date | null;
-  updatedAt: Date;
-}) {
-  const isRunning = status === "running" || status === "pending";
-  const live = useElapsedSeconds(isRunning ? createdAt : undefined);
-
-  if (isRunning) {
-    if (live == null) return null;
-    return (
-      <span
-        aria-label={`Running for ${formatElapsed(live)}`}
-        className="tabular-nums text-xs text-muted-foreground"
-        role="timer"
-      >
-        {formatElapsed(live)}
-      </span>
-    );
-  }
-
-  const end = completedAt ?? updatedAt;
-  const totalSeconds = Math.floor((end.getTime() - createdAt.getTime()) / 1000);
-  if (totalSeconds <= 0) return null;
-  return (
-    <span
-      aria-label={`Ran for ${formatElapsed(totalSeconds)}`}
-      className="tabular-nums text-xs text-muted-foreground"
-      role="img"
-    >
-      {formatElapsed(totalSeconds)}
-    </span>
-  );
-}
-
-function LiveRunMonitor({
-  progress,
-  samples,
-  evaluatorErrorCount,
-}: {
-  progress: EvalRunProgress | null;
-  samples: EvalSampleList[];
-  evaluatorErrorCount: number;
-}) {
-  const [openSampleId, setOpenSampleId] = useState<string | null>(null);
-  const phase = progress?.phase ?? "pending";
-
-  const prepared = progress?.prepared ?? 0;
-  const total = progress?.total ?? 0;
-  const scored = progress?.scored ?? 0;
-  const scoreTotal = progress?.scoreTotal ?? 0;
-  const evaluatorStats = progress?.evaluatorStats ?? [];
-  const errorCount = (progress?.errors ?? 0) + evaluatorErrorCount;
-
-  return (
-    <section aria-label="Live run progress" className="flex flex-col gap-3">
-      <PhaseStepper
-        phase={phase}
-        prepared={prepared}
-        scored={scored}
-        scoreTotal={scoreTotal}
-        total={total}
-        variants={progress?.variants ?? []}
-      />
-
-      <LiveSampleFeed onOpen={setOpenSampleId} samples={samples} />
-
-      {(evaluatorStats.length > 0 || errorCount > 0) && (
-        <div
-          className={cn(
-            "grid grid-cols-1 gap-3",
-            evaluatorStats.length > 0 && errorCount > 0 && "lg:grid-cols-2"
+              <Icon.refresh />
+              Re-run
+            </Button>
           )}
-        >
-          {evaluatorStats.length > 0 && <PartialEvaluatorStats stats={evaluatorStats} />}
-          {errorCount > 0 && (
-            <ErrorsPanel
-              evaluatorErrorCount={evaluatorErrorCount}
-              generationErrorCount={progress?.errors ?? 0}
-              samples={samples}
-            />
+          {run.status === "completed" && (
+            <Button asChild size="sm">
+              <Link
+                search={{
+                  optimize: true,
+                  projectId,
+                  ...(run.capabilityId ? { capabilityId: run.capabilityId } : {}),
+                  ...(run.dataset ? { datasetId: run.dataset } : {}),
+                }}
+                to="/optimiser"
+              >
+                <Icon.optimiser />
+                Optimise
+              </Link>
+            </Button>
           )}
         </div>
-      )}
+      </div>
+    </Card>
+  );
+}
 
-      <SampleQuickView onClose={() => setOpenSampleId(null)} sampleId={openSampleId} />
+function GroupStrip({
+  runs,
+  current,
+  projectId,
+}: {
+  runs: EvalRun[];
+  current: string;
+  projectId: string | undefined;
+}) {
+  return (
+    <section aria-label="Targets in this group" className="flex flex-wrap gap-2">
+      {runs.map((r) => (
+        <Link
+          className={cn(
+            "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-wash-subtle",
+            r.id === current ? "border-primary/60 bg-wash-subtle" : "border-border"
+          )}
+          key={r.id}
+          params={{ runId: r.id }}
+          search={{ projectId }}
+          to="/evaluations/runs/$runId"
+        >
+          <span className="max-w-48 truncate">{targetLabel(r)}</span>
+          {r.isBaseline && (
+            <Badge size="chip" variant="neutral">
+              Baseline
+            </Badge>
+          )}
+          {isActiveRunStatus(r.status) ? (
+            <StatusBadge status={r.status} />
+          ) : (
+            <ScoreChip value={asRunSummary(r.summary).score} />
+          )}
+        </Link>
+      ))}
     </section>
   );
 }
 
-function PhaseStepper({
-  phase,
-  prepared,
-  total,
-  scored,
-  scoreTotal,
-  variants,
-}: {
-  phase: string;
-  prepared: number;
-  total: number;
-  scored: number;
-  scoreTotal: number;
-  variants: EvalRunVariantProgress[];
-}) {
-  const activeIdx = phaseIndex(phase);
-  const steps = [
-    { done: prepared, key: "generating", label: "Generating responses", total },
-    { done: scored, key: "scoring", label: "Scoring", total: scoreTotal },
-    { done: 0, key: "aggregating", label: "Aggregating", total: 0 },
-  ];
-
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-md border bg-wash-subtle p-4">
-      <div className="mb-3 flex items-center gap-2 text-xs">
-        <span className="flex items-center gap-1.5 font-medium">
-          <Spinner className="size-3" size="sm" />
-          {phase === "pending" ? "Waiting for the worker to pick up the run…" : "Run in progress"}
-        </span>
-      </div>
-      <ol aria-label="Run phases" className="grid grid-cols-3 gap-4">
-        {steps.map((step, i) => {
-          const state = i < activeIdx ? "done" : i === activeIdx ? "active" : "pending";
-          const value = state === "done" ? step.total : step.done;
-          const pct =
-            step.total > 0 ? Math.round((value / step.total) * 100) : state === "done" ? 100 : 0;
-          return (
-            <li className="flex flex-col gap-1.5" key={step.key}>
-              <div className="flex items-center gap-1.5 text-xs">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-2 shrink-0 rounded-xs",
-                    state === "done" && "bg-primary",
-                    state === "active" && "animate-pulse bg-primary motion-reduce:animate-none",
-                    state === "pending" && "bg-muted-foreground/30"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "truncate font-medium",
-                    state === "pending" && "text-muted-foreground/60"
-                  )}
-                >
-                  {step.label}
-                </span>
-              </div>
-              <div
-                aria-label={`${step.label} progress`}
-                aria-valuemax={step.total || 1}
-                aria-valuemin={0}
-                aria-valuenow={state === "done" ? step.total || 1 : step.done}
-                className="h-1.5 w-full overflow-hidden rounded-xs bg-muted"
-                role="progressbar"
-              >
-                <div
-                  className={cn(
-                    "h-full rounded-xs transition-all duration-700 motion-reduce:transition-none",
-                    state === "pending" ? "bg-transparent" : "bg-primary"
-                  )}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {step.total > 0 ? (
-                  <>
-                    {value} / {step.total}
-                    {state === "active" && step.total > 0 && <> · {pct}%</>}
-                  </>
-                ) : state === "active" ? (
-                  "Computing summary…"
-                ) : state === "done" ? (
-                  "Done"
-                ) : (
-                  "Queued"
-                )}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-      {variants.length > 0 && (
-        <div className="-mx-4 mt-4 border-t border-border/70 px-4 pt-4">
-          <VariantProgressBars variants={variants} />
-        </div>
-      )}
+    <div className="flex flex-col gap-1 rounded-md border border-border bg-wash-subtle px-4 py-3">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-lg font-semibold tabular-nums">{value}</span>
     </div>
   );
 }
 
-function VariantProgressBars({ variants }: { variants: EvalRunVariantProgress[] }) {
-  return (
-    <ul className="flex flex-col gap-2">
-      {variants.map((v) => {
-        const pct = v.total > 0 ? Math.round((v.prepared / v.total) * 100) : 0;
-        const state =
-          v.prepared >= v.total && v.total > 0 ? "done" : v.prepared > 0 ? "generating" : "pending";
-        return (
-          <li className="flex flex-col gap-1" key={v.id}>
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate font-medium" title={v.label}>
-                  {v.label}
-                </span>
-                {v.errors > 0 && (
-                  <Badge className="shrink-0 text-xs" variant="destructive">
-                    {v.errors} failed
-                  </Badge>
-                )}
-              </span>
-              <span className="flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground">
-                {state === "generating" && <Spinner className="size-3" size="sm" />}
-                {state === "pending" && "Queued"}
-                {state !== "pending" && `${v.prepared} / ${v.total} · ${pct}%`}
-              </span>
-            </div>
-            <div
-              aria-label={`${v.label} generation progress`}
-              aria-valuemax={v.total || 1}
-              aria-valuemin={0}
-              aria-valuenow={v.prepared}
-              className="h-1.5 w-full overflow-hidden rounded-xs bg-muted"
-              role="progressbar"
-            >
-              <div
-                className="h-full rounded-xs bg-primary transition-all duration-700 motion-reduce:transition-none"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function PartialEvaluatorStats({ stats }: { stats: EvalRunEvaluatorStat[] }) {
-  if (stats.length === 0) return null;
-  return (
-    <div className="rounded-md border bg-wash-subtle p-4">
-      <div className="mb-2.5 flex items-center gap-2">
-        <h3 className="text-xs text-muted-foreground">Scores so far</h3>
-        <Badge className="text-xs" variant="outline">
-          Partial
-        </Badge>
-      </div>
-      <ul className="flex flex-col gap-1.5">
-        {stats.map((s) => (
-          <li className="flex items-center justify-between gap-2 text-xs" key={s.name}>
-            <span className="min-w-0 truncate" title={s.name}>
-              {humanizeMetricName(s.name)}
-            </span>
-            <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted-foreground">
-              {s.passRate != null && <span>{Math.round(s.passRate * 100)}% pass</span>}
-              <ScoreChip value={s.mean} />
-              <span className="text-muted-foreground/60">n={s.scored}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ErrorsPanel({
-  samples,
-  generationErrorCount,
-  evaluatorErrorCount,
-}: {
-  samples: EvalSampleList[];
-  generationErrorCount: number;
-  evaluatorErrorCount: number;
-}) {
-  const failed = samples.filter((s) => s.error);
-  const totalErrors = generationErrorCount + evaluatorErrorCount;
-
-  if (totalErrors === 0) return null;
-
-  return (
-    <div className="rounded-md border border-warning/30 bg-warning/5 p-4 text-xs">
-      <p className="font-medium text-warning">
-        {generationErrorCount > 0 &&
-          `${generationErrorCount} generation error${generationErrorCount === 1 ? "" : "s"}`}
-        {generationErrorCount > 0 && evaluatorErrorCount > 0 && " · "}
-        {evaluatorErrorCount > 0 &&
-          `${evaluatorErrorCount} scoring error${evaluatorErrorCount === 1 ? "" : "s"}`}
-        {failed.length === 0 && (
-          <span className="ml-1.5 font-normal text-muted-foreground">
-            Marked "!" in the results table below.
-          </span>
-        )}
-      </p>
-      {failed.length > 0 && (
-        <ul className="mt-2.5 flex max-h-48 flex-col gap-1.5 overflow-y-auto">
-          {failed.map((s) => (
-            <li className="rounded-sm border bg-background/60 px-2 py-1.5 text-xs" key={s.id}>
-              <span className="font-medium">{s.variantLabel || "sample"}</span>
-              <span className="ml-1.5 text-muted-foreground">{(s.error ?? "").slice(0, 200)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-const FEED_SIZE = 12;
-
-function LiveSampleFeed({
-  samples,
-  onOpen,
-}: {
-  samples: EvalSampleList[];
-  onOpen: (id: string) => void;
-}) {
-  // Samples are all created up-front, so created_at can't tell us which
-  // finished last — order by when each was first seen as prepared.
-  const seenRef = useRef<Map<string, number>>(new Map());
-  const counterRef = useRef(0);
-
-  const { feed, preparedCount } = useMemo(() => {
-    const seen = seenRef.current;
-    for (const s of samples) {
-      if (s.id && s.isPrepared && !seen.has(s.id)) seen.set(s.id, counterRef.current++);
-    }
-    const ordinals = new Map<string, number>();
-    samples.forEach((s, i) => {
-      if (s.id) ordinals.set(s.id, i + 1);
-    });
-    const prepared = samples.filter((s) => s.id && s.isPrepared);
-    const items = [...prepared]
-      .sort((a, b) => (seen.get(b.id ?? "") ?? 0) - (seen.get(a.id ?? "") ?? 0))
-      .slice(0, FEED_SIZE)
-      .map((s) => ({ ordinal: ordinals.get(s.id ?? "") ?? 0, sample: s }));
-    return { feed: items, preparedCount: prepared.length };
-  }, [samples]);
-
-  return (
-    <div className="flex h-full flex-col rounded-md border bg-wash-subtle p-4">
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <h3 className="text-xs text-muted-foreground">Latest responses</h3>
-        <span className="text-xs tabular-nums text-muted-foreground/70">
-          {preparedCount} of {samples.length} generated
-        </span>
-      </div>
-      {feed.length === 0 ? (
-        <LoadingState label="Waiting for the first responses…" />
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {feed.map(({ sample, ordinal }) => (
-            <li key={sample.id}>
-              <button
-                aria-label={`Open sample ${ordinal} (${sample.variantLabel ?? "variant"})`}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-wash-raised focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => sample.id && onOpen(sample.id)}
-                type="button"
-              >
-                <span className="w-9 shrink-0 font-mono tabular-nums text-muted-foreground/60">
-                  #{ordinal}
-                </span>
-                <span className="w-28 shrink-0 truncate font-medium" title={sample.variantLabel}>
-                  {sample.variantLabel}
-                </span>
-                {sample.error ? (
-                  <Badge className="shrink-0 text-xs" variant="destructive">
-                    Failed
-                  </Badge>
-                ) : null}
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {sample.error ? sample.error : sample.outputPreview || "(empty output)"}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function SampleQuickView({ sampleId, onClose }: { sampleId: string | null; onClose: () => void }) {
-  const { data: sample, isLoading } = useEvalSampleQuery(sampleId ?? "");
-  const [viewMode, setViewMode] = useState<ViewMode>("formatted");
-  const isTraceScoringRun = useContext(TraceScoringRunContext);
-  const traj = (sample?.trajectory ?? {}) as { final_output?: string };
-  const rawExpected = sample?.expected;
-  const expected =
-    rawExpected == null
-      ? null
-      : typeof rawExpected === "string"
-        ? rawExpected
-        : JSON.stringify(rawExpected);
-
-  return (
-    <Dialog
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      open={!!sampleId}
-    >
-      <DialogContent size="md">
-        <DialogHeader end={<ViewModeToggle onChange={setViewMode} value={viewMode} />}>
-          <DialogTitle className="text-sm">
-            Sample <span className="font-mono text-muted-foreground">{sampleId?.slice(0, 8)}…</span>
-          </DialogTitle>
-        </DialogHeader>
-        <DialogBody className="flex flex-col gap-3">
-          {isLoading || !sample ? (
-            <LoadingState label="Loading…" />
-          ) : (
-            <div className="flex flex-col gap-3">
-              <SampleInput io={sample.io} viewMode={viewMode} />
-              {sample.error && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  {sample.error}
-                </div>
-              )}
-              <div className="rounded-md border border-primary/25 bg-primary/5 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <Icon.model className="size-3.5 text-primary" />
-                  <span className="text-xs font-semibold text-foreground">Model output</span>
-                  <span className="rounded-sm bg-primary/15 px-1 py-0.5 text-xs font-semibold text-primary">
-                    this run
-                  </span>
-                </div>
-                <ModelOutputContent
-                  fallback={traj.final_output ?? null}
-                  structured={sample?.structured as Record<string, unknown> | undefined}
-                  viewMode={viewMode}
-                />
-              </div>
-              {!isTraceScoringRun && expected != null && (
-                <div className="rounded-md border bg-wash-subtle p-3">
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Icon.dataset className="size-3.5 text-muted-foreground" />
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      Reference answer
-                    </span>
-                    <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                      used for grading
-                    </span>
-                  </div>
-                  <p className="whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
-                    {renderPayload(expected, viewMode)}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ScoreVerdictBadge({ state }: { state: ScoreState }) {
-  if (state === "passed")
-    return (
-      <Badge className="pixel-label text-xs" variant="success">
-        Pass
-      </Badge>
-    );
-  if (state === "failed")
-    return (
-      <Badge className="pixel-label text-xs" variant="destructive">
-        Fail
-      </Badge>
-    );
-  if (state === "ungraded")
-    return (
-      <Badge className="pixel-label text-xs" variant="warning">
-        Ungraded
-      </Badge>
-    );
-  return null;
-}
-
-/** Borderless: parents separate rows with `divide-y`, so the row owns its own
- * horizontal padding and those hairlines run edge to edge. */
-function ScoreRow({ score }: { score: ScoreLike }) {
-  const [open, setOpen] = useState(false);
-  const state = scoreState(score);
-  const reasoning = score.reasoning?.trim();
-  const label = state === "ungraded" ? "Why ungraded?" : "Why this score?";
-
-  return (
-    <div className="px-4 py-2.5 first:pt-0 last:pb-0">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm font-medium" title={score.name ?? undefined}>
-            {score.name ? humanizeMetricName(score.name) : score.name}
-          </span>
-          <ScoreVerdictBadge state={state} />
-        </div>
-        <ScoreChip value={score.value} />
-      </div>
-      {reasoning ? (
-        <div className="mt-2">
-          <button
-            aria-expanded={open}
-            className={cn(
-              "pixel-label flex items-center gap-1.5 text-left text-xs transition-colors",
-              state === "ungraded"
-                ? "text-warning hover:text-warning/80"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => setOpen((v) => !v)}
-            type="button"
-          >
-            {label}
-            <Icon.chevronDown
-              className={cn(
-                "size-3 transition-transform duration-200 motion-reduce:transition-none",
-                open && "rotate-180"
-              )}
-            />
-          </button>
-          {open && (
-            <p
-              className={cn(
-                PROSE,
-                "mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/90"
-              )}
-            >
-              {reasoning}
-            </p>
-          )}
-        </div>
-      ) : state === "ungraded" ? (
-        <p className={cn(PROSE, "mt-2 text-xs italic text-muted-foreground")}>
-          Ungraded — the evaluator abstained (no reason recorded).
-        </p>
-      ) : null}
-      <DecisionEvidence subScores={score.subScores} />
-    </div>
-  );
-}
-
-// Per-turn scores carry a target_ref of "turn:<n>"; everything else is sample-level.
-function groupByTurn<T extends { targetRef?: string | null }>(
-  scores: T[]
-): { sampleScores: T[]; turnDepths: [number, T[]][] } {
-  const sampleScores: T[] = [];
-  const byDepth = new Map<number, T[]>();
-  for (const s of scores) {
-    const ref = s.targetRef ?? "";
-    if (ref.startsWith("turn:")) {
-      const depth = Number(ref.slice(5)) || 0;
-      if (!byDepth.has(depth)) byDepth.set(depth, []);
-      byDepth.get(depth)!.push(s);
-    } else {
-      sampleScores.push(s);
-    }
-  }
-  return { sampleScores, turnDepths: [...byDepth.entries()].sort((a, b) => a[0] - b[0]) };
-}
-
-type PerTurnEntry = {
-  depth: number;
-  generated_final?: string;
-  reference_final?: string;
-  generated?: { tool?: string }[];
-  reference?: { tool?: string }[];
-};
-
-// Teacher-forced replay concatenates independently-generated turns into one
-// blob that reads like the model repeating itself, hence the per-turn split.
-function ModelOutputContent({
-  structured,
-  fallback,
-  viewMode,
-}: {
-  structured: Record<string, unknown> | null | undefined;
-  fallback: string | null;
-  viewMode: ViewMode;
-}) {
-  const perTurn = ((structured?.per_turn as PerTurnEntry[] | undefined) ?? []).filter(
-    (t) => (t.generated_final?.trim()?.length ?? 0) > 0 || (t.generated?.length ?? 0) > 0
-  );
-  if (perTurn.length > 1) {
-    return (
-      <div className="flex flex-col gap-2">
-        {perTurn.map((t) => {
-          const text = t.generated_final?.trim();
-          const tools = (t.generated ?? []).map((n) => n.tool).filter(Boolean);
-          return (
-            <div className="rounded-md border border-border bg-background p-2" key={t.depth}>
-              <Badge className="mb-1 text-xs" variant="secondary">
-                Turn {t.depth + 1}
-              </Badge>
-              <p className="whitespace-pre-wrap break-words font-mono text-xs">
-                {text
-                  ? renderPayload(text, viewMode)
-                  : `→ called: ${tools.join(", ") || "(no output)"}`}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    );
+function SummarySection({ run }: { run: EvalRunDetail }) {
+  const summary = asRunSummary(run.summary);
+  const metrics = metricEntries(summary);
+  const classMetrics = Object.entries(summary.class_metrics ?? {}).filter(
+    ([, value]) => typeof value === "number"
+  ) as [string, number][];
+  if (!run.summary) {
+    return isActiveRunStatus(run.status) ? <LoadingState label="Scoring…" /> : null;
   }
   return (
-    <p className="whitespace-pre-wrap break-words font-mono text-xs">
-      {fallback ? renderPayload(fallback, viewMode) : "—"}
-    </p>
-  );
-}
-
-const TURN_DIM_SHORT: Record<string, string> = {
-  "args grounded": "Args",
-  progress: "Progress",
-  safety: "Safety",
-  "tool choice": "Tools",
-  "turn match": "Match",
-};
-
-function shortDim(name: string): string {
-  const seg = (name.includes(":") ? (name.split(":").pop() as string) : name).trim();
-  return TURN_DIM_SHORT[seg.toLowerCase()] ?? seg;
-}
-
-function turnChipClasses(pct: number | null): string {
-  // A missing score reads as poor on this surface, not as "no data".
-  if (pct == null) return TONE_CHIP.error;
-  return scoreChipClass(pct);
-}
-
-function TurnSide({
-  label,
-  final,
-  tools,
-  viewMode,
-  muted,
-}: {
-  label: string;
-  final?: string;
-  tools?: { tool?: string }[];
-  viewMode: ViewMode;
-  muted?: boolean;
-}) {
-  const toolNames = (tools ?? []).map((t) => t.tool).filter(Boolean) as string[];
-  const text = final?.trim();
-  return (
-    <div
-      className={cn(
-        "rounded-md border p-2",
-        muted ? "bg-wash-subtle" : "border-primary/25 bg-primary/5"
-      )}
-    >
-      <span className="mb-1 block text-xs font-semibold text-muted-foreground">{label}</span>
-      {text ? (
-        <p className="whitespace-pre-wrap break-words font-mono text-xs">
-          {renderPayload(text, viewMode)}
-        </p>
-      ) : toolNames.length > 0 ? (
-        <p className="font-mono text-xs text-muted-foreground">→ {toolNames.join(", ")}</p>
-      ) : (
-        <p className="text-xs italic text-muted-foreground">(no output)</p>
-      )}
-    </div>
-  );
-}
-
-function TurnCard({
-  entry,
-  scores,
-  index,
-  total,
-  viewMode,
-}: {
-  entry: PerTurnEntry | undefined;
-  scores: ScoreLike[];
-  index: number;
-  total: number;
-  viewMode: ViewMode;
-}) {
-  const [open, setOpen] = useState(false);
-  // Skip ungraded dims (e.g. tool/args chips when the golden turn used no tools).
-  const chips = scores.filter((s) => scoreState(s) !== "ungraded");
-  const reasons = scores
-    .map((s) => ({ dim: shortDim(s.name ?? ""), text: s.reasoning?.trim() }))
-    .filter((r): r is { dim: string; text: string } => !!r.text);
-
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
-          Turn {index + 1} of {total}
-        </span>
-        <div className="flex flex-wrap gap-1">
-          {chips.map((s) => {
-            const pct = s.value == null ? null : scorePct(s.value);
-            return (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-medium",
-                  turnChipClasses(pct)
-                )}
-                key={s.id}
-              >
-                {shortDim(s.name ?? "")}
-                {pct != null && <span className="font-mono tabular-nums">{pct}%</span>}
-              </span>
-            );
-          })}
-        </div>
+    <section aria-label="Summary" className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Stat label="Score" value={<ScoreChip value={summary.score} />} />
+        <Stat label="Rows" value={summary.rows ?? 0} />
+        <Stat label="Scored" value={summary.scored ?? 0} />
+        <Stat label="Errored" value={summary.errored ?? 0} />
+        <Stat label="Degraded" value={summary.degraded ?? 0} />
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <TurnSide
-          final={entry?.generated_final}
-          label="Model did"
-          tools={entry?.generated}
-          viewMode={viewMode}
-        />
-        <TurnSide
-          final={entry?.reference_final}
-          label="Golden did"
-          muted
-          tools={entry?.reference}
-          viewMode={viewMode}
-        />
-      </div>
-      {reasons.length > 0 && (
-        <div className="mt-2">
-          <button
-            aria-expanded={open}
-            className="pixel-label flex items-center gap-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() => setOpen((v) => !v)}
-            type="button"
-          >
-            Why?
-            <Icon.chevronDown
-              className={cn(
-                "size-3 transition-transform duration-200 motion-reduce:transition-none",
-                open && "rotate-180"
-              )}
+      {classMetrics.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {classMetrics.map(([name, value]) => (
+            <Stat
+              key={name}
+              label={name.replaceAll("_", " ")}
+              value={value <= 1 ? `${Math.round(value * 100)}%` : value}
             />
-          </button>
-          {open && (
-            <div className="mt-1.5 flex flex-col gap-1.5">
-              {reasons.map((r, i) => (
-                <p
-                  className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/90"
-                  key={`${r.dim}-${i}`}
-                >
-                  <span className="font-medium">{r.dim}:</span> {r.text}
-                </p>
+          ))}
+        </div>
+      )}
+      {metrics.length > 0 && (
+        <div className="overflow-auto rounded-md border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Metric</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="text-center">Mean</TableHead>
+                <TableHead className="text-center">Scored</TableHead>
+                <TableHead className="text-center">Failed</TableHead>
+                <TableHead className="text-center">Errors</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {metrics.map(([name, metric]) => (
+                <TableRow key={name}>
+                  <TableCell className="text-sm font-medium">{name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {metric.type === "llm" ? "LLM judge" : "Deterministic"}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <ScoreChip value={metric.mean} />
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs tabular-nums">
+                    {metric.n}
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs tabular-nums">
+                    {metric.failed ?? 0}
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs tabular-nums">
+                    {metric.errors ?? 0}
+                  </TableCell>
+                </TableRow>
               ))}
-            </div>
-          )}
+            </TableBody>
+          </Table>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-function TurnTimeline({
-  perTurn,
-  turnDepths,
-  viewMode,
+type RowFilter = "all" | "failing" | "errored";
+
+const FAIL_BELOW = 0.5;
+
+function rowMatches(row: EvalRunRow, filter: RowFilter) {
+  if (filter === "errored") return !!row.error || row.degraded;
+  if (filter === "failing") return row.score != null && row.score < FAIL_BELOW;
+  return true;
+}
+
+function RowsSection({
+  runId,
+  active,
+  projectId,
 }: {
-  perTurn: PerTurnEntry[];
-  turnDepths: [number, ScoreLike[]][];
-  viewMode: ViewMode;
+  runId: string;
+  active: boolean;
+  projectId: string | undefined;
 }) {
-  const byDepth = new Map(perTurn.map((t) => [t.depth, t]));
-  const scoresByDepth = new Map(turnDepths);
-  const depths = [...new Set([...turnDepths.map(([d]) => d), ...perTurn.map((t) => t.depth)])].sort(
-    (a, b) => a - b
+  const { data, isLoading } = useEvalRunRowsQuery(runId, active);
+  const [filter, setFilter] = useState<RowFilter>("all");
+  const [openId, setOpenId] = useState<number | undefined>();
+  const rows = useMemo(
+    () => (data?.results ?? []).filter((row) => rowMatches(row, filter)),
+    [data, filter]
   );
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold text-muted-foreground/60">Turn-by-turn decisions</span>
-      {depths.map((d, i) => (
-        <TurnCard
-          entry={byDepth.get(d)}
-          index={i}
-          key={d}
-          scores={scoresByDepth.get(d) ?? []}
-          total={depths.length}
-          viewMode={viewMode}
+    <section aria-label="Rows" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium">
+          Rows <span className="font-mono text-muted-foreground">{data?.count ?? 0}</span>
+        </h3>
+        <Select onValueChange={(v) => setFilter(v as RowFilter)} value={filter}>
+          <SelectTrigger aria-label="Filter rows" className="w-40" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All rows</SelectItem>
+            <SelectItem value="failing">Failing</SelectItem>
+            <SelectItem value="errored">Errored or degraded</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {isLoading ? (
+        <LoadingState />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          className="rounded-md border border-dashed bg-wash-subtle"
+          icon={Icon.evaluations}
+          iconClassName="invert [image-rendering:pixelated]"
+          size="section"
+          title="No rows"
         />
-      ))}
-    </div>
-  );
-}
-
-function SampleOutput({
-  sampleId,
-  label,
-  datasetScores,
-  viewMode,
-}: {
-  sampleId: string;
-  label: string;
-  datasetScores: Map<string, number>;
-  viewMode: ViewMode;
-}) {
-  const { data: sample, isLoading, error } = useEvalSampleQuery(sampleId);
-  const isTraceScoringRun = useContext(TraceScoringRunContext);
-
-  const traj = (sample?.trajectory ?? {}) as { final_output?: string };
-  const scores = (sample?.scores ?? []).filter((s) => !s.name?.endsWith("__prediction"));
-
-  const prediction: string | null = traj.final_output ?? null;
-  const rawExpected = sample?.expected;
-  // Compact stringify, so "Raw" shows the exact payload and "Formatted" indents it.
-  const reference: string | null =
-    rawExpected == null
-      ? null
-      : typeof rawExpected === "string"
-        ? rawExpected
-        : JSON.stringify(rawExpected);
-
-  // Replay samples render their turns in the timeline, so the whole-conversation
-  // output/expected blocks are hidden for them.
-  const perTurnEntries = (
-    (sample?.structured as { per_turn?: PerTurnEntry[] } | undefined)?.per_turn ?? []
-  ).filter(
-    (t) =>
-      (t.generated_final?.trim()?.length ?? 0) > 0 ||
-      (t.generated?.length ?? 0) > 0 ||
-      (t.reference_final?.trim()?.length ?? 0) > 0 ||
-      (t.reference?.length ?? 0) > 0
-  );
-  const { sampleScores, turnDepths } = groupByTurn(scores);
-  const isReplaySample = turnDepths.length > 0 || perTurnEntries.length > 0;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 px-4 py-3">
-        <ModelProviderChip model={label} />
-      </div>
-
-      <div className="min-h-40 flex-1 overflow-y-auto border-t">
-        {isLoading ? (
-          <div className="px-4 py-3">
-            <LoadingState label="Loading…" />
-          </div>
-        ) : error ? (
-          <p className="px-4 py-3 text-sm text-destructive">Could not load this sample.</p>
-        ) : (
-          <div className="divide-y divide-border/70">
-            {sample?.error && <p className="px-4 py-3 text-xs text-destructive">{sample.error}</p>}
-            {!isReplaySample && (
-              <div className="px-4 py-3">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <Icon.model className="size-3.5 text-primary" />
-                  <span className="text-xs font-semibold text-foreground">Generated output</span>
-                </div>
-                <ModelOutputContent
-                  fallback={prediction}
-                  structured={sample?.structured as Record<string, unknown> | undefined}
-                  viewMode={viewMode}
-                />
-                {(sample?.io?.outputMessages.length ?? 0) > 0 && (
-                  <details className="mt-3 rounded-md border border-border p-3">
-                    <summary className="cursor-pointer text-xs">Generated messages</summary>
-                    <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-xs">
-                      {renderPayload(JSON.stringify(sample?.io?.outputMessages), viewMode)}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-            {!isReplaySample && !isTraceScoringRun && reference != null && (
-              <div className="bg-wash-subtle px-4 py-3">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <Icon.dataset className="size-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Reference answer
-                  </span>
-                  <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                    used for grading
-                  </span>
-                </div>
-                <p className="break-words whitespace-pre-wrap font-mono text-xs text-muted-foreground">
-                  {renderPayload(reference, viewMode)}
-                </p>
-              </div>
-            )}
-
-            {(() => {
-              const toRow = (s: (typeof scores)[number]) => ({
-                id: s.id,
-                name: s.name,
-                passed: s.passed,
-                reasoning: s.reasoning,
-                scope: s.scope,
-                value: s.value,
-              });
-              if (isReplaySample) {
-                return (
-                  <>
-                    {sampleScores.length > 0 && (
-                      <div className="py-3">
-                        <span className="mb-1.5 block px-4 text-xs font-semibold text-muted-foreground/60">
-                          Conversation
-                        </span>
-                        <div className="divide-y divide-border/70">
-                          {sampleScores.map((s) => (
-                            <ScoreRow key={s.id} score={toRow(s)} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="px-4 py-3">
-                      <TurnTimeline
-                        perTurn={perTurnEntries}
-                        turnDepths={turnDepths}
-                        viewMode={viewMode}
-                      />
-                    </div>
-                  </>
+      ) : (
+        <div className="overflow-auto rounded-md border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">#</TableHead>
+                <TableHead className="w-24">State</TableHead>
+                <TableHead className="w-24 text-center">Score</TableHead>
+                <TableHead>Failing metrics</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => {
+                const failing = metricResults(row.metrics).filter(
+                  ([, m]) => !!m.error || (m.score != null && m.score < FAIL_BELOW)
                 );
-              }
-              if (scores.length === 0) return null;
-              return (
-                <div className="divide-y divide-border/70 py-3">
-                  {scores.map((s) => (
-                    <ScoreRow key={s.id} score={toRow(s)} />
-                  ))}
-                </div>
-              );
-            })()}
-            {datasetScores.size > 0 && (
-              <div className="px-4 py-3">
-                <span className="mb-2 block text-xs font-semibold text-muted-foreground/60">
-                  Dataset metrics
-                </span>
-                <div className="flex flex-col gap-2">
-                  {Array.from(datasetScores.entries()).map(([name, value]) => {
-                    const pct = scorePct(value);
-                    return (
-                      <div
-                        className="rounded-md bg-wash-subtle p-3 opacity-80"
-                        key={name}
-                        title="Dataset-level aggregate score — same for all samples in this variant"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium">{humanizeMetricName(name)}</span>
-                            <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                              dataset
-                            </span>
-                          </div>
-                          <ScoreChip value={value} />
-                        </div>
-                        <div className="mt-2 h-1 w-full overflow-hidden rounded-xs bg-muted">
-                          <div
-                            className={cn("h-full rounded-xs", scoreFillClass(pct))}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                return (
+                  <TableRow
+                    className="cursor-pointer"
+                    key={row.id}
+                    onClick={() => setOpenId(row.id)}
+                  >
+                    <TableCell className="font-mono text-xs tabular-nums">{row.rowIndex}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {row.error ? (
+                        <span className="text-destructive">Error</span>
+                      ) : row.degraded ? (
+                        <span className="text-warning">Degraded</span>
+                      ) : (
+                        row.state
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <ScoreChip value={row.score} />
+                    </TableCell>
+                    <TableCell className="max-w-md truncate text-xs text-muted-foreground">
+                      {row.error || failing.map(([name]) => name).join(", ") || "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <RowSheet id={openId} onClose={() => setOpenId(undefined)} projectId={projectId} />
+    </section>
+  );
+}
 
-            {scores.length === 0 && datasetScores.size === 0 && (
-              <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-                No scores for this sample.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+function Payload({ label, value }: { label: string; value: unknown }) {
+  if (value == null || value === "") return null;
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-wash-subtle p-3 font-mono text-xs">
+        {renderPayload(text, "formatted")}
+      </pre>
     </div>
   );
 }
 
-function SampleModal({
-  row,
-  sampleMap,
-  variants,
-  variantIds,
-  datasetScoreIndex,
+function RowSheet({
+  id,
+  projectId,
   onClose,
 }: {
-  row: DatapointRow | null;
-  sampleMap: Map<string, Map<string, string>>;
-  variants: Record<string, VariantSummary>;
-  variantIds: string[];
-  datasetScoreIndex: Map<string, Map<string, number>>;
+  id: number | undefined;
+  projectId: string | undefined;
   onClose: () => void;
 }) {
-  const rowKey = row?.key;
-  const firstVariantId = variantIds.find((vid) => rowKey && sampleMap.get(rowKey)?.has(vid));
-  const [viewMode, setViewMode] = useState<ViewMode>("formatted");
-  const [selectedVariant, setSelectedVariant] = useState(firstVariantId ?? "");
-  useEffect(() => {
-    setSelectedVariant(rowKey ? (firstVariantId ?? "") : "");
-  }, [firstVariantId, rowKey]);
-  const activeVariant =
-    rowKey && sampleMap.get(rowKey)?.has(selectedVariant)
-      ? selectedVariant
-      : (firstVariantId ?? "");
-  const sampleId = rowKey ? sampleMap.get(rowKey)?.get(activeVariant) : undefined;
-  const { data: sample, isLoading, error } = useEvalSampleQuery(sampleId);
-
-  useEffect(() => {
-    if (!row) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [row, onClose]);
-
-  const variantSamples = variantIds.flatMap((vid) => {
-    const sampleId = row ? sampleMap.get(row.key)?.get(vid) : undefined;
-    return sampleId ? [{ label: variants[vid]?.label ?? vid, sampleId, vid }] : [];
-  });
-
+  const { data: row, isLoading } = useEvalRunRowQuery(id);
   return (
-    <Dialog
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      open={!!row}
-    >
-      <DialogContent size="full">
-        <DialogHeader end={<ViewModeToggle onChange={setViewMode} value={viewMode} />}>
-          <DialogTitle>Datapoint {row?.label}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Input, expected output and per-model evaluator results for this datapoint.
-          </DialogDescription>
-        </DialogHeader>
-
-        {variantSamples.length > 1 && (
-          <Tabs
-            className="shrink-0 px-5 pb-3"
-            onValueChange={setSelectedVariant}
-            value={activeVariant}
-          >
-            <TabsList aria-label="Model results">
-              {variantSamples.map(({ vid, label }) => (
-                <TabsTrigger key={vid} value={vid}>
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        )}
-        {error ? (
-          <DialogBody>
-            <p className="text-sm text-destructive">Could not load this sample.</p>
-          </DialogBody>
-        ) : isLoading || !sample ? (
-          <DialogBody>
-            <LoadingState label="Loading…" />
-          </DialogBody>
-        ) : (
-          // Not a `DialogBody`: the two panes scroll independently.
-          <div className="grid min-h-0 flex-1 grid-cols-5 divide-x overflow-hidden">
-            <div className="col-span-2 flex min-h-0 flex-col overflow-hidden">
-              <div className="flex h-10 shrink-0 items-center gap-1.5 border-b px-5">
-                <Icon.dataset className="size-3.5 text-muted-foreground" />
-                <p className="text-xs font-medium text-muted-foreground">Input</p>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <SampleInput io={sample.io} viewMode={viewMode} />
-              </div>
-            </div>
-
-            <div className="col-span-3 flex min-h-0 flex-col overflow-hidden">
-              <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-5">
-                <p className="text-xs font-medium text-muted-foreground">Output and evaluation</p>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col">
-                <SampleOutput
-                  datasetScores={datasetScoreIndex.get(activeVariant) ?? new Map()}
-                  key={sample.id}
-                  label={variants[activeVariant]?.label ?? activeVariant}
-                  sampleId={sample.id}
-                  viewMode={viewMode}
+    <Sheet onOpenChange={(open) => !open && onClose()} open={id !== undefined}>
+      <SheetContent size="lg">
+        <SheetHeader>
+          <SheetTitle>Row {row?.rowIndex ?? ""}</SheetTitle>
+          <SheetDescription>
+            {row?.score != null ? `Score ${Math.round(row.score * 100)}%` : "Not scored"}
+          </SheetDescription>
+        </SheetHeader>
+        <SheetBody className="flex flex-col gap-4">
+          {isLoading || !row ? (
+            <LoadingState />
+          ) : (
+            <>
+              {row.error && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {row.error}
+                </div>
+              )}
+              {row.degraded && row.degradedReason && (
+                <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  {row.degradedReason}
+                </div>
+              )}
+              <MetricList metrics={row.metrics} />
+              <Payload label="Input" value={row.input} />
+              <Payload label="Reference" value={row.reference} />
+              <Payload label="Output" value={row.output} />
+              {row.sourceTraceId && (
+                <EntityRef
+                  id={row.sourceTraceId}
+                  kind="trace"
+                  name={row.sourceTraceId.slice(0, 12)}
+                  projectId={projectId}
                 />
-              </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {row.finishedAt ? <DateTime value={row.finishedAt} /> : null}
+              </span>
+            </>
+          )}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

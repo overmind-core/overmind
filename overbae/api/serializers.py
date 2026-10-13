@@ -27,7 +27,6 @@ from overbae.models import (
     Dataset,
     DeployedModel,
     EvalSet,
-    EvalSetMember,
     Feedback,
     FinetuningJob,
     FinetuningJobEvent,
@@ -35,7 +34,6 @@ from overbae.models import (
     ProjectInvite,
     ProjectMembership,
     Prompt,
-    ScoringPass,
     Span,
     User,
     UserOnboarding,
@@ -49,8 +47,6 @@ from overbae.services.codebase.flow import (
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
-from overbae.services.eval.eval_set import snapshot_readiness
-from overbae.services.eval.trace_scoring import STATUS_ERROR
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
 from overbae.services.training_contract import (
@@ -251,37 +247,6 @@ def trace_usage_totals(project_ids, trace_ids: list[str]) -> dict[str, dict]:
         if bucket["model"] is None:
             bucket["model"] = _model_from_span_attributes(attrs)
     return totals
-
-
-def eligible_scoring_capabilities(project_ids, capability_ids: list) -> set[str]:
-    """The set ``score_trace`` would attempt; backs ``scoring_pending`` so the
-    list doesn't reimplement its skip rules."""
-    if not capability_ids:
-        return set()
-    rows = (
-        Capability.objects.filter(
-            project_id__in=project_ids,
-            id__in=capability_ids,
-            active_eval_set__members__role=EvalSetMember.Role.TRACE_SCORING,
-            active_eval_set__members__enabled=True,
-            active_eval_set__members__evaluator__is_archived=False,
-        )
-        .values_list("id", flat=True)
-        .distinct()
-    )
-    return {str(capability_id) for capability_id in rows}
-
-
-def traces_with_finished_scoring_pass(project_ids, trace_ids: list) -> set[str]:
-    """Pending means "no finished pass", never "no score yet": a pass whose judges
-    all abstained is done, and a null-score row must not spin forever."""
-    if not trace_ids:
-        return set()
-    return set(
-        ScoringPass.objects.filter(
-            project_id__in=project_ids, trace_id__in=trace_ids, finished__isnull=False
-        ).values_list("trace_id", flat=True)
-    )
 
 
 def conversation_usage_totals(project_ids, conversation_ids: list) -> dict:
@@ -798,6 +763,7 @@ class SpanSerializer(serializers.ModelSerializer):
             "capability",
             "conversation",
             "feedback_score",
+            "eval_attributes",
             "received_at",
         ]
         read_only_fields = fields
@@ -861,7 +827,6 @@ class RootSpanListSerializer(serializers.ModelSerializer):
         source="capability.name", allow_null=True, read_only=True
     )
     source = serializers.SerializerMethodField()
-    scoring_pending = serializers.SerializerMethodField()
     trace_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -890,7 +855,7 @@ class RootSpanListSerializer(serializers.ModelSerializer):
             "feedback_score",
             "received_at",
             "source",
-            "scoring_pending",
+            "eval_attributes",
             "trace_status",
         ]
         read_only_fields = fields
@@ -940,26 +905,6 @@ class RootSpanListSerializer(serializers.ModelSerializer):
         if statuses is None:
             statuses = trace_status_map([obj.project_id], [obj.trace_id])
         return statuses[obj.trace_id]
-
-    # Requires `eligible_scoring_capabilities` context (see `SpanViewSet.list`); a
-    # trace whose root has no capability but a scoreable descendant does errs
-    # toward the dash rather than a per-row eligibility query.
-    def get_scoring_pending(self, obj: Span) -> bool:
-        feedback = obj.feedback_score or {}
-        if "trace_scoring" in feedback:
-            return False
-        if obj.status_code == STATUS_ERROR:
-            return False
-        if obj.capability_id is None:
-            return False
-        # A finished pass is done even when it wrote no block (all members
-        # skipped or abstained) — without this a null result spins forever.
-        if obj.trace_id in (self.context.get("traces_with_finished_pass") or set()):
-            return False
-        eligible = self.context.get("eligible_scoring_capabilities")
-        if eligible is None:
-            return False
-        return str(obj.capability_id) in eligible
 
 
 class SessionSerializer(serializers.ModelSerializer):
@@ -1753,29 +1698,8 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"eval_set": "Eval set does not belong to this project."}
             )
-        if eval_set and any(
-            attrs.get(field, getattr(self.instance, field, False))
-            for field in (
-                "eval_model_before",
-                "eval_model_after",
-                "eval_incumbent_before",
-                "eval_incumbent_after",
-            )
-        ):
-            readiness = snapshot_readiness(eval_set, judge_model=attrs.get("eval_judge_model", ""))
-            if not readiness["ready"]:
-                raise serializers.ValidationError(
-                    {"eval_set": [error["message"] for error in readiness["errors"]]}
-                )
-        if (
-            eval_set
-            and not eval_set.members.filter(
-                role=EvalSetMember.Role.GENERATIVE, enabled=True, evaluator_id__isnull=False
-            ).exists()
-        ):
-            raise serializers.ValidationError(
-                {"eval_set": "This eval set has no generative evaluators."}
-            )
+        if eval_set and not eval_set.rows.filter(enabled=True).exists():
+            raise serializers.ValidationError({"eval_set": "This eval set has no enabled rows."})
 
         # Baseten/Modal: rows over the *selected training kind's* max fine-tuning
         # context are rejected outright — MAX_LENGTH truncation would corrupt
@@ -2444,7 +2368,7 @@ class ConnectorSyncRunSerializer(serializers.ModelSerializer):
 
 
 class CatalogModelSerializer(serializers.Serializer):
-    """``id`` is the OpenRouter slug and exactly what ``EvalVariant.model_name``
+    """``id`` is the OpenRouter slug and exactly what ``EvalRun.model_name``
     carries — ``call_llm`` routes slash-style slugs through OpenRouter verbatim."""
 
     id = serializers.CharField()

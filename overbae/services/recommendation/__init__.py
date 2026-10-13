@@ -249,7 +249,7 @@ def _resolve_task_type(dataset, stats: dict[str, Any], *, native: bool = False) 
     from overbae.models import DatasetContext  # noqa: PLC0415
     from overbae.services.benchmarks.classify import classify_task_type  # noqa: PLC0415
     from overbae.services.benchmarks.taxonomy import TaskType  # noqa: PLC0415
-    from overbae.services.eval.context_extractor import enqueue_refresh  # noqa: PLC0415
+    from overbae.services.datasets.profiler import enqueue_refresh  # noqa: PLC0415
 
     context = DatasetContext.objects.filter(dataset=dataset).first()
     # Chat-output shape cannot establish the semantic task of typed decision rows.
@@ -278,7 +278,7 @@ def _carries_classifier_inputs(profile: dict[str, Any]) -> bool:
 def _profile(dataset) -> dict[str, Any]:
     """Profiling reads datapoints and their spans; a failure degrades the task type rather
     than the wizard."""
-    from overbae.services.eval import profiler  # noqa: PLC0415
+    from overbae.services.datasets import profiler  # noqa: PLC0415
 
     try:
         return profiler.profile_dataset(dataset)

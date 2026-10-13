@@ -2,8 +2,8 @@
 
 One demo project — Support Copilot at Ledgerline, a fictional payments company — with
 thirty days of traffic across three capabilities and every downstream surface filled:
-tasks and verdicts, datasets with versions and chats, eval runs, optimiser runs, training
-jobs, served models and the credits ledger.
+live span and trajectory scores, signal events, datasets with versions and chats, eval
+runs, optimiser runs, training jobs, served models and the credits ledger.
 
 Deterministic (seeded RNG, stable ids, timestamps anchored to NOW) and idempotent: a re-run
 deletes the project (and the retired Undermind demo, if present) before it seeds. The
@@ -12,9 +12,10 @@ with password ``password`` when it does not exist.
 
 Beat-safety — workers and beat stay up while this runs:
 - every job, run and experiment is TERMINAL, or the reconcilers re-drive it;
-- every root span carries a feedback block and a backdated ``received_at``, and every
-  scored trace has a ScoringPass row, or the trace-scoring sweep re-drives it;
-- the eval preload and rebind hooks that a real sync fires are patched to no-ops;
+- every span carries a final ``eval_attributes`` (a ``score`` key) and every root a
+  ``trajectory``, or the scoring sweeps re-drive them against the judge;
+- signal subscriptions are deterministic signals only (no ``plan_drift``);
+- the rebind hook that a real sync fires is patched to a no-op;
 - connectors keep ``auto_sync_enabled=False``.
 """
 
@@ -22,7 +23,6 @@ import hashlib
 import json
 import math
 import random
-import re
 import shutil
 import uuid
 from dataclasses import replace
@@ -32,13 +32,13 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import connection
-from django.db.models import Avg
-from django.db.models.signals import post_save
 from django.utils import timezone
 
+from overbae.innermind import comparison
+from overbae.innermind import runs as innermind_runs
+from overbae.innermind import signals as innermind_signals
 from overbae.models import (
     APIToken,
-    Behaviour,
     BillingService,
     BillingTelemetry,
     Capability,
@@ -50,12 +50,11 @@ from overbae.models import (
     Dataset,
     DecisionPerformanceRun,
     DeployedModel,
+    EvalMatrix,
     EvalRun,
-    EvalSample,
+    EvalRunRow,
+    EvalScore,
     EvalSet,
-    EvalSetMember,
-    Evaluator,
-    EvalVariant,
     Feedback,
     FinetuningJob,
     FinetuningJobEval,
@@ -70,15 +69,12 @@ from overbae.models import (
     OptimizerIteration,
     Project,
     ProjectMembership,
-    RunEvaluator,
-    Score,
-    ScoringPass,
+    SignalEvent,
+    SignalSubscription,
     Span,
-    TaskExecution,
     TrainingExperiment,
     TrainingPlan,
     UserOnboarding,
-    Verdict,
 )
 from overbae.models.traces import usage_slice
 from overbae.services import native_evaluation, training_plans
@@ -92,12 +88,6 @@ from overbae.services.datasets import paths as dataset_paths
 from overbae.services.datasets import review as dataset_review
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import store as dataset_store
-from overbae.services.eval import composition
-from overbae.services.eval import dispatch as eval_dispatch
-from overbae.services.eval import snapshots as eval_snapshots
-from overbae.services.eval.managed import upsert_managed_evaluators
-from overbae.signals import sync_evaluators_on_card_change
-from overbae.tasks import eval as eval_tasks
 
 User = get_user_model()
 NOW = timezone.now().replace(minute=0, second=0, microsecond=0)
@@ -136,6 +126,37 @@ TRIAGE_ID = uuid.uuid5(uuid.NAMESPACE_URL, "seed/capability/ticket-triage")
 KB_ID = uuid.uuid5(uuid.NAMESPACE_URL, "seed/capability/kb-answerer")
 DISPUTE_ID = uuid.uuid5(uuid.NAMESPACE_URL, "seed/capability/dispute-resolver")
 JUDGE = "anthropic/claude-sonnet-5"
+VALID_TEAM_CHECK = """\
+TEAMS = (
+    "oncall-payments",
+    "oncall-platform",
+    "billing-support",
+    "support-general",
+    "risk-ops",
+    "integrations",
+    "product",
+)
+
+
+def evaluate(span):
+    match = re.search(r'"team":\\s*"([a-z-]+)"', span.output or "")
+    if match is None:
+        return None
+    team = match.group(1)
+    if team in TEAMS:
+        return True, f"{team} is a registered routing team"
+    return False, f"{team} is not in the routing registry"
+"""
+TOOL_SEQUENCE_CHECK = """\
+ORDER = ("lookup_transaction", "fetch_dispute_evidence", "check_policy")
+
+
+def evaluate(span):
+    calls = [child.tool for child in span.children if child.tool in ORDER]
+    if "check_policy" not in calls:
+        return None
+    return tuple(calls) == ORDER, " -> ".join(calls)
+"""
 MODEL_RATES = {
     "openai/gpt-5.6-sol": (3.0, 12.0),
     "openai/gpt-5.6-terra": (1.1, 4.4),
@@ -664,7 +685,7 @@ class Command(BaseCommand):
         )
         # Consumers PROTECT the cell they used; they go first so the project cascade is clean.
         # Big tables go first, explicitly: the collector's deferred cascade trips the verdict FK.
-        for model in (Verdict, ScoringPass, TaskExecution, Span, Conversation):
+        for model in (EvalScore, SignalEvent, Span, Conversation):
             model.objects.filter(project__slug__in=slugs).delete()
         # Newer snapshots protect their predecessors until removed.
         for plan in TrainingPlan.objects.filter(project__slug__in=slugs).order_by("-created_at"):
@@ -690,8 +711,6 @@ class Command(BaseCommand):
         BillingTelemetry.objects.filter(user__email=owner_email).exclude(
             service=BillingService.FREE_CREDITS
         ).delete()
-
-        upsert_managed_evaluators()
 
         # ── People and project ───────────────────────────────────────────────────────────
 
@@ -1429,13 +1448,8 @@ class Command(BaseCommand):
             ],
         }
 
-        # A real sync fires the eval preload (LLM calls) and a rebind task; the seed writes both
-        # outcomes itself.
-        sync_service.enqueue_capability_eval_preload_on_commit = lambda cap: None
+        # A real sync fires a rebind task; the seed writes its outcome itself.
         capability_identity.enqueue_rebind = lambda project_id: None
-        post_save.disconnect(sync_evaluators_on_card_change, sender=Capability)
-        eval_tasks.sync_card_evaluators_task.delay = lambda **kwargs: None
-        eval_tasks.preload_capability_eval_set.delay = lambda **kwargs: None
         sync_service.apply_snapshot(project, snapshot)
         project.settings["last_synced_at"] = days_ago(0.1).isoformat()
         project.save(update_fields=["settings"])
@@ -1451,12 +1465,6 @@ class Command(BaseCommand):
                 created_at=days_ago(DAYS),
                 updated_at=days_ago(0.2),
             )
-            Behaviour.objects.filter(capability=cap).update(
-                first_seen_sha=SHA,
-                last_seen_sha=SHA,
-                created_at=days_ago(DAYS),
-                updated_at=days_ago(DAYS),
-            )
 
         # A purpose the previous sync saw and this one did not.
         legacy_router = Capability.objects.create(
@@ -1471,288 +1479,98 @@ class Command(BaseCommand):
         )
         stamp(legacy_router, days_ago(DAYS + 1), days_ago(DAYS - 2))
 
-        def behaviour(cap, key) -> Behaviour:
-            return Behaviour.objects.get(capability=cap, key=key)
+        # ── Eval matrix and eval sets ────────────────────────────────────────────────────
 
-        t_classify = behaviour(triage_capability, "classify-and-route")
-        t_escalate = behaviour(triage_capability, "escalate-incident")
-        k_answer = behaviour(kb_capability, "grounded-answer")
-        k_decline = behaviour(kb_capability, "no-answer")
-        d_resolve = behaviour(dispute_capability, "resolve-dispute")
-        d_request = behaviour(dispute_capability, "request-evidence")
-        for b in (t_classify, t_escalate, k_answer, k_decline, d_resolve, d_request):
-            b.version = b.versions.order_by("-created_at").first()
+        self.stdout.write("Creating the eval matrix and eval sets...")
 
-        # ── Evaluators and eval sets ─────────────────────────────────────────────────────
-
-        self.stdout.write("Creating evaluators and eval sets...")
-
-        def managed(name):
-            ev = (
-                Evaluator.objects.filter(is_managed=True, project=None, capability=None, name=name)
-                .order_by("-version")
-                .first()
-            )
-            if ev is None:
-                raise RuntimeError(f"managed evaluator {name!r} missing")
-            return ev
-
-        def _checklist(rubric_md):
-            lines = [ln.strip() for ln in (rubric_md or "").splitlines()]
-            items = [
-                re.sub(r"^[-*]\s*|\*\*", "", ln).strip()
-                for ln in lines
-                if ln.startswith(("-", "*"))
-            ]
-            if not items:
-                items = [
-                    t.strip() for t in re.split(r"(?<=[.!?])\s+", rubric_md or "") if t.strip()
-                ]
-            items = [t.rstrip(".") for t in items if t][:12] or [
-                "Does the output satisfy the rubric?"
-            ]
-            return [{"id": f"q{i + 1}", "q": q, "weight": 1.0} for i, q in enumerate(items)]
-
-        def _binding(b: Behaviour, role="outcome", segment=()):
-            return {
-                "behaviour": {
-                    "behaviour_key": b.key,
-                    "behaviour_id": str(b.id),
-                    "role": role,
-                    "anchor_segment": list(segment),
-                }
-            }
-
-        def _evaluator(name, kind, born_days, *, capability=None, config=None, **kw):
-            if kind == "llm_judge" and not kw.get("checklist"):
-                kw["checklist"] = _checklist(kw.get("rubric_md", ""))
-            ev = Evaluator.objects.create(
+        def _row(name, source, born_days, *, capability=None, check=False, created_by=None):
+            row = EvalMatrix.objects.create(
                 project=project,
                 capability=capability,
                 name=name,
-                kind=kind,
-                config=config or {},
-                **kw,
+                type=EvalMatrix.Type.DETERMINISTIC if check else EvalMatrix.Type.LLM,
+                source=source,
+                span_type="entry_point" if check else "",
+                created_by=created_by,
             )
-            if not ev.spec_data:
-                from overbae.services.eval.specs import derive_spec_data
+            stamp(row, days_ago(born_days), days_ago(born_days))
+            return row
 
-                ev.spec_data = derive_spec_data(ev)  # raises with the column that is wrong
-                ev.save()
-            stamp(ev, days_ago(born_days), days_ago(born_days))
-            return ev
-
-        triage_accuracy = _evaluator(
+        triage_accuracy = _row(
             "Triage Accuracy",
-            "llm_judge",
+            "Urgency, category and routed team match the reference triage.",
             DAYS - 1,
             capability=triage_capability,
-            config=_binding(t_classify),
-            description="Urgency, category and team match the golden label.",
-            rubric_md=(
-                "Compare the capability's triage against the reference.\n\n"
-                "- **Urgency** exact match (SLA-critical).\n"
-                "- **Category** may differ in wording but not in surface.\n"
-                "- **Team** must be exactly the reference team.\n"
-            ),
-            checklist=[
-                {
-                    "id": "urgency",
-                    "q": "Does urgency match the reference?",
-                    "weight": 0.4,
-                    "gate": False,
-                    "field": "urgency",
-                },
-                {
-                    "id": "category",
-                    "q": "Is the category the same failure surface?",
-                    "weight": 0.3,
-                    "gate": False,
-                    "field": "category",
-                },
-                {
-                    "id": "team",
-                    "q": "Is the routed team exactly correct?",
-                    "weight": 0.3,
-                    "gate": False,
-                    "field": "team",
-                },
-            ],
-            judge_model=JUDGE,
-            score_type="numeric",
-            requires_reference=True,
             created_by=amara,
         )
-        routing_valid = _evaluator(
+        routing_valid = _row(
             "Valid Routing Team",
-            "deterministic",
+            VALID_TEAM_CHECK,
             DAYS - 1,
             capability=triage_capability,
-            config={
-                "check": "regex",
-                "pattern": r'"team":\s*"(oncall-payments|oncall-platform|billing-support|support-general|risk-ops|integrations|product)"',
-                **_binding(t_classify, "step", ["support.triage.route_ticket"]),
-            },
-            description="The team field is one of the registered routing teams.",
-            score_type="boolean",
-            pass_threshold=1.0,
+            check=True,
             created_by=amara,
         )
-        sla_floor = _evaluator(
+        sla_floor = _row(
             "SLA Floor Respected",
-            "llm_judge",
+            "Enterprise merchants and merchants with an open incident are never routed below "
+            "medium urgency.",
             DAYS - 2,
             capability=triage_capability,
-            config=_binding(t_escalate),
-            description="Enterprise merchants and open incidents are never routed below medium.",
-            rubric_md="Fail when an enterprise merchant, or a merchant with an open incident, is routed low.",
-            judge_model=JUDGE,
-            score_type="boolean",
-            pass_threshold=1.0,
-            checklist=[
-                {
-                    "id": "floor",
-                    "q": "Is the urgency at or above the plan floor?",
-                    "weight": 1.0,
-                    "gate": True,
-                }
-            ],
             created_by=amara,
         )
-        citation_support = _evaluator(
+        conciseness = _row(
+            "Conciseness",
+            "The summary is concise without omitting needed information.",
+            DAYS - 2,
+            capability=triage_capability,
+            created_by=amara,
+        )
+        citation_support = _row(
             "Citation Support",
-            "llm_judge",
+            "Every factual claim in the answer is supported by a cited article.",
             DAYS - 2,
             capability=kb_capability,
-            config=_binding(k_answer),
-            description="Every factual claim in the answer is supported by a cited article.",
-            rubric_md="Fail if any stated fact lacks a citation or cites an article that does not contain it.",
-            judge_model=JUDGE,
-            score_type="boolean",
-            pass_threshold=1.0,
-            checklist=[
-                {
-                    "id": "grounded",
-                    "q": "Is every claim supported by a cited article?",
-                    "weight": 1.0,
-                    "gate": True,
-                }
-            ],
             created_by=amara,
         )
-        tone_empathy = _evaluator(
+        faithfulness = _row(
+            "Faithfulness",
+            "Every claim in the answer is grounded in the retrieved articles.",
+            DAYS - 2,
+            capability=kb_capability,
+            created_by=amara,
+        )
+        tone_empathy = _row(
             "Tone & Empathy",
-            "llm_judge",
+            "The reply acknowledges the customer's situation before the fix, stays professional "
+            "and never shifts blame.",
             DAYS - 3,
-            description="Reply is professional, empathetic, and free of blame-shifting.",
-            judge_model=JUDGE,
-            score_type="numeric",
-            rubric_md=(
-                "The reply should acknowledge the customer's situation before the fix, stay "
-                "professional throughout, and never shift blame onto the customer or another team."
-            ),
-            checklist=[
-                {
-                    "id": "acknowledges_impact",
-                    "q": "Does the reply acknowledge the situation before the fix?",
-                    "weight": 0.35,
-                    "gate": False,
-                },
-                {
-                    "id": "professional_tone",
-                    "q": "Is the tone professional and free of curtness?",
-                    "weight": 0.3,
-                    "gate": False,
-                },
-                {
-                    "id": "no_blame_shifting",
-                    "q": "Does the reply avoid blaming the customer or another team?",
-                    "weight": 0.25,
-                    "gate": False,
-                },
-                {
-                    "id": "no_hollow_sympathy",
-                    "q": "Is the empathy specific rather than boilerplate?",
-                    "weight": 0.1,
-                    "gate": False,
-                },
-            ],
-            created_by=amara,
         )
-        policy_compliance = _evaluator(
+        policy_compliance = _row(
             "Resolution Policy Compliance",
-            "llm_judge",
+            "Representment rests on two independent evidence classes, friendly fraud under $25 "
+            "is accepted, and the draft never promises a refund timeline.",
             DAYS - 4,
             capability=dispute_capability,
-            config=_binding(d_resolve),
-            description="The dispute resolution follows the representment policy.",
-            rubric_md=(
-                "- Representment requires two independent evidence classes.\n"
-                "- Friendly-fraud under $25 is accepted.\n"
-                "- The draft never promises a refund timeline.\n"
-            ),
-            judge_model=JUDGE,
-            score_type="boolean",
-            pass_threshold=1.0,
-            checklist=[
-                {
-                    "id": "evidence",
-                    "q": "Two evidence classes when representing?",
-                    "weight": 0.4,
-                    "gate": True,
-                },
-                {
-                    "id": "small-claims",
-                    "q": "Sub-$25 friendly fraud accepted?",
-                    "weight": 0.3,
-                    "gate": False,
-                },
-                {
-                    "id": "no-promises",
-                    "q": "No refund-timeline promises?",
-                    "weight": 0.3,
-                    "gate": True,
-                },
-            ],
             created_by=owner,
         )
-        tool_sequence = _evaluator(
+        tool_sequence = _row(
             "Tool Sequence Accuracy",
-            "trajectory",
+            TOOL_SEQUENCE_CHECK,
             DAYS - 4,
             capability=dispute_capability,
-            config={
-                "mode": "match",
-                "reference_source": "expected",
-                **_binding(
-                    d_resolve,
-                    "step",
-                    [
-                        "support.disputes.lookup_transaction",
-                        "support.disputes.fetch_dispute_evidence",
-                        "support.disputes.check_policy",
-                    ],
-                ),
-            },
-            description="Ledger lookup and evidence fetch happen before the policy check.",
-            score_type="boolean",
-            pass_threshold=1.0,
+            check=True,
             created_by=owner,
         )
-        evidence_request_clear = _evaluator(
+        evidence_request_clear = _row(
             "Evidence Request Clarity",
-            "llm_judge",
+            "A request for evidence names exactly the missing evidence classes and nothing else.",
             DAYS - 5,
             capability=dispute_capability,
-            config=_binding(d_request),
-            description="A request for evidence names exactly what is missing.",
-            rubric_md="The request lists the missing evidence classes by name and nothing else.",
-            judge_model=JUDGE,
-            score_type="numeric",
             created_by=owner,
         )
 
-        def _eval_set(cap, name, born_days, members, *, trace=(), created_by=None):
+        def _eval_set(cap, name, born_days, rows, *, created_by=None):
             es = EvalSet.objects.create(
                 project=project,
                 capability=cap,
@@ -1760,55 +1578,31 @@ class Command(BaseCommand):
                 description=f"Grading rubric for {cap.name}.",
                 created_by=created_by,
             )
+            es.rows.set(rows)
             stamp(es, days_ago(born_days), days_ago(born_days))
-            order = 0
-            member_rows, trace_rows = {}, {}
-            for ev in members:
-                m = EvalSetMember.objects.create(
-                    eval_set=es, evaluator=ev, role="generative", enabled=True, order=order
-                )
-                stamp(m, days_ago(born_days))
-                member_rows[ev.name] = m
-                order += 1
-            for ev in trace:
-                m = EvalSetMember.objects.create(
-                    eval_set=es, evaluator=ev, role="trace_scoring", enabled=True, order=order
-                )
-                stamp(m, days_ago(born_days))
-                trace_rows[ev.name] = m
-                order += 1
             cap.active_eval_set = es
             cap.save(update_fields=["active_eval_set"])
-            return es, member_rows, trace_rows
+            return es
 
-        triage_set, triage_members, triage_trace = _eval_set(
+        triage_set = _eval_set(
             triage_capability,
             "Triage rubric",
             DAYS - 1,
-            [
-                triage_accuracy,
-                routing_valid,
-                sla_floor,
-                managed("Correctness"),
-                managed("Conciseness"),
-            ],
-            trace=(triage_accuracy, routing_valid, sla_floor),
+            [triage_accuracy, routing_valid, sla_floor, conciseness],
             created_by=amara,
         )
-        kb_set, kb_members, kb_trace = _eval_set(
+        kb_set = _eval_set(
             kb_capability,
             "KB answer quality",
             DAYS - 2,
-            [citation_support, managed("Faithfulness"), tone_empathy],
-            trace=(citation_support, managed("Faithfulness")),
+            [citation_support, faithfulness, tone_empathy],
             created_by=amara,
         )
-        dispute_set, dispute_members, dispute_trace = _eval_set(
+        dispute_set = _eval_set(
             dispute_capability,
             "Dispute resolution",
             DAYS - 4,
-            [policy_compliance, tool_sequence, evidence_request_clear, managed("Correctness")],
-            trace=(policy_compliance, tool_sequence, evidence_request_clear),
+            [policy_compliance, tool_sequence, evidence_request_clear],
             created_by=owner,
         )
 
@@ -1847,10 +1641,8 @@ class Command(BaseCommand):
             return "starter" if r < 0.45 else ("growth" if r < 0.83 else "enterprise")
 
         span_buf: list[Span] = []
-        verdict_buf: list[Verdict] = []
-        verdict_times: list[datetime] = []
-        execution_buf: list[TaskExecution] = []
-        pass_buf: list[ScoringPass] = []
+        score_buf: list[EvalScore] = []
+        score_times: list[datetime] = []
         usage_acc = {
             a.pk: {
                 "prompt_tokens": 0,
@@ -1866,21 +1658,13 @@ class Command(BaseCommand):
             for a in capabilities
         }
         trace_index: dict = {a.pk: [] for a in capabilities}  # (trace_id, t_end, input, output, ok)
-        member_ids: dict = {}
-
-        def _identifier(member):
-            key = str(member.pk)
-            if key not in member_ids:
-                member_ids[key] = eval_dispatch.member_identifier(member, member.evaluator.spec)
-            return member_ids[key]
 
         def _flush():
             if span_buf:
                 for sp in span_buf:
                     sp.usage = usage_slice(sp.attributes)
                 Span.objects.bulk_create(span_buf, batch_size=1000)
-                # The scoring sweep re-drives any trace received in the last two hours
-                # whose pass started before its root landed; land them at trace time.
+                # The scoring sweeps re-drive spans by ``received_at``; land them at trace time.
                 backdate(
                     Span,
                     [
@@ -1894,28 +1678,11 @@ class Command(BaseCommand):
                     "received_at",
                 )
                 span_buf.clear()
-            if verdict_buf:
-                Verdict.objects.bulk_create(verdict_buf, batch_size=1000)
-                pairs = list(zip((v.pk for v in verdict_buf), verdict_times, strict=True))
-                backdate(Verdict, pairs)
-                backdate(Verdict, pairs, "updated_at")
-                verdict_buf.clear()
-                verdict_times.clear()
-            if execution_buf:
-                TaskExecution.objects.bulk_create(execution_buf, batch_size=1000)
-                backdate(TaskExecution, [(te.pk, te.started_at) for te in execution_buf])
-                backdate(
-                    TaskExecution, [(te.pk, te.started_at) for te in execution_buf], "updated_at"
-                )
-                execution_buf.clear()
-            if pass_buf:
-                ScoringPass.objects.bulk_create(pass_buf, batch_size=1000)
-                backdate(
-                    ScoringPass,
-                    [(p.pk, p.finished - timedelta(seconds=40)) for p in pass_buf],
-                    "started",
-                )
-                pass_buf.clear()
+            if score_buf:
+                EvalScore.objects.bulk_create(score_buf, batch_size=1000)
+                backdate(EvalScore, list(zip((e.pk for e in score_buf), score_times, strict=True)))
+                score_buf.clear()
+                score_times.clear()
 
         def _acc(cap, span_id, model=None, pt=0, ct=0, cost=0.0, tool=False, end=None):
             u = usage_acc[cap.pk]
@@ -1943,186 +1710,59 @@ class Command(BaseCommand):
                 "overmind.project.id": str(project.pk),
             }
 
-        def _feedback_entries(entries, scored_at):
-            block = {}
-            for name, member, value, passed, rationale in entries:
-                block[name] = {
+        def _verdict(row, value):
+            if row.type == EvalMatrix.Type.DETERMINISTIC:
+                return "yes" if value >= 0.5 else "no"
+            return "yes" if value >= 0.75 else ("partial" if value >= 0.4 else "no")
+
+        def _child_attributes(intent):
+            return {"version": 1, "intent": intent, "score": None, "metrics": {}}
+
+        def _root_attributes(intent, entries, span_count, error):
+            metrics = {
+                row.name: {
+                    "type": row.type,
+                    "expectation": row.source if row.type == EvalMatrix.Type.LLM else row.name,
                     "score": value,
-                    "passed": passed,
-                    "outcome": "scored",
-                    "rationale": rationale,
-                    "scope": "trace",
-                    "grain": member.evaluator.spec.claim.grain,
-                    "gate": member.evaluator.spec.claim.type in ("conformance", "verification"),
-                    "sub_scores": [],
-                    "eval_set_member_id": str(member.pk),
-                    "evaluator_id": str(member.evaluator_id),
-                    "scored_at": scored_at.isoformat(),
+                    "verdict": _verdict(row, value),
+                    "reason": rationale,
+                    "error": "",
                 }
-            composed = composition.compose(block)
-            if composed:
-                block["_execution"] = composed
-            block["_scored_at"] = scored_at.isoformat()
-            return {"trace_scoring": block}
-
-        def _verdicts(cap, root_id, entries, scored_at):
-            total_cost = 0.0
-            for name, member, value, passed, rationale in entries:
-                ev = member.evaluator
-                code = ev.kind in ("deterministic", "statistical")
-                cost = 0.0 if code else rnd(0.0003, 0.0014, 6)
-                total_cost += cost
-                verdict_buf.append(
-                    Verdict(
-                        project=project,
-                        evaluator=ev,
-                        evaluator_name=name,
-                        target_kind=Verdict.TargetKind.SPAN,
-                        target_id=root_id,
-                        label="",
-                        score=value,
-                        outcome=Verdict.Outcome.SCORED,
-                        explanation=rationale,
-                        unmet=[],
-                        metadata=eval_dispatch.verdict_metadata(
-                            passed=passed,
-                            scope="trace",
-                            grain=ev.spec.claim.grain,
-                            gate=ev.spec.claim.type in ("conformance", "verification"),
-                            sub_scores=[],
-                        ),
-                        annotator_kind=Verdict.AnnotatorKind.CODE
-                        if code
-                        else Verdict.AnnotatorKind.LLM,
-                        identifier=_identifier(member),
-                        judge_trace_id="" if code else hexid(16),
-                        cost=cost,
-                        input_tokens=None if code else random.randint(900, 2600),
-                        output_tokens=None if code else random.randint(60, 220),
-                        latency_ms=random.randint(2, 9) if code else random.randint(600, 2400),
-                    )
-                )
-                verdict_times.append(scored_at)
-            return total_cost
-
-        _bound_cache: dict = {}
-
-        def _bound_evaluators(cap):
-            if cap.pk not in _bound_cache:
-                _bound_cache[cap.pk] = list(
-                    Evaluator.objects.filter(
-                        capability=cap, is_archived=False, config__has_key="behaviour"
-                    )
-                )
-            return _bound_cache[cap.pk]
-
-        def _execution(
-            cap,
-            b,
-            trace_id,
-            root_id,
-            start_ns,
-            end_ns,
-            *,
-            inp,
-            feedback,
-            conv_ext,
-            error,
-            declared,
-            anchors_seen,
-        ):
-            composed = ((feedback or {}).get("trace_scoring") or {}).get("_execution") or {}
-            block = (feedback or {}).get("trace_scoring") or {}
-            contract = b.version.contract if b is not None and b.version else {}
-            sequence = list(contract.get("anchor_sequence") or [])
-            matched = [a for a in sequence if a in anchors_seen]
-            step_results = []
-            if b is not None:
-                for ev in _bound_evaluators(cap):
-                    binding = (ev.config or {}).get("behaviour") or {}
-                    if binding.get("behaviour_key") != b.key:
-                        continue
-                    entry = block.get(ev.name)
-                    role = binding.get("role") or "outcome"
-                    if not isinstance(entry, dict):
-                        step_results.append(
-                            {
-                                "evaluator": ev.name,
-                                "display_name": "",
-                                "role": role,
-                                "segment": binding.get("anchor_segment") or [],
-                                "outcome": "unscored",
-                            }
-                        )
-                        continue
-                    result = {
-                        "evaluator": ev.name,
-                        "display_name": "",
-                        "role": role,
-                        "segment": binding.get("anchor_segment") or [],
-                        "score": entry.get("score"),
-                        "passed": entry.get("passed"),
-                        "outcome": "scored",
-                        "rationale": entry.get("rationale") or "",
-                    }
-                    if role == "outcome":
-                        result["delivery"] = "delivered" if not error else "failed"
-                    step_results.append(result)
-            execution_buf.append(
-                TaskExecution(
-                    project=project,
-                    capability=cap,
-                    behaviour=b,
-                    behaviour_version=b.version if b is not None else None,
-                    trace_id=trace_id,
-                    unit_span_id=root_id,
-                    conversation_id=conv_ext or "",
-                    binding_source="declared"
-                    if declared
-                    else ("anchor_join" if b is not None else "unbound"),
-                    observed_route={
-                        "sha": SHA,
-                        "entry_qualname": sequence[0] if sequence else "",
-                        "anchors": anchors_seen,
-                        "ancestors": [],
-                        "matched_anchors": matched,
-                        "unknown_anchors": [],
-                        "terminal": "error_exit"
-                        if error
-                        else (contract.get("terminal") or {}).get("kind") or "emits_record",
-                        "contract_sha": SHA,
-                        "alignment": {
-                            "completion": round(len(matched) / len(sequence), 2)
-                            if sequence
-                            else 1.0,
-                            "order_ok": True,
-                            "terminal_match": not error,
-                        },
-                    },
-                    user_intent={
-                        "text": str(next(iter(inp.values()), ""))[:200],
-                        "source": "first_message",
-                    }
-                    if isinstance(inp, dict) and inp
-                    else {},
-                    step_results=step_results,
-                    success_score=composed.get("score"),
-                    route_flags=["unusual_route_good_outcome"]
-                    if (
-                        not error
-                        and len(matched) < len(sequence)
-                        and composed.get("score", 0)
-                        and composed["score"] > 0.8
-                    )
-                    else [],
-                    terminal_kind="error_exit"
-                    if error
-                    else (contract.get("terminal") or {}).get("kind") or "emits_record",
-                    status="error" if error else "completed",
-                    started_at=datetime.fromtimestamp(start_ns / 1e9, tz=UTC),
-                    duration_ms=(end_ns - start_ns) // 1_000_000,
-                )
-            )
+                for row, value, rationale in entries
+            }
+            values = [m["score"] for m in metrics.values()]
+            score = round(sum(values) / len(values), 4) if values else None
+            outcome = 0.0 if error else score
+            trajectory_metrics = {
+                "outcome": {
+                    "expectation": "The agent achieves the intent.",
+                    "score": outcome,
+                    "verdict": "",
+                    "reason": "",
+                    "error": "",
+                },
+            }
+            if span_count > 1:
+                trajectory_metrics["efficiency"] = {
+                    "expectation": "The agent makes no redundant calls and recovers from every "
+                    "error.",
+                    "score": 0.5 if error else 1.0,
+                    "verdict": "",
+                    "reason": "",
+                    "error": "",
+                }
+            return {
+                "version": 1,
+                "intent": intent,
+                "score": score,
+                "metrics": metrics,
+                "trajectory": {
+                    "span_count": span_count,
+                    "score": outcome,
+                    "passed": None if outcome is None else outcome >= 0.5 and not error,
+                    "metrics": trajectory_metrics,
+                },
+            }
 
         def emit_trace(
             cap,
@@ -2131,18 +1771,16 @@ class Command(BaseCommand):
             out,
             *,
             steps,
-            task,
             anchors,
             error=None,
             conversation=None,
             conv_ext="",
             entries=None,
-            declared=True,
         ):
             """One trace: an entry_point root with LLM/tool children per ``steps``.
 
             steps: list of ("llm", model, pt, ct, ms) | ("tool", name, args, ms, err?).
-            entries: [(evaluator_name, member, score, passed, rationale)] — the live verdicts.
+            entries: [(matrix_row, score, rationale)] — the live root metrics.
             """
             if t0 > NOW - timedelta(hours=3):
                 t0 = NOW - timedelta(hours=3, minutes=random.randint(5, 110))
@@ -2151,6 +1789,11 @@ class Command(BaseCommand):
             start_ns = int(t0.timestamp() * 1_000_000_000)
             offset_ns = 0
             model_pending = True
+            intent = (
+                str(next(iter(inp.values()), ""))[:200]
+                if isinstance(inp, dict) and inp
+                else cap.description
+            )
             for step in steps:
                 if step[0] == "llm":
                     _, smodel, pt, ct, ms = step
@@ -2205,7 +1848,7 @@ class Command(BaseCommand):
                             resource_attrs=_res_attrs(cap),
                             scope_name="overmind.sdk",
                             scope_version="0.1.55",
-                            feedback_score={},
+                            eval_attributes=_child_attributes(intent),
                             attributes=attrs,
                         )
                     )
@@ -2238,7 +1881,7 @@ class Command(BaseCommand):
                             resource_attrs=_res_attrs(cap),
                             scope_name="overmind.sdk",
                             scope_version="0.1.55",
-                            feedback_score={},
+                            eval_attributes=_child_attributes(intent),
                             attributes={
                                 "tool.name": tname,
                                 "tool.arg_keys": sorted(targs),
@@ -2254,18 +1897,12 @@ class Command(BaseCommand):
             end_ns = start_ns + offset_ns + int(rnd(20, 90) * 1e6)
             end_dt = datetime.fromtimestamp(end_ns / 1e9, tz=UTC)
             scored_at = end_dt + timedelta(minutes=random.randint(2, 7))
-            feedback = (
-                _feedback_entries(entries, scored_at)
-                if entries
-                else {"trace_scoring": {"_scored_at": scored_at.isoformat()}}
-            )
             root_attrs = {
                 "overmind.input.data": inp,
                 "overmind.span.type": "entry_point",
                 "overmind.unit_kind": "run",
                 "code.namespace": anchors[0].rsplit(".", 1)[0],
                 "code.function.name": anchors[0].rsplit(".", 1)[1],
-                **({"overmind.behaviour.key": task.key} if task is not None and declared else {}),
                 **({"conversation.id": conv_ext} if conv_ext else {}),
             }
             if error:
@@ -2297,36 +1934,30 @@ class Command(BaseCommand):
                     resource_attrs=_res_attrs(cap),
                     scope_name="overmind.sdk",
                     scope_version="0.1.55",
-                    feedback_score=feedback,
                     attributes=root_attrs,
+                    eval_attributes=_root_attributes(intent, entries or [], len(steps) + 1, error),
                 )
             )
-            cost = _verdicts(cap, root_id, entries, scored_at) if entries else 0.0
-            pass_buf.append(
-                ScoringPass(
+            root_scores = span_buf[-1].eval_attributes
+            score_buf.append(
+                EvalScore(
                     project=project,
-                    capability=cap,
-                    trace_id=trace_id,
-                    finished=scored_at,
-                    verdict_counts={"scored": len(entries)} if entries else {"not_applicable": 1},
-                    total_cost=round(cost, 6),
+                    source_type=EvalScore.SourceType.SPAN,
+                    source_id=root_id,
+                    score=root_scores["score"],
+                    metrics=root_scores["metrics"],
                 )
             )
-            if entries or error:
-                _execution(
-                    cap,
-                    task,
-                    trace_id,
-                    root_id,
-                    start_ns,
-                    end_ns,
-                    inp=inp,
-                    feedback=feedback,
-                    conv_ext=conv_ext,
-                    error=error,
-                    declared=declared,
-                    anchors_seen=anchors,
+            score_buf.append(
+                EvalScore(
+                    project=project,
+                    source_type=EvalScore.SourceType.TRAJECTORY,
+                    source_id=trace_id,
+                    score=root_scores["trajectory"]["score"],
+                    metrics=root_scores["trajectory"]["metrics"],
                 )
+            )
+            score_times.extend([scored_at, scored_at + timedelta(minutes=5)])
             _acc(cap, root_id, end=end_dt)
             trace_index[cap.pk].append((trace_id, end_dt, inp, out, error is None))
             if len(span_buf) >= 2000:
@@ -2380,7 +2011,6 @@ class Command(BaseCommand):
                 conv = conv_ext = None
                 if random.random() < 0.22:
                     conv, conv_ext = _session(triage_capability, t0)
-                task = t_escalate if incident else t_classify
                 anchors = (
                     [
                         "support.triage.run_triage",
@@ -2426,26 +2056,20 @@ class Command(BaseCommand):
                     )
                     entries = [
                         (
-                            "Triage Accuracy",
-                            triage_trace["Triage Accuracy"],
+                            triage_accuracy,
                             round(acc, 2),
-                            None,
                             pick(_TRIAGE_RATIONALES[:2]) if good else pick(_TRIAGE_RATIONALES[2:]),
                         ),
                         (
-                            "Valid Routing Team",
-                            triage_trace["Valid Routing Team"],
+                            routing_valid,
                             1.0 if team_ok else 0.0,
-                            team_ok,
                             "team is a registered routing team"
                             if team_ok
                             else "team is not in the routing registry",
                         ),
                         (
-                            "SLA Floor Respected",
-                            triage_trace["SLA Floor Respected"],
+                            sla_floor,
                             1.0 if floor_ok else 0.0,
-                            floor_ok,
                             "Urgency at or above the plan floor."
                             if floor_ok
                             else "Enterprise merchant routed below medium.",
@@ -2457,13 +2081,11 @@ class Command(BaseCommand):
                     inp,
                     out,
                     steps=steps,
-                    task=task,
                     anchors=anchors,
                     error=None if ok else "LLM provider timeout after 3 retries",
                     conversation=conv,
                     conv_ext=conv_ext or "",
                     entries=entries,
-                    declared=random.random() < 0.7,
                 )
                 if conv is not None and random.random() < 0.7:
                     q, a, cites = pick(KB_QA)
@@ -2473,19 +2095,15 @@ class Command(BaseCommand):
                         grounded = random.random() > 0.1
                         entries2 = [
                             (
-                                "Citation Support",
-                                kb_trace["Citation Support"],
+                                citation_support,
                                 1.0 if grounded else 0.0,
-                                grounded,
                                 "All claims trace to the cited articles."
                                 if grounded
                                 else "Second paragraph states a fee not present in any cited article.",
                             ),
                             (
-                                "Faithfulness",
-                                kb_trace["Faithfulness"],
+                                faithfulness,
                                 rnd(0.7, 1.0),
-                                None,
                                 "Answer stays within the retrieved articles.",
                             ),
                         ]
@@ -2505,7 +2123,6 @@ class Command(BaseCommand):
                                 rnd(1500, 4800, 1),
                             ),
                         ],
-                        task=k_answer,
                         anchors=[
                             "support.kb.answer_question",
                             "support.kb.search_kb",
@@ -2528,19 +2145,15 @@ class Command(BaseCommand):
                     grounded = random.random() > 0.09
                     entries = [
                         (
-                            "Citation Support",
-                            kb_trace["Citation Support"],
+                            citation_support,
                             1.0 if grounded else 0.0,
-                            grounded,
                             "Every factual claim carries a supporting citation."
                             if grounded
                             else "The SLA claim cites payouts-schedule, which covers timing but not SLAs.",
                         ),
                         (
-                            "Faithfulness",
-                            kb_trace["Faithfulness"],
+                            faithfulness,
                             rnd(0.66, 1.0),
-                            None,
                             "No content beyond the retrieved articles.",
                         ),
                     ]
@@ -2560,14 +2173,11 @@ class Command(BaseCommand):
                             rnd(600, 1400, 1),
                         ),
                     ]
-                    task, anchors = (
-                        k_decline,
-                        [
-                            "support.kb.answer_question",
-                            "support.kb.search_kb",
-                            "support.kb.decline",
-                        ],
-                    )
+                    anchors = [
+                        "support.kb.answer_question",
+                        "support.kb.search_kb",
+                        "support.kb.decline",
+                    ]
                 else:
                     out = {"answer": a, "citations": cites, "confidence": rnd(0.6, 0.97)}
                     steps = [
@@ -2581,26 +2191,21 @@ class Command(BaseCommand):
                             rnd(1400, 5200, 1),
                         ),
                     ]
-                    task, anchors = (
-                        k_answer,
-                        [
-                            "support.kb.answer_question",
-                            "support.kb.search_kb",
-                            "support.kb.fetch_article",
-                            "support.kb.compose_answer",
-                        ],
-                    )
+                    anchors = [
+                        "support.kb.answer_question",
+                        "support.kb.search_kb",
+                        "support.kb.fetch_article",
+                        "support.kb.compose_answer",
+                    ]
                 emit_trace(
                     kb_capability,
                     t0,
                     {"question": q, "merchant_plan": wplan()},
                     out,
                     steps=steps,
-                    task=task,
                     anchors=anchors,
                     error=None if ok else "search_kb: upstream retrieval 502",
                     entries=entries,
-                    declared=random.random() < 0.7,
                 )
 
         def gen_dispute_day(day, n):
@@ -2648,7 +2253,6 @@ class Command(BaseCommand):
                 }
                 requesting = resolution == "request_evidence"
                 if requesting:
-                    task = d_request
                     anchors = [
                         "support.disputes.resolve_dispute",
                         "support.disputes.lookup_transaction",
@@ -2674,10 +2278,8 @@ class Command(BaseCommand):
                     entries = (
                         [
                             (
-                                "Evidence Request Clarity",
-                                dispute_trace["Evidence Request Clarity"],
+                                evidence_request_clear,
                                 rnd(0.6, 1.0),
-                                None,
                                 "Names the missing delivery confirmation and nothing else.",
                             )
                         ]
@@ -2685,7 +2287,6 @@ class Command(BaseCommand):
                         else None
                     )
                 else:
-                    task = d_resolve
                     anchors = [
                         "support.disputes.resolve_dispute",
                         "support.disputes.lookup_transaction",
@@ -2719,19 +2320,15 @@ class Command(BaseCommand):
                     if ok and random.random() < 0.82:
                         entries = [
                             (
-                                "Resolution Policy Compliance",
-                                dispute_trace["Resolution Policy Compliance"],
+                                policy_compliance,
                                 1.0 if compliant else 0.0,
-                                compliant,
                                 "Two evidence classes support representment; no timeline promises in the draft."
                                 if compliant
                                 else "Represented with a single evidence class — policy requires two.",
                             ),
                             (
-                                "Tool Sequence Accuracy",
-                                dispute_trace["Tool Sequence Accuracy"],
+                                tool_sequence,
                                 1.0,
-                                True,
                                 "lookup_transaction → fetch_dispute_evidence → check_policy in order.",
                             ),
                         ]
@@ -2741,11 +2338,9 @@ class Command(BaseCommand):
                     inp,
                     out,
                     steps=steps,
-                    task=task,
                     anchors=anchors,
                     error=None if ok else "fetch_dispute_evidence: evidence store timeout",
                     entries=entries,
-                    declared=random.random() < 0.75,
                 )
 
         for i in range(DAYS + 1):
@@ -2754,7 +2349,7 @@ class Command(BaseCommand):
             gen_kb_day(day, daily_volume(30, i, day.weekday()))
             gen_dispute_day(day, daily_volume(18, i, day.weekday()))
 
-        # Live-scoring showcase: two members land 0.92 apart, so the composer stamps a conflict.
+        # Live-scoring showcase: two metrics on one answer land 0.92 apart.
         _cq, _ca, _ccites = KB_QA[0]
         emit_trace(
             kb_capability,
@@ -2766,7 +2361,6 @@ class Command(BaseCommand):
                 ("tool", "fetch_article", {"slug": _ccites[0]}, 95.0),
                 ("llm", kb_capability.model, 2100, 240, 2800.0),
             ],
-            task=k_answer,
             anchors=[
                 "support.kb.answer_question",
                 "support.kb.search_kb",
@@ -2775,35 +2369,75 @@ class Command(BaseCommand):
             ],
             entries=[
                 (
-                    "Citation Support",
-                    kb_trace["Citation Support"],
+                    citation_support,
                     0.0,
-                    False,
                     "The 2-business-day settlement claim cites payouts-schedule, which gives timing bands but no settlement guarantee.",
                 ),
                 (
-                    "Faithfulness",
-                    kb_trace["Faithfulness"],
+                    faithfulness,
                     0.92,
-                    None,
                     "Aside from the settlement sentence, every claim stays within the retrieved articles.",
                 ),
             ],
         )
         _flush()
 
-        for conv_ext in conv_buf:
-            rows = list(
-                TaskExecution.objects.filter(project=project, conversation_id=conv_ext).exclude(
-                    success_score=None
+        # ── Signals ──────────────────────────────────────────────────────────────────────
+
+        def _subscribe(signal_type, cap=None, config=None):
+            sub = SignalSubscription.objects.create(
+                project=project,
+                capability=cap,
+                signal_type=signal_type,
+                config=config or {},
+                created_by=owner,
+            )
+            stamp(sub, days_ago(DAYS - 6), days_ago(DAYS - 6))
+            return sub
+
+        errors_sub = _subscribe("errors")
+        tool_failure_sub = _subscribe("tool_failure", dispute_capability, {"min_calls": 3})
+        _subscribe("low_scores", kb_capability)
+        failed_roots = list(
+            Span.objects.filter(project=project, parent_span_id__isnull=True, status_code=2)
+            .select_related("capability")
+            .order_by("-start_time_ns")[:12]
+        )
+        signal_events = []
+        for root in failed_roots:
+            when = datetime.fromtimestamp(root.end_time_ns / 1e9, tz=UTC) + timedelta(minutes=5)
+            key = innermind_signals.group_key(root)
+            sub = (
+                tool_failure_sub
+                if root.capability_id == dispute_capability.pk and random.random() < 0.5
+                else errors_sub
+            )
+            message = (
+                "tools failing: fetch_dispute_evidence (3/4)"
+                if sub is tool_failure_sub
+                else f"1 of {random.randint(3, 6)} spans errored: {root.name}"
+            )
+            signal_events.append(
+                (
+                    SignalEvent(
+                        project=project,
+                        capability=root.capability,
+                        subscription=sub,
+                        signal_type=sub.signal_type,
+                        conversation_id=root.conversation_id,
+                        trace_id=root.trace_id,
+                        message=message,
+                        details={"spans": random.randint(3, 6), "group": key},
+                        dedupe_key=innermind_signals.dedupe_key(sub, key, when.date().isoformat()),
+                    ),
+                    when,
                 )
             )
-            if rows:
-                score = round(sum(r.success_score for r in rows) / len(rows), 4)
-                TaskExecution.objects.filter(project=project, conversation_id=conv_ext).update(
-                    session_score=score,
-                    session_rationale=f"Mean of {len(rows)} scored turn{'s' if len(rows) != 1 else ''} in the conversation.",
-                )
+        SignalEvent.objects.bulk_create([event for event, _ in signal_events])
+        for i, (event, when) in enumerate(signal_events):
+            SignalEvent.objects.filter(pk=event.pk).update(
+                occurred_at=when, seen_at=when + timedelta(hours=2) if i >= 4 else None
+            )
 
         for a in capabilities:
             u = usage_acc[a.pk]
@@ -3300,229 +2934,37 @@ class Command(BaseCommand):
         def clampq(quality, spread=0.12):
             return round(min(1.0, max(0.0, random.gauss(quality, spread))), 2)
 
-        def _traj(
-            user_text,
-            final_text,
-            *,
-            tools=(),
-            model,
-            mode="existing",
-            trace_id="",
-            pt=None,
-            ct=None,
-        ):
-            pt = pt or random.randint(700, 2600)
-            ct = ct or random.randint(120, 500)
-            ms = rnd(900, 3800, 1)
-            messages = [{"role": "user", "content": user_text}]
-            nodes, edges, tool_defs = [], [], []
-            for i, (tname, args, result) in enumerate(tools):
-                call_id = f"call_{hexid(3)}"
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": "",
-                        "tool_calls": [{"id": call_id, "name": tname, "arguments": args}],
-                    }
-                )
-                messages.append(
-                    {"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)}
-                )
-                nodes.append(
-                    {
-                        "id": f"step_{i}",
-                        "tool": tname,
-                        "arguments": args,
-                        "result": result,
-                        "error": "",
-                        "caused_state_change": False,
-                        "depends_on": [f"step_{i - 1}"] if i else [],
-                    }
-                )
-                if i:
-                    edges.append({"from": f"step_{i - 1}", "to": f"step_{i}"})
-                if tname not in {t["name"] for t in tool_defs}:
-                    tool_defs.append(
-                        {
-                            "name": tname,
-                            "description": "",
-                            "parameters": {"type": "object", "properties": {}},
-                        }
-                    )
-            messages.append({"role": "assistant", "content": final_text})
-            if mode == "generate":
-                metadata = {
-                    "model": model,
-                    "cost": llm_cost(model, pt, ct),
-                    "latency_ms": ms,
-                    "prompt_tokens": pt,
-                    "completion_tokens": ct,
-                    "total_tokens": pt + ct,
-                    "steps": len(tools) + 1,
-                    "max_steps": 16,
-                    "replay_fuzzy_hits": 0,
-                    "replay_misses": 0,
-                    "truncated": False,
-                }
-            else:
-                metadata = {
-                    "source": "otel_span",
-                    "trace_id": trace_id or hexid(16),
-                    "cost": llm_cost(model, pt, ct),
-                    "latency_ms": ms,
-                    "total_tokens": pt + ct,
-                    "truncated": False,
-                }
-            trajectory = {
-                "modality": "text",
-                "messages": messages,
-                "tool_definitions": tool_defs,
-                "final_output": final_text,
-                "metadata": metadata,
+        def _row_metadata(model, mode):
+            pt, ct = random.randint(700, 2600), random.randint(120, 500)
+            metadata = {
+                "cost": llm_cost(model, pt, ct),
+                "latency_ms": rnd(900, 3800, 1),
+                "total_tokens": pt + ct,
             }
-            structured = {
-                "turns": [
-                    {
-                        "index": 0,
-                        "start": 0,
-                        "messages": list(range(len(messages))),
-                        "tool_calls": len(nodes),
-                    }
-                ],
-                "tool_graph": {"nodes": nodes, "edges": edges},
-                "salient_steps": [
-                    {"type": "final_answer", "ref": "final", "preview": final_text[:80]}
-                ],
-                "approx_tokens": pt + ct,
-                "num_messages": len(messages),
-                "num_tool_calls": len(nodes),
-                "num_turns": 1,
-            }
-            return trajectory, structured
+            if mode == EvalRun.Mode.GENERATE:
+                metadata |= {"model": model, "prompt_tokens": pt, "completion_tokens": ct}
+            return metadata
 
-        def _resolution_sub():
-            return {
-                "_resolution": {
-                    "output": {"strategy": "final_output", "shape": "str"},
-                    "reference": {"strategy": "expected", "shape": "dict"},
-                }
-            }
-
-        def _judge_score(run, variant, sample, run_ev, quality):
-            snap = run_ev.snapshot
-            name = snap["name"]
-            reasons = _JUDGE_REASONS.get(name, ["Meets the rubric.", "Partially meets the rubric."])
-            if snap["score_type"] == "boolean":
-                ok = random.random() < quality
-                subs = [
-                    {
-                        "id": item["id"],
-                        "verdict": ok,
-                        "score": 1.0 if ok else 0.0,
-                        "reasoning": reasons[0 if ok else -1][:160],
-                    }
-                    for item in (snap.get("checklist") or [{"id": "check", "q": ""}])
-                ]
-                subs.append(
-                    {
-                        "_threshold": {
-                            "pass_threshold": snap.get("pass_threshold"),
-                            "gated_fail": not ok,
-                        }
-                    }
-                )
-                subs.append(_resolution_sub())
-                value, passed = (1.0, True) if ok else (0.0, False)
-                reasoning = reasons[0] if ok else reasons[-1]
+        def _run_metric(row, quality):
+            reasons = _JUDGE_REASONS.get(
+                row["name"], ["Meets the expectation.", "Partially meets the expectation."]
+            )
+            if row["type"] == EvalMatrix.Type.DETERMINISTIC:
+                ok = random.random() < min(1.0, quality + 0.12)
+                value, verdict = (1.0 if ok else 0.0), ("yes" if ok else "no")
+                reason = "" if ok else "Check failed on the output payload."
             else:
                 value = clampq(quality)
-                passed = None
-                subs = []
-                for item in snap.get("checklist") or []:
-                    v = random.random() < quality
-                    subs.append(
-                        {
-                            "id": item["id"],
-                            "verdict": v,
-                            "score": 1.0 if v else 0.0,
-                            "reasoning": reasons[0 if v else -1][:160],
-                            **({"field": item["field"]} if item.get("field") else {}),
-                        }
-                    )
-                subs.append({"_threshold": {"pass_threshold": None, "gated_fail": False}})
-                subs.append(_resolution_sub())
-                reasoning = reasons[0] if value >= 0.7 else reasons[-1]
-            return Score(
-                project=project,
-                run=run,
-                variant=variant,
-                sample=sample,
-                evaluator=run_ev.evaluator,
-                run_evaluator=run_ev,
-                scope=snap.get("scope", "final_output"),
-                name=name,
-                data_type=snap["score_type"],
-                value=value,
-                passed=passed,
-                outcome="scored",
-                reasoning=reasoning,
-                sub_scores=subs,
-                judge_trace_id=uuid.uuid4().hex,
-                cost=rnd(0.0002, 0.0011, 6),
-                latency_ms=rnd(500, 1900, 1),
-            )
-
-        def _det_score(run, variant, sample, run_ev, quality):
-            snap = run_ev.snapshot
-            ok = random.random() < min(1.0, quality + 0.12)
-            return Score(
-                project=project,
-                run=run,
-                variant=variant,
-                sample=sample,
-                evaluator=run_ev.evaluator,
-                run_evaluator=run_ev,
-                scope=snap.get("scope", "final_output"),
-                name=snap["name"],
-                data_type="boolean",
-                value=1.0 if ok else 0.0,
-                passed=ok,
-                outcome="scored",
-                reasoning="" if ok else "Check failed on the output payload.",
-                sub_scores=[
-                    {"_resolution": {"output": {"strategy": "final_output", "shape": "str"}}}
-                ],
-                cost=0.0,
-                latency_ms=rnd(1, 8, 1),
-            )
-
-        def _trajectory_score(run, variant, sample, run_ev, quality, ref_tools):
-            ok = random.random() < quality
-            actual = list(ref_tools) if ok else list(ref_tools)[:-1]
-            return Score(
-                project=project,
-                run=run,
-                variant=variant,
-                sample=sample,
-                evaluator=run_ev.evaluator,
-                run_evaluator=run_ev,
-                scope="trajectory",
-                name=run_ev.snapshot["name"],
-                data_type="boolean",
-                value=1.0 if ok else 0.0,
-                passed=ok,
-                outcome="scored",
-                reasoning=f"trajectory match: {'pass' if ok else 'fail'} ({len(actual)} actual vs {len(ref_tools)} reference calls)",
-                sub_scores=[
-                    {
-                        "actual_tools": actual,
-                        "reference_tools": list(ref_tools),
-                        "first_mismatch": None if ok else len(actual),
-                    }
-                ],
-                cost=0.0,
-                latency_ms=rnd(1, 6, 1),
-            )
+                verdict = "yes" if value >= 0.75 else ("partial" if value >= 0.4 else "no")
+                reason = reasons[0] if value >= 0.7 else reasons[-1]
+            return {
+                "type": row["type"],
+                "expectation": row["source"] if row["type"] == EvalMatrix.Type.LLM else row["name"],
+                "score": value,
+                "verdict": verdict,
+                "reason": reason,
+                "error": "",
+            }
 
         def make_eval_run(
             *,
@@ -3530,120 +2972,118 @@ class Command(BaseCommand):
             description,
             dataset,
             eval_set,
-            members,
-            variants,
+            targets,
             born,
             n_samples,
             sample_fn,
             failed=None,
             use=True,
+            group=None,
+            params=None,
         ):
-            """variants: [(label, model_name, model_ref, mode, is_baseline, quality)]."""
+            """targets: [(label, model_name, model_ref, mode, is_baseline, quality)]; one
+            run per target, sharing a group so each compares against the baseline."""
             version = dataset.active_cell
             if use:
                 # Historical demo consumption is not a fabricated semantic validation pass.
                 Cell.objects.filter(pk=version.pk).update(used_at=born)
                 version.refresh_from_db()
-            run = EvalRun.objects.create(
-                project=project,
-                name=name,
-                description=description,
-                data_source="dataset",
-                dataset=dataset,
-                cell=version,
-                max_items=n_samples,
-                eval_set=eval_set,
-                sampling=1.0,
-                status="pending",
-                triggered_by=owner,
-                celery_task_id=str(uuid.uuid4()),
-            )
-            if failed:
-                run.status = "failed"
-                run.error = failed
-                run.save(update_fields=["status", "error"])
-                stamp(
-                    run, born, born + timedelta(minutes=3), completed_at=born + timedelta(minutes=3)
-                )
-                return run, []
-            run_evs = [
-                RunEvaluator.objects.create(
-                    run=run,
-                    evaluator=m.evaluator,
-                    snapshot=eval_snapshots.build_snapshot(m.evaluator),
-                    sampling=1.0,
-                    enabled=True,
-                    order=o,
-                )
-                for o, m in enumerate(members)
-            ]
-            variant_rows = []
-            for order, (label, model_name, model_ref, mode, is_baseline, quality) in enumerate(
-                variants
-            ):
-                v = EvalVariant.objects.create(
-                    run=run,
-                    label=label,
+            group = group or uuid.uuid4()
+            matrix = eval_set.matrix_snapshot()
+            datapoints = row_store.sample_rows(dataset, n_samples)
+            created = []
+            for label, model_name, model_ref, mode, is_baseline, quality in targets:
+                run = EvalRun.objects.create(
+                    project=project,
+                    name=f"{name} · {label}" if len(targets) > 1 else name,
+                    description=description,
+                    judge_model=JUDGE,
+                    dataset=dataset,
+                    cell=version,
+                    max_items=n_samples,
+                    eval_set=eval_set,
+                    matrix=matrix,
+                    mode=mode,
                     model_ref=model_ref,
                     model_name=model_name,
-                    mode=mode,
+                    params={"label": label, **(params or {})},
+                    group=group,
                     is_baseline=is_baseline,
-                    order=order,
+                    status=EvalRun.Status.COMPLETED,
+                    triggered_by=owner,
+                    celery_task_id=str(uuid.uuid4()),
                 )
-                variant_rows.append(
-                    (v, quality, model_name or (model_ref.model_id if model_ref else ""))
-                )
-            datapoints = row_store.sample_rows(dataset, n_samples)
-            score_buf, sample_pairs = [], []
-            for variant, quality, vmodel in variant_rows:
+                created.append(run)
+                if failed:
+                    EvalRun.objects.filter(pk=run.pk).update(
+                        status=EvalRun.Status.FAILED, error=failed
+                    )
+                    stamp(
+                        run,
+                        born,
+                        born + timedelta(minutes=3),
+                        completed_at=born + timedelta(minutes=3),
+                    )
+                    continue
+                vmodel = model_name or (model_ref.model_id if model_ref else "")
+                finished = born + timedelta(minutes=12)
+                run_rows, run_scores = [], []
                 for dp in datapoints:
-                    trajectory, structured, expected, ref_tools = sample_fn(
-                        dp, quality, vmodel, variant.mode
+                    output = sample_fn(dp, quality)
+                    run_rows.append(
+                        EvalRunRow(
+                            run=run,
+                            row_index=dp.index,
+                            source_trace_id=dp.source_trace_id
+                            if mode == EvalRun.Mode.RECORDED
+                            else "",
+                            output=output,
+                            metadata=_row_metadata(vmodel, mode),
+                            state=EvalRunRow.State.DONE,
+                            finished_at=finished,
+                        )
                     )
-                    sample = EvalSample.objects.create(
-                        run=run,
-                        variant=variant,
-                        row_index=dp.index,
-                        source_trace_id=trajectory["metadata"].get("trace_id", ""),
-                        trajectory=trajectory,
-                        structured=structured,
-                        expected=expected,
+                    metrics = {row["name"]: _run_metric(row, quality) for row in matrix}
+                    values = [m["score"] for m in metrics.values()]
+                    run_scores.append(
+                        EvalScore(
+                            project=project,
+                            source_type=EvalScore.SourceType.DATASET_ROW,
+                            source_id=f"{version.pk}:{dp.index}",
+                            run=run,
+                            score=round(sum(values) / len(values), 4),
+                            metrics=metrics,
+                        )
                     )
-                    sample_pairs.append((sample.pk, born + timedelta(minutes=rnd(1, 8))))
-                    for run_ev in run_evs:
-                        kind = run_ev.snapshot["kind"]
-                        if kind == "llm_judge":
-                            score_buf.append(_judge_score(run, variant, sample, run_ev, quality))
-                        elif kind == "deterministic":
-                            score_buf.append(_det_score(run, variant, sample, run_ev, quality))
-                        elif kind == "trajectory":
-                            score_buf.append(
-                                _trajectory_score(run, variant, sample, run_ev, quality, ref_tools)
-                            )
-            Score.objects.bulk_create(score_buf, batch_size=500)
-            backdate(EvalSample, sample_pairs)
-            backdate(Score, [(s.pk, born + timedelta(minutes=rnd(4, 14))) for s in score_buf])
-            eval_tasks.aggregate_run.apply(kwargs={"eval_run_id": str(run.pk)})
-            run.refresh_from_db()
-            stamp(
-                run, born, born + timedelta(minutes=15), completed_at=born + timedelta(minutes=15)
-            )
-            return run, [v for v, _, _ in variant_rows]
+                EvalRunRow.objects.bulk_create(run_rows, batch_size=500)
+                EvalScore.objects.bulk_create(run_scores, batch_size=500)
+                backdate(EvalScore, [(e.pk, finished) for e in run_scores])
+                EvalRun.objects.filter(pk=run.pk).update(summary=innermind_runs.aggregate(run))
+                run.refresh_from_db()
+                stamp(
+                    run,
+                    born,
+                    born + timedelta(minutes=15),
+                    completed_at=born + timedelta(minutes=15),
+                )
+            return created
 
-        def triage_sample(dp, quality, model, mode):
-            inp = dp.input if isinstance(dp.input, dict) else {}
-            text = inp.get("ticket_text") or inp.get("ticket") or ""
+        def _expected(dp):
             expected = dp.expected_output or {}
             if isinstance(expected, str):
                 try:
                     expected = json.loads(expected)
                 except ValueError:
                     expected = {"summary": expected}
-            good = random.random() < quality
-            out = dict(expected) if isinstance(expected, dict) else {}
-            if not good and out:
+            return expected if isinstance(expected, dict) else {}
+
+        def triage_sample(dp, quality):
+            inp = dp.input if isinstance(dp.input, dict) else {}
+            text = inp.get("ticket_text") or inp.get("ticket") or ""
+            out = _expected(dp)
+            if out and random.random() >= quality:
                 out = {**out, "team": "support-general"}
-            final = json.dumps(
+            return json.dumps(
                 out
                 or {
                     "urgency": "medium",
@@ -3652,98 +3092,71 @@ class Command(BaseCommand):
                     "summary": text[:80],
                 }
             )
-            traj, structured = _traj(
-                f"Triage this ticket ({inp.get('merchant_plan', 'growth')} plan):\n{text}",
-                final,
-                tools=[
-                    (
-                        "lookup_merchant",
-                        {"merchant_name": "…"},
-                        {"plan": inp.get("merchant_plan", "growth"), "open_incidents": 0},
-                    )
-                ],
-                model=model,
-                mode=mode,
-            )
-            return traj, structured, expected, ["lookup_merchant"]
 
-        def kb_sample(dp, quality, model, mode):
-            inp = dp.input if isinstance(dp.input, dict) else {}
-            expected = dp.expected_output or {}
-            answer = expected.get("answer", "") if isinstance(expected, dict) else ""
-            cites = expected.get("citations", []) if isinstance(expected, dict) else []
-            final = json.dumps(
-                {"answer": answer, "citations": cites, "confidence": clampq(quality, 0.08)}
+        def kb_sample(dp, quality):
+            expected = _expected(dp)
+            return json.dumps(
+                {
+                    "answer": expected.get("answer", ""),
+                    "citations": expected.get("citations", []),
+                    "confidence": clampq(quality, 0.08),
+                }
             )
-            traj, structured = _traj(
-                inp.get("question", ""),
-                final,
-                tools=[
-                    ("search_kb", {"query": inp.get("question", "")[:40]}, {"hits": cites}),
-                    ("fetch_article", {"slug": cites[0] if cites else "payouts"}, {"found": True}),
-                ],
-                model=model,
-                mode=mode,
-            )
-            return traj, structured, expected, ["search_kb", "fetch_article"]
 
-        def dispute_sample(dp, quality, model, mode):
-            inp = dp.input if isinstance(dp.input, dict) else {}
-            expected = dp.expected_output or {}
-            final = json.dumps(expected if isinstance(expected, dict) else {})
-            ref_tools = ["lookup_transaction", "fetch_dispute_evidence", "check_policy"]
-            traj, structured = _traj(
-                f"Resolve dispute {inp.get('dispute_id', 'dp_x')} (reason {inp.get('reason_code', '10.4')}, ${inp.get('amount', 0)}).",
-                final,
-                tools=[
-                    (t, {"dispute_id": inp.get("dispute_id", "dp_x")}, {"ok": True})
-                    for t in ref_tools
-                ],
-                model=model,
-                mode=mode,
-            )
-            return traj, structured, expected, ref_tools
+        def dispute_sample(dp, quality):
+            return json.dumps(_expected(dp))
 
-        triage_first_run, _ = make_eval_run(
+        make_eval_run(
             name="Triage rubric — first baseline",
             description="Production model against the golden set.",
             dataset=triage_golden,
             eval_set=triage_set,
-            members=list(triage_set.members.filter(role="generative")),
-            variants=[
-                ("production (gpt-5.6-sol)", "openai/gpt-5.6-sol", mr_sol, "existing", True, 0.71)
+            targets=[
+                (
+                    "production (gpt-5.6-sol)",
+                    "openai/gpt-5.6-sol",
+                    mr_sol,
+                    EvalRun.Mode.RECORDED,
+                    True,
+                    0.71,
+                )
             ],
             born=days_ago(20),
             n_samples=60,
             sample_fn=triage_sample,
         )
-        triage_v3_run, triage_v3_variants = make_eval_run(
+        make_eval_run(
             name="Triage — prompt v3 verification",
             description="Optimiser winner replayed against the incumbent prompt.",
             dataset=triage_golden,
             eval_set=triage_set,
-            members=list(triage_set.members.filter(role="generative")),
-            variants=[
-                ("prompt v2 (baseline)", "openai/gpt-5.6-sol", mr_sol, "generate", True, 0.72),
-                ("prompt v3", "openai/gpt-5.6-sol", mr_sol, "generate", False, 0.86),
+            targets=[
+                (
+                    "prompt v2 (baseline)",
+                    "openai/gpt-5.6-sol",
+                    mr_sol,
+                    EvalRun.Mode.GENERATE,
+                    True,
+                    0.72,
+                ),
+                ("prompt v3", "openai/gpt-5.6-sol", mr_sol, EvalRun.Mode.GENERATE, False, 0.86),
             ],
             born=days_ago(11),
             n_samples=60,
             sample_fn=triage_sample,
             use=False,
         )
-        kb_run, _ = make_eval_run(
+        make_eval_run(
             name="KB answers — citation audit",
             description="Sonnet against Gemini on the golden questions.",
             dataset=kb_golden,
             eval_set=kb_set,
-            members=list(kb_set.members.filter(role="generative")),
-            variants=[
+            targets=[
                 (
                     "claude-sonnet-5 (production)",
                     "anthropic/claude-sonnet-5",
                     mr_sonnet,
-                    "generate",
+                    EvalRun.Mode.GENERATE,
                     True,
                     0.84,
                 ),
@@ -3751,7 +3164,7 @@ class Command(BaseCommand):
                     "gemini-3.1-pro",
                     "google/gemini-3.1-pro-preview",
                     mr_gemini,
-                    "generate",
+                    EvalRun.Mode.GENERATE,
                     False,
                     0.77,
                 ),
@@ -3760,13 +3173,21 @@ class Command(BaseCommand):
             n_samples=40,
             sample_fn=kb_sample,
         )
-        kb_failed_run, _ = make_eval_run(
+        make_eval_run(
             name="KB answers — citation audit (retry)",
             description="",
             dataset=kb_golden,
             eval_set=kb_set,
-            members=[],
-            variants=[],
+            targets=[
+                (
+                    "claude-sonnet-5 (production)",
+                    "anthropic/claude-sonnet-5",
+                    mr_sonnet,
+                    EvalRun.Mode.GENERATE,
+                    True,
+                    0.0,
+                )
+            ],
             born=days_ago(13, h=-2),
             n_samples=40,
             sample_fn=kb_sample,
@@ -3778,16 +3199,9 @@ class Command(BaseCommand):
 
         self.stdout.write("Creating optimiser runs...")
 
-        def _variant_score(run, variant) -> float:
-            metrics = (
-                (run.summary or {}).get("variants", {}).get(str(variant.pk), {}).get("metrics", {})
-            )
-            vals = [
-                m.get("mean") if m.get("mean") is not None else m.get("pass_rate")
-                for m in metrics.values()
-            ]
-            vals = [v for v in vals if v is not None]
-            return round(sum(vals) / len(vals) * 100, 1) if vals else 0.0
+        def _run_score(run) -> float:
+            headline = comparison.headline(run.summary)
+            return round(headline * 100, 1) if headline is not None else 0.0
 
         def build_experiment(
             *,
@@ -3831,20 +3245,32 @@ class Command(BaseCommand):
             cmd_pairs, cand_pairs, iter_pairs = [], [], []
 
             def _mk_eval_run(candidate, label, quality, t):
-                run, variants = make_eval_run(
-                    name=f"Optimiser · {cap.name} · {label}",
-                    description=f"Optimiser run {exp.pk}, {label}",
+                (run,) = make_eval_run(
+                    name=f"Optimizer · {cap.name} · {label}",
+                    description=f"Optimizer experiment {exp.pk}, {label}",
                     dataset=dataset,
                     eval_set=eval_set,
-                    members=list(eval_set.members.filter(role="generative")),
-                    variants=[(label, cap.model, None, "existing", candidate.is_baseline, quality)],
+                    targets=[
+                        (
+                            label,
+                            cap.model,
+                            None,
+                            EvalRun.Mode.PROVIDED,
+                            candidate.is_baseline,
+                            quality,
+                        )
+                    ],
                     born=t,
                     n_samples=len(datapoints),
                     sample_fn=sample_fn,
                     use=False,
+                    group=exp.pk,
+                    params={
+                        "optimizer_candidate_id": str(candidate.pk),
+                        "optimizer_mode": mode,
+                        "target_model": candidate.target_model or cap.model,
+                    },
                 )
-                variants[0].params = {"optimizer_candidate_id": str(candidate.pk)}
-                variants[0].save(update_fields=["params"])
                 return run
 
             def _commands_for(candidate, iteration, quality, t, trace_type, originals):
@@ -3912,7 +3338,7 @@ class Command(BaseCommand):
             base_originals = [c.result["trace_id"] for c in base_cmds]
             if with_eval_runs:
                 base_run = _mk_eval_run(base_cand, "baseline", baseline_q, t)
-                new_score = _variant_score(base_run, base_run.variants.first())
+                new_score = _run_score(base_run)
                 _align(base_cand, new_score, base_score)
                 base_score = new_score
                 base_cand.eval_run = base_run
@@ -3958,19 +3384,13 @@ class Command(BaseCommand):
                         crun = _mk_eval_run(
                             cand, f"candidate {ci}", q, t + timedelta(minutes=5 + ci * 10)
                         )
-                        new_score = _variant_score(crun, crun.variants.first())
+                        new_score = _run_score(crun)
                         _align(cand, new_score, cscore)
                         cscore = new_score
                         cand.eval_run = crun
                     cand.score = cscore
                     if target_model:
-                        cand.scores = {
-                            "measurement": {
-                                "coverage_rate": rnd(0.92, 1.0),
-                                "excluded_commands": 0,
-                                "uncovered_card_claims": [],
-                            }
-                        }
+                        cand.scores = {"coverage_rate": rnd(0.92, 1.0)}
                         iter_models[target_model] = cscore
                         by_model[target_model] = cscore
                     cand.save()
@@ -4504,31 +3924,31 @@ class Command(BaseCommand):
         def bench_runs(
             *, prefix, dataset, eval_set, baseline, final, born, n_samples, sample_fn, use
         ):
-            """One single-variant run per FinetuningJobEval, the shape the monitor syncs from."""
-            members = list(eval_set.members.filter(role="generative"))
-            base_run, _ = make_eval_run(
+            """One single-target run per FinetuningJobEval, the shape the monitor syncs from."""
+            group = uuid.uuid4()
+            (base_run,) = make_eval_run(
                 name=f"{prefix} — baseline",
                 description="Baseline judge eval for the fine-tune.",
                 dataset=dataset,
                 eval_set=eval_set,
-                members=members,
-                variants=[baseline],
+                targets=[baseline],
                 born=born,
                 n_samples=n_samples,
                 sample_fn=sample_fn,
                 use=use,
+                group=group,
             )
-            final_run, _ = make_eval_run(
+            (final_run,) = make_eval_run(
                 name=f"{prefix} — final",
                 description="Final judge eval for the fine-tune.",
                 dataset=dataset,
                 eval_set=eval_set,
-                members=members,
-                variants=[final],
+                targets=[final],
                 born=born + timedelta(minutes=20),
                 n_samples=n_samples,
                 sample_fn=sample_fn,
                 use=False,
+                group=group,
             )
             return base_run, final_run
 
@@ -4637,8 +4057,8 @@ class Command(BaseCommand):
 
         def _job_evals(job, runs, baseline_id, final_id, born, *, class_quality=None):
             def agg(run):
-                mean = run.scores.aggregate(mean=Avg("value"))["mean"]
-                return round(mean, 6) if mean is not None else None
+                headline = comparison.headline(run.summary)
+                return round(headline, 6) if headline is not None else None
 
             base_score, final_score = agg(runs[0]), agg(runs[1])
             rows = []
@@ -4922,17 +4342,15 @@ class Command(BaseCommand):
         self.stdout.write("\nSeed complete — Support Copilot.")
         for label, count in [
             ("Capabilities", Capability.objects.filter(project=project).count()),
-            ("Tasks", Behaviour.objects.filter(project=project).count()),
             ("Spans", Span.objects.filter(project=project).count()),
             ("Traces", Span.objects.filter(project=project, parent_span_id__isnull=True).count()),
             ("Sessions", Conversation.objects.filter(project=project).count()),
-            ("Task executions", TaskExecution.objects.filter(project=project).count()),
-            ("Verdicts", Verdict.objects.filter(project=project).count()),
             ("Datasets", Dataset.objects.filter(project=project).count()),
             ("Cells", Cell.objects.filter(dataset__project=project).count()),
-            ("Evaluators", Evaluator.objects.filter(project=project).count()),
+            ("Eval matrix rows", EvalMatrix.objects.filter(project=project).count()),
             ("Eval runs", EvalRun.objects.filter(project=project).count()),
-            ("Scores", Score.objects.filter(project=project).count()),
+            ("Eval scores", EvalScore.objects.filter(project=project).count()),
+            ("Signal events", SignalEvent.objects.filter(project=project).count()),
             ("Optimiser runs", OptimizerExperiment.objects.filter(project=project).count()),
             ("Training jobs", FinetuningJob.objects.filter(project=project).count()),
             ("Deployed models", DeployedModel.objects.filter(project=project).count()),

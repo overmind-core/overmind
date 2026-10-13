@@ -2,20 +2,17 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from overbae.models import (
-    Annotation,
     APIToken,
-    Behaviour,
-    BehaviourVersion,
     BillingTelemetry,
     Capability,
     Cell,
     Dataset,
+    EvalMatrix,
     EvalRun,
-    EvalSample,
-    Evaluator,
-    EvalVariant,
+    EvalRunRow,
+    EvalScore,
+    EvalSet,
     Feedback,
-    JudgeCache,
     ModelRef,
     OptimizerCandidate,
     OptimizerCommand,
@@ -23,42 +20,13 @@ from overbae.models import (
     OptimizerIteration,
     Project,
     ProjectMembership,
-    RunEvaluator,
-    Score,
+    SignalEvent,
+    SignalSubscription,
     Span,
     Subscription,
-    TaskExecution,
     User,
     UserOnboarding,
 )
-
-
-@admin.register(Behaviour)
-class BehaviourAdmin(admin.ModelAdmin):
-    list_display = ["id", "capability", "key", "entry_anchor", "status", "last_seen_sha"]
-    list_filter = ["status"]
-    search_fields = ["key", "entry_anchor", "capability__name"]
-
-
-@admin.register(BehaviourVersion)
-class BehaviourVersionAdmin(admin.ModelAdmin):
-    list_display = ["id", "behaviour", "analyzed_sha", "created_at"]
-    search_fields = ["analyzed_sha", "behaviour__key"]
-
-
-@admin.register(TaskExecution)
-class TaskExecutionAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "capability",
-        "behaviour",
-        "binding_source",
-        "success_score",
-        "terminal_kind",
-        "started_at",
-    ]
-    list_filter = ["binding_source", "status"]
-    search_fields = ["trace_id", "unit_span_id"]
 
 
 @admin.register(Dataset)
@@ -419,89 +387,56 @@ class ModelRefAdmin(admin.ModelAdmin):
     readonly_fields = ["id", "created_at", "updated_at"]
 
 
-@admin.register(Evaluator)
-class EvaluatorAdmin(admin.ModelAdmin):
-    list_display = [
-        "name",
-        "version",
-        "kind",
-        "scope",
-        "project",
-        "is_managed",
-        "created_at",
-        "score_min",
-        "score_max",
-    ]
-    list_filter = ["kind", "scope", "is_managed", "is_archived"]
-    search_fields = ["name", "description", "project__slug"]
-    readonly_fields = ["id", "created_at"]
+@admin.register(EvalMatrix)
+class EvalMatrixAdmin(admin.ModelAdmin):
+    list_display = ["name", "type", "project", "capability", "span_type", "enabled", "created_at"]
+    list_filter = ["type", "enabled", "span_type"]
+    search_fields = ["name", "source", "project__slug"]
+    readonly_fields = ["id", "created_at", "updated_at"]
 
 
-class EvalVariantInline(admin.TabularInline):
-    model = EvalVariant
+@admin.register(EvalSet)
+class EvalSetAdmin(admin.ModelAdmin):
+    list_display = ["name", "project", "capability", "created_at"]
+    search_fields = ["name", "project__slug"]
+    filter_horizontal = ["rows"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+
+
+class EvalRunRowInline(admin.TabularInline):
+    model = EvalRunRow
     extra = 0
-    show_change_link = True
-
-
-class RunEvaluatorInline(admin.TabularInline):
-    model = RunEvaluator
-    extra = 0
-    show_change_link = True
-    fields = ["evaluator", "scope_override", "sampling", "enabled", "order"]
+    fields = ["row_index", "state", "degraded", "error"]
+    readonly_fields = fields
 
 
 @admin.register(EvalRun)
 class EvalRunAdmin(admin.ModelAdmin):
-    list_display = ["name", "project", "status", "data_source", "created_at", "completed_at"]
-    list_filter = ["status", "data_source", "created_at"]
-    search_fields = ["name", "project__slug"]
+    list_display = ["name", "project", "status", "mode", "is_baseline", "group", "created_at"]
+    list_filter = ["status", "mode", "created_at"]
+    search_fields = ["name", "project__slug", "group"]
     readonly_fields = ["id", "created_at", "updated_at", "completed_at"]
-    inlines = [EvalVariantInline, RunEvaluatorInline]
+    inlines = [EvalRunRowInline]
 
 
-@admin.register(EvalSample)
-class EvalSampleAdmin(admin.ModelAdmin):
-    list_display = ["id", "run", "variant", "source_trace_id", "context_coverage", "created_at"]
-    list_filter = ["created_at"]
-    search_fields = ["id", "source_trace_id", "run__name"]
+@admin.register(EvalScore)
+class EvalScoreAdmin(admin.ModelAdmin):
+    list_display = ["source_type", "source_id", "score", "run", "project", "created_at"]
+    list_filter = ["source_type", "created_at"]
+    search_fields = ["source_id", "run__name"]
     readonly_fields = ["id", "created_at"]
 
 
-@admin.register(Score)
-class ScoreAdmin(admin.ModelAdmin):
-    list_display = [
-        "name",
-        "data_type",
-        "value",
-        "string_value",
-        "passed",
-        "scope",
-        "failure_role",
-        "source",
-        "created_at",
-    ]
-    list_filter = ["data_type", "scope", "failure_role", "source", "created_at"]
-    search_fields = ["name", "run__name", "sample__id"]
-    readonly_fields = ["id", "created_at"]
+@admin.register(SignalSubscription)
+class SignalSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ["signal_type", "project", "capability", "enabled", "created_at"]
+    list_filter = ["signal_type", "enabled"]
+    search_fields = ["signal_type", "project__slug"]
 
 
-@admin.register(Annotation)
-class AnnotationAdmin(admin.ModelAdmin):
-    list_display = ["id", "sample", "evaluator", "user", "value", "label", "created_at"]
-    list_filter = ["created_at"]
-    search_fields = ["sample__id", "user__email"]
-    readonly_fields = ["id", "created_at"]
-
-
-@admin.register(JudgeCache)
-class JudgeCacheAdmin(admin.ModelAdmin):
-    list_display = [
-        "key",
-        "hits",
-        "prompt_tokens",
-        "completion_tokens",
-        "created_at",
-        "last_used_at",
-    ]
-    search_fields = ["key"]
-    readonly_fields = ["key", "raw", "created_at", "last_used_at"]
+@admin.register(SignalEvent)
+class SignalEventAdmin(admin.ModelAdmin):
+    list_display = ["signal_type", "project", "trace_id", "occurred_at", "seen_at"]
+    list_filter = ["signal_type", "occurred_at"]
+    search_fields = ["signal_type", "trace_id", "message"]
+    readonly_fields = ["id", "occurred_at"]

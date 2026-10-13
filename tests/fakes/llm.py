@@ -181,13 +181,13 @@ class FakeLLM:
         ]
 
     decisions: list[dict[str, Any]] = field(default_factory=list)
-    decide: Callable[[str, dict[str, Any]], str] | None = None
+    decide: Callable[[str, dict[str, Any], dict[str, Any]], str] | None = None
     decision_cost: float = 0.0
     decision_confidence: float = 0.9
 
-    def _decide(self, key: str, question: dict[str, Any]) -> dict[str, Any]:
+    def _decide(self, key: str, question: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         options = list(question.get("criteria") or {})
-        choice = self.decide(key, question) if self.decide else options[0]
+        choice = self.decide(key, question, state) if self.decide else options[0]
         return {
             "type": "choice",
             "choice": choice,
@@ -343,7 +343,7 @@ class FakeLLM:
             with self._lock:
                 self.decisions.append(body)
             answers = {
-                key: self._decide(key, question)
+                key: self._decide(key, question, body.get("state") or {})
                 for key, question in (body.get("questions") or {}).items()
             }
             payload = {

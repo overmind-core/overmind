@@ -1,4 +1,4 @@
-from django.db.models import Case, Count, F, Func, IntegerField, Q, Value, When
+from django.db.models import Case, F, Func, IntegerField, Q, Value, When
 from django.db.models.functions import Coalesce, NullIf
 
 from overbae.models import EvalRun, NativeEvaluationPlan
@@ -47,8 +47,10 @@ def evaluation_activity(project_ids, filters):
             kind=Value("generative"),
             capability_name=F("dataset__capability__name"),
             dataset_name=F("dataset__name"),
-            variant_count=Count("variants", distinct=True),
-            evaluator_count=Count("evaluators", distinct=True),
+            variant_count=Value(1),
+            evaluator_count=Func(
+                F("matrix"), function="jsonb_array_length", output_field=IntegerField()
+            ),
         )
         .values(*fields)
         .union(
@@ -89,12 +91,7 @@ def activity_records(page):
     plans = NativeEvaluationPlan.objects.filter(
         id__in=[r["id"] for r in page if r["kind"] == "decision"], deleted_at=None
     )
-    records = {
-        ("generative", run.id): run
-        for run in runs.select_related("dataset__capability").prefetch_related(
-            "variants", "evaluators"
-        )
-    }
+    records = {("generative", run.id): run for run in runs.select_related("dataset__capability")}
     records.update(
         {
             ("decision", plan.id): plan
