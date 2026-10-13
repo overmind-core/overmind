@@ -292,6 +292,11 @@ class Migration(migrations.Migration):
                         fields=["project", "state"],
                         name="execution_active",
                     ),
+                    models.Index(
+                        condition=models.Q(state="failed", transient=True),
+                        fields=["finished_at"],
+                        name="execution_transient_failed",
+                    ),
                 ],
             },
         ),

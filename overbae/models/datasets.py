@@ -259,4 +259,10 @@ class Execution(models.Model):
                 name="execution_active",
                 condition=models.Q(state__in=["queued", "running"]),
             ),
+            # The interactive capacity metric counts recent transient failures every minute.
+            models.Index(
+                fields=["finished_at"],
+                name="execution_transient_failed",
+                condition=models.Q(state="failed", transient=True),
+            ),
         ]
