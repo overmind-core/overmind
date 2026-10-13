@@ -7,6 +7,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -63,6 +64,8 @@ def _sandbox(budget: int):
             "SANDBOX_TOKEN": token,
             "SANDBOX_ALLOW_SHARED_UID": "1",
             "SANDBOX_MEMORY_BYTES": str(budget),
+            # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
+            "TMPDIR": tempfile.mkdtemp(prefix="sandbox-test-"),
         },
     )
     url = f"http://127.0.0.1:{port}"

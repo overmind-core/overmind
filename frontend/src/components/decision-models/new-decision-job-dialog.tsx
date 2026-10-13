@@ -20,11 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  datasetDisplayName,
-  intentOf,
-  useDatasetInventoryQuery,
-} from "@/hooks/use-datasets";
+import { datasetDisplayName, intentOf, useDatasetInventoryQuery } from "@/hooks/use-datasets";
 import { useCreateDecisionJobMutation, useDecisionModelsQuery } from "@/hooks/use-decision-jobs";
 import { errorMessage } from "@/lib/notify";
 import type { Dataset } from "@/openapi";

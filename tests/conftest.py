@@ -4,6 +4,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -82,6 +83,8 @@ def sandbox_server():
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SANDBOX_TOKEN": token,
         "SANDBOX_ALLOW_SHARED_UID": "1",
+        # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
+        "TMPDIR": tempfile.mkdtemp(prefix="sandbox-test-"),
     }
     proc = subprocess.Popen(
         [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)],
