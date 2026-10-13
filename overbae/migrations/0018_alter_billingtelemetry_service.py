@@ -4,15 +4,25 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('overbae', '0017_decision_evaluations'),
+        ("overbae", "0017_decision_job"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='billingtelemetry',
-            name='service',
-            field=models.CharField(choices=[('free-credits', 'Free credits'), ('stripe-topup', 'Stripe top-up'), ('finetuning-job', 'Finetuning job'), ('inference', 'Inference'), ('evaluation', 'Evaluation'), ('inference-ft-model', 'Fine-tuned inference'), ('data-workshop', 'Data workshop'), ('cursor-agent', 'Cursor agent')], max_length=32),
+            model_name="billingtelemetry",
+            name="service",
+            field=models.CharField(
+                choices=[
+                    ("free-credits", "Free credits"),
+                    ("stripe-topup", "Stripe top-up"),
+                    ("finetuning-job", "Finetuning job"),
+                    ("inference", "Inference"),
+                    ("inference-ft-model", "Fine-tuned inference"),
+                    ("data-workshop", "Data workshop"),
+                    ("cursor-agent", "Cursor agent"),
+                ],
+                max_length=32,
+            ),
         ),
     ]
