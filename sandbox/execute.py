@@ -126,10 +126,9 @@ def audit(script: str) -> list[str]:
             if (node.module or "").split(".", 1)[0] not in allowed:
                 violations.append(f"import from {node.module or '?'} is not allowed")
         elif isinstance(node, ast.Call):
-            fn = node.func
-            name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")
-            if name in _FORBIDDEN_CALLS:
-                violations.append(f"{name}() is not allowed")
+            # re.compile and df.eval are methods; only the builtins themselves are refused.
+            if isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALLS:
+                violations.append(f"{node.func.id}() is not allowed")
         elif isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_ATTRS:
             violations.append(f"{node.attr} is not allowed")
     return sorted(set(violations))

@@ -108,6 +108,27 @@ def test_source_row_is_rebuilt_when_the_script_dropped_it():
     assert list(read_table(paths.cell_path(dataset.id, cell.id))["source_row"]) == [0, 2]
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        "df = df.drop(columns=['source_row']).iloc[::-1].reset_index(drop=True)\n",
+        "df = pd.DataFrame(df.drop(columns=['source_row']).to_dict('records')[::-1])\n",
+    ],
+)
+def test_rows_renumbered_after_dropping_source_row_lose_their_identity(script):
+    dataset = _landed(make_project(), ROWS)
+    cell = _version(dataset, dataset.source, script)
+    assert "source_row" not in read_table(paths.cell_path(dataset.id, cell.id)).columns
+    assert cell.impact["identity_preserved"] is False
+
+
+def test_source_row_follows_reordered_rows_that_kept_their_labels():
+    dataset = _landed(make_project(), ROWS)
+    cell = _version(dataset, dataset.source, "df = df.drop(columns=['source_row']).iloc[::-1]\n")
+    frame = read_table(paths.cell_path(dataset.id, cell.id))
+    assert list(frame["source_row"]) == [2, 1, 0]
+
+
 def test_a_reshape_without_row_identity_has_no_source_row():
     dataset = _landed(make_project(), ROWS)
     cell = _version(
@@ -161,6 +182,11 @@ def test_the_audit_refuses_imports_and_calls_outside_the_list():
     assert execute.audit("import nltk\n") == ["import nltk is not allowed"]
     assert execute.audit("open('x')\n") == ["open() is not allowed"]
     assert execute.audit("import os\nos.system('x')\n") == ["system is not allowed"]
+
+
+def test_the_audit_lets_methods_share_a_name_with_a_refused_builtin():
+    script = "import re\npattern = re.compile('a+')\ndf = df[df.eval('rows > 1')]\n"
+    assert execute.audit(script) == []
 
 
 def test_landing_writes_v0_makes_it_active_and_proposes_the_intent():

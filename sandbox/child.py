@@ -67,12 +67,12 @@ def _frame(df, src, pd, tables):
         raise SystemExit("df has two levels of column names. Flatten them to one name per column.")
     # A named index holds data (set_index, groupby); an unnamed one is only row labels.
     named = [n for n in df.index.names if n is not None]
-    # Row identity survives a script that dropped the column but kept the index: same
-    # rows in the same order, or a filter that kept the original labels. A fresh
-    # RangeIndex after a reshape carries no identity.
+    # Row identity survives a script that dropped the column but kept the row labels
+    # (main gives the input a plain integer index for this). A RangeIndex means the rows
+    # were renumbered (reset_index, a new frame), and positions carry no identity.
     if tables.SOURCE_ROW not in df.columns and tables.SOURCE_ROW in src.columns:
-        fresh = df.index.equals(pd.RangeIndex(len(df)))
-        if df.index.isin(src.index).all() and (not fresh or len(df) == len(src)):
+        renumbered = isinstance(df.index, pd.RangeIndex)
+        if not renumbered and df.index.isin(src.index).all():
             df.insert(0, tables.SOURCE_ROW, src.loc[df.index, tables.SOURCE_ROW].values)
     return df.reset_index(drop=not named)
 
@@ -134,6 +134,7 @@ def main(argv: list[str]) -> None:
     src = pq.read_table(in_path, pre_buffer=False, use_threads=False).to_pandas(
         self_destruct=True, split_blocks=True
     )
+    src.index = pd.Index(np.arange(len(src)))
     for col, kind in kinds.items():
         if kind == "json" and col in src.columns:
             src[col] = src[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
