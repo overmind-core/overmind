@@ -321,21 +321,12 @@ export interface RowsGridProps {
   /** Mark rows added and values changed against the cell before. */
   diff?: boolean;
   pageSize?: number;
-  className?: string;
-  enabled?: boolean;
 }
 
 /** Paged grid over one cell's frame, with server-side sort, search, filters,
  *  and git-style marks: new rows tinted, changed values tinted with the old
  *  value on hover. */
-export function RowsGrid({
-  datasetId,
-  cellId,
-  diff = false,
-  pageSize = 10,
-  className,
-  enabled = true,
-}: RowsGridProps) {
+export function RowsGrid({ datasetId, cellId, diff = false, pageSize = 10 }: RowsGridProps) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(pageSize);
   const [sort, setSort] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
@@ -349,21 +340,16 @@ export function RowsGrid({
     setPage(1);
   }, [debouncedSearch, filters, sort]);
 
-  const rowsQuery = useRowsQuery(
-    datasetId,
-    cellId,
-    {
-      diff,
-      dir: sort?.dir,
-      filters,
-      limit,
-      offset: (page - 1) * limit,
-      search: debouncedSearch,
-      sort: sort?.field,
-    },
-    enabled
-  );
-  const columnsQuery = useColumnsQuery(datasetId, cellId, enabled);
+  const rowsQuery = useRowsQuery(datasetId, cellId, {
+    diff,
+    dir: sort?.dir,
+    filters,
+    limit,
+    offset: (page - 1) * limit,
+    search: debouncedSearch,
+    sort: sort?.field,
+  });
+  const columnsQuery = useColumnsQuery(datasetId, cellId);
   const statsByName = useMemo(() => {
     const map = new Map<string, ColumnStat>();
     for (const c of columnsQuery.data ?? []) map.set(c.name, c);
@@ -395,11 +381,10 @@ export function RowsGrid({
     []
   );
 
-  if (!enabled) return null;
   const narrowing = !!debouncedSearch || filters.length > 0;
 
   return (
-    <div className={cn("flex min-h-0 flex-col", className)}>
+    <div className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-1">
         <SearchInput
           className="w-44"

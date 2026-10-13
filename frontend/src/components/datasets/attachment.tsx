@@ -81,7 +81,9 @@ export function Attachment({
               {statusText(entry)}
             </p>
             {entry.status === "ready" && entry.rows == null && (
-              <p className="text-muted-foreground">Text extraction starts when sent.</p>
+              <p className="text-muted-foreground">
+                Text is extracted after the dataset is created.
+              </p>
             )}
             {entry.status === "uploading" && (
               <Progress label={`Uploading ${name}`} percent={entry.percent} />

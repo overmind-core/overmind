@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 
 import apiClient from "@/client";
 import { sourceFiles } from "@/components/datasets/notebook/source";
@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useWorkshopSidebar } from "@/contexts/workshop-sidebar-context";
 import { datasetDisplayName, isBusy, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useGuestGate } from "@/hooks/use-guest-gate";
 import { cn } from "@/lib/utils";
 import type { Dataset, PaginatedDatasetList } from "@/openapi";
 
@@ -50,6 +51,8 @@ function DatasetRow({
   current: boolean;
 }) {
   const remove = useDeleteDatasetMutation();
+  const guard = useGuestGate();
+  const navigate = useNavigate();
   const name = datasetDisplayName(dataset);
   return (
     <li className="group/row relative">
@@ -84,12 +87,16 @@ function DatasetRow({
         error={remove.error}
         isPending={remove.isPending}
         keepOpenOnError
-        onConfirm={() => remove.mutateAsync(dataset.id)}
+        onConfirm={async () => {
+          await remove.mutateAsync(dataset.id);
+          if (current) void navigate({ search: { projectId }, to: "/datasets" });
+        }}
         title={`Delete ${name}?`}
         trigger={
           <Button
             aria-label={`Delete ${name}`}
             className="absolute top-1 right-1 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+            onClick={guard()}
             size="icon-xs"
             variant="ghost"
           >
@@ -180,10 +187,13 @@ function DatasetNavigation({ projectId }: { projectId: string }) {
 
 export function WorkshopSidebar({ projectId }: { projectId: string | undefined }) {
   const { open, close } = useWorkshopSidebar();
+  const aside = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      // Escape in a dialog or popover opened from the sidebar closes only that layer.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (aside.current?.contains(document.activeElement)) close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -195,8 +205,15 @@ export function WorkshopSidebar({ projectId }: { projectId: string | undefined }
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-sidebar-border"
       id="workshop-navigation"
       inert={!open}
+      ref={aside}
     >
-      {projectId && <DatasetNavigation projectId={projectId} />}
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
+        <span className="text-sm text-foreground">Datasets</span>
+        <Button aria-label="Close datasets" onClick={close} size="icon-xs" variant="ghost">
+          <Icon.close />
+        </Button>
+      </div>
+      {projectId && open && <DatasetNavigation projectId={projectId} />}
     </aside>
   );
 }

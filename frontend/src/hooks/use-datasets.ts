@@ -171,6 +171,7 @@ const datasetKeys = {
 export function invalidateDataset(qc: ReturnType<typeof useQueryClient>, id?: string) {
   if (id) void qc.invalidateQueries({ queryKey: ["datasets", id] });
   if (id) void qc.invalidateQueries({ queryKey: datasetKeys.detail(id) });
+  if (id) void qc.invalidateQueries({ queryKey: ["dataset", id] });
   void qc.invalidateQueries({ queryKey: ["datasets", "list"] });
   void qc.invalidateQueries({ queryKey: ["capability-detail"] });
 }
@@ -259,14 +260,9 @@ export function useDatasetExecutionsQuery(id: string, enabled: boolean) {
 
 /** Raw fetch: rows carry user column names as keys, which the generated client
  *  would camelize. */
-export function useRowsQuery(
-  id: string | undefined,
-  cell: string | undefined,
-  params: RowsParams,
-  enabled = true
-) {
+export function useRowsQuery(id: string | undefined, cell: string | undefined, params: RowsParams) {
   return useQuery<RowsPage>({
-    enabled: !!id && enabled,
+    enabled: !!id,
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const search = new URLSearchParams({
@@ -291,9 +287,9 @@ export function useRowsQuery(
   });
 }
 
-export function useColumnsQuery(id: string | undefined, cell: string | undefined, enabled = true) {
+export function useColumnsQuery(id: string | undefined, cell: string | undefined) {
   return useQuery<ColumnStat[]>({
-    enabled: !!id && enabled,
+    enabled: !!id,
     queryFn: () => apiClient.datasets.datasetsColumnsList({ cell, id: id! }),
     queryKey: datasetKeys.columns(id ?? "", cell),
     retry: false,
@@ -384,7 +380,10 @@ export function useDeleteDatasetMutation() {
   return useMutation({
     mutationFn: (id: string) => apiClient.datasets.datasetsDestroy({ id }),
     onError: (e) => notify.error(e, "Couldn't delete dataset"),
-    onSuccess: () => invalidateDataset(qc),
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: datasetKeys.detail(id) });
+      invalidateDataset(qc);
+    },
   });
 }
 
@@ -457,6 +456,8 @@ export function useDatasetEvents(
         const res = await fetchWithAuth(`/api/datasets/${datasetId}/events/`, {
           signal: controller.signal,
         });
+        // A deleted dataset or a lost permission will not come back on a retry.
+        if (res.status === 403 || res.status === 404) return;
         if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();

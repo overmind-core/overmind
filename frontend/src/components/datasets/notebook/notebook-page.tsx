@@ -11,6 +11,7 @@ import {
 } from "@/components/datasets/notebook/cell";
 import { type FlowFocus, VersionFlow } from "@/components/datasets/notebook/cell-flow";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import { DatasetSettings } from "@/components/datasets/notebook/settings";
 import { WorkshopStatus } from "@/components/datasets/workshop-status";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
@@ -19,6 +20,7 @@ import {
   activeCellOf,
   cellsOf,
   type DatasetEvent,
+  type DatasetPatch,
   datasetDisplayName,
   downloadExport,
   intentOf,
@@ -223,13 +225,19 @@ export function DatasetNotebook({
             if (target) show(target.id);
           }}
         />
+        <DatasetSettings
+          capabilities={capabilityChoices}
+          dataset={dataset}
+          disabled={!editable || patch.isPending}
+          onSave={guard((next: DatasetPatch) => patch.mutate(next))}
+        />
         <NotebookControls
           onToggleMinimap={cells.length ? () => setShowMinimap((on) => !on) : undefined}
           showMinimap={showMinimap}
         />
       </div>
       <div className="relative min-h-0 flex-1">
-        {cells.length === 1 && dataset.state === "idle" && (
+        {cells.length === 1 && dataset.state === "idle" && !dataset.running && (
           <section
             aria-label="No versions yet"
             className="absolute top-3 left-3 z-10 flex max-w-80 flex-col gap-2 rounded-md border border-border bg-card p-3"

@@ -79,7 +79,8 @@ function ExportDialog({
         <DialogHeader>
           <DialogTitle>Export {title}</DialogTitle>
           <DialogDescription>
-            {rows.toLocaleString()} rows × {columns} columns, as stored. An export is not a use.
+            {rows.toLocaleString()} rows × {columns} columns, as stored. Exporting does not mark the
+            version Used.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -156,11 +157,11 @@ function intentCheck(intent: string, shape: Report): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Select train or eval.",
+      fix: "Set the intent to train or eval in Dataset settings.",
       found: "train or eval not chosen",
       label: "Intent",
       ok: false,
-      requires: "an intent, so the table has a shape to hold",
+      requires: "train or eval",
     };
   }
   const label = intent === "eval" ? "Eval table" : "Train table";
@@ -193,7 +194,7 @@ function intentCheck(intent: string, shape: Report): Check {
     fix = "Drop the rows that landing cut: part of each transcript is missing.";
   else if (reason.includes("no usable messages") || reason.includes(" rows: "))
     fix = "Drop the rows whose messages are empty or not a list.";
-  else if (reason === "no rows") fix = "The table is empty. Land more rows or loosen a filter.";
+  else if (reason === "no rows") fix = "The table is empty.";
   return { columns, fix, found: reason || "the shape does not hold", label, ok: false, requires };
 }
 
@@ -361,13 +362,14 @@ function FitChip({
   return (
     <HoverCard openDelay={250}>
       <HoverCardTrigger asChild>
-        <span
+        <button
           className={cn(
-            "inline-flex h-6 min-w-0 max-w-96 cursor-default items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-xs",
+            "nodrag inline-flex h-6 min-w-0 max-w-96 cursor-default items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-xs",
             failing
               ? "border-warning/40 bg-warning/10 text-warning"
               : "border-success/40 bg-success/10 text-success"
           )}
+          type="button"
         >
           {failing ? (
             <Icon.warning className="size-3 shrink-0" />
@@ -375,7 +377,7 @@ function FitChip({
             <Icon.success className="size-3 shrink-0" />
           )}
           <span className="truncate">{headline}</span>
-        </span>
+        </button>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-[28rem] p-2.5">
         <ul className="flex flex-col gap-3">
@@ -603,7 +605,7 @@ export function VersionCard({
           />
           {tableOpen && (
             <div className="nodrag">
-              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
+              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} />
             </div>
           )}
         </div>

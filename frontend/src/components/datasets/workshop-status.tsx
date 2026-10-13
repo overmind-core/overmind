@@ -23,7 +23,7 @@ export const workshopStateOf = (dataset: Pick<Dataset, "state" | "running" | "ac
         : "idle";
 
 const STATE_LABEL: Record<WorkshopState, string> = {
-  complete: "Completed",
+  complete: "Ready",
   error: "Failed",
   idle: "Idle",
   working: "Working",
@@ -104,7 +104,7 @@ function RunLine({
           {run.runSeconds != null ? `${run.runSeconds.toFixed(1)}s` : "—"}
         </span>
         <span>{formatSmart(run.queuedAt)}</span>
-        <span className="font-mono">from {run.parent}</span>
+        {run.parent && <span className="font-mono">from {run.parent}</span>}
         {run.cell && (
           <Button
             aria-label={`Show ${run.cell}`}
