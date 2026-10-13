@@ -17,10 +17,6 @@ from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
 _LABEL = re.compile(r"^v?(\d+)$", re.IGNORECASE)
 
 
-def label(cell: Cell) -> str:
-    return cell.label
-
-
 def resolve_cell(dataset: Dataset, ref: Any, *, field: str = "version") -> Cell:
     """A version by label (``v3`` or ``3``) or id; blank means the active one."""
     ref = str(ref or "").strip()
@@ -40,10 +36,6 @@ def resolve_cell(dataset: Dataset, ref: Any, *, field: str = "version") -> Cell:
     if cell is None:
         raise DatasetError(f"No version {ref}.", code="no_cell", field=field)
     return cell
-
-
-def tree(dataset: Dataset) -> list[Cell]:
-    return list(dataset.cells.select_related("parent").order_by("position"))
 
 
 def activate(dataset: Dataset, cell: Cell, *, expected_active: Cell | None = None) -> Dataset:

@@ -214,6 +214,31 @@ def test_an_unreachable_sandbox_fails_transiently_and_the_same_call_runs_again(s
     assert back["status"] == "ok" and back["execution"] != down["execution"]
 
 
+def test_a_sandbox_that_refuses_the_token_fails_the_run_without_blaming_the_script(settings):
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    settings.SANDBOX_TOKEN = "wrong"
+    refused = _call(
+        "try_dataset_script", {"dataset": str(dataset.id), "script": KEEP}, context
+    ).structuredContent
+    assert (refused["status"], refused["transient"], refused["error"]) == (
+        "failed",
+        True,
+        "The sandbox refused the run. The reason is in the worker log.",
+    )
+
+
+def test_a_try_on_a_wide_frame_previews_the_first_200_columns():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    script = "for i in range(250):\n    df[f'c{i}'] = i"
+    tried = _call(
+        "try_dataset_script", {"dataset": str(dataset.id), "script": script}, context
+    ).structuredContent
+    assert tried["status"] == "ok", tried["error"]
+    assert len(tried["columns"]) == 200
+
+
 def test_a_run_that_stopped_without_a_result_is_failed_and_runs_again():
     context = mcp_context(("read", "write"))
     dataset = _landed(context)

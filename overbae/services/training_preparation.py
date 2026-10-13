@@ -270,8 +270,8 @@ def preparation_error(prep):
         return (
             f"The longest training or validation row needs {longest:,} tokens; "
             f"the selected training context is {context:,}. "
-            "Choose a model with a larger training context or restructure the affected rows "
-            "in the data workshop. No rows were truncated or dropped."
+            "Choose a model with a larger training context or add a dataset version that "
+            "shortens the affected rows. No rows were truncated or dropped."
         )
     return (
         f"{prep.report.get('incompatible_rows', 0)} rows are incompatible with this "

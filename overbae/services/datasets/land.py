@@ -194,23 +194,19 @@ def publish(dataset, prepared, *, user=None):
     if prepared.dataset_id != dataset.pk:
         raise LandError("The prepared source belongs to another dataset.")
     locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
-    source = locked.source
-    if source is not None and source.pk != prepared.cell_id:
-        raise LandError("The source changed before publication.")
+    if locked.source is not None:
+        raise LandError("The dataset already has a source.")
     destination = paths.cell_path(locked.pk, prepared.cell_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
     prepared.path.replace(destination)
-    if source is None:
-        Cell.objects.create(
-            id=prepared.cell_id,
-            dataset=locked,
-            position=0,
-            title="Source",
-            created_by=user if getattr(user, "pk", None) else None,
-            **prepared.cell_fields,
-        )
-    else:
-        Cell.objects.filter(pk=source.pk).update(**prepared.cell_fields)
+    Cell.objects.create(
+        id=prepared.cell_id,
+        dataset=locked,
+        position=0,
+        title="Source",
+        created_by=user if getattr(user, "pk", None) else None,
+        **prepared.cell_fields,
+    )
     Dataset.objects.filter(pk=locked.pk).update(
         **prepared.dataset_fields, active_id=prepared.cell_id, updated_at=timezone.now()
     )
@@ -287,6 +283,11 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
                 ) from None
             time.sleep(EXTRACT_UNREACHABLE_RETRY_SECONDS[unreachable])
             unreachable += 1
+        except executions.SandboxRefusedError as exc:
+            logger.error("sandbox refused extraction of %s: %s", filename, exc)
+            raise LandError(
+                "The sandbox refused the document. Retry the import.", code="sandbox_unavailable"
+            ) from None
     if not reply.get("ok"):
         raise LandError(reply.get("error") or "The document could not be extracted.")
     extraction = reply.get("extraction")

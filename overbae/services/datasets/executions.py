@@ -3,6 +3,7 @@ sandbox client. The sandbox executes every script; the worker only moves frames.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -44,10 +45,12 @@ UNREACHABLE_RETRY_SECONDS = (2, 4, 8)
 STALE_RUNNING_SECONDS = 11 * 60
 STALE_QUEUED_SECONDS = 20 * 60
 PREVIEW_ROWS = 3
+MAX_PREVIEW_COLUMNS = 200
 VALUE_CHARS = 400
 
 STOPPED = "The run stopped without a result."
 UNAVAILABLE = "The sandbox is unavailable."
+REFUSED = "The sandbox refused the run. The reason is in the worker log."
 NO_MEMORY = "The sandbox had no free memory for this run."
 NO_SLOT = "The run waited 15 minutes for a free slot in this project."
 FAILED_ON_WORKER = "The run failed on the worker. The error is in the worker log."
@@ -71,6 +74,11 @@ class SandboxUnavailableError(Exception):
     pass
 
 
+class SandboxRefusedError(Exception):
+    """A 4xx reply: a wrong token or a request the sandbox cannot read. Retrying the
+    same request cannot help."""
+
+
 @dataclass
 class Retry:
     countdown: float
@@ -85,11 +93,17 @@ def key(mode: str, dataset_id: Any, parent_id: Any, script: str) -> str:
     return sha256(json.dumps([mode, str(dataset_id), str(parent_id or ""), script]))
 
 
+@functools.cache
+def _client(url: str):
+    # A queued run asks for a slot every 2 s; one pool per worker process serves them all.
+    return redis.from_url(url, decode_responses=True)
+
+
 def _redis():
     url = settings.CELERY_BROKER_URL
     if not url.startswith(("redis://", "rediss://", "unix://")):
         return None
-    return redis.from_url(url, decode_responses=True)
+    return _client(url)
 
 
 def _slots_key(project_id: Any) -> str:
@@ -283,7 +297,10 @@ def sandbox_call(
                 raise SandboxUnavailableError("503")
             if response.status_code != 200:
                 response.read()
-                raise SandboxUnavailableError(f"{response.status_code}: {response.text[:200]}")
+                detail = f"{response.status_code}: {response.text[:200]}"
+                if 400 <= response.status_code < 500:
+                    raise SandboxRefusedError(detail)
+                raise SandboxUnavailableError(detail)
             reader = HeaderReader()
             with open(output, "wb") as out:
                 for chunk in response.iter_bytes(CHUNK_BYTES):
@@ -319,7 +336,7 @@ def preview(path: Path) -> dict[str, Any]:
     head = store.frame_rows(path, range(PREVIEW_ROWS)).to_dict(orient="records")
     return {
         "rows": store.row_count(path),
-        "columns": visible_columns(names),
+        "columns": visible_columns(names)[:MAX_PREVIEW_COLUMNS],
         "head": json.loads(json.dumps(visible(head), default=str)),
     }
 
@@ -482,7 +499,7 @@ def perform(
         raise
     except Exception:
         logger.exception("workshop execution %s failed on the worker", run.pk)
-        finish(run, Execution.State.FAILED, error=FAILED_ON_WORKER)
+        finish(run, Execution.State.FAILED, error=FAILED_ON_WORKER, transient=True)
         return None
     finally:
         if slots:
@@ -523,6 +540,10 @@ def _execute(run: Execution, *, unreachable: int, retries: bool) -> Retry | None
                 _requeue(run)
                 return Retry(UNREACHABLE_RETRY_SECONDS[unreachable], unreachable + 1)
             finish(run, Execution.State.FAILED, error=UNAVAILABLE, transient=True)
+            return None
+        except SandboxRefusedError as exc:
+            logger.error("sandbox refused execution %s: %s", run.pk, exc)
+            finish(run, Execution.State.FAILED, error=REFUSED, transient=True)
             return None
         elapsed = time.monotonic() - started
         run_seconds = float(header.get("seconds") or 0.0)

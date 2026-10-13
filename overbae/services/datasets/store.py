@@ -108,11 +108,6 @@ def value(raw: Any, kind: str) -> Any:
         return raw
 
 
-def raw_rows(path: Path, columns: list[str] | None = None) -> Iterator[dict[str, Any]]:
-    for batch in batches(path, columns):
-        yield from batch.to_pylist()
-
-
 def records(path: Path, columns: list[str] | None = None) -> Iterator[dict[str, Any]]:
     kinds = {spec["name"]: spec["type"] for spec in read_manifest(path)}
     for batch in batches(path, columns):

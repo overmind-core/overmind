@@ -4,15 +4,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset, Execution
-from overbae.services.datasets import review
 from overbae.services.datasets.imports import resumable_imports
 from overbae.services.datasets.land import SPLIT_POSITIONS
-
-
-class DatasetReadinessSerializer(serializers.Serializer):
-    format_valid = serializers.BooleanField()
-    format_reason = serializers.CharField(allow_blank=True)
-    training_configuration = serializers.CharField()
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -56,7 +49,6 @@ class DatasetSerializer(serializers.ModelSerializer):
     cells = serializers.SerializerMethodField()
     active_version = serializers.SerializerMethodField()
     rows = serializers.SerializerMethodField()
-    readiness = serializers.SerializerMethodField()
     running = serializers.SerializerMethodField()
     import_blocked = serializers.SerializerMethodField()
     expected_active = serializers.PrimaryKeyRelatedField(
@@ -82,7 +74,6 @@ class DatasetSerializer(serializers.ModelSerializer):
             "expected_active",
             "active_version",
             "rows",
-            "readiness",
             "state",
             "error",
             "running",
@@ -104,11 +95,6 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def _active(self, obj) -> Cell | None:
         return next((c for c in self._versions(obj) if c.id == obj.active_id), None)
-
-    @extend_schema_field(DatasetReadinessSerializer(allow_null=True))
-    def get_readiness(self, obj):
-        active = self._active(obj)
-        return review.readiness(obj, active) if active else None
 
     @extend_schema_field(CellSerializer(many=True))
     def get_cells(self, obj) -> list[dict]:

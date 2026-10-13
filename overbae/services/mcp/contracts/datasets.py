@@ -598,8 +598,8 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
 
 
 def next_actions(dataset, active: Cell | None) -> list[NextAction]:
-    """The one answer to "what now" for a dataset. Every suggestion satisfies
-    the named tool's schema as given."""
+    """The one answer to "what now" for a dataset. The arguments are the ones Overmind
+    knows; the caller adds the rest (a title and script, an intent)."""
     ds_id = str(dataset.id)
     if dataset.state == Dataset.State.LANDING:
         return [

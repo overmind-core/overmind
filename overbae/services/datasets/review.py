@@ -13,7 +13,6 @@ import pandas as pd
 import pyarrow as pa
 
 from overbae.services.datasets import store
-from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.partition import preserve_lineage
 from sandbox import tables
 from sandbox.examples import identifier_only, instructions, messages
@@ -229,15 +228,6 @@ def impact(before: Path, after: Path) -> dict:
         "removed_examples": preview_examples(store.frame_rows(before, removed)),
         "input_examples": preview_examples(store.frame_rows(before, inputs)),
         "output_examples": preview_examples(store.frame_rows(after, range(5))),
-    }
-
-
-def readiness(dataset, cell) -> dict:
-    valid, reason = cell.fits(public_intent(dataset.intent))
-    return {
-        "format_valid": valid,
-        "format_reason": reason,
-        "training_configuration": "not_checked",
     }
 
 

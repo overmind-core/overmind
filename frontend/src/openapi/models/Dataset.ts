@@ -27,13 +27,6 @@ import {
     IntentEnumToJSON,
     IntentEnumToJSONTyped,
 } from './IntentEnum';
-import type { DatasetReadiness } from './DatasetReadiness';
-import {
-    DatasetReadinessFromJSON,
-    DatasetReadinessFromJSONTyped,
-    DatasetReadinessToJSON,
-    DatasetReadinessToJSONTyped,
-} from './DatasetReadiness';
 import type { DatasetStateEnum } from './DatasetStateEnum';
 import {
     DatasetStateEnumFromJSON,
@@ -129,12 +122,6 @@ export interface Dataset {
     readonly rows: number;
     /**
      *
-     * @type {DatasetReadiness}
-     * @memberof Dataset
-     */
-    readonly readiness: DatasetReadiness | null;
-    /**
-     *
      * @type {DatasetStateEnum}
      * @memberof Dataset
      */
@@ -198,7 +185,6 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('capabilityRank' in value) || value['capabilityRank'] === undefined) return false;
     if (!('activeVersion' in value) || value['activeVersion'] === undefined) return false;
     if (!('rows' in value) || value['rows'] === undefined) return false;
-    if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('running' in value) || value['running'] === undefined) return false;
@@ -232,7 +218,6 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'active': json['active'] == null ? undefined : json['active'],
         'activeVersion': json['active_version'],
         'rows': json['rows'],
-        'readiness': DatasetReadinessFromJSON(json['readiness']),
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
         'running': json['running'],
@@ -248,7 +233,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'state'|'error'|'running'|'import_blocked'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'state'|'error'|'running'|'import_blocked'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
