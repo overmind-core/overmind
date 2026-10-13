@@ -42,15 +42,13 @@ type Row = Record<string, unknown> & { _index: number };
 interface Evidence {
   filename?: string;
   page?: number | null;
-  element?: string;
 }
 
 function evidenceOf(row: Row): string[] {
   const provenance = row._overmind_provenance as { evidence?: Evidence[] } | null | undefined;
   return (provenance?.evidence ?? []).map((piece) =>
-    [piece.filename, piece.page != null ? `page ${piece.page}` : "", piece.element]
-      .filter(Boolean)
-      .join(" · ")
+    // `element` is the extractor's internal reference (`#/texts/1`), not something to read.
+    [piece.filename, piece.page != null ? `page ${piece.page}` : ""].filter(Boolean).join(" · ")
   );
 }
 
@@ -96,6 +94,71 @@ function ChangedValue({
           </span>
         )
       )}
+    </span>
+  );
+}
+
+interface Turn {
+  role?: unknown;
+  content?: unknown;
+  tool_calls?: Array<{ function?: { name?: unknown; arguments?: unknown } }>;
+}
+
+/** A messages value: a list of chat turns, possibly stored as a JSON string. */
+function turnsOf(value: unknown): Turn[] | null {
+  let parsed = value;
+  if (typeof value === "string" && value.trimStart().startsWith("[")) {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return Array.isArray(parsed) &&
+    parsed.length > 0 &&
+    parsed.every((turn) => !!turn && typeof turn === "object" && "role" in turn)
+    ? (parsed as Turn[])
+    : null;
+}
+
+function contentText(content: unknown): string {
+  if (content === null || content === undefined) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content))
+    return content
+      .map((part) =>
+        part && typeof part === "object" && "text" in part ? String(part.text) : cellText(part)
+      )
+      .join(" ");
+  return cellText(content);
+}
+
+function turnText(turn: Turn | undefined): string {
+  if (!turn) return "";
+  const calls = (turn.tool_calls ?? [])
+    .map(
+      (call) => `→ ${String(call.function?.name ?? "tool")}(${cellText(call.function?.arguments)})`
+    )
+    .join("\n");
+  return [contentText(turn.content), calls].filter(Boolean).join("\n");
+}
+
+const summaryOf = (turns: Turn[]) =>
+  turns.map((turn) => `${String(turn.role)}: ${turnText(turn)}`).join("  ");
+
+function Conversation({ turns, before }: { turns: Turn[]; before: Turn[] | null }) {
+  return (
+    <span className="grid min-w-80 grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5">
+      {turns.map((turn, index) => (
+        <Fragment key={`${index}-${String(turn.role)}`}>
+          <span className="pixel-label pt-px text-muted-foreground">{String(turn.role)}</span>
+          {before ? (
+            <ChangedValue after={turnText(turn)} before={turnText(before[index])} wrap />
+          ) : (
+            <span className="whitespace-pre-wrap break-words">{turnText(turn)}</span>
+          )}
+        </Fragment>
+      ))}
     </span>
   );
 }
@@ -441,9 +504,9 @@ export function RowsGrid({ datasetId, cellId, diff = false, pageSize = 10 }: Row
           </Badge>
         )}
         <span className="flex-1" />
-        {data && narrowing && (
+        {data && narrowing && data.total > 0 && (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {data.total.toLocaleString()} match
+            {data.total.toLocaleString()} {data.total === 1 ? "row matches" : "rows match"}
           </span>
         )}
       </div>
@@ -538,8 +601,14 @@ export function RowsGrid({ datasetId, cellId, diff = false, pageSize = 10 }: Row
                       </td>
                       {columns.map((c) => {
                         const value = row[c.name];
-                        const text = open ? fullText(value) : cellText(value);
+                        const turns = turnsOf(value);
+                        const text = turns
+                          ? summaryOf(turns)
+                          : open
+                            ? fullText(value)
+                            : cellText(value);
                         const before = mark?.before && c.name in mark.before ? mark.before : null;
+                        const priorTurns = before ? turnsOf(before[c.name]) : null;
                         return (
                           <td
                             className={cn(
@@ -553,7 +622,19 @@ export function RowsGrid({ datasetId, cellId, diff = false, pageSize = 10 }: Row
                             key={c.name}
                             title={!open && text.length > 80 ? text.slice(0, 400) : undefined}
                           >
-                            {before ? (
+                            {turns && open ? (
+                              <Conversation
+                                before={before ? (priorTurns ?? []) : null}
+                                turns={turns}
+                              />
+                            ) : turns && before ? (
+                              <ChangedValue
+                                after={text}
+                                before={
+                                  priorTurns ? summaryOf(priorTurns) : cellText(before[c.name])
+                                }
+                              />
+                            ) : before ? (
                               <ChangedValue after={value} before={before[c.name]} wrap={open} />
                             ) : text === "" ? (
                               "null"
@@ -571,7 +652,7 @@ export function RowsGrid({ datasetId, cellId, diff = false, pageSize = 10 }: Row
                           className="border-b border-border/60 px-2 py-1 text-muted-foreground"
                           colSpan={columns.length}
                         >
-                          <span className="pixel-label mr-2">Source evidence</span>
+                          <span className="pixel-label mr-2">From</span>
                           {evidence.join(" · ")}
                         </td>
                       </tr>

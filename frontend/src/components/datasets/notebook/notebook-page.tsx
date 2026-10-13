@@ -10,7 +10,7 @@ import {
   VersionCard,
 } from "@/components/datasets/notebook/cell";
 import { type FlowFocus, VersionFlow } from "@/components/datasets/notebook/cell-flow";
-import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import { isSplit, SplitSummary } from "@/components/datasets/notebook/preparation";
 import { RenameDataset } from "@/components/datasets/notebook/settings";
 import { WorkshopStatus } from "@/components/datasets/workshop-status";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
 const MCP_DOCS = "https://docs.overmindlab.ai/platform/mcp";
@@ -180,42 +181,45 @@ export function DatasetNotebook({
 
   const landingText =
     landing.stage === "extracting"
-      ? "Extracting text"
+      ? "Extracting text…"
       : landing.traces
-        ? `Landing the source… ${landing.traces.toLocaleString()} traces read`
-        : "Landing the source…";
+        ? `Importing… ${landing.traces.toLocaleString()} traces read`
+        : "Importing…";
+  const settled = dataset.state !== "landing" && !dataset.running;
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-start gap-2 border-b border-border/70 px-3 py-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          {dataset.state === "landing" && (
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border/70 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {dataset.state === "landing" && cells.length > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Spinner className="size-3" />
               {landingText}
-            </p>
+            </span>
           )}
-          {dataset.state === "error" && dataset.error && (
-            <p className="text-xs text-destructive" role="alert">
-              {dataset.error}
-            </p>
+          {cells.length > 0 && <SplitSummary projectId={projectId} spec={dataset.sourceSpec} />}
+          {cells.length > 0 && isSplit(dataset.sourceSpec) && cells.length === 1 && settled && (
+            <span aria-hidden className="hidden h-4 w-px shrink-0 bg-border sm:block" />
           )}
-          {dataset.importBlocked && (
-            <Button
-              aria-busy={resume.isPending}
-              className="self-start"
-              disabled={resume.isPending}
-              onClick={guard(() => resume.mutate())}
-              size="xs"
-              variant="secondary"
+          {cells.length === 1 && settled && (
+            <span
+              className={cn(
+                "min-w-0 items-center gap-1.5 text-xs text-muted-foreground",
+                isSplit(dataset.sourceSpec) ? "hidden sm:flex" : "flex"
+              )}
             >
-              {resume.isPending ? <Spinner className="size-3" /> : <Icon.refresh />}
-              Retry import
-            </Button>
-          )}
-          <ContaminationReport spec={dataset.sourceSpec} />
-          {dataset.state !== "landing" && dataset.state !== "error" && !cells.length && (
-            <p className="text-xs text-muted-foreground">Nothing landed.</p>
+              <span className="shrink-0">No versions yet</span>
+              <span aria-hidden>·</span>
+              <a
+                className="inline-flex min-w-0 items-center gap-1 text-foreground hover:underline"
+                href={MCP_DOCS}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="truncate">Connect a coding agent to add them</span>
+                <Icon.externalLink className="size-3 shrink-0" />
+              </a>
+            </span>
           )}
         </div>
         <WorkshopStatus
@@ -236,21 +240,52 @@ export function DatasetNotebook({
         />
       </div>
       <div className="relative min-h-0 flex-1">
-        {cells.length === 1 && dataset.state === "idle" && !dataset.running && (
-          <section
-            aria-label="No versions yet"
-            className="absolute bottom-3 left-3 z-10 flex max-w-80 flex-col gap-2 rounded-md border border-border bg-card p-3"
-          >
-            <p className="text-sm text-foreground">No versions yet</p>
-            <p className="text-xs text-muted-foreground">
-              Add versions from a coding agent connected over MCP.
-            </p>
-            <Button asChild className="self-start" size="xs" variant="secondary">
-              <a href={MCP_DOCS} rel="noreferrer" target="_blank">
-                <Icon.externalLink />
-                Connect an agent
-              </a>
-            </Button>
+        {!cells.length && (
+          <section className="flex h-full items-center justify-center p-6">
+            <div className="flex max-w-md flex-col items-center gap-3 text-center">
+              {dataset.state === "landing" ? (
+                <>
+                  <Spinner className="size-5" />
+                  <p className="text-sm text-foreground">{landingText}</p>
+                </>
+              ) : (
+                <>
+                  <Icon.warning
+                    className={cn(
+                      "size-5",
+                      dataset.state === "error" ? "text-destructive" : "text-muted-foreground"
+                    )}
+                  />
+                  <p className="text-sm text-foreground">
+                    {dataset.state === "error" ? "The import failed" : "No rows were imported"}
+                  </p>
+                  {dataset.error && (
+                    <p className="text-xs text-muted-foreground" role="alert">
+                      {dataset.error}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    {dataset.importBlocked && (
+                      <Button
+                        aria-busy={resume.isPending}
+                        disabled={resume.isPending}
+                        onClick={guard(() => resume.mutate())}
+                        size="sm"
+                      >
+                        {resume.isPending ? <Spinner className="size-3" /> : <Icon.refresh />}
+                        Retry import
+                      </Button>
+                    )}
+                    <Button asChild size="sm" variant="secondary">
+                      <Link search={{ create: true, projectId }} to="/datasets">
+                        <Icon.datasetAdd />
+                        New dataset
+                      </Link>
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           </section>
         )}
         {cells.length > 0 && (

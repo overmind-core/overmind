@@ -241,7 +241,7 @@ def test_an_unreachable_sandbox_fails_transiently_and_the_same_call_runs_again(s
     assert (down["status"], down["transient"], down["error"]) == (
         "failed",
         True,
-        "The sandbox is unavailable.",
+        "Scripts cannot run right now.",
     )
     settings.SANDBOX_URL = working
     back = _call("try_dataset_script", arguments, context).structuredContent
@@ -258,7 +258,7 @@ def test_a_sandbox_that_refuses_the_token_fails_the_run_without_blaming_the_scri
     assert (refused["status"], refused["transient"], refused["error"]) == (
         "failed",
         True,
-        "The sandbox refused the run. The reason is in the worker log.",
+        "The run could not start. Run it again later.",
     )
 
 

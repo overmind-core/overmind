@@ -19,6 +19,9 @@ import { columnsOf, fitOf } from "@/hooks/use-datasets";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
+const count = (n: number) => n.toLocaleString();
+const plural = (n: number, noun: string) => `${count(n)} ${n === 1 ? noun : `${noun}s`}`;
+
 /** `train_eval`: the eval dataset that scores a training job. */
 export type UsePurpose = "train" | "train_eval" | "optimise";
 
@@ -79,8 +82,7 @@ function ExportDialog({
         <DialogHeader>
           <DialogTitle>Export {title}</DialogTitle>
           <DialogDescription>
-            {rows.toLocaleString()} rows × {columns} columns, as stored. Exporting does not mark the
-            version Used.
+            {plural(rows, "row")} × {plural(columns, "column")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -153,84 +155,107 @@ interface Check {
   fixable?: boolean;
 }
 
+const PURPOSE: Record<string, string> = { eval: "evaluation", train: "training" };
+
+const sentence = (text: string) => (text ? text[0].toUpperCase() + text.slice(1) : text);
+
 function intentCheck(intent: string, shape: Report): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Set the intent to train or eval with update_dataset over MCP.",
-      found: "train or eval not chosen",
-      label: "Intent",
+      fix: "Ask your coding agent to shape the rows for training or evaluation and set the purpose.",
+      found: "Not set",
+      label: "Purpose",
       ok: false,
-      requires: "train or eval",
+      requires: "Training or evaluation",
     };
   }
-  const label = intent === "eval" ? "Eval table" : "Train table";
+  const purpose = PURPOSE[intent];
+  const label = `${sentence(purpose)} format`;
   const requires =
     intent === "eval"
-      ? "an input column with a value on every row; expected_output when a reference exists"
-      : "a messages column: a list of role and content turns on every row";
+      ? "An input on every row, and an expected_output wherever a reference answer exists"
+      : "A messages column holding the conversation on every row";
   const columns = intent === "eval" ? ["input", "expected_output"] : ["messages"];
-  if (shape.ok) return { columns, found: "every row holds the shape", label, ok: true, requires };
+  if (shape.ok) return { columns, found: "Every row", label, ok: true, requires };
   const reason = shape.reason ?? "";
   if (shape.fixable === false)
     return {
       columns,
-      fix: "None. The rows hold numbers and ids only; a different source is needed.",
+      fix: "Start from a source with text. These rows hold only numbers and IDs.",
       fixable: false,
-      found: "no text in any column",
+      found: "No text in any column",
       label,
       ok: false,
       requires,
     };
-  let fix = `Add a version that gives every row the ${intent} shape.`;
+  let fix = `Ask your coding agent to reshape the rows for ${purpose}.`;
   if (reason.startsWith("no input column"))
     fix = "Add an input column: rename the prompt column or build it from messages.";
   else if (reason.startsWith("no messages column"))
-    fix = "Add a messages column: build it from the prompt and answer columns.";
+    fix = "Add a messages column built from the prompt and answer columns.";
   else if (reason.startsWith("no expected_output"))
-    fix = "Add an expected_output column with the reference answer.";
+    fix = "Add an expected_output column with the reference answers.";
   else if (reason.includes("empty input")) fix = "Drop the rows whose input is empty.";
-  else if (reason.includes("cut at landing"))
-    fix = "Drop the rows that landing cut: part of each transcript is missing.";
+  else if (reason.includes("cut at landing")) fix = "Drop the rows that were cut short on import.";
+  else if (reason.includes("no assistant turn"))
+    fix = "Drop the rows with no assistant reply, or add the reply.";
   else if (reason.includes("no usable messages") || reason.includes(" rows: "))
     fix = "Drop the rows whose messages are empty or not a list.";
-  else if (reason === "no rows") fix = "The table is empty.";
-  return { columns, fix, found: reason || "the shape does not hold", label, ok: false, requires };
+  else if (reason === "no rows") fix = "The version has no rows.";
+  return {
+    columns,
+    fix,
+    found:
+      sentence(
+        reason
+          .replace(/^(\d+) rows: /, "$1 rows have ")
+          .replace("no assistant turn to train on", "no assistant reply")
+      ) || "The format does not hold",
+    label,
+    ok: false,
+    requires,
+  };
 }
 
 function capabilityCheck(name: string, report: Report, intent: string): Check {
-  const label = `${name} rows`;
+  const label = `Matches ${name}`;
   const requires =
     intent === "eval"
-      ? `every input to carry the keys ${name} requires`
-      : `every transcript to be ${name}'s own: its system prompt first, only its tools called`;
+      ? `Every input carries the fields ${name} reads`
+      : `Every conversation opens with ${name}'s system prompt and calls only its tools`;
   const columns = intent === "eval" ? ["input"] : ["messages"];
   if (report.ok !== false) {
     return {
       columns,
       found:
         report.rows != null
-          ? `${report.rows_ok ?? report.rows} of ${report.rows} rows`
-          : "no contract to check",
+          ? `${(report.rows_ok ?? report.rows).toLocaleString()} of ${report.rows.toLocaleString()} rows`
+          : `Nothing to check: ${name} records no prompt, tools or inputs`,
       label,
       ok: true,
       requires,
     };
   }
   const reason = report.reason ?? "";
-  let fix = `Add a version that aligns the rows with ${name}.`;
+  let fix = `Ask your coding agent to align the rows with ${name}.`;
   if (reason.startsWith("system turn differs"))
     fix = `Set the first message of every row to ${name}'s system prompt.`;
   else if (reason.startsWith("undeclared tool calls"))
     fix = `Keep only rows whose tool calls use ${name}'s tools, or drop those calls.`;
   else if (reason.startsWith("missing "))
-    fix = `Fill the input keys ${name} requires, or drop the rows that lack them.`;
+    fix = `Fill the input fields ${name} reads, or drop the rows that lack them.`;
   else if (reason.startsWith("no input column"))
-    fix = `Add an input column that carries ${name}'s input keys.`;
+    fix = `Add an input column that carries ${name}'s input fields.`;
   else if (reason.startsWith("no messages column"))
-    fix = "Add a messages column: a list of role and content turns per row.";
+    fix = "Add a messages column holding the conversation on every row.";
+  const detail = reason
+    .replace("system turn differs from the capability's", "a different system prompt")
+    .replace("undeclared tool calls", `tools ${name} does not have`);
   const found =
-    report.rows != null ? `${report.rows_ok ?? 0} of ${report.rows} rows pass; ${reason}` : reason;
+    report.rows != null
+      ? `${(report.rows_ok ?? 0).toLocaleString()} of ${report.rows.toLocaleString()} rows; ${detail}`
+      : sentence(detail);
   return { columns, fix, found, label, ok: false, requires };
 }
 
@@ -242,9 +267,9 @@ function CheckRow({ check, present }: { check: Check; present: Set<string> }) {
       ) : (
         <Icon.warning className="mt-0.5 size-3 shrink-0 text-warning" />
       )}
-      <div className="grid min-w-0 flex-1 grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1">
+      <div className="grid min-w-0 flex-1 grid-cols-[4rem_1fr] gap-x-2 gap-y-1">
         <span className="col-span-2 text-foreground">{check.label}</span>
-        <span className="pixel-label text-muted-foreground">Needs</span>
+        <span className="pixel-label text-muted-foreground">Expects</span>
         <span className="text-muted-foreground">{check.requires}</span>
         {check.columns.length > 0 && (
           <>
@@ -270,7 +295,7 @@ function CheckRow({ check, present }: { check: Check; present: Set<string> }) {
         <span className={check.ok ? "text-muted-foreground" : "text-warning"}>{check.found}</span>
         {check.fix && (
           <>
-            <span className="pixel-label text-muted-foreground">Fix</span>
+            <span className="pixel-label text-muted-foreground">To fix</span>
             <span className="text-foreground">{check.fix}</span>
           </>
         )}
@@ -302,30 +327,30 @@ function FitChip({
   }
   const present = new Set(columnsOf(cell).map((c) => c.name));
   const failing = checks.find((c) => !c.ok);
-  const capabilityFails = !!failing?.label.endsWith(" rows");
+  const capabilityFails = !!failing?.label.startsWith("Matches ");
 
   const suggestions: Suggestion[] = [];
   if (failing && actions) {
     const holds = (choice: "train" | "eval") => !!(reports[choice] as Report | undefined)?.ok;
-    if (failing.label === "Intent") {
+    if (failing.label === "Purpose") {
       for (const choice of ["train", "eval"] as const) {
         if (holds(choice))
           suggestions.push({
-            hint: `The ${choice} shape already holds on this version.`,
+            hint: `This version is already in the ${PURPOSE[choice]} format.`,
             icon: "target",
             key: `intent-${choice}`,
             run: () => actions.onIntent(choice),
-            title: `Use it for ${choice}`,
+            title: `Use for ${PURPOSE[choice]}`,
           });
       }
     } else {
       if (other && holds(other))
         suggestions.push({
-          hint: `The ${other} shape already holds on this version.`,
+          hint: `This version is already in the ${PURPOSE[other]} format.`,
           icon: "target",
           key: "intent",
           run: () => actions.onIntent(other),
-          title: `Use it for ${other} instead`,
+          title: `Use for ${PURPOSE[other]} instead`,
         });
       if (capabilityFails) {
         const current = capabilities.find((c) => c.name === capabilityName)?.score ?? 0;
@@ -334,7 +359,7 @@ function FitChip({
           .slice(0, 2);
         for (const c of better)
           suggestions.push({
-            hint: `${Math.round((c.score ?? 0) * 100)}% of rows match it, against ${Math.round(current * 100)}% for ${capabilityName}.`,
+            hint: `${Math.round((c.score ?? 0) * 100)}% of rows match it; ${Math.round(current * 100)}% match ${capabilityName}.`,
             icon: "capability",
             key: `cap-${c.id}`,
             run: () => actions.onCapability(c.id),
@@ -342,7 +367,7 @@ function FitChip({
           });
         if (!better.length)
           suggestions.push({
-            hint: `No capability matches these rows better. Only the ${intent} shape is checked then.`,
+            hint: `No other capability fits better. Without one, only the ${PURPOSE[intent]} format is checked.`,
             icon: "close",
             key: "detach",
             run: () => actions.onCapability(null),
@@ -353,12 +378,12 @@ function FitChip({
   }
 
   const headline = !failing
-    ? "Format valid"
-    : failing.label === "Intent"
-      ? "Intent pending"
+    ? `Ready for ${PURPOSE[intent]}`
+    : failing.label === "Purpose"
+      ? "Purpose not set"
       : capabilityFails
-        ? `Rows do not match ${capabilityName}.`
-        : `The active version does not match the ${intent} shape.`;
+        ? `Does not match ${capabilityName}`
+        : `Not in the ${PURPOSE[intent]} format`;
   return (
     <HoverCard openDelay={250}>
       <HoverCardTrigger asChild>
@@ -384,10 +409,10 @@ function FitChip({
           {checks.map((check) => (
             <CheckRow check={check} key={check.label} present={present} />
           ))}
-          {!capabilityName && (
+          {!capabilityName && PURPOSE[intent] && (
             <li className="flex items-start gap-2 text-xs text-muted-foreground">
               <Icon.info className="mt-0.5 size-3 shrink-0" />
-              <span>No capability is attached, so only the {intent} shape is checked.</span>
+              <span>No capability attached. Only the {PURPOSE[intent]} format is checked.</span>
             </li>
           )}
         </ul>
@@ -427,30 +452,33 @@ interface Impact {
   instruction_changes?: number | null;
 }
 
-const count = (n: number) => n.toLocaleString();
-
 function Changes({ impact }: { impact: Impact }) {
   const { rows_before: before, rows_after: after } = impact;
   const lines: Array<{ key: string; parts: string[]; warning?: boolean }> = [];
-  if (before != null && after != null && before !== after)
-    lines.push({ key: "rows", parts: [`${count(before)} → ${count(after)} rows`] });
-  const moved = [
+  const counts = [
+    before != null && after != null && before !== after
+      ? `${count(before)} → ${plural(after, "row")}`
+      : "",
     impact.rows_removed ? `${count(impact.rows_removed)} removed` : "",
     impact.rows_added ? `${count(impact.rows_added)} added` : "",
   ].filter(Boolean);
-  if (moved.length) lines.push({ key: "moved", parts: moved });
+  if (counts.length) lines.push({ key: "rows", parts: counts });
   if (impact.identity_preserved === false)
-    lines.push({ key: "identity", parts: ["Row identity not kept"], warning: true });
+    lines.push({
+      key: "identity",
+      parts: ["Rows were renumbered, so they cannot be matched to the parent"],
+      warning: true,
+    });
   if (impact.input_evidence_removed)
     lines.push({
       key: "evidence",
-      parts: [`Input evidence removed in ${count(impact.input_evidence_removed)} rows`],
+      parts: [`Context removed from ${plural(impact.input_evidence_removed, "input")}`],
       warning: true,
     });
   if (impact.instruction_changes)
     lines.push({
       key: "instructions",
-      parts: [`Instructions changed in ${count(impact.instruction_changes)} rows`],
+      parts: [`Instructions changed in ${plural(impact.instruction_changes, "row")}`],
       warning: true,
     });
   if (!lines.length) return null;
@@ -547,7 +575,10 @@ export function VersionCard({
           </span>
         </span>
         {cell.frozen && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+            title="A training job, evaluation or optimiser run read this version."
+          >
             <Icon.lock className="size-3" />
             Used
           </span>
@@ -555,7 +586,7 @@ export function VersionCard({
       </div>
       <div
         className={cn(
-          "w-full min-w-0 rounded-md border bg-card pt-3 transition-colors duration-200",
+          "w-full min-w-0 rounded-md border bg-card pt-2.5 transition-colors duration-200",
           active
             ? "border-[1.5px] border-success/60"
             : selected
@@ -564,52 +595,7 @@ export function VersionCard({
         )}
         data-cell-frame
       >
-        {source ? (
-          <SourceDetails spec={sourceSpec} />
-        ) : (
-          <>
-            <SectionHeader
-              label="Script"
-              meta={cell.seconds ? `${cell.seconds.toFixed(1)}s` : undefined}
-              onToggle={() => setScriptOpen((open) => !open)}
-              open={scriptOpen}
-            />
-            {scriptOpen && (
-              <div className="px-3 pt-1 pb-2.5">
-                <ScriptCode aria-label={`Script of ${cell.version}`} source={cell.script} />
-              </div>
-            )}
-            {cell.stdout && (
-              <>
-                <SectionHeader
-                  label="Output"
-                  onToggle={() => setOutputOpen((open) => !open)}
-                  open={outputOpen}
-                />
-                {outputOpen && (
-                  <pre className="nodrag nowheel mx-3 mb-2.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border/70 px-2 py-1 font-mono text-xs text-muted-foreground">
-                    {cell.stdout}
-                  </pre>
-                )}
-              </>
-            )}
-            <Changes impact={changes} />
-          </>
-        )}
-        <div className="border-t border-border/70">
-          <SectionHeader
-            label="Data"
-            meta={`${cell.rows.toLocaleString()} rows × ${columns}`}
-            onToggle={() => setTableOpen((open) => !open)}
-            open={tableOpen}
-          />
-          {tableOpen && (
-            <div className="nodrag">
-              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} />
-            </div>
-          )}
-        </div>
-        <footer className="nodrag flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1">
+        <div className="nodrag flex min-h-9 flex-wrap items-center gap-1 border-b border-border/70 px-2.5 pt-1 pb-1.5">
           {active ? (
             <>
               <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
@@ -656,7 +642,7 @@ export function VersionCard({
                     variant="outline"
                   >
                     <Icon.training />
-                    Use in a training job
+                    Score a training job
                   </Button>
                 </>
               )}
@@ -673,7 +659,59 @@ export function VersionCard({
               Set active
             </Button>
           )}
-        </footer>
+        </div>
+        {source ? (
+          <SourceDetails spec={sourceSpec} />
+        ) : (
+          <>
+            {cell.script ? (
+              <SectionHeader
+                label="Script"
+                meta={cell.seconds ? `${cell.seconds.toFixed(1)}s` : undefined}
+                onToggle={() => setScriptOpen((open) => !open)}
+                open={scriptOpen}
+              />
+            ) : (
+              <p className="flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-xs text-muted-foreground">
+                <Icon.ai className="size-3 shrink-0" />
+                Rows written by your coding agent
+              </p>
+            )}
+            {cell.script && scriptOpen && (
+              <div className="px-3 pt-1 pb-2.5">
+                <ScriptCode aria-label={`Script of ${cell.version}`} source={cell.script} />
+              </div>
+            )}
+            {cell.stdout && (
+              <>
+                <SectionHeader
+                  label="Output"
+                  onToggle={() => setOutputOpen((open) => !open)}
+                  open={outputOpen}
+                />
+                {outputOpen && (
+                  <pre className="nodrag nowheel mx-3 mb-2.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border/70 px-2 py-1 font-mono text-xs text-muted-foreground">
+                    {cell.stdout}
+                  </pre>
+                )}
+              </>
+            )}
+            <Changes impact={changes} />
+          </>
+        )}
+        <div className="border-t border-border/70">
+          <SectionHeader
+            label="Data"
+            meta={`${plural(cell.rows, "row")} × ${plural(columns, "column")}`}
+            onToggle={() => setTableOpen((open) => !open)}
+            open={tableOpen}
+          />
+          {tableOpen && (
+            <div className="nodrag">
+              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} />
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );

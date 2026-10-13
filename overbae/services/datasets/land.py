@@ -271,7 +271,7 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
         except executions.SandboxBusyError:
             if time.monotonic() > deadline:
                 raise LandError(
-                    "The sandbox had no free memory to extract the document. Retry the import.",
+                    "Overmind is busy reading other documents. Retry the import.",
                     code="sandbox_busy",
                 ) from None
             time.sleep(EXTRACT_BUSY_RETRY_SECONDS)
@@ -279,7 +279,8 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
             logger.warning("sandbox unavailable for extraction of %s: %s", filename, exc)
             if unreachable == len(EXTRACT_UNREACHABLE_RETRY_SECONDS):
                 raise LandError(
-                    "The sandbox is unavailable. Retry the import.", code="sandbox_unavailable"
+                    "Documents cannot be read right now. Retry the import.",
+                    code="sandbox_unavailable",
                 ) from None
             time.sleep(EXTRACT_UNREACHABLE_RETRY_SECONDS[unreachable])
             unreachable += 1
@@ -287,7 +288,7 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
             logger.error("sandbox refused extraction of %s: %s", filename, exc)
             # Resumable: a fixed token or deployment lets the retained upload land.
             raise LandError(
-                "The sandbox refused the document. The reason is in the worker log.",
+                "The document could not be read. Retry the import.",
                 code="sandbox_refused",
             ) from None
     if not reply.get("ok"):

@@ -35,7 +35,7 @@ def main(argv: list[str]) -> None:
         raise SystemExit(3) from None
     except Exception:  # noqa: BLE001 — the caller sees one sentence; the trace goes to stdout
         traceback.print_exc(file=sys.stdout)
-        sys.stderr.write("The document could not be extracted. No partial source was landed.")
+        sys.stderr.write("The document could not be read.")
         raise SystemExit(3) from None
     with tables.TableWriter(output, MANIFEST) as writer:
         writer.write_rows(rows)

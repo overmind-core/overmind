@@ -107,7 +107,7 @@ def test_a_text_pdf_lands_one_row_per_element_with_pages_and_regions(client_proj
     )
     assert described["extraction"]["method"] == "docling-native-pdf"
     assert dataset.source_spec["extraction"]["limitations"] == [
-        "Reading order and visual table structure are not reconstructed."
+        "Tables and multi-column layouts may lose their structure."
     ]
     assert not files.upload_data_path(upload_id).exists()
 
@@ -133,7 +133,7 @@ def test_inspect_names_each_document_and_what_extraction_could_not_guarantee(cli
     )
     assert described["extraction"]["method"] == "docling-native-pdf"
     assert inspected["source"]["limitations"] == [
-        "Reading order and visual table structure are not reconstructed."
+        "Tables and multi-column layouts may lose their structure."
     ]
 
 
@@ -167,7 +167,7 @@ def test_a_scanned_pdf_lands_ocr_lines(client_project):
     assert row["text"] == "Policy 7: refunds need a receipt."
     assert row["_overmind_provenance"]["extraction"]["method"] == "tesseract-ocr"
     assert (
-        "OCR uses English language data and may misread text."
+        "Text read from images can contain errors. Only English is read."
         in (dataset.source_spec["extraction"]["limitations"])
     )
 
@@ -225,7 +225,7 @@ def test_a_refused_extraction_can_be_retried_once_the_sandbox_accepts_it(client_
     dataset = _land(client, project, [upload_id])
 
     assert dataset.state == Dataset.State.ERROR
-    assert dataset.error == "The sandbox refused the document. The reason is in the worker log."
+    assert dataset.error == "The document could not be read. Retry the import."
     assert client.get(f"/api/datasets/{dataset.id}/").data["import_blocked"] is True
     settings.SANDBOX_TOKEN = token
     assert client.post(f"/api/datasets/{dataset.id}/resume-import/").status_code == 202

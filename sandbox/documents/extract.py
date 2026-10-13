@@ -22,13 +22,12 @@ IMAGES = (".png", ".jpg", ".jpeg", ".webp")
 MAX_BYTES = 100 * 1024**2
 MAX_PAGES = 2000
 
-RECOVERED = "Recovered PDF text layers are retained without visual or reading-order verification."
-CONTROL = (
-    "Recovered text contains non-whitespace control characters; review font-encoding "
-    "artifacts before use."
+RECOVERED = (
+    "Some pages were read from the PDF's hidden text layer; their order may differ from the page."
 )
-READING_ORDER = "Reading order and visual table structure are not reconstructed."
-OCR_READS = "OCR uses English language data and may misread text."
+CONTROL = "Some text holds stray control characters from the PDF's fonts; check it before use."
+READING_ORDER = "Tables and multi-column layouts may lose their structure."
+OCR_READS = "Text read from images can contain errors. Only English is read."
 
 
 class DocumentError(ValueError):
@@ -84,7 +83,7 @@ def _docling(path: Path, filename: str):
             "protected."
         ) from exc
     if result.status != ConversionStatus.SUCCESS:
-        raise DocumentError("Document extraction did not finish. No partial source was landed.")
+        raise DocumentError("Reading the document did not finish. Retry the import.")
     document = result.document
     rows = []
     for item, _level in document.iterate_items():
@@ -133,7 +132,7 @@ def _pdf(path: Path, filename: str) -> tuple[list[dict], dict]:
             recovered, recovery = pdf_text.recover_missing_pages(path, missing)
         except (pdfium.PdfiumError, ValueError) as exc:
             raise DocumentError(
-                "Native PDF text recovery failed. No partial source was landed."
+                "The PDF's text layer could not be read. Retry the import."
             ) from exc
         if recovery is not None:
             rows.extend(recovered)

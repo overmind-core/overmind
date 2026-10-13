@@ -33,7 +33,7 @@ const ICON = (
     src={floppyDiskIcon}
   />
 );
-const DESCRIPTION = "Sources and their versions for training and evaluation.";
+const DESCRIPTION = "Data to train and evaluate your agent, with every version kept.";
 
 function DatasetsIndexPage() {
   const {

@@ -47,11 +47,6 @@ export function SourceDetails({ spec }: { spec: unknown }) {
                   {file.rows.toLocaleString()} {file.rows === 1 ? "row" : "rows"}
                 </span>
               )}
-              {file.sha256 && (
-                <span className="shrink-0 font-mono text-muted-foreground" title={file.sha256}>
-                  {file.sha256.slice(0, 8)}
-                </span>
-              )}
             </li>
           ))}
         </ul>

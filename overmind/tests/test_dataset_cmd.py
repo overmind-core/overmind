@@ -118,7 +118,7 @@ def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path
     assert all("/api/ingestions/" not in url for url in _urls(session))
     assert session.calls[-1][2]["json"] == {
         "project": "project-1",
-        "name": "rows.jsonl",
+        "name": "rows",
         "intent": "eval",
         "capability": "cap-1",
         "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
@@ -186,7 +186,7 @@ def test_upload_file_with_split_hits_the_split_endpoint_and_returns_both_ids(tmp
     assert session.calls[-1][1] == "https://api.example/api/datasets/split/"
     assert session.calls[-1][2]["json"] == {
         "project": "project-1",
-        "name": "rows.jsonl",
+        "name": "rows",
         "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
         "eval_percent": 25,
         "position": "head",

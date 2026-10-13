@@ -54,6 +54,7 @@ function DatasetRow({
   const guard = useGuestGate();
   const navigate = useNavigate();
   const name = datasetDisplayName(dataset);
+  const state = workshopStateOf(dataset);
   return (
     <li className="group/row relative">
       <Tooltip>
@@ -69,10 +70,12 @@ function DatasetRow({
             to="/datasets/$datasetId"
           >
             <span className="min-w-0 flex-1 truncate">{name}</span>
-            <WorkshopStatusIcon
-              className="group-focus-within/row:invisible group-hover/row:invisible"
-              state={workshopStateOf(dataset)}
-            />
+            {(state === "working" || state === "error") && (
+              <WorkshopStatusIcon
+                className="group-focus-within/row:invisible group-hover/row:invisible"
+                state={state}
+              />
+            )}
           </Link>
         </TooltipTrigger>
         <TooltipContent side="right">
@@ -82,7 +85,7 @@ function DatasetRow({
       </Tooltip>
       <ConfirmDialog
         confirmLabel="Delete"
-        description="This deletes the dataset and every version of it."
+        description="All its versions will be deleted. A dataset that a training job, evaluation or optimiser run used cannot be deleted."
         destructive
         error={remove.error}
         isPending={remove.isPending}

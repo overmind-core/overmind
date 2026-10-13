@@ -262,7 +262,7 @@ def upload_file(
 
         body: dict[str, Any] = {
             "project": project_id,
-            "name": path.name,
+            "name": Path(path.name.removesuffix(".gz").removesuffix(".GZ")).stem or path.name,
             "source": {"upload_id": upload_id, "filename": path.name},
         }
         if json_rows_field:

@@ -124,10 +124,15 @@ function Canvas({
   const [laid, setLaid] = useState<Map<string, Point> | null>(null);
   const [heights, setHeights] = useState<Map<string, number>>(() => new Map());
   const [nodes, setNodes, onNodesChange] = useNodesState<VersionNode>([]);
-  const { getNodes, setViewport } = useReactFlow<VersionNode>();
-  const framed = useRef(false);
+  const { getNodes, getViewport, setViewport } = useReactFlow<VersionNode>();
+  // The card whose size changed last, held in place when the layout moves it.
+  const anchor = useRef<string | null>(null);
+  const previousLaid = useRef<Map<string, Point> | null>(null);
+  // Until the person pans, zooms or clicks, each new layout re-frames the focus; cards
+  // grow as their rows load, so the first layout is not the last.
+  const touched = useRef(false);
   const { motions, settle } = useVersionMotion(cells);
-  const nodeWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width - 2 * GAP));
+  const nodeWidth = Math.min(MAX_WIDTH, Math.max(Math.min(MIN_WIDTH, width - 24), width - 2 * GAP));
 
   useEffect(() => {
     const element = wrapper.current;
@@ -210,10 +215,27 @@ function Canvas({
   );
 
   useEffect(() => {
-    if (!laid || framed.current) return;
-    framed.current = true;
+    if (!laid || touched.current) return;
     requestAnimationFrame(() => frame(focus?.id ?? cells[0]?.id, false));
   }, [laid, focus, cells, frame]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new layout moves the view
+  useEffect(() => {
+    const before = previousLaid.current;
+    previousLaid.current = laid;
+    const id = anchor.current;
+    anchor.current = null;
+    if (!laid || !before || !id || dragged[id] || !touched.current) return;
+    const from = before.get(id);
+    const to = laid.get(id);
+    if (!from || !to || (from.x === to.x && from.y === to.y)) return;
+    const view = getViewport();
+    void setViewport({
+      x: view.x - (to.x - from.x) * view.zoom,
+      y: view.y - (to.y - from.y) * view.zoom,
+      zoom: view.zoom,
+    });
+  }, [laid]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new request is the trigger
   useEffect(() => {
@@ -221,7 +243,16 @@ function Canvas({
   }, [focus?.request]);
 
   return (
-    <div className="h-full w-full" ref={wrapper}>
+    <div
+      className="h-full w-full"
+      onPointerDownCapture={() => {
+        touched.current = true;
+      }}
+      onWheelCapture={() => {
+        touched.current = true;
+      }}
+      ref={wrapper}
+    >
       <ReactFlow<VersionNode>
         aria-label="Dataset versions"
         colorMode="dark"
@@ -246,8 +277,11 @@ function Canvas({
           setHeights((current) => {
             const next = new Map(current);
             for (const change of measured) {
-              if (change.type === "dimensions" && change.dimensions)
-                next.set(change.id, change.dimensions.height);
+              if (change.type !== "dimensions" || !change.dimensions) continue;
+              const before = current.get(change.id);
+              if (before !== undefined && Math.abs(before - change.dimensions.height) > 1)
+                anchor.current = change.id;
+              next.set(change.id, change.dimensions.height);
             }
             return next;
           });
@@ -289,6 +323,7 @@ function Canvas({
             nodeColor="var(--muted-foreground)"
             nodeStrokeWidth={0}
             pannable
+            position="bottom-left"
             zoomable
           />
         )}

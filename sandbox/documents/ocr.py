@@ -21,16 +21,14 @@ MAX_INPUT_PIXELS = 64_000_000
 LANGUAGES = ["eng"]
 
 UNAVAILABLE = (
-    "OCR is unavailable on this worker. Install Tesseract with English and orientation data. "
-    "No partial source was landed."
+    "Reading text from images is not available on this server. Install Tesseract with "
+    "English and orientation data."
 )
-PAGE_TIMEOUT = (
-    "OCR timed out. Split the document into smaller files and retry. No partial source was landed."
-)
-DOCUMENT_TIMEOUT = "OCR timed out. No partial source was landed."
+PAGE_TIMEOUT = "Reading text from the images took too long. Split the document into smaller files."
+DOCUMENT_TIMEOUT = "Reading text from the images took too long. Retry the import."
 FAILED = (
-    "OCR could not process this document. Check the worker's Tesseract installation and "
-    "language data. No partial source was landed."
+    "Text could not be read from this document's images. Check the server's Tesseract "
+    "installation and language data."
 )
 
 
@@ -135,9 +133,7 @@ def extract_image(path: Path) -> tuple[list[dict], dict]:
     except OcrError:
         raise
     except (OSError, ValueError, SyntaxError) as exc:
-        raise OcrError(
-            "The image could not be read. Export it again and retry. No partial source was landed."
-        ) from exc
+        raise OcrError("The image could not be read. Export it again and upload it.") from exc
     engine = _engine()
     with tempfile.TemporaryDirectory(prefix="ocr-") as scratch:
         png = Path(scratch) / "page.png"
@@ -211,7 +207,7 @@ def extract_pdf(path: Path, document, native_rows: list[dict]) -> tuple[list[dic
     except OcrError:
         raise
     except Exception as exc:  # noqa: BLE001 — any renderer failure is one refusal
-        raise OcrError("The PDF could not be read for OCR. No partial source was landed.") from exc
+        raise OcrError("The PDF's pages could not be read as images.") from exc
     finally:
         pdf.close()
     return rows, {**engine, "pages": targets}

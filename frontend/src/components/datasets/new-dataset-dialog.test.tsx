@@ -64,20 +64,20 @@ function showDialog() {
 }
 
 describe("dataset file dialog", () => {
-  it("starts in the workshop and lets the user choose a purpose", async () => {
+  it("starts with the purpose undecided and lets the user choose one", async () => {
     showDialog();
     addFiles(new File(["a"], "first.csv"));
     await within(screen.getByRole("list", { name: "Selected files" })).findByText("7 rows");
     const purpose = screen.getByRole("combobox", { name: "Purpose" });
-    expect(purpose.textContent).toBe("Choose in workshop");
+    expect(purpose.textContent).toBe("Decide later");
     fireEvent.keyDown(purpose, { key: "ArrowDown" });
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Choose in workshop",
-      "Evaluation",
+      "Decide later",
       "Training",
-      "Train + eval",
+      "Evaluation",
+      "Split into training and evaluation",
     ]);
-    fireEvent.click(screen.getByRole("option", { name: "Choose in workshop" }));
+    fireEvent.click(screen.getByRole("option", { name: "Decide later" }));
     fireEvent.click(screen.getByRole("button", { name: "Create dataset" }));
     await waitFor(() =>
       expect(mocks.create).toHaveBeenCalledWith({
@@ -92,7 +92,7 @@ describe("dataset file dialog", () => {
 
   it.each([
     "Training",
-    "Train + eval",
+    "Split into training and evaluation",
   ])("preserves an explicit None capability for %s", async (purpose) => {
     showDialog();
     addFiles(new File(["a"], "first.csv"));
@@ -144,7 +144,9 @@ describe("dataset file dialog", () => {
 
   it("lands documents without a row count until their text is extracted", async () => {
     showDialog();
-    expect(screen.getByText("Tables, documents, PNG, JPEG or WebP images")).toBeTruthy();
+    expect(
+      screen.getByText("CSV, TSV, JSON, JSONL, Parquet, PDF, DOCX, Markdown, text or images")
+    ).toBeTruthy();
     addFiles(new File(["%PDF"], "policies.pdf"), new File(["%PDF"], "terms.pdf"));
     const list = screen.getByRole("list", { name: "Selected files" });
     await waitFor(() => expect(within(list).getAllByText("Ready")).toHaveLength(2));
@@ -179,9 +181,9 @@ describe("dataset file dialog", () => {
     showDialog();
     addFiles(new File(["a"], "first.csv"), new File(["b"], "second.jsonl"));
     await screen.findByText("15 rows");
-    expect(screen.queryByRole("spinbutton", { name: "Data split" })).toBeNull();
-    choose("Purpose", "Train + eval");
-    const share = screen.getByRole("spinbutton", { name: "Data split" }) as HTMLInputElement;
+    expect(screen.queryByRole("spinbutton", { name: "Evaluation share" })).toBeNull();
+    choose("Purpose", "Split into training and evaluation");
+    const share = screen.getByRole("spinbutton", { name: "Evaluation share" }) as HTMLInputElement;
     expect(share.value).toBe("30");
     const split = screen.getByRole("region", { name: "Data split" });
     expect(within(split).getByText("10 rows")).toBeTruthy();
@@ -208,17 +210,17 @@ describe("dataset file dialog", () => {
     showDialog();
     addFiles(new File(["a"], "one.csv"));
     await within(screen.getByRole("list", { name: "Selected files" })).findByText("1 row");
-    choose("Purpose", "Train + eval");
+    choose("Purpose", "Split into training and evaluation");
     expect(screen.getByRole("alert").textContent).toContain("At least two rows");
     const create = screen.getByRole("button", { name: "Create datasets" }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Data split" }), {
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Evaluation share" }), {
       target: { value: "" },
     });
     expect(screen.getByRole("alert").textContent).toContain("1 to 99");
     expect(create.disabled).toBe(true);
     choose("Purpose", "Training");
-    expect(screen.queryByRole("spinbutton", { name: "Data split" })).toBeNull();
+    expect(screen.queryByRole("spinbutton", { name: "Evaluation share" })).toBeNull();
     expect(
       (screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement).disabled
     ).toBe(false);

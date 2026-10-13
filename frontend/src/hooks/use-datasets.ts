@@ -101,9 +101,9 @@ export function traceSelectionBody(selection: TraceSelectionSpec) {
 }
 
 export const INTENT_LABEL: Record<string, string> = {
-  eval: "Eval",
-  pending: "Pending",
-  train: "Train",
+  eval: "Evaluation",
+  pending: "Not set",
+  train: "Training",
 };
 
 export const intentOf = (dataset: Dataset | null | undefined): Intent =>
@@ -113,7 +113,7 @@ export const cellsOf = (dataset: Dataset | null | undefined): Cell[] =>
   Array.isArray(dataset?.cells) ? (dataset.cells as Cell[]) : [];
 
 export const isVisibleDatasetColumn = (column: { name: string }): boolean =>
-  column.name !== "source_row" && column.name !== "_overmind_provenance";
+  column.name !== "source_row" && !column.name.startsWith("_overmind_");
 
 export const columnsOf = (cell: Cell | null | undefined): ColumnInfo[] =>
   Array.isArray(cell?.columns) ? (cell.columns as ColumnInfo[]).filter(isVisibleDatasetColumn) : [];

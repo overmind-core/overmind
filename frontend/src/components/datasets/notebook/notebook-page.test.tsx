@@ -130,7 +130,7 @@ beforeEach(() => {
   state.guest = false;
   state.executions = [];
   state.dataset = dataset({
-    error: "The sandbox is unavailable. Retry the import.",
+    error: "Documents cannot be read right now. Retry the import.",
     import_blocked: true,
     state: "error",
   });
@@ -168,7 +168,7 @@ function showNotebook() {
 it("retries a blocked import once and shows why it stopped", async () => {
   showNotebook();
   expect(screen.getByRole("alert").textContent).toBe(
-    "The sandbox is unavailable. Retry the import."
+    "Documents cannot be read right now. Retry the import."
   );
   const button = screen.getByRole("button", { name: "Retry import" }) as HTMLButtonElement;
   fireEvent.click(button);
@@ -193,19 +193,20 @@ it("offers no retry for a failed landing that cannot resume", () => {
   expect(screen.queryByRole("button", { name: "Retry import" })).toBeNull();
 });
 
-it("shows the landing banner while the source lands", () => {
+it("shows the import in progress while the source lands", () => {
   state.dataset = dataset({ state: "landing" });
   showNotebook();
-  expect(screen.getByText("Landing the source…")).toBeTruthy();
+  expect(screen.getByText("Importing…")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Retry import" })).toBeNull();
 });
 
-it("points a dataset with only its source to an agent connected over MCP", () => {
+it("points a dataset with only its source to a coding agent", () => {
   state.dataset = dataset({ active: "c0", active_version: "v0", cells: [SOURCE], rows: 120 });
   showNotebook();
   expect(screen.getByText("No versions yet")).toBeTruthy();
-  expect(screen.getByText("Add versions from a coding agent connected over MCP.")).toBeTruthy();
-  expect(screen.getByRole("link", { name: "Connect an agent" }).getAttribute("href")).toBe(DOCS);
+  expect(
+    screen.getByRole("link", { name: "Connect a coding agent to add them" }).getAttribute("href")
+  ).toBe(DOCS);
 });
 
 it("shows a version's script, its changes and that a run used it", () => {
@@ -290,10 +291,10 @@ it("counts running scripts and lists recent runs in Activity", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Running 2 scripts" }));
   const activity = await screen.findByRole("list", { name: "Activity" });
   const [failed, added] = within(activity).getAllByRole("listitem");
-  expect(within(failed).getByText("Try")).toBeTruthy();
+  expect(within(failed).getByText("Preview")).toBeTruthy();
   expect(within(failed).getByText("df = df.drop(columns=['messages'])")).toBeTruthy();
   expect(within(failed).getByText("KeyError: 'messages'")).toBeTruthy();
-  expect(within(added).getByText("Add")).toBeTruthy();
+  expect(within(added).getByText("Version")).toBeTruthy();
   expect(within(added).getByText("Drop short chats")).toBeTruthy();
   expect(within(added).getByRole("button", { name: "Show v1" })).toBeTruthy();
 });

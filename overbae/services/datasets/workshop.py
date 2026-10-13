@@ -89,7 +89,7 @@ def add_synthetic_examples(
         mode=Execution.Mode.SYNTHETIC,
         parent=cell,
         script=text,
-        title="Synthetic examples",
+        title=" ".join(instruction.split())[:120],
         user=user,
     )
 

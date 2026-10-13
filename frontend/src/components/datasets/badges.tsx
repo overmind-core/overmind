@@ -42,14 +42,14 @@ export function StateBadge({
     return (
       <Badge className={cn("gap-1", className)} size="chip" variant="info">
         <Spinner className="size-3" />
-        Landing
+        Importing
       </Badge>
     );
   }
   if (dataset.state === "error") {
     return (
-      <Badge className={className} size="chip" title={dataset.error} variant="destructive">
-        Failed
+      <Badge className={className} size="chip" title={dataset.error} variant="error">
+        Import failed
       </Badge>
     );
   }

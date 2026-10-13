@@ -199,7 +199,7 @@ def publish(run_id):
             pk=run_id, state=DatasetImport.State.QUEUED, publish_owner=owner
         ).update(
             failure_code="dispatch_failed",
-            error="The broker did not acknowledge the import.",
+            error="The import could not start. Retry it.",
             updated_at=timezone.now(),
         )
         return
@@ -248,7 +248,7 @@ def claim(run_id):
         )
         return None
     if run.attempts >= MAX_ATTEMPTS:
-        _block(run, "attempts_exhausted", "The import failed repeatedly. Its source is retained.")
+        _block(run, "attempts_exhausted", "The import failed several times. Retry it.")
         return None
     targets = list(
         Dataset.objects.select_for_update().filter(pk__in=_target_ids(run)).order_by("id")
@@ -256,7 +256,9 @@ def claim(run_id):
     if len(targets) != len(_target_ids(run)) or any(
         target.source is not None for target in targets
     ):
-        _block(run, "source_mismatch", "The import targets changed before the source could land.")
+        _block(
+            run, "source_mismatch", "The dataset changed during the import. Upload the file again."
+        )
         return None
     if any(target.state not in (Dataset.State.LANDING, Dataset.State.ERROR) for target in targets):
         _block(run, "ownership_lost", "Another operation changed this dataset.")
@@ -345,7 +347,7 @@ def resume(run_id):
         )
     if run.attempts >= MAX_ATTEMPTS:
         raise DatasetError(
-            "The import attempt limit was reached. Its source is retained.",
+            "The import failed several times. Retry it.",
             code="attempts_exhausted",
         )
     return _requeue(run)
@@ -453,7 +455,7 @@ def reconcile():
                     _block(
                         run,
                         "worker_timeout",
-                        "The import worker stopped before publication. Its source is retained.",
+                        "The import stopped before it finished. Retry it.",
                     )
                 else:
                     try:

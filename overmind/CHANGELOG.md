@@ -13,6 +13,8 @@ entries here cover the SDK surface.
 - `overmind dataset export --cell` takes a version label such as `v3`.
 - The dataset skills describe versions added by scripts in Overmind's sandbox;
   the Data Workshop agent and its tools are gone. Skills version 1.3.0.
+- `overmind dataset upload` names the dataset after the file without its
+  extension (`tickets.csv.gz` → `tickets`), as the Console does.
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 

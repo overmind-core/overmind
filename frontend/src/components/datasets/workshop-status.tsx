@@ -7,7 +7,6 @@ import { Icon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDatasetExecutionsQuery } from "@/hooks/use-datasets";
 import { domainStatus, TONE_BADGE_VARIANT } from "@/lib/colors";
-import { sentenceCase } from "@/lib/label-case";
 import { cn } from "@/lib/utils";
 import type { Dataset, Execution } from "@/openapi";
 
@@ -69,10 +68,16 @@ export function WorkshopStatusIcon({
 }
 
 const MODE_LABEL: Record<Execution["mode"], string> = {
-  cell: "Add",
-  probe: "Probe",
-  synthetic: "Synthetic",
-  try: "Try",
+  cell: "Version",
+  probe: "Query",
+  synthetic: "Rows",
+  try: "Preview",
+};
+
+const STATE_TEXT: Record<Exclude<Execution["state"], "ok">, string> = {
+  failed: "Failed",
+  queued: "Waiting",
+  running: "Running",
 };
 
 function RunLine({
@@ -103,9 +108,11 @@ function RunLine({
         >
           {run.title || run.scriptHead}
         </span>
-        <Badge size="chip" variant={TONE_BADGE_VARIANT[domainStatus(run.state)]}>
-          {sentenceCase(run.state)}
-        </Badge>
+        {run.state !== "ok" && (
+          <Badge size="chip" variant={TONE_BADGE_VARIANT[domainStatus(run.state)]}>
+            {STATE_TEXT[run.state as keyof typeof STATE_TEXT]}
+          </Badge>
+        )}
       </div>
       <div className="flex items-center gap-2 pl-18 text-xs text-muted-foreground">
         <span className="tabular-nums">
@@ -153,11 +160,13 @@ export function WorkshopStatus({
           Activity
         </p>
         {runs.isError ? (
-          <p className="px-3 py-3 text-xs text-destructive">Couldn't load runs.</p>
+          <p className="px-3 py-3 text-xs text-destructive">Couldn't load activity.</p>
         ) : !runs.data ? (
-          <p className="px-3 py-3 text-xs text-muted-foreground">Loading runs…</p>
+          <p className="px-3 py-3 text-xs text-muted-foreground">Loading…</p>
         ) : runs.data.length === 0 ? (
-          <p className="px-3 py-3 text-xs text-muted-foreground">No runs yet</p>
+          <p className="px-3 py-3 text-xs text-muted-foreground">
+            Nothing has run yet. Scripts your coding agent runs appear here.
+          </p>
         ) : (
           <ul aria-label="Activity" className="max-h-96 overflow-y-auto">
             {runs.data.map((run) => (

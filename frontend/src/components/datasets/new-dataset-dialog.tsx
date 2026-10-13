@@ -40,14 +40,14 @@ import type { Dataset, SourceRequest } from "@/openapi";
 
 type Purpose = "pending" | "train" | "eval" | "split";
 const PURPOSES: Array<{ value: Purpose; label: string }> = [
-  { label: "Choose in workshop", value: "pending" },
-  { label: "Evaluation", value: "eval" },
+  { label: "Decide later", value: "pending" },
   { label: "Training", value: "train" },
-  { label: "Train + eval", value: "split" },
+  { label: "Evaluation", value: "eval" },
+  { label: "Split into training and evaluation", value: "split" },
 ];
 const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
-  { label: "First rows", value: "head" },
-  { label: "Last rows", value: "tail" },
+  { label: "The first rows", value: "head" },
+  { label: "The last rows", value: "tail" },
   { label: "Random rows", value: "random" },
 ];
 const AUTO_CAPABILITY = "__auto__";
@@ -141,12 +141,11 @@ export function NewDatasetDialog({
         rows: initialSelectionCount,
         source: { traces: traceSelectionBody(initialSelection) },
       };
-    if (!upload.files.length) return { hint: "Choose files" };
+    if (!upload.files.length) return { hint: "" };
     if (mixed) return { hint: MIXED };
     if (upload.files.some((file) => file.status === "error"))
       return { hint: "Remove or retry files with errors" };
-    if (upload.files.some((file) => file.status !== "ready"))
-      return { hint: "Uploading and checking files" };
+    if (upload.files.some((file) => file.status !== "ready")) return { hint: "Uploading files…" };
     const counted = upload.files.every((file) => typeof file.rows === "number");
     return {
       rows: counted ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0) : undefined,
@@ -288,7 +287,7 @@ export function NewDatasetDialog({
                     {upload.files.length ? "Drop more files here" : "Drop files here"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Tables, documents, PNG, JPEG or WebP images
+                    CSV, TSV, JSON, JSONL, Parquet, PDF, DOCX, Markdown, text or images
                   </p>
                 </div>
                 <input
@@ -335,7 +334,7 @@ export function NewDatasetDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={AUTO_CAPABILITY}>Decide from the rows</SelectItem>
+                  <SelectItem value={AUTO_CAPABILITY}>Detect from the rows</SelectItem>
                   <SelectItem value={NO_CAPABILITY}>None</SelectItem>
                   {capabilities.map((capability) => (
                     <SelectItem key={capability.id} value={capability.id}>
@@ -373,7 +372,7 @@ export function NewDatasetDialog({
             >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="eval-share">Data split</Label>
+                  <Label htmlFor="eval-share">Evaluation share</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       aria-describedby={splitError ? "dataset-split-error" : undefined}
@@ -393,7 +392,7 @@ export function NewDatasetDialog({
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="eval-position">Evaluation rows</Label>
+                  <Label htmlFor="eval-position">Take evaluation rows from</Label>
                   <Select
                     disabled={busy}
                     onValueChange={(value) => setPosition(value as SplitPosition)}

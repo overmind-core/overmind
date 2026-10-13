@@ -126,7 +126,7 @@ export function DatasetCard({ id, name }: { id: string; name: string }) {
       subtitle={data.activeVersion ? `active ${data.activeVersion}` : "no version yet"}
     >
       <Row label="Rows">{(data.rows ?? 0).toLocaleString()}</Row>
-      <Row label="Intent">{INTENT_LABEL[intentOf(data)]}</Row>
+      <Row label="Purpose">{INTENT_LABEL[intentOf(data)]}</Row>
       <Row label="Source">{SOURCE_KIND_LABEL[data.sourceKind] ?? data.sourceKind}</Row>
       <Row label="Created">{data.createdAt ? <DateTime value={data.createdAt} /> : null}</Row>
     </EntityCardShell>

@@ -18,8 +18,8 @@ function statusText(entry: DatasetUpload): string {
   if (entry.status === "error") return entry.error ?? "Upload failed";
   if (entry.status === "queued") return "Queued";
   if (entry.status === "uploading") return `Uploading ${entry.percent}%`;
-  if (entry.status === "counting") return "Checking file…";
-  if (entry.rows == null) return IMAGE.test(entry.file.name) ? "Ready for OCR" : "Ready";
+  if (entry.status === "counting") return "Counting rows…";
+  if (entry.rows == null) return "Ready";
   return `${entry.rows.toLocaleString()} ${entry.rows === 1 ? "row" : "rows"}`;
 }
 

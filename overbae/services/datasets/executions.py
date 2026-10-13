@@ -49,11 +49,11 @@ MAX_PREVIEW_COLUMNS = 200
 VALUE_CHARS = 400
 
 STOPPED = "The run stopped without a result."
-UNAVAILABLE = "The sandbox is unavailable."
-REFUSED = "The sandbox refused the run. The reason is in the worker log."
-NO_MEMORY = "The sandbox had no free memory for this run."
-NO_SLOT = "The run waited 15 minutes for a free slot in this project."
-FAILED_ON_WORKER = "The run failed on the worker. The error is in the worker log."
+UNAVAILABLE = "Scripts cannot run right now."
+REFUSED = "The run could not start. Run it again later."
+NO_MEMORY = "Not enough memory was free to start the run."
+NO_SLOT = "The run waited 15 minutes behind other runs in this project."
+FAILED_ON_WORKER = "The run failed for a reason outside the script. Run it again."
 
 _TAKE_SLOT = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -596,7 +596,7 @@ def _finish_synthetic(run: Execution) -> None:
             run.dataset,
             run.parent,
             output,
-            title=run.title or "Synthetic examples",
+            title=run.title,
             script="",
             identity=run.script,
             user=run.created_by,

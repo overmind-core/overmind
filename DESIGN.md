@@ -641,63 +641,75 @@ reflows content.
 
 The dataset page fills its frame with a canvas of version cards on the card
 surface with a dot grid; no page header, the breadcrumb names the dataset. A
-32px bar above the canvas holds, from the left: the landing line ("Landing the
-source…", "Extracting text"), the landing error as plain `destructive` text,
-**Retry import** when the import can resume, and the data-split summary; on the
-right the workshop status and the controls (Rename dataset, the dataset-list
-switcher and the minimap toggle, ghost icon buttons). Rename dataset opens a
+40px bar above the canvas is one line of `xs` muted text on the left: the
+import line ("Importing…", "Extracting text…") once a source exists, the split
+summary (**Split · 45 training, 15 evaluation rows**, an info hover card, and a
+link to the other set), or **No versions yet · Connect a coding agent to add
+them**; items sit apart behind a hairline divider, and on a phone only the first
+shows. On the right: the workshop status and the controls (Rename dataset, the
+dataset-list switcher and the minimap toggle, ghost icon buttons). With no
+version yet, the canvas centres the state instead: a spinner and
+"Importing…", or **The import failed** with the error, **Retry import** when
+the import can resume, and **New dataset**. Rename dataset opens a
 popover with Name and **Save**; intent and capability change only through the
 contract chip's shortcuts. Each version is a node under its parent,
 laid out top-down by ELK on a 20px grid, joined by square-cornered
 `muted-foreground` edges with no labels. A card can be dragged by its chip and
 keeps its place; **Reset layout** in the canvas controls clears the places.
 The wheel pans; pinch zooms. Scrolling inside a script or a table scrolls it,
-not the canvas.
+not the canvas. Until the person pans, zooms or clicks, every new layout
+re-frames the focused card (cards grow as their rows load); after that, a card
+that changes size keeps its place on screen and the layout moves around it. A
+card is never wider than the canvas minus 12px each side.
 
 Each card is a rounded frame with a chip on its top border: the version
 (`v3`), the title (**Source** for `v0`) and Export behind a hairline, then
-**Used** with a lock once a run used it. The active card draws its frame and
+**Used** with a lock once a run used it (its tooltip names who reads it). The active card draws its frame and
 chip at 1.5px in the `success` tone with a small green square before the
-version; a selected card draws a `primary/60` frame. Inside, every bar is 32px
-with `xs` controls and the same chevron header: **Script** (read-only, Python
-highlighting, run time in its meta), **Output** when the script printed, then
-**Changes**, then **Data** (`rows × columns` in its meta; open by default only
-on the active card). Changes lists only lines that say something:
-`120 → 96 rows`, `24 removed · 3 added`, and in `warning` **Row identity not
-kept**, **Input evidence removed in N rows**, **Instructions changed in N
-rows**. The source card shows its files (name, size, rows, short sha256) and
-the extraction limitations instead of a script.
+version; a selected card draws a `primary/60` frame. Inside, the first bar holds the
+card's actions (below), so they never fall below the fold; then every bar is
+32px with `xs` controls and the same chevron header: **Script** (read-only,
+Python highlighting, run time in its meta) or, for rows the agent wrote,
+"Rows written by your coding agent", **Output** when the script printed, then
+the changes, then **Data** (`147 rows × 7 columns` in its meta; open by default
+only on the active card). The changes are one muted line,
+`120 → 96 rows · 24 removed · 3 added`, then in `warning` **Rows were
+renumbered, so they cannot be matched to the parent**, **Context removed from
+N inputs**, **Instructions changed in N rows**. The source card shows its
+files (name, size, rows) and the extraction limitations instead of a script.
 
 The table shows new rows on `success/10` and changed values as a word-level
 diff against the parent version: removed on `destructive/15` struck through,
-added on `success/20`. The row number is a button that opens the row in
-place: the same cells wrap to their full text, and a document row adds one
-**Source evidence** line (file · page · element).
+added on `success/20`. A chat column reads as
+`role: text` turns in one line. The row number is a button that opens the row
+in place: the same cells wrap to their full text, a chat column becomes a
+conversation (role label, then the turn's text and tool calls, each turn
+diffed against the parent's), and a document row adds one **From** line
+(file · page). Internal `_overmind_*` columns are never shown.
 
-The footer is one 32px line. On the active card: an **Active** chip, then a
-contract chip that names the first failure (**The active version does not
-match the train shape.**, **Rows do not match Research Agent.**, **Intent
-pending**, else **Format valid**). Its hover card gives each contract as Needs
-/ Columns / Found / Fix and, when one fails, shortcuts: use the intent whose
-shape holds, or switch to a better-ranked capability,
-or remove the capability. The chip is a button, so focus opens the card. Then the consumers in the primary tint on the right:
-**Train a model**, or **Run the optimiser** and **Use in a training job**.
-Every other card shows **Set active** as a plain outline on the right.
-
-A dataset with only its source shows a panel at the bottom left of the canvas, clear of the framed card:
-**No versions yet**, "Add versions from a coding agent connected over MCP.",
-and **Connect an agent** (the MCP docs). New versions fade in where the layout
-places them; a re-measured card flashes `wash-raised` back to `card`.
+The actions bar is one line under the chip. On the active card: an
+**Active** chip, then a contract chip (**Ready for training** / **Ready for
+evaluation**, else the first failure: **Not in the training format**, **Does
+not match Research Agent**, **Purpose not set**). Its hover card gives each
+check as Expects / Columns / Found / To fix in the person's terms, never a
+tool name, and, when one fails, shortcuts: use the purpose whose format holds,
+switch to a better-ranked capability, or remove the capability. The chip is a
+button, so focus opens the card. Then the consumers in the primary tint on the
+right: **Train a model**, or **Run the optimiser** and **Score a training
+job**. Every other card shows **Set active** as a plain outline on the right.
+New versions fade in where the layout places them; a re-measured card flashes
+`wash-raised` back to `card`.
 
 The workshop status reads **Running N scripts** while runs are queued or
 running, else **Activity**. It opens a popover with the last 20 runs, newest
-first: kind (Try, Probe, Add, Synthetic), title or first script line, a
-status badge, run time, when, the parent version, the last error line (the exception) in
-`destructive` for a failure, and a button to the version a run created.
+first: kind (Preview, Query, Version, Rows), title or first script line, a
+status badge only while waiting or running or after a failure, run time, when,
+the parent version, the last error line (the exception) in `destructive` for a
+failure, and a button to the version a run created.
 
 The switcher opens the project's datasets in a 248px column at the card's
 left edge, under a **Datasets** header with a close button, with search, a
-status glyph per dataset (working, failed, ready) and delete on hover; on a
+status glyph only for a dataset that is working or failed and delete on hover; on a
 phone the column covers the page. Escape inside the column closes it and focus
 returns to the switcher. Deleting the open dataset returns to the dataset list.
 
