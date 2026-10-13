@@ -10,6 +10,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from conftest import read_table
 from database_callbacks import database_callback
 from fakes.llm import tool_call
 
@@ -292,7 +293,7 @@ def test_supported_rule_derivation_can_restructure_worker_data_directly(initial)
     assert result["ok"] and not result.get("proposed"), result
     dataset.refresh_from_db()
     cell = dataset.active_cell
-    prepared = store.read_frame(paths.cell_path(dataset.id, cell.id))
+    prepared = read_table(paths.cell_path(dataset.id, cell.id))
     messages = prepared.iloc[0]["messages"]
     assert messages[0]["content"] == prompt
     assert json.loads(messages[1]["content"]) == evidence
@@ -302,9 +303,9 @@ def test_supported_rule_derivation_can_restructure_worker_data_directly(initial)
     assert set(prepared.columns) == {"messages", store.SOURCE_ROW, "_overmind_provenance"}
     assert prepared[store.SOURCE_ROW].tolist() == [0]
     assert cell.capability_report["ok"]
-    assert store.read_frame(paths.cell_path(dataset.id, dataset.source.id)).iloc[0][
-        "worker_output"
-    ] == {"legal_name": "Alex Example"}
+    assert read_table(paths.cell_path(dataset.id, dataset.source.id)).iloc[0]["worker_output"] == {
+        "legal_name": "Alex Example"
+    }
 
 
 @pytest.mark.parametrize("with_metadata", [False, True])
@@ -338,7 +339,7 @@ def test_sft_projection_keeps_messages_identity_and_source(with_metadata):
     assert result["ok"] and not result.get("proposed")
     dataset.refresh_from_db()
     active = dataset.active_cell
-    frame = store.read_frame(paths.cell_path(dataset.id, active.id))
+    frame = read_table(paths.cell_path(dataset.id, active.id))
     expected = {*model_columns, store.SOURCE_ROW, "_overmind_provenance"}
     if with_metadata:
         expected.update({"conversation_id", "customer", "_overmind_provenance"})
@@ -352,7 +353,7 @@ def test_sft_projection_keeps_messages_identity_and_source(with_metadata):
     }
     source.refresh_from_db()
     assert source.fingerprint == source_fingerprint
-    assert store.read_frame(paths.cell_path(dataset.id, source.id))["Survived"].tolist() == [0]
+    assert read_table(paths.cell_path(dataset.id, source.id))["Survived"].tolist() == [0]
 
 
 def test_status_carries_each_cell_script_so_the_agent_can_edit_it():
@@ -1054,11 +1055,11 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(openrouter, 
     assert dataset.state == "idle" and not dataset.chat[-1]["error"]
     assert dataset.versions()[cell.id] == "1.1"
     assert not dataset.cells.filter(state="proposed").exists()
-    prepared = store.read_frame(paths.cell_path(dataset.id, cell.id)).iloc[0]
+    prepared = read_table(paths.cell_path(dataset.id, cell.id)).iloc[0]
     assert prepared["input"] == evidence and prepared["expected_output"] == answer
     assert prepared["mode"] == original["mode"] and prepared[store.SOURCE_ROW] == 0
     assert "user_payload" not in prepared.index
-    assert store.read_frame(paths.cell_path(dataset.id, dataset.source.id)).iloc[0]["input"] == {
+    assert read_table(paths.cell_path(dataset.id, dataset.source.id)).iloc[0]["input"] == {
         "onboarding_packet_id": "case-1"
     }
     assert dataset.capability_id == capability.id

@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from conftest import read_table
 from django.db import transaction
 
 from overbae.models import Cell, Dataset, Project
@@ -174,9 +175,14 @@ def test_old_unexecuted_claims_do_not_count_as_a_quality_pass(dataset):
     assert not review.readiness(dataset, cell)["quality_passed"]
 
 
-def test_projection_preserves_existing_human_review_status(dataset):
-    before = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+def test_projection_preserves_existing_human_review_status(dataset, tmp_path):
+    before = read_table(paths.cell_path(dataset.id, dataset.source.id))
     before["human_reviewed"] = False
     after = before[["source_row", "input", "expected_output"]].copy()
-    preserved = review.preserve_provenance(before, after)
+    store.write_frame(tmp_path / "before.parquet", before)
+    store.write_frame(tmp_path / "after.parquet", after)
+    review.finalize(
+        tmp_path / "before.parquet", tmp_path / "after.parquet", tmp_path / "out.parquet"
+    )
+    preserved = read_table(tmp_path / "out.parquet")
     assert preserved["human_reviewed"].tolist() == [False, False]

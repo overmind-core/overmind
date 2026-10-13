@@ -5,6 +5,7 @@ import json
 import math
 import random
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from contextlib import suppress
 
 from overbae.services.datasets.examples import input_objects
@@ -102,30 +103,41 @@ def preserve_lineage(row: dict) -> dict:
     }
 
 
-def split_rows(
-    rows: list[dict],
+def split_positions(
+    rows: Iterable[dict],
     *,
     eval_percent: int,
     position: str,
     group_by=(),
     stratify_by=None,
     deduplicate=True,
-):
-    columns = set().union(*(row.keys() for row in rows)) if rows else set()
-    requested = set(group_by) | ({stratify_by} if stratify_by else set())
-    if requested - columns:
-        raise ValueError("Unknown split columns: " + ", ".join(sorted(requested - columns)))
+) -> tuple[set[int], set[int], dict]:
     if not 1 <= eval_percent <= 99 or position not in {"head", "tail", "random"}:
         raise ValueError("Choose a 1–99% split and head, tail or random position.")
-    unique = []
+    candidates = {*group_by, "conversation_id", "trace_id"}
+    columns: set = set()
+    positions: list[int] = []
+    keys: list[set] = []
+    strata: list[str] = []
+    contents: list[str] = []
     seen = set()
-    for row in rows:
+    total = 0
+    for offset, row in enumerate(rows):
+        total += 1
+        columns.update(row)
         key = content_key(row, include_output=True)
         if deduplicate and key in seen:
             continue
         seen.add(key)
-        unique.append(row)
-    n = len(unique)
+        positions.append(offset)
+        keys.append(contamination_keys(row, candidates))
+        contents.append(content_key(row))
+        if stratify_by:
+            strata.append(_canonical(row.get(stratify_by)))
+    requested = set(group_by) | ({stratify_by} if stratify_by else set())
+    if requested - columns:
+        raise ValueError("Unknown split columns: " + ", ".join(sorted(requested - columns)))
+    n = len(positions)
     if n < 2:
         raise ValueError("Two rows with distinct content are needed to split.")
     parents = list(range(n))
@@ -138,9 +150,8 @@ def split_rows(
 
     owners = {}
     groups = set(group_by) | ({"conversation_id"} & columns) | ({"trace_id"} & columns)
-    for index, row in enumerate(unique):
-        keys = contamination_keys(row, groups)
-        for key in keys:
+    for index, found in enumerate(keys):
+        for key in found:
             if key in owners:
                 parents[root(index)] = root(owners[key])
             else:
@@ -158,19 +169,13 @@ def split_rows(
     elif position == "random":
         random.Random(42).shuffle(ordered)
     target = min(max((n * eval_percent + 50) // 100, 1), n - 1)
-    totals = (
-        Counter(_canonical(row.get(stratify_by)) for row in unique) if stratify_by else Counter()
-    )
+    totals = Counter(strata)
     held = set()
     labels = Counter()
     for component in ordered:
         if len(held) + len(component) >= n:
             continue
-        counts = (
-            Counter(_canonical(unique[i].get(stratify_by)) for i in component)
-            if stratify_by
-            else Counter()
-        )
+        counts = Counter(strata[i] for i in component) if stratify_by else Counter()
         size_before = abs(len(held) - target) / n
         size_after = abs(len(held) + len(component) - target) / n
         if stratify_by:
@@ -184,12 +189,12 @@ def split_rows(
         if size_after < size_before or not held:
             held.update(component)
             labels.update(counts)
-    train = [row for i, row in enumerate(unique) if i not in held]
-    evaluation = [row for i, row in enumerate(unique) if i in held]
-    overlap = {content_key(r) for r in train} & {content_key(r) for r in evaluation}
+    train = {positions[i] for i in range(n) if i not in held}
+    evaluation = {positions[i] for i in held}
+    overlap = {contents[i] for i in range(n) if i not in held} & {contents[i] for i in held}
     report = {
-        "source_rows": len(rows),
-        "duplicates_removed": len(rows) - n,
+        "source_rows": total,
+        "duplicates_removed": total - n,
         "train_rows": len(train),
         "eval_rows": len(evaluation),
         "target_eval_rows": target,
@@ -205,3 +210,12 @@ def split_rows(
         },
     }
     return train, evaluation, report
+
+
+def split_rows(rows: list[dict], **options) -> tuple[list[dict], list[dict], dict]:
+    train, evaluation, report = split_positions(rows, **options)
+    return (
+        [row for i, row in enumerate(rows) if i in train],
+        [row for i, row in enumerate(rows) if i in evaluation],
+        report,
+    )

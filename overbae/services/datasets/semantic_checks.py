@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 import uuid
+from pathlib import Path
 from typing import Literal
 
-import pandas as pd
 from django.db import transaction
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,8 +59,26 @@ class _Checks(BaseModel):
     answers: dict[str, Literal["pass", "fail", "insufficient"]]
 
 
+def _key(source_row) -> str:
+    return json.dumps(source_row, ensure_ascii=False, sort_keys=True)
+
+
 def _row_key(row: dict) -> str:
-    return json.dumps(row[store.SOURCE_ROW], ensure_ascii=False, sort_keys=True)
+    return _key(row[store.SOURCE_ROW])
+
+
+def _unchecked(path: Path, columns: list[str], results: dict, limit: int) -> list[dict]:
+    selected: list[dict] = []
+    total = store.row_count(path)
+    step = 1_000
+    for start in range(0, total, step):
+        chunk = store.frame_rows(path, range(start, min(start + step, total)), columns)
+        for row in json.loads(chunk.to_json(orient="records")):
+            if _row_key(row) not in results:
+                selected.append(row)
+                if len(selected) >= limit:
+                    return selected
+    return selected
 
 
 def _batch_request(batch, checks, context_data):
@@ -115,8 +134,10 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
         raise ValueError("The version belongs to a different dataset.")
     cell.refresh_from_db(fields=["quality_report", "fingerprint"])
     rows.verify(cell)
-    frame = store.read_frame(paths.cell_path(dataset.id, cell.id))
-    if not frame[store.SOURCE_ROW].is_unique:
+    path = paths.cell_path(dataset.id, cell.id)
+    frame = store.Frame(path)
+    keys = list(frame.values(store.SOURCE_ROW)) if store.SOURCE_ROW in frame else []
+    if len(set(keys)) != len(keys):
         raise ValueError("Semantic checks require unique source row identities.")
     columns = {
         column
@@ -154,15 +175,18 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
         audit = json.loads(json.dumps(audit))
     for saved in audit["batches"]:
         _charge_batch(user, dataset, cell, saved, contract)
-    records = json.loads(
-        frame[[store.SOURCE_ROW, *sorted(columns - {store.SOURCE_ROW})]].to_json(orient="records")
+    selected = _unchecked(
+        path,
+        [store.SOURCE_ROW, *sorted(columns - {store.SOURCE_ROW})],
+        audit["results"],
+        request.max_rows,
     )
-    selected = [row for row in records if _row_key(row) not in audit["results"]][: request.max_rows]
     context_data = preparation_context(dataset.capability)
     if selected and user is not None:
         ensure_credits(user)
     completed = 0
     report = previous
+    scratch = tempfile.TemporaryDirectory(prefix="semantic-")
     for batch in _row_batches(selected, request.checks, context_data):
         state, questions = _batch_request(batch, request.checks, context_data)
 
@@ -225,18 +249,23 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
                 "usage": {key: value for key, value in outcome.stats.items() if key != "decision"},
             }
         )
-        measured = pd.DataFrame(
-            [
+        measured = Path(scratch.name) / "measured.parquet"
+        store.write_rows(
+            measured,
+            (
                 {
-                    store.SOURCE_ROW: row[store.SOURCE_ROW],
+                    store.SOURCE_ROW: key,
                     **{
-                        check.name: audit["results"].get(_row_key(row), {}).get(check.name)
+                        check.name: audit["results"].get(_key(key), {}).get(check.name)
                         for check in request.checks
                     },
                 }
-                for row in records
+                for key in keys
+            ),
+            [
+                {"name": store.SOURCE_ROW, "type": "integer"},
+                *({"name": check.name, "type": "boolean"} for check in request.checks),
             ],
-            columns=[store.SOURCE_ROW, *(check.name for check in request.checks)],
         )
         try:
             with transaction.atomic():
@@ -254,7 +283,6 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
                     context=context,
                     semantic_audit=audit,
                     expected_semantic_audit=expected_audit,
-                    original=frame,
                 )
                 _charge_batch(user, dataset, cell, audit["batches"][-1], contract)
         except Exception:
@@ -265,9 +293,10 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
         completed += len(batch)
         if progress:
             progress(completed, len(selected))
+    scratch.cleanup()
     return {
         "quality_report": review.summary(report),
         "processed_rows": len(audit["results"]),
-        "total_rows": len(frame),
-        "remaining_rows": len(frame) - len(audit["results"]),
+        "total_rows": len(keys),
+        "remaining_rows": len(keys) - len(audit["results"]),
     }

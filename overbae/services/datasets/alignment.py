@@ -10,11 +10,11 @@ import math
 from collections import Counter
 from typing import Any
 
-import pandas as pd
 from jsonschema import Draft202012Validator, SchemaError
 from referencing.exceptions import Unresolvable
 
 from overbae.services.datasets.examples import messages as example_messages
+from overbae.services.datasets.store import Frame
 
 
 def _missing(value: Any) -> bool:
@@ -113,16 +113,16 @@ def _json_schema(schema: Any) -> dict:
     return schema
 
 
-def _schema_failures(df, capability, intent, invalid_rows: set[int]) -> list[str]:
+def _schema_failures(frame: Frame, capability, intent, invalid_rows: set[int]) -> list[str]:
     declared = _card(capability).get("output_schema")
     targets = [("expected_output" if intent == "eval" else "messages", declared)]
     if intent == "eval":
         targets.append(("input", _schema(capability)))
     failures = []
     prompt = system_prompt(capability)
-    if intent == "eval" and prompt and "input" in df:
+    if intent == "eval" and prompt and "input" in frame:
         wrong = 0
-        for index, raw in enumerate(df["input"].tolist()):
+        for index, raw in enumerate(frame.values("input")):
             value = _as_object(raw)
             messages = value.get("messages") if isinstance(value, dict) else value
             supplied = (
@@ -162,13 +162,14 @@ def _schema_failures(df, capability, intent, invalid_rows: set[int]) -> list[str
             Draft202012Validator.check_schema(schema)
             validator = Draft202012Validator(schema)
         except SchemaError:
-            invalid_rows.update(range(len(df)))
+            invalid_rows.update(range(len(frame)))
             failures.append(
                 f"the capability's {column} schema is invalid; correct it in capability context"
             )
             continue
         invalid = 0
-        for index, value in enumerate(df[column].tolist() if column in df else [None] * len(df)):
+        values = frame.values(column) if column in frame else iter([None] * len(frame))
+        for index, value in enumerate(values):
             value = _as_object(value)
             if column == "input" and example_messages(value):
                 continue
@@ -187,40 +188,40 @@ def _schema_failures(df, capability, intent, invalid_rows: set[int]) -> list[str
     return failures
 
 
-def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[str, Any]:
+def capability_contract(capability: Any, frame: Frame, intent: str) -> dict[str, Any]:
     invalid_rows: set[int] = set()
-    report = _capability_contract(capability, df, intent, invalid_rows)
+    report = _capability_contract(capability, frame, intent, invalid_rows)
     if intent not in {"train", "eval"}:
         return report
-    failures = _schema_failures(df, capability, intent, invalid_rows)
+    failures = _schema_failures(frame, capability, intent, invalid_rows)
     if failures:
         reasons = ([report["reason"]] if not report["ok"] else []) + failures
         return {
             **report,
             "ok": False,
-            "rows_ok": len(df) - len(invalid_rows),
+            "rows_ok": len(frame) - len(invalid_rows),
             "reason": "; ".join(reasons),
         }
     return report
 
 
 def _capability_contract(
-    capability: Any, df: pd.DataFrame, intent: str, invalid_rows: set[int]
+    capability: Any, frame: Frame, intent: str, invalid_rows: set[int]
 ) -> dict[str, Any]:
     """Row by row, does the table belong to this capability? eval: every ``input``
     carries the required input keys. train: every transcript is the capability's
     own — its system turn, its tools. Vacuous when nothing is declared."""
-    rows = int(len(df))
+    rows = len(frame)
     if intent == "eval":
         required = _required_keys(_schema(capability))
         if not required:
             return {"ok": True, "rows": rows, "rows_ok": rows, "reason": "no input schema declared"}
-        if "input" not in df.columns:
+        if "input" not in frame:
             invalid_rows.update(range(rows))
             return {"ok": False, "rows": rows, "rows_ok": 0, "reason": "no input column"}
         missing: Counter[str] = Counter()
         ok = 0
-        for index, value in enumerate(df["input"].tolist()):
+        for index, value in enumerate(frame.values("input")):
             value = _as_object(value)
             if example_messages(value):
                 ok += 1
@@ -249,12 +250,12 @@ def _capability_contract(
             "rows_ok": rows,
             "reason": "no system prompt or tools declared",
         }
-    if "messages" not in df.columns:
+    if "messages" not in frame:
         invalid_rows.update(range(rows))
         return {"ok": False, "rows": rows, "rows_ok": 0, "reason": "no messages column"}
     wrong_system = 0
     wrong_tools = 0
-    for index, value in enumerate(df["messages"].tolist()):
+    for index, value in enumerate(frame.values("messages")):
         value = _as_object(value)
         if not isinstance(value, list):
             wrong_system += 1
@@ -296,7 +297,7 @@ def _capability_contract(
 _SAMPLE = 500
 
 
-def rank(project_id: Any, df: pd.DataFrame) -> list[dict[str, Any]]:
+def rank(project_id: Any, frame: Frame) -> list[dict[str, Any]]:
     """Every capability of the project scored against the rows, best first.
     Signals: bound capability ids, the system turn, tool names, input keys."""
     from overbae.models import Capability
@@ -308,38 +309,36 @@ def rank(project_id: Any, df: pd.DataFrame) -> list[dict[str, Any]]:
     )
     if not capabilities:
         return []
-    sample = df.head(_SAMPLE)
-    n = max(int(len(sample)), 1)
+    sample = frame.head(_SAMPLE, ["capability_id", "messages", "system_prompt", "input"])
+    n = max(len(sample), 1)
     bound = Counter(
-        str(v)
-        for v in (sample["capability_id"].tolist() if "capability_id" in sample else [])
-        if not _missing(v)
+        str(row["capability_id"])
+        for row in sample
+        if "capability_id" in row and not _missing(row["capability_id"])
     )
     systems: Counter[str] = Counter()
     tool_names: Counter[str] = Counter()
     input_keys: Counter[str] = Counter()
-    if "messages" in sample.columns:
-        for value in sample["messages"].tolist():
-            value = _as_object(value)
-            if not isinstance(value, list):
-                continue
-            first = value[0] if value and isinstance(value[0], dict) else {}
-            if first.get("role") == "system":
-                systems[str(first.get("content") or "").strip()] += 1
-            for turn in value:
-                for call in (turn.get("tool_calls") or []) if isinstance(turn, dict) else []:
-                    name = (
-                        (call.get("function") or {}).get("name") if isinstance(call, dict) else None
-                    )
-                    if name:
-                        tool_names[str(name)] += 1
-    if "system_prompt" in sample.columns:
-        for value in sample["system_prompt"].tolist():
-            if not _missing(value):
-                systems[str(value).strip()] += 1
-    if "input" in sample.columns:
-        for value in sample["input"].tolist():
-            value = _as_object(value)
+    for row in sample:
+        if "messages" in row:
+            value = _as_object(row["messages"])
+            if isinstance(value, list):
+                first = value[0] if value and isinstance(value[0], dict) else {}
+                if first.get("role") == "system":
+                    systems[str(first.get("content") or "").strip()] += 1
+                for turn in value:
+                    for call in (turn.get("tool_calls") or []) if isinstance(turn, dict) else []:
+                        name = (
+                            (call.get("function") or {}).get("name")
+                            if isinstance(call, dict)
+                            else None
+                        )
+                        if name:
+                            tool_names[str(name)] += 1
+        if "system_prompt" in row and not _missing(row["system_prompt"]):
+            systems[str(row["system_prompt"]).strip()] += 1
+        if "input" in row:
+            value = _as_object(row["input"])
             if isinstance(value, dict):
                 input_keys.update(str(k) for k in value)
     out: list[dict[str, Any]] = []

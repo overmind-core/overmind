@@ -69,7 +69,7 @@ function EvaluationsPage() {
             icon={
               <Icon.evaluations
                 aria-hidden
-                className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+                className="size-6 shrink-0 [image-rendering:pixelated] invert"
               />
             }
             title="Evaluations"
@@ -120,7 +120,7 @@ function EvaluationsPage() {
           icon={
             <Icon.evaluations
               aria-hidden
-              className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+              className="size-6 shrink-0 [image-rendering:pixelated] invert"
             />
           }
           title="Evaluations"
@@ -221,7 +221,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
           <EmptyState
             description="Create an eval set from the evaluator library."
             icon={Icon.evaluations}
-            iconClassName="dark:invert [image-rendering:pixelated]"
+            iconClassName="invert [image-rendering:pixelated]"
             size="section"
             title="No eval sets yet"
           />

@@ -7,7 +7,7 @@ const CapabilitiesIcon = (_props: { className?: string }) => (
     <img
       alt=""
       aria-hidden="true"
-      className="size-8 [image-rendering:pixelated] dark:invert"
+      className="size-8 [image-rendering:pixelated] invert"
       src={desktopMonitorIcon}
     />
   </span>

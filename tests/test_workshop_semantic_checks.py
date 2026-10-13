@@ -2,6 +2,7 @@ import os
 from unittest.mock import Mock
 
 import pytest
+from conftest import read_table
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError
 from pydantic import ValidationError
@@ -74,14 +75,14 @@ def request(max_rows=200):
 
 def test_check_records_real_rows_without_changing_the_dataset(dataset, provider):
     cell = dataset.active_cell
-    before = store.read_frame(paths.cell_path(dataset.id, cell.id))
+    before = store.file_sha256(paths.cell_path(dataset.id, cell.id))
     result = semantic_checks.run_checks(dataset, cell, request())
     check = result["quality_report"]["checks"][0]
     assert check["rows_checked"] == 2
     assert check["rows_failed"] == 1
     assert check["rows_unknown"] == 0
     assert result["remaining_rows"] == 0
-    assert review.same_frame(before, store.read_frame(paths.cell_path(dataset.id, cell.id)))
+    assert store.file_sha256(paths.cell_path(dataset.id, cell.id)) == before
     assert dataset.cells.count() == 1
     assert not review.readiness(dataset, cell)["quality_passed"]
     assert "results" not in result["quality_report"]["semantic_audit"]
@@ -142,17 +143,18 @@ def test_cross_dataset_cell_rejected(dataset, provider):
     assert provider.decisions == []
 
 
-def test_quality_save_rejects_changed_intent(dataset):
+def test_quality_save_rejects_changed_intent(dataset, tmp_path):
     cell = dataset.active_cell
-    frame = store.read_frame(paths.cell_path(dataset.id, cell.id))[[store.SOURCE_ROW]]
+    frame = read_table(paths.cell_path(dataset.id, cell.id))[[store.SOURCE_ROW]]
     frame["answer_support"] = True
+    store.write_frame(tmp_path / "measured.parquet", frame)
     Dataset.objects.filter(pk=dataset.pk).update(intent="train")
     with pytest.raises(ValueError, match="changed during the audit"):
         review.record_quality_results(
             dataset,
             cell,
             [{"name": "answer_support", "evidence": "test"}],
-            frame,
+            tmp_path / "measured.parquet",
             audit={"method": "semantic_decisions"},
             reviewer="test",
             context=context_fingerprint(None),

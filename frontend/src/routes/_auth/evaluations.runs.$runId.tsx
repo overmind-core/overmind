@@ -240,7 +240,7 @@ function EvalRunDetailPage() {
       icon={
         <Icon.evaluations
           aria-hidden
-          className="size-6 shrink-0 [image-rendering:pixelated] dark:invert"
+          className="size-6 shrink-0 [image-rendering:pixelated] invert"
         />
       }
       title={run?.name || "Evaluation run"}

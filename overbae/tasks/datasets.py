@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import logging
+import os
+import threading
+from datetime import timedelta
 from typing import Any
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
+
+from overbae.models import Cell, Dataset, DatasetImport, User
+from overbae.services.datasets import dispatch, heartbeat, imports, lifecycle
+from overbae.services.datasets.lifecycle import WORKSHOP_QUEUE_SECONDS
+from overbae.services.datasets.notebook import agent, events
+from overbae.services.datasets.notebook import run as run_svc
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +31,16 @@ TURN_HARD_LIMIT = 42 * 60
 REAP_GRACE = 5 * 60
 
 
+def _start_workshop(task: Any, dataset_id: str) -> threading.Event:
+    # Celery's request is thread-local: read on the heartbeat thread, its id is None
+    # and every beat misses the row.
+    task_id = task.request.id
+    owner = f"dataset {dataset_id} task {task_id}"
+    logger.info("%s claimed %s on %s pid %d", task.name, owner, task.request.hostname, os.getpid())
+    return heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, task_id), owner=owner)
+
+
 def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
-    from overbae.services.datasets.notebook import events
 
     events.publish(dataset_id, {"dataset_id": str(dataset_id), **event})
 
@@ -43,7 +62,6 @@ def land(
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
 ) -> dict[str, Any]:
-    from overbae.services.datasets import imports
 
     inputs = {
         "dataset_id": dataset_id,
@@ -58,7 +76,6 @@ def land(
 
 @shared_task(name="overbae.tasks.datasets.reconcile_imports")
 def reconcile_imports():
-    from overbae.services.datasets import imports
 
     return imports.reconcile()
 
@@ -74,11 +91,6 @@ def reconcile_imports():
 def run(
     self, *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
 ) -> dict[str, Any]:
-    from celery.exceptions import SoftTimeLimitExceeded
-
-    from overbae.models import Dataset, User
-    from overbae.services.datasets import dispatch, heartbeat, lifecycle
-    from overbae.services.datasets.notebook import run as run_svc
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None:
@@ -87,7 +99,7 @@ def run(
         return {"status": dataset.state}
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.RUNNING):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         run_svc.execute(
@@ -135,13 +147,10 @@ def run(
     reject_on_worker_lost=True,
 )
 def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
-    from overbae.models import User
-    from overbae.services.datasets import heartbeat, imports, lifecycle
-    from overbae.services.datasets.notebook import agent
 
     if not imports.claim_diagnosis(dataset_id, self.request.id):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
@@ -167,13 +176,10 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
 def turn(
     self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
 ) -> dict[str, Any]:
-    from overbae.models import Dataset, User
-    from overbae.services.datasets import heartbeat, lifecycle
-    from overbae.services.datasets.notebook import agent
 
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.DIAGNOSING):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.follow_up(
@@ -193,13 +199,6 @@ def turn(
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
 def reap_stuck_runs() -> dict[str, Any]:
     """Queue waiting and execution have separate, immutable clocks."""
-    from datetime import timedelta
-
-    from django.db.models import Q
-
-    from overbae.models import Cell, Dataset, DatasetImport
-    from overbae.services.datasets import heartbeat, imports
-    from overbae.services.datasets.lifecycle import WORKSHOP_QUEUE_SECONDS
 
     imports.reconcile()
     now = timezone.now()
@@ -224,7 +223,21 @@ def reap_stuck_runs() -> dict[str, Any]:
                 )
             )
         with transaction.atomic():
-            found = list(stuck.select_for_update(skip_locked=True).values_list("id", flat=True))
+            rows = list(
+                stuck.select_for_update(skip_locked=True).values(
+                    "id", "workshop_task_id", "workshop_started_at", "updated_at"
+                )
+            )
+            for row in rows:
+                logger.warning(
+                    "reaping %s dataset %s task %s: started %s, last beat %s",
+                    state,
+                    row["id"],
+                    row["workshop_task_id"] or "-",
+                    row["workshop_started_at"],
+                    row["updated_at"],
+                )
+            found = [row["id"] for row in rows]
             stuck.filter(pk__in=found).update(
                 state=Dataset.State.ERROR,
                 error="The worker stopped before this finished.",

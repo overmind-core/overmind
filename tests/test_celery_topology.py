@@ -5,6 +5,7 @@ worker is a silent no-op: the task is accepted into a queue nobody reads.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -137,9 +138,6 @@ def test_landing_has_dedicated_prefork_capacity():
         if queues == {landing_queue} and "--pool=prefork" in services[name]["command"]
     }
     assert dedicated, "Landing needs a process pool that never accepts bulk evaluation work"
-    for service in dedicated.values():
-        assert "--prefetch-multiplier=1" in service["command"]
-        assert "--disable-prefetch" in service["command"]
     assert any(bulk_queue in queues for queues in _compose_worker_queues().values())
 
 
@@ -160,4 +158,45 @@ def test_new_producers_wait_for_healthy_landing_capacity():
     assert any("deploy_ecs.py" in step.get("run", "") for step in landing_steps)
     assert any(
         step.get("env", {}).get("SERVICE") == "celery-landing-worker" for step in landing_steps
+    )
+
+
+def _deployed_commands() -> dict[str, str]:
+    topology = json.loads((REPO_ROOT / "docker/worker-topology.json").read_text())
+    return {name: " ".join(argv) for name, argv in topology.items()}
+
+
+def test_prefork_lanes_reserve_only_the_tasks_they_run():
+    """A reserved late-ack message stays unacknowledged while it waits behind a
+    running task. Behind a 42-minute turn it outlives the broker's visibility
+    timeout and is delivered twice; reserving only for a free slot bounds the
+    unacknowledged time by the task's own time limit."""
+    commands = {
+        **{f"compose:{name}": service["command"] for name, service in _compose_services().items()},
+        **{f"deploy:{name}": command for name, command in _deployed_commands().items()},
+    }
+    prefork = {name: c for name, c in commands.items() if "--pool=prefork" in c}
+    assert prefork
+    offenders = sorted(
+        name
+        for name, command in prefork.items()
+        if "--prefetch-multiplier=1" not in command or "--disable-prefetch" not in command
+    )
+    assert not offenders, f"prefork workers that reserve ahead of a free slot: {offenders}"
+
+
+def test_redis_redelivers_only_after_every_late_ack_task_has_hit_its_time_limit():
+    """Redis hands an unacknowledged message to another worker after the
+    visibility timeout, so a late-ack task still inside its time limit would run twice."""
+    from overbae.celery import app
+
+    app.loader.import_default_modules()
+    visibility = settings.CELERY_BROKER_TRANSPORT_OPTIONS["visibility_timeout"]
+    offenders = {
+        name: task.time_limit
+        for name, task in app.tasks.items()
+        if name.startswith("overbae.") and task.acks_late and (task.time_limit or 0) >= visibility
+    }
+    assert not offenders, (
+        f"late-ack time limits at or above visibility_timeout={visibility}: {offenders}"
     )

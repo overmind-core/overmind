@@ -6,7 +6,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from conftest import frozen_dataset
+from conftest import frozen_dataset, read_table
 from fakes.llm import tool_call
 from mcp_fixtures import mcp_context
 
@@ -588,7 +588,7 @@ def test_llm_call_creation_lands_one_row_per_call():
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.intent == Dataset.Intent.EVAL
     assert dataset.source_kind == Dataset.SourceKind.LLM_CALLS
-    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    frame = read_table(paths.cell_path(dataset.id, dataset.source.id))
     assert "trace_id" not in set(frame.columns)
     assert "span_id" in set(frame.columns)
     row = frame.iloc[0].to_dict()

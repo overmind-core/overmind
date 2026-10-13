@@ -14,7 +14,7 @@ INTERVAL_SECONDS = 30
 STALE_SECONDS = 5 * 60
 
 
-def start(touch: Callable[[], object]) -> threading.Event:
+def start(touch: Callable[[], object], *, owner: str) -> threading.Event:
     stop = threading.Event()
 
     def beat() -> None:
@@ -23,9 +23,9 @@ def start(touch: Callable[[], object]) -> threading.Event:
                 try:
                     touch()
                 except Exception:  # noqa: BLE001 — a database blip must not stop the beat
-                    logger.exception("heartbeat failed")
+                    logger.exception("heartbeat failed for %s", owner)
         finally:
             connections.close_all()
 
-    threading.Thread(target=beat, name="heartbeat", daemon=True).start()
+    threading.Thread(target=beat, name=f"heartbeat {owner}", daemon=True).start()
     return stop

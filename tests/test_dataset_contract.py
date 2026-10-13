@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 from overbae.services.datasets import contract
@@ -28,9 +27,9 @@ SHAPES = {
 
 
 @pytest.mark.parametrize("name", SHAPES)
-def test_a_row_fits_train_exactly_when_the_export_trains_on_it(name):
+def test_a_row_fits_train_exactly_when_the_export_trains_on_it(name, frame_of):
     record = SHAPES[name]
-    fits = contract.measure(pd.DataFrame([record]))["train"]["ok"]
+    fits = contract.measure(frame_of([record]))["train"]["ok"]
     try:
         exported = validate_rows([row_to_finetuning_line(row_from_record(0, record))]).valid
     except ValueError:
@@ -39,8 +38,8 @@ def test_a_row_fits_train_exactly_when_the_export_trains_on_it(name):
     assert fits is (name in {"transcript", "transcript with tools", "trace row", "json text"})
 
 
-def test_one_bad_row_fails_the_train_contract_and_names_it():
-    df = pd.DataFrame([{"messages": TURNS}, {"messages": None}])
+def test_one_bad_row_fails_the_train_contract_and_names_it(frame_of):
+    df = frame_of([{"messages": TURNS}, {"messages": None}])
     report = contract.measure(df)["train"]
     assert report["ok"] is False
     assert report["failures"] == [{"row": 1, "reason": "messages is empty"}]
@@ -58,13 +57,13 @@ def test_one_bad_row_fails_the_train_contract_and_names_it():
         ([{"input": "q"}], "no expected_output values"),
     ],
 )
-def test_the_eval_contract_says_what_is_missing(rows, reason):
-    report = contract.measure(pd.DataFrame(rows))["eval"]
+def test_the_eval_contract_says_what_is_missing(rows, reason, frame_of):
+    report = contract.measure(frame_of(rows))["eval"]
     assert (report["ok"], report["reason"]) == (False, reason)
 
 
-def test_an_empty_table_fits_nothing():
-    report = contract.measure(pd.DataFrame())
+def test_an_empty_table_fits_nothing(frame_of):
+    report = contract.measure(frame_of([]))
     assert report["train"] == report["eval"] == {"ok": False, "reason": "no rows"}
 
 
@@ -77,19 +76,19 @@ def test_an_empty_table_fits_nothing():
         ([{"sensor": 1, "temp": 20.5}], "pending"),
     ],
 )
-def test_the_proposed_intent_follows_the_rows(rows, intent):
-    df = pd.DataFrame(rows)
+def test_the_proposed_intent_follows_the_rows(rows, intent, frame_of):
+    df = frame_of(rows)
     assert contract.propose_intent(df, contract.measure(df)) == intent
 
 
-def test_a_table_without_text_is_marked_as_not_fixable():
-    numbers = contract.measure(pd.DataFrame([{"sensor": 1, "temp": 20.5}]))
-    words = contract.measure(pd.DataFrame([{"prompt": "hi", "completion": "hello"}]))
+def test_a_table_without_text_is_marked_as_not_fixable(frame_of):
+    numbers = contract.measure(frame_of([{"sensor": 1, "temp": 20.5}]))
+    words = contract.measure(frame_of([{"prompt": "hi", "completion": "hello"}]))
     assert numbers["train"]["fixable"] is numbers["eval"]["fixable"] is False
     assert "fixable" not in words["train"] and "fixable" not in words["eval"]
 
 
-def test_a_transcript_that_landing_cut_does_not_fit_train():
+def test_a_transcript_that_landing_cut_does_not_fit_train(frame_of):
     from overbae.services.datasets import land
 
     huge = [
@@ -109,6 +108,6 @@ def test_a_transcript_that_landing_cut_does_not_fit_train():
         {"role": "assistant", "content": "done"},
     ]
     row = land.bounded_row({"messages": huge})
-    report = contract.measure(pd.DataFrame([row, {"messages": TURNS}]))["train"]
+    report = contract.measure(frame_of([row, {"messages": TURNS}]))["train"]
     assert report["ok"] is False
     assert report["failures"] == [{"row": 0, "reason": "a value was cut at landing"}]

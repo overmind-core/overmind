@@ -258,5 +258,6 @@ Agent > Capabilities > Tasks: "Agent" is the product (one per project),
 
 No formal conformance standard has been set for this product — that decision is
 open. Two constraints hold in the current implementation and future work must
-preserve them: the Console ships **user-selectable light and dark themes**, and
-motion **respects `prefers-reduced-motion`**.
+preserve them: the Console is **dark-only**, dark from first paint, with
+`check:contrast` holding every text pairing to WCAG 2.1 AA, and motion
+**respects `prefers-reduced-motion`**.

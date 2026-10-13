@@ -5,7 +5,7 @@ import { ICON_INK } from "@/lib/colors";
 type SvgIconProps = SVGProps<SVGSVGElement>;
 
 /** Two-tone heading marks (ink + white holes) on a 16×16 grid. Call sites add
- *  `dark:invert`. */
+ *  `invert`. */
 const INK = ICON_INK;
 
 /** Paths from `@/assets/desktop-tower.svg`. */

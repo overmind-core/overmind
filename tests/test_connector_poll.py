@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import time_machine
 from django.utils import timezone
 from factories import make_connector, sync_until_live
 from fakes.vendors import LangfuseAPI, Step
@@ -165,6 +167,29 @@ def test_the_poller_queues_only_due_active_auto_syncing_connectors(credential, c
 
     assert result["enqueued"] == 1
     assert continuations == [str(credential.id)]
+
+
+def test_the_poller_leaves_a_running_chunk_alone_until_its_time_limit_has_passed(
+    credential, langfuse, continuations, monkeypatch
+):
+    _traces(langfuse, 1)
+    ConnectorCredential.objects.filter(id=credential.id).update(auto_sync_enabled=True)
+    langfuse.status = 429
+    still_running = timedelta(seconds=connector_sync.sync_connector_chunk.time_limit - 60)
+    polled: list[int] = []
+
+    def vendor_backoff(_seconds):
+        if polled:
+            return
+        langfuse.status = 200
+        with time_machine.travel(timezone.now() + still_running):
+            polled.append(connector_sync.poll_connectors()["enqueued"])
+
+    monkeypatch.setattr(time, "sleep", vendor_backoff)
+    _chunk(credential)
+
+    assert polled == [0]
+    assert _spans(credential) == 1
 
 
 def test_a_manual_sync_runs_with_auto_sync_off(credential, langfuse):

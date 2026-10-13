@@ -6,10 +6,11 @@ from unittest.mock import Mock
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from conftest import read_table
 from rest_framework.test import APIClient
 
 from overbae.models import Dataset, Project, ProjectMembership, User
-from overbae.services.datasets import files, paths, store
+from overbae.services.datasets import files, paths
 
 
 def _upload(name, content):
@@ -44,7 +45,7 @@ def test_inspection_counts_the_same_rows_that_land(name, content, rows):
     upload_id = _upload(name, content)
     inspection = files.inspect_upload(upload_id, size=len(content))
     assert inspection == {"filename": name, "bytes": len(content), "rows": rows}
-    assert len(files.read_file_rows(files.upload_data_path(upload_id), filename=name)) == rows
+    assert len(list(files.FileRows(files.upload_data_path(upload_id), filename=name))) == rows
 
 
 def test_inspection_counts_parquet_metadata():
@@ -79,6 +80,19 @@ def test_inspection_requires_the_complete_upload():
     files.discard_upload(upload_id)
     with pytest.raises(files.FileError, match="expired"):
         files.inspect_upload(upload_id, size=10)
+
+
+def test_a_retried_chunk_rewrites_the_bytes_an_interrupted_attempt_stored():
+    content = b'{"input":"one"}\n{"input":"two"}\n'
+    upload_id, _ = files.begin_upload("data.jsonl")
+    files.append_chunk(upload_id, 0, content[:20])
+    assert files.append_chunk(upload_id, 0, content) == len(content)
+    assert files.append_chunk(upload_id, 0, content) == len(content)
+    assert files.inspect_upload(upload_id, size=len(content))["rows"] == 2
+    with pytest.raises(files.FileError, match="stored"):
+        files.append_chunk(upload_id, len(content) + 1, b"{}\n")
+    with pytest.raises(files.FileError, match="negative"):
+        files.append_chunk(upload_id, -1, b"{}\n")
 
 
 def test_inspection_endpoint_counts_rows_and_reports_validation_errors(client_project):
@@ -151,9 +165,7 @@ def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_
             {"filename": "first.csv", "bytes": len(first), "rows": 7},
             {"filename": "second.json", "bytes": len(second), "rows": 8},
         ]
-        landed.extend(
-            store.read_frame(paths.cell_path(dataset.id, dataset.source.id))["input"].tolist()
-        )
+        landed.extend(read_table(paths.cell_path(dataset.id, dataset.source.id))["input"].tolist())
     assert landed == [f"q{i}" for i in range(15)]
     assert all(not files.upload_data_path(upload_id).exists() for upload_id in ids)
 

@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_auth/training")({
 const TRAINING_HEADER = (
   <PageHeader
     description="Fine-tune models on your own datasets."
-    icon={<Icon.finetuning className="[image-rendering:pixelated] dark:invert" />}
+    icon={<Icon.finetuning className="[image-rendering:pixelated] invert" />}
     title="Training"
   />
 );

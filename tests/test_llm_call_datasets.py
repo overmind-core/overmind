@@ -9,10 +9,11 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from conftest import read_table
 from django.utils import timezone
 
 from overbae.models import Capability, Dataset, Project, Span
-from overbae.services.datasets import dispatch, paths, store
+from overbae.services.datasets import dispatch, paths
 from overbae.services.datasets.land import LandError
 from overbae.services.datasets.llm_calls import call_record, hash_split, shape
 from overbae.services.finetuning_validator import validate_rows
@@ -230,7 +231,7 @@ def test_landing_settles_idle_without_a_workshop_turn(monkeypatch):
     assert queued == []
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.active_cell.fits("eval")[0]
-    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    frame = read_table(paths.cell_path(dataset.id, dataset.source.id))
     assert "trace_id" not in set(frame.columns)
     assert frame.iloc[0]["origin_trace_id"]
 

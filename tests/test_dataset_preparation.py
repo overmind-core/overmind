@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
+from conftest import read_table
 from django.db import close_old_connections
 
 from overbae.models import Behaviour, BehaviourVersion, Capability, Dataset, Project
@@ -59,7 +60,7 @@ def test_initial_preparation_runs_exclusions_and_preserves_source_and_coverage()
     assert ds.active_cell.review["approval"] == "preparation"
     assert ds.active_cell.review["rows_removed"] == 1
     assert ds.active_cell.review["coverage_before"]["label"]["minority"] == 1
-    assert store.read_frame(paths.cell_path(ds.id, ds.source.id)).shape[0] == 2
+    assert read_table(paths.cell_path(ds.id, ds.source.id)).shape[0] == 2
 
 
 def test_initial_preparation_still_honours_proposals_and_guards_row_additions():
@@ -123,7 +124,7 @@ def test_preparation_reuses_a_preview_and_checks_unchanged_rows_once():
     tools = agent.Tools(ds.id, None, lambda _: None)
     with (
         patch.object(run, "try_script", wraps=run.try_script) as execute,
-        patch.object(review, "same_frame", wraps=review.same_frame) as compare,
+        patch.object(review, "same", wraps=review.same) as compare,
     ):
         tools.try_script({"script": "df = prepare_examples(df, intent='eval')"})
         first = tools.prepare_examples({})
@@ -193,7 +194,7 @@ def test_judgement_waits_for_a_decision_without_blocking_the_current_version(ini
         ):
             run.execute(ds)
         assert ds.active_cell.id == cell.id
-        assert store.read_frame(paths.cell_path(ds.id, cell.id)).expected_output.tolist() == [
+        assert read_table(paths.cell_path(ds.id, cell.id)).expected_output.tolist() == [
             "abstain",
             "abstain",
         ]
@@ -205,12 +206,13 @@ def test_judgement_waits_for_a_decision_without_blocking_the_current_version(ini
         assert ds.active_cell.fingerprint == source_fingerprint
 
 
-def test_proposal_input_examples_follow_output_identity_not_row_position():
+def test_proposal_input_examples_follow_output_identity_not_row_position(tmp_path):
     ds = dataset()
-    before = store.read_frame(paths.cell_path(ds.id, ds.source.id))
-    after = before.iloc[::-1].copy()
+    before = paths.cell_path(ds.id, ds.source.id)
+    after = read_table(before).iloc[::-1].copy()
     after["expected_output"] = "abstain"
-    report = review.impact(before, after)
+    store.write_frame(tmp_path / "after.parquet", after)
+    report = review.impact(before, tmp_path / "after.parquet")
     assert [row[store.SOURCE_ROW] for row in report["input_examples"]] == [1, 0]
     assert [row[store.SOURCE_ROW] for row in report["output_examples"]] == [1, 0]
     assert report["input_examples"][0]["expected_output"] == "no"
@@ -221,7 +223,7 @@ def test_synthetic_rows_are_active_with_seed_lineage_and_reject_duplicates_or_in
     args = {"instruction": "Cover variants", "generation_id": str(uuid.uuid4()), "target_rows": 3}
     with pytest.raises(ValueError, match="seed_row"):
         synthetic.add(ds, ds.source, [{"seed_row": 999, "row": {"input": "x"}}], **args)
-    existing = store.read_frame(paths.cell_path(ds.id, ds.source.id)).to_dict(orient="records")[0]
+    existing = read_table(paths.cell_path(ds.id, ds.source.id)).to_dict(orient="records")[0]
     with pytest.raises(ValueError, match="duplicates"):
         synthetic.add(ds, ds.source, [{"seed_row": 0, "row": existing}], **args)
     cell = synthetic.add(
@@ -231,7 +233,7 @@ def test_synthetic_rows_are_active_with_seed_lineage_and_reject_duplicates_or_in
     assert ds.source.rows == 2
     assert not ds.cells.filter(state="proposed").exists()
     run.execute(ds)
-    frame = store.read_frame(paths.cell_path(ds.id, cell.id))
+    frame = read_table(paths.cell_path(ds.id, cell.id))
     provenance = frame.iloc[-1][review.PROVENANCE_COLUMN]
     assert provenance["seed_row"] == 0 and provenance["capability"] is None
     assert content_key(existing) in provenance["seed_content_keys"]
@@ -342,7 +344,7 @@ def test_generation_batches_accumulate_in_one_active_version():
     assert not ds.cells.filter(state="proposed").exists()
     assert ds.active_cell.rows == 5
     assert [r["version"] for r in results] == ["1.1"] * 3
-    frame = store.read_frame(paths.cell_path(ds.id, generated.id))
+    frame = read_table(paths.cell_path(ds.id, generated.id))
     assert frame.source_row.is_unique
 
 
@@ -473,7 +475,7 @@ def test_generation_rejects_overshoot_and_changed_input_without_losing_saved_row
 def test_generation_seeds_preserve_full_system_prompts():
     ds = dataset()
     long_prompt = "Declared system prompt. " * 100
-    frame = store.read_frame(paths.cell_path(ds.id, ds.source.id))
+    frame = read_table(paths.cell_path(ds.id, ds.source.id))
     frame["system_prompt"] = long_prompt
     store.write_frame(paths.cell_path(ds.id, ds.source.id), frame)
     tools = agent.Tools(ds.id, None, lambda _: None)
@@ -505,15 +507,23 @@ def test_concurrent_generation_batches_share_one_active_version():
     assert len(set(ids)) == 1
     proposal = ds.cells.get(pk=ids[0])
     assert proposal.review["generated_rows"] == 3
-    assert store.read_frame(paths.cell_path(ds.id, proposal.id)).source_row.is_unique
+    assert read_table(paths.cell_path(ds.id, proposal.id)).source_row.is_unique
 
 
-def test_mechanical_repair_keeps_contamination_identity():
+def test_mechanical_repair_keeps_contamination_identity(tmp_path):
     ds = dataset()
-    before = store.read_frame(paths.cell_path(ds.id, ds.source.id))
+    before = read_table(paths.cell_path(ds.id, ds.source.id))
     before["conversation_id"] = ["a", "b"]
     before["customer"] = ["c", "d"]
     after = before.drop(columns=["conversation_id", "customer"]).iloc[::-1].copy()
-    repaired = review.preserve_provenance(before, after, group_by=["customer"])
+    store.write_frame(tmp_path / "before.parquet", before)
+    store.write_frame(tmp_path / "after.parquet", after)
+    review.finalize(
+        tmp_path / "before.parquet",
+        tmp_path / "after.parquet",
+        tmp_path / "repaired.parquet",
+        group_by=["customer"],
+    )
+    repaired = read_table(tmp_path / "repaired.parquet")
     assert repaired["conversation_id"].tolist() == ["b", "a"]
     assert repaired["customer"].tolist() == ["d", "c"]

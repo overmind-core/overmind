@@ -398,6 +398,9 @@ CACHES = {
 
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+# Redis hands a message unacknowledged this long to another worker. Late-ack tasks
+# hold theirs for their whole run, so this must exceed every such time limit.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 2 * 60 * 60}
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
@@ -419,6 +422,8 @@ QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
 EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
 EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
 DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "3600"))
+# Memory the workshop's cells share on one host; 0 is 60% of the host's memory.
+WORKSHOP_SANDBOX_MEMORY_BYTES = int(os.environ.get("WORKSHOP_SANDBOX_MEMORY_BYTES", "0"))
 
 CELERY_TASK_ROUTES = {
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},

@@ -100,10 +100,13 @@ def iter_execute(
         yield _emit(dataset, {"type": "cell_started", **_cell_event(cell, versions)})
         started = timezone.now()
         output_path = paths.cell_path(dataset.id, cell.id)
+        previous_path = paths.cell_path(dataset.id, previous.id)
         automatic_rerun = (
             cell.review.get("approval") in {"mechanical", "preparation"}
             and cell.review.get("input_fingerprint") != previous.fingerprint
         )
+        result = None
+        error = ""
         if cell.review.get("status") == "accepted" and not automatic_rerun:
             if (
                 cell.review.get("input_fingerprint") != previous.fingerprint
@@ -112,56 +115,45 @@ def iter_execute(
                 or not output_path.exists()
                 or store.file_sha256(output_path) != cell.review.get("output_fingerprint")
             ):
-                result = runner.CellResult(
-                    None, error="The reviewed input changed. Create a new proposal."
-                )
-            else:
-                result = runner.CellResult(store.read_frame(output_path), ok=True)
+                error = "The reviewed input changed. Create a new proposal."
         else:
-            result = runner.run(
-                cell.script, paths.cell_path(dataset.id, previous.id), library_cache=cache
-            )
-            if automatic_rerun and result.frame is not None:
-                changes = review.impact(
-                    store.read_frame(paths.cell_path(dataset.id, previous.id)), result.frame
-                )
+            result = runner.run(cell.script, previous_path, library_cache=cache)
+            error = "" if result.path else result.error or "The cell produced no frame."
+            if not error and automatic_rerun:
+                changes = review.impact(previous_path, result.path)
                 if review.requires_approval(
                     changes, allow_exclusions=cell.review.get("approval") == "preparation"
                 ):
-                    result = runner.CellResult(
-                        None,
-                        error="This repair now changes row membership, input evidence or task instructions. Create a proposal.",
-                    )
-        if result.frame is None:
+                    error = "This repair now changes row membership, input evidence or task instructions. Create a proposal."
+        if error:
             failed = cell
-            error = result.error or "The cell produced no frame."
             Cell.objects.filter(pk=cell.pk).update(
                 state=Cell.State.FAILED, error=error, updated_at=timezone.now()
             )
             cell.state, cell.error = Cell.State.FAILED, error
             yield _emit(dataset, {"type": "cell_failed", **_cell_event(cell, versions)})
             continue
-        out_path = paths.cell_path(dataset.id, cell.id)
-        frame = review.preserve_provenance(
-            store.read_frame(paths.cell_path(dataset.id, previous.id)),
-            result.frame,
-            group_by=dataset.source_spec.get("split", {}).get("group_by", []),
-        )
-        store.write_frame(out_path, frame)
+        if result is not None:
+            review.finalize(
+                previous_path,
+                result.path,
+                output_path,
+                group_by=dataset.source_spec.get("split", {}).get("group_by", []),
+            )
         if automatic_rerun:
             cell.review = {
                 **cell.review,
                 "input_fingerprint": previous.fingerprint,
-                "output_fingerprint": store.file_sha256(out_path),
+                "output_fingerprint": store.file_sha256(output_path),
                 "context_fingerprint": context_fingerprint(dataset.capability),
                 "intent": dataset.intent,
-                **review.impact(store.read_frame(paths.cell_path(dataset.id, previous.id)), frame),
+                **review.impact(previous_path, output_path),
             }
             cell.save(update_fields=["review"])
         measure.frame(
             dataset,
             cell,
-            out_path,
+            output_path,
             input_fingerprint=previous.fingerprint,
             seconds=round((timezone.now() - started).total_seconds(), 2),
         )

@@ -1,17 +1,13 @@
-"""Parquet row store with DuckDB queries.
-
-Every table carries a column manifest ``[{name, type}]`` where ``type`` is one of
-``string | integer | number | boolean | datetime | json``. Nested values are
-stored as JSON text so a messy upload never fails schema unification; readers
-decode them back to Python objects, and DuckDB sees them as VARCHAR.
-"""
+"""Parquet row store with DuckDB queries."""
 
 from __future__ import annotations
 
-import datetime as dt
+import bisect
 import hashlib
 import json
 import math
+import tempfile
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -20,17 +16,24 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-SOURCE_ROW = "source_row"
-ROW_GROUP_SIZE = 10_000
-_MANIFEST_KEY = b"overmind.columns"
-_ARROW_TYPES = {
-    "string": pa.string(),
-    "integer": pa.int64(),
-    "number": pa.float64(),
-    "boolean": pa.bool_(),
-    "datetime": pa.timestamp("us", tz="UTC"),
-    "json": pa.string(),
-}
+from overbae.services.datasets.tables import (
+    ARROW_TYPES,
+    ManifestBuilder,
+    TableWriter,
+    batches,
+    coerce,
+    infer_manifest,
+    is_missing,
+    read_manifest,
+    union_kind,
+)
+from overbae.services.datasets.tables import SOURCE_ROW as SOURCE_ROW
+from overbae.services.datasets.tables import json_dumps as json_dumps
+from overbae.services.datasets.tables import write_frame as write_frame
+
+# DuckDB defaults to 80% of the machine for each connection.
+DUCKDB_MEMORY = "512MB"
+DUCKDB_THREADS = 2
 _FILTER_OPS = (
     "contains",
     "not_contains",
@@ -49,149 +52,15 @@ class StoreError(ValueError):
     """A read or write the caller can act on (bad column, bad filter, missing file)."""
 
 
-def _is_missing(value: Any) -> bool:
-    if value is None:
-        return True
-    if isinstance(value, float) and math.isnan(value):
-        return True
-    return value is pd.NaT
-
-
-def json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
-
-
-def _coerce(value: Any, kind: str) -> Any:
-    if _is_missing(value):
-        return None
-    if kind == "json":
-        if hasattr(value, "tolist"):
-            value = value.tolist()
-        return json_dumps(value)
-    if kind == "string":
-        if isinstance(value, (dict, list)):
-            return json_dumps(value)
-        if isinstance(value, bytes):
-            return value.decode("utf-8", "replace")
-        return str(value)
-    if kind == "integer":
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-    if kind == "number":
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-    if kind == "boolean":
-        if isinstance(value, str):
-            return value.strip().lower() in ("true", "1", "yes")
-        return bool(value)
-    if kind == "datetime":
-        if isinstance(value, dt.datetime):
-            return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
-        if isinstance(value, pd.Timestamp):
-            ts = value.to_pydatetime()
-            return ts if ts.tzinfo else ts.replace(tzinfo=dt.UTC)
-        try:
-            return pd.Timestamp(value).to_pydatetime().replace(tzinfo=dt.UTC)
-        except (TypeError, ValueError):
-            return None
-    return value
-
-
-def _infer_kind(values: list[Any]) -> str:
-    """Kind of a column from its non-missing values. Mixed scalars read as string."""
-    kinds: set[str] = set()
-    for value in values:
-        if _is_missing(value):
-            continue
-        if isinstance(value, (dict, list, tuple)):
-            return "json"
-        if isinstance(value, bool):
-            kinds.add("boolean")
-        elif isinstance(value, int):
-            kinds.add("integer")
-        elif isinstance(value, float):
-            kinds.add("number")
-        elif isinstance(value, (dt.datetime, pd.Timestamp)):
-            kinds.add("datetime")
-        else:
-            kinds.add("string")
-    if not kinds:
-        return "string"
-    if kinds <= {"integer", "number"}:
-        return "number" if "number" in kinds else "integer"
-    if len(kinds) == 1:
-        return kinds.pop()
-    return "string"
-
-
-def infer_manifest(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Column order = first appearance across rows."""
-    names: list[str] = []
-    seen: set[str] = set()
-    for row in rows:
-        for key in row:
-            key = str(key)
-            if key not in seen:
-                seen.add(key)
-                names.append(key)
-    return [{"name": name, "type": _infer_kind([row.get(name) for row in rows])} for name in names]
-
-
-def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    for name in df.columns:
-        series = df[name]
-        if pd.api.types.is_bool_dtype(series):
-            kind = "boolean"
-        elif pd.api.types.is_integer_dtype(series):
-            kind = "integer"
-        elif pd.api.types.is_float_dtype(series):
-            kind = "number"
-        elif pd.api.types.is_datetime64_any_dtype(series):
-            kind = "datetime"
-        else:
-            kind = _infer_kind(series.tolist())
-        out.append({"name": str(name), "type": kind})
-    return out
-
-
-def _table_from_columns(columns: dict[str, list[Any]], manifest: list[dict[str, str]]) -> pa.Table:
-    arrays = []
-    fields = []
-    for spec in manifest:
-        name, kind = spec["name"], spec["type"]
-        values = [_coerce(v, kind) for v in columns.get(name, [])]
-        arrays.append(pa.array(values, type=_ARROW_TYPES[kind]))
-        fields.append(pa.field(name, _ARROW_TYPES[kind]))
-    schema = pa.schema(fields, metadata={_MANIFEST_KEY: json_dumps(manifest).encode()})
-    return pa.Table.from_arrays(arrays, schema=schema)
-
-
 def write_rows(
-    path: Path, rows: list[dict[str, Any]], manifest: list[dict[str, str]] | None = None
+    path: Path, rows: Iterable[dict[str, Any]], manifest: list[dict[str, str]] | None = None
 ) -> list[dict[str, str]]:
-    manifest = manifest or infer_manifest(rows)
-    columns = {spec["name"]: [row.get(spec["name"]) for row in rows] for spec in manifest}
-    _write_table(path, _table_from_columns(columns, manifest))
+    if manifest is None:
+        rows = list(rows)
+        manifest = infer_manifest(rows)
+    with TableWriter(path, manifest) as writer:
+        writer.write_rows(rows)
     return manifest
-
-
-def write_frame(path: Path, df: pd.DataFrame) -> list[dict[str, str]]:
-    manifest = manifest_from_frame(df)
-    columns = {spec["name"]: df[spec["name"]].tolist() for spec in manifest}
-    _write_table(path, _table_from_columns(columns, manifest))
-    return manifest
-
-
-def _write_table(path: Path, table: pa.Table) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".parquet.tmp")
-    pq.write_table(table, tmp, row_group_size=ROW_GROUP_SIZE, compression="zstd")
-    tmp.replace(path)
 
 
 def file_sha256(path: Path) -> str:
@@ -200,28 +69,6 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def read_manifest(path: Path) -> list[dict[str, str]]:
-    meta = pq.read_schema(path).metadata or {}
-    raw = meta.get(_MANIFEST_KEY)
-    if raw:
-        return json.loads(raw)
-    return [
-        {"name": field.name, "type": _kind_of_arrow(field.type)} for field in pq.read_schema(path)
-    ]
-
-
-def _kind_of_arrow(arrow_type: pa.DataType) -> str:
-    if pa.types.is_boolean(arrow_type):
-        return "boolean"
-    if pa.types.is_integer(arrow_type):
-        return "integer"
-    if pa.types.is_floating(arrow_type):
-        return "number"
-    if pa.types.is_timestamp(arrow_type):
-        return "datetime"
-    return "string"
 
 
 def row_count(path: Path) -> int:
@@ -235,7 +82,7 @@ def _records(cur: Any) -> list[dict[str, Any]]:
 
 
 def _decode(value: Any, kind: str) -> Any:
-    if _is_missing(value):
+    if is_missing(value):
         return None
     if kind == "json":
         try:
@@ -251,36 +98,95 @@ def decode(value: Any, kind: str) -> Any:
     return _decode(value, kind)
 
 
-def read_frame(path: Path) -> pd.DataFrame:
-    """Pandas frame with JSON columns decoded to Python objects."""
-    manifest = read_manifest(path)
-    table = pq.read_table(path)
-    df = table.to_pandas()
-    for spec in manifest:
-        if spec["type"] == "json" and spec["name"] in df.columns:
-            df[spec["name"]] = df[spec["name"]].map(lambda v: _decode(v, "json"))
-    return df
+def value(raw: Any, kind: str) -> Any:
+    if raw is None or kind != "json":
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
 
 
-def iter_rows(path: Path, batch_size: int = ROW_GROUP_SIZE):
-    """Decoded dict rows, streaming by row group."""
-    manifest = read_manifest(path)
-    kinds = {spec["name"]: spec["type"] for spec in manifest}
-    pf = pq.ParquetFile(path)
-    for batch in pf.iter_batches(batch_size=batch_size):
+def raw_rows(path: Path, columns: list[str] | None = None) -> Iterator[dict[str, Any]]:
+    for batch in batches(path, columns):
+        yield from batch.to_pylist()
+
+
+def records(path: Path, columns: list[str] | None = None) -> Iterator[dict[str, Any]]:
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(path)}
+    for batch in batches(path, columns):
+        for record in batch.to_pylist():
+            yield {k: value(v, kinds.get(k, "string")) for k, v in record.items()}
+
+
+class Frame:
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self.manifest = read_manifest(self.path)
+        self.kinds = {spec["name"]: spec["type"] for spec in self.manifest}
+        self.columns = [spec["name"] for spec in self.manifest]
+        self.rows = row_count(self.path)
+
+    def __len__(self) -> int:
+        return self.rows
+
+    def __contains__(self, column: object) -> bool:
+        return column in self.kinds
+
+    def values(self, column: str) -> Iterator[Any]:
+        kind = self.kinds[column]
+        for batch in batches(self.path, [column]):
+            for item in batch.column(0).to_pylist():
+                yield value(item, kind)
+
+    def records(self, columns: list[str] | None = None) -> Iterator[dict[str, Any]]:
+        wanted = None if columns is None else [c for c in columns if c in self.kinds]
+        return records(self.path, wanted)
+
+    def head(self, n: int, columns: list[str] | None = None) -> list[dict[str, Any]]:
+        out = []
+        for record in self.records(columns):
+            if len(out) >= n:
+                break
+            out.append(record)
+        return out
+
+
+def iter_rows(path: Path) -> Iterator[dict[str, Any]]:
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(path)}
+    for batch in batches(path):
         for record in batch.to_pylist():
             yield {k: _decode(v, kinds.get(k, "string")) for k, v in record.items()}
+
+
+def _take(path: Path, indices: list[int], columns: list[str] | None = None) -> pa.Table:
+    source = pq.ParquetFile(path, pre_buffer=False)
+    meta = source.metadata
+    starts = [0]
+    for g in range(meta.num_row_groups):
+        starts.append(starts[-1] + meta.row_group(g).num_rows)
+    wanted = [i for i in indices if 0 <= i < starts[-1]]
+    if not wanted:
+        empty = source.schema_arrow.empty_table()
+        return empty.select(columns) if columns is not None else empty
+    by_group: dict[int, list[int]] = {}
+    for i in wanted:
+        by_group.setdefault(bisect.bisect_right(starts, i) - 1, []).append(i)
+    rows: dict[int, pa.Table] = {}
+    for group, members in by_group.items():
+        table = source.read_row_group(group, columns=columns, use_threads=False)
+        picked = table.take(pa.array([i - starts[group] for i in members], type=pa.int64()))
+        for offset, i in enumerate(members):
+            rows[i] = picked.slice(offset, 1)
+    return pa.concat_tables([rows[i] for i in wanted])
 
 
 def read_rows(path: Path, indices: list[int]) -> list[dict[str, Any]]:
     """Rows by position; the store has no other row identity."""
     if not indices:
         return []
-    manifest = read_manifest(path)
-    kinds = {spec["name"]: spec["type"] for spec in manifest}
-    table = pq.read_table(path)
-    wanted = [i for i in indices if 0 <= i < table.num_rows]
-    picked = table.take(pa.array(wanted, type=pa.int64())).to_pylist()
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(path)}
+    picked = _take(path, indices).to_pylist()
     return [{k: _decode(v, kinds.get(k, "string")) for k, v in rec.items()} for rec in picked]
 
 
@@ -291,20 +197,103 @@ def read_row(path: Path, index: int) -> dict[str, Any] | None:
 
 def head(path: Path, n: int) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for row in iter_rows(path, batch_size=min(n, ROW_GROUP_SIZE)):
-        out.append(row)
+    for row in iter_rows(path):
         if len(out) >= n:
             break
+        out.append(row)
     return out
+
+
+def frame_rows(
+    path: Path, indices: list[int] | range, columns: list[str] | None = None
+) -> pd.DataFrame:
+    df = _take(path, list(indices), columns).to_pandas()
+    for spec in read_manifest(path):
+        if spec["type"] == "json" and spec["name"] in df.columns:
+            df[spec["name"]] = df[spec["name"]].map(lambda v: _decode(v, "json"))
+    return df
+
+
+def write_extended(source: Path, rows: list[dict[str, Any]], path: Path) -> None:
+    old = read_manifest(source)
+    added = ManifestBuilder()
+    for row in rows:
+        added.add(row)
+    known = {c["name"]: c["type"] for c in old}
+    manifest = [
+        {"name": c["name"], "type": union_kind({c["type"], *added.kinds.get(c["name"], ())})}
+        for c in old
+    ] + [c for c in added.manifest() if c["name"] not in known]
+    with TableWriter(path, manifest) as writer:
+        for batch in batches(source):
+            arrays = []
+            for spec in manifest:
+                name, kind = spec["name"], spec["type"]
+                if known.get(name) == kind:
+                    arrays.append(batch.column(name))
+                elif name in known:
+                    stored = batch.column(name).to_pylist()
+                    arrays.append(
+                        pa.array(
+                            [coerce(value(v, known[name]), kind) for v in stored],
+                            type=ARROW_TYPES[kind],
+                        )
+                    )
+                else:
+                    arrays.append(pa.nulls(batch.num_rows, type=ARROW_TYPES[kind]))
+            writer.write_table(pa.Table.from_arrays(arrays, schema=writer.schema))
+        writer.write_rows(rows)
 
 
 def connect(**tables: Path) -> duckdb.DuckDBPyConnection:
     """An in-memory connection with each ``name=path`` registered as a view."""
-    con = duckdb.connect()
+    spill = Path(tempfile.gettempdir()) / "overmind-duckdb"
+    spill.mkdir(exist_ok=True)
+    con = duckdb.connect(
+        config={
+            "memory_limit": DUCKDB_MEMORY,
+            "threads": DUCKDB_THREADS,
+            "temp_directory": str(spill),
+        }
+    )
     for name, path in tables.items():
-        literal = str(path).replace("'", "''")
-        con.execute(f"CREATE VIEW \"{name}\" AS SELECT * FROM read_parquet('{literal}')")
+        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT * FROM {_scan(path)}")
     return con
+
+
+def aligned(left: Path, right: Path, columns: list[str]) -> Iterator[dict[str, Any] | None]:
+    """For each row of ``right`` in order, ``columns`` of the first row of ``left``
+    with the same ``source_row``, or None."""
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(left)}
+    keys = {kinds.get(SOURCE_ROW), Frame(right).kinds.get(SOURCE_ROW)}
+    if None in keys or (len(keys) > 1 and not keys <= {"integer", "number"}):
+        yield from (None for _ in range(row_count(right)))
+        return
+    picked = "".join(f", l.{_quote(c)}" for c in columns)
+    con = connect()
+    try:
+        cur = con.execute(
+            f"SELECT l.file_row_number IS NOT NULL{picked} FROM {_scan(right, numbered=True)} r "
+            "LEFT JOIN (SELECT source_row, min(file_row_number) AS first "
+            f"FROM {_scan(left, numbered=True)} GROUP BY source_row) f "
+            "ON r.source_row IS NOT DISTINCT FROM f.source_row "
+            f"LEFT JOIN {_scan(left, numbered=True)} l ON l.file_row_number = f.first "
+            "ORDER BY r.file_row_number"
+        )
+        for batch in cur.to_arrow_reader(1024):
+            for found, *values in zip(*(c.to_pylist() for c in batch.columns), strict=True):
+                yield (
+                    {c: value(v, kinds[c]) for c, v in zip(columns, values, strict=True)}
+                    if found
+                    else None
+                )
+    finally:
+        con.close()
+
+
+def _scan(path: Path, *, numbered: bool = False) -> str:
+    literal = str(path).replace("'", "''")
+    return f"read_parquet('{literal}'{', file_row_number = true' if numbered else ''})"
 
 
 def _quote(name: str) -> str:
@@ -412,7 +401,7 @@ def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
             text = f"CAST({col} AS VARCHAR)"
             nulls, distinct = con.execute(
                 f"SELECT count(*) FILTER (WHERE {col} IS NULL OR {text} = ''), "
-                f'count(DISTINCT {text}) FROM "t"'
+                f'count(DISTINCT hash({text})) FILTER (WHERE {col} IS NOT NULL) FROM "t"'
             ).fetchone()
             entry: dict[str, Any] = {
                 "name": name,
@@ -443,12 +432,11 @@ def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
 
 
 def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
-    """For user-written SQL: tables are loaded up front so file access can be
-    switched off before the statement runs."""
-    con = duckdb.connect()
-    for name, path in tables.items():
-        con.register(name, pq.read_table(path))
+    con = connect(**tables)
+    allowed = ", ".join("'" + str(path).replace("'", "''") + "'" for path in tables.values())
+    con.execute(f"SET allowed_paths = [{allowed}]")
     con.execute("SET enable_external_access = false")
+    con.execute("SET lock_configuration = true")
     return con
 
 

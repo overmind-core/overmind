@@ -1,7 +1,6 @@
 import json
 from types import SimpleNamespace
 
-import pandas as pd
 import pytest
 from rest_framework.exceptions import ValidationError
 
@@ -108,13 +107,13 @@ def make_dataset(capability, *, intent="eval", evidence=True, case_id="case1"):
     return ds
 
 
-def test_id_only_eval_and_invalid_final_packet_fail_declared_schema(capability):
+def test_id_only_eval_and_invalid_final_packet_fail_declared_schema(capability, frame_of):
     ds = make_dataset(capability, evidence=False)
     assert ds.active_cell.fits("eval")[0]
     assert not ds.active_cell.capability_report["ok"]
     assert "documents" in "; ".join(review.warnings(ds, ds.active_cell))
     assert use.use(ds, "eval").used_at is not None
-    frame = pd.DataFrame(
+    frame = frame_of(
         [{"input": {"onboarding_id": "a", "documents": []}, "expected_output": {"escalate": "yes"}}]
     )
     report = alignment.capability_contract(capability, frame, "eval")
@@ -123,8 +122,8 @@ def test_id_only_eval_and_invalid_final_packet_fail_declared_schema(capability):
     assert "input violates" in report["reason"] and "expected_output violates" in report["reason"]
 
 
-def test_worker_prompt_reports_capability_mismatch(capability):
-    frame = pd.DataFrame(
+def test_worker_prompt_reports_capability_mismatch(capability, frame_of):
+    frame = frame_of(
         [
             {
                 "messages": [
@@ -266,13 +265,13 @@ def test_training_create_allows_warnings_and_freezes_pair_atomically(capability)
     assert replacement.active_cell.used_at is None
 
 
-def test_empty_scanned_output_schema_does_not_require_json(capability):
+def test_empty_scanned_output_schema_does_not_require_json(capability, frame_of):
     capability.improvement_metadata["capability_card"]["output_schema"] = {
         "required_keys": [],
         "properties": {},
         "provenance": [],
     }
-    frame = pd.DataFrame(
+    frame = frame_of(
         [
             {
                 "input": {"onboarding_id": "case", "documents": ["evidence"]},
@@ -283,8 +282,8 @@ def test_empty_scanned_output_schema_does_not_require_json(capability):
     assert alignment.capability_contract(capability, frame, "eval")["ok"]
 
 
-def test_eval_rejects_worker_system_prompt_even_with_complete_evidence(capability):
-    frame = pd.DataFrame(
+def test_eval_rejects_worker_system_prompt_even_with_complete_evidence(capability, frame_of):
+    frame = frame_of(
         [
             {
                 "input": {

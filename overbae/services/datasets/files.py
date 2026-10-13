@@ -187,26 +187,59 @@ def _text_rows(fh: io.TextIOBase, name: str) -> list[dict[str, Any]]:
     return rows
 
 
-def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
-    name = (filename or "").lower()
-    bare = name.removesuffix(".gz")
-    if bare.endswith(".parquet"):
+class FileRows:
+    def __init__(self, path: Path, *, filename: str) -> None:
+        self.path = path
+        self.name = (filename or "").lower()
+        self.bare = self.name.removesuffix(".gz")
+        if self.bare.endswith(".json") and stored_stat(path).st_size > JSON_ARRAY_MAX_BYTES:
+            raise FileError(
+                f"A .json file is read whole and capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB "
+                "— use JSONL for larger files."
+            )
+        delimited = self.bare.endswith((".csv", ".tsv"))
+        raw: dict[str, None] = {}
+        numbers: dict[str, set[type] | None] = {}
+        self.count = 0
+        for row in self._parsed():
+            self.count += 1
+            for key, value in row.items():
+                raw.setdefault(key, None)
+                if not delimited or value in (None, "") or numbers.get(key, set()) is None:
+                    continue
+                parsed = _number(value)
+                numbers[key] = None if parsed is None else {*numbers.get(key, set()), type(parsed)}
+        self.names = dict(zip(raw, _clean_names(list(raw)), strict=True))
+        # Numeric only when every filled cell is the same kind of number.
+        self.numeric = {
+            key for key, kinds in numbers.items() if kinds is not None and len(kinds) == 1
+        }
+
+    def _parsed(self) -> Iterator[dict[str, Any]]:
+        if self.bare.endswith(".parquet"):
+            try:
+                source = pq.ParquetFile(self.path, pre_buffer=False)
+                for batch in source.iter_batches(batch_size=1_000, use_threads=False):
+                    yield from batch.to_pylist()
+            except (pa.ArrowException, OSError) as exc:
+                raise FileError("The file is not readable Parquet.") from exc
+            return
         try:
-            return _normalise_names(pq.read_table(path).to_pylist())
-        except (pa.ArrowException, OSError) as exc:
-            raise FileError("The file is not readable Parquet.") from exc
-    if bare.endswith(".json") and os.path.getsize(path) > JSON_ARRAY_MAX_BYTES:
-        raise FileError(
-            f"A .json file is read whole and capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB "
-            "— use JSONL for larger files."
-        )
-    try:
-        with _open_text(path, name) as fh:
-            return _text_rows(fh, bare)
-    except UnicodeDecodeError as exc:
-        raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
-    except (gzip.BadGzipFile, EOFError) as exc:
-        raise FileError("The file is not readable gzip.") from exc
+            with _open_text(self.path, self.name) as fh:
+                yield from iter_stream_rows(fh, filename=self.bare)
+        except UnicodeDecodeError as exc:
+            raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
+        except (gzip.BadGzipFile, EOFError) as exc:
+            raise FileError("The file is not readable gzip.") from exc
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        for row in self._parsed():
+            out = {}
+            for key, value in row.items():
+                if key in self.numeric:
+                    value = None if value in (None, "") else _number(value)
+                out[self.names[key]] = value
+            yield out
 
 
 def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
@@ -244,7 +277,7 @@ def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
         raise FileError(message) from exc
     if not rows:
         raise FileError("The file has no rows.")
-    record = {"bytes": size, "mtime_ns": path.stat().st_mtime_ns, "rows": rows}
+    record = {"bytes": size, "mtime_ns": stored_stat(path).st_mtime_ns, "rows": rows}
     _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
     return {"filename": filename, "bytes": size, "rows": rows}
 
@@ -256,7 +289,7 @@ def _inspection_path(upload_id: Any) -> Path:
 def inspection(upload_id: Any) -> dict[str, Any] | None:
     try:
         record = json.loads(_inspection_path(upload_id).read_text(encoding="utf-8"))
-        stat = upload_data_path(upload_id).stat()
+        stat = stored_stat(upload_data_path(upload_id))
     except (OSError, ValueError):
         return None
     if (record.get("bytes"), record.get("mtime_ns")) != (stat.st_size, stat.st_mtime_ns):
@@ -277,7 +310,7 @@ def parse_text(text: str, *, filename: str = "") -> list[dict[str, Any]]:
 def upload_dir(upload_id: Any) -> Path:
     from django.conf import settings
 
-    return Path(settings.MEDIA_ROOT) / "uploads" / str(upload_id)
+    return Path(settings.MEDIA_ROOT) / "uploads" / str(uuid.UUID(str(upload_id)))
 
 
 def upload_data_path(upload_id: Any) -> Path:
@@ -311,30 +344,49 @@ def upload_filename(upload_id: Any) -> str:
         return ""
 
 
+def stored_stat(path: Path) -> os.stat_result:
+    """The file's size and mtime as the file server holds them.
+
+    Uploads live on EFS, which several API and worker tasks mount over NFS. A
+    path ``stat()`` is answered from the client's attribute cache for up to a
+    minute, so chunks another task appended stay invisible; ``open()``
+    revalidates the attributes (close-to-open consistency).
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        return os.fstat(fd)
+    finally:
+        os.close(fd)
+
+
 def upload_received(upload_id: Any) -> int:
     try:
-        return upload_data_path(upload_id).stat().st_size
+        return stored_stat(upload_data_path(upload_id)).st_size
     except OSError:
         return 0
 
 
 def append_chunk(upload_id: Any, offset: int, chunk: bytes) -> int:
-    """Idempotent on retry: a chunk whose range is already stored returns the size."""
-    path = upload_data_path(upload_id)
-    if not path.exists():
-        raise FileError("This upload has expired. Start it again.")
+    """Writes the chunk at its offset, never appended, so a retry that races or
+    follows an earlier attempt rewrites the same bytes instead of duplicating them."""
+    if offset < 0:
+        raise FileError("The chunk offset is negative.")
     if offset + len(chunk) > MAX_UPLOAD_BYTES:
         raise FileError(f"Files are capped at {MAX_UPLOAD_BYTES // 1024**3} GB.")
-    size = path.stat().st_size
-    if offset == size:
-        with path.open("ab") as fh:
+    try:
+        fh = upload_data_path(upload_id).open("r+b")
+    except FileNotFoundError as exc:
+        raise FileError("This upload has expired. Start it again.") from exc
+    with fh:
+        size = os.fstat(fh.fileno()).st_size
+        if offset > size:
+            raise FileError(f"Chunk starts at {offset} but {size} bytes are stored.")
+        if offset + len(chunk) > size:
+            fh.seek(offset)
             fh.write(chunk)
             fh.flush()
             os.fsync(fh.fileno())
-        return path.stat().st_size
-    if offset < size and offset + len(chunk) <= size:
-        return size
-    raise FileError(f"Chunk starts at {offset} but {size} bytes are stored.")
+        return max(size, offset + len(chunk))
 
 
 def discard_upload(upload_id: Any) -> None:

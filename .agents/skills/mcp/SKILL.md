@@ -70,8 +70,11 @@ MCP client
 
 The entrypoint is `overbae/api/mcp.py`; ASGI mounts it through
 `overbae/asgi.py` as the outer Starlette app with Django at `/`. `/api/mcp/`
-never runs Django's `request_started`/`request_finished`, so
-`MCPAuthMiddleware` recycles the thread-local DB connection itself.
+and the OAuth routes never reach Django's `ASGIHandler`, so
+`RequestThreadMiddleware` (outermost) does its two jobs: a
+`ThreadSensitiveContext` per request, without which every thread-sensitive
+`sync_to_async` call in the process shares one thread, and closing the
+request's DB connections on that thread when it ends.
 `overbae/services/mcp/server.py` owns the official MCP SDK server, stateless
 Streamable HTTP transport, protocol checks, resource and prompt callbacks, and
 middleware ordering. Do not create a second MCP app or mount a feature-specific
