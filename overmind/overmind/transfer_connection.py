@@ -67,8 +67,9 @@ def request_json(client, method, url, *, stage, **kwargs):
                 "correct_manifest_parameter_types",
             ),
             "pipeline_package": (
-                "The pipeline package was rejected. Check manifest.json, Python syntax, "
-                "the approved runtime, relative file paths and package limits in overmind://dataset-upload.",
+                "The pipeline package was rejected. Check manifest.json, Python syntax, that every "
+                "step entrypoint contains statements, the approved runtime, relative file paths "
+                "and package limits in overmind://dataset-upload.",
                 "correct_pipeline_package",
             ),
             "file_too_large": (
