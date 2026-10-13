@@ -234,8 +234,9 @@ script execution, historical declarative operations, external imports, sources a
 history; review text alone is not proof of execution. The Script section can inspect
 every retained package file, with checksum-verified character pagination shared by
 REST and MCP. Keep each step's substantive logic in its visible entrypoint; shared
-helpers contain genuinely reusable utilities, not an opaque step dispatcher. Change
-recipes by new revisions and executions, never rewriting historical cell scripts.
+helpers contain genuinely reusable utilities, not an opaque step dispatcher.
+Registration (`pipeline_packages.save`, not `files()`) rejects an entrypoint with no
+statements; stored packages stay readable. Change recipes by new revisions and executions, never rewriting historical cell scripts.
 The Console preserves full-size cell contents on a 20px grid-snapped flow canvas.
 Steps cascade down; sibling branches align side by side on the same horizontal
 layer. Cells open at scale 1; explicit zoom, Fit view and a toggleable minimap

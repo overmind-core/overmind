@@ -197,6 +197,7 @@ Each line is the invariant; the named skill section carries the mechanics.
   The Console keeps full-size existing cells at scale 1 on a grid-snapped canvas:
   progress runs downward; sibling branches align on the same horizontal layer. Corrections replace the displayed process; there is no repair-history or restore view. The preparation graph follows verified run inputs, partition members and derivations across datasets; exact consumer-pinned cells remain reproducible internally. Detail: data-workshop skill.
   Each entrypoint exposes its meaningful step logic; helpers hold reusable utilities.
+  Registration rejects an entrypoint with no statements; `pass` and pass-through logic pass.
   Cells expose receipt-backed transformation attribution and allow inspection of all
   checksum-verified retained package files. External imports remain distinct from
   platform execution; historical scripts are never rewritten to imply new execution.

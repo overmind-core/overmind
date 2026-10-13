@@ -355,6 +355,7 @@ def execute(run_id, *, script_executor=None):
     stage = None
     stage_seconds = {}
     receipts = []
+    written = []
 
     def progress(next_stage, *, heartbeat=False):
         nonlocal checkpoint, stage, stage_started_at
@@ -704,6 +705,7 @@ def execute(run_id, *, script_executor=None):
                     destination = paths.cell_path(dataset.pk, cell.pk)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(output, destination)
+                    written.append((cell.pk, destination))
                     report = {
                         "kind": "pipeline" if run.pipeline_id else "external",
                         "status": "accepted",
@@ -745,13 +747,22 @@ def execute(run_id, *, script_executor=None):
                     lambda: events.publish(dataset.pk, {"type": "dataset_changed"})
                 )
     except (ValueError, rows.RowStoreError, DatasetError) as exc:
+        discard_unpublished(written)
         fail(run_id, str(exc)[:1000])
     except Exception:
         logger.exception("Pipeline run failed: %s", run_id)
+        discard_unpublished(written)
         fail(
             run_id,
             "Transformation failed. Inspect the recipe and source columns; no version was published.",
         )
+
+
+def discard_unpublished(written):
+    # A rolled-back publication keeps the copied files; a committed cell's file stays.
+    for cell_id, destination in written:
+        if not Cell.objects.filter(pk=cell_id).exists():
+            destination.unlink(missing_ok=True)
 
 
 def bounded_sample(path):

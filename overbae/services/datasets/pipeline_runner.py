@@ -27,6 +27,13 @@ class RuntimeUnavailableError(ValueError):
     pass
 
 
+# 124 is the in-container timeout; 137 is SIGKILL, which the memory limit sends but so can anything else.
+EXIT_CAUSES = {
+    124: "The script exceeded its time limit.",
+    137: "The script was killed, most likely by its memory limit.",
+}
+
+
 class DockerConnection(http.client.HTTPConnection):
     def connect(self):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -411,8 +418,10 @@ def execute_script(run, index, source, directory, step, files, progress):
                     run.result["steps"][index]["exit_code"] = execution_state.get("ExitCode")
                     progress()
                     if execution_state.get("ExitCode") != 0:
+                        code = execution_state.get("ExitCode")
                         raise RuntimeUnavailableError(
-                            "The script failed or exceeded its time limit. Inspect the step's retained diagnostics."
+                            f"{EXIT_CAUSES.get(code, f'The script exited with code {code}.')} "
+                            "Inspect the step's retained diagnostics."
                         )
                     output = engine.artifact(identity, "output.jsonl", scratch_path, scratch // 2)
                     if output is None:

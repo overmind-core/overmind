@@ -465,7 +465,7 @@ def test_preview_defers_population_bounds_but_publish_enforces_them(settings):
     original = dataset.active_cell
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
-        archive.writestr("step.py", "# Executed by the isolated runner in production.\n")
+        archive.writestr("step.py", "pass  # Executed by the isolated runner in production.\n")
         archive.writestr(
             "manifest.json",
             json.dumps(
@@ -715,6 +715,13 @@ def test_package_registration_never_executes_and_rejects_unsafe_archives(setting
             {"manifest.json": json.dumps(manifest), "preserve.py": "not valid python!"}
         ).status_code
         == 400
+    )
+    for code in ["", "\n  \n", "# TODO\n", '"""Only a docstring."""\n']:
+        rejected = upload({"manifest.json": json.dumps(manifest), "preserve.py": code})
+        assert rejected.status_code == 400, repr(code)
+        assert "no statements" in str(rejected.data), repr(code)
+    assert (
+        upload({"manifest.json": json.dumps(manifest), "preserve.py": "pass\n"}).status_code == 201
     )
 
 
@@ -1153,7 +1160,7 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
         output.write(json.dumps(row) + '\\n')
 """
 
-    def package(code, seconds=30):
+    def package(code, seconds=30, **limits):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, "w") as archive:
             archive.writestr(
@@ -1162,7 +1169,7 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
                     {
                         "version": 1,
                         "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
-                        "limits": {"seconds": seconds},
+                        "limits": {"seconds": seconds, **limits},
                         "steps": [
                             {
                                 "name": "Double",
@@ -1223,4 +1230,25 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
     runtime = job["details"]["result"]["steps"][0]["runtime"]
     assert runtime["stage"] == "stopped"
     assert runtime["cleanup_confirmed"] is True
+    assert "time limit" in job["details"]["error"]
+    assert dataset.cells.count() == 3
+    heavy = package(
+        "x = bytearray(400 * 1024 * 1024)\nx[::4096] = bytes(len(x[::4096]))", memory_mb=64
+    )
+    heavy_recipe = call(
+        context, "save_dataset_pipeline", name="Memory", request_key="memory", package=str(heavy.pk)
+    )["pipeline"]
+    run = call(
+        context,
+        "run_dataset_pipeline",
+        dataset=str(dataset.pk),
+        pipeline=heavy_recipe["id"],
+        source_cell=str(dataset.active_cell.pk),
+        source_fingerprint=dataset.active_cell.fingerprint,
+        request_key="memory",
+    )["run"]
+    workbench.execute(run["id"], script_executor=pipeline_runner.execute_script)
+    job = call(context, "get_job", kind="dataset_pipeline", id=run["id"])
+    assert job["status"] == "failed", job
+    assert "memory limit" in job["details"]["error"]
     assert dataset.cells.count() == 3

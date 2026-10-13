@@ -215,9 +215,27 @@ def inspect_bytes(data, *, require_runtime=True):
     return manifest, inventory, files
 
 
+def require_entrypoint_statements(manifest, files):
+    for step in manifest["steps"]:
+        body = ast.parse(files[step["entrypoint"]]).body
+        first = body[0] if body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            body = body[1:]
+        if not body:
+            raise error(
+                f"Entrypoint {step['entrypoint']} has no statements. Put the step's logic in it."
+            )
+
+
 def save(project, user, upload):
     data = upload.read(MAX_BYTES + 1)
-    manifest, inventory, _ = inspect_bytes(data)
+    manifest, inventory, files = inspect_bytes(data)
+    # Registration only: files() re-inspects stored bytes, which must stay readable.
+    require_entrypoint_statements(manifest, files)
     checksum = hashlib.sha256(data).hexdigest()
     with transaction.atomic():
         Project.objects.select_for_update().get(pk=project.pk)

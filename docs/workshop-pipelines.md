@@ -50,6 +50,10 @@ images. A missing heartbeat is not confirmation that a previously started job st
 A package is a ZIP or directory containing `manifest.json` and UTF-8 Python,
 JSON, text or lock files. Maximum: 100 regular files, 10 MiB compressed and expanded.
 Traversal paths, symlinks, duplicates and invalid Python syntax are rejected.
+Registering a package also rejects an entrypoint with no statements (empty, comments
+or a docstring only). A file containing `pass` or unchanged pass-through logic is
+accepted: the platform checks that logic exists, not that it is correct. Packages
+registered earlier remain readable.
 
 ```json
 {
@@ -158,6 +162,30 @@ does not assert process termination until the controller observes cleanup.
 Expired runs fail without replay; unknown Docker acknowledgements are not
 resubmitted. Repeating an identical run key recovers its original receipt.
 Use a new key only after inspecting the previous outcome and authorizing a retry.
+
+A step that exits non-zero fails the run and publishes nothing. The error names
+the cause when the exit code identifies it: 124 for the time limit, 137 for a
+kill that is most likely the memory limit. Any other code is reported as is;
+a script that hits its scratch or file-size limit usually exits 1, so read the
+step's stderr. If publication fails after cell files are copied, the copied
+files are removed. A process killed between the copy and the commit can leave
+an unreferenced file. Inside a job, the runner waits for its request file with
+no limit of its own; the controller deadline (`seconds` plus ten) ends it.
+
+Provenance labels differ by object. A cell's `transformation.execution` is
+`source`, `unrecorded`, `isolated_container`, `platform_operations` or
+`external_import`. A run or publication report uses `isolated_container`,
+`platform` or `external_attributed`. Both name externally authored rows that
+the platform did not execute. An external import must name real parent rows;
+the platform cannot tell whether a valid parent is the semantically right one.
+`batch_rows` preserves source order and atomic publication, but whether a step
+is safe to split is the author's declaration.
+
+Package and revision rows are immutable by application behavior: no code updates them
+after creation, and the database has no update guard. A revision binds its package by
+ID, and the package's SHA-256 is re-verified against the stored bytes before every
+validation and run. Cell attribution reads the package from its current row, not a
+snapshot taken at run time.
 
 ## Repeated sources
 
