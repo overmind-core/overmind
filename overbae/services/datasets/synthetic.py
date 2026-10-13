@@ -41,8 +41,17 @@ def check(dataset: Dataset, parent: Cell, rows: Any, instruction: str) -> str:
         )
     columns = {c["name"] for c in parent.columns or []} - _HIDDEN
     for number, row in enumerate(rows, start=1):
-        if not isinstance(row, dict) or not row:
+        if not isinstance(row, dict):
             raise DatasetError(f"Row {number} is not an object.", code="synthetic", field="rows")
+        if not row:
+            raise DatasetError(f"Row {number} is empty.", code="synthetic", field="rows")
+        reserved = sorted(set(row) & _HIDDEN)
+        if reserved:
+            raise DatasetError(
+                f"Row {number} has columns the platform sets: {', '.join(reserved)}.",
+                code="synthetic",
+                field="rows",
+            )
         unknown = sorted(set(row) - columns)
         if unknown:
             raise DatasetError(
@@ -53,6 +62,24 @@ def check(dataset: Dataset, parent: Cell, rows: Any, instruction: str) -> str:
     return script(rows, instruction[:4000])
 
 
+def _next_identity(dataset: Dataset) -> int:
+    """Past every row identity any version of the dataset holds: a parent that dropped
+    rows would otherwise hand their identities to new rows, and diffs would pair them."""
+    highest = -1
+    for cell in dataset.cells.all():
+        path = paths.cell_path(dataset.pk, cell.pk)
+        if not path.exists() or store.SOURCE_ROW not in store.Frame(path):
+            continue
+        con = store.connect(t=path)
+        try:
+            found = con.execute(f"SELECT max({store.SOURCE_ROW}) FROM t").fetchone()[0]
+        finally:
+            con.close()
+        if found is not None:
+            highest = max(highest, int(found))
+    return highest + 1
+
+
 def write(dataset: Dataset, parent: Cell, text: str, output: Path) -> None:
     payload = json.loads(text)
     rows, instruction = payload["rows"], payload["instruction"]
@@ -60,12 +87,7 @@ def write(dataset: Dataset, parent: Cell, text: str, output: Path) -> None:
     source = paths.cell_path(dataset.pk, parent.pk)
     frame = store.Frame(source)
     seen = {content_key(row, include_output=True) for row in store.records(source)}
-    identities = (
-        [k for k in frame.values(store.SOURCE_ROW) if k is not None]
-        if (store.SOURCE_ROW in frame)
-        else None
-    )
-    next_id = max(identities, default=-1) + 1 if identities is not None else None
+    next_id = _next_identity(dataset) if store.SOURCE_ROW in frame else None
     generated = []
     for offset, original in enumerate(rows):
         row = dict(original)
@@ -92,7 +114,7 @@ def write(dataset: Dataset, parent: Cell, text: str, output: Path) -> None:
         report = contract.measure(store.Frame(added))[dataset.intent]
         if not report["ok"]:
             raise DatasetError(
-                f"The rows do not fit a {dataset.intent} dataset: {report['reason']}",
+                f"The rows do not fit the {dataset.intent} intent: {report['reason']}",
                 code="synthetic",
             )
     store.write_extended(source, generated, output)

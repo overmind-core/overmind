@@ -605,6 +605,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         uri = resource_link("jobs", f"dataset_import/{job.id}", (job.name or "Dataset")[:160])
         snapshot = dataset_import_job_payload(job, uri["uri"])
         created_at, updated_at = job.created_at, job.updated_at
+        completed_at = snapshot["completed_at"]
         label, status, job_error = (job.name or "Dataset")[:160], job.state, job.error or None
         progress = snapshot["progress"]
         details = {

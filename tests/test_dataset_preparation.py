@@ -67,6 +67,19 @@ def test_synthetic_rows_append_to_the_parent_as_a_new_inactive_version():
 
 
 @pytest.mark.django_db(transaction=True)
+def test_synthetic_rows_under_a_filtered_parent_are_new_rows_against_the_source():
+    ds = dataset()
+    first = executions.run_now(
+        ds, mode=Execution.Mode.CELL, parent=ds.source, script="df = df.iloc[:1]", title="First"
+    ).cell
+    rows = [{"input": "three", "expected_output": "yes", "label": "minority"}]
+    run = workshop.add_synthetic_examples(ds, first.label, rows, "More minority cases")
+    source = paths.cell_path(ds.id, ds.source.id)
+    report = review.impact(source, paths.cell_path(ds.id, run.cell.id))
+    assert (report["rows_added"], report["rows_removed"]) == (1, 1)
+
+
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
     ("rows", "instruction", "field", "message"),
     [
@@ -77,6 +90,9 @@ def test_synthetic_rows_append_to_the_parent_as_a_new_inactive_version():
             "duplicates",
         ),
         ([{"question": "q"}], "x", "rows", "does not have: question"),
+        ([{}], "x", "rows", "Row 1 is empty."),
+        ([{"input": "q", "source_row": 0}], "x", "rows", "the platform sets: source_row"),
+        ([{"label": "minority"}], "x", None, "do not fit the eval intent"),
         ([], "x", "rows", "between 1 and 50"),
         ([{"input": "three"}], " ", "instruction", "instruction"),
     ],
@@ -126,7 +142,7 @@ def test_split_clusters_content_and_groups_and_reports_stratification():
     assert {r["customer"] for r in train}.isdisjoint({r["customer"] for r in evaluation})
     assert report["duplicates_removed"] == 1 and report["content_overlap"] == 0
     assert all(stratum["eval"] == 3 for stratum in report["strata"].values())
-    with pytest.raises(ValueError, match="independent holdout"):
+    with pytest.raises(ValueError, match="A split needs two"):
         split_rows(
             [source[0], {**source[0], "expected_output": "b"}], eval_percent=30, position="random"
         )

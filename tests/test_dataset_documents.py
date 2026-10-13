@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import shutil
@@ -8,8 +9,10 @@ from conftest import read_table
 from fixtures.documents.generate import pdf
 from rest_framework.test import APIClient
 
-from overbae.models import Dataset, Project, ProjectMembership, User
+from overbae.models import APIToken, Dataset, Project, ProjectMembership, User
 from overbae.services.datasets import files, paths
+from overbae.services.mcp.catalog import CATALOG
+from overbae.services.mcp.context import MCPContext
 
 FIXTURES = Path(__file__).parent / "fixtures" / "documents"
 needs_ocr = pytest.mark.skipif(not shutil.which("tesseract"), reason="Tesseract is not installed")
@@ -109,6 +112,31 @@ def test_a_text_pdf_lands_one_row_per_element_with_pages_and_regions(client_proj
     assert not files.upload_data_path(upload_id).exists()
 
 
+def test_inspect_names_each_document_and_what_extraction_could_not_guarantee(client_project):
+    client, project = client_project
+    content = (FIXTURES / "native.pdf").read_bytes()
+    dataset = _land(client, project, [_upload(client, "native.pdf", content)])
+    token = APIToken(
+        scope={"scope": "project", "resourceIds": [str(project.id)], "permission": ["read"]}
+    )
+    context = MCPContext(user=User.objects.get(email="docs@test.com"), token=token, project=project)
+
+    inspected = asyncio.run(
+        CATALOG.call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    ).structuredContent
+
+    (described,) = inspected["source"]["files"]
+    assert (described["filename"], described["bytes"], described["rows"]) == (
+        "native.pdf",
+        len(content),
+        2,
+    )
+    assert described["extraction"]["method"] == "docling-native-pdf"
+    assert inspected["source"]["limitations"] == [
+        "Reading order and visual table structure are not reconstructed."
+    ]
+
+
 @pytest.mark.parametrize(
     ("name", "texts"),
     [
@@ -183,6 +211,9 @@ def test_an_unreadable_document_fails_the_landing_with_no_rows(
     assert dataset.error == error
     assert dataset.source is None
     assert files.upload_data_path(upload_id).exists()
+    assert client.get(f"/api/datasets/{dataset.id}/").data["import_blocked"] is False
+    retried = client.post(f"/api/datasets/{dataset.id}/resume-import/")
+    assert (retried.status_code, retried.data["code"]) == (409, "not_resumable")
 
 
 def test_a_gzipped_document_is_refused_at_upload(client_project):
@@ -244,6 +275,32 @@ def test_a_split_keeps_each_document_on_one_side(client_project):
     assert sides[0] and sides[1]
     assert not sides[0] & sides[1]
     assert train.source_spec["split"]["group_by"] == ["_overmind_document_id"]
+
+
+def test_a_split_of_one_document_is_refused_before_any_dataset_exists(client_project):
+    client, project = client_project
+    upload_id = _upload(client, "native.pdf", (FIXTURES / "native.pdf").read_bytes())
+    client.post(
+        f"/api/uploads/{upload_id}/inspect/",
+        {"size": files.upload_received(upload_id)},
+        format="json",
+    )
+
+    response = client.post(
+        "/api/datasets/split/",
+        {
+            "project": str(project.id),
+            "name": "One",
+            "source": {"uploads": [upload_id]},
+            "eval_percent": 30,
+            "position": "random",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Two documents are needed to split." in str(response.data)
+    assert not Dataset.objects.filter(project=project).exists()
 
 
 def test_a_json_rows_field_lands_only_that_array(client_project):

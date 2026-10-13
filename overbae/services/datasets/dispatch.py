@@ -116,7 +116,12 @@ def create_split(
     elif source.get("traces") is not None:
         known = selection.TraceSource.parse(source["traces"]).count(project.id)
     elif source.get("llm_calls") is None:
-        inspected = [files.inspection(i) for i in source.get("uploads") or [source["upload_id"]]]
+        uploads = source.get("uploads") or [source["upload_id"]]
+        # Documents split by document, so one document cannot be split.
+        lone = files.upload_filename(uploads[0]) if len(uploads) == 1 else ""
+        if lone and not group_by and files.is_document(lone):
+            raise DatasetError("Two documents are needed to split.", code="split")
+        inspected = [files.inspection(i) for i in uploads]
         counts = [record["rows"] if record else None for record in inspected]
         known = None if None in counts else sum(counts)
     else:

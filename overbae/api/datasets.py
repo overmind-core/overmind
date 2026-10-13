@@ -29,7 +29,7 @@ from overbae.api.dataset_serializers import (
     RowsPageSerializer,
 )
 from overbae.api.scoping import project_ids_for
-from overbae.models import Capability, Cell, Dataset, DatasetImport, Execution, Project
+from overbae.models import Capability, Cell, Dataset, Execution, Project
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     dispatch,
@@ -105,13 +105,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                         executions__state__in=[Execution.State.QUEUED, Execution.State.RUNNING]
                     ),
                 ),
-                import_blocked=Exists(
-                    DatasetImport.objects.filter(
-                        Q(dataset_id=OuterRef("pk")) | Q(evaluation_id=OuterRef("pk")),
-                        state=DatasetImport.State.BLOCKED,
-                        attempts__lt=imports.MAX_ATTEMPTS,
-                    )
-                ),
+                import_blocked=Exists(imports.resumable_imports(OuterRef("pk"))),
             )
         )
         if self.action != "list":

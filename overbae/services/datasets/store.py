@@ -9,6 +9,7 @@ import math
 import tempfile
 import threading
 from collections.abc import Iterable, Iterator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -471,5 +472,8 @@ def _json_safe(row: dict[str, Any]) -> dict[str, Any]:
             v = v.decode("utf-8", "replace")
         elif isinstance(v, float) and math.isnan(v):
             v = None
+        elif isinstance(v, Decimal):
+            # SUM over integers is a HUGEINT/DECIMAL; JSON would carry it as a string.
+            v = int(v) if v == v.to_integral_value() else float(v)
         out[k] = v
     return out

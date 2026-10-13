@@ -79,6 +79,23 @@ def test_try_previews_a_script_without_creating_a_version():
     assert Execution.objects.get(pk=body["execution"]).mode == Execution.Mode.TRY
 
 
+def test_a_try_previews_missing_values_as_null():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    script = (
+        "df['score'] = [1.5, float('nan'), None]\n"
+        "df['match'] = df['input'].map(lambda s: s if s else None)\n"
+        "df['at'] = pd.to_datetime(['2026-01-02', None, '2026-01-03'])\n"
+    )
+    body = _call(
+        "try_dataset_script", {"dataset": str(dataset.id), "script": script}, context
+    ).structuredContent
+    assert body["status"] == "ok", body
+    assert [row["score"] for row in body["head"]] == [1.5, None, None]
+    assert [row["match"] for row in body["head"]] == ["q1", None, "q3"]
+    assert body["head"][0]["at"].startswith("2026-01-02") and body["head"][1]["at"] is None
+
+
 def test_probe_returns_what_the_script_prints():
     context = mcp_context(("read", "write"))
     dataset = _landed(context)
@@ -93,6 +110,23 @@ def test_probe_returns_what_the_script_prints():
     )
     assert result.structuredContent["status"] == "ok"
     assert result.structuredContent["stdout"] == "{'keep': 2, 'junk': 1}\n"
+
+
+def test_refused_synthetic_rows_say_the_rows_failed_not_a_script():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    result = _call(
+        "add_synthetic_examples",
+        {
+            "dataset": str(dataset.id),
+            "parent": "v0",
+            "rows": [{"tag": "keep"}],
+            "instruction": "Rows with no input",
+        },
+        context,
+    ).structuredContent
+    assert (result["status"], result["summary"]) == ("failed", "The rows were refused.")
+    assert "do not fit the eval intent" in result["error"]
 
 
 def test_an_added_version_is_measured_inactive_and_activated_only_on_request():
@@ -492,6 +526,19 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped():
     assert ok.structuredContent["truncated"] is True
     assert foreign.structuredContent["error"]["code"] == "cell_not_found"
     assert write.structuredContent["error"]["code"] == "query_invalid"
+
+
+def test_query_returns_aggregates_as_numbers():
+    context = mcp_context(("read", "write"))
+    dataset = frozen_dataset(
+        context.project, [{"input": str(n), "expected_output": "x", "n": n} for n in range(4)]
+    )
+    totals = _call(
+        "query_dataset",
+        {"dataset": str(dataset.id), "sql": "select sum(n) total, avg(n) mean from t"},
+        context,
+    ).structuredContent["rows"]
+    assert totals == [{"total": 6, "mean": 1.5}]
 
 
 def _root_span(project, trace_id: str) -> Span:

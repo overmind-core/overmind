@@ -31,6 +31,8 @@ MAX_ATTEMPTS = 3
 MAX_PUBLICATIONS = 8
 RECONCILE_BATCH = 40
 PUBLISH_LEASE_SECONDS = 30
+# The source itself cannot land, so a retry fails the same way.
+SOURCE_FAILURES = ("source_invalid", "mixed_sources", "source_missing", "source_changed")
 
 
 @dataclass(frozen=True)
@@ -329,7 +331,7 @@ def resumable_imports(dataset_id):
         Q(dataset_id=dataset_id) | Q(evaluation_id=dataset_id),
         state=DatasetImport.State.BLOCKED,
         attempts__lt=MAX_ATTEMPTS,
-    )
+    ).exclude(failure_code__in=SOURCE_FAILURES)
 
 
 @transaction.atomic
@@ -337,6 +339,10 @@ def resume(run_id):
     run = DatasetImport.objects.select_for_update().get(pk=run_id)
     if run.state != DatasetImport.State.BLOCKED:
         raise DatasetError("Only a stopped import can be retried.", code="import_busy")
+    if run.failure_code in SOURCE_FAILURES:
+        raise DatasetError(
+            "The source cannot land. Fix it and upload it again.", code="not_resumable"
+        )
     if run.attempts >= MAX_ATTEMPTS:
         raise DatasetError(
             "The import attempt limit was reached. Its source is retained.",

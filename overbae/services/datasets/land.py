@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class LandError(ValueError):
-    def __init__(self, message: str, *, code: str = "import_failed") -> None:
+    def __init__(self, message: str, *, code: str = "source_invalid") -> None:
         super().__init__(message)
         self.code = code
 
@@ -295,9 +295,9 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
     try:
         names = [c["name"] for c in store.read_manifest(output)]
     except (OSError, ValueError, KeyError) as exc:
-        raise LandError("The extracted rows could not be read.") from exc
+        raise LandError("The extracted rows could not be read.", code="extraction_lost") from exc
     if names != expected or not isinstance(extraction, dict):
-        raise LandError("The extracted rows could not be read.")
+        raise LandError("The extracted rows could not be read.", code="extraction_lost")
     return extraction
 
 

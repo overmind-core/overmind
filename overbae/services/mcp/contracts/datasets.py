@@ -158,7 +158,20 @@ class DatasetHumanAction(MCPModel):
     arguments: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
+class SourceFile(MCPModel):
+    filename: str = Field(max_length=255)
+    bytes: int | None = Field(default=None, ge=0)
+    rows: int | None = Field(default=None, ge=0)
+    extraction: dict[str, Any] = Field(default_factory=dict)
+
+
+class DatasetSource(MCPModel):
+    files: list[SourceFile] = Field(default_factory=list, max_length=_LIST_CAP)
+    limitations: list[str] = Field(default_factory=list, max_length=50)
+
+
 class DatasetDetail(DatasetListItem):
+    source: DatasetSource
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
@@ -679,6 +692,25 @@ def _detail_summary(dataset, total: int, active: Cell | None, running: int) -> s
     return text + "."
 
 
+def _source(dataset) -> DatasetSource:
+    spec = dataset.source_spec or {}
+    described = spec.get("files") or (
+        [{"filename": spec["filename"]}] if spec.get("filename") else []
+    )
+    return DatasetSource(
+        files=[
+            SourceFile(
+                filename=str(item.get("filename", ""))[:255],
+                bytes=item.get("bytes"),
+                rows=item.get("rows"),
+                extraction=_jsonable(item.get("extraction") or {}),
+            )
+            for item in described[:_LIST_CAP]
+        ],
+        limitations=list((spec.get("extraction") or {}).get("limitations", []))[:50],
+    )
+
+
 def serialize_dataset_detail(dataset, *, offset: int = 0, limit: int = _VERSION_DEFAULT):
     status = workshop.status(dataset, offset, limit)
     active = status["active"]
@@ -688,6 +720,7 @@ def serialize_dataset_detail(dataset, *, offset: int = 0, limit: int = _VERSION_
     return DatasetDetail.model_validate(
         {
             **_list_fields(dataset),
+            "source": _source(dataset),
             "preparation_context": _jsonable(workshop_context(dataset)),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),
@@ -729,12 +762,12 @@ def _run_summary(run: workshop.Run, done: str) -> str:
     if run.status == Execution.State.RUNNING:
         return "Running. Repeat the identical call to get the result."
     if run.status == Execution.State.FAILED:
-        prefix = (
-            "The platform stopped the run; the identical call runs again."
-            if (run.execution is not None and run.execution.transient)
-            else "The script failed."
-        )
-        return _clip(prefix, _SUMMARY_CHARS)
+        execution = run.execution
+        if execution is not None and execution.transient:
+            return "The platform stopped the run; the identical call runs again."
+        if execution is not None and execution.mode == Execution.Mode.SYNTHETIC:
+            return "The rows were refused."
+        return "The script failed."
     return _clip(done, _SUMMARY_CHARS)
 
 

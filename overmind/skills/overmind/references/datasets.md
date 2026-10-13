@@ -53,7 +53,8 @@ capability from the rows when none is bound.
   source.
 - Omit `capability` to infer it, pass a UUID to bind it, or pass `null` for
   none. Poll `get_job(kind=dataset_import)`. A blocked import keeps its source;
-  `resume_dataset_import` retries it.
+  `resume_dataset_import` retries it when `next_actions` offers it. A source
+  that cannot land (an unreadable file, say) offers no retry.
 
 ### Documents
 
@@ -85,15 +86,19 @@ counts. Near-duplicate similarity is not checked.
 
 A script reads `df` (a copy of the parent version) and `source` (the parent,
 unchanged) and leaves a new `df`. `pd`, `np` and `prepare_examples` are
-already loaded. Imports are limited to the standard library and pandas, numpy,
+already loaded. Imports are limited to common standard library modules (`re`,
+`json`, `math`, `collections`, `datetime`, `pathlib`, ...) and pandas, numpy,
 pyarrow, duckdb, scipy, sklearn, rapidfuzz, regex, jsonschema, tiktoken,
 langdetect, datasketch, dateutil, pytz, yaml, unidecode, ftfy, simhash, emoji,
-langcodes, jellyfish, Levenshtein, markdownify, bs4, lxml and wordfreq. There
-is no network and no file access. A run stops after 300 s, 120 s of CPU, or
-when it outgrows the memory reserved for its parent.
+langcodes, jellyfish, Levenshtein, markdownify, bs4, lxml and wordfreq; a
+refused import names the module. `open()`, `exec()` and `eval()` are refused.
+There is no network, and a run cannot see other runs or the platform's data.
+A run stops after 300 s, 120 s of CPU, or when it outgrows the memory reserved
+for its parent; files it writes count toward that memory.
 
 Keep `source_row`: it is row identity across versions, and diffs, impact and
-consumers rely on it. Rows a script adds get no `source_row`.
+consumers rely on it. Rows a script adds get no `source_row`; rows from `add_synthetic_examples` get new
+identities that no other version uses.
 `prepare_examples(df, intent="train" | "eval")` builds `messages` or
 `input`/`expected_output` from common shapes.
 

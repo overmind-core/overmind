@@ -654,6 +654,7 @@ def dataset_import_job_payload(dataset, uri: str) -> dict:
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
         "updated_at": dataset.updated_at,
+        "completed_at": receipt.published_at if receipt is not None else None,
     }
 
 

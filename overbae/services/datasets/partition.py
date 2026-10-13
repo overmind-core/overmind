@@ -162,7 +162,8 @@ def split_positions(
     ordered = list(components.values())
     if len(ordered) < 2:
         raise ValueError(
-            "All rows belong to one content/group cluster; an independent holdout cannot be created."
+            "All rows are one group (the same content, conversation, trace, document, "
+            "group column or synthetic seed). A split needs two."
         )
     if position == "tail":
         ordered.reverse()

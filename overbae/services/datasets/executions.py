@@ -333,11 +333,14 @@ def visible_columns(names: list[str]) -> list[str]:
 
 def preview(path: Path) -> dict[str, Any]:
     names = [c["name"] for c in store.read_manifest(path)]
-    head = store.frame_rows(path, range(PREVIEW_ROWS)).to_dict(orient="records")
+    # to_json writes NaN and NaT as null; json.dumps would write NaN, which jsonb refuses.
+    head = store.frame_rows(path, range(PREVIEW_ROWS)).to_json(
+        orient="records", date_format="iso", default_handler=str
+    )
     return {
         "rows": store.row_count(path),
         "columns": visible_columns(names)[:MAX_PREVIEW_COLUMNS],
-        "head": json.loads(json.dumps(visible(head), default=str)),
+        "head": visible(json.loads(head)),
     }
 
 

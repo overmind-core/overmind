@@ -16,7 +16,7 @@ CONSUMERS = {
         "model_specific": "Training applies the selected model's chat template, tokenization, loss masks and context checks. The workshop neither selects a model nor repairs data during training.",
     },
     "model_evaluation": {
-        "reads": ["input.messages", "input.tools (optional)"],
+        "reads": ["input (text, an object, or a messages list)", "input.tools (optional)"],
         "target": "expected_output is the grading reference; model_expected_output separates a model response from an application-level reference when both exist.",
         "execution": "Calls the model, not the application. It cannot resolve record IDs or fetch documents. Include all evidence before the target; never copy the target into the request.",
         "tools": "Tool schemas advertise callable interfaces, not implementations. Tool replay needs recorded calls and results; it does not execute application tools. Missing replay evidence must be reported, never invented.",
