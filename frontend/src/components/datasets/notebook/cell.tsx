@@ -157,7 +157,7 @@ function intentCheck(intent: string, shape: Report): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Set the intent to train or eval in Dataset settings.",
+      fix: "Set the intent to train or eval with update_dataset over MCP.",
       found: "train or eval not chosen",
       label: "Intent",
       ok: false,

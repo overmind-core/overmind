@@ -11,7 +11,7 @@ import {
 } from "@/components/datasets/notebook/cell";
 import { type FlowFocus, VersionFlow } from "@/components/datasets/notebook/cell-flow";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
-import { DatasetSettings } from "@/components/datasets/notebook/settings";
+import { RenameDataset } from "@/components/datasets/notebook/settings";
 import { WorkshopStatus } from "@/components/datasets/workshop-status";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
@@ -225,8 +225,7 @@ export function DatasetNotebook({
             if (target) show(target.id);
           }}
         />
-        <DatasetSettings
-          capabilities={capabilityChoices}
+        <RenameDataset
           dataset={dataset}
           disabled={!editable || patch.isPending}
           onSave={guard((next: DatasetPatch) => patch.mutate(next))}

@@ -298,32 +298,22 @@ it("counts running scripts and lists recent runs in Activity", async () => {
   expect(within(added).getByRole("button", { name: "Show v1" })).toBeTruthy();
 });
 
-it("renames the dataset and sets its intent from the settings", async () => {
+it("renames the dataset and changes nothing else", async () => {
   state.dataset = dataset({
     active: "c0",
     active_version: "v0",
     cells: [SOURCE],
     intent: "pending",
   });
-  Element.prototype.scrollIntoView = vi.fn();
   showNotebook();
-  fireEvent.click(screen.getByRole("button", { name: "Dataset settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rename dataset" }));
+  expect(screen.queryByRole("combobox")).toBeNull();
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "support v2" } });
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "Intent" }), { key: "ArrowDown" });
-  fireEvent.click(screen.getByRole("option", { name: "Eval" }));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(state.patch).toHaveBeenCalledWith({
       id: "dataset",
-      patchedDatasetRequest: { intent: "eval", name: "support v2" },
+      patchedDatasetRequest: { name: "support v2" },
     })
   );
-});
-
-it("fixes the intent once a version was used", () => {
-  state.dataset = dataset({ active: "c1", active_version: "v1", cells: [SOURCE, NORMALIZED] });
-  showNotebook();
-  fireEvent.click(screen.getByRole("button", { name: "Dataset settings" }));
-  expect(screen.getByRole("combobox", { name: "Intent" }).hasAttribute("disabled")).toBe(true);
-  expect(screen.getByText("A version was used; the intent is fixed.")).toBeTruthy();
 });

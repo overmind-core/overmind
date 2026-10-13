@@ -644,10 +644,10 @@ surface with a dot grid; no page header, the breadcrumb names the dataset. A
 32px bar above the canvas holds, from the left: the landing line ("Landing the
 source…", "Extracting text"), the landing error as plain `destructive` text,
 **Retry import** when the import can resume, and the data-split summary; on the
-right the workshop status and the controls (Dataset settings, the dataset-list
-switcher and the minimap toggle, ghost icon buttons). Dataset settings opens a
-popover with Name, Intent (Train or Eval; fixed once a version was used) and
-Capability, and **Save**. Each version is a node under its parent,
+right the workshop status and the controls (Rename dataset, the dataset-list
+switcher and the minimap toggle, ghost icon buttons). Rename dataset opens a
+popover with Name and **Save**; intent and capability change only through the
+contract chip's shortcuts. Each version is a node under its parent,
 laid out top-down by ELK on a 20px grid, joined by square-cornered
 `muted-foreground` edges with no labels. A card can be dragged by its chip and
 keeps its place; **Reset layout** in the canvas controls clears the places.
@@ -678,8 +678,8 @@ The footer is one 32px line. On the active card: an **Active** chip, then a
 contract chip that names the first failure (**The active version does not
 match the train shape.**, **Rows do not match Research Agent.**, **Intent
 pending**, else **Format valid**). Its hover card gives each contract as Needs
-/ Columns / Found / Fix and, when one fails, shortcuts to Dataset settings: use
-the other intent when its shape holds, or switch to a better-ranked capability,
+/ Columns / Found / Fix and, when one fails, shortcuts: use the intent whose
+shape holds, or switch to a better-ranked capability,
 or remove the capability. The chip is a button, so focus opens the card. Then the consumers in the primary tint on the right:
 **Train a model**, or **Run the optimiser** and **Use in a training job**.
 Every other card shows **Set active** as a plain outline on the right.
