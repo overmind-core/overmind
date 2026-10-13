@@ -8,6 +8,7 @@ import zipfile
 from unittest.mock import patch
 
 import pytest
+from django.db import connection
 from rest_framework.test import APIClient
 
 from overbae.models import APIToken, Dataset, Project, ProjectMembership, Span, User
@@ -600,6 +601,42 @@ def test_empty_result_later_step_failure_and_exact_cancel():
     assert cancelled["run"]["state"] == "cancelled"
     workbench.execute(run["id"], script_executor=execute_fixture)
     assert dataset.cells.count() == 2
+
+
+def test_failed_publication_removes_the_cell_files_it_copied():
+    project, client, context = workspace()
+    dataset = source(client, project, "Rollback", [{"value": 1}, {"value": 2}])
+    original = dataset.active_cell
+    recipe = call(
+        context,
+        "save_dataset_pipeline",
+        name="Two steps",
+        request_key="rollback",
+        package=retained_package(
+            context.project,
+            context.user,
+            [select_script(["value"], id="one"), identity_script(id="two", input="one")],
+        ),
+    )["pipeline"]
+    folder = paths.cell_path(dataset.pk, original.pk).parent
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION refuse_second_cell() RETURNS trigger AS "
+            "$$ BEGIN RAISE EXCEPTION 'cell insert refused'; END $$ LANGUAGE plpgsql"
+        )
+        cursor.execute(
+            "CREATE TRIGGER refuse_second_cell BEFORE INSERT ON overbae_cell "
+            "FOR EACH ROW WHEN (NEW.position = 2) EXECUTE FUNCTION refuse_second_cell()"
+        )
+    try:
+        result = execute(context, dataset, recipe, "rollback-run")
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("DROP TRIGGER refuse_second_cell ON overbae_cell")
+            cursor.execute("DROP FUNCTION refuse_second_cell()")
+    assert result["status"] == "failed", result
+    assert dataset.cells.count() == 1
+    assert {file.name for file in folder.glob("*.parquet")} == {f"{original.pk}.parquet"}
 
 
 @pytest.mark.parametrize(
