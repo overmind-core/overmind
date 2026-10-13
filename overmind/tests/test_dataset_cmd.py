@@ -341,10 +341,10 @@ def test_export_dataset_streams_csv_to_explicit_path_with_cell(tmp_path: Path):
     response = FakeResponse(
         {},
         headers={
-            "Content-Disposition": 'attachment; filename="server.csv"',
-            "X-Overmind-Cell": "cell-9",
-            "X-Overmind-Version": "1.2",
-            "X-Overmind-Fingerprint": "fp-1",
+            "content-disposition": 'attachment; filename="server.csv"',
+            "x-overmind-cell": "cell-9",
+            "x-overmind-version": "v3",
+            "x-overmind-fingerprint": "fp-1",
         },
         chunks=[b"id,name\n", b"1,one\n"],
     )
@@ -367,7 +367,7 @@ def test_export_dataset_streams_csv_to_explicit_path_with_cell(tmp_path: Path):
         "format": "csv",
         "bytes_written": 14,
         "cell": "cell-9",
-        "version": "1.2",
+        "version": "v3",
         "fingerprint": "fp-1",
     }
     assert output.read_bytes() == b"id,name\n1,one\n"

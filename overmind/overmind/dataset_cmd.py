@@ -386,9 +386,10 @@ def export_dataset(
             raise DatasetExportError(f"dataset export failed: {_redact_secret(str(exc), api_key)}") from exc
 
         _raise_export_for_status(response, api_key)
-        export_headers = dict(getattr(response, "headers", {}) or {})
+        # Header names arrive in wire case; a plain dict would lose requests' case folding.
+        export_headers = {k.lower(): v for k, v in (getattr(response, "headers", {}) or {}).items()}
         if destination is None:
-            filename = _content_disposition_filename(getattr(response, "headers", {}).get("Content-Disposition", ""))
+            filename = _content_disposition_filename(export_headers.get("content-disposition", ""))
             destination = Path(_safe_export_filename(filename, dataset_id, file_format))
         if destination.exists():
             raise DatasetExportError(f"Output path already exists: {destination}")
@@ -426,7 +427,7 @@ def export_dataset(
         "bytes_written": bytes_written,
     }
     for key, header in EXPORT_HEADERS:
-        value = export_headers.get(header)
+        value = export_headers.get(header.lower())
         if value:
             result[key] = str(value)
     return result
