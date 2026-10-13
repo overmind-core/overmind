@@ -228,8 +228,20 @@ services:
     entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
     command: python -m sandbox
     init: true
+    # Root only starts runs as other uids, reclaims their files, kills them and reads
+    # their open files (SYS_PTRACE); runs hold no capability.
+    cap_drop:
+      - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETUID
       - SYS_PTRACE
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     environment:
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
@@ -237,7 +249,7 @@ services:
     tmpfs:
       - /tmp:size=8g
     volumes:
-      - ./sandbox:/code/sandbox
+      - ./sandbox:/code/sandbox:ro
     networks:
       - sandbox_net
     healthcheck:

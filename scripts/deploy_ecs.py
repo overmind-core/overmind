@@ -39,6 +39,18 @@ READ_ONLY_FIELDS = (
 )
 
 
+SANDBOX_DROPPED = [
+    "AUDIT_WRITE",
+    "FSETID",
+    "MKNOD",
+    "NET_BIND_SERVICE",
+    "NET_RAW",
+    "SETFCAP",
+    "SETPCAP",
+    "SYS_CHROOT",
+]
+
+
 def _environment(container, **values):
     existing = {item["name"]: item["value"] for item in container.get("environment", [])}
     existing.update({name: str(value) for name, value in values.items()})
@@ -62,10 +74,11 @@ def render_task_definition(document, *, service, image, cluster):
         raise ValueError(f"No reviewed command for service {service!r}")
     if service == "sandbox":
         # init reaps the children a killed run leaves; SYS_PTRACE lets the root server
-        # read a run's open files. Runs drop every capability with their uid.
+        # read a run's open files. Runs drop every capability with their uid. Fargate
+        # adds only SYS_PTRACE, so the defaults the server never uses are dropped instead.
         linux = app.setdefault("linuxParameters", {})
         linux["initProcessEnabled"] = True
-        linux.setdefault("capabilities", {})["add"] = ["SYS_PTRACE"]
+        linux["capabilities"] = {"add": ["SYS_PTRACE"], "drop": SANDBOX_DROPPED}
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
     if service in HEALTH_CHECKS:

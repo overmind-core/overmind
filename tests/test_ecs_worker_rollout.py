@@ -131,7 +131,11 @@ def test_the_sandbox_release_runs_the_server_and_checks_its_health(definition):
     assert container["entryPoint"] == ["/usr/local/bin/worker-entrypoint.sh"]
     assert "127.0.0.1:8080/health" in container["healthCheck"]["command"][-1]
     assert container["linuxParameters"]["initProcessEnabled"] is True
-    assert container["linuxParameters"]["capabilities"]["add"] == ["SYS_PTRACE"]
+    capabilities = container["linuxParameters"]["capabilities"]
+    assert capabilities["add"] == ["SYS_PTRACE"]
+    assert "NET_RAW" in capabilities["drop"]
+    needed = {"CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID", "SYS_PTRACE"}
+    assert not needed & set(capabilities["drop"])
 
 
 def test_migration_cannot_start_http_server(definition, service):
