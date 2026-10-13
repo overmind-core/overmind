@@ -179,17 +179,20 @@ function TrainingPage() {
           jobId={decisionJob ?? null}
           onOpenChange={(open) => !open && patchSearch({ decisionJob: undefined })}
         />
-        <NewDecisionJobDialog
-          initialDatasetId={trainDatasetId}
-          onOpenChange={(open) =>
-            patchSearch({ datasetId: undefined, decision: open ? true : undefined })
-          }
-          onStarted={(id) =>
-            patchSearch({ datasetId: undefined, decision: undefined, decisionJob: id })
-          }
-          open={newDecision === true}
-          projectId={projectId}
-        />
+        {/* Mounted per opening, so a closed dialog keeps no earlier choice. */}
+        {newDecision === true && (
+          <NewDecisionJobDialog
+            initialDatasetId={trainDatasetId}
+            onOpenChange={(open) =>
+              patchSearch({ datasetId: undefined, decision: open ? true : undefined })
+            }
+            onStarted={(id) =>
+              patchSearch({ datasetId: undefined, decision: undefined, decisionJob: id })
+            }
+            open
+            projectId={projectId}
+          />
+        )}
       </PageShell>
     );
   }

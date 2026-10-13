@@ -51,7 +51,8 @@ export function NewDecisionJobDialog({
   const [datasetId, setDatasetId] = useState(initialDatasetId ?? "");
   const [evalDatasetId, setEvalDatasetId] = useState(NO_EVAL);
   const [modelId, setModelId] = useState("");
-  const chosen = datasetId || (train.length === 1 ? train[0].id : "");
+  const listed = train.some((dataset) => dataset.id === datasetId) ? datasetId : "";
+  const chosen = listed || (train.length === 1 ? train[0].id : "");
 
   const submit = () =>
     create.mutate(

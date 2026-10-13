@@ -298,19 +298,19 @@ def _scores(slot: dict, *, classes: bool = True) -> dict:
 
 
 def cancel(job: DecisionJob) -> DecisionJob:
-    if job.status not in DecisionJob.ACTIVE:
+    cancelled = DecisionJob.objects.filter(pk=job.pk, status__in=DecisionJob.ACTIVE).update(
+        status=DecisionJob.Status.CANCELLED, completed_at=timezone.now()
+    )
+    job.refresh_from_db()
+    if not cancelled:
         raise InputValidationError(f"The job is already {job.status}.")
+    # Read after the update: an advance that raced it may have started the evaluation call.
     if job.remote_id:
         try:
             modal.FunctionCall.from_id(job.remote_id).cancel()
         except Exception:
             logger.exception("Could not cancel decision job %s", job.id)
-    DecisionJob.objects.filter(pk=job.pk, status=job.status).update(
-        status=DecisionJob.Status.CANCELLED, completed_at=timezone.now()
-    )
-    job.refresh_from_db()
-    if job.status == DecisionJob.Status.CANCELLED:
-        charge(job)
+    charge(job)
     return job
 
 
