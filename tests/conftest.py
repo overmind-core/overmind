@@ -79,12 +79,13 @@ def sandbox_server():
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     url, token = f"http://127.0.0.1:{port}", secrets.token_hex(16)
+    scratch = tempfile.TemporaryDirectory(prefix="sandbox-test-")
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SANDBOX_TOKEN": token,
         "SANDBOX_ALLOW_SHARED_UID": "1",
         # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
-        "TMPDIR": tempfile.mkdtemp(prefix="sandbox-test-"),
+        "TMPDIR": scratch.name,
     }
     proc = subprocess.Popen(
         [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)],
@@ -100,11 +101,14 @@ def sandbox_server():
             pass
         if proc.poll() is not None or time.monotonic() > deadline:
             proc.kill()
+            proc.wait(timeout=10)
+            scratch.cleanup()
             raise RuntimeError("The test sandbox did not start.")
         time.sleep(0.1)
     yield url, token
     proc.terminate()
     proc.wait(timeout=10)
+    scratch.cleanup()
 
 
 @pytest.fixture(autouse=True)
