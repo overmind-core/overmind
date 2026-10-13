@@ -181,6 +181,11 @@ the platform cannot tell whether a valid parent is the semantically right one.
 `batch_rows` preserves source order and atomic publication, but whether a step
 is safe to split is the author's declaration.
 
+Re-running a revision on the same source reproduces every step's rows exactly. Only a
+step fed directly by the source reproduces its output fingerprint too: later steps record
+that run's own parent cells in `_overmind_provenance`, so their fingerprints differ between
+runs. Compare published content, not fingerprints, across runs of a multi-step recipe.
+
 Package and revision rows are immutable by application behavior: no code updates them
 after creation, and the database has no update guard. A revision binds its package by
 ID, and the package's SHA-256 is re-verified against the stored bytes before every
