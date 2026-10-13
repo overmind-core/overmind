@@ -16,7 +16,7 @@ credits ledger.
 ## Run
 
 ```bash
-docker compose exec api python manage.py seed_demo [--owner EMAIL]
+docker compose exec celery-interactive-worker python manage.py seed_demo [--owner EMAIL]
 ```
 
 ~10 min, deterministic (seeded RNG, uuid5 ids for capabilities, jobs and

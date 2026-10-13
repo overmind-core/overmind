@@ -52,6 +52,11 @@ entries here cover the SDK surface.
 - Docs: the pinned wire contract in [tracing-attributes](docs/tracing-attributes.md);
   integration guidance lives in the `overmind` skill's telemetry reference.
 
+### Fixed
+
+- `overmind dataset export --json` reports the version, cell and fingerprint
+  whatever case the server sends its headers in.
+
 ### Removed
 
 - `observe_safe` — use `observe(capture="none")` (or `init(redact_keys=...)`).
