@@ -24,8 +24,8 @@ Use the native `optimize-capability` prompt for prompt/code optimization. Use
 ## Main MCP path
 
 1. Call `list_datasets`, inspect the candidate by UUID, and use
-   `query_dataset` to verify the chosen `eval` cell and capability.
-1. Call `check_optimizer_readiness` with the dataset UUID, cell UUID, optional
+   `query_dataset` to verify the chosen `eval` version and capability.
+1. Call `check_optimizer_readiness` with the dataset UUID, `version`, optional
    eval set, mode, and model ids.
    Modes are exactly `optimize`, `model_comparison`, and `hybrid`.
 1. Fix reported dataset, eval-set, executioner, model, credit, and quota gaps.

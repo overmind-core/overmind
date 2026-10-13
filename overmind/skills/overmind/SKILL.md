@@ -440,8 +440,9 @@ local work is needed:
   `--format jsonl|csv`, `--cell`, or `--output PATH`. Use the dataset id
   supplied by MCP; the CLI does not resolve names, uses the server filename when
   no output path is given, and refuses overwrite. For traces, select traces,
-  call `create_dataset_from_traces`, wait for the agent to shape the chain,
-  then run the local export. There is no `export_trace` MCP tool.
+  call `create_dataset_from_traces`, poll `get_job(kind=dataset_import)`,
+  shape and activate a version, then run the local export. There is no
+  `export_trace` MCP tool.
 - MCP does not carry checkpoint bytes or presigned URLs. Resolve and read the
   deployment through the existing MCP resource/tool flow, then run
   `overmind model download-checkpoint DEPLOYMENT --json` locally with the

@@ -24,7 +24,7 @@ does not activate the set or launch an evaluation. Inspect the returned
 `overmind://eval-sets/{eval_set}` resource for names, kinds, roles, and capability
 mapping. Only capability-mapped sets can be activated for live trace scoring.
 
-1. Call `check_evaluation_readiness` with the dataset UUID, chosen cell UUID,
+1. Call `check_evaluation_readiness` with the dataset UUID, the chosen `version`,
    optional eval set, proposed `variants`, and `mode="existing"` or `mode="generate"`.
 1. Read `ready`, evaluator applicability, variable binding status, eval-set
    state, credit availability, and advisory `context_checks` for candidate models
@@ -82,7 +82,7 @@ Dataset sampling draws across the complete pinned version, balancing available
 task labels, and repeats the same selection for the same version and budget.
 
 Call `run_evaluation` only after readiness is green. Supply a run name, eval
-dataset UUID, chosen cell UUID, optional eval set/evaluator ids, variants, and
+dataset UUID, the chosen `version`, optional eval set/evaluator ids, variants, and
 bounded `max_items` or sampling as appropriate. It returns a run id, variants, and an
 `overmind://eval-runs/{eval_run}` resource.
 

@@ -23,8 +23,8 @@ fit findings rather than assuming a sample describes the whole corpus.
 Use `get_model_catalog` for initial model discovery, then
 `check_finetune_readiness` for the selected dataset. A capability is optional;
 held-out evaluation data and an applicable eval set are required. Use the
-returned requirements to identify technical blockers. Quality findings,
-overlap and incomplete semantic reviews remain visible advisory warnings.
+returned requirements to identify technical blockers. Capability mismatch and
+train/eval overlap remain visible advisory warnings.
 
 Read `benchmark_model` on the capability when comparing with an incumbent.
 `set_benchmark_model` changes future benchmark selection, not live serving or
