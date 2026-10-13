@@ -1,12 +1,14 @@
 # Evidence: Data Workshop revamp (OVE-70)
 
-Branch `frey/ove-70-data-workshop`, observed at commit `f5ac8ec` on 2026-10-13. Plan:
-Linear document "Data Workshop revamp — implementation plan", section 17.
+Branch `frey/ove-70-data-workshop`, 2026-10-13. Journeys and the Console checks ran at `5ca6695`; the unit suite,
+migrations and isolation ran at `c568d4c` (the later commits change only compose and ECS capabilities, an index, a
+test's timing check and docs). Plan: Linear document "Data Workshop revamp — implementation plan", section 17.
 
 ## Environment
 
 - WSL2 (kernel 6.18.33.2), 16 CPUs, Docker 29.9.0, Python 3.13.14, Bun.
-- Compose stack up (Postgres, Redis, workers, `sandbox` with `cap_add: [SYS_PTRACE]`, `init: true`,
+- Compose stack up (Postgres, Redis, workers, `sandbox` with only CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID
+  and SYS_PTRACE, `no-new-privileges`, `init: true`,
   `/tmp` tmpfs 8 GiB, network `sandbox_net` internal).
 - Unit tests and journeys start a host sandbox (`python -m sandbox`, `SANDBOX_ALLOW_SHARED_UID=1`):
   shared uid, host network, and no Tesseract on this host, so OCR cases skip there.
