@@ -654,7 +654,12 @@ def dataset_import_job_payload(dataset, uri: str) -> dict:
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
         "updated_at": dataset.updated_at,
-        "completed_at": receipt.published_at if receipt is not None else None,
+        # The completing save is the receipt's last write.
+        "completed_at": (
+            receipt.updated_at
+            if receipt is not None and receipt.state == DatasetImport.State.COMPLETE
+            else None
+        ),
     }
 
 

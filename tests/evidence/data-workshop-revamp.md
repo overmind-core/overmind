@@ -137,8 +137,9 @@ SDK (`overmind` 0.1.86) and MCP over HTTP. Checks run against the final code:
 
 Four Claude sessions used the MCP tools and CLI against the held stack: eval preparation from a
 CSV, documents, a training dataset with branches and synthetic rows, and adversarial QA. Their
-defects are fixed and covered by the tests above: synthetic rows reused existing identities;
+defects are fixed, each with a test except the `preparation_context` wording (prose, not tested): synthetic rows reused existing identities;
 renumbered rows got identity by position; `re.compile` was refused; `inspect_dataset` hid the
 source files and limitations; a one-document split left two datasets in error; unreadable sources
 offered a retry; `SUM()` came back as a string; `get_job` had no `completed_at`; export headers
-were read case-sensitively; a `NaN` in a try preview failed the run on the worker.
+were read case-sensitively; `preparation_context` said eval reads only `input.messages`. Rechecking
+those fixes on the stack found one more: a `NaN` in a try preview failed the run on the worker.

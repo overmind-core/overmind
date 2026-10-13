@@ -4,7 +4,7 @@ import asyncio
 import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from conftest import frozen_dataset, read_table
@@ -632,6 +632,10 @@ def test_trace_creation_returns_a_dataset_import_receipt():
     dataset = Dataset.objects.get(pk=traces.structuredContent["dataset"]["id"])
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.active_cell.rows == 1
+    job = _call("get_job", {"kind": "dataset_import", "id": str(dataset.id)}, context)
+    completed = job.structuredContent["completed_at"]
+    assert completed is not None
+    assert datetime.fromisoformat(completed) >= dataset.source.created_at
 
 
 def test_dataset_tool_text_is_complete_structured_json():
