@@ -64,7 +64,7 @@ cp .env.example .env    # set the required keys below
 docker compose up -d    # Postgres, Redis, API on :8000, Console on :5173, Celery workers, beat, Grafana on :3001
 ```
 
-On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec api python manage.py seed_demo --owner <your email>` loads a full demo workspace.
+On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec celery-interactive-worker python manage.py seed_demo --owner <your email>` loads a full demo workspace.
 
 <details>
 <summary><b>What the API needs to boot</b></summary>
