@@ -1,8 +1,8 @@
 # Evidence: Data Workshop revamp (OVE-70)
 
-Branch `frey/ove-70-data-workshop`, 2026-10-13. Journeys and the Console checks ran at `5ca6695`; the unit suite,
-migrations and isolation ran at `c568d4c` (the later commits change only compose and ECS capabilities, an index, a
-test's timing check and docs). Plan: Linear document "Data Workshop revamp — implementation plan", section 17.
+Branch `frey/ove-70-data-workshop`, 2026-10-13. The unit suite and the journeys ran at `44375a7`; the
+Console checks at `5ca6695` and the isolation suite at `c568d4c` (nothing in `frontend/` or `sandbox/` changed
+after them). Plan: Linear document "Data Workshop revamp — implementation plan", section 17.
 
 ## Environment
 
