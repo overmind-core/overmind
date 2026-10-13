@@ -111,14 +111,22 @@ def ensure_manifest(root: Path) -> None:
     manifest_path.write_text(json.dumps(manifest))
 
 
+_D1 = None
+
+
 def boot(kind: str, source: str):
+    global _D1
+    local = str(_cached(source))
     if kind == "clef":
-        proc = _popen(_clef_command(source))
+        proc = _popen(_clef_command(local, source))
         wait_until_ready(proc)
         return proc
-    if Path(source).is_dir():
-        ensure_manifest(Path(source))
-    runtime = _load_d3(source)
+    if kind == "d1":
+        _D1 = _load_d1(local)
+        return _D1
+    if source.startswith("/"):
+        ensure_manifest(Path(local))
+    runtime = _load_d3(local, source)
     _serve_d3(runtime)
     return runtime
 
@@ -156,6 +164,8 @@ def wait_until_ready(proc: subprocess.Popen, timeout: int = 45 * 60) -> None:
 
 
 def score(source: str, payload: dict) -> dict:
+    if _D1 is not None:
+        return _score_d1(_D1, payload)
     body = json.dumps(
         {
             "model": source,
@@ -199,12 +209,69 @@ def _post(path: str, payload: dict) -> tuple[int, str]:
         return exc.code, exc.read().decode()
 
 
-def _load_d3(source: str):
+def _cached(source: str):
+    import decision_cache
+
+    folder, _fetched = decision_cache.ensure(source)
+    return folder
+
+
+def _load_d1(source: str):
+    import torch
+    from transformers import AutoConfig, AutoModel
+
+    config = AutoConfig.from_pretrained(source, trust_remote_code=True, local_files_only=True)
+    dtype = torch.float16 if config.model_type == "d1_omni" else torch.bfloat16
+    model = AutoModel.from_pretrained(
+        source, trust_remote_code=True, local_files_only=True, dtype=dtype
+    ).to("cuda")
+    model.eval()
+    return model
+
+
+def _score_d1(model, payload: dict) -> dict:
+    limit = int(payload["max_context_length"])
+    try:
+        if _d1_exceeds(model, payload["state"], payload["questions"], limit):
+            return {"error": "max_length_exceeded"}
+        result = model.system_one(payload["state"], payload["questions"])
+    except ValueError as exc:
+        text = str(exc).lower()
+        if "context" in text or "fit" in text or "token" in text:
+            return {"error": "max_length_exceeded"}
+        return {"error": str(exc)}
+    return {"answers": result.get("answers"), "usage": result.get("usage") or {}}
+
+
+def _d1_exceeds(model, state, questions: dict, limit: int) -> bool:
+    import importlib
+
+    if type(model).__name__ == "D1OmniModel":
+        module = importlib.import_module(type(model).__module__)
+        tokenizer = model.tokenizer
+        for question in questions.values():
+            parsed = module.as_question(question)
+            full = tokenizer(module.escape(module.serialize(state)), add_special_tokens=False)[
+                "input_ids"
+            ]
+            ids, _markers = module.encode(tokenizer, state, parsed, limit)
+            state_id = tokenizer.convert_tokens_to_ids(module.DELIM["state"])
+            question_id = tokenizer.convert_tokens_to_ids(module.DELIM["q"])
+            kept = ids[ids.index(state_id) + 1 : ids.index(question_id)]
+            if kept != full:
+                return True
+        return False
+    prompt = importlib.import_module(type(model.engine).__module__.rsplit(".", 1)[0] + ".prompt")
+    parsed = [prompt.as_question(question) for question in questions.values()]
+    return model.engine.tokens(state, parsed) > limit
+
+
+def _load_d3(source: str, served: str):
     from vllm_srun.cli import build_parser, config_from_args
     from vllm_srun.runtime import Runtime
 
     args = build_parser().parse_args(
-        ["serve", source, "--served-model-name", source, "--device", "cuda", "--port", str(PORT)]
+        ["serve", source, "--served-model-name", served, "--device", "cuda", "--port", str(PORT)]
     )
     runtime = Runtime(config_from_args(args))
     runtime.start(background=False)
@@ -238,13 +305,13 @@ def _serve_d3(runtime) -> None:
     raise RuntimeError("D3 server did not bind")
 
 
-def _clef_command(source: str) -> list[str]:
+def _clef_command(source: str, served: str) -> list[str]:
     return [
         "vllm",
         "serve",
         source,
         "--served-model-name",
-        source,
+        served,
         "--max-model-len",
         str(MAX_LEN),
         "--logprobs-mode",

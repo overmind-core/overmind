@@ -242,6 +242,45 @@ def test_a_catalog_model_answers_a_system_one_request_and_bills_it(owner, decisi
     assert invalid.data["detail"] == ["question route: instructions must be text"]
 
 
+def test_d1_models_train_on_their_own_job_and_answer_on_l4(
+    owner, make_dataset, decision, fake_modal
+):
+    from overbae.modal.decision_catalog import models
+
+    omni = models()["LiquidAI/d1-omni-600M"]
+    larger = models()["LiquidAI/d1-3B"]
+    assert (omni["architecture_context"], omni["max_context_length"], omni["inference_gpu"]) == (
+        16384,
+        16384,
+        "L4",
+    )
+    assert (
+        larger["architecture_context"],
+        larger["max_context_length"],
+        larger["inference_gpu"],
+    ) == (32768, 32768, "L4")
+
+    user, project, client = owner
+    job_id = _job(client, project, make_dataset(project, ROWS), model=larger["id"]).data["id"]
+    decision_jobs.start(job_id)
+    assert "train_d1" in fake_modal.spawns()
+    assert "train_decision" not in fake_modal.spawns()
+
+    answered = client.post(
+        f"/api/decision-models/{omni['id']}/systemone",
+        {
+            "project": str(project.id),
+            "state": "I was charged twice.",
+            "questions": {"route": ROUTE},
+        },
+        format="json",
+    )
+    assert answered.status_code == 200, answered.data
+    assert "D1Server.score" in fake_modal.spawns()
+    charge = BillingTelemetry.objects.get(user=user, service=BillingService.INFERENCE_FT_MODEL)
+    assert charge.metadata["gpu_type"] == "L4"
+
+
 def test_a_cold_server_answers_503_with_retry_after(owner, fake_modal):
     _, project, client = owner
     DecisionBackend(fake_modal).install(warm=False)

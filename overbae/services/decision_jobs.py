@@ -31,10 +31,11 @@ logger = logging.getLogger(__name__)
 
 APP_NAME = "overmind-decision"
 GPU = "H100"
+_SERVERS = {"clef": "ClefServer", "d3": "D3Server", "d1": "D1Server"}
 # A cold server boots for minutes; a request answers 503 and the started call warms it.
 WAIT_SECONDS = 20.0
 RETRY_AFTER_SECONDS = 60
-# A request holds a whole H100 for its duration; bill at least one second of it.
+# A request holds the serving GPU for its duration; bill at least one second of it.
 MIN_BILLED_SECONDS = 1.0
 _TRAINING_ERRORS = {"No records fit the context cap."}
 
@@ -131,7 +132,7 @@ def start(job_id) -> None:
             _records(job.cell),
             _records(job.eval_cell) if job.eval_cell_id else None,
         )
-        call = _function("train_decision").spawn(
+        call = _function("train_d1" if spec["family"] == "d1" else "train_decision").spawn(
             {
                 "job_id": str(job.id),
                 "model": spec["id"],
@@ -198,6 +199,7 @@ def _trained(job: DecisionJob, result: Any) -> None:
                 "family": spec["family"],
                 "repo": spec["repo"],
                 "checkpoint": result["saved"],
+                "max_context_length": spec["max_context_length"],
             }
         )
     except Exception:
@@ -370,12 +372,13 @@ def answer(
         saved = (job.result or {}).get("saved")
         if job.status != DecisionJob.Status.SUCCEEDED or not saved:
             raise InputValidationError("The trained model is not ready.")
-        # A Clef fine-tune is an adapter on the shared base; a D3 fine-tune is its own checkpoint.
+        # A Clef fine-tune is an adapter on the shared base. D3 and d1 fine-tunes are checkpoints.
         if spec["family"] == "clef":
             payload["adapter"] = saved
         else:
             source = saved
-    server = "ClefServer" if spec["family"] == "clef" else "D3Server"
+    server = _SERVERS[spec["family"]]
+    gpu = spec.get("inference_gpu") or GPU
     started = time.monotonic()
     try:
         instance = modal.Cls.from_name(APP_NAME, server, environment_name=_modal_env())(
@@ -399,7 +402,7 @@ def answer(
     except decisions.DecisionRowError as exc:
         logger.error("Decision model %s returned an unusable answer: %s", model_id, exc)
         raise DecisionUnavailableError from exc
-    _charge_request(project, user, spec["id"], latency, job)
+    _charge_request(project, user, spec["id"], latency, job, gpu)
     usage = result.get("usage") or {}
     return {
         "model": spec["id"],
@@ -411,9 +414,9 @@ def answer(
     }
 
 
-def _charge_request(project, user, model_id: str, seconds: float, job) -> None:
+def _charge_request(project, user, model_id: str, seconds: float, job, gpu: str) -> None:
     seconds = max(seconds, MIN_BILLED_SECONDS)
-    cost = Decimal(str(round(seconds * (gpu_usd_per_second(GPU) or 0.0), 6)))
+    cost = Decimal(str(round(seconds * (gpu_usd_per_second(gpu) or 0.0), 6)))
     if cost <= 0 or not getattr(user, "is_authenticated", False):
         return
     try:
@@ -426,6 +429,7 @@ def _charge_request(project, user, model_id: str, seconds: float, job) -> None:
                 "kind": "decision",
                 "model": model_id,
                 "decision_job_id": str(job.id) if job else None,
+                "gpu_type": gpu,
                 "seconds": round(seconds, 3),
             },
         )

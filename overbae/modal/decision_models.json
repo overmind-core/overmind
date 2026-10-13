@@ -89,6 +89,26 @@
       "hidden_size": 5120,
       "architecture_context": 262144,
       "max_context_length": 32768
+    },
+    {
+      "id": "LiquidAI/d1-omni-600M",
+      "repo": "LiquidAI/d1-omni-600M",
+      "family": "d1",
+      "params": 587143681,
+      "hidden_size": 1024,
+      "architecture_context": 16384,
+      "max_context_length": 16384,
+      "inference_gpu": "L4"
+    },
+    {
+      "id": "LiquidAI/d1-3B",
+      "repo": "LiquidAI/d1-3B",
+      "family": "d1",
+      "params": 3120000000,
+      "hidden_size": 2048,
+      "architecture_context": 32768,
+      "max_context_length": 32768,
+      "inference_gpu": "L4"
     }
   ]
 }

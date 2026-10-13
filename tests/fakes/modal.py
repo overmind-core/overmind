@@ -357,8 +357,9 @@ class DecisionBackend:
     def install(self, *, warm: bool = True) -> DecisionBackend:
         self.cloud.deploy(DECISION_APP, "upload_records", self._upload)
         self.cloud.deploy(DECISION_APP, "train_decision", self._train, held=True)
+        self.cloud.deploy(DECISION_APP, "train_d1", self._train, held=True)
         self.cloud.deploy(DECISION_APP, "evaluate_decision", self._evaluate, held=True)
-        for server in ("ClefServer", "D3Server"):
+        for server in ("ClefServer", "D3Server", "D1Server"):
             self.cloud.deploy(DECISION_APP, f"{server}.score", self._score, held=not warm)
         return self
 

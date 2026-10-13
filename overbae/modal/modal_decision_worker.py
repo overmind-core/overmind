@@ -1,7 +1,8 @@
 """H100 decision-model worker. Chat SFT stays on modal_sft_worker.
 
-Volume layout: ``/artifacts/<job_id>/records.jsonl`` and ``eval.jsonl`` (one trainer
-record per line), then whatever the trainer saves under ``/artifacts/<job_id>/``.
+Volume layout: ``/artifacts/.bases/<org>--<repo>`` is the shared base snapshot.
+``/artifacts/<job_id>/records.jsonl`` and ``eval.jsonl`` are the trainer records,
+then whatever the trainer saves under ``/artifacts/<job_id>/``.
 """
 
 import json
@@ -44,6 +45,7 @@ image = (
         "pip install --no-deps 'torchao==0.16.0'",
     )
     .env({"TOKENIZERS_PARALLELISM": "false", "PYTHONPATH": "/root", "HF_HOME": "/tmp/hf"})
+    .add_local_file(Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py")
     .add_local_file(Path(__file__).with_name("decision_train.py"), "/root/decision_train.py")
 )
 # Nightly wheel: structured decisions are on vLLM main, not the stable release.
@@ -57,6 +59,45 @@ clef_image = (
     .pip_install(_VLLM_WHEEL)
     # vLLM reads this at process start. Setting it after boot does not enable adapter loads.
     .env({**_serve_env, "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1"})
+    .add_local_file(Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py")
+    .add_local_file(Path(__file__).with_name("decision_serve.py"), "/root/decision_serve.py")
+)
+d1_train_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    )
+    .pip_install(
+        "transformers==5.17.0",
+        "peft==0.21.2",
+        "accelerate",
+        "huggingface_hub",
+        "safetensors",
+        "pillow",
+        "numpy",
+    )
+    .env({"TOKENIZERS_PARALLELISM": "false", "PYTHONPATH": "/root", "HF_HOME": "/tmp/hf"})
+    .add_local_file(Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py")
+    .add_local_file(Path(__file__).with_name("decision_train.py"), "/root/decision_train.py")
+)
+d1_serve_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    )
+    .pip_install(
+        "transformers==5.17.0",
+        "huggingface_hub",
+        "safetensors",
+        "pillow",
+        "numpy",
+    )
+    .env(_serve_env)
+    .add_local_file(Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py")
     .add_local_file(Path(__file__).with_name("decision_serve.py"), "/root/decision_serve.py")
 )
 d3_image = (
@@ -69,6 +110,7 @@ d3_image = (
         "@4d15138290983e727bb55c9a331d66c765b6f20d#subdirectory=src/model-runtime"
     )
     .env(_serve_env)
+    .add_local_file(Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py")
     .add_local_file(Path(__file__).with_name("decision_serve.py"), "/root/decision_serve.py")
 )
 # One container per base (Clef) or per merged checkpoint (D3). Idle workers scale to zero.
@@ -85,10 +127,39 @@ _RUN = {
 
 
 _light = modal.Image.debian_slim(python_version="3.11")
+_cache_image = _light.pip_install("huggingface_hub").add_local_file(
+    Path(__file__).with_name("decision_cache.py"), "/root/decision_cache.py"
+)
 
 
 def _read(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _stage_base(repo: str) -> None:
+    if repo.startswith("/"):
+        return
+    cache_base.remote(repo)
+    volume.reload()
+
+
+@app.function(
+    image=_cache_image,
+    timeout=4 * 60 * 60,
+    max_containers=1,
+    volumes={"/artifacts": volume},
+    secrets=[secret],
+    cpu=8,
+)
+@modal.concurrent(max_inputs=1)
+def cache_base(repo: str) -> dict:
+    import decision_cache
+
+    volume.reload()
+    folder, fetched = decision_cache.ensure(repo)
+    if fetched:
+        volume.commit()
+    return {"path": str(folder), "fetched": fetched}
 
 
 @app.function(image=_light, timeout=15 * 60, volumes={"/artifacts": volume})
@@ -113,6 +184,25 @@ def train_decision(payload: dict) -> dict:
     import decision_train
 
     volume.reload()
+    _stage_base(payload["repo"])
+    records = _read(Path("/artifacts") / payload["job_id"] / "records.jsonl")
+    result = decision_train.train({**payload, "records": records})
+    volume.commit()
+    return result
+
+
+@app.function(
+    image=d1_train_image,
+    gpu="H100",
+    timeout=24 * 60 * 60,
+    secrets=[secret],
+    volumes={"/artifacts": volume},
+)
+def train_d1(payload: dict) -> dict:
+    import decision_train
+
+    volume.reload()
+    _stage_base(payload["repo"])
     records = _read(Path("/artifacts") / payload["job_id"] / "records.jsonl")
     result = decision_train.train({**payload, "records": records})
     volume.commit()
@@ -124,8 +214,15 @@ def evaluate_decision(payload: dict) -> dict:
     """Answers per evaluation row from the base model and the trained one, in row order."""
     volume.reload()
     records = _read(Path("/artifacts") / payload["job_id"] / "eval.jsonl")
-    server = ClefServer if payload["family"] == "clef" else D3Server
-    requests = [{"state": record["state"], "questions": record["questions"]} for record in records]
+    server = {"clef": ClefServer, "d3": D3Server, "d1": D1Server}[payload["family"]]
+    requests = [
+        {
+            "state": record["state"],
+            "questions": record["questions"],
+            "max_context_length": payload.get("max_context_length"),
+        }
+        for record in records
+    ]
     base = server(source=payload["repo"].replace("/", "--"))
     if payload["family"] == "clef":
         trained = base
@@ -151,9 +248,9 @@ class _Server:
         self._startup_error = None
         self._loaded: set[str] = set()
         try:
+            volume.reload()
             source = decision_serve.source_from_key(self.source)
-            if source.startswith("/artifacts"):
-                volume.reload()
+            _stage_base(source)
             decision_serve.boot(self.kind, source)
         except Exception as exc:
             self._startup_error = f"{type(exc).__name__}: {exc}"
@@ -195,3 +292,9 @@ class ClefServer(_Server):
 class D3Server(_Server):
     source: str = modal.parameter()
     kind = "d3"
+
+
+@app.cls(image=d1_serve_image, **{**_RUN, "gpu": "L4", "memory": 65536})
+class D1Server(_Server):
+    source: str = modal.parameter()
+    kind = "d1"
