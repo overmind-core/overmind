@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from abc import ABC, abstractmethod
 
 from overbae.core.decisions import ChoiceQuestion, DecisionError, decide
@@ -17,9 +18,11 @@ logger = logging.getLogger(__name__)
 # Jev rejects a request whose state + question exceeds ~31k UTF-8 bytes.
 JEV_STATE_LIMIT = 30_000
 EXPLAIN_MAX_TOKENS = 1_000
+# Provider attempts per explanation; Jev's transport stops at the same count.
+LLM_ATTEMPTS = 3
 # The explanation instructions around the evidence, in estimated tokens.
 EXPLAIN_PROMPT_TOKENS = 100
-# Bounds Jev and explanation calls in flight per event loop.
+# Bounds Jev and explanation calls in flight per worker process.
 MAX_CONCURRENT_JUDGES = 32
 # Transient transport failures raise so the span is retried on the next pass.
 RETRYABLE = frozenset(
@@ -32,15 +35,14 @@ RETRYABLE = frozenset(
     }
 )
 
-_judge_slots: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
+_judge_slots = threading.BoundedSemaphore(MAX_CONCURRENT_JUDGES)
 
 
-def judge_slots() -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    if loop not in _judge_slots:
-        _judge_slots.clear()
-        _judge_slots[loop] = asyncio.Semaphore(MAX_CONCURRENT_JUDGES)
-    return _judge_slots[loop]
+def throttled(call, *args, **kwargs):
+    """Runs a blocking judge call in a worker thread under the process-wide cap. Every
+    task has its own event loop, so only a thread-level lock bounds the whole worker."""
+    with _judge_slots:
+        return call(*args, **kwargs)
 
 
 def matches(row: EvalMatrix, span: Span) -> bool:
@@ -151,15 +153,15 @@ class JevEvaluator(Evaluator):
         """Raises on transient transport failures so the caller retries on its next pass."""
         state = fit(state)
         try:
-            async with judge_slots():
-                result = await asyncio.to_thread(
-                    decide,
-                    state,
-                    {"meets": self.question},
-                    project_id=self.project_id,
-                    workload=self.workload,
-                    contract=self.contract,
-                )
+            result = await asyncio.to_thread(
+                throttled,
+                decide,
+                state,
+                {"meets": self.question},
+                project_id=self.project_id,
+                workload=self.workload,
+                contract=self.contract,
+            )
         except DecisionError as exc:
             if exc.reason in RETRYABLE or exc.reason.startswith("provider_http_5"):
                 raise
@@ -173,17 +175,18 @@ class JevEvaluator(Evaluator):
             f"An evaluator scored this {metric.score:.2f} out of 1 against its expectation.\n"
             "In one or two sentences, state the specific reason the output falls short. "
             "Name what is missing or wrong; do not restate the expectation.\n\n"
-            + json.dumps(state, ensure_ascii=False, indent=1)
+            + json.dumps(fit(state), ensure_ascii=False, indent=1)
         )
         try:
-            async with judge_slots():
-                text, _ = await asyncio.to_thread(
-                    call_llm,
-                    prompt,
-                    model=self.explain_model or resolve_model(TaskType.EVAL_EXPLANATION),
-                    fallback_models=model_chain(TaskType.EVAL_EXPLANATION),
-                    max_tokens=EXPLAIN_MAX_TOKENS,
-                )
+            text, _ = await asyncio.to_thread(
+                throttled,
+                call_llm,
+                prompt,
+                model=self.explain_model or resolve_model(TaskType.EVAL_EXPLANATION),
+                fallback_models=model_chain(TaskType.EVAL_EXPLANATION),
+                max_tokens=EXPLAIN_MAX_TOKENS,
+                max_attempts=LLM_ATTEMPTS,
+            )
         except Exception as exc:  # noqa: BLE001 — a missing reason never blocks the score
             logger.warning("Explanation failed: %s", exc)
             return f"(reason unavailable: {type(exc).__name__})"

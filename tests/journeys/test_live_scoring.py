@@ -12,6 +12,10 @@ from .stack import drain
 
 EXPECTATION = "The reply quotes the order id and its status."
 RUN_SIGNALS = "overbae.tasks.innermind.run_signals"
+SWEEP_SPANS = "overbae.tasks.innermind.sweep_unscored_spans"
+SWEEP_TRAJECTORIES = "overbae.tasks.innermind.score_trajectories"
+# Past the span sweep's grace period, so every beat re-drives what is still unscored.
+SWEEP_WAIT = 120
 
 
 @pytest.fixture
@@ -37,14 +41,19 @@ class Trace:
         self.root_id = uuid.uuid4().bytes[:8]
         self.capability_id = capability_id
         self.reply = reply
-        self.tools = [(uuid.uuid4().bytes[:8], ok) for ok in tools]
+        self.tools = []
+        for ok in tools:
+            self.add_tool(ok)
+
+    def add_tool(self, ok: bool) -> None:
+        self.tools.append((uuid.uuid4().bytes[:8], ok))
 
     @property
     def hex(self) -> str:
         return self.trace_id.hex()
 
-    def request(self) -> ExportTraceServiceRequest:
-        root = Span(
+    def request(self, *, root: bool = True, tools: bool = True) -> ExportTraceServiceRequest:
+        root_span = Span(
             trace_id=self.trace_id,
             span_id=self.root_id,
             name="handle_ticket",
@@ -58,7 +67,7 @@ class Trace:
                 overmind__expectations=json.dumps([EXPECTATION]),
             ),
         )
-        tools = [
+        tool_spans = [
             Span(
                 trace_id=self.trace_id,
                 span_id=span_id,
@@ -77,22 +86,23 @@ class Trace:
             )
             for i, (span_id, ok) in enumerate(self.tools)
         ]
+        spans = [*([root_span] if root else []), *(tool_spans if tools else [])]
         return ExportTraceServiceRequest(
-            resource_spans=[ResourceSpans(scope_spans=[ScopeSpans(spans=[root, *tools])])]
+            resource_spans=[ResourceSpans(scope_spans=[ScopeSpans(spans=spans)])]
         )
 
-    def send(self, api_url: str, key: str) -> None:
+    def send(self, api_url: str, key: str, *, root: bool = True, tools: bool = True) -> None:
         response = requests.post(
             f"{api_url}/api/v1/traces",
-            data=self.request().SerializeToString(),
+            data=self.request(root=root, tools=tools).SerializeToString(),
             headers={"Content-Type": "application/x-protobuf", "X-Api-Key": key},
             timeout=30,
         )
         assert response.status_code == 200, response.text
 
 
-def test_an_ingested_trace_is_scored_per_span_then_as_a_trajectory_with_kept_history(
-    project, live_api, worker
+def test_an_ingested_trace_is_scored_once_per_evidence_with_kept_history(
+    project, live_api, worker, fake_llm
 ):
     mcp, rest, key = project
     answer = mcp.capability("answer")
@@ -129,14 +139,140 @@ def test_an_ingested_trace_is_scored_per_span_then_as_a_trajectory_with_kept_his
     first = history(good)
     assert {row["source_type"] for row in first} == {"span", "trajectory"}
 
+    judged = len(fake_llm.decisions)
     good.send(live_api.url, key)
     drain(worker)
-    again = history(good)
-    assert len(again) == 2 * len(first)
+    assert history(good) == first
+    assert len(fake_llm.decisions) == judged
+
+    good.reply = "Your refund is on its way."
+    good.send(live_api.url, key)
+    drain(worker)
+    assert len(history(good)) > len(first)
 
     health = mcp.call("inspect_capability_health", {"capability": "answer"})
     assert health["scoring"]["scored"] >= 2
     assert any(m["metric"] == EXPECTATION for m in health["scoring"]["metrics"])
+
+
+def _history(rest, project_id: str, trace: Trace) -> list[dict]:
+    return rest.request(
+        "GET",
+        "/api/eval-scores/",
+        params={"project": project_id, "trace_id": trace.hex, "page_size": 100},
+    )["results"]
+
+
+def _spans(rest, project_id: str, trace: Trace) -> dict[str, dict]:
+    detail = rest.request("GET", f"/api/traces/{trace.hex}/", params={"project": project_id})
+    return {span["span_id"]: span for span in detail["spans"]}
+
+
+def test_spans_are_scored_as_they_land_without_waiting_for_the_root(
+    project, live_api, worker, fake_llm
+):
+    mcp, rest, key = project
+    project_id = mcp.project()["id"]
+    trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True, False])
+
+    trace.send(live_api.url, key, root=False)
+    drain(worker)
+    tool_ids = [span_id.hex() for span_id, _ in trace.tools]
+    before = {
+        span_id: span["eval_attributes"]
+        for span_id, span in _spans(rest, project_id, trace).items()
+    }
+    assert set(before) == set(tool_ids)
+    assert all("score" in attributes for attributes in before.values())
+    assert _history(rest, project_id, trace)
+
+    trace.send(live_api.url, key, tools=False)
+    drain(worker)
+    spans = _spans(rest, project_id, trace)
+    assert {span_id: spans[span_id]["eval_attributes"] for span_id in tool_ids} == before
+    root = spans[trace.root_id.hex()]["eval_attributes"]
+    assert root["trajectory"]["span_count"] == 3
+    trajectories = [
+        row for row in _history(rest, project_id, trace) if row["source_type"] == "trajectory"
+    ]
+    assert len(trajectories) == 1
+
+
+def test_a_failing_judge_is_tried_three_times_then_scored_with_errors(
+    project, live_api, worker, fake_llm, beat, clock
+):
+    mcp, rest, key = project
+    project_id = mcp.project()["id"]
+    fake_llm.fail(lambda request: request.url.rstrip("/").endswith("/systemone"))
+
+    def judge_calls() -> int:
+        return sum(r.url.rstrip("/").endswith("/systemone") for r in fake_llm.requests)
+
+    trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True])
+    trace.send(live_api.url, key)
+    drain(worker)
+    per_pass = judge_calls()
+    assert per_pass > 0
+
+    for _ in range(5):
+        clock.shift(SWEEP_WAIT)
+        beat(SWEEP_SPANS, SWEEP_TRAJECTORIES)
+    # Three span passes over the root's rows, then three trajectory passes of path_judge.
+    assert judge_calls() == 3 * per_pass + 3
+
+    root = _spans(rest, project_id, trace)[trace.root_id.hex()]
+    attributes = root["eval_attributes"]
+    assert {m["error"] for m in attributes["metrics"].values() if m["type"] == "llm"} == {
+        "scoring failed after 3 attempts"
+    }
+    path_judge = attributes["trajectory"]["metrics"]["path_judge"]
+    assert path_judge["error"] == "scoring failed after 3 attempts"
+    assert {row["source_type"] for row in _history(rest, project_id, trace)} == {
+        "span",
+        "trajectory",
+    }
+
+    clock.shift(SWEEP_WAIT)
+    beat(SWEEP_SPANS, SWEEP_TRAJECTORIES)
+    assert judge_calls() == 3 * per_pass + 3
+
+
+def test_scored_spans_trajectories_and_drift_verdicts_are_never_judged_again(
+    project, live_api, worker, fake_llm, beat, clock
+):
+    mcp, rest, key = project
+    project_id = mcp.project()["id"]
+    mcp.call("set_signal_subscription", {"signal_type": "plan_drift", "enabled": True})
+
+    trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True])
+    trace.send(live_api.url, key)
+    drain(worker)
+    beat(RUN_SIGNALS)
+    tool_id = trace.tools[0][0].hex()
+    # The judges meet an expectation only on the good reply, so the tool step drifts.
+    assert _spans(rest, project_id, trace)[tool_id]["eval_attributes"]["drift"] == 0.0
+
+    judged = len(fake_llm.decisions)
+    clock.shift(SWEEP_WAIT)
+    beat(RUN_SIGNALS, SWEEP_SPANS, SWEEP_TRAJECTORIES)
+    assert len(fake_llm.decisions) == judged
+
+    trace.add_tool(True)
+    trace.send(live_api.url, key)
+    drain(worker)
+    beat(RUN_SIGNALS)
+    spans = _spans(rest, project_id, trace)
+    assert spans[trace.tools[1][0].hex()]["eval_attributes"]["drift"] == 0.0
+    assert spans[trace.root_id.hex()]["eval_attributes"]["trajectory"]["span_count"] == 2
+    trajectories = [
+        row for row in _history(rest, project_id, trace) if row["source_type"] == "trajectory"
+    ]
+    assert len(trajectories) == 1
+
+    judged = len(fake_llm.decisions)
+    clock.shift(SWEEP_WAIT)
+    beat(RUN_SIGNALS, SWEEP_SPANS, SWEEP_TRAJECTORIES)
+    assert len(fake_llm.decisions) == judged
 
 
 def test_a_subscribed_signal_raises_one_event_per_conversation_seen_on_every_surface(

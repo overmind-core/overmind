@@ -168,7 +168,7 @@ Follow these for ALL Overmind work:
 ## Use-case references
 
 - Local setup (`overmind chassis` → scan repo → capability cards / trajectory
-  maps / eval matrix → `overmind.toml` → `overmind sync`):
+  maps → `overmind.toml` → `overmind sync` → decorators with span expectations):
   [references/setup.md](references/setup.md)
 - Resolving / updating agents, prompts, and eval spec:
   [references/capabilities.md](references/capabilities.md)
@@ -222,8 +222,8 @@ Datasets:
 
 Evaluations:
 
-`check_evaluation_readiness`, `upsert_eval_matrix_row`, `create_eval_set`,
-`run_evaluation`, `compare_evaluations`.
+`check_evaluation_readiness`, `create_eval_matrix_row`, `delete_eval_matrix_row`,
+`create_eval_set`, `run_evaluation`, `compare_evaluations`.
 
 Signals:
 

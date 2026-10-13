@@ -23,10 +23,12 @@ from overbae.innermind.metrics import (
     REASON_BELOW,
     group_by,
     is_failing,
+    is_final,
     roots_of,
     score_of,
     scores_of,
 )
+from overbae.innermind.span_processor import MAX_ATTEMPTS
 from overbae.models import SignalEvent, SignalSubscription, Span
 
 logger = logging.getLogger(__name__)
@@ -269,22 +271,58 @@ class RunawayTraceSignal(Signal):
 
 
 class PlanDriftSignal(Signal):
+    """Each scored step is judged once and its verdict stored as ``eval_attributes.drift``;
+    a judge that keeps failing stops after ``MAX_ATTEMPTS``."""
+
     name = "plan_drift"
     description = "Jev judges steps as not working toward the intent."
     expectation = "The step works toward the intent."
 
     async def check(self, spans):
-        judge = JevEvaluator(self.project_id)
-        steps = [s for s in spans if not s.is_root and s.eval_attributes.get("intent")]
-        metrics = await asyncio.gather(*(judge.meets(span, self.expectation) for span in steps))
+        steps = [
+            span
+            for span in spans
+            if not span.is_root and is_final(span) and span.eval_attributes.get("intent")
+        ]
+        unjudged = [
+            span
+            for span in steps
+            if "drift" not in span.eval_attributes
+            and span.eval_attributes.get("drift_attempts", 0) < MAX_ATTEMPTS
+        ]
+        outcomes = await asyncio.gather(*map(self.judge, unjudged), return_exceptions=True)
+        for span, outcome in zip(unjudged, outcomes, strict=True):
+            if isinstance(outcome, BaseException) and not isinstance(outcome, Exception):
+                raise outcome
+            await self.record(span, outcome)
         drifting = [
             span.name
-            for span, metric in zip(steps, metrics, strict=True)
-            if metric.score is not None and metric.score < FAIL_BELOW
+            for span in steps
+            if (score := span.eval_attributes.get("drift")) is not None and score < FAIL_BELOW
         ]
         if drifting:
             return "steps drifting from the intent: " + ", ".join(drifting)
         return None
+
+    async def judge(self, span: Span) -> float | None:
+        judge = JevEvaluator(self.project_id)
+        state = judge.evidence(span, self.expectation)
+        if "output" not in state:
+            return None
+        return (await judge.judge(state, self.expectation)).score
+
+    async def record(self, span: Span, outcome: float | None | Exception) -> None:
+        attrs = span.eval_attributes
+        if isinstance(outcome, Exception):
+            logger.warning("Plan drift judge failed on span %s: %s", span.span_id, outcome)
+            judged = {**attrs, "drift_attempts": attrs.get("drift_attempts", 0) + 1}
+        else:
+            judged = {**attrs, "drift": outcome}
+        # Matching the stored attributes keeps a concurrent re-ingest's reset.
+        if await Span.objects.filter(span_id=span.span_id, eval_attributes=attrs).aupdate(
+            eval_attributes=judged
+        ):
+            span.eval_attributes = judged
 
 
 class AbandonedSessionSignal(Signal):

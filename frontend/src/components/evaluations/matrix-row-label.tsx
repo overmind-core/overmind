@@ -3,7 +3,7 @@ import type { EvalMatrix } from "@/openapi";
 
 export const MATRIX_TYPE_LABEL: Record<string, string> = {
   deterministic: "Deterministic",
-  llm: "LLM judge",
+  llm: "LLM as judge",
 };
 
 export function MatrixRowLabel({ row }: { row: EvalMatrix }) {

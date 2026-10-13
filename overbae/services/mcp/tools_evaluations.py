@@ -26,9 +26,13 @@ from overbae.services.mcp.contracts.evaluations import (
     CheckEvaluationReadinessOutput,
     CompareEvaluationsInput,
     CompareEvaluationsOutput,
+    CreateEvalMatrixRowInput,
+    CreateEvalMatrixRowOutput,
     CreateEvalSetInput,
     CreateEvalSetOutput,
     CreditReadinessContract,
+    DeleteEvalMatrixRowInput,
+    DeleteEvalMatrixRowOutput,
     EvalMatrixRowContract,
     EvalSetContract,
     EvaluationDatasetContract,
@@ -36,8 +40,6 @@ from overbae.services.mcp.contracts.evaluations import (
     EvaluationScopeInput,
     RunEvaluationInput,
     RunEvaluationOutput,
-    UpsertEvalMatrixRowInput,
-    UpsertEvalMatrixRowOutput,
 )
 from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_dataset
 from overbae.services.mcp.resources import resource_link
@@ -169,47 +171,61 @@ def _credits_available(user) -> bool:
     return True
 
 
-def _upsert_row_sync(
-    payload: UpsertEvalMatrixRowInput, context: MCPContext
-) -> UpsertEvalMatrixRowOutput:
+def _row_contract(row: EvalMatrix) -> EvalMatrixRowContract:
+    return EvalMatrixRowContract(
+        id=str(row.id),
+        name=row.name,
+        type=row.type,
+        source=row.source,
+        capability=row.capability.slug if row.capability_id else None,
+        span_type=row.span_type,
+        span_name=row.span_name,
+        enabled=row.enabled,
+    )
+
+
+def _create_row_sync(
+    payload: CreateEvalMatrixRowInput, context: MCPContext
+) -> CreateEvalMatrixRowOutput:
     capability = _capability(context, payload.capability) if payload.capability else None
-    current = _matrix_row(context, payload.row, capability) if payload.row else None
-    data: dict[str, Any] = {
-        field: getattr(payload, field)
-        for field in ("name", "type", "source", "span_type", "span_name", "enabled")
-        if field in payload.model_fields_set and getattr(payload, field) is not None
-    }
-    if current is None:
-        data["project"] = str(context.project.id)
-    if "capability" in payload.model_fields_set:
-        data["capability"] = str(capability.id) if capability else None
     serializer = EvalMatrixSerializer(
-        instance=current, data=data, partial=current is not None, context=_request(context)
+        data={
+            "project": str(context.project.id),
+            "capability": str(capability.id) if capability else None,
+            "name": payload.name,
+            "type": payload.type,
+            "source": payload.source,
+            "span_type": payload.span_type,
+            "span_name": payload.span_name,
+        },
+        context=_request(context),
     )
     try:
         serializer.is_valid(raise_exception=True)
     except DRFValidationError as error:
         raise _invalid("eval_matrix_row_invalid", "The row failed validation.", error) from None
-    row = serializer.save() if current is not None else serializer.save(created_by=context.user)
+    row = serializer.save(created_by=context.user)
     links = (
         [resource_link("capabilities", str(row.capability_id), row.capability.name)]
         if row.capability_id
         else []
     )
-    return UpsertEvalMatrixRowOutput(
-        summary=f"Eval matrix row {row.name} {'updated' if current else 'created'}.",
-        status="updated" if current else "created",
-        row=EvalMatrixRowContract(
-            id=str(row.id),
-            name=row.name,
-            type=row.type,
-            source=row.source,
-            capability=row.capability.slug if row.capability_id else None,
-            span_type=row.span_type,
-            span_name=row.span_name,
-            enabled=row.enabled,
-        ),
+    return CreateEvalMatrixRowOutput(
+        summary=f"Eval matrix row {row.name} created.",
+        row=_row_contract(row),
         resource_links=links,
+    )
+
+
+def _delete_row_sync(
+    payload: DeleteEvalMatrixRowInput, context: MCPContext
+) -> DeleteEvalMatrixRowOutput:
+    capability = _capability(context, payload.capability) if payload.capability else None
+    row = _matrix_row(context, payload.row, capability)
+    contract = _row_contract(row)
+    row.delete()
+    return DeleteEvalMatrixRowOutput(
+        summary=f"Eval matrix row {contract.name} deleted.", row=contract
     )
 
 
@@ -378,13 +394,28 @@ def register_evaluation_tools(catalog) -> None:
 
     definitions = [
         (
-            "upsert_eval_matrix_row",
-            "Upsert eval matrix row",
-            "Create or update a deterministic check or an llm expectation. Enabled rows score "
-            "every matching ingested span live and every evaluation run.",
-            UpsertEvalMatrixRowInput,
-            UpsertEvalMatrixRowOutput,
-            _upsert_row_sync,
+            "create_eval_matrix_row",
+            "Create eval matrix row",
+            "Create a deterministic check or an llm expectation. Enabled rows score "
+            "every matching ingested span live and every evaluation run. Rows cannot be "
+            "edited: delete and create again.",
+            CreateEvalMatrixRowInput,
+            CreateEvalMatrixRowOutput,
+            _create_row_sync,
+            False,
+            False,
+            "free",
+            "sync",
+            {"overmind:evaluate"},
+        ),
+        (
+            "delete_eval_matrix_row",
+            "Delete eval matrix row",
+            "Permanently delete one eval matrix row and drop it from every eval set. "
+            "Spans already scored and past runs keep their results.",
+            DeleteEvalMatrixRowInput,
+            DeleteEvalMatrixRowOutput,
+            _delete_row_sync,
             False,
             False,
             "free",
@@ -468,6 +499,7 @@ def register_evaluation_tools(catalog) -> None:
                 input_model=input_model,
                 output_model=output_model,
                 read_only=read_only,
+                destructive=name == "delete_eval_matrix_row",
                 idempotent=idempotent,
                 open_world=name == "run_evaluation",
                 required_scopes=frozenset(scopes),

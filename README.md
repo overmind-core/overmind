@@ -190,7 +190,7 @@ http_headers = { "X-Api-Key" = "ovr_…" }
 | Projects        | `list_projects`                                                                                                                                            |
 | Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `get_job`                                                                                   |
 | Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`, `message_dataset_agent`, `run_dataset` |
-| Evaluations     | `upsert_eval_matrix_row`, `create_eval_set`, `check_evaluation_readiness`, `run_evaluation`, `compare_evaluations`                                         |
+| Evaluations     | `create_eval_matrix_row`, `delete_eval_matrix_row`, `create_eval_set`, `check_evaluation_readiness`, `run_evaluation`, `compare_evaluations`               |
 | Signals         | `list_signals`, `set_signal_subscription`                                                                                                                  |
 | Training        | `check_finetune_readiness`, `estimate_finetune`, `start_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt`        |
 | Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                                 |

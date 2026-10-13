@@ -67,22 +67,15 @@ class EvalMatrixRowContract(MCPModel):
     enabled: bool
 
 
-class UpsertEvalMatrixRowInput(MCPModel):
-    row: str | None = Field(
-        default=None,
-        max_length=255,
-        description="Existing row id or name to update; omit to create.",
-        validation_alias=AliasChoices("row", "row_id"),
-    )
+class CreateEvalMatrixRowInput(MCPModel):
     capability: str | None = Field(
         default=None,
         max_length=255,
         description="Scope the row to one capability; omit for a project-wide row.",
     )
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    type: MatrixType | None = None
-    source: str | None = Field(
-        default=None,
+    name: str = Field(min_length=1, max_length=255)
+    type: MatrixType
+    source: str = Field(
         min_length=1,
         max_length=20_000,
         description=(
@@ -90,16 +83,33 @@ class UpsertEvalMatrixRowInput(MCPModel):
             "None to abstain, or {score, reason}. llm: one sentence the output must meet."
         ),
     )
-    span_type: Literal["", "llm_call", "tool_call", "retrieval", "workflow"] | None = None
-    span_name: str | None = Field(default=None, max_length=255)
-    enabled: bool | None = None
+    span_type: Literal["", "llm_call", "tool_call", "retrieval", "workflow"] = ""
+    span_name: str = Field(default="", max_length=255)
 
 
-class UpsertEvalMatrixRowOutput(MCPModel):
+class CreateEvalMatrixRowOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
-    status: Literal["created", "updated"]
     row: EvalMatrixRowContract
     resource_links: list[ResourceLinkContract] = Field(max_length=1)
+
+
+class DeleteEvalMatrixRowInput(MCPModel):
+    row: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Row id, or its name when the name is unique.",
+        validation_alias=AliasChoices("row", "row_id"),
+    )
+    capability: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Capability to resolve a row name against.",
+    )
+
+
+class DeleteEvalMatrixRowOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=240)
+    row: EvalMatrixRowContract
 
 
 class EvalSetContract(MCPModel):

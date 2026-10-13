@@ -84,7 +84,7 @@ async def score_rows(run: EvalRun) -> int:
         for attempt in range(ROW_ATTEMPTS):
             try:
                 async with slots:
-                    await processor.evaluate(span, matrix, fallback_intent=fallback, final=True)
+                    await processor.evaluate(span, matrix, fallback_intent=fallback)
                 break
             except DecisionError as exc:
                 if attempt + 1 == ROW_ATTEMPTS:

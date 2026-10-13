@@ -95,6 +95,40 @@ def test_format_hooks_shape_payloads(exporter):
     assert json.loads(span.attributes["outputs"]) == {"pages": 3, "query": "refunds"}
 
 
+def test_self_attrs_record_instance_state_as_inputs(exporter):
+    class Researcher:
+        query = "capital of france"
+        api_key = "sk-1"
+
+        @observe("run", self_attrs=["query", "api_key", "missing"])
+        async def conduct(self, on_progress=None):
+            return "ctx"
+
+    asyncio.run(Researcher().conduct())
+    span = _only_span(exporter)
+    assert json.loads(span.attributes["inputs"]) == {"query": "capital of france", "api_key": "<redacted>"}
+
+
+def test_self_attrs_stay_out_of_tool_arg_keys_and_plain_functions(exporter):
+    class Tools:
+        mode = "fast"
+
+        @tool(self_attrs=["mode"])
+        def search(self, query):
+            return query
+
+    @observe("plain", self_attrs=["mode"])
+    def plain(mode):
+        return mode
+
+    Tools().search("q")
+    plain("arg")
+    spans = {s.name.split(".")[-1]: s for s in exporter.get_finished_spans()}
+    assert spans["search"].attributes[attrs.TOOL_ARG_KEYS] == ("query",)
+    assert json.loads(spans["search"].attributes["inputs"]) == {"mode": "fast", "query": "q"}
+    assert json.loads(spans["plain"].attributes["inputs"]) == {"mode": "arg"}
+
+
 def test_failing_format_hook_is_best_effort(exporter):
     @observe("op", format_output=lambda result, bound: 1 / 0)
     def op():

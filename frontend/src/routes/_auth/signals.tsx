@@ -8,6 +8,14 @@ import { ProjectRequiredEmptyState } from "@/components/project-required-empty-s
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DateTime } from "@/components/ui/datetime";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
@@ -202,8 +210,8 @@ function EventsView({
                       </Badge>
                     </span>
                   </TableCell>
-                  <TableCell className="max-w-md truncate text-sm" title={event.message}>
-                    {event.message}
+                  <TableCell className="max-w-md text-sm">
+                    <ExpandableText text={event.message} title={humanizeKey(event.signalType)} />
                   </TableCell>
                   <TableCell>
                     {event.capability ? (
@@ -259,6 +267,30 @@ function EventsView({
         </div>
       )}
     </div>
+  );
+}
+
+function ExpandableText({ text, title }: { text: string; title: string }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          aria-label={`Show full text of ${title}`}
+          className="line-clamp-2 cursor-pointer whitespace-normal text-left hover:text-foreground"
+          type="button"
+        >
+          {text}
+        </button>
+      </DialogTrigger>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <p className="whitespace-pre-wrap text-sm">{text}</p>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -326,7 +358,9 @@ function SubscriptionRow({
   return (
     <TableRow>
       <TableCell className="font-mono text-sm">{entry.signalType}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">{entry.description}</TableCell>
+      <TableCell className="max-w-md text-sm text-muted-foreground">
+        <ExpandableText text={entry.description} title={humanizeKey(entry.signalType)} />
+      </TableCell>
       <TableCell>
         {params.length === 0 ? (
           <span className="text-muted-foreground">—</span>

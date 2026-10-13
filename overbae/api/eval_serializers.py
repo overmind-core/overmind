@@ -68,19 +68,11 @@ class EvalMatrixSerializer(serializers.ModelSerializer):
         return require_membership(self, value)
 
     def validate(self, attrs):
-        project = attrs.get("project") or self.instance.project
-        require_same_project(project, capability=attrs.get("capability"))
-        if (
-            self.instance is not None
-            and "project" in attrs
-            and attrs["project"] != self.instance.project
-        ):
-            raise serializers.ValidationError({"project": "A matrix row cannot change project."})
-        row_type = attrs.get("type") or self.instance.type
-        source = attrs.get("source", self.instance.source if self.instance else "").strip()
+        require_same_project(attrs["project"], capability=attrs.get("capability"))
+        source = attrs["source"].strip()
         if not source:
             raise serializers.ValidationError({"source": "Required."})
-        if row_type == EvalMatrix.Type.DETERMINISTIC:
+        if attrs["type"] == EvalMatrix.Type.DETERMINISTIC:
             problem = deterministic.audit(source)
             if problem:
                 raise serializers.ValidationError({"source": problem})

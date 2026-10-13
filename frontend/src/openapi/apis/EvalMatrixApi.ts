@@ -18,7 +18,6 @@ import type {
   EvalMatrix,
   EvalMatrixRequest,
   PaginatedEvalMatrixList,
-  PatchedEvalMatrixRequest,
 } from '../models/index';
 import {
     EvalMatrixFromJSON,
@@ -27,8 +26,6 @@ import {
     EvalMatrixRequestToJSON,
     PaginatedEvalMatrixListFromJSON,
     PaginatedEvalMatrixListToJSON,
-    PatchedEvalMatrixRequestFromJSON,
-    PatchedEvalMatrixRequestToJSON,
 } from '../models/index';
 
 export interface EvalMatrixCreateRequest {
@@ -49,11 +46,6 @@ export interface EvalMatrixListRequest {
     search?: string;
     spanType?: string;
     type?: EvalMatrixListTypeEnum;
-}
-
-export interface EvalMatrixPartialUpdateRequest {
-    id: string;
-    patchedEvalMatrixRequest?: PatchedEvalMatrixRequest;
 }
 
 export interface EvalMatrixRetrieveRequest {
@@ -268,68 +260,6 @@ export class EvalMatrixApi extends runtime.BaseAPI {
      */
     async evalMatrixList(requestParameters: EvalMatrixListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalMatrixList> {
         const response = await this.evalMatrixListRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Deterministic checks and llm expectations; live span scoring reads the enabled rows.
-     * Update an eval matrix row
-     */
-    async evalMatrixPartialUpdateRaw(requestParameters: EvalMatrixPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalMatrix>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling evalMatrixPartialUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/eval-matrix/{id}/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PATCH',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PatchedEvalMatrixRequestToJSON(requestParameters['patchedEvalMatrixRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalMatrixFromJSON(jsonValue));
-    }
-
-    /**
-     * Deterministic checks and llm expectations; live span scoring reads the enabled rows.
-     * Update an eval matrix row
-     */
-    async evalMatrixPartialUpdate(requestParameters: EvalMatrixPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalMatrix> {
-        const response = await this.evalMatrixPartialUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

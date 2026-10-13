@@ -23,6 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.api.scoping import project_ids_for
 from overbae.core.utils import safe_float, safe_int, safe_json, safe_json_or_default
+from overbae.innermind import evidence
 from overbae.models import (
     APIToken,
     Capability,
@@ -790,10 +791,11 @@ _SPAN_UPSERT_FIELDS = [
     "usage",
     "events",
     "links",
-    # A re-ingested span is scored again; its earlier scores stay in EvalScore.
+    # Reset only when the evidence changed; a span re-sent unchanged keeps its score.
     "eval_attributes",
     "eval_claimed_at",
 ]
+_EVAL_FIELDS = frozenset({"eval_attributes", "eval_claimed_at"})
 
 
 def _decoded_request_body(request) -> bytes:
@@ -836,14 +838,25 @@ def otlp_traces(request):
             continue
         all_spans.extend(spans)
 
+    unscored: list[Span] = []
     if all_spans:
+        kept = evidence.scored_unchanged(all_spans)
+        unscored = [span for span in all_spans if span.span_id not in kept]
         with transaction.atomic():  # bulk-upsert spans (idempotent on ``span_id``)
-            Span.objects.bulk_create(
-                all_spans,
-                update_conflicts=True,
-                unique_fields=["span_id"],
-                update_fields=_SPAN_UPSERT_FIELDS,
-            )
+            for batch, fields in (
+                (unscored, _SPAN_UPSERT_FIELDS),
+                (
+                    [span for span in all_spans if span.span_id in kept],
+                    [field for field in _SPAN_UPSERT_FIELDS if field not in _EVAL_FIELDS],
+                ),
+            ):
+                if batch:
+                    Span.objects.bulk_create(
+                        batch,
+                        update_conflicts=True,
+                        unique_fields=["span_id"],
+                        update_fields=fields,
+                    )
 
     # Spans are already persisted, so one poison span must not 500 the batch:
     # OTel exporters retry a 500 forever, re-ingesting the same payload.
@@ -855,7 +868,7 @@ def otlp_traces(request):
         except Exception:
             logger.exception("post-processing failed for span %s", span.span_id)
 
-    enqueue_scoring(all_spans)
+    enqueue_scoring(unscored)
 
     return JsonResponse(
         {
@@ -872,6 +885,6 @@ def enqueue_scoring(spans: list[Span]) -> None:
     from overbae.tasks.innermind import enqueue_span_scoring  # noqa: PLC0415
 
     try:
-        enqueue_span_scoring([span.span_id for span in spans])
+        enqueue_span_scoring([(span.trace_id, span.span_id) for span in spans])
     except Exception:  # noqa: BLE001
         logger.warning("Failed to enqueue scoring for %d spans", len(spans), exc_info=True)

@@ -28,9 +28,10 @@ targets. Resolve reported eval set rows, dataset and credit requirements. Read
 `overmind://eval-sets/{eval_set}` for set details.
 
 When metric changes are requested, collect the actual expectation and use
-`upsert_eval_matrix_row` (an llm row is one checkable sentence; a deterministic
+`create_eval_matrix_row` (an llm row is one checkable sentence; a deterministic
 row is an audited `evaluate(span)` check); group rows with `create_eval_set`
-when needed. Preserve existing evaluation semantics unless the user asks to
+when needed. A row cannot be edited: `delete_eval_matrix_row`, then create the
+replacement. Preserve existing evaluation semantics unless the user asks to
 change them.
 
 ## Run and compare

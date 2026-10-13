@@ -42,7 +42,8 @@ GUIDANCE = {
     "identity": "Stamp overmind.capability.id: overmind.init(capability_id=...) or "
     "@overmind.entry_point(capability_id=...).",
     "root": "Decorate the capability's entry point so each run has one root span.",
-    "input": "Capture the entry point's input: keep capture='auto' or pass format_input.",
+    "input": "Capture the entry point's input: keep capture='auto'; when it lives on the "
+    "instance, add self_attrs=['<attribute>'] (or pass format_input).",
     "output": "Return the answer from the entry point so its output is captured.",
     "tools": "Decorate each tool with @overmind.tool() so trajectory metrics see the calls.",
     "scored_rows": "Enable an eval matrix row that applies to these spans, or declare "

@@ -20,6 +20,7 @@ from tenacity import (
     AsyncRetrying,
     RetryCallState,
     before_sleep_log,
+    stop_after_attempt,
     stop_after_delay,
     wait_exponential_jitter,
 )
@@ -278,6 +279,7 @@ async def _create_completion(
     completion_kwargs: dict,
     request_kwargs: dict,
     retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
+    max_attempts: int | None = None,
 ):
     async def _once():
         started = time.monotonic()
@@ -292,10 +294,13 @@ async def _create_completion(
             object.__setattr__(response, "_response_ms", response_ms)
         return response
 
+    stop = stop_after_delay(retry_deadline)
+    if max_attempts:
+        stop |= stop_after_attempt(max_attempts)
     return await AsyncRetrying(
         retry=_should_retry_llm_call,
         wait=_LLM_WAIT,
-        stop=stop_after_delay(retry_deadline),
+        stop=stop,
         reraise=True,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )(_once)
@@ -306,6 +311,7 @@ def _do_openai_completion(
     completion_kwargs: dict,
     request_kwargs: dict,
     retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
+    max_attempts: int | None = None,
 ):
     # Each chat owns its client and loop. Cached asynchronous clients cannot be
     # reused across worker threads or across the loops of successive calls.
@@ -317,7 +323,7 @@ def _do_openai_completion(
         try:
             async with client, asyncio.timeout(budget):
                 return await _create_completion(
-                    client, completion_kwargs, request_kwargs, retry_deadline
+                    client, completion_kwargs, request_kwargs, retry_deadline, max_attempts
                 )
         except TimeoutError as exc:
             raise CompletionDeadlineExceededError(
@@ -544,6 +550,7 @@ def call_llm(
     max_tokens: int = 5000,
     fallback_models: list[str] | None = None,
     retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
+    max_attempts: int | None = None,
 ) -> tuple[str, dict]:
     if any(
         is_decision_model(name)
@@ -605,7 +612,7 @@ def call_llm(
                 completion_kwargs["extra_body"] = extra_body
 
             response = _do_openai_completion(
-                client, completion_kwargs, request_kwargs, retry_deadline
+                client, completion_kwargs, request_kwargs, retry_deadline, max_attempts
             )
             return _extract_llm_response(response)
 
@@ -647,7 +654,9 @@ def call_llm(
         if chain:
             completion_kwargs["extra_body"]["models"] = chain
 
-        response = _do_openai_completion(client, completion_kwargs, request_kwargs, retry_deadline)
+        response = _do_openai_completion(
+            client, completion_kwargs, request_kwargs, retry_deadline, max_attempts
+        )
         return _extract_llm_response(response)
 
     except (IncompleteCompletionError, SoftTimeLimitExceeded):

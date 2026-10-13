@@ -16,9 +16,13 @@ names a `target` (`file`, `qualname`, `module`, `import_line`), its `kind`
 def handle(message: str) -> str: ...
 ```
 
-Apply each decorator verbatim. Declare per-span expectations on the decorator
-when a span has a contract of its own; capability-wide expectations belong in
-the eval matrix, not the code:
+Apply each decorator verbatim. Declare the expectations a span's own contract
+implies on its decorator; `/overmind setup` writes them from the capability
+card and decorates every tool, retrieval step, mode and helper the card names,
+not only the plan's anchors. Judge criteria live only on decorators.
+Deterministic checks (required keys, field rules, budgets) live in the toml's
+`eval_matrix` or are added in the Console. Capability-wide judge metrics beyond
+the decorators go through `create_eval_matrix_row`:
 
 ```python
 @overmind.tool(expectations=["Returns the order for the given id"])

@@ -7,6 +7,7 @@ spans from any instrumentation are scored the same way.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import suppress
 from typing import Any
@@ -27,8 +28,34 @@ MODEL_KEYS = (*chatml.MODEL_KEYS, "genai.response.model", "llm.model_name")
 OTEL_ERROR = 2
 
 
+def fingerprint(span: Span) -> str:
+    """Identifies the evidence a score was computed from."""
+    payload = json.dumps(
+        [span.name, span.span_type, span.parent_span_id, span.status_code, span.attributes],
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
+def scored_unchanged(spans: list[Span]) -> set[str]:
+    """Ids of spans that already hold a final score computed from the same evidence. A
+    score stored without a fingerprint predates the check and is kept."""
+    stored = dict(
+        Span.objects.filter(
+            span_id__in=[span.span_id for span in spans], eval_attributes__has_key="score"
+        ).values_list("span_id", "eval_attributes__fingerprint")
+    )
+    return {
+        span.span_id
+        for span in spans
+        if span.span_id in stored and stored[span.span_id] in (None, fingerprint(span))
+    }
+
+
 def as_text(value: Any) -> str:
-    if value is None:
+    if value is None or (isinstance(value, (dict, list)) and not value):
         return ""
     if isinstance(value, str):
         return value.strip()
@@ -186,10 +213,9 @@ def requested_tools(output: str) -> list[str]:
     ]
 
 
-def read_intent(span: Span, trace: dict[str, Span], fallback: str = "") -> str | None:
-    """The nearest declared intent up the span's ancestry, else the root's input,
-    else ``fallback`` (the capability description). None while an ancestor has
-    not arrived."""
+def read_intent(span: Span, trace: dict[str, Span], fallback: str = "") -> str:
+    """The nearest declared intent up the arrived ancestry, else the root's input if it
+    has arrived, else ``fallback`` (the capability description)."""
     node = span
     while True:
         intent = declared_intent(node)
@@ -199,5 +225,5 @@ def read_intent(span: Span, trace: dict[str, Span], fallback: str = "") -> str |
             return read_input(node) or fallback
         parent = trace.get(node.parent_span_id)
         if parent is None:
-            return None
+            return fallback
         node = parent

@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 from typing import Any
 
 from overbae.innermind import evidence
@@ -28,8 +29,14 @@ WALL_SECONDS = 15
 MEMORY_BYTES = 512 * 1024**2
 TRACE_SPAN_CAP = 2_000
 MAX_CONCURRENT_SANDBOXES = 16
+# Text a neighbouring span carries into the sandbox; its full payload would copy a large
+# trace into every call, past the child's memory limit.
+NEIGHBOUR_TEXT = 4_000
+SLOT_POLL_SECONDS = 0.05
+NEIGHBOUR_VIEW = "_sandbox_neighbour_view"
 
-sandbox_slots = asyncio.Semaphore(MAX_CONCURRENT_SANDBOXES)
+# Every task runs its own event loop, so only a thread-level lock bounds the worker.
+sandbox_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SANDBOXES)
 
 SPAN_FIELDS = (
     "span_id",
@@ -348,8 +355,20 @@ def audit(source: str) -> str | None:
     return "; ".join(sorted(set(violations))[:5])
 
 
-def serialize(span: Span) -> dict[str, Any]:
-    return {
+def clip(value: Any) -> Any:
+    if isinstance(value, str) and len(value) > NEIGHBOUR_TEXT:
+        keep = NEIGHBOUR_TEXT // 2
+        return f"{value[:keep]} …[clipped]… {value[-keep:]}"
+    if isinstance(value, dict):
+        return {key: clip(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [clip(item) for item in value]
+    return value
+
+
+def serialize(span: Span, *, neighbour: bool = False) -> dict[str, Any]:
+    """A neighbour's text is clipped; ``clip`` builds new containers, so it needs no copy."""
+    payload = {
         "span_id": span.span_id,
         "parent_id": span.parent_span_id or None,
         "trace_id": span.trace_id,
@@ -361,9 +380,27 @@ def serialize(span: Span) -> dict[str, Any]:
         "output": evidence.read_output(span),
         "expected": evidence.read_expected(span) or None,
         "duration_s": evidence.seconds(span),
+    }
+    if neighbour:
+        return {
+            **clip(payload),
+            "usage": clip(span.usage or {}),
+            "attributes": clip(span.attributes or {}),
+        }
+    return {
+        **payload,
         "usage": copy.deepcopy(span.usage or {}),
         "attributes": copy.deepcopy(span.attributes or {}),
     }
+
+
+def neighbour_view(span: Span) -> dict[str, Any]:
+    """Kept on the loaded span: every span and row of a trace sends the same neighbours,
+    and rebuilding them per call is quadratic in the trace."""
+    view = span.__dict__.get(NEIGHBOUR_VIEW)
+    if view is None:
+        view = span.__dict__[NEIGHBOUR_VIEW] = serialize(span, neighbour=True)
+    return view
 
 
 def failure(explanation: str) -> dict[str, Any]:
@@ -380,12 +417,18 @@ async def run(source: str, span: Span, trace: list[Span]) -> dict[str, Any]:
     if violation:
         return failure(violation)
 
-    payload = {
-        "spans": [serialize(item) for item in trace],
-        "span_id": span.span_id,
-        "source": source,
-    }
-    async with sandbox_slots:
+    # Polled, not awaited in a thread: a cancelled waiter must never take a slot it cannot free.
+    while not sandbox_slots.acquire(blocking=False):
+        await asyncio.sleep(SLOT_POLL_SECONDS)
+    try:
+        payload = {
+            "spans": [
+                serialize(item) if item.span_id == span.span_id else neighbour_view(item)
+                for item in trace
+            ],
+            "span_id": span.span_id,
+            "source": source,
+        }
         with tempfile.TemporaryDirectory(prefix="innermind_check_") as tmp:
             runner_path = os.path.join(tmp, "runner.py")
             with open(runner_path, "w", encoding="utf-8") as fh:
@@ -418,6 +461,8 @@ async def run(source: str, span: Span, trace: list[Span]) -> dict[str, Any]:
                 proc.kill()
                 await proc.wait()
                 return failure(f"script ran longer than {WALL_SECONDS}s and was stopped")
+    finally:
+        sandbox_slots.release()
 
     if proc.returncode != 0:
         lines = (stderr or stdout).decode(errors="replace").strip().splitlines()

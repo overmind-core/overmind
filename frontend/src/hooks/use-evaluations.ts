@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient from "@/client";
+import { notify } from "@/lib/notify";
 import { backoffPolling } from "@/lib/poll";
 import type {
   EvalMatrixRequest,
@@ -67,6 +68,15 @@ export const useCreateEvalMatrixRowMutation = () => {
   return useMutation({
     mutationFn: (input: EvalMatrixRequest) =>
       apiClient.evalMatrix.evalMatrixCreate({ evalMatrixRequest: input }),
+    onSuccess: () => invalidateMatrix(qc),
+  });
+};
+
+export const useDeleteEvalMatrixRowMutation = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.evalMatrix.evalMatrixDestroy({ id }),
+    onError: (e) => notify.error(e, "Couldn't delete the row"),
     onSuccess: () => invalidateMatrix(qc),
   });
 };

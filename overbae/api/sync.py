@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from overbae.api.authentication import APITokenBackend
 from overbae.api.scoping import project_ids_for
+from overbae.innermind import checks
 from overbae.models import APIToken, Project
 from overbae.services.sync import apply_snapshot, snapshot_of
 
@@ -43,6 +44,16 @@ class CapabilitySerializer(serializers.Serializer):
     eval_matrix = serializers.ListField(child=serializers.DictField(), required=False)
     archived = serializers.BooleanField(required=False, default=False)
     status = serializers.CharField(read_only=True)
+
+    def validate_eval_matrix(self, entries):
+        for entry in entries:
+            if entry.get("type") != "deterministic":
+                continue
+            try:
+                checks.render(str(entry.get("check") or ""), entry.get("params") or {})
+            except ValueError as exc:
+                raise serializers.ValidationError(f"{entry.get('name') or 'entry'}: {exc}") from exc
+        return entries
 
 
 class RepositorySnapshotSerializer(serializers.Serializer):

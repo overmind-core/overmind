@@ -34,9 +34,10 @@ fails.
 
 1. Read `overmind://capabilities/{capability}` for `eval_matrix` (the rows that
    apply) and `eval_preload` (what sync put into the Default set).
-1. To add or change a metric, collect the human expectation and call
-   `upsert_eval_matrix_row` with `name`, `type`, `source` and optional
-   `capability`, `span_type`, `span_name` and `enabled`. Keep an llm `source` to
+1. To add a metric, collect the human expectation and call
+   `create_eval_matrix_row` with `name`, `type`, `source` and optional
+   `capability`, `span_type` and `span_name`. To change one, call
+   `delete_eval_matrix_row` and create the replacement. Keep an llm `source` to
    one checkable sentence. A deterministic `source` defines
    `evaluate(span)` returning a bool, a score in [0, 1], `(score, reason)` or
    `None` to abstain. The span exposes `input`, `output`, `expected`, `tool`,

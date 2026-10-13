@@ -1,5 +1,5 @@
-"""The Default eval set sync keeps for each capability: its toml expectations plus the
-seeded checks that apply to its spans."""
+"""The Default eval set sync keeps for each capability: its toml expectations and
+deterministic checks plus the seeded checks that apply to its spans."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def expectation_rows(capability: Capability) -> list[EvalMatrix]:
     """Upserts one llm row per declared expectation; the toml owns their text."""
     rows = []
     for entry in (capability.improvement_metadata or {}).get("eval_matrix") or []:
-        if not isinstance(entry, dict):
+        if not isinstance(entry, dict) or entry.get("type") == "deterministic":
             continue
         managed = str(entry.get("managed_name") or "").strip().lower()
         if managed in COVERED:
@@ -60,6 +60,30 @@ def expectation_rows(capability: Capability) -> list[EvalMatrix]:
             capability=capability,
             name=name,
             defaults={"type": EvalMatrix.Type.LLM, "source": source},
+        )
+        rows.append(row)
+    return rows
+
+
+def deterministic_rows(capability: Capability) -> list[EvalMatrix]:
+    """Upserts one deterministic row per toml entry that names a catalog ``check``; the toml
+    owns the script's constants (``params``) and its span scope."""
+    rows = []
+    for entry in (capability.improvement_metadata or {}).get("eval_matrix") or []:
+        if not isinstance(entry, dict) or entry.get("type") != "deterministic":
+            continue
+        check = str(entry.get("check") or "").strip()
+        name = str(entry.get("name") or check).strip()[:255]
+        row, _ = EvalMatrix.objects.update_or_create(
+            project_id=capability.project_id,
+            capability=capability,
+            name=name,
+            defaults={
+                "type": EvalMatrix.Type.DETERMINISTIC,
+                "source": checks.render(check, entry.get("params") or {}),
+                "span_type": str(entry.get("span_type") or ""),
+                "span_name": str(entry.get("span_name") or "")[:255],
+            },
         )
         rows.append(row)
     return rows
@@ -92,7 +116,7 @@ def upsert(capability: Capability) -> EvalSet:
     """Rebuilds the Default set's rows and activates it when the capability has no set."""
     started = timezone.now()
     expectations = expectation_rows(capability)
-    seeded = check_rows(capability)
+    seeded = [*deterministic_rows(capability), *check_rows(capability)]
     eval_set, _ = EvalSet.objects.get_or_create(
         project_id=capability.project_id, capability=capability, name=NAME
     )

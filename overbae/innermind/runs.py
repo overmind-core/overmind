@@ -10,12 +10,12 @@ from itertools import batched
 from statistics import mean
 from typing import Any
 
-from asgiref.sync import async_to_sync
 from celery import current_app
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from overbae.core import async_loop
 from overbae.innermind import classes, comparison, dataset, generation
 from overbae.innermind.metrics import FAIL_BELOW
 from overbae.models import EvalMatrix, EvalRun, EvalRunRow, EvalSet, FinetuningJob
@@ -189,7 +189,7 @@ def score(run_id, task_id) -> bool:
         return False
     run = EvalRun.objects.select_related("dataset__capability", "cell", "model_ref").get(pk=run_id)
     try:
-        async_to_sync(dataset.score_rows)(run)
+        async_loop.run(dataset.score_rows(run))
     except Exception as exc:
         logger.exception("Scoring run %s failed", run_id)
         fail(run_id, f"scoring failed: {exc}")

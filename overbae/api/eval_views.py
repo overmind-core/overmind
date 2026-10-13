@@ -73,7 +73,6 @@ class ModelCatalogView(APIView):
     list=extend_schema(summary="List eval matrix rows"),
     retrieve=extend_schema(summary="Get an eval matrix row"),
     create=extend_schema(summary="Add an eval matrix row"),
-    partial_update=extend_schema(summary="Update an eval matrix row"),
     destroy=extend_schema(summary="Delete an eval matrix row"),
 )
 class EvalMatrixViewSet(viewsets.ModelViewSet):
@@ -84,7 +83,7 @@ class EvalMatrixViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "source"]
     ordering_fields = ["name", "created_at"]
     lookup_field = "id"
-    http_method_names = ["get", "post", "patch", "delete"]
+    http_method_names = ["get", "post", "delete"]
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):

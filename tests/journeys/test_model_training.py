@@ -53,7 +53,7 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
 
     # An agent authors its own expectation from prose alone, as most agents do.
     expectation = workshop.call(
-        "upsert_eval_matrix_row",
+        "create_eval_matrix_row",
         {
             "name": "resolves-the-ticket",
             "capability": "answer",

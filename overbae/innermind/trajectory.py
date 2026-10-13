@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import timedelta
 
 from django.utils import timezone
@@ -22,6 +22,7 @@ from overbae.innermind.metrics import (
     roots_of,
     score_of,
 )
+from overbae.innermind.span_processor import MAX_ATTEMPTS
 from overbae.models import EvalScore, Span
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ def is_in_order(expected: list[str], actual: list[str]) -> bool:
 class TrajectoryEvaluator:
     name: str
     expectation: str
+    calls_judge = False
 
     async def score(self, spans: list[Span]) -> Metric | None: ...
 
@@ -109,6 +111,7 @@ class EfficiencyEvaluator(TrajectoryEvaluator):
 
 class PathJudgeEvaluator(TrajectoryEvaluator):
     name = "path_judge"
+    calls_judge = True
     expectation = (
         "Each step moves toward the intent, no step is unnecessary or out of order, "
         "and the agent recovers sensibly from errors."
@@ -173,11 +176,25 @@ class TrajectoryProcessor:
     def get_evaluators(self) -> list[TrajectoryEvaluator]:
         raise NotImplementedError
 
-    async def evaluate(self, spans: list[Span]) -> Span:
-        """Stores the trajectory on the root span without saving it."""
+    async def evaluate(self, spans: list[Span], *, judge: bool = True, last_attempt: bool) -> Span:
+        """Stores the trajectory on the root span without saving it. A failing evaluator
+        raises unless this is the ``last_attempt``; then it, like every judged evaluator
+        when ``judge`` is off, is recorded as an error metric."""
         root = roots_of(spans)[0]
         evaluators = self.get_evaluators()
-        metrics = await asyncio.gather(*(evaluator.score(spans) for evaluator in evaluators))
+        stopped = Metric("", error=f"scoring failed after {MAX_ATTEMPTS} attempts")
+
+        async def score(evaluator: TrajectoryEvaluator) -> Metric | None:
+            if evaluator.calls_judge and not judge:
+                return replace(stopped, expectation=evaluator.expectation)
+            try:
+                return await evaluator.score(spans)
+            except Exception:
+                if not last_attempt:
+                    raise
+                return replace(stopped, expectation=evaluator.expectation)
+
+        metrics = await asyncio.gather(*map(score, evaluators))
         by_name = {
             evaluator.name: metric for evaluator, metric in zip(evaluators, metrics, strict=True)
         }
@@ -226,22 +243,32 @@ class TrajectoryProcessorFactory:
 trajectory_factory = TrajectoryProcessorFactory()
 
 
-def is_ready(spans: list[Span]) -> bool:
-    """A trajectory is (re)scored once every arrived span is final and the trace
-    has grown since its last trajectory."""
-    roots = roots_of(spans)
-    if len(roots) != 1 or not all(map(is_final, spans)):
+async def store(root: Span, attributes: dict, *, current: dict | None = None) -> bool:
+    """Writes the root's eval attributes only if they still hold ``current``, so a
+    concurrent pass or a re-ingest's reset is never overwritten."""
+    expected = root.eval_attributes if current is None else current
+    if not await Span.objects.filter(span_id=root.span_id, eval_attributes=expected).aupdate(
+        eval_attributes=attributes
+    ):
         return False
-    previous = roots[0].eval_attributes.get("trajectory") or {}
-    return previous.get("span_count") != len(spans)
+    root.eval_attributes = attributes
+    return True
 
 
-async def score_trajectory(spans: list[Span]) -> Span:
-    spans = sorted(spans, key=lambda span: span.start_time_ns)
-    return await trajectory_factory.get_processor(spans).evaluate(spans)
+def is_ready(spans: list[Span]) -> bool:
+    """A trajectory is scored once, when every arrived span is final; spans arriving
+    after it do not score it again."""
+    roots = roots_of(spans)
+    return (
+        len(roots) == 1
+        and "trajectory" not in roots[0].eval_attributes
+        and all(map(is_final, spans))
+    )
 
 
 async def score_trace(trace_id: str) -> bool:
+    """Counts the attempt on the root before judging, so a killed pass counts too; once
+    ``MAX_ATTEMPTS`` are spent the trajectory is stored without calling the judge."""
     spans = [
         span
         async for span in Span.objects.filter(trace_id=trace_id).order_by("start_time_ns")[
@@ -250,9 +277,20 @@ async def score_trace(trace_id: str) -> bool:
     ]
     if not is_ready(spans):
         return False
-    root = await score_trajectory(spans)
+    root = roots_of(spans)[0]
+    attempts = root.eval_attributes.get("trajectory_attempts", 0)
+    spent = attempts >= MAX_ATTEMPTS
+    if not spent:
+        attempts += 1
+        if not await store(root, {**root.eval_attributes, "trajectory_attempts": attempts}):
+            return False
+    judged = dict(root.eval_attributes)
+    await trajectory_factory.get_processor(spans).evaluate(
+        spans, judge=not spent, last_attempt=attempts >= MAX_ATTEMPTS
+    )
     trajectory = root.eval_attributes["trajectory"]
-    await Span.objects.filter(span_id=root.span_id).aupdate(eval_attributes=root.eval_attributes)
+    if not await store(root, root.eval_attributes, current=judged):
+        return False
     await EvalScore.objects.acreate(
         project_id=root.project_id,
         source_type=EvalScore.SourceType.TRAJECTORY,

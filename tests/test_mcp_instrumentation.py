@@ -164,6 +164,21 @@ def test_verify_names_each_missing_piece():
     }
 
 
+def test_verify_treats_an_empty_captured_payload_as_missing():
+    context = mcp_context()
+    capability = _capability(context)
+    make_matrix_row(context.project, "Answers", capability=capability)
+    root = _span(
+        **{"overmind.capability.id": str(capability.id), "inputs": "{}", "outputs": '"hello"'}
+    )
+
+    output = _call("verify_instrumentation", context, {"spans": [root]}).structuredContent
+
+    [result] = output["capabilities"]
+    assert result["checks"]["input"] == "missing"
+    assert result["checks"]["output"] == "ok"
+
+
 def test_verify_reports_malformed_spans_and_rejects_a_json_string():
     context = mcp_context()
 

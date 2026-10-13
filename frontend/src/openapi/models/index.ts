@@ -206,7 +206,6 @@ export * from './PatchedCapabilityRequest';
 export * from './PatchedCellWriteRequest';
 export * from './PatchedConnectorCredentialRequest';
 export * from './PatchedDatasetRequest';
-export * from './PatchedEvalMatrixRequest';
 export * from './PatchedEvalSetRequest';
 export * from './PatchedFinetuningJobRequest';
 export * from './PatchedProjectRequest';

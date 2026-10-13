@@ -234,7 +234,6 @@ models/PatchedCapabilityRequest.ts
 models/PatchedCellWriteRequest.ts
 models/PatchedConnectorCredentialRequest.ts
 models/PatchedDatasetRequest.ts
-models/PatchedEvalMatrixRequest.ts
 models/PatchedEvalSetRequest.ts
 models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts

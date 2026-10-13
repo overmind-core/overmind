@@ -23,7 +23,8 @@ CostClass = Literal["free", "compute", "llm", "gpu"]
 AsyncMode = Literal["sync", "job", "task"]
 _TOOL_NAME = r"^[a-z][a-z0-9_]{0,63}$"
 _FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment"})
+_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment", "delete_eval_matrix_row"})
+_DESTRUCTIVE_TOOLS = frozenset({"delete_eval_matrix_row"})
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -81,7 +82,7 @@ class ToolDefinition(BaseModel):
             part in self.name for part in _FORBIDDEN_NAME_PARTS
         ):
             raise CatalogError("destructive lifecycle tools are not supported")
-        if self.destructive:
+        if self.destructive != (self.name in _DESTRUCTIVE_TOOLS):
             raise CatalogError("destructive tools are not supported")
 
     def as_mcp_tool(self) -> types.Tool:

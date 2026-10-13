@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from overbae.innermind import evidence
 from overbae.innermind.evals import evaluator_factory, expectation_rows, matches
-from overbae.innermind.metrics import answers_for_capability, mean_score
+from overbae.innermind.metrics import Metric, answers_for_capability, mean_of
 from overbae.models import EvalMatrix, EvalScore, Span
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,10 @@ TRACE_SPAN_CAP = 2_000
 MAX_CONCURRENT_SPANS = 64
 # A claim older than this belongs to a worker that died; the sweep takes it over.
 CLAIM_TTL = timedelta(minutes=10)
-# Spans waiting on an ancestor are deferred; past this many passes they are scored
-# with what has arrived, so an orphan never waits forever.
-MAX_DEFERRALS = 30
+# Judging passes per span, counted before the judges are called so a killed or hung pass
+# counts too. A failing row on the last pass, or every row still missing once the passes are
+# spent, is recorded as an error metric and the span is scored.
+MAX_ATTEMPTS = 3
 # The ingest task owns fresh spans; the sweep only re-drives older ones.
 SWEEP_GRACE = timedelta(seconds=90)
 
@@ -66,40 +67,74 @@ class SpanProcessor:
         trace: dict[str, Span] | None = None,
         *,
         fallback_intent: str = "",
-        final: bool = False,
+        judge: bool = True,
+        last_attempt: bool = False,
     ) -> Span:
-        """Writes "score" only once the result is final; a span without it is retried."""
+        """Writes "score" only once the result is final; a span without it is retried.
+
+        The span is judged with what has arrived: an ancestor or the root that lands later
+        never changes its score. A row's metric is kept in ``attrs["partial"]`` the moment
+        it is computed, so a retry judges only the rows that failed. A failing row raises
+        its error unless this is the ``last_attempt``; then it, like every missing row when
+        ``judge`` is off, is recorded as an error metric and the span is scored with the
+        rest."""
         trace = trace or {span.span_id: span}
+        attrs = span.eval_attributes
+
         intent = evidence.read_intent(span, trace, fallback_intent)
         rows = self.rows(span, matrix, trace)
-        needs_trace = any(row.type == EvalMatrix.Type.DETERMINISTIC for row in rows)
-        root_arrived = any(node.is_root for node in trace.values())
-        if not final and (intent is None or (needs_trace and not root_arrived)):
-            span.eval_attributes = {
-                **span.eval_attributes,
-                "retry": span.eval_attributes.get("retry", 0) + 1,
-            }
-            return span
-
-        span.eval_attributes = {
-            "version": span.eval_attributes.get("version", 0) + 1,
-            "intent": intent or fallback_intent,
-        }
+        span.eval_attributes = {**attrs, "intent": intent or fallback_intent}
         nodes = list(trace.values())
-        metrics = await asyncio.gather(
+        done: dict[str, dict] = dict(attrs.get("partial") or {})
+        # Rows with the same expectation are judged once per span.
+        distinct = (
+            {(row.type, row.source): row for row in rows if row.name not in done}.values()
+            if judge
+            else []
+        )
+        outcomes = await asyncio.gather(
             *(
                 evaluator_factory.get_evaluator(row, self.project_id, self.explain_model).score(
                     row, span, nodes
                 )
-                for row in rows
-            )
+                for row in distinct
+            ),
+            return_exceptions=True,
         )
-        span.eval_attributes |= {
-            "score": mean_score(metrics),
-            "metrics": {
-                row.name: metric.as_dict(row.type)
-                for row, metric in zip(rows, metrics, strict=True)
-            },
+        by_source = {}
+        failed: list[Exception] = []
+        for row, outcome in zip(distinct, outcomes, strict=True):
+            if isinstance(outcome, Exception):
+                failed.append(outcome)
+            elif isinstance(outcome, BaseException):
+                raise outcome
+            else:
+                by_source[(row.type, row.source)] = outcome
+        for row in rows:
+            if row.name not in done and (row.type, row.source) in by_source:
+                done[row.name] = by_source[(row.type, row.source)].as_dict(row.type)
+
+        if failed and not last_attempt:
+            span.eval_attributes = {
+                **span.eval_attributes,
+                "partial": done,
+                "error": f"{type(failed[0]).__name__}: {failed[0]}",
+            }
+            raise failed[0]
+        for row in rows:
+            done.setdefault(
+                row.name,
+                Metric(row.name, error=f"scoring failed after {MAX_ATTEMPTS} attempts").as_dict(
+                    row.type
+                ),
+            )
+        metrics = {row.name: done[row.name] for row in rows}
+        span.eval_attributes = {
+            "version": attrs.get("version", 0) + 1,
+            "intent": intent or fallback_intent,
+            "fingerprint": evidence.fingerprint(span),
+            "score": mean_of(metric["score"] for metric in metrics.values()),
+            "metrics": metrics,
         }
         return span
 
@@ -157,14 +192,16 @@ def claim(span_ids: list[str]) -> list[str]:
     return claimed
 
 
-def unscored_span_ids(limit: int) -> list[str]:
+def unscored_spans(limit: int) -> list[tuple[str, str]]:
+    """``(trace_id, span_id)`` of unscored spans past the grace period, newest first, so
+    old spans cannot starve fresh ones."""
     now = timezone.now()
     return list(
         Span.objects.exclude(eval_attributes__has_key="score")
         .filter(received_at__lt=now - SWEEP_GRACE)
         .filter(Q(eval_claimed_at__isnull=True) | Q(eval_claimed_at__lt=now - CLAIM_TTL))
-        .order_by("received_at")
-        .values_list("span_id", flat=True)[:limit]
+        .order_by("-received_at")
+        .values_list("trace_id", "span_id")[:limit]
     )
 
 
@@ -172,85 +209,135 @@ async def enabled_matrix(project_id) -> list[EvalMatrix]:
     return [row async for row in EvalMatrix.objects.filter(project_id=project_id, enabled=True)]
 
 
-async def load_traces(project_id, trace_ids: set[str]) -> dict[str, dict[str, Span]]:
+async def load_traces(
+    project_id, spans: list[Span], *, neighbours: bool
+) -> dict[str, dict[str, Span]]:
+    """What a batch reads of its traces: the roots and each span's ancestors, plus its
+    parent's children and its own when a deterministic row reads them. The rest of a
+    trace is never loaded, so one span does not read a large trace whole."""
+    trace_ids = {span.trace_id for span in spans}
+    edges = [
+        edge
+        async for edge in Span.objects.filter(project_id=project_id, trace_id__in=trace_ids)
+        .order_by("start_time_ns")
+        .values_list("span_id", "parent_span_id")[: TRACE_SPAN_CAP * len(trace_ids)]
+    ]
+    parent_of = dict(edges)
+    children: dict[str, list[str]] = defaultdict(list)
+    for span_id, parent in edges:
+        if parent:
+            children[parent].append(span_id)
+    wanted = {span_id for span_id, parent in edges if not parent}
+    for span in spans:
+        node = span.parent_span_id
+        while node in parent_of and node not in wanted:
+            wanted.add(node)
+            node = parent_of[node]
+        if neighbours:
+            wanted.update(children[span.span_id])
+            if span.parent_span_id:
+                wanted.update(children[span.parent_span_id])
+
     traces: dict[str, dict[str, Span]] = defaultdict(dict)
-    async for span in Span.objects.filter(project_id=project_id, trace_id__in=trace_ids).order_by(
-        "start_time_ns"
-    )[: TRACE_SPAN_CAP * len(trace_ids)]:
+    for span in spans:
+        traces[span.trace_id][span.span_id] = span
+    wanted -= {span.span_id for span in spans}
+    async for span in Span.objects.filter(span_id__in=wanted).order_by("start_time_ns"):
         traces[span.trace_id][span.span_id] = span
     return traces
 
 
-async def score_project_spans(project_id, spans: list[Span]) -> list[Span]:
-    matrix = await enabled_matrix(project_id)
-    traces = await load_traces(project_id, {span.trace_id for span in spans})
-    slots = asyncio.Semaphore(MAX_CONCURRENT_SPANS)
-
-    async def score(span: Span) -> Span:
-        trace = traces.get(span.trace_id) or {}
-        trace[span.span_id] = span
-        fallback = span.capability.description if span.capability_id else ""
-        final = span.eval_attributes.get("retry", 0) >= MAX_DEFERRALS
-        try:
-            async with slots:
-                return await span_processor_factory.get_processor(span).evaluate(
-                    span, matrix, trace, fallback_intent=fallback, final=final
-                )
-        except Exception as exc:  # noqa: BLE001 — still no "score", so the sweep retries it
-            logger.warning("Scoring span %s failed: %s", span.span_id, exc)
-            span.eval_attributes = {**span.eval_attributes, "error": f"{type(exc).__name__}: {exc}"}
-            return span
-
-    return await asyncio.gather(*(score(span) for span in spans))
-
-
-async def released_span_ids(spans: list[Span]) -> list[str]:
-    """Spans deferred while their root was missing, in traces whose root just arrived."""
-    trace_ids = {span.trace_id for span in spans if span.is_root}
-    if not trace_ids:
-        return []
-    return [
-        span_id
-        async for span_id in Span.objects.filter(
-            trace_id__in=trace_ids, eval_attributes__has_key="retry", eval_claimed_at__isnull=True
-        )
+@sync_to_async
+def record_attempt(span: Span) -> bool:
+    """Stores a pass's attempt count before its judges run; False once the span is scored."""
+    return bool(
+        Span.objects.filter(span_id=span.span_id)
         .exclude(eval_attributes__has_key="score")
-        .values_list("span_id", flat=True)
-    ]
+        .update(eval_attributes=span.eval_attributes)
+    )
 
 
-async def score_spans(span_ids: list[str]) -> tuple[list[str], list[str]]:
-    """Claims, scores and writes one batch; returns the traces that gained a final span
-    and the deferred spans this batch's roots released."""
-    claimed = await sync_to_async(claim)(span_ids)
-    if not claimed:
-        return [], []
-    spans = [
-        span async for span in Span.objects.filter(span_id__in=claimed).select_related("capability")
-    ]
-    by_project: dict[str, list[Span]] = defaultdict(list)
-    for span in spans:
-        by_project[span.project_id].append(span)
-    scored: list[Span] = []
-    for project_id, project_spans in by_project.items():
-        scored += await score_project_spans(project_id, project_spans)
-
-    finals = [span for span in scored if "score" in span.eval_attributes]
-    # Scores first: a failed span update retries and appends one extra history row.
-    await EvalScore.objects.abulk_create(
-        [
-            EvalScore(
+@sync_to_async
+def persist(span: Span) -> bool:
+    """Writes one span's result unless another pass already scored it, so a span's score and
+    its history row are written once. Returns whether this call stored a final score."""
+    with transaction.atomic():
+        stored = (
+            Span.objects.filter(span_id=span.span_id)
+            .exclude(eval_attributes__has_key="score")
+            .update(eval_attributes=span.eval_attributes, eval_claimed_at=None)
+        )
+        final = bool(stored) and "score" in span.eval_attributes
+        if final:
+            EvalScore.objects.create(
                 project_id=span.project_id,
                 source_type=EvalScore.SourceType.SPAN,
                 source_id=span.span_id,
                 score=span.eval_attributes["score"],
                 metrics=span.eval_attributes["metrics"],
             )
-            for span in finals
-        ],
-        batch_size=EVAL_SCORE_BATCH,
+    return final
+
+
+async def score_project_spans(project_id, spans: list[Span]) -> list[Span]:
+    """Scores and stores each span as it finishes; returns the spans that gained a final
+    score."""
+    matrix = await enabled_matrix(project_id)
+    traces = await load_traces(
+        project_id,
+        spans,
+        neighbours=any(row.type == EvalMatrix.Type.DETERMINISTIC for row in matrix),
     )
-    for span in scored:
-        span.eval_claimed_at = None
-    await Span.objects.abulk_update(scored, fields=["eval_attributes", "eval_claimed_at"])
-    return sorted({span.trace_id for span in finals}), await released_span_ids(spans)
+    slots = asyncio.Semaphore(MAX_CONCURRENT_SPANS)
+
+    async def score(span: Span) -> Span | None:
+        trace = traces[span.trace_id]
+        fallback = span.capability.description if span.capability_id else ""
+        processor = span_processor_factory.get_processor(span)
+        async with slots:
+            # Claimed only now, so a span waiting for a slot never holds a claim that expires.
+            if not await sync_to_async(claim)([span.span_id]):
+                return None
+            attempts = span.eval_attributes.get("attempts", 0)
+            spent = attempts >= MAX_ATTEMPTS
+            if not spent:
+                attempts += 1
+                span.eval_attributes = {**span.eval_attributes, "attempts": attempts}
+                if not await record_attempt(span):
+                    return None
+            try:
+                await processor.evaluate(
+                    span,
+                    matrix,
+                    trace,
+                    fallback_intent=fallback,
+                    judge=not spent,
+                    last_attempt=attempts >= MAX_ATTEMPTS,
+                )
+            except Exception as exc:  # noqa: BLE001 — still no "score", so the sweep retries it
+                logger.warning("Scoring span %s failed: %s", span.span_id, exc)
+                span.eval_attributes = {
+                    **span.eval_attributes,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            return span if await persist(span) else None
+
+    return [span for span in await asyncio.gather(*map(score, spans)) if span]
+
+
+async def score_spans(span_ids: list[str]) -> list[str]:
+    """Scores a batch, storing each span as it finishes; returns the traces that gained a
+    final span. A span that already holds a score is never judged again."""
+    spans = [
+        span
+        async for span in Span.objects.filter(span_id__in=span_ids)
+        .exclude(eval_attributes__has_key="score")
+        .select_related("capability")
+    ]
+    by_project: dict[str, list[Span]] = defaultdict(list)
+    for span in spans:
+        by_project[span.project_id].append(span)
+    finals: list[Span] = []
+    for project_id, project_spans in by_project.items():
+        finals += await score_project_spans(project_id, project_spans)
+    return sorted({span.trace_id for span in finals})

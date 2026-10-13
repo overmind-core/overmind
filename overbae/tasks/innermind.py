@@ -7,13 +7,14 @@ run_eval_run -> dispatch_generation -> generate_row ... -> score_eval_run
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from itertools import batched
 
-from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.cache import cache
 
+from overbae.core import async_loop
 from overbae.innermind import generation, runs, signals, span_processor, trajectory
 from overbae.models import EvalRun, EvalRunRow
 
@@ -22,43 +23,65 @@ logger = logging.getLogger(__name__)
 SPAN_BATCH = 200
 SWEEP_LIMIT = 2_000
 GENERATION_WAKEUP_KEY = "eval-generation:wakeup"
+SIGNALS_LOCK_SECONDS = 30 * 60
 
 
 @shared_task(name="overbae.tasks.innermind.score_spans")
 def score_spans(*, span_ids: list[str]) -> dict:
-    trace_ids, released = async_to_sync(span_processor.score_spans)(span_ids)
-    enqueue_span_scoring(released)
+    trace_ids = async_loop.run(span_processor.score_spans(span_ids))
     if trace_ids:
         score_trajectories.delay(trace_ids=trace_ids)
     return {"traces": len(trace_ids)}
 
 
-def enqueue_span_scoring(span_ids: list[str]) -> None:
-    for chunk in batched(span_ids, SPAN_BATCH, strict=False):
-        score_spans.delay(span_ids=list(chunk))
+def enqueue_span_scoring(spans: list[tuple[str, str]]) -> None:
+    """Queues ``(trace_id, span_id)`` pairs in batches that keep a trace together, so each
+    batch loads a trace once."""
+    by_trace: dict[str, list[str]] = defaultdict(list)
+    for trace_id, span_id in spans:
+        by_trace[trace_id].append(span_id)
+    batch: list[str] = []
+    for span_ids in by_trace.values():
+        if batch and len(batch) + len(span_ids) > SPAN_BATCH:
+            score_spans.delay(span_ids=batch)
+            batch = []
+        for chunk in batched(span_ids, SPAN_BATCH, strict=False):
+            batch += chunk
+            if len(batch) >= SPAN_BATCH:
+                score_spans.delay(span_ids=batch)
+                batch = []
+    if batch:
+        score_spans.delay(span_ids=batch)
 
 
 @shared_task(name="overbae.tasks.innermind.sweep_unscored_spans")
 def sweep_unscored_spans() -> dict:
-    span_ids = span_processor.unscored_span_ids(SWEEP_LIMIT)
-    enqueue_span_scoring(span_ids)
-    return {"spans": len(span_ids)}
+    spans = span_processor.unscored_spans(SWEEP_LIMIT)
+    enqueue_span_scoring(spans)
+    return {"spans": len(spans)}
 
 
 @shared_task(name="overbae.tasks.innermind.score_trajectories")
 def score_trajectories(*, trace_ids: list[str] | None = None) -> dict:
     trace_ids = trace_ids or trajectory.unscored_trajectory_ids()
-    return {"scored": async_to_sync(trajectory.score_traces)(trace_ids)}
+    return {"scored": async_loop.run(trajectory.score_traces(trace_ids))}
 
 
 @shared_task(name="overbae.tasks.innermind.run_signals")
 def run_signals() -> dict:
     created = 0
     for project_id in signals.projects_with_subscriptions():
+        # A run outlasting the beat would otherwise overlap the next one; the timeout frees
+        # the lock of a worker that died mid-run.
+        lock = f"signals:run:{project_id}"
+        if not cache.add(lock, "1", timeout=SIGNALS_LOCK_SECONDS):
+            continue
         try:
-            created += async_to_sync(signals.SignalRunner(project_id).run)()
+            created += async_loop.run(signals.SignalRunner(project_id).run())
         except Exception:
             logger.exception("Signals failed for project %s", project_id)
+        finally:
+            cache.delete(lock)
     return {"events": created}
 
 

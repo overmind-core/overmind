@@ -279,6 +279,57 @@ def test_resync_rebuilds_the_default_set_from_the_toml(client):
 
 
 @pytest.mark.django_db
+def test_toml_deterministic_entry_becomes_a_parameterised_row_in_the_default_set(client):
+    matrix = [
+        {
+            "name": "Reply carries ticket keys",
+            "type": "deterministic",
+            "check": "json_required_keys",
+            "params": {"REQUIRED_KEYS": ["ticket_id", "status"]},
+            "span_name": "SupportAgent.run",
+        }
+    ]
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
+
+    cap = Capability.objects.get(slug="support-agent")
+    row = cap.active_eval_set.rows.get(name="Reply carries ticket keys")
+    assert row.type == "deterministic"
+    assert row.span_name == "SupportAgent.run"
+    assert "REQUIRED_KEYS = ['ticket_id', 'status']" in row.source
+    assert "def evaluate(span)" in row.source
+    assert cap.improvement_metadata["eval_preload"]["counts"]["expectations"] == 0
+
+    matrix[0]["params"] = {"REQUIRED_KEYS": ["ticket_id"]}
+    client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=matrix)]), format="json")
+    assert (
+        "REQUIRED_KEYS = ['ticket_id']"
+        in cap.active_eval_set.rows.get(name="Reply carries ticket keys").source
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"name": "x", "type": "deterministic", "check": "nope"},
+        {"name": "x", "type": "deterministic", "check": "regex", "params": {"MISSING": 1}},
+        {
+            "name": "x",
+            "type": "deterministic",
+            "check": "schema_field_conformance",
+            "params": {"TYPE_CHECKS": {}},
+        },
+        {"name": "x", "type": "deterministic", "check": "regex", "params": ["PATTERN"]},
+    ],
+)
+def test_toml_deterministic_entry_with_a_bad_check_is_refused(client, entry):
+    response = client.post("/api/v1/sync", _snapshot([_cap(eval_matrix=[entry])]), format="json")
+
+    assert response.status_code == 400
+    assert not Capability.objects.filter(slug="support-agent").exists()
+
+
+@pytest.mark.django_db
 def test_sync_normalizes_string_constraints_to_dicts(client):
     constraints = [
         "Answer must be plain English",

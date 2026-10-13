@@ -139,7 +139,7 @@ export function TraceScoreChips({
   className,
   empty = "dash",
 }: TraceScoreChipsProps) {
-  const entries = Object.entries(scores ?? {});
+  const entries = Object.entries(scores ?? {}).filter(([, entry]) => entry.outcome !== "abstained");
   if (entries.length === 0) {
     if (empty === "hidden") return null;
     return <span className="text-muted-foreground">—</span>;

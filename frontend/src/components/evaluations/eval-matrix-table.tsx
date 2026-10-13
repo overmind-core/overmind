@@ -3,8 +3,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { MATRIX_TYPE_LABEL } from "@/components/evaluations/matrix-row-label";
+import {
+  PYTHON_CHECK_EXAMPLES,
+  PYTHON_CHECK_HINT,
+  type PythonCheckExample,
+} from "@/components/evaluations/python-check-examples";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogBody,
@@ -38,7 +44,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateEvalMatrixRowMutation, useEvalMatrixQuery } from "@/hooks/use-evaluations";
+import {
+  useCreateEvalMatrixRowMutation,
+  useDeleteEvalMatrixRowMutation,
+  useEvalMatrixQuery,
+} from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { errorMessage } from "@/lib/notify";
 import type { EvalMatrix, EvalMatrixTypeEnum } from "@/openapi";
@@ -64,6 +74,7 @@ export function EvalMatrixTable({
 }) {
   const matrix = useEvalMatrixQuery(projectId, capabilityId);
   const guard = useGuestGate();
+  const remove = useDeleteEvalMatrixRowMutation();
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<EvalMatrix | null>(null);
@@ -115,6 +126,9 @@ export function EvalMatrixTable({
                 <TableHead>Applies to</TableHead>
                 <TableHead>Scope</TableHead>
                 <TableHead className="w-20 text-center">Status</TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">Delete</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -145,6 +159,27 @@ export function EvalMatrixTable({
                     <Badge size="chip" variant={row.enabled === false ? "neutral" : "default"}>
                       {row.enabled === false ? "Off" : "On"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <ConfirmDialog
+                      confirmLabel="Delete"
+                      description={`${row.name} stops scoring new spans and leaves every eval set. Existing scores are kept.`}
+                      destructive
+                      isPending={remove.isPending && remove.variables === row.id}
+                      onConfirm={() => remove.mutate(row.id)}
+                      title="Delete row?"
+                      trigger={
+                        <Button
+                          aria-label={`Delete ${row.name}`}
+                          className="text-muted-foreground/60 hover:text-destructive"
+                          onClick={guard(() => undefined)}
+                          size="icon-sm"
+                          variant="ghost"
+                        >
+                          <Icon.delete className="size-3.5" />
+                        </Button>
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -212,6 +247,11 @@ function MatrixRowForm({
   const pending = create.isPending;
   const ready = !!name.trim() && !!source.trim() && !pending;
 
+  function loadExample(example: PythonCheckExample) {
+    setSource(example.source);
+    if (!spanType.trim()) setSpanType(example.spanType);
+  }
+
   async function submit() {
     if (!ready) return;
     setError(null);
@@ -236,12 +276,7 @@ function MatrixRowForm({
     <DialogContent showCloseButton={!pending} size="lg">
       <DialogHeader>
         <div>
-          <DialogTitle>New matrix row</DialogTitle>
-          <DialogDescription>
-            {type === "llm"
-              ? "An LLM judge scores each output against the expectation."
-              : "evaluate(span) runs in a sandbox and returns a score, a bool, or None to abstain."}
-          </DialogDescription>
+          <DialogTitle>New evaluation matrix</DialogTitle>
         </div>
       </DialogHeader>
       <DialogBody className="space-y-4">
@@ -279,6 +314,25 @@ function MatrixRowForm({
               placeholder={SOURCE_PLACEHOLDER[type]}
               value={source}
             />
+            {type === "deterministic" && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">{PYTHON_CHECK_HINT}</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Examples</span>
+                  {PYTHON_CHECK_EXAMPLES.map((example) => (
+                    <Button
+                      key={example.id}
+                      onClick={() => loadExample(example)}
+                      size="xs"
+                      type="button"
+                      variant="secondary"
+                    >
+                      {example.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="matrix-span-type">Span type</Label>

@@ -28,7 +28,8 @@ from overbae.tasks.innermind import run_eval_run
 pytestmark = pytest.mark.django_db(transaction=True)
 
 EVALUATION_TOOLS = {
-    "upsert_eval_matrix_row",
+    "create_eval_matrix_row",
+    "delete_eval_matrix_row",
     "create_eval_set",
     "check_evaluation_readiness",
     "run_evaluation",
@@ -79,17 +80,19 @@ def test_catalog_exposes_evaluation_tools_and_hides_writes_from_readers():
     assert readable & EVALUATION_TOOLS == {"check_evaluation_readiness", "compare_evaluations"}
 
     result = _call(
-        "upsert_eval_matrix_row", {"name": "Hidden", "type": "llm", "source": "x"}, mcp_context()
+        "create_eval_matrix_row", {"name": "Hidden", "type": "llm", "source": "x"}, mcp_context()
     )
+    assert result.structuredContent["error"]["code"] == "permission_denied"
+    result = _call("delete_eval_matrix_row", {"row": "Hidden"}, mcp_context())
     assert result.structuredContent["error"]["code"] == "permission_denied"
 
 
-def test_matrix_rows_are_created_updated_and_audited():
+def test_matrix_rows_are_created_and_deleted_but_never_edited():
     context = _writer()
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
 
     created = _call(
-        "upsert_eval_matrix_row",
+        "create_eval_matrix_row",
         {
             "name": "Exact",
             "type": "deterministic",
@@ -98,13 +101,8 @@ def test_matrix_rows_are_created_updated_and_audited():
         },
         context,
     )
-    updated = _call(
-        "upsert_eval_matrix_row",
-        {"row": "Exact", "capability": capability.slug, "enabled": False},
-        context,
-    )
     escaping = _call(
-        "upsert_eval_matrix_row",
+        "create_eval_matrix_row",
         {
             "name": "Escape",
             "type": "deterministic",
@@ -112,13 +110,41 @@ def test_matrix_rows_are_created_updated_and_audited():
         },
         context,
     )
+    edit = _call(
+        "create_eval_matrix_row",
+        {"row": "Exact", "name": "Exact", "type": "llm", "source": "x"},
+        context,
+    )
 
-    assert created.structuredContent["status"] == "created"
     assert created.structuredContent["row"]["capability"] == "support"
-    assert updated.structuredContent["status"] == "updated"
-    assert updated.structuredContent["row"]["enabled"] is False
     assert escaping.structuredContent["error"]["code"] == "eval_matrix_row_invalid"
     assert not EvalMatrix.objects.filter(name="Escape").exists()
+    assert edit.isError
+
+    row = EvalMatrix.objects.get(name="Exact")
+    eval_set = _call(
+        "create_eval_set",
+        {"name": "Quality", "capability": "support", "rows": ["Exact"]},
+        context,
+    )
+    deleted = _call("delete_eval_matrix_row", {"row": "Exact", "capability": "support"}, context)
+
+    assert deleted.structuredContent["row"]["id"] == str(row.id)
+    assert not EvalMatrix.objects.filter(id=row.id).exists()
+    assert _read(context, eval_set.structuredContent["resource_links"][0]["uri"])["rows"] == []
+    missing = _call("delete_eval_matrix_row", {"row": "Exact"}, context)
+    assert missing.structuredContent["error"]["code"] == "eval_matrix_row_not_found"
+
+
+def test_matrix_rows_cannot_be_deleted_across_projects():
+    context = _writer()
+    other = _writer()
+    row = make_matrix_row(other.project, "Theirs")
+
+    result = _call("delete_eval_matrix_row", {"row": str(row.id)}, context)
+
+    assert result.structuredContent["error"]["code"] == "eval_matrix_row_not_found"
+    assert EvalMatrix.objects.filter(id=row.id).exists()
 
 
 def test_eval_sets_are_project_scoped_and_can_be_activated():

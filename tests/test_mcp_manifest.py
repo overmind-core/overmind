@@ -20,7 +20,8 @@ SECRET_INPUT_PARTS = {
     "token",
 }
 FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment"}
+ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment", "delete_eval_matrix_row"}
+DESTRUCTIVE_TOOLS = {"delete_eval_matrix_row"}
 
 
 def _serialized_tools(permissions: frozenset[str]) -> bytes:
@@ -106,7 +107,9 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
     }
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
 
-    assert all(not definition.destructive for definition in definitions.values())
+    assert {name for name, definition in definitions.items() if definition.destructive} == (
+        DESTRUCTIVE_TOOLS
+    )
     assert all(
         definition.name in ALLOWED_LIFECYCLE_TOOLS
         or not any(part in definition.name for part in FORBIDDEN_NAME_PARTS)
