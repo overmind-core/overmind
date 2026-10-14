@@ -188,7 +188,10 @@ def score(source: str, payload: dict) -> dict:
             return json.load(response)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode()[:500] or f"HTTP {exc.code}"
-        if not 400 <= exc.code < 500:
+        # Only 400/422 judge the request; a 404 names a missing adapter path.
+        if exc.code == 404:
+            return _error("adapter_missing", detail)
+        if exc.code not in (400, 422):
             return _error("runtime_error", detail)
         if "max" in detail and ("length" in detail or "context" in detail):
             return _error("max_length_exceeded", detail)

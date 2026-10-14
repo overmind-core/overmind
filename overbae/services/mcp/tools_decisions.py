@@ -13,6 +13,7 @@ from overbae.services import decision_jobs, decision_recommend
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.datasets.rows import RowStoreError
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.decisions import (
     CheckDecisionReadinessInput,
@@ -42,14 +43,6 @@ _DECISION_MODELS_LINK = {
     "title": "Decision models",
     "mimeType": "application/json",
 }
-
-
-def _evaluation_status(job: DecisionJob) -> str | None:
-    if job.eval_cell_id is None:
-        return "none"
-    if not job.evaluation:
-        return None
-    return job.evaluation.get("status") or "none"
 
 
 def _training(result: dict) -> DecisionTraining | None:
@@ -86,7 +79,7 @@ def decision_job_contract(job: DecisionJob) -> DecisionJobContract:
         eval_version=job.eval_cell.label if job.eval_cell_id else None,
         error=job.error or None,
         evaluation=job.evaluation or {},
-        evaluation_status=_evaluation_status(job),
+        evaluation_status=job.evaluation_status,
         checkpoint_ready=job.status == DecisionJob.Status.SUCCEEDED and bool(result.get("saved")),
         loss=result.get("loss_first_last") or [],
         training=_training(result),
@@ -238,12 +231,8 @@ def _readiness(
             missing.append(f"training dataset — {exc.detail}")
         warnings += [f"training dataset: {finding}" for finding in _decision_warnings(cell)]
 
-    report = decision_recommend.recommend(dataset, str(cell.id)) if train_ok else None
-    if report is not None and not report["picks"]:
-        missing.append("model — No model fits.")
-
     eval_dataset = mcp_dataset(context, payload.eval_dataset) if payload.eval_dataset else None
-    eval_cell = None
+    eval_cell = eval_ok = None
     if eval_dataset is not None:
         eval_cell = mcp_cell(eval_dataset, payload.eval_version) or eval_dataset.active_cell
         if eval_cell is None:
@@ -251,9 +240,19 @@ def _readiness(
         else:
             try:
                 dataset_use.check(eval_dataset, "eval", cell=eval_cell, decision=True)
+                eval_ok = eval_cell
             except DatasetError as exc:
                 missing.append(f"eval dataset — {exc.detail}")
             warnings += [f"eval dataset: {finding}" for finding in _decision_warnings(eval_cell)]
+
+    report = None
+    if train_ok:
+        try:
+            report = decision_recommend.recommend(dataset, str(cell.id), eval_cell=eval_ok)
+        except RowStoreError as exc:
+            missing.append(f"training dataset — {exc}")
+    if report is not None and not report["picks"]:
+        missing.append("model — No model fits.")
 
     credits_available = _credits_available(context)
     if not credits_available:

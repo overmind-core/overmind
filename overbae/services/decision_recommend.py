@@ -27,17 +27,22 @@ def choose(specs: list[dict], longest: int, shape: dict | None = None) -> dict:
     }
 
 
-def recommend(dataset, version: str | None = None) -> dict:
+def recommend(dataset, version: str | None = None, *, eval_cell=None) -> dict:
+    """Fit is judged on the train version and, when given, the eval version too:
+    a job is refused if either exceeds the model."""
     cell = versions.resolve_cell(dataset, version)
     count = longest = 0
     shapes = []
-    for row in rows.iter_rows(cell):
-        count += 1
-        longest = max(longest, approx_tokens(row.input))
-        try:
-            shapes.append(decisions.shape(decisions.request(row.input)["questions"]))
-        except decisions.DecisionRowError:
+    for scanned in (cell, eval_cell):
+        if scanned is None:
             continue
+        for row in rows.iter_rows(scanned):
+            count += scanned is cell
+            longest = max(longest, approx_tokens(row.input))
+            try:
+                shapes.append(decisions.shape(decisions.request(row.input)["questions"]))
+            except decisions.DecisionRowError:
+                continue
     shape = decisions.widest(shapes)
     result = choose(list(catalog_models().values()), longest, shape)
     return {

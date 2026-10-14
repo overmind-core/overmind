@@ -10,7 +10,7 @@ from fakes.modal import DecisionBackend
 from mcp_fixtures import mcp_context
 from test_decision_jobs import ROUTE, ROWS, URGENT
 
-from overbae.models import Cell
+from overbae.models import Cell, DecisionJob
 from overbae.services import decision_jobs
 from overbae.services.datasets import paths, rows, versions
 from overbae.services.mcp.catalog import CATALOG
@@ -377,3 +377,53 @@ def test_decision_tools_follow_the_read_write_boundary():
         False,
         "free",
     )
+
+
+def _wide_rows(options: int) -> list[dict]:
+    route = {"type": "choice", "instructions": "Which team?", "criteria": {}}
+    route["criteria"] = {f"team{i}": f"Team {i}" for i in range(options)}
+    return [
+        {
+            "input": {"state": f"Ticket {n}", "questions": {"route": route}},
+            "expected_output": {"route": f"team{n % options}"},
+        }
+        for n in range(3)
+    ]
+
+
+def test_an_eval_set_over_a_models_limits_excludes_it_from_readiness():
+    context = mcp_context(("read", "write"))
+    frozen_dataset(context.project, ROWS, name="Tickets")
+    wide = frozen_dataset(context.project, _wide_rows(27), name="Wide", contract="eval")
+
+    report = _call(
+        "check_decision_readiness", {"dataset": "Tickets", "eval_dataset": str(wide.id)}, context
+    ).structuredContent
+
+    excluded = {c["model"]: c["why_not"] for c in report["excluded"]}
+    assert excluded["Cloudflare/clef"] == "Takes up to 26 options; this dataset has 27."
+    assert all(pick["model"] != "Cloudflare/clef" for pick in report["picks"])
+
+
+def test_an_eval_decision_dataset_suggests_a_call_it_can_make():
+    context = mcp_context(("read", "write"))
+    evaluation = frozen_dataset(context.project, ROWS, name="Held out", contract="eval")
+
+    [action] = _call("inspect_dataset", {"dataset": str(evaluation.id)}, context).structuredContent[
+        "next_actions"
+    ]
+
+    assert (action["tool"], action["arguments"]) == ("list_datasets", {})
+
+
+def test_an_evaluation_stored_before_status_existed_reports_failed(fake_modal):
+    DecisionBackend(fake_modal).install()
+    context = mcp_context(("read", "write"))
+    frozen_dataset(context.project, ROWS, name="Tickets")
+    evaluation = frozen_dataset(context.project, ROWS[:2], name="Held out", contract="eval")
+    job_id = _train_to_success(fake_modal, context, evaluation=evaluation)
+    DecisionJob.objects.filter(pk=job_id).update(evaluation={"error": "The evaluation failed."})
+
+    job = _call("get_job", {"kind": "decision_job", "id": job_id}, context).structuredContent
+
+    assert job["details"]["evaluation_status"] == "failed"

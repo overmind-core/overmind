@@ -255,7 +255,7 @@ def _training_failure(job: DecisionJob, result: Any) -> str:
     skipped = error.get("skipped") or {}
     return copy.format(
         model=job.model_id,
-        max_context_length=model(job.model_id)["max_context_length"],
+        max_context_length=(catalog_model(job.model_id) or {}).get("max_context_length", "its"),
         too_long=skipped.get("too_long", 0),
         rejected=skipped.get("rejected", 0),
     )

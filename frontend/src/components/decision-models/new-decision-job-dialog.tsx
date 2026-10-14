@@ -32,7 +32,7 @@ import type { Dataset } from "@/openapi";
 const NO_EVAL = "none";
 
 const PICK_LABEL: Record<string, string> = {
-  smaller: "Smaller, close",
+  smaller: "Smaller",
   smallest: "Smallest that fits",
   strongest: "Strongest score",
 };

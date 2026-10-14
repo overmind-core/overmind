@@ -688,9 +688,12 @@ def _decision_next_actions(dataset, active: Cell) -> list[NextAction]:
     if public_intent(dataset.intent) == Dataset.Intent.EVAL:
         return [
             NextAction(
-                tool="check_decision_readiness",
-                reason="Active version holds decision rows; pass it as eval_dataset to check a train dataset.",
-                arguments={"eval_dataset": str(dataset.id), "eval_version": active.label},
+                tool="list_datasets",
+                reason=(
+                    "Active version holds decision rows; check it with a train dataset: "
+                    "check_decision_readiness with this as eval_dataset."
+                ),
+                arguments={},
             )
         ]
     return [

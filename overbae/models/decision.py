@@ -63,3 +63,19 @@ class DecisionJob(models.Model):
 
     def __str__(self) -> str:
         return f"{self.model_id} {self.status}"
+
+    @property
+    def evaluation_status(self) -> str | None:
+        """complete, partial or failed once evaluated; none without an eval set."""
+        if self.eval_cell_id is None:
+            return "none"
+        evaluation = self.evaluation or {}
+        if not evaluation:
+            return None
+        if evaluation.get("status"):
+            return evaluation["status"]
+        # Evaluations stored before the status field: an error or an empty side failed.
+        sides = [evaluation.get("base") or {}, evaluation.get("trained") or {}]
+        if evaluation.get("error") or any(not side.get("n") for side in sides):
+            return "failed"
+        return "partial" if any(side.get("unanswered") for side in sides) else "complete"

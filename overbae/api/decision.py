@@ -146,11 +146,7 @@ class DecisionJobSerializer(serializers.ModelSerializer):
         serializers.ChoiceField(choices=["none", "complete", "partial", "failed"], allow_null=True)
     )
     def get_evaluation_status(self, job) -> str | None:
-        if job.eval_cell_id is None:
-            return "none"
-        if not job.evaluation:
-            return None
-        return job.evaluation.get("status") or "none"
+        return job.evaluation_status
 
 
 class DecisionRequestSerializer(serializers.Serializer):
