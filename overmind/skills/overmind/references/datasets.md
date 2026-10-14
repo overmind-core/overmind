@@ -60,7 +60,7 @@ capability from the rows when none is bound.
   `resume_dataset_import` retries it when `next_actions` offers it. A source
   that cannot land (an unreadable file, say) offers no retry.
 - `cancel_dataset_job(dataset)` stops a queued, running or blocked import. The
-  dataset keeps no source and its state becomes `error`; it cannot be resumed.
+  dataset keeps no source and its state becomes `stopped`; it cannot be resumed.
 
 ### Documents
 
@@ -133,10 +133,10 @@ impact: rows before and after, rows removed and added, whether row identity
 held, input evidence removed and instructions changed. Read the impact and
 tell the user what changed.
 
-Runs are idempotent. A call that returns `queued` or `running` is still
-working: repeat the identical call. `cancel_dataset_job(dataset, execution)`
-stops a queued or running run; nothing it produced is kept, and the identical
-call runs it again. The same parent and script return the same
+A call that returns `queued` or `running` is still working: poll the returned
+`get_job(kind=dataset_run)` job, or repeat the identical call.
+`cancel_dataset_job(dataset, run)` stops a queued or running run; nothing it
+produced is kept. Run it again only when the user asks. The same parent and script return the same
 version. A failed run creates no version; it returns the error and the printed
 output, and the identical call returns that failure for an hour. A failure the
 platform caused (`transient: true`) runs again on the next identical call.

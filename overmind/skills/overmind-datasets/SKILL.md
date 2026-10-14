@@ -28,7 +28,7 @@ file bytes, and credentials never go in chat.
 Poll `get_job(kind=dataset_import, id=...)` until the source lands, then call
 `inspect_dataset`. A blocked import can be retried with
 `resume_dataset_import`; `cancel_dataset_job` stops an import or, with
-`execution`, a script run. Use `query_dataset` (SQL over table `t`) for bounded
+`run`, a script run. Use `query_dataset` (SQL over table `t`) for bounded
 read-only checks; one sample does not establish the meaning of every row.
 
 ## Shape with scripts
