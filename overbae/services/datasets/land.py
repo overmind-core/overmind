@@ -256,14 +256,14 @@ EXTRACT_BUSY_RETRY_SECONDS = 5
 EXTRACT_UNREACHABLE_RETRY_SECONDS = (2, 4, 8)
 
 
-CANCELLED = "The import was cancelled."
+STOPPED = "The import was stopped."
 
 
 def _pause(seconds: float, stop: Any) -> None:
     if stop is None:
         time.sleep(seconds)
     elif stop.wait(seconds):
-        raise LandError(CANCELLED, code="cancelled")
+        raise LandError(STOPPED, code="cancelled")
 
 
 def _extract(path: Path, filename: str, output: Path, stop: Any = None) -> dict[str, Any]:
@@ -281,7 +281,7 @@ def _extract(path: Path, filename: str, output: Path, stop: Any = None) -> dict[
             reply = executions.sandbox_call(header, path, output, stop=stop)
             break
         except executions.SandboxCancelledError:
-            raise LandError(CANCELLED, code="cancelled") from None
+            raise LandError(STOPPED, code="cancelled") from None
         except executions.SandboxBusyError:
             if time.monotonic() > deadline:
                 raise LandError(

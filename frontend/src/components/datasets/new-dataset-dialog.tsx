@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -251,9 +252,13 @@ export function NewDatasetDialog({
     <Dialog onOpenChange={(next) => !busy && onOpenChange(next)} open={open}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>
-            {initialVersion ? `New dataset from ${initialVersion.version}` : "New dataset"}
-          </DialogTitle>
+          <DialogTitle>New dataset</DialogTitle>
+          {initialVersion && (
+            <DialogDescription>
+              From {initialVersion.datasetName} · {initialVersion.version} ·{" "}
+              {`${initialVersion.rows.toLocaleString()} ${initialVersion.rows === 1 ? "row" : "rows"}`}
+            </DialogDescription>
+          )}
         </DialogHeader>
         <DialogBody className="flex flex-col gap-5">
           <div className="flex flex-col gap-1.5">
@@ -270,7 +275,7 @@ export function NewDatasetDialog({
             />
           </div>
 
-          {!fixedSource ? (
+          {!fixedSource && (
             <section
               aria-label="Upload files"
               className={cn(
@@ -345,27 +350,15 @@ export function NewDatasetDialog({
                 </Button>
               </div>
             </section>
-          ) : (
+          )}
+          {fromTraces && (
             <div className="rounded-md border border-border bg-muted px-3 py-3">
-              {initialVersion ? (
-                <>
-                  <p className="text-sm">
-                    {initialVersion.datasetName} {initialVersion.version}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {`${initialVersion.rows.toLocaleString()} ${initialVersion.rows === 1 ? "row" : "rows"}`}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm">
-                    {initialTraceIds?.length
-                      ? `${initialTraceIds.length.toLocaleString()} selected traces`
-                      : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
-                  </p>
-                  <p className="text-xs text-muted-foreground">One row per trace</p>
-                </>
-              )}
+              <p className="text-sm">
+                {initialTraceIds?.length
+                  ? `${initialTraceIds.length.toLocaleString()} selected traces`
+                  : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
+              </p>
+              <p className="text-xs text-muted-foreground">One row per trace</p>
             </div>
           )}
 
@@ -490,7 +483,7 @@ export function NewDatasetDialog({
         <DialogFooter className="items-center">
           <span aria-live="polite" className="mr-auto text-xs text-muted-foreground">
             {ready
-              ? rows === undefined
+              ? rows === undefined || initialVersion
                 ? null
                 : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
               : readiness.hint}

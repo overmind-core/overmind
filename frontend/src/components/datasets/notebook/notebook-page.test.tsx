@@ -331,10 +331,10 @@ it("renames the dataset and changes nothing else", async () => {
   );
 });
 
-it("cancels the import while the source lands", async () => {
+it("stops the import while the source lands", async () => {
   state.dataset = dataset({ state: "landing" });
   showNotebook();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
+  fireEvent.click(screen.getByRole("button", { name: "Stop import" }));
   await waitFor(() => expect(state.cancelImport).toHaveBeenCalledWith({ id: "dataset" }));
 });
 
@@ -372,7 +372,10 @@ it("stops a running script from Activity", async () => {
 it("shows a version's label balance, empty fields and the file its script read", () => {
   const labelled = cell({
     analytics: {
-      inputs: { constant: ["model"], empty: [{ field: "input.order", rows: 3 }] },
+      inputs: {
+        constant: [{ field: "model", of: 6, rows: 6 }],
+        empty: [{ field: "input.order", of: 6, rows: 3 }],
+      },
       labels: [
         {
           classes: [
@@ -386,7 +389,7 @@ it("shows a version's label balance, empty fields and the file its script read",
         },
       ],
     },
-    attachment: { bytes: 60, filename: "labels.csv", rows: 6, sha256: "ab12" },
+    attachment: { bytes: 60, filename: "labels.csv", rows: 6 },
     id: "c2",
     parent: "c0",
     position: 2,
@@ -398,10 +401,13 @@ it("shows a version's label balance, empty fields and the file its script read",
   state.dataset = dataset({ active: "c2", active_version: "v2", cells: [SOURCE, labelled] });
   showNotebook();
   const card = screen.getByRole("article", { name: "v2 Labels" });
-  const chips = within(card).getByLabelText("Analytics");
-  expect(within(chips).getByText("Majority refund 67%")).toBeTruthy();
-  expect(within(chips).getByText("1 field with empty values")).toBeTruthy();
-  expect(within(chips).getByText("1 constant field")).toBeTruthy();
+  expect(within(card).getByRole("button", { name: /^Analytics/ }).textContent).toBe(
+    "Analyticsexpected_output · refund 67% · 2 field warnings"
+  );
+  const analytics = within(card).getByLabelText("Analytics");
+  expect(within(analytics).getByRole("rowheader", { name: "refund" })).toBeTruthy();
+  expect(within(analytics).getByText("Empty in 3 of 6 rows")).toBeTruthy();
+  expect(within(analytics).getByText("One value in 6 of 6 rows")).toBeTruthy();
   expect(within(card).getByRole("button", { name: "labels.csv" })).toBeTruthy();
 });
 
@@ -411,18 +417,21 @@ it("copies the prepare-dataset prompt for a version", async () => {
   state.dataset = dataset({ active: "c1", active_version: "v1", cells: [SOURCE, NORMALIZED] });
   showNotebook();
   fireEvent.click(screen.getByRole("button", { name: "Prepare v1 with agent" }));
+  const dialog = await screen.findByRole("dialog", { name: "Prepare v1 with agent" });
+  expect(state.prompt).toHaveBeenCalledWith({ cell: "c1", id: "dataset" });
+  await within(dialog).findByDisplayValue("Prepare dataset dataset in project project");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Copy prompt" }));
   await waitFor(() =>
     expect(writeText).toHaveBeenCalledWith("Prepare dataset dataset in project project")
   );
-  expect(state.prompt).toHaveBeenCalledWith({ cell: "c1", id: "dataset" });
 });
 
 it("lands a version as a new dataset", async () => {
   state.dataset = dataset({ active: "c1", active_version: "v1", cells: [SOURCE, NORMALIZED] });
   showNotebook();
   fireEvent.click(screen.getByRole("button", { name: "New dataset from v1" }));
-  const dialog = await screen.findByRole("dialog", { name: "New dataset from v1" });
-  expect(within(dialog).getByText("96 rows", { selector: "p" })).toBeTruthy();
+  const dialog = await screen.findByRole("dialog", { name: "New dataset" });
+  expect(within(dialog).getByText("From support · v1 · 96 rows")).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "Create dataset" }));
   await waitFor(() =>
     expect(state.create).toHaveBeenCalledWith({

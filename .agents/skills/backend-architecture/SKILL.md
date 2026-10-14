@@ -24,7 +24,7 @@ Five workers, six queues. Workers are resource profiles; queues are fairness cla
 | ------------- | ------- | ---- | ---------------- | --------------------------------------------------------------------- |
 | `control`     | threads | 8    | `control`        | orchestration, chord callbacks, FSM advances, beat                    |
 | `io`          | threads | 24   | `io`,`io_traces` | judges, eval launch, live trace scoring, connector polling, rebinding |
-| `batch`       | prefork | 6    | `batch`          | sample generation, connector chunks                                   |
+| `batch`       | prefork | 6    | `batch`          | sample generation, connector chunks, version analytics backfill       |
 | `landing`     | prefork | 1    | `landing`        | source import and split publication                                   |
 | `interactive` | prefork | 4    | `interactive`    | workshop script runs (`execute`), through the `sandbox` service       |
 

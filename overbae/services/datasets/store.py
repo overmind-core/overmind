@@ -398,7 +398,8 @@ def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
             text = f"CAST({col} AS VARCHAR)"
             nulls, distinct = con.execute(
                 f"SELECT count(*) FILTER (WHERE {col} IS NULL OR {text} = ''), "
-                f'count(DISTINCT hash({text})) FILTER (WHERE {col} IS NOT NULL) FROM "t"'
+                f"count(DISTINCT hash({text})) FILTER (WHERE {col} IS NOT NULL AND {text} <> '') "
+                'FROM "t"'
             ).fetchone()
             entry: dict[str, Any] = {
                 "name": name,

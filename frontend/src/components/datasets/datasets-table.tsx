@@ -3,7 +3,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { IntentBadge, SOURCE_KIND_LABEL, StateBadge } from "@/components/datasets/badges";
+import { IntentBadge, StateBadge, sourceKindLabel } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
+import { datasetDisplayName, importEnded, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { parseDrfOrdering } from "@/lib/drf-ordering";
 import { formatNumber } from "@/lib/formatters";
@@ -46,7 +46,7 @@ const filterDatasets = (
       datasetDisplayName(ds).toLowerCase().includes(q) ||
       ds.id.toLowerCase().startsWith(q) ||
       (ds.capabilityName ?? "").toLowerCase().includes(q) ||
-      (SOURCE_KIND_LABEL[ds.sourceKind] ?? "").toLowerCase().includes(q)
+      sourceKindLabel(ds.sourceKind).toLowerCase().includes(q)
     );
   });
 };
@@ -184,7 +184,7 @@ function getColumns(opts: {
       accessorFn: (row) => row.intent ?? "",
       cell: ({ row }) => (
         <span className="flex items-center gap-1.5">
-          {row.original.state === "error" ? (
+          {importEnded(row.original) ? (
             <StateBadge dataset={row.original} />
           ) : (
             <IntentBadge intent={row.original.intent} />
@@ -214,7 +214,7 @@ function getColumns(opts: {
       accessorFn: (row) => row.rows ?? 0,
       cell: ({ row }) => (
         <span className="tabular-nums text-sm text-foreground">
-          {row.original.state === "error" ? (
+          {importEnded(row.original) ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             formatNumber(row.original.rows ?? 0)
@@ -230,9 +230,7 @@ function getColumns(opts: {
     {
       accessorKey: "sourceKind",
       cell: ({ row }) => (
-        <span className="text-sm text-foreground">
-          {SOURCE_KIND_LABEL[row.original.sourceKind] ?? row.original.sourceKind}
-        </span>
+        <span className="text-sm text-foreground">{sourceKindLabel(row.original.sourceKind)}</span>
       ),
       header: "Source",
       id: "source",

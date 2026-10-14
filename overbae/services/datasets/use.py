@@ -42,6 +42,8 @@ def check(
             raise DatasetError(
                 f"The source of {dataset.name} did not land: {dataset.error}", code="land_failed"
             )
+        if dataset.state == Dataset.State.STOPPED:
+            raise DatasetError(f"The import of {dataset.name} was stopped.", code="land_stopped")
         raise DatasetError(f"{dataset.name} has no version.", code="no_version")
     ok, reason = cell.fits_decision() if decision else cell.fits(intent)
     if not ok:

@@ -423,6 +423,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.decision_jobs.start": {"queue": "batch"},
     "overbae.tasks.decision_jobs.advance": {"queue": "io"},
     "overbae.tasks.datasets.execute": {"queue": "interactive"},
+    "overbae.tasks.datasets.measure_analytics": {"queue": "batch"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
     # Model warm-up and judge authoring block for minutes; control stays free for
     # reconcilers and metrics.

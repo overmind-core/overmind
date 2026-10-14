@@ -386,7 +386,7 @@ def test_a_cancelled_script_run_stops_frees_the_project_and_keeps_no_version(
     assert tree["v1"]["title"] == "Two rows"
 
 
-def test_a_cancelled_landing_lands_nothing_and_cannot_be_resumed(
+def test_a_stopped_import_lands_nothing_and_cannot_be_resumed(
     workshop, cli, sample_agent, worker, settings
 ):
     settings.SANDBOX_URL = "http://127.0.0.1:9"
@@ -402,8 +402,8 @@ def test_a_cancelled_landing_lands_nothing_and_cannot_be_resumed(
     drain(worker)
 
     landed = workshop.read(job)
-    assert (landed["state"], landed["import"]["state"]) == ("error", "cancelled")
-    assert landed["error"] == "The import was cancelled."
+    assert (landed["state"], landed["import"]["state"]) == ("stopped", "cancelled")
+    assert landed["error"] is None
     detail = workshop.call("inspect_dataset", {"dataset": dataset})
     assert (detail["versions"], detail["next_actions"]) == ([], [])
     with pytest.raises(AssertionError, match="not blocked"):

@@ -132,6 +132,10 @@ export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null =
 
 export const isBusy = (ds: Dataset | null | undefined): boolean => ds?.state === "landing";
 
+/** The import failed or was stopped, so the dataset has no source. */
+export const importEnded = (ds: Pick<Dataset, "state">): boolean =>
+  ds.state === "error" || ds.state === "stopped";
+
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
   id: string;
@@ -165,6 +169,7 @@ const datasetKeys = {
     ["datasets", "list", projectId, "inventory"] as const,
   list: (projectId: string | undefined, filters: DatasetListFilters) =>
     ["datasets", "list", projectId, filters] as const,
+  preparePrompt: (id: string, cell: string) => ["datasets", id, "prepare-prompt", cell] as const,
   rows: (id: string, cell: string | undefined, params: RowsParams) =>
     ["datasets", id, "rows", cell, params] as const,
 };
@@ -420,8 +425,13 @@ export function useCancelExecutionMutation(id: string) {
 }
 
 /** The prepare-dataset MCP prompt filled with this project, dataset and version. */
-export async function preparePrompt(id: string, cell: string): Promise<string> {
-  return (await apiClient.datasets.datasetsPreparePromptRetrieve({ cell, id })).prompt;
+export function usePreparePromptQuery(id: string, cell: string, enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryFn: async () =>
+      (await apiClient.datasets.datasetsPreparePromptRetrieve({ cell, id })).prompt,
+    queryKey: datasetKeys.preparePrompt(id, cell),
+  });
 }
 
 export async function downloadAttachment(id: string, cell: string, filename: string) {

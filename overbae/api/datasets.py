@@ -38,6 +38,7 @@ from overbae.services.datasets import (
     files,
     imports,
     lifecycle,
+    measure,
     paths,
     selection,
     store,
@@ -126,6 +127,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), "summary": self.action == "list"}
+
+    def retrieve(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        measure.request_analytics(dataset, list(dataset.cells.all()))
+        return Response(self.get_serializer(dataset).data)
 
     @extend_schema(
         summary="Create a dataset from a file, pasted rows or traces",
@@ -344,7 +350,10 @@ class DatasetViewSet(viewsets.ModelViewSet):
             "prepare-dataset",
             {
                 "dataset": str(dataset.id),
+                "dataset_name": dataset.name,
                 "version": cell.label,
+                "intent": dataset.intent,
+                "capability": dataset.capability.name if dataset.capability_id else "",
                 "project_id": str(dataset.project_id),
             },
         )

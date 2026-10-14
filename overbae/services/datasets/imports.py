@@ -434,7 +434,7 @@ def cancel(run_id):
             owner=None,
             lease_until=None,
             failure_code="cancelled",
-            error=landing.CANCELLED,
+            error=landing.STOPPED,
             updated_at=now,
         )
         if not moved:
@@ -442,7 +442,7 @@ def cancel(run_id):
         run = DatasetImport.objects.get(pk=run_id)
         Dataset.objects.filter(
             pk__in=_target_ids(run), state__in=[Dataset.State.LANDING, Dataset.State.ERROR]
-        ).update(state=Dataset.State.ERROR, error=landing.CANCELLED, updated_at=now)
+        ).update(state=Dataset.State.STOPPED, error="", updated_at=now)
         for dataset_id in _target_ids(run):
             transaction.on_commit(
                 lambda dataset_id=dataset_id: events.publish(
@@ -546,7 +546,7 @@ def _read_parts(run, targets, stop):
 
     def progress(event):
         if stop.is_set():
-            raise landing.LandError(landing.CANCELLED, code="cancelled")
+            raise landing.LandError(landing.STOPPED, code="cancelled")
         events.publish(run.dataset_id, {"dataset_id": str(run.dataset_id), **event})
 
     if source.get("uploads"):

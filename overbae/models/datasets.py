@@ -25,6 +25,7 @@ class Dataset(models.Model):
         LANDING = "landing"
         IDLE = "idle"
         ERROR = "error"
+        STOPPED = "stopped"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(

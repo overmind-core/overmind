@@ -7,12 +7,14 @@ from typing import Any
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
-from overbae.services.datasets import executions, imports
+from overbae.services.datasets import executions, imports, measure
 
 LAND_SOFT_LIMIT = 55 * 60
 LAND_HARD_LIMIT = 60 * 60
 EXECUTE_SOFT_LIMIT = 540
 EXECUTE_HARD_LIMIT = 600
+ANALYTICS_SOFT_LIMIT = 300
+ANALYTICS_HARD_LIMIT = 360
 
 
 @shared_task(
@@ -78,3 +80,12 @@ def execute(self, *, execution_id: str, unreachable: int = 0) -> None:
 @shared_task(name="overbae.tasks.datasets.sweep_executions")
 def sweep_executions() -> dict[str, int]:
     return executions.sweep()
+
+
+@shared_task(
+    name="overbae.tasks.datasets.measure_analytics",
+    soft_time_limit=ANALYTICS_SOFT_LIMIT,
+    time_limit=ANALYTICS_HARD_LIMIT,
+)
+def measure_analytics(*, dataset_id: str) -> int:
+    return measure.backfill_analytics(dataset_id)

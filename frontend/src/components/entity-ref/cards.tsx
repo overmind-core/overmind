@@ -4,7 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
-import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
+import { sourceKindLabel } from "@/components/datasets/badges";
 import {
   EntityCardMissing,
   EntityCardShell,
@@ -127,7 +127,7 @@ export function DatasetCard({ id, name }: { id: string; name: string }) {
     >
       <Row label="Rows">{(data.rows ?? 0).toLocaleString()}</Row>
       <Row label="Purpose">{INTENT_LABEL[intentOf(data)]}</Row>
-      <Row label="Source">{SOURCE_KIND_LABEL[data.sourceKind] ?? data.sourceKind}</Row>
+      <Row label="Source">{sourceKindLabel(data.sourceKind)}</Row>
       <Row label="Created">{data.createdAt ? <DateTime value={data.createdAt} /> : null}</Row>
     </EntityCardShell>
   );

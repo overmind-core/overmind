@@ -27,7 +27,6 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
-  preparePrompt,
   rankOf,
   useCancelExecutionMutation,
   useCancelImportMutation,
@@ -39,7 +38,6 @@ import {
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { usePersistedState } from "@/hooks/use-persisted-state";
-import { writeClipboardText } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
@@ -161,13 +159,13 @@ export function DatasetNotebook({
               ).catch((e) => notify.error(e, "Export failed")),
             onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
             onNewDataset: guard(() => setCopyFrom(cell)),
-            onPrepare: () =>
-              void writeClipboardText(preparePrompt(datasetId, cell.id))
-                .then(() => notify.success("Prompt copied"))
-                .catch((e) => notify.error(e, "Couldn't copy the prompt")),
             onUse: guard(handOff),
           }}
           active={cell.id === dataset.active}
+          analyticsChanged={
+            JSON.stringify(cell.analytics ?? {}) !==
+            JSON.stringify(cells.find((parent) => parent.id === cell.parent)?.analytics ?? {})
+          }
           capabilities={capabilityChoices}
           capabilityName={dataset.capabilityName ?? ""}
           cell={cell}
@@ -175,11 +173,24 @@ export function DatasetNotebook({
           editable={editable && !patch.isPending}
           intent={intent}
           onSelect={() => setSelectedId(cell.id)}
+          projectId={projectId}
           selected={cell.id === selectedId}
           sourceSpec={dataset.sourceSpec}
         />
       ) : null,
-    [dataset, guard, patch, datasetId, handOff, capabilityChoices, editable, intent, selectedId]
+    [
+      dataset,
+      cells,
+      guard,
+      patch,
+      datasetId,
+      projectId,
+      handOff,
+      capabilityChoices,
+      editable,
+      intent,
+      selectedId,
+    ]
   );
 
   if (datasetQuery.isPending) {
@@ -254,7 +265,7 @@ export function DatasetNotebook({
             variant="secondary"
           >
             <Icon.stop />
-            Cancel import
+            Stop import
           </Button>
         )}
         <WorkshopStatus
@@ -286,15 +297,26 @@ export function DatasetNotebook({
                 </>
               ) : (
                 <>
-                  <Icon.warning
-                    className={cn(
-                      "size-5",
-                      dataset.state === "error" ? "text-destructive" : "text-muted-foreground"
-                    )}
-                  />
+                  {dataset.state === "stopped" ? (
+                    <Icon.stop className="size-5 text-muted-foreground" />
+                  ) : (
+                    <Icon.warning
+                      className={cn(
+                        "size-5",
+                        dataset.state === "error" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    />
+                  )}
                   <p className="text-sm text-foreground">
-                    {dataset.state === "error" ? "The import failed" : "No rows were imported"}
+                    {dataset.state === "error"
+                      ? "The import failed"
+                      : dataset.state === "stopped"
+                        ? "Import stopped"
+                        : "No rows were imported"}
                   </p>
+                  {dataset.state === "stopped" && (
+                    <p className="text-xs text-muted-foreground">No rows were imported.</p>
+                  )}
                   {dataset.error && (
                     <p className="text-xs text-muted-foreground" role="alert">
                       {dataset.error}
@@ -312,10 +334,14 @@ export function DatasetNotebook({
                         Retry import
                       </Button>
                     )}
-                    <Button asChild size="sm" variant="secondary">
+                    <Button
+                      asChild
+                      size="sm"
+                      variant={dataset.state === "stopped" ? "default" : "secondary"}
+                    >
                       <Link search={{ create: true, projectId }} to="/datasets">
                         <Icon.datasetAdd />
-                        New dataset
+                        {dataset.state === "stopped" ? "Start again" : "New dataset"}
                       </Link>
                     </Button>
                   </div>

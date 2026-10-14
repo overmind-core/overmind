@@ -476,10 +476,11 @@ def _label_balance(frame: Frame) -> list[dict[str, Any]]:
 
 def _input_fields(frame: Frame, column_stats: list[dict[str, Any]]) -> dict[str, Any]:
     """Columns, and the keys of an object ``input`` (a decision row's state), that are
-    empty on some rows or hold one value on every row."""
+    empty on some rows, or constant: one value on every non-empty row, with at least two
+    such rows. A field empty on every row is only empty."""
     rows = len(frame)
     empty: list[dict[str, Any]] = []
-    constant: list[str] = []
+    constant: list[dict[str, Any]] = []
     checked = 0
     for stat in column_stats:
         name = stat["name"]
@@ -488,9 +489,9 @@ def _input_fields(frame: Frame, column_stats: list[dict[str, Any]]) -> dict[str,
         checked += 1
         missing = round(stat["null_rate"] * rows)
         if missing:
-            empty.append({"field": name, "rows": missing})
-        if rows > 1 and stat["distinct"] == 1:
-            constant.append(name)
+            empty.append({"field": name, "rows": missing, "of": rows})
+        if rows - missing > 1 and stat["distinct"] == 1:
+            constant.append({"field": name, "rows": rows - missing, "of": rows})
     # name -> [rows holding the key, rows where it is empty, first value, varies]
     keys: dict[str, list[Any]] = {}
     objects = 0
@@ -516,13 +517,13 @@ def _input_fields(frame: Frame, column_stats: list[dict[str, Any]]) -> dict[str,
                     seen[2] = digest
                 elif digest != seen[2]:
                     seen[3] = True
-    for name, (present, blank, first, varies) in keys.items():
+    for name, (present, blank, _first, varies) in keys.items():
         checked += 1
         missing = objects - present + blank
         if missing:
-            empty.append({"field": name, "rows": missing})
-        if objects > 1 and first is not None and not varies:
-            constant.append(name)
+            empty.append({"field": name, "rows": missing, "of": objects})
+        if present - blank > 1 and not varies:
+            constant.append({"field": name, "rows": present - blank, "of": objects})
     return {
         "fields": checked,
         "empty": empty[:_LISTED_FIELDS],

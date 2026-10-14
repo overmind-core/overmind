@@ -7,11 +7,14 @@ import { INTENT_LABEL, type UsedVersionInfo } from "@/hooks/use-datasets";
 import { cn } from "@/lib/utils";
 import type { Dataset } from "@/openapi";
 
-export const SOURCE_KIND_LABEL: Record<string, string> = {
+const SOURCE_KIND_LABEL: Record<string, string> = {
   file: "File",
   llm_calls: "LLM calls",
   traces: "Traces",
+  version: "Version",
 };
+
+export const sourceKindLabel = (kind: string): string => SOURCE_KIND_LABEL[kind] ?? kind;
 
 /** `train` / `eval` are what a consumer needs; `pending` is not decided yet. */
 export function IntentBadge({
@@ -50,6 +53,13 @@ export function StateBadge({
     return (
       <Badge className={className} size="chip" title={dataset.error} variant="error">
         Import failed
+      </Badge>
+    );
+  }
+  if (dataset.state === "stopped") {
+    return (
+      <Badge className={className} size="chip" variant="neutral">
+        Import stopped
       </Badge>
     );
   }

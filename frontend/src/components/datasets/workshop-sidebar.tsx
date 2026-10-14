@@ -4,6 +4,7 @@ import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 
 import apiClient from "@/client";
+import { sourceKindLabel } from "@/components/datasets/badges";
 import { sourceFiles } from "@/components/datasets/notebook/source";
 import { WorkshopStatusIcon, workshopStateOf } from "@/components/datasets/workshop-status";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,7 @@ function datasetSummary(dataset: Dataset): string {
   const files = sourceFiles(dataset.sourceSpec);
   const rows = `${dataset.rows.toLocaleString()} ${dataset.rows === 1 ? "row" : "rows"}`;
   if (!files.length) {
-    const origin =
-      dataset.sourceKind === "file" ? "" : dataset.sourceKind === "traces" ? "Traces" : "LLM calls";
+    const origin = dataset.sourceKind === "file" ? "" : sourceKindLabel(dataset.sourceKind);
     return [origin, rows].filter(Boolean).join(" · ");
   }
   const types = [
@@ -70,7 +70,7 @@ function DatasetRow({
             to="/datasets/$datasetId"
           >
             <span className="min-w-0 flex-1 truncate">{name}</span>
-            {(state === "working" || state === "error") && (
+            {state !== "complete" && state !== "idle" && (
               <WorkshopStatusIcon
                 className="group-focus-within/row:invisible group-hover/row:invisible"
                 state={state}
