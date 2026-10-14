@@ -157,6 +157,7 @@ def _decision_models_resource(uri: str) -> dict:
                 "family": row["family"],
                 "params": row["params"],
                 "max_context_length": row["max_context_length"],
+                "limits": row["limits"],
                 **(
                     {
                         "decision_index": row["decision_index"],
@@ -174,11 +175,25 @@ def _decision_models_resource(uri: str) -> dict:
             "keys to descriptions; noul has the options true and false; score criteria list "
             "levels and its options are the level indexes 0, 1, …. An answer is one option or "
             "an object of option weights. Add such a version with add_dataset_version; "
-            "inspect_dataset reports the decision fit. Start training with start_decision_job "
-            "on a train dataset and poll get_job with kind decision_job. Recommend the model "
-            "with the highest decision_index whose max_context_length holds the longest row; "
-            "a model without decision_index has no published score. A trained model "
-            "answers System One requests at POST /api/decision-jobs/{id}/systemone/."
+            "inspect_dataset reports the decision fit. Check a train dataset with "
+            "check_decision_readiness, start training with start_decision_job, and poll get_job "
+            "with kind decision_job. check_decision_readiness "
+            "returns up to three unranked picks among the models whose max_context_length holds "
+            "the longest row's input and whose limits hold the dataset's shape: strongest "
+            "(highest decision_index), smaller (highest decision_index at most half the "
+            "strongest's size) and smallest (fewest params). Offer them as trade-offs and let "
+            "the user choose. Answer "
+            "System One requests with run_decision_model, from a catalog model or a trained job; "
+            "non-MCP clients use POST /api/decision-jobs/{id}/systemone/. "
+            "One row per question type: "
+            '{"input":{"state":"Customer asks for a refund.","questions":{"route":{"type":"choice",'
+            '"instructions":"Pick the queue.","criteria":{"billing":"Refunds and charges",'
+            '"other":"Anything else"}}}},"expected_output":{"route":"billing"}} '
+            '{"input":{"state":"Customer asks for a refund.","questions":{"urgent":{"type":"noul",'
+            '"instructions":"Is the request urgent?"}}},"expected_output":{"urgent":"true"}} '
+            '{"input":{"state":"Customer asks for a refund.","questions":{"tone":{"type":"score",'
+            '"instructions":"Rate the tone.","criteria":["angry","neutral","happy"]}}},'
+            '"expected_output":{"tone":"1"}}'
         ),
     }
 

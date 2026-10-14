@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { FtStatusBadge } from "@/components/finetuning/finetuning-chrome";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CreditsAmount } from "@/components/ui/credits";
 import { DataTable } from "@/components/ui/data-table";
@@ -39,9 +40,9 @@ import type { DecisionJob, DecisionVersion } from "@/openapi";
 interface Scores {
   n: number;
   accuracy: number | null;
+  majority_baseline: number | null;
   log_loss: number | null;
   brier: number | null;
-  unanswered?: number;
   questions?: Record<string, Scores>;
 }
 
@@ -75,17 +76,12 @@ const columns: ColumnDef<DecisionJob, unknown>[] = [
     size: 220,
   },
   {
-    cell: ({ row }) => {
-      const accuracy = (row.original.evaluation as Evaluation | null)?.trained?.accuracy;
-      return (
-        <span className="tabular-nums text-sm">
-          {accuracy == null ? "—" : `${(accuracy * 100).toFixed(1)}%`}
-        </span>
-      );
-    },
+    cell: ({ row }) => (
+      <Accuracy scores={(row.original.evaluation as Evaluation | null)?.trained} />
+    ),
     header: "Accuracy",
     id: "accuracy",
-    size: 110,
+    size: 200,
   },
   {
     cell: ({ row }) =>
@@ -157,6 +153,20 @@ const percent = (value: number | null | undefined) =>
   value == null ? "—" : `${(value * 100).toFixed(1)}%`;
 const decimal = (value: number | null | undefined) => (value == null ? "—" : value.toFixed(3));
 
+function Accuracy({ scores }: { scores: Scores | null | undefined }) {
+  return (
+    <span className="tabular-nums text-sm">
+      {percent(scores?.accuracy)}
+      {scores?.majority_baseline != null && (
+        <span className="text-muted-foreground">
+          {" "}
+          · baseline {percent(scores.majority_baseline)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Metrics({ evaluation }: { evaluation: Evaluation }) {
   if (evaluation.error) return <Alert variant="destructive">{evaluation.error}</Alert>;
   const { base, trained } = evaluation;
@@ -180,8 +190,8 @@ function Metrics({ evaluation }: { evaluation: Evaluation }) {
           ].map(([label, scores]) => (
             <TableRow key={label as string}>
               <TableCell>{label as string}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {percent((scores as Scores).accuracy)}
+              <TableCell className="text-right">
+                <Accuracy scores={scores as Scores} />
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {decimal((scores as Scores).log_loss)}
@@ -206,11 +216,11 @@ function Metrics({ evaluation }: { evaluation: Evaluation }) {
             {questions.map((key) => (
               <TableRow key={key}>
                 <TableCell className="font-mono">{key}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {percent(base.questions?.[key]?.accuracy)}
+                <TableCell className="text-right">
+                  <Accuracy scores={base.questions?.[key]} />
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {percent(trained.questions?.[key]?.accuracy)}
+                <TableCell className="text-right">
+                  <Accuracy scores={trained.questions?.[key]} />
                 </TableCell>
               </TableRow>
             ))}
@@ -270,6 +280,11 @@ function JobDetail({ jobId }: { jobId: string }) {
             Evaluation
             {evaluation.rows != null && (
               <span className="ml-2 text-xs text-muted-foreground">{evaluation.rows} rows</span>
+            )}
+            {(job.evaluationStatus === "partial" || job.evaluationStatus === "failed") && (
+              <Badge className="ml-2" variant="warning">
+                {job.evaluationStatus}
+              </Badge>
             )}
           </h3>
           {job.status === "succeeded" ? (

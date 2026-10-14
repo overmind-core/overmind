@@ -57,13 +57,15 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
         "models",
         "has_tool_calling",
         "max_context",
+        "decision_models",
     }
     assert output["backend"] == "modal"
     assert output["has_tool_calling"] is False
     assert output["max_context"] is None
     assert output["summary"] == (
         f"{sum(len(models) for models in output['models'].values())} "
-        "fine-tuning catalog entries returned for modal."
+        "fine-tuning catalog entries and "
+        f"{len(output['decision_models'])} decision models returned for modal."
     )
     assert len(output["summary"]) <= 240
 
@@ -146,3 +148,12 @@ def test_catalog_requires_read_permission():
 
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"
+
+
+def test_catalog_lists_decision_models_with_their_serving_limits():
+    output = _call({}).structuredContent
+    clef = next(m for m in output["decision_models"] if m["id"] == "Cloudflare/clef")
+
+    assert len(output["decision_models"]) == 12
+    assert clef["limits"] == {"options": 26, "score_levels": 10, "questions": 64}
+    assert clef["family"] == "clef" and clef["decision_index"] == 53.08

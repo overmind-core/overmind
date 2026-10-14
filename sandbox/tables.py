@@ -52,9 +52,9 @@ def _finite(value: Any) -> Any:
     return value
 
 
-def json_dumps(value: Any) -> str:
+def json_dumps(value: Any, *, sort_keys: bool = False) -> str:
     # JSON has no NaN token.
-    return json.dumps(_finite(value), ensure_ascii=False, default=str, sort_keys=True)
+    return json.dumps(_finite(value), ensure_ascii=False, default=str, sort_keys=sort_keys)
 
 
 def coerce(value: Any, kind: str) -> Any:
@@ -168,7 +168,7 @@ def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:
 def schema(manifest: list[dict[str, str]]) -> pa.Schema:
     return pa.schema(
         [pa.field(spec["name"], ARROW_TYPES[spec["type"]]) for spec in manifest],
-        metadata={MANIFEST_KEY: json_dumps(manifest).encode()},
+        metadata={MANIFEST_KEY: json_dumps(manifest, sort_keys=True).encode()},
     )
 
 

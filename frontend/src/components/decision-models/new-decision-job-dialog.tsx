@@ -31,6 +31,12 @@ import type { Dataset } from "@/openapi";
 
 const NO_EVAL = "none";
 
+const PICK_LABEL: Record<string, string> = {
+  smaller: "Smaller",
+  smallest: "Smallest that fits",
+  strongest: "Strongest score",
+};
+
 const decisionReady = (dataset: Dataset, intent: "train" | "eval") =>
   intentOf(dataset) === intent && dataset.decisionReady;
 
@@ -58,7 +64,12 @@ export function NewDecisionJobDialog({
   const listed = train.some((dataset) => dataset.id === datasetId) ? datasetId : "";
   const chosen = listed || (train.length === 1 ? train[0].id : "");
   const recommendation = useDecisionRecommendation(projectId, chosen);
-  const modelId = pick?.dataset === chosen ? pick.model : (recommendation.data?.model ?? "");
+  const modelId = pick?.dataset === chosen ? pick.model : "";
+  const picks = recommendation.data?.picks ?? [];
+  // The server measures each model against the dataset's rows: context and serving limits.
+  const whyNot = new Map(
+    recommendation.data?.candidates.filter((c) => !c.fits).map((c) => [c.model, c.whyNot])
+  );
 
   const submit = () =>
     create.mutate(
@@ -122,14 +133,35 @@ export function NewDecisionJobDialog({
               </SelectTrigger>
               <SelectContent>
                 {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.id}
+                  <SelectItem disabled={whyNot.has(model.id)} key={model.id} value={model.id}>
+                    <span className="flex flex-col">
+                      <span>{model.id}</span>
+                      <span className="text-xs text-muted-foreground">{whyNot.get(model.id)}</span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {recommendation.data?.reason && (
-              <p className="text-xs text-muted-foreground">{recommendation.data.reason}</p>
+            {picks.map((entry) => (
+              <button
+                aria-pressed={entry.model === modelId}
+                className="flex w-full flex-col gap-0.5 rounded-md border border-border px-2.5 py-1.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-accent"
+                key={entry.model}
+                onClick={() => setPick({ dataset: chosen, model: entry.model })}
+                type="button"
+              >
+                <span className="text-xs">
+                  <span className="text-muted-foreground">
+                    {entry.labels.map((label) => PICK_LABEL[label] ?? label).join(" · ")}
+                  </span>
+                  {" · "}
+                  {entry.model}
+                </span>
+                <span className="text-xs text-muted-foreground">{entry.reason}</span>
+              </button>
+            ))}
+            {chosen && recommendation.data && picks.length === 0 && (
+              <p className="text-xs text-muted-foreground">No model fits this dataset.</p>
             )}
           </div>
           {create.error && (

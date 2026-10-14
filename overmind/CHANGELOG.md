@@ -8,6 +8,9 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- The datasets, training and inference skills describe decision models: decision
+  rows, per-model limits, and the `check_decision_readiness` → `start_decision_job`
+  → `get_job` → `run_decision_model` sequence. Skills version 1.4.0.
 - `overmind dataset upload --wait` waits only until the source has landed, and
   the next MCP step is `get_job(kind=dataset_import)`.
 - `overmind dataset export --cell` takes a version label such as `v3`.

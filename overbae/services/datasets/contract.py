@@ -124,17 +124,27 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
     return line
 
 
+def _holds_decision_rows(frame: Frame) -> bool:
+    return "input" in frame and any(decisions.is_request(v) for v in frame.values("input"))
+
+
 def _train_check(frame: Frame) -> dict[str, Any]:
     # The validator also imports training_line for the shared export contract.
     from overbae.services.finetuning_validator import RowValidator
 
+    if _holds_decision_rows(frame):
+        return {
+            "ok": False,
+            "reason": "decision rows train decision models, not chat models",
+            "failures": [],
+        }
     if "messages" not in frame:
         return {"ok": False, "reason": "no messages column", "failures": []}
     validator = RowValidator()
     failed = 0
     failures: list[dict[str, Any]] = []
     reasons: set[str] = set()
-    for index, record in enumerate(frame.records(["messages", "tools"])):
+    for index, record in enumerate(frame.records(["messages", "tools"]), start=1):
         try:
             line = training_line(record)
         except ValueError as exc:
@@ -172,7 +182,7 @@ def _eval_check(frame: Frame) -> dict[str, Any]:
     failures: list[dict[str, Any]] = []
     failed = 0
     identifiers = 0
-    for index, value in enumerate(frame.values("input")):
+    for index, value in enumerate(frame.values("input"), start=1):
         if _missing(value):
             empty += 1
             if len(empty_rows) < _FAILURE_SAMPLES:
@@ -263,15 +273,20 @@ def _decision_check(frame: Frame) -> dict[str, Any]:
         return {"ok": False, "reason": "no decision rows"}
     failures: list[dict[str, Any]] = []
     failed = decision_rows = 0
-    for index, record in enumerate(frame.records(["input", "expected_output"])):
+    shapes: list[dict[str, int]] = []
+    coverage = decisions.Coverage()
+    for index, record in enumerate(frame.records(["input", "expected_output"]), start=1):
         if decisions.is_request(record.get("input")):
             decision_rows += 1
         try:
-            decisions.record(record.get("input"), record.get("expected_output"))
+            parsed = decisions.record(record.get("input"), record.get("expected_output"))
         except decisions.DecisionRowError as exc:
             failed += 1
             if len(failures) < _FAILURE_SAMPLES:
                 failures.append({"row": index, "reason": str(exc)})
+        else:
+            shapes.append(decisions.shape(parsed["questions"]))
+            coverage.add(parsed)
     if not decision_rows:
         return {"ok": False, "reason": "no decision rows"}
     if failed:
@@ -281,7 +296,13 @@ def _decision_check(frame: Frame) -> dict[str, Any]:
             "reason": f"{failed} rows are not valid decisions; row {first['row']}: {first['reason']}",
             "failures": failures,
         }
-    return {"ok": True, "reason": "", "rows": decision_rows}
+    return {
+        "ok": True,
+        "reason": "",
+        "rows": decision_rows,
+        "shape": decisions.widest(shapes),
+        "warnings": coverage.warnings(),
+    }
 
 
 def _has_text(frame: Frame) -> bool:

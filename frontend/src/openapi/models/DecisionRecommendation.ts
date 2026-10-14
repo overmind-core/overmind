@@ -13,6 +13,28 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DecisionDataset } from './DecisionDataset';
+import {
+    DecisionDatasetFromJSON,
+    DecisionDatasetFromJSONTyped,
+    DecisionDatasetToJSON,
+    DecisionDatasetToJSONTyped,
+} from './DecisionDataset';
+import type { DecisionCandidate } from './DecisionCandidate';
+import {
+    DecisionCandidateFromJSON,
+    DecisionCandidateFromJSONTyped,
+    DecisionCandidateToJSON,
+    DecisionCandidateToJSONTyped,
+} from './DecisionCandidate';
+import type { DecisionPick } from './DecisionPick';
+import {
+    DecisionPickFromJSON,
+    DecisionPickFromJSONTyped,
+    DecisionPickToJSON,
+    DecisionPickToJSONTyped,
+} from './DecisionPick';
+
 /**
  *
  * @export
@@ -21,31 +43,31 @@ import { mapValues } from '../runtime';
 export interface DecisionRecommendation {
     /**
      *
-     * @type {string}
+     * @type {Array<DecisionPick>}
      * @memberof DecisionRecommendation
      */
-    model: string | null;
+    picks: Array<DecisionPick>;
     /**
      *
-     * @type {number}
+     * @type {DecisionDataset}
      * @memberof DecisionRecommendation
      */
-    longestRowTokens: number;
+    dataset: DecisionDataset;
     /**
      *
-     * @type {string}
+     * @type {Array<DecisionCandidate>}
      * @memberof DecisionRecommendation
      */
-    reason: string;
+    candidates: Array<DecisionCandidate>;
 }
 
 /**
  * Check if a given object implements the DecisionRecommendation interface.
  */
 export function instanceOfDecisionRecommendation(value: object): value is DecisionRecommendation {
-    if (!('model' in value) || value['model'] === undefined) return false;
-    if (!('longestRowTokens' in value) || value['longestRowTokens'] === undefined) return false;
-    if (!('reason' in value) || value['reason'] === undefined) return false;
+    if (!('picks' in value) || value['picks'] === undefined) return false;
+    if (!('dataset' in value) || value['dataset'] === undefined) return false;
+    if (!('candidates' in value) || value['candidates'] === undefined) return false;
     return true;
 }
 
@@ -59,9 +81,9 @@ export function DecisionRecommendationFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
 
-        'model': json['model'],
-        'longestRowTokens': json['longest_row_tokens'],
-        'reason': json['reason'],
+        'picks': ((json['picks'] as Array<any>).map(DecisionPickFromJSON)),
+        'dataset': DecisionDatasetFromJSON(json['dataset']),
+        'candidates': ((json['candidates'] as Array<any>).map(DecisionCandidateFromJSON)),
     };
 }
 
@@ -76,8 +98,8 @@ export function DecisionRecommendationToJSONTyped(value?: DecisionRecommendation
 
     return {
 
-        'model': value['model'],
-        'longest_row_tokens': value['longestRowTokens'],
-        'reason': value['reason'],
+        'picks': ((value['picks'] as Array<any>).map(DecisionPickToJSON)),
+        'dataset': DecisionDatasetToJSON(value['dataset']),
+        'candidates': ((value['candidates'] as Array<any>).map(DecisionCandidateToJSON)),
     };
 }

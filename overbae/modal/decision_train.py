@@ -10,7 +10,13 @@ import time
 from pathlib import Path
 
 SEED = 3407
-_FIT_ERROR = "No records fit the context cap."
+
+
+def _error(code: str, message: str, skipped: dict | None = None) -> dict:
+    error = {"code": code, "message": message}
+    if skipped is not None:
+        error["skipped"] = skipped
+    return {"error": error}
 
 
 def train(payload: dict) -> dict:
@@ -21,7 +27,7 @@ def train(payload: dict) -> dict:
         return _train_d3(payload)
     if family == "d1":
         return _train_d1(payload)
-    return {"error": "Decision training failed."}
+    return _error("runtime_error", f"unknown decision family: {family}")
 
 
 def _train_clef(payload: dict) -> dict:
@@ -48,8 +54,13 @@ def _train_clef(payload: dict) -> dict:
         for item in items
         if not (isinstance(item, dict) and len(item.get("input_ids") or []) >= max_context)
     ]
+    rejected = report.get("skipped")
+    skipped = {
+        "too_long": len(items) - len(train_items),
+        "rejected": rejected if isinstance(rejected, int) else 0,
+    }
     if not train_items:
-        return {"error": _FIT_ERROR}
+        return _error("no_records_fit", "No records fit the context cap.", skipped)
     train_items, holdout = FastDecisionModel.split_holdout(train_items, SEED)
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
@@ -120,7 +131,7 @@ def _train_d3(payload: dict) -> dict:
     runtime.fast = None
     examples, skipped = _d3_examples(runtime, payload["records"], max_context)
     if not examples:
-        return {"error": _FIT_ERROR}
+        return _error("no_records_fit", "No records fit the context cap.", skipped)
     backbone = get_peft_model(runtime.backbone, _d3_lora())
     for name, param in backbone.named_parameters():
         if "visual" in name:
@@ -171,14 +182,14 @@ def _train_d3(payload: dict) -> dict:
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     merged = backbone.merge_and_unload()
-    saved = Path("/artifacts") / payload["job_id"]
+    saved = Path("/artifacts") / payload["job_id"] / "checkpoint"
     _export_d3(folder, saved, merged, readout)
     return {
         "model": repo,
         "family": "d3",
         "kernels": runtime.kernels,
         "train_questions": len(examples),
-        "skipped_questions": skipped,
+        "skipped_questions": skipped["too_long"] + skipped["rejected"],
         "steps": steps,
         "rank": 16,
         "batch": batch,
@@ -211,7 +222,7 @@ def _train_d1(payload: dict) -> dict:
         else _slot_examples(model, payload["records"], max_context)
     )
     if not examples:
-        return {"error": _FIT_ERROR}
+        return _error("no_records_fit", "No records fit the context cap.", skipped)
     if omni:
         wrapped = get_peft_model(model, _omni_lora())
         inner = wrapped.base_model.model
@@ -273,7 +284,7 @@ def _train_d1(payload: dict) -> dict:
         "family": "d1",
         "variant": "omni" if omni else "causal",
         "train_questions": len(examples),
-        "skipped_questions": skipped,
+        "skipped_questions": skipped["too_long"] + skipped["rejected"],
         "steps": steps,
         "rank": 16,
         "batch": batch,
@@ -351,18 +362,25 @@ def _omni_examples(model, records, max_context):
 
     module = importlib.import_module(type(model).__module__)
     tokenizer = model.tokenizer
-    examples, skipped = [], 0
+    examples, skipped = [], {"too_long": 0, "rejected": 0}
     for row in records:
         for key, question in row["questions"].items():
-            parsed = module.as_question(question)
+            try:
+                parsed = module.as_question(question)
+            except ValueError:
+                skipped["rejected"] += 1
+                continue
             try:
                 ids, markers = module.encode(tokenizer, row["state"], parsed, max_context)
             except ValueError:
-                skipped += 1
+                skipped["too_long"] += 1
+                continue
+            if len(ids) > max_context:
+                skipped["too_long"] += 1
                 continue
             target = _gold_vector(question, (row.get("gold") or {}).get(key) or {}, flip_noul=True)
-            if target is None or len(target) != len(markers) or len(ids) > max_context:
-                skipped += 1
+            if target is None or len(target) != len(markers):
+                skipped["rejected"] += 1
                 continue
             examples.append((ids, markers, module.QTYPES[parsed.type], target))
     return examples, skipped
@@ -373,16 +391,19 @@ def _slot_examples(model, records, max_context):
 
     engine = model.engine
     prompt = importlib.import_module(type(engine).__module__.rsplit(".", 1)[0] + ".prompt")
-    examples, skipped = [], 0
+    examples, skipped = [], {"too_long": 0, "rejected": 0}
     for row in records:
         for key, question in row["questions"].items():
             parsed = prompt.as_question(question)
             text = engine.render(row["state"], parsed)
             ids = engine.tokenizer.encode(text, add_special_tokens=False)
+            if len(ids) > max_context:
+                skipped["too_long"] += 1
+                continue
             groups = prompt.readout_ids(engine.tokenizer, parsed)
             target = _gold_vector(question, (row.get("gold") or {}).get(key) or {}, flip_noul=False)
-            if target is None or len(target) != len(groups) or len(ids) > max_context:
-                skipped += 1
+            if target is None or len(target) != len(groups):
+                skipped["rejected"] += 1
                 continue
             examples.append((ids, groups, target))
     return examples, skipped
@@ -494,17 +515,17 @@ def _d3_lora():
 
 def _d3_examples(runtime, records, max_context):
     examples = []
-    skipped = 0
+    skipped = {"too_long": 0, "rejected": 0}
     for row in records:
         prepared = runtime.prepare(row["state"], row["questions"])
         gold = row.get("gold") or {}
         for key, sequence in prepared.sequences.items():
             if len(sequence) > max_context:
-                skipped += 1
+                skipped["too_long"] += 1
                 continue
             target = _target_vector(prepared.questions[key], gold.get(key))
             if target is None:
-                skipped += 1
+                skipped["rejected"] += 1
                 continue
             examples.append((sequence, target))
     return examples, skipped

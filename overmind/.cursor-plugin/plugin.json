@@ -1,7 +1,7 @@
 {
   "name": "overmind",
   "displayName": "Overmind",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Overmind skills and MCP — agent observability, tracing, and platform tools for coding agents.",
   "author": {
     "name": "Overmind",

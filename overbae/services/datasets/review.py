@@ -164,7 +164,8 @@ _EXAMPLES = 20
 
 
 def _digest(value: Any) -> str:
-    return hashlib.sha256(store.json_dumps(value).encode()).hexdigest()
+    # Key order is not content: a dict reordered between versions is the same prompt.
+    return hashlib.sha256(store.json_dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def _original(position: int, record: dict) -> dict:

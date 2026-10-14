@@ -38,6 +38,8 @@ EXPECTED_TOOL_NAMES = {
     "prepare_training_data",
     "estimate_finetune",
     "start_decision_job",
+    "check_decision_readiness",
+    "run_decision_model",
     "start_finetune",
     "retry_deployment",
     "set_active_model",

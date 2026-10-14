@@ -56,3 +56,18 @@ independently of a completed activation.
 Report readiness, worker state, selected alias and application evidence
 separately. Open `inference` under the project's Console base, preserving
 `projectId`, when the user wants the visual serving view.
+
+## Decision requests
+
+Use `run_decision_model` to answer a System One request from a decision model.
+Pass `job` for a trained decision job, or `model` for a catalog model, with the
+`state` and `questions` in the shape described in overmind-datasets. The answer
+gives one option per question: a choice key, `true` or `false`, a level index
+such as `"2"`, or option weights.
+
+- A cold model answers "warming". Retry after the number of seconds it gives.
+- Keep each request within the model's limits and context length from
+  `overmind://decision-models`. Report a rejected request; do not drop questions
+  to make it fit.
+- Decision models are not chat models. Use `run_decision_model`, not
+  `run_inference`.

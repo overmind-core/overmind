@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+from collections import Counter
 from typing import Any
 
 QUESTION_TYPES = ("choice", "noul", "score")
@@ -61,7 +62,8 @@ def _question(key: str, question: Any) -> dict:
             or any(not str(k).strip() or not isinstance(v, str) for k, v in criteria.items())
         ):
             raise DecisionRowError(
-                f"question {key}: choice criteria must map 2–{MAX_OPTIONS} options to descriptions"
+                f"question {key}: choice criteria must be an object mapping 2–{MAX_OPTIONS} "
+                'option keys to descriptions, e.g. {"refund": "...", "other": "..."}'
             )
     elif kind == "score":
         if (
@@ -70,7 +72,8 @@ def _question(key: str, question: Any) -> dict:
             or any(not isinstance(level, str) or not level.strip() for level in criteria)
         ):
             raise DecisionRowError(
-                f"question {key}: score criteria must list 2–{MAX_OPTIONS} levels"
+                f"question {key}: score criteria must be a list of 2–{MAX_OPTIONS} level "
+                'descriptions, e.g. ["poor", "fair", "good"]'
             )
     elif criteria is not None and (
         not isinstance(criteria, dict)
@@ -92,7 +95,11 @@ def request(value: Any) -> dict:
         raise DecisionRowError("state must be text")
     questions = value["questions"]
     if not isinstance(questions, dict) or not 1 <= len(questions) <= MAX_QUESTIONS:
-        raise DecisionRowError(f"questions must be an object with 1–{MAX_QUESTIONS} questions")
+        raise DecisionRowError(
+            "questions must be an object keyed by question name, e.g. "
+            '{"sentiment": {"type": "noul", "instructions": "..."}}, '
+            f"with 1–{MAX_QUESTIONS} questions"
+        )
     for key, question in questions.items():
         if not str(key).strip():
             raise DecisionRowError("question keys must not be empty")
@@ -109,6 +116,11 @@ def target(question: dict, answer: Any) -> list[float]:
     if isinstance(answer, int) and question["type"] == "score":
         answer = str(answer)
     if isinstance(answer, str):
+        if answer not in keys and question["type"] == "score":
+            raise DecisionRowError(
+                f"answer {answer!r} is not a level; score answers are level indexes "
+                f"0–{len(keys) - 1}"
+            )
         if answer not in keys:
             raise DecisionRowError(f"answer {answer!r} is not one of {', '.join(keys)}")
         return [1.0 if key == answer else 0.0 for key in keys]
@@ -155,6 +167,53 @@ def record(input_value: Any, expected: Any) -> dict:
     }
 
 
+def shape(questions: dict) -> dict:
+    """The widest choice or noul option list, the most score levels and the question count."""
+    option_counts = [
+        2 if question["type"] == "noul" else len(question["criteria"])
+        for question in questions.values()
+        if question["type"] in ("choice", "noul")
+    ]
+    levels = [
+        len(question["criteria"]) for question in questions.values() if question["type"] == "score"
+    ]
+    return {
+        "options": max(option_counts, default=0),
+        "score_levels": max(levels, default=0),
+        "questions": len(questions),
+    }
+
+
+def widest(shapes: list[dict]) -> dict:
+    """The element-wise maximum of several shapes."""
+    return {
+        key: max((shape[key] for shape in shapes), default=0)
+        for key in ("options", "score_levels", "questions")
+    }
+
+
+def violations(questions: dict, limits: dict) -> list[str]:
+    """Why a model with ``limits`` cannot answer ``questions``; empty when it can."""
+    found = []
+    if len(questions) > limits["questions"]:
+        found.append(
+            f"{len(questions)} questions in one request; this model takes up to "
+            f"{limits['questions']}"
+        )
+    for key, question in questions.items():
+        if question["type"] == "choice" and len(question["criteria"]) > limits["options"]:
+            found.append(
+                f"question {key} has {len(question['criteria'])} options; this model takes up "
+                f"to {limits['options']}"
+            )
+        if question["type"] == "score" and len(question["criteria"]) > limits["score_levels"]:
+            found.append(
+                f"question {key} has {len(question['criteria'])} levels; this model takes up "
+                f"to {limits['score_levels']}"
+            )
+    return found
+
+
 def predicted(question: dict, answer: Any) -> list[float]:
     """A System One answer as a probability per option, in ``options(question)`` order."""
     if not isinstance(answer, dict):
@@ -178,3 +237,56 @@ def predicted(question: dict, answer: Any) -> list[float]:
     if not math.isclose(total, 1.0, abs_tol=0.01):
         raise DecisionRowError("the model's probabilities do not sum to one")
     return [v / total for v in values]
+
+
+def gold_option(probabilities: dict[str, float]) -> str | None:
+    """The one option a gold answer favours, or None when its top weight is shared."""
+    top = max(probabilities.values())
+    leaders = [key for key, weight in probabilities.items() if weight == top]
+    return leaders[0] if len(leaders) == 1 else None
+
+
+class Coverage:
+    """Whether a table's gold answers reach every option of each question.
+
+    Feed it ``record()`` outputs; ``warnings()`` names thin options and a dominant answer.
+    Advisory only: the table stays usable.
+    """
+
+    MIN_OPTION_ROWS = 5
+    MIN_DOMINANT_ROWS = 10
+    DOMINANT_SHARE = 0.9
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.questions: dict[str, dict] = {}
+        self.leaders: dict[str, Counter[str]] = {}
+
+    def add(self, record: dict) -> None:
+        self.total += 1
+        for key, question in record["questions"].items():
+            self.questions.setdefault(key, question)
+            leader = gold_option(record["gold"][key]["probabilities"])
+            if leader is not None:
+                self.leaders.setdefault(key, Counter())[leader] += 1
+
+    def warnings(self) -> list[str]:
+        found = []
+        for key, question in self.questions.items():
+            counts = self.leaders.get(key, Counter())
+            if question["type"] != "noul":
+                keys = options(question)
+                thin = sum(1 for option in keys if counts[option] < self.MIN_OPTION_ROWS)
+                if thin:
+                    found.append(
+                        f"question {key}: {thin} of {len(keys)} options have fewer than "
+                        f"{self.MIN_OPTION_ROWS} rows"
+                    )
+            if self.total >= self.MIN_DOMINANT_ROWS and counts:
+                answer, rows = counts.most_common(1)[0]
+                if rows / self.total >= self.DOMINANT_SHARE:
+                    found.append(
+                        f"question {key}: '{answer}' is the answer in "
+                        f"{round(100 * rows / self.total)}% of rows"
+                    )
+        return found
