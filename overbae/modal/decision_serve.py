@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import shutil
@@ -163,6 +164,10 @@ def wait_until_ready(proc: subprocess.Popen, timeout: int = 45 * 60) -> None:
     raise RuntimeError(f"decision server was not ready: {_tail(proc)}")
 
 
+def _error(code: str, message: str) -> dict:
+    return {"error": {"code": code, "message": message[:500]}}
+
+
 def score(source: str, payload: dict) -> dict:
     if _D1 is not None:
         return _score_d1(_D1, payload)
@@ -182,10 +187,14 @@ def score(source: str, payload: dict) -> dict:
         with urllib.request.urlopen(request, timeout=10 * 60) as response:
             return json.load(response)
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode()[:500]
+        detail = exc.read().decode()[:500] or f"HTTP {exc.code}"
+        if not 400 <= exc.code < 500:
+            return _error("runtime_error", detail)
         if "max" in detail and ("length" in detail or "context" in detail):
-            return {"error": "max_length_exceeded"}
-        return {"error": detail or f"HTTP {exc.code}"}
+            return _error("max_length_exceeded", detail)
+        return _error("request_rejected", detail)
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+        return _error("runtime_error", f"{type(exc).__name__}: {exc}")
 
 
 def _popen(command: list[str]) -> subprocess.Popen:
@@ -233,35 +242,41 @@ def _score_d1(model, payload: dict) -> dict:
     limit = int(payload["max_context_length"])
     try:
         if _d1_exceeds(model, payload["state"], payload["questions"], limit):
-            return {"error": "max_length_exceeded"}
+            return _error("max_length_exceeded", f"input exceeds the {limit}-token context")
         result = model.system_one(payload["state"], payload["questions"])
     except ValueError as exc:
-        text = str(exc).lower()
-        if "context" in text or "fit" in text or "token" in text:
-            return {"error": "max_length_exceeded"}
-        return {"error": str(exc)}
+        text = str(exc)
+        if any(word in text.lower() for word in ("context", "fit", "token")):
+            return _error("max_length_exceeded", text)
+        return _error("request_rejected", text)
+    except Exception as exc:
+        return _error("runtime_error", f"{type(exc).__name__}: {exc}")
     return {"answers": result.get("answers"), "usage": result.get("usage") or {}}
 
 
-def _d1_exceeds(model, state, questions: dict, limit: int) -> bool:
-    import importlib
+def _sibling_prompt(owner):
+    """The ``prompt`` module next to the package that defines ``owner``'s class."""
+    package = type(owner).__module__.rsplit(".", 1)[0]
+    return importlib.import_module(package + ".prompt")
 
+
+def _d1_exceeds(model, state, questions: dict, limit: int) -> bool:
     if type(model).__name__ == "D1OmniModel":
-        module = importlib.import_module(type(model).__module__)
+        prompt = _sibling_prompt(model)
         tokenizer = model.tokenizer
         for question in questions.values():
-            parsed = module.as_question(question)
-            full = tokenizer(module.escape(module.serialize(state)), add_special_tokens=False)[
+            parsed = prompt.as_question(question)
+            full = tokenizer(prompt.escape(prompt.serialize(state)), add_special_tokens=False)[
                 "input_ids"
             ]
-            ids, _markers = module.encode(tokenizer, state, parsed, limit)
-            state_id = tokenizer.convert_tokens_to_ids(module.DELIM["state"])
-            question_id = tokenizer.convert_tokens_to_ids(module.DELIM["q"])
+            ids, _markers = prompt.encode(tokenizer, state, parsed, limit)
+            state_id = tokenizer.convert_tokens_to_ids(prompt.DELIM["state"])
+            question_id = tokenizer.convert_tokens_to_ids(prompt.DELIM["q"])
             kept = ids[ids.index(state_id) + 1 : ids.index(question_id)]
             if kept != full:
                 return True
         return False
-    prompt = importlib.import_module(type(model.engine).__module__.rsplit(".", 1)[0] + ".prompt")
+    prompt = _sibling_prompt(model.engine)
     parsed = [prompt.as_question(question) for question in questions.values()]
     return model.engine.tokens(state, parsed) > limit
 

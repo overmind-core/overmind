@@ -1,8 +1,8 @@
 """H100 decision-model worker. Chat SFT stays on modal_sft_worker.
 
 Volume layout: ``/artifacts/.bases/<org>--<repo>`` is the shared base snapshot.
-``/artifacts/<job_id>/records.jsonl`` and ``eval.jsonl`` are the trainer records,
-then whatever the trainer saves under ``/artifacts/<job_id>/``.
+``/artifacts/<job_id>/records.jsonl`` and ``eval.jsonl`` are the trainer records.
+Trainers write under a subfolder of ``/artifacts/<job_id>/`` and never remove the job folder.
 """
 
 import json
@@ -136,6 +136,10 @@ def _read(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def _error(code: str, message: str) -> dict:
+    return {"error": {"code": code, "message": message[:500]}}
+
+
 def _stage_base(repo: str) -> None:
     if repo.startswith("/"):
         return
@@ -184,10 +188,17 @@ def train_decision(payload: dict) -> dict:
     import decision_train
 
     volume.reload()
-    _stage_base(payload["repo"])
+    try:
+        _stage_base(payload["repo"])
+    except Exception as exc:
+        return _error("base_unavailable", f"{type(exc).__name__}: {exc}")
     records = _read(Path("/artifacts") / payload["job_id"] / "records.jsonl")
-    result = decision_train.train({**payload, "records": records})
-    volume.commit()
+    try:
+        result = decision_train.train({**payload, "records": records})
+    except Exception as exc:
+        return _error("runtime_error", f"{type(exc).__name__}: {exc}")
+    if "error" not in result:
+        volume.commit()
     return result
 
 
@@ -202,10 +213,17 @@ def train_d1(payload: dict) -> dict:
     import decision_train
 
     volume.reload()
-    _stage_base(payload["repo"])
+    try:
+        _stage_base(payload["repo"])
+    except Exception as exc:
+        return _error("base_unavailable", f"{type(exc).__name__}: {exc}")
     records = _read(Path("/artifacts") / payload["job_id"] / "records.jsonl")
-    result = decision_train.train({**payload, "records": records})
-    volume.commit()
+    try:
+        result = decision_train.train({**payload, "records": records})
+    except Exception as exc:
+        return _error("runtime_error", f"{type(exc).__name__}: {exc}")
+    if "error" not in result:
+        volume.commit()
     return result
 
 
@@ -261,25 +279,23 @@ class _Server:
         import decision_serve
 
         if self._startup_error:
-            return {"error": self._startup_error}
+            return _error("boot_failed", self._startup_error)
         source = decision_serve.source_from_key(self.source)
         adapter = payload.get("adapter")
         try:
             if adapter:
                 volume.reload()
                 source = decision_serve.load_adapter(self._loaded, adapter)
+        except FileNotFoundError as exc:
+            return _error("adapter_missing", str(exc))
         except Exception as exc:
-            return {"error": f"{type(exc).__name__}: {exc}"}
+            return _error("runtime_error", f"{type(exc).__name__}: {exc}")
         return decision_serve.score(source, payload)
 
     @modal.method()
-    def score_many(self, payloads: list[dict]) -> list[dict | None]:
-        """Answers for each payload, ``None`` where the server returned no answers."""
-        answers = []
-        for payload in payloads:
-            result = self.score.local(payload)
-            answers.append(result.get("answers") if isinstance(result, dict) else None)
-        return answers
+    def score_many(self, payloads: list[dict]) -> list[dict]:
+        """One result per payload, in order: ``answers`` on success, ``error`` otherwise."""
+        return [self.score.local(payload) for payload in payloads]
 
 
 @app.cls(image=clef_image, **_RUN)
