@@ -87,7 +87,8 @@ def test_an_agent_grows_a_tree_of_versions_and_training_uses_the_one_it_activate
     tree = _versions(workshop, train)
     assert sorted(tree) == ["v0", "v1", "v2", "v3"]
     assert tree["v2"]["parent"] == tree["v3"]["parent"] == "v1"
-    assert tree["v1"]["impact"]["rows_removed"] == 2
+    v1 = workshop.call("inspect_dataset", {"dataset": train, "version": "v1"})["selected"]
+    assert v1["impact"]["rows_removed"] == 2
 
     compared = workshop.call("diff_dataset_versions", {"dataset": train, "from": "v2", "to": "v3"})
     assert compared["diff"]["tracked"] is True
@@ -382,8 +383,8 @@ def test_a_cancelled_script_run_stops_frees_the_project_and_keeps_no_version(
         pending = pool.submit(_add, workshop, dataset, "v0", "Slow", slow)
         run = _running(rest, dataset)
         started = time.monotonic()
-        stopped = workshop.call("cancel_dataset_job", {"dataset": dataset, "execution": run["id"]})
-        assert (stopped["kind"], stopped["status"]) == ("execution", "cancelled")
+        stopped = workshop.call("cancel_dataset_job", {"dataset": dataset, "run": run["id"]})
+        assert (stopped["kind"], stopped["status"]) == ("dataset_run", "cancelled")
         assert pending.result()["status"] == "cancelled"
 
     quick = _add(workshop, dataset, "v0", "Two rows", "df = df.head(2)")
@@ -406,7 +407,7 @@ def test_a_stopped_import_lands_nothing_and_cannot_be_resumed(
         time.sleep(0.1)
 
     stopped = workshop.call("cancel_dataset_job", {"dataset": dataset})
-    assert (stopped["kind"], stopped["status"]) == ("dataset_import", "cancelled")
+    assert (stopped["kind"], stopped["status"]) == ("dataset_import", "stopped")
     drain(worker)
 
     landed = workshop.read(job)
