@@ -56,6 +56,36 @@ A run that returns `queued` or `running` is still working: repeat the
 identical call. A failed run creates no version; read its error and printed
 output, fix the script and try again.
 
+## Decision rows
+
+Decision models answer System One requests; they do not train chat models, and
+chat rows do not train decision models. A decision row has:
+
+- `input`: `{"state": str, "questions": {key: question}}`
+- `expected_output`: `{key: answer}`, with an answer for every question key
+
+A question is `{type, instructions, criteria}`:
+
+- `choice`: `criteria` maps option keys to descriptions.
+- `noul`: the options are `true` and `false`; `criteria` is optional.
+- `score`: `criteria` lists level descriptions; the options are the 0-based
+  level indexes. A 1–5 star rating is stored as `"0"` to `"4"`.
+
+An answer is one option, or `{option: weight}` for a soft label. One row per
+question type:
+
+```json
+{"input":{"state":"Customer asks for a refund.","questions":{"route":{"type":"choice","instructions":"Pick the queue.","criteria":{"billing":"Refunds and charges","other":"Anything else"}}}},"expected_output":{"route":"billing"}}
+{"input":{"state":"Customer asks for a refund.","questions":{"urgent":{"type":"noul","instructions":"Is the request urgent?"}}},"expected_output":{"urgent":"true"}}
+{"input":{"state":"Customer asks for a refund.","questions":{"tone":{"type":"score","instructions":"Rate the tone.","criteria":["angry","neutral","happy"]}}},"expected_output":{"tone":"1"}}
+```
+
+Each model caps the options per choice, the score levels and the questions per
+request, and has a context length. Read `overmind://decision-models` before
+shaping rows, and keep each row's `state` and questions within the chosen
+model's context. Add these versions with `add_dataset_version`; `inspect_dataset`
+reports the decision fit.
+
 ## Hand off the version
 
 Verify the chosen version with `query_dataset`. Report the dataset UUID, the

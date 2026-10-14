@@ -61,3 +61,27 @@ or a repository model swap. For requested checkpoint export, use
 
 Open `training` under the project's Console base with its `projectId` for the
 visual job dashboard. Retain the exact job and deployment IDs in the report.
+
+## Decision models
+
+Use a decision model when the task has a closed set of answers: classification,
+routing or scoring over fixed options, asked as questions about a `state`. Use
+chat fine-tuning for generated text. Decision rows are shaped as in
+overmind-datasets and train only decision models.
+
+1. Call `check_decision_readiness` on the train dataset. It reports readiness,
+   the recommended model and the excluded models. The recommendation is the
+   highest published `decision_index` whose context holds the longest row.
+   A model without a published index is chosen only when no scored model fits.
+1. Call `start_decision_job` with `model` and `dataset`, plus optional
+   `eval_dataset`, `version` and `eval_version`.
+1. Poll `get_job` with `kind=decision_job` until the job finishes, then read
+   `evaluation_status`:
+   - `complete`: every answer was scored.
+   - `partial`: some answers were unanswered; `unanswered` gives the counts by
+     reason.
+   - `failed`: no rows were scored.
+
+Compare the trained metrics with the base model's metrics on the same eval rows
+before reporting a result. A finished job does not make the model live; predict
+with `run_decision_model` (overmind-inference).
