@@ -26,6 +26,11 @@ os.environ["AWS_S3_CUSTOM_DOMAIN"] = ""
 
 from overbae.settings import *  # noqa: E402, F403
 
+# overbae.settings loads .env into os.environ; a developer's own Overmind key there
+# would authenticate the journeys' CLI instead of the key each journey writes.
+os.environ.pop("OVERMIND_API_KEY", None)
+os.environ.pop("OVERMIND_BASE_URL", None)
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
