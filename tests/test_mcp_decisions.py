@@ -170,11 +170,9 @@ def test_start_names_an_unknown_model_as_model_not_found(fake_modal):
 def test_get_job_reports_checkpoint_loss_training_and_evaluation_once_succeeded(fake_modal):
     backend = DecisionBackend(fake_modal).install()
     backend.train_metrics = {
-        "train_records": 3,
-        "holdout_records": 2,
-        "skipped": {"too_long": 0, "rejected": 0},
+        "train_questions": 3,
+        "skipped_questions": 1,
         "steps": 2,
-        "calibration": {},
         "loss_first_last": [1.5, 0.25],
     }
     context = mcp_context(("read", "write"))
@@ -206,11 +204,12 @@ def test_get_job_reports_checkpoint_loss_training_and_evaluation_once_succeeded(
     )
     assert job["loss"] == [1.5, 0.25]
     assert job["training"] == {
-        "train_records": 3,
-        "holdout_records": 2,
-        "skipped": {"too_long": 0, "rejected": 0},
+        "examples": 3,
+        "unit": "questions",
+        "holdout": None,
+        "skipped": 1,
         "steps": 2,
-        "calibration": {},
+        "calibration": None,
     }
     assert view["created_at"] and job["started_at"] and view["completed_at"]
     assert "progress" not in job and "updated_at" not in job

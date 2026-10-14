@@ -53,14 +53,24 @@ def _evaluation_status(job: DecisionJob) -> str | None:
 
 
 def _training(result: dict) -> DecisionTraining | None:
-    if "train_records" not in result:
+    # Clef trains on rows; D3 and d1 train one example per question.
+    if "train_records" in result:
+        examples, unit, skipped = result["train_records"], "rows", result.get("skipped")
+    elif "train_questions" in result:
+        examples, unit, skipped = (
+            result["train_questions"],
+            "questions",
+            result.get("skipped_questions"),
+        )
+    else:
         return None
     return DecisionTraining(
-        train_records=result.get("train_records"),
-        holdout_records=result.get("holdout_records"),
-        skipped=result.get("skipped"),
+        examples=examples,
+        unit=unit,
+        holdout=result.get("holdout_records"),
+        skipped=skipped if isinstance(skipped, int) else None,
         steps=result.get("steps"),
-        calibration=result.get("calibration"),
+        calibration=result.get("calibration") or None,
     )
 
 

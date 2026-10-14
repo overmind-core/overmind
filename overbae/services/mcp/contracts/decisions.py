@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -20,9 +20,10 @@ class StartDecisionJobInput(MCPModel):
 
 
 class DecisionTraining(MCPModel):
-    train_records: int | None = None
-    holdout_records: int | None = None
-    skipped: dict[str, Any] | None = None
+    examples: int
+    unit: Literal["rows", "questions"]
+    holdout: int | None = None
+    skipped: int | None = None
     steps: int | None = None
     calibration: dict[str, Any] | None = None
 
