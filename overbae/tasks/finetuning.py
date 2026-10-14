@@ -286,7 +286,8 @@ def cancel_finetuning_job(job) -> None:
             job.error_message = f"Cancelled (remote cancel warning: {remote_error})"
     if job.celery_task_id:
         try:
-            celery_app.control.revoke(job.celery_task_id, terminate=True)
+            # Not terminate: a task inside submit must reach its claim check and cancel its own run.
+            celery_app.control.revoke(job.celery_task_id)
         except Exception:  # noqa: BLE001
             logger.warning(
                 "Celery revoke failed for finetuning job %s task %s",

@@ -264,10 +264,16 @@ def _training_failure(job: DecisionJob, result: Any) -> str:
 def _evaluated(job: DecisionJob, result: Any) -> None:
     try:
         evaluation = evaluate(job.eval_cell, result)
-        evaluation["train_overlap"] = rows.contamination(job.cell, job.eval_cell)["overlap_count"]
     except (decisions.DecisionRowError, KeyError, TypeError, ValueError):
         logger.exception("Decision job %s returned an unusable evaluation", job.id)
         evaluation = {"status": "failed", "error": "The evaluation failed."}
+    else:
+        try:
+            evaluation["train_overlap"] = rows.contamination(job.cell, job.eval_cell)[
+                "overlap_count"
+            ]
+        except rows.RowStoreError:
+            logger.exception("Decision job %s overlap check failed", job.id)
     DecisionJob.objects.filter(pk=job.pk, status=DecisionJob.Status.EVALUATING).update(
         status=DecisionJob.Status.SUCCEEDED, evaluation=evaluation, completed_at=timezone.now()
     )

@@ -207,7 +207,13 @@ export function RunsTable({
       const deleted = ids.length - failed.length;
       if (deleted > 0) toast.success(`${plural(deleted, "run")} deleted`);
       if (failed.length > 0) toast.error(`${plural(failed.length, "run")} not deleted`);
-      setSelectedIds(new Set(failed));
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        ids.forEach((id, i) => {
+          if (results[i].status === "fulfilled") next.delete(id);
+        });
+        return next;
+      });
     } finally {
       setBulkDeletePending(false);
     }
