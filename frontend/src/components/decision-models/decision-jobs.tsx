@@ -84,7 +84,7 @@ const columns: ColumnDef<DecisionJob, unknown>[] = [
     ),
     header: "Accuracy",
     id: "accuracy",
-    size: 110,
+    size: 200,
   },
   {
     cell: ({ row }) =>
