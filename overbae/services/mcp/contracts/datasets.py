@@ -394,7 +394,7 @@ def _attachment_field():
 class CreateDatasetFromVersionInput(MCPModel):
     dataset: str = _dataset_field()
     version: str | None = _version_field()
-    name: str = Field(min_length=1, max_length=249)
+    name: str = Field(min_length=1, max_length=255)
     intent: Literal["train", "eval"] | None = Field(
         default=None, description="Omit to keep the source dataset's intent."
     )
@@ -410,6 +410,8 @@ class CreateDatasetFromVersionInput(MCPModel):
     def split_fixes_intent(self):
         if self.split is not None and self.intent is not None:
             raise ValueError("split fixes the intents; omit intent")
+        if self.split is not None and len(self.name) > 249:
+            raise ValueError("name must be at most 249 characters when split is set")
         return self
 
 

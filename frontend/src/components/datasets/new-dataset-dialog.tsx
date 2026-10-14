@@ -377,7 +377,9 @@ export function NewDatasetDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={AUTO_CAPABILITY}>Detect from the rows</SelectItem>
+                  <SelectItem value={AUTO_CAPABILITY}>
+                    {initialVersion ? "Same as the source" : "Detect from the rows"}
+                  </SelectItem>
                   <SelectItem value={NO_CAPABILITY}>None</SelectItem>
                   {capabilities.map((capability) => (
                     <SelectItem key={capability.id} value={capability.id}>

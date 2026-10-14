@@ -425,13 +425,18 @@ export async function preparePrompt(id: string, cell: string): Promise<string> {
 }
 
 export async function downloadAttachment(id: string, cell: string, filename: string) {
-  const blob = await apiClient.datasets.datasetsAttachmentRetrieve({ cell, id });
+  saveBlob(await apiClient.datasets.datasetsAttachmentRetrieve({ cell, id }), filename);
+}
+
+function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export async function downloadExport(
@@ -447,13 +452,7 @@ export async function downloadExport(
     const detail = (await res.json().catch(() => null))?.detail;
     throw new Error(typeof detail === "string" ? detail : `Export failed (HTTP ${res.status}).`);
   }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.${fmt}`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlob(await res.blob(), `${filename}.${fmt}`);
 }
 
 /** Fetch-based SSE (EventSource cannot send an Authorization header). Replays the
