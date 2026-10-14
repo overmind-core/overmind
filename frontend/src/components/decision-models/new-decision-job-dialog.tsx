@@ -66,14 +66,10 @@ export function NewDecisionJobDialog({
   const recommendation = useDecisionRecommendation(projectId, chosen);
   const modelId = pick?.dataset === chosen ? pick.model : "";
   const picks = recommendation.data?.picks ?? [];
-  // The server measures every model against the dataset's rows: context and serving limits.
+  // The server measures each model against the dataset's rows: context and serving limits.
   const whyNot = new Map(
-    (recommendation.data?.candidates ?? []).map((candidate) => [
-      candidate.model,
-      candidate.fits ? null : candidate.whyNot,
-    ])
+    recommendation.data?.candidates.filter((c) => !c.fits).map((c) => [c.model, c.whyNot])
   );
-  const blocked = Boolean(modelId && whyNot.get(modelId));
 
   const submit = () =>
     create.mutate(
@@ -136,17 +132,14 @@ export function NewDecisionJobDialog({
                 <SelectValue placeholder="Choose a model" />
               </SelectTrigger>
               <SelectContent>
-                {models.map((model) => {
-                  const reason = whyNot.get(model.id) ?? null;
-                  return (
-                    <SelectItem disabled={reason !== null} key={model.id} value={model.id}>
-                      <span className="flex flex-col">
-                        <span>{model.id}</span>
-                        {reason && <span className="text-xs text-muted-foreground">{reason}</span>}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
+                {models.map((model) => (
+                  <SelectItem disabled={whyNot.has(model.id)} key={model.id} value={model.id}>
+                    <span className="flex flex-col">
+                      <span>{model.id}</span>
+                      <span className="text-xs text-muted-foreground">{whyNot.get(model.id)}</span>
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {picks.map((entry) => (
@@ -181,7 +174,7 @@ export function NewDecisionJobDialog({
           <Button onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>
-          <Button disabled={!chosen || !modelId || blocked || create.isPending} onClick={submit}>
+          <Button disabled={!chosen || !modelId || create.isPending} onClick={submit}>
             {create.isPending ? <Spinner className="size-3" /> : <Icon.training />}
             Start training
           </Button>

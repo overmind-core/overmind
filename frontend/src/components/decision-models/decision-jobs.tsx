@@ -39,13 +39,10 @@ import type { DecisionJob, DecisionVersion } from "@/openapi";
 
 interface Scores {
   n: number;
-  ties: number;
   accuracy: number | null;
   majority_baseline: number | null;
-  macro_f1: number | null;
   log_loss: number | null;
   brier: number | null;
-  unanswered?: { total: number; by_reason: Record<string, number>; sample: string | null };
   questions?: Record<string, Scores>;
 }
 
@@ -279,17 +276,17 @@ function JobDetail({ jobId }: { jobId: string }) {
       </div>
       {job.evaluationData && (
         <section className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium">
-              Evaluation
-              {evaluation.rows != null && (
-                <span className="ml-2 text-xs text-muted-foreground">{evaluation.rows} rows</span>
-              )}
-            </h3>
-            {(job.evaluationStatus === "partial" || job.evaluationStatus === "failed") && (
-              <Badge variant="warning">{job.evaluationStatus}</Badge>
+          <h3 className="text-sm font-medium">
+            Evaluation
+            {evaluation.rows != null && (
+              <span className="ml-2 text-xs text-muted-foreground">{evaluation.rows} rows</span>
             )}
-          </div>
+            {(job.evaluationStatus === "partial" || job.evaluationStatus === "failed") && (
+              <Badge className="ml-2" variant="warning">
+                {job.evaluationStatus}
+              </Badge>
+            )}
+          </h3>
           {job.status === "succeeded" ? (
             <Metrics evaluation={evaluation} />
           ) : (
