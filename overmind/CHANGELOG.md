@@ -6,6 +6,11 @@ entries here cover the SDK surface.
 
 ## Unreleased
 
+### Fixed
+
+- The dataset skills cancel a script run with `run`, call a stopped import
+  `stopped`, and poll `get_job(kind=dataset_run)`. Skills version 1.5.1.
+
 ### Added
 
 - `overmind dataset attach FILE --json` uploads a table without creating a
