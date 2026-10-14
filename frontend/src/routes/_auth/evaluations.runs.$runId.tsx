@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 import { UsedVersionChip } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
@@ -13,6 +14,7 @@ import {
   RunComparison,
   ScoreChip,
 } from "@/components/evaluations/run-comparison";
+import { ResultsChart } from "@/components/evaluations/run-results-chart";
 import { StatusBadge } from "@/components/evaluations/runs-table";
 import { HeaderStat } from "@/components/finetuning/finetuning-chrome";
 import { ModelProviderChip } from "@/components/model-provider-chip";
@@ -73,10 +75,19 @@ export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
 });
 
 const MODE_LABEL: Record<string, string> = {
-  generate: "Generated",
+  generate: "Replay",
   provided: "Provided",
   recorded: "Recorded",
 };
+
+function modeLabel(run: Pick<EvalRun, "mode" | "params">) {
+  const strategy =
+    run.params && typeof run.params === "object" && "generation_strategy" in run.params
+      ? run.params.generation_strategy
+      : "";
+  if (run.mode === "generate" && strategy === "single_completion") return "Single completion";
+  return MODE_LABEL[run.mode] ?? run.mode;
+}
 
 const PHASE_LABEL: Record<string, string> = {
   generating: "Generating",
@@ -184,6 +195,11 @@ function EvalRunDetailPage() {
             <RunComparison active={active} hasBaseline={hasBaseline} runId={runId} />
           ) : (
             <>
+              <ResultsChart
+                active={active}
+                run={run}
+                runs={siblings.length > 0 ? siblings : [run]}
+              />
               <SummarySection run={run} />
               <RowsSection active={active} projectId={projectId} runId={runId} />
             </>
@@ -210,6 +226,49 @@ function Divider() {
   return <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />;
 }
 
+function RelaunchButton({ runId, visible }: { runId: string; visible: boolean }) {
+  const relaunch = useRelaunchEvalRunMutation();
+  if (!visible) return null;
+  return (
+    <Button
+      disabled={relaunch.isPending}
+      onClick={() =>
+        relaunch.mutate(runId, {
+          onSuccess: () => toast.success("Re-running"),
+        })
+      }
+      size="sm"
+      variant="secondary"
+    >
+      <Icon.refresh />
+      Re-run
+    </Button>
+  );
+}
+
+function replayFacts(metadata: unknown): [string, string][] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const record = metadata as Record<string, unknown>;
+  if (record.generation_strategy == null && record.replay_misses == null && record.steps == null) {
+    return [];
+  }
+  const facts: [string, string][] = [];
+  if (typeof record.generation_strategy === "string") {
+    facts.push([
+      "Strategy",
+      record.generation_strategy === "replay" ? "Replay" : record.generation_strategy,
+    ]);
+  }
+  if (typeof record.steps === "number") facts.push(["Steps", String(record.steps)]);
+  if (typeof record.replay_misses === "number") {
+    facts.push(["Replay misses", String(record.replay_misses)]);
+  }
+  if (typeof record.latency_ms === "number")
+    facts.push(["Latency", `${Math.round(record.latency_ms)} ms`]);
+  if (typeof record.cost === "number") facts.push(["Cost", record.cost.toFixed(4)]);
+  return facts;
+}
+
 function RunHeaderCard({
   run,
   projectId,
@@ -219,7 +278,6 @@ function RunHeaderCard({
   projectId: string | undefined;
   active: boolean;
 }) {
-  const relaunch = useRelaunchEvalRunMutation();
   const progress = run.progress;
   const model = run.resolvedModel || run.modelName;
   return (
@@ -234,7 +292,7 @@ function RunHeaderCard({
               <span className="text-sm font-medium">{targetLabel(run)}</span>
             )}
             <Badge size="chip" variant="neutral">
-              {MODE_LABEL[run.mode] ?? run.mode}
+              {modeLabel(run)}
             </Badge>
             {run.isBaseline && (
               <Badge size="chip" variant="neutral">
@@ -315,17 +373,7 @@ function RunHeaderCard({
         )}
         <RunElapsed run={run} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {!active && (
-            <Button
-              disabled={relaunch.isPending}
-              onClick={() => relaunch.mutate(run.id)}
-              size="sm"
-              variant="secondary"
-            >
-              <Icon.refresh />
-              Re-run
-            </Button>
-          )}
+          <RelaunchButton runId={run.id} visible={!active} />
           {run.status === "completed" && (
             <Button asChild size="sm">
               <Link
@@ -571,6 +619,21 @@ function RowsSection({
   );
 }
 
+function ReplayFacts({ metadata }: { metadata: unknown }) {
+  const facts = replayFacts(metadata);
+  if (facts.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border border-border bg-wash-subtle px-3 py-2 text-xs">
+      {facts.map(([label, value]) => (
+        <div className="flex justify-between gap-2" key={label}>
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="font-mono tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Payload({ label, value }: { label: string; value: unknown }) {
   if (value == null || value === "") return null;
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -619,6 +682,7 @@ function RowSheet({
                 </div>
               )}
               <MetricList metrics={row.metrics} />
+              <ReplayFacts metadata={row.metadata} />
               <Payload label="Input" value={row.input} />
               <Payload label="Reference" value={row.reference} />
               <Payload label="Output" value={row.output} />
