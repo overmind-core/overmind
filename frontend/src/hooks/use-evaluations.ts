@@ -217,6 +217,18 @@ export const useEvalRunQuery = (id: string | undefined) =>
       backoffPolling(q, () => (isActiveRunStatus(q.state.data?.status) ? 4_000 : false)),
   });
 
+export const useRelaunchEvalRunMutation = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.evalRuns.evalRunsRunCreate({ id }),
+    onSuccess: (run) => {
+      qc.invalidateQueries({ queryKey: ["eval-run", run.id] });
+      qc.invalidateQueries({ queryKey: ["eval-run-rows", run.id] });
+      qc.invalidateQueries({ queryKey: ["eval-runs"] });
+    },
+  });
+};
+
 /** 404s when the run has no baseline in its group, so it never retries. */
 export const useEvalRunComparisonQuery = (
   id: string | undefined,

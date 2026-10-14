@@ -92,7 +92,7 @@ class ScoreDropSignal(Signal):
             return None
         before, recent = mean(scores[: -self.window]), mean(scores[-self.window :])
         if before - recent >= self.drop:
-            return f"mean score fell from {before:.2f} to {recent:.2f}"
+            return f"mean score fell from {before:.2f} to {recent:.2f} among spans {spans}"
         return None
 
 

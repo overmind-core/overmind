@@ -16,9 +16,12 @@ import asyncio
 import copy
 import json
 import os
+import select
+import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import suppress
 from typing import Any
 
 from overbae.innermind import evidence
@@ -28,7 +31,12 @@ CPU_SECONDS = 5
 WALL_SECONDS = 15
 MEMORY_BYTES = 512 * 1024**2
 TRACE_SPAN_CAP = 2_000
-MAX_CONCURRENT_SANDBOXES = 16
+# Two warm interpreters. Each one is a CPython process (~10MB); a trace burst used to
+# start one per check, up to 16, and that was the worker's memory and disk spike.
+MAX_CONCURRENT_SANDBOXES = 2
+# A child that has grown well past a fresh interpreter is replaced, so one script
+# cannot leave its allocations in the pool.
+SANDBOX_RSS_KB = 64 * 1024
 # Text a neighbouring span carries into the sandbox; its full payload would copy a large
 # trace into every call, past the child's memory limit.
 NEIGHBOUR_TEXT = 4_000
@@ -168,12 +176,22 @@ ADDRESS_SPACE = {MEMORY_BYTES}
 SPAN_FIELDS = tuple({list(SPAN_FIELDS)!r})
 BUILTIN_NAMES = tuple({list(BUILTIN_NAMES)!r})
 
-for limit, ceiling in (
-    (resource.RLIMIT_CPU, CPU_SECONDS),
-    (resource.RLIMIT_AS, ADDRESS_SPACE),
-):
+try:
+    resource.setrlimit(resource.RLIMIT_AS, (ADDRESS_SPACE, ADDRESS_SPACE))
+except (ValueError, OSError):
+    pass
+try:
+    resource.setrlimit(resource.RLIMIT_CPU, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+except (ValueError, OSError):
+    pass
+
+def cpu_limit():
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    used = int(usage.ru_utime + usage.ru_stime) + 1
+    _soft, hard = resource.getrlimit(resource.RLIMIT_CPU)
+    soft = min(used + CPU_SECONDS, hard)
     try:
-        resource.setrlimit(limit, (ceiling, ceiling))
+        resource.setrlimit(resource.RLIMIT_CPU, (soft, hard))
     except (ValueError, OSError):
         pass
 
@@ -296,7 +314,19 @@ def run(payload):
         return {{"outcome": "error", "score": None,
                 "explanation": (keep[-1] if keep else "script error")[:400]}}
 
-json.dump(run(json.load(sys.stdin)), sys.stdout)
+def main():
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        cpu_limit()
+        try:
+            result = run(json.loads(line))
+        except Exception:
+            result = {{"outcome": "error", "score": None, "explanation": "script runner failed"}}
+        sys.stdout.write(json.dumps(result) + chr(10))
+        sys.stdout.flush()
+
+main()
 """
 
 
@@ -407,6 +437,120 @@ def failure(explanation: str) -> dict[str, Any]:
     return {"outcome": "error", "score": None, "explanation": explanation}
 
 
+class _Sandbox:
+    """One warm ``python -I`` interpreter. Checks reuse it; a death or a large RSS replaces it."""
+
+    def __init__(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory(prefix="innermind_check_")
+        runner_path = os.path.join(self.tmp.name, "runner.py")
+        with open(runner_path, "w", encoding="utf-8") as handle:
+            handle.write(CHILD)
+        self.proc = subprocess.Popen(
+            [sys.executable, "-I", runner_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=self.tmp.name,
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONNOUSERSITE": "1",
+                "PYTHONUNBUFFERED": "1",
+                "HOME": self.tmp.name,
+            },
+        )
+        self.keep = True
+
+    def rss_kb(self) -> int | None:
+        try:
+            with open(f"/proc/{self.proc.pid}/status", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith("VmRSS:"):
+                        return int(line.split()[1])
+        except OSError:
+            return None
+        return None
+
+    def request(self, encoded: bytes) -> dict[str, Any]:
+        stdin, stdout = self.proc.stdin, self.proc.stdout
+        if stdin is None or stdout is None:
+            self.keep = False
+            return failure("script runner could not start")
+
+        def write() -> None:
+            try:
+                stdin.write(encoded + b"\n")
+                stdin.flush()
+            except OSError:
+                self.keep = False
+
+        writer = threading.Thread(target=write, daemon=True)
+        writer.start()
+        ready, _, _ = select.select([stdout], [], [], WALL_SECONDS)
+        if not ready:
+            self.keep = False
+            if self.proc.poll() is None:
+                self.proc.kill()
+            writer.join(timeout=1)
+            return failure(f"script ran longer than {WALL_SECONDS}s and was stopped")
+        line = stdout.readline()
+        writer.join(timeout=1)
+        if not line or self.proc.poll() not in (None, 0):
+            self.keep = False
+            return failure("script used more memory or CPU than allowed")
+        try:
+            result = json.loads(line)
+        except json.JSONDecodeError as exc:
+            self.keep = False
+            return failure(f"script runner returned invalid JSON: {exc}")
+        rss = self.rss_kb()
+        if rss is not None and rss > SANDBOX_RSS_KB:
+            self.keep = False
+        return result if isinstance(result, dict) else failure("script runner returned no result")
+
+    def close(self) -> None:
+        if self.proc.poll() is None:
+            self.proc.kill()
+            with suppress(subprocess.TimeoutExpired):
+                self.proc.wait(timeout=2)
+        if self.tmp is not None:
+            self.tmp.cleanup()
+            self.tmp = None
+
+
+_idle: list[_Sandbox] = []
+_pool_lock = threading.Lock()
+
+
+def _checkout() -> _Sandbox:
+    with _pool_lock:
+        while _idle:
+            sandbox = _idle.pop()
+            if sandbox.proc.poll() is None:
+                return sandbox
+            sandbox.close()
+    return _Sandbox()
+
+
+def _checkin(sandbox: _Sandbox) -> None:
+    if not sandbox.keep or sandbox.proc.poll() is not None:
+        sandbox.close()
+        return
+    with _pool_lock:
+        _idle.append(sandbox)
+
+
+def _pool_request(encoded: bytes) -> dict[str, Any]:
+    try:
+        sandbox = _checkout()
+    except OSError as exc:
+        return failure(f"script runner could not start: {exc}")
+    try:
+        return sandbox.request(encoded)
+    finally:
+        _checkin(sandbox)
+
+
 async def run(source: str, span: Span, trace: list[Span]) -> dict[str, Any]:
     """
     runs one script against one span in a jailed child and returns
@@ -429,46 +573,7 @@ async def run(source: str, span: Span, trace: list[Span]) -> dict[str, Any]:
             "span_id": span.span_id,
             "source": source,
         }
-        with tempfile.TemporaryDirectory(prefix="innermind_check_") as tmp:
-            runner_path = os.path.join(tmp, "runner.py")
-            with open(runner_path, "w", encoding="utf-8") as fh:
-                fh.write(CHILD)
-            env = {
-                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                "PYTHONDONTWRITEBYTECODE": "1",
-                "PYTHONNOUSERSITE": "1",
-                "HOME": tmp,
-            }
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "-I",
-                    runner_path,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=tmp,
-                    env=env,
-                )
-            except OSError as exc:
-                return failure(f"script runner could not start: {exc}")
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(json.dumps(payload, default=str).encode()),
-                    timeout=WALL_SECONDS,
-                )
-            except TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return failure(f"script ran longer than {WALL_SECONDS}s and was stopped")
+        encoded = json.dumps(payload, default=str).encode()
+        return await asyncio.to_thread(_pool_request, encoded)
     finally:
         sandbox_slots.release()
-
-    if proc.returncode != 0:
-        lines = (stderr or stdout).decode(errors="replace").strip().splitlines()
-        return failure(lines[-1][:400] if lines else "script used more memory or CPU than allowed")
-    try:
-        result = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        return failure(f"script runner returned invalid JSON: {exc}")
-    return result if isinstance(result, dict) else failure("script runner returned no result")
