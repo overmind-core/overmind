@@ -45,6 +45,12 @@ function warningsOf(analytics: Analytics): Warning[] {
   ];
 }
 
+export function sameAnalytics(a: Analytics, b: Analytics): boolean {
+  const shown = (analytics: Analytics) =>
+    JSON.stringify([analytics.labels ?? [], warningsOf(analytics)]);
+  return shown(a) === shown(b);
+}
+
 export function hasAnalytics(analytics: Analytics): boolean {
   return !!analytics.labels?.length || warningsOf(analytics).length > 0;
 }
@@ -94,8 +100,13 @@ export function AnalyticsDetails({ analytics }: { analytics: Analytics }) {
           <section className="flex flex-col gap-1.5" key={balance.field}>
             <h3 className="font-mono text-foreground">{fieldName(balance.field)}</h3>
             <div className="-mx-3">
-              <table className="w-full text-left tabular-nums">
+              <table className="w-full table-fixed text-left tabular-nums">
                 <caption className="sr-only">Labels of {fieldName(balance.field)}</caption>
+                <colgroup>
+                  <col />
+                  <col className="w-28" />
+                  <col className="w-28" />
+                </colgroup>
                 <thead className="text-muted-foreground">
                   <tr className="border-b border-border/70">
                     <th className={HEAD} scope="col">

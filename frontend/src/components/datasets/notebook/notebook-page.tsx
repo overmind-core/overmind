@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
+import { type Analytics, sameAnalytics } from "@/components/datasets/notebook/analytics";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import {
   type CapabilityChoice,
@@ -163,8 +164,10 @@ export function DatasetNotebook({
           }}
           active={cell.id === dataset.active}
           analyticsChanged={
-            JSON.stringify(cell.analytics ?? {}) !==
-            JSON.stringify(cells.find((parent) => parent.id === cell.parent)?.analytics ?? {})
+            !sameAnalytics(
+              (cell.analytics ?? {}) as Analytics,
+              (cells.find((parent) => parent.id === cell.parent)?.analytics ?? {}) as Analytics
+            )
           }
           capabilities={capabilityChoices}
           capabilityName={dataset.capabilityName ?? ""}

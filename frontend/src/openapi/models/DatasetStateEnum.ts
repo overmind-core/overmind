@@ -17,12 +17,14 @@
  * * `landing` - Landing
  * * `idle` - Idle
  * * `error` - Error
+ * * `stopped` - Stopped
  * @export
  */
 export const DatasetStateEnum = {
     landing: 'landing',
     idle: 'idle',
-    error: 'error'
+    error: 'error',
+    stopped: 'stopped'
 } as const;
 export type DatasetStateEnum = typeof DatasetStateEnum[keyof typeof DatasetStateEnum];
 
