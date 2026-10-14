@@ -43,12 +43,21 @@ def request_analytics(dataset: Dataset, cells: list[Cell]) -> None:
     """Versions measured before analytics existed are measured in the background."""
     if all(cell.analytics for cell in cells):
         return
-    if not cache.add(f"dataset-analytics:{dataset.pk}", 1, timeout=ANALYTICS_LOCK_SECONDS):
-        return
     # The task imports this service, so task imports stay at dispatch boundaries.
     from overbae.tasks.datasets import measure_analytics
 
-    transaction.on_commit(lambda: measure_analytics.delay(dataset_id=str(dataset.pk)))
+    key = f"dataset-analytics:{dataset.pk}"
+
+    def dispatch():
+        if not cache.add(key, 1, timeout=ANALYTICS_LOCK_SECONDS):
+            return
+        try:
+            measure_analytics.delay(dataset_id=str(dataset.pk))
+        except Exception:
+            cache.delete(key)
+            raise
+
+    transaction.on_commit(dispatch)
 
 
 def backfill_analytics(dataset_id) -> int:
