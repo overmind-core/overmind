@@ -63,6 +63,12 @@ class DecisionCandidate(MCPModel):
     params: int = Field(ge=0)
 
 
+class DecisionPick(MCPModel):
+    labels: list[str] = Field(min_length=1, max_length=3)
+    model: str
+    reason: str
+
+
 class DecisionDatasetReference(MCPModel):
     id: str
     name: str = Field(max_length=255)
@@ -84,7 +90,7 @@ class CheckDecisionReadinessOutput(MCPModel):
     warnings: list[str] = Field(default_factory=list, max_length=100)
     dataset: DecisionDatasetReference
     eval_dataset: DecisionDatasetReference | None = None
-    recommended_model: str | None = None
+    picks: list[DecisionPick] = Field(default_factory=list, max_length=3)
     recommendations: list[DecisionCandidate] = Field(default_factory=list, max_length=100)
     excluded: list[DecisionCandidate] = Field(default_factory=list, max_length=100)
     credits: FineTuneCreditReadiness

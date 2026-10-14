@@ -324,7 +324,10 @@ def test_readiness_recommends_a_fitting_model_for_decision_rows(fake_modal):
     assert (body["ready"], body["missing"]) == (True, [])
     assert body["dataset"]["version"] == "v0"
     assert body["eval_dataset"]["version"] == "v0"
-    assert body["recommended_model"] in {row["model"] for row in body["recommendations"]}
+    assert body["picks"]
+    assert {pick["model"] for pick in body["picks"]} <= {
+        row["model"] for row in body["recommendations"]
+    }
     assert body["credits"] == {"required": True, "available": True}
     assert all(row["fits"] for row in body["recommendations"])
     assert all(row["why_not"] for row in body["excluded"])
@@ -338,7 +341,7 @@ def test_readiness_refuses_chat_rows_with_the_reason(fake_modal):
     body = _call("check_decision_readiness", {"dataset": "Chat"}, context).structuredContent
 
     assert body["ready"] is False
-    assert body["recommended_model"] is None
+    assert body["picks"] == []
     assert any("no decision rows" in reason for reason in body["missing"])
 
 

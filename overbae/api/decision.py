@@ -81,9 +81,17 @@ class DecisionCandidateSerializer(serializers.Serializer):
     params = serializers.IntegerField()
 
 
-class DecisionRecommendationSerializer(serializers.Serializer):
-    model = serializers.CharField(allow_null=True)
+class DecisionPickSerializer(serializers.Serializer):
+    labels = serializers.ListField(
+        child=serializers.ChoiceField(choices=["strongest", "smaller", "smallest"]),
+        help_text="Trade-offs this model fills; the picks are unranked.",
+    )
+    model = serializers.CharField()
     reason = serializers.CharField()
+
+
+class DecisionRecommendationSerializer(serializers.Serializer):
+    picks = DecisionPickSerializer(many=True)
     dataset = DecisionDatasetSerializer()
     candidates = DecisionCandidateSerializer(many=True)
 

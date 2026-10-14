@@ -1,10 +1,10 @@
-"""Which catalog model fits a decision dataset.
+"""Which catalog models fit a decision dataset, as labelled trade-off picks.
 
 A model fits when its context holds the longest row's input with a 10% margin and its
-serving limits hold the dataset's widest question shape. Among the fitting models with a
-published Jev Decision Index, the pool is every model within 3 points of the best index,
-and the smallest model in the pool is chosen. With no scored fitting model, the smallest
-fitting model is chosen.
+serving limits hold the dataset's widest question shape. Among the fitting models:
+``strongest`` has the highest Jev Decision Index, ``smaller`` has the highest index among
+indexed models at most half the strongest's size, and ``smallest`` has the fewest
+parameters. No pick is ranked above another.
 """
 
 from __future__ import annotations
@@ -15,17 +15,14 @@ from overbae.modal.decision_catalog import models as catalog_models
 from overbae.services.datasets import decisions, rows, versions
 from overbae.services.datasets.text import approx_tokens
 
-INDEX_MARGIN = 3.0
 CONTEXT_MARGIN = 1.1
 
 
 def choose(specs: list[dict], longest: int, shape: dict | None = None) -> dict:
     """``longest`` is the approximate token count of the longest row's input."""
     checked = [(spec, _why_not(spec, longest, shape)) for spec in specs]
-    chosen, reason = _pick([spec for spec, why_not in checked if why_not is None])
     return {
-        "model": None if chosen is None else chosen["id"],
-        "reason": reason,
+        "picks": _picks([spec for spec, why_not in checked if why_not is None]),
         "candidates": [_candidate(spec, why_not) for spec, why_not in checked],
     }
 
@@ -84,29 +81,48 @@ def _limit_reasons(limits: dict, shape: dict) -> list[str]:
     return found
 
 
-def _pick(fitting: list[dict]) -> tuple[dict | None, str]:
-    if not fitting:
-        return None, "No model fits."
-    scored = [spec for spec in fitting if spec.get("decision_index") is not None]
-    if not scored:
-        chosen = min(fitting, key=lambda spec: int(spec["params"]))
-        return chosen, (
-            f"{chosen['id']}: smallest of {_count(len(fitting))}; none has a published "
-            "Decision Index."
+def _picks(fitting: list[dict]) -> list[dict]:
+    indexed = [spec for spec in fitting if spec.get("decision_index") is not None]
+    found: list[tuple[str, dict, str]] = []
+    if indexed:
+        strongest = max(indexed, key=lambda spec: float(spec["decision_index"]))
+        found.append(
+            ("strongest", strongest, f"Highest Decision Index that fits ({_index(strongest)}).")
         )
-    best = max(float(spec["decision_index"]) for spec in scored)
-    pool = [spec for spec in scored if best - float(spec["decision_index"]) <= INDEX_MARGIN]
-    chosen = min(pool, key=lambda spec: (int(spec["params"]), -float(spec["decision_index"])))
-    if len(pool) == 1:
-        return chosen, f"{chosen['id']}: best Decision Index ({best:g}) among models that fit."
-    return chosen, (
-        f"{chosen['id']}: smallest of {len(pool)} models within {INDEX_MARGIN:g} points of the "
-        f"best Decision Index ({best:g})."
-    )
+        halves = [spec for spec in indexed if int(spec["params"]) * 2 <= int(strongest["params"])]
+        if halves:
+            smaller = max(halves, key=lambda spec: float(spec["decision_index"]))
+            found.append(
+                (
+                    "smaller",
+                    smaller,
+                    f"{_size(smaller)}, Decision Index {_index(smaller)}; under half the size "
+                    f"of {strongest['id']}.",
+                )
+            )
+    if fitting:
+        smallest = min(
+            fitting,
+            key=lambda spec: (int(spec["params"]), -float(spec.get("decision_index") or 0)),
+        )
+        found.append(("smallest", smallest, f"Smallest model that fits ({_size(smallest)})."))
+    picks: dict[str, dict] = {}
+    for label, spec, reason in found:
+        pick = picks.setdefault(spec["id"], {"labels": [], "model": spec["id"], "reasons": []})
+        pick["labels"].append(label)
+        pick["reasons"].append(reason)
+    return [
+        {"labels": pick["labels"], "model": pick["model"], "reason": " ".join(pick["reasons"])}
+        for pick in picks.values()
+    ]
 
 
-def _count(n: int) -> str:
-    return f"{n} model" if n == 1 else f"{n} models"
+def _index(spec: dict) -> str:
+    return f"{float(spec['decision_index']):g}"
+
+
+def _size(spec: dict) -> str:
+    return f"{int(spec['params']) / 1e9:.1f}B"
 
 
 def _candidate(spec: dict, why_not: str | None) -> dict:

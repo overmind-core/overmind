@@ -131,6 +131,7 @@ models/DecisionJobStatusEnum.ts
 models/DecisionLimits.ts
 models/DecisionModel.ts
 models/DecisionModelRequestRequest.ts
+models/DecisionPick.ts
 models/DecisionPolicy.ts
 models/DecisionPolicyBackendEnum.ts
 models/DecisionPolicyRequest.ts
@@ -241,6 +242,7 @@ models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
 models/JudgeModelEnum.ts
+models/LabelsEnum.ts
 models/LocalSessionRequest.ts
 models/ModeCd6Enum.ts
 models/ModelActivation.ts

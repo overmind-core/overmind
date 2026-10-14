@@ -9,73 +9,85 @@ from overbae.services.decision_recommend import choose, recommend
 pytestmark = pytest.mark.django_db
 
 
-def test_the_best_fitting_index_wins_and_unscored_models_are_the_fallback():
-    specs = [
-        {
-            "id": "small",
-            "params": 1,
-            "max_context_length": 100,
-            "decision_index": 10,
-            "decision_index_edition": "0.3.2",
-        },
-        {
-            "id": "better",
-            "params": 2,
-            "max_context_length": 100,
-            "decision_index": 20,
-            "decision_index_edition": "0.3.2",
-        },
-        {
-            "id": "wide",
-            "params": 3,
-            "max_context_length": 1000,
-            "decision_index": 5,
-            "decision_index_edition": "0.3.1",
-        },
-        {"id": "unscored", "params": 1, "max_context_length": 1000},
+def _spec(model_id, params, index, *, context=100, limits=None):
+    spec = {"id": model_id, "params": params, "max_context_length": context}
+    if index is not None:
+        spec["decision_index"] = index
+        spec["decision_index_edition"] = "0.3.2"
+    if limits is not None:
+        spec["limits"] = limits
+    return spec
+
+
+def _by_label(result):
+    return {label: pick["model"] for pick in result["picks"] for label in pick["labels"]}
+
+
+def test_the_catalog_offers_the_strongest_a_smaller_and_the_smallest_model():
+    result = choose(list(models().values()), 100)
+
+    assert _by_label(result) == {
+        "strongest": "vllm-sr/d3",
+        "smaller": "vllm-sr/d3-flash",
+        "smallest": "LiquidAI/d1-omni-600M",
+    }
+    assert [pick["reason"] for pick in result["picks"]] == [
+        "Highest Decision Index that fits (66.3).",
+        "8.4B, Decision Index 55.8; under half the size of vllm-sr/d3.",
+        "Smallest model that fits (0.6B).",
     ]
 
-    assert choose(specs, 50)["model"] == "better"
-    wide = choose(specs, 200)
-    assert wide["model"] == "wide"
-    assert wide["candidates"][2]["decision_index_edition"] == "0.3.1"
-    assert choose([{"id": "unscored", "params": 1, "max_context_length": 1000}], 200)["model"] == (
-        "unscored"
-    )
-    assert choose(specs, 5000)["model"] is None
-    tied = choose(
-        [
-            {
-                "id": "larger",
-                "params": 10,
-                "max_context_length": 100,
-                "decision_index": 38.9,
-                "decision_index_edition": "0.3.2",
-            },
-            {
-                "id": "smaller",
-                "params": 5,
-                "max_context_length": 100,
-                "decision_index": 38.9,
-                "decision_index_edition": "0.3.2",
-            },
-        ],
-        10,
-    )
-    assert tied["model"] == "smaller"
+
+def test_a_dataset_beyond_a_family_s_limits_leaves_that_family_out_of_the_picks():
+    shape = {"options": 27, "score_levels": 2, "questions": 1}
+    result = choose(list(models().values()), 100, shape=shape)
+
+    assert not any(pick["model"].startswith("Cloudflare/") for pick in result["picks"])
+    clef = next(row for row in result["candidates"] if row["model"] == "Cloudflare/clef")
+    assert clef["fits"] is False
+    assert clef["why_not"] == "Takes up to 26 options; this dataset has 27."
 
 
-def test_catalog_scores_prefer_d3_until_the_row_fits_nobody():
-    specs = list(models().values())
-    short = choose(specs, 100)
-    assert short["model"] == "vllm-sr/d3"
-    assert "66.3" in short["reason"]
-    assert choose(specs, 20_000)["model"] == "vllm-sr/d3"
-    assert choose(specs, 40_000)["model"] is None
-    assert all(
-        spec.get("decision_index") is None
-        for spec in specs
-        if spec["id"].startswith("OvermindLab/")
+def test_a_model_filling_two_labels_is_returned_once_with_both():
+    result = choose([_spec("only", 1_000_000_000, 40.0), _spec("big", 20_000_000_000, 30.0)], 10)
+
+    assert result["picks"] == [
+        {
+            "labels": ["strongest", "smallest"],
+            "model": "only",
+            "reason": "Highest Decision Index that fits (40). Smallest model that fits (1.0B).",
+        }
+    ]
+
+
+def test_the_smallest_pick_may_be_unscored_and_ties_go_to_the_higher_index():
+    unscored = choose([_spec("scored", 10, 50.0), _spec("tiny", 1, None)], 10)
+    assert _by_label(unscored) == {"strongest": "scored", "smallest": "tiny"}
+
+    tied = choose([_spec("low", 4, 20.0), _spec("high", 4, 30.0)], 10)
+    assert _by_label(tied)["smallest"] == "high"
+
+
+def test_a_label_without_a_model_is_omitted():
+    only_unscored = choose([_spec("tiny", 600_000_000, None)], 10)
+    assert only_unscored["picks"] == [
+        {"labels": ["smallest"], "model": "tiny", "reason": "Smallest model that fits (0.6B)."}
+    ]
+
+    near = choose([_spec("a", 10, 50.0), _spec("b", 6, 45.0)], 10)
+    assert "smaller" not in _by_label(near)
+
+
+def test_nothing_fitting_gives_no_picks_and_every_candidate_keeps_its_reason():
+    catalog = list(models().values())
+
+    result = choose(catalog, 40_000)
+
+    assert result["picks"] == []
+    by_id = {candidate["model"]: candidate for candidate in result["candidates"]}
+    assert set(by_id) == {spec["id"] for spec in catalog}
+    assert by_id["vllm-sr/d3"]["why_not"] == (
+        "Longest input is about 40,000 tokens; context is 32,768."
     )
 
 
@@ -92,59 +104,10 @@ def test_a_decision_dataset_recommends_through_the_api(make_dataset):
         format="json",
     )
     assert response.status_code == 200, response.data
-    assert response.data["model"] == "vllm-sr/d3"
+    assert response.data["picks"][0]["model"] == "vllm-sr/d3"
+    assert response.data["picks"][0]["labels"] == ["strongest"]
     assert response.data["dataset"]["longest_input_tokens"] > 0
     assert {candidate["model"] for candidate in response.data["candidates"]} == set(models())
-
-
-def test_a_model_whose_limits_the_dataset_exceeds_is_not_recommended():
-    limits = {"options": 26, "score_levels": 10, "questions": 64}
-    specs = [
-        {
-            "id": "narrow",
-            "params": 1,
-            "max_context_length": 100,
-            "decision_index": 50,
-            "decision_index_edition": "0.3.2",
-            "limits": limits,
-        },
-        {
-            "id": "wide",
-            "params": 2,
-            "max_context_length": 100,
-            "decision_index": 10,
-            "decision_index_edition": "0.3.2",
-            "limits": {"options": 255, "score_levels": 255, "questions": 100},
-        },
-    ]
-    within = {"options": 26, "score_levels": 2, "questions": 1}
-    over = {"options": 27, "score_levels": 2, "questions": 1}
-
-    assert choose(specs, 50, shape=within)["model"] == "narrow"
-    assert choose(specs, 50, shape=over)["model"] == "wide"
-
-
-def _spec(model_id, params, index, *, context=100, limits=None):
-    spec = {"id": model_id, "params": params, "max_context_length": context}
-    if index is not None:
-        spec["decision_index"] = index
-        spec["decision_index_edition"] = "0.3.2"
-    if limits is not None:
-        spec["limits"] = limits
-    return spec
-
-
-def test_within_three_points_the_smallest_fitting_model_is_chosen():
-    result = choose([_spec("bigger", 10, 50.0), _spec("smaller", 5, 48.5)], 10)
-
-    assert result["model"] == "smaller"
-    assert result["reason"] == (
-        "smaller: smallest of 2 models within 3 points of the best Decision Index (50)."
-    )
-
-
-def test_a_model_more_than_three_points_below_the_best_is_not_chosen_even_if_smaller():
-    assert choose([_spec("bigger", 10, 50.0), _spec("far", 1, 46.9)], 10)["model"] == "bigger"
 
 
 def test_length_counts_the_input_not_the_expected_output(make_dataset):
@@ -169,37 +132,8 @@ def test_length_counts_the_input_not_the_expected_output(make_dataset):
 
     result = recommend(dataset)
 
-    assert result["model"] == "vllm-sr/d3"
+    assert result["picks"][0]["model"] == "vllm-sr/d3"
     assert result["dataset"]["longest_input_tokens"] * 1.1 <= 32_768
-
-
-def test_models_that_do_not_fit_stay_in_candidates_with_the_reason_they_do_not():
-    catalog = list(models().values())
-
-    long_rows = choose(catalog, 40_000)
-    by_id = {candidate["model"]: candidate for candidate in long_rows["candidates"]}
-    assert {candidate["model"] for candidate in long_rows["candidates"]} == {
-        spec["id"] for spec in catalog
-    }
-    assert long_rows["model"] is None
-    assert by_id["vllm-sr/d3"]["fits"] is False
-    assert by_id["vllm-sr/d3"]["why_not"] == (
-        "Longest input is about 40,000 tokens; context is 32,768."
-    )
-
-    wide = choose(catalog, 25_000, shape={"options": 27, "score_levels": 2, "questions": 1})
-    clef = next(
-        candidate for candidate in wide["candidates"] if candidate["model"] == "Cloudflare/clef"
-    )
-    assert clef == {
-        "model": "Cloudflare/clef",
-        "fits": False,
-        "why_not": "Takes up to 26 options; this dataset has 27.",
-        "decision_index": 53.08,
-        "decision_index_edition": "0.3.1",
-        "params": 27_400_000_000,
-    }
-    assert wide["model"] == "vllm-sr/d3"
 
 
 def test_the_ten_percent_margin_is_part_of_the_fit():

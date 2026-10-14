@@ -70,9 +70,11 @@ chat fine-tuning for generated text. Decision rows are shaped as in
 overmind-datasets and train only decision models.
 
 1. Call `check_decision_readiness` on the train dataset. It reports readiness,
-   the recommended model and the excluded models. The recommendation is the
-   highest published `decision_index` whose context holds the longest row.
-   A model without a published index is chosen only when no scored model fits.
+   up to three unranked `picks` and the excluded models. Among the models whose
+   context and limits fit, `strongest` has the highest published
+   `decision_index`, `smaller` the highest index at most half the strongest's
+   size, and `smallest` the fewest params. Offer the picks as trade-offs and let
+   the user choose.
 1. Call `start_decision_job` with `model` and `dataset`, plus optional
    `eval_dataset`, `version` and `eval_version`.
 1. Poll `get_job` with `kind=decision_job` until the job finishes, then read

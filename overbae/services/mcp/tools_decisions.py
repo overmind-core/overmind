@@ -20,6 +20,7 @@ from overbae.services.mcp.contracts.decisions import (
     DecisionCandidate,
     DecisionDatasetReference,
     DecisionJobContract,
+    DecisionPick,
     DecisionTraining,
     DecisionUsage,
     RunDecisionModelInput,
@@ -228,8 +229,8 @@ def _readiness(
         warnings += [f"training dataset: {finding}" for finding in _decision_warnings(cell)]
 
     report = decision_recommend.recommend(dataset, str(cell.id)) if train_ok else None
-    if report is not None and report["model"] is None:
-        missing.append(f"model — {report['reason']}")
+    if report is not None and not report["picks"]:
+        missing.append("model — No model fits.")
 
     eval_dataset = mcp_dataset(context, payload.eval_dataset) if payload.eval_dataset else None
     eval_cell = None
@@ -275,7 +276,7 @@ def _readiness(
             if eval_dataset is not None
             else None
         ),
-        recommended_model=report["model"] if report is not None else None,
+        picks=[DecisionPick(**pick) for pick in report["picks"]] if report is not None else [],
         recommendations=[_candidate(row) for row in candidates if row["fits"]],
         excluded=[_candidate(row) for row in candidates if not row["fits"]],
         credits=FineTuneCreditReadiness(required=True, available=credits_available),
