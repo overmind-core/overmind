@@ -16,6 +16,10 @@ from overbae.services.datasets.lifecycle import DatasetError
 logger = logging.getLogger(__name__)
 
 
+def _article(word: str) -> str:
+    return "an" if word[:1] in "aeiou" else "a"
+
+
 def check(
     dataset: Dataset, intent: str, *, cell: Cell | None = None, decision: bool = False
 ) -> Cell:
@@ -24,7 +28,8 @@ def check(
     stored = public_intent(dataset.intent)
     if stored != intent:
         raise DatasetError(
-            f"{dataset.name} is a {stored} dataset; this needs {intent}.", code="intent"
+            f"{dataset.name} is {_article(stored)} {stored} dataset; this needs {intent}.",
+            code="intent",
         )
     if cell is None:
         cell = dataset.active_cell

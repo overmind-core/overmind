@@ -42,7 +42,7 @@ def test_one_bad_row_fails_the_train_contract_and_names_it(frame_of):
     df = frame_of([{"messages": TURNS}, {"messages": None}])
     report = contract.measure(df)["train"]
     assert report["ok"] is False
-    assert report["failures"] == [{"row": 1, "reason": "messages is empty"}]
+    assert report["failures"] == [{"row": 2, "reason": "messages is empty"}]
 
 
 @pytest.mark.parametrize(
@@ -110,4 +110,35 @@ def test_a_transcript_that_landing_cut_does_not_fit_train(frame_of):
     row = land.bounded_row({"messages": huge})
     report = contract.measure(frame_of([row, {"messages": TURNS}]))["train"]
     assert report["ok"] is False
-    assert report["failures"] == [{"row": 0, "reason": "a value was cut at landing"}]
+    assert report["failures"] == [{"row": 1, "reason": "a value was cut at landing"}]
+
+
+def _decision_rows(answers: list, question: dict) -> list[dict]:
+    return [
+        {
+            "input": {"state": f"ticket {i}", "questions": {"intent": question}},
+            "expected_output": {"intent": answer},
+        }
+        for i, answer in enumerate(answers)
+    ]
+
+
+def test_a_decision_table_with_thin_option_coverage_passes_with_an_advisory(frame_of):
+    options = {f"team{i:02d}": f"Team {i}" for i in range(26)}
+    question = {"type": "choice", "instructions": "Which team?", "criteria": options}
+    answers = [key for key in options for _ in range(4)]
+
+    report = contract.measure(frame_of(_decision_rows(answers, question)))["decision"]
+
+    assert report["ok"] is True
+    assert report["warnings"] == ["question intent: 26 of 26 options have fewer than 5 rows"]
+
+
+def test_a_decision_table_dominated_by_one_answer_passes_with_an_advisory(frame_of):
+    urgent = {"type": "noul", "instructions": "Is it urgent?"}
+    answers = ["false"] * 93 + ["true"] * 7
+
+    report = contract.measure(frame_of(_decision_rows(answers, urgent)))["decision"]
+
+    assert report["ok"] is True
+    assert report["warnings"] == ["question intent: 'false' is the answer in 93% of rows"]

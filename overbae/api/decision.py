@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_field
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, ValidationError
@@ -29,6 +29,17 @@ class DecisionUnavailable(APIException):
     default_detail = "Decision inference is not available."
     default_code = "unavailable"
 
+    def __init__(self, reason: str):
+        super().__init__(
+            detail={"detail": self.default_detail, "code": self.default_code, "reason": reason}
+        )
+
+
+class DecisionLimitsSerializer(serializers.Serializer):
+    options = serializers.IntegerField(help_text="Choice options per question.")
+    score_levels = serializers.IntegerField(help_text="Levels per score question.")
+    questions = serializers.IntegerField(help_text="Questions per request.")
+
 
 class DecisionModelSerializer(serializers.Serializer):
     id = serializers.CharField()
@@ -38,6 +49,7 @@ class DecisionModelSerializer(serializers.Serializer):
     hidden_size = serializers.IntegerField()
     architecture_context = serializers.IntegerField()
     max_context_length = serializers.IntegerField()
+    limits = DecisionLimitsSerializer()
 
 
 class DecisionRecommendSerializer(serializers.Serializer):
@@ -46,10 +58,34 @@ class DecisionRecommendSerializer(serializers.Serializer):
     version = serializers.CharField(max_length=80, required=False, allow_blank=True)
 
 
+class DecisionShapeSerializer(serializers.Serializer):
+    options = serializers.IntegerField(help_text="Widest choice or noul option list.")
+    score_levels = serializers.IntegerField(help_text="Most levels in one score question.")
+    questions = serializers.IntegerField(help_text="Questions in the widest request.")
+
+
+class DecisionDatasetSerializer(serializers.Serializer):
+    rows = serializers.IntegerField()
+    longest_input_tokens = serializers.IntegerField(
+        help_text="Approximate tokens of the longest row's input (state and questions)."
+    )
+    shape = DecisionShapeSerializer()
+
+
+class DecisionCandidateSerializer(serializers.Serializer):
+    model = serializers.CharField()
+    fits = serializers.BooleanField()
+    why_not = serializers.CharField(allow_null=True)
+    decision_index = serializers.FloatField(allow_null=True)
+    decision_index_edition = serializers.CharField(allow_null=True)
+    params = serializers.IntegerField()
+
+
 class DecisionRecommendationSerializer(serializers.Serializer):
     model = serializers.CharField(allow_null=True)
-    longest_row_tokens = serializers.IntegerField()
     reason = serializers.CharField()
+    dataset = DecisionDatasetSerializer()
+    candidates = DecisionCandidateSerializer(many=True)
 
 
 class DecisionJobCreateSerializer(serializers.Serializer):
@@ -72,6 +108,7 @@ class DecisionJobSerializer(serializers.ModelSerializer):
     training = DecisionVersionSerializer(source="cell")
     evaluation_data = DecisionVersionSerializer(source="eval_cell", allow_null=True)
     checkpoint_ready = serializers.SerializerMethodField()
+    evaluation_status = serializers.SerializerMethodField()
 
     class Meta:
         model = DecisionJob
@@ -84,6 +121,7 @@ class DecisionJobSerializer(serializers.ModelSerializer):
             "evaluation_data",
             "result",
             "evaluation",
+            "evaluation_status",
             "error",
             "cost_usd",
             "checkpoint_ready",
@@ -95,6 +133,16 @@ class DecisionJobSerializer(serializers.ModelSerializer):
 
     def get_checkpoint_ready(self, job) -> bool:
         return job.status == DecisionJob.Status.SUCCEEDED and bool((job.result or {}).get("saved"))
+
+    @extend_schema_field(
+        serializers.ChoiceField(choices=["none", "complete", "partial", "failed"], allow_null=True)
+    )
+    def get_evaluation_status(self, job) -> str | None:
+        if job.eval_cell_id is None:
+            return "none"
+        if not job.evaluation:
+            return None
+        return job.evaluation.get("status") or "none"
 
 
 class DecisionRequestSerializer(serializers.Serializer):
@@ -128,7 +176,7 @@ def _answer(project, request, data, model_id, job=None):
     except decision_jobs.DecisionWarmingError as exc:
         raise DecisionWarming() from exc
     except decision_jobs.DecisionUnavailableError as exc:
-        raise DecisionUnavailable() from exc
+        raise DecisionUnavailable(exc.reason) from exc
     return Response(DecisionResponseSerializer(result).data)
 
 

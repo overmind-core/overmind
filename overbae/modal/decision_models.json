@@ -9,7 +9,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 53.08,
-      "decision_index_edition": "0.3.1"
+      "decision_index_edition": "0.3.1",
+      "limits": {
+        "options": 26,
+        "score_levels": 10,
+        "questions": 64
+      }
     },
     {
       "id": "Cloudflare/clef-flash",
@@ -20,7 +25,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 47.61,
-      "decision_index_edition": "0.3.1"
+      "decision_index_edition": "0.3.1",
+      "limits": {
+        "options": 26,
+        "score_levels": 10,
+        "questions": 64
+      }
     },
     {
       "id": "OvermindLab/qwen-3.5-0.8B-decision",
@@ -29,7 +39,12 @@
       "params": 800000000,
       "hidden_size": 1024,
       "architecture_context": 131072,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "limits": {
+        "options": 26,
+        "score_levels": 10,
+        "questions": 64
+      }
     },
     {
       "id": "OvermindLab/qwen-3.5-2B-decision",
@@ -38,7 +53,12 @@
       "params": 2000000000,
       "hidden_size": 2048,
       "architecture_context": 131072,
-      "max_context_length": 32768
+      "max_context_length": 32768,
+      "limits": {
+        "options": 26,
+        "score_levels": 10,
+        "questions": 64
+      }
     },
     {
       "id": "vllm-sr/d3-edge",
@@ -49,7 +69,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 20.2,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "vllm-sr/d3-lite",
@@ -60,7 +85,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 32.3,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "vllm-sr/d3-nano",
@@ -71,7 +101,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 38.9,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "vllm-sr/d3-mini",
@@ -82,7 +117,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 52.6,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "vllm-sr/d3-flash",
@@ -93,7 +133,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 55.8,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "vllm-sr/d3",
@@ -104,7 +149,12 @@
       "architecture_context": 262144,
       "max_context_length": 32768,
       "decision_index": 66.3,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "LiquidAI/d1-omni-600M",
@@ -116,7 +166,12 @@
       "max_context_length": 16384,
       "inference_gpu": "L4",
       "decision_index": 9.1,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 10,
+        "questions": 100
+      }
     },
     {
       "id": "LiquidAI/d1-3B",
@@ -128,7 +183,12 @@
       "max_context_length": 32768,
       "inference_gpu": "L4",
       "decision_index": 38.9,
-      "decision_index_edition": "0.3.2"
+      "decision_index_edition": "0.3.2",
+      "limits": {
+        "options": 255,
+        "score_levels": 255,
+        "questions": 100
+      }
     }
   ]
 }

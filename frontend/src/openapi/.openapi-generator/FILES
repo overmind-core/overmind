@@ -123,9 +123,12 @@ models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DecisionCandidate.ts
+models/DecisionDataset.ts
 models/DecisionJob.ts
 models/DecisionJobCreateRequest.ts
 models/DecisionJobStatusEnum.ts
+models/DecisionLimits.ts
 models/DecisionModel.ts
 models/DecisionModelRequestRequest.ts
 models/DecisionPolicy.ts
@@ -135,6 +138,7 @@ models/DecisionRecommendRequest.ts
 models/DecisionRecommendation.ts
 models/DecisionRequestRequest.ts
 models/DecisionResponse.ts
+models/DecisionShape.ts
 models/DecisionUsage.ts
 models/DecisionVersion.ts
 models/DeployedModel.ts
@@ -172,6 +176,7 @@ models/EvaluationContextRequestRequest.ts
 models/EvaluationContextSuggestion.ts
 models/EvaluationContextVariantRequest.ts
 models/EvaluationJudgeOption.ts
+models/EvaluationStatusEnum.ts
 models/Evaluator.ts
 models/EvaluatorCatalog.ts
 models/EvaluatorKindEnum.ts

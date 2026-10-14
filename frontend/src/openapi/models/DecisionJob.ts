@@ -87,6 +87,12 @@ export interface DecisionJob {
      * @type {string}
      * @memberof DecisionJob
      */
+    readonly evaluationStatus: DecisionJobEvaluationStatusEnum | null;
+    /**
+     *
+     * @type {string}
+     * @memberof DecisionJob
+     */
     readonly error: string;
     /**
      *
@@ -121,6 +127,17 @@ export interface DecisionJob {
 }
 
 
+/**
+ * @export
+ */
+export const DecisionJobEvaluationStatusEnum = {
+    none: 'none',
+    complete: 'complete',
+    partial: 'partial',
+    failed: 'failed'
+} as const;
+export type DecisionJobEvaluationStatusEnum = typeof DecisionJobEvaluationStatusEnum[keyof typeof DecisionJobEvaluationStatusEnum];
+
 
 /**
  * Check if a given object implements the DecisionJob interface.
@@ -134,6 +151,7 @@ export function instanceOfDecisionJob(value: object): value is DecisionJob {
     if (!('evaluationData' in value) || value['evaluationData'] === undefined) return false;
     if (!('result' in value) || value['result'] === undefined) return false;
     if (!('evaluation' in value) || value['evaluation'] === undefined) return false;
+    if (!('evaluationStatus' in value) || value['evaluationStatus'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('costUsd' in value) || value['costUsd'] === undefined) return false;
     if (!('checkpointReady' in value) || value['checkpointReady'] === undefined) return false;
@@ -161,6 +179,7 @@ export function DecisionJobFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'evaluationData': DecisionVersionFromJSON(json['evaluation_data']),
         'result': json['result'],
         'evaluation': json['evaluation'],
+        'evaluationStatus': json['evaluation_status'],
         'error': json['error'],
         'costUsd': json['cost_usd'],
         'checkpointReady': json['checkpoint_ready'],
@@ -174,7 +193,7 @@ export function DecisionJobToJSON(json: any): DecisionJob {
     return DecisionJobToJSONTyped(json, false);
 }
 
-export function DecisionJobToJSONTyped(value?: Omit<DecisionJob, 'id'|'project'|'model_id'|'status'|'result'|'evaluation'|'error'|'cost_usd'|'checkpoint_ready'|'created_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DecisionJobToJSONTyped(value?: Omit<DecisionJob, 'id'|'project'|'model_id'|'status'|'result'|'evaluation'|'evaluation_status'|'error'|'cost_usd'|'checkpoint_ready'|'created_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

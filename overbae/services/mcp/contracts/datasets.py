@@ -648,6 +648,8 @@ def next_actions(dataset, active: Cell | None) -> list[NextAction]:
                 arguments={"dataset": ds_id},
             )
         ]
+    if active.fits_decision()[0]:
+        return _decision_next_actions(dataset, active)
     intent = public_intent(dataset.intent)
     ok, reason = active.fits(intent)
     if not ok:
@@ -679,6 +681,25 @@ def next_actions(dataset, active: Cell | None) -> list[NextAction]:
             )
         )
     return actions
+
+
+def _decision_next_actions(dataset, active: Cell) -> list[NextAction]:
+    """Decision rows are read only by decision models, so they take their own readiness check."""
+    if public_intent(dataset.intent) == Dataset.Intent.EVAL:
+        return [
+            NextAction(
+                tool="check_decision_readiness",
+                reason="Active version holds decision rows; pass it as eval_dataset to check a train dataset.",
+                arguments={"eval_dataset": str(dataset.id), "eval_version": active.label},
+            )
+        ]
+    return [
+        NextAction(
+            tool="check_decision_readiness",
+            reason="Active version holds decision rows.",
+            arguments={"dataset": str(dataset.id), "version": active.label},
+        )
+    ]
 
 
 def _detail_summary(dataset, total: int, active: Cell | None, running: int) -> str:

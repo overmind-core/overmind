@@ -12,6 +12,7 @@ import logging
 import math
 import os
 import time
+from collections import Counter
 from decimal import Decimal
 from typing import Any
 
@@ -21,6 +22,7 @@ from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
 from overbae.modal.decision_catalog import get as catalog_model
+from overbae.modal.decision_catalog import models as catalog_models
 from overbae.models import BillingService, Cell, Dataset, DecisionJob, Project
 from overbae.services.billing_ledger import charge_credits
 from overbae.services.datasets import decisions, rows, use, versions
@@ -37,7 +39,17 @@ WAIT_SECONDS = 20.0
 RETRY_AFTER_SECONDS = 60
 # A request holds the serving GPU for its duration; bill at least one second of it.
 MIN_BILLED_SECONDS = 1.0
-_TRAINING_ERRORS = {"No records fit the context cap."}
+# The 503 body names one of these; any other worker code is reported as runtime_error.
+UNAVAILABLE_REASONS = frozenset({"boot_failed", "adapter_missing", "runtime_error"})
+_UNEXPECTED_TRAINING = "Training stopped unexpectedly."
+_TRAINING_COPY = {
+    "no_records_fit": (
+        "No rows fit {model}: {too_long} too long for {max_context_length} tokens, "
+        "{rejected} rejected by the model."
+    ),
+    "base_unavailable": "Training stopped: the base model could not be downloaded.",
+    "runtime_error": _UNEXPECTED_TRAINING,
+}
 
 
 class DecisionWarmingError(Exception):
@@ -45,7 +57,9 @@ class DecisionWarmingError(Exception):
 
 
 class DecisionUnavailableError(Exception):
-    pass
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _modal_env() -> str | None:
@@ -59,7 +73,9 @@ def _function(name: str):
 def model(model_id: str) -> dict:
     spec = catalog_model(model_id)
     if spec is None:
-        raise InputValidationError(f"Unknown decision model {model_id}.")
+        raise InputValidationError(
+            f"Unknown decision model {model_id}. Models: {', '.join(catalog_models())}"
+        )
     return spec
 
 
@@ -93,6 +109,9 @@ def create(
                 cell=versions.resolve_cell(eval_dataset, eval_version, field="eval_version"),
                 decision=True,
             )
+        _refuse_over_limits(spec, cell)
+        if eval_cell is not None:
+            _refuse_over_limits(spec, eval_cell)
         job = DecisionJob.objects.create(
             project=project,
             created_by=user if getattr(user, "is_authenticated", False) else None,
@@ -102,6 +121,19 @@ def create(
         )
         transaction.on_commit(lambda: start.delay(str(job.id)))
     return job
+
+
+def _refuse_over_limits(spec: dict, cell: Cell) -> None:
+    """Refuse a version with rows the model's serving limits cannot answer."""
+    over = []
+    for index, row in enumerate(rows.iter_rows(cell), start=1):
+        questions = decisions.request(row.input)["questions"]
+        problems = decisions.violations(questions, spec["limits"])
+        if problems:
+            over.append((index, problems[0]))
+    if over:
+        examples = "; ".join(f"row {index}: {problem}" for index, problem in over[:3])
+        raise InputValidationError(f"{len(over)} rows exceed {spec['id']}'s limits; {examples}")
 
 
 def _records(cell: Cell) -> str:
@@ -179,12 +211,7 @@ def advance(job_id) -> None:
 
 def _trained(job: DecisionJob, result: Any) -> None:
     if not isinstance(result, dict) or result.get("error") or not result.get("saved"):
-        error = result.get("error") if isinstance(result, dict) else None
-        _fail(
-            job.id,
-            DecisionJob.Status.RUNNING,
-            error if error in _TRAINING_ERRORS else "Decision training failed.",
-        )
+        _fail(job.id, DecisionJob.Status.RUNNING, _training_failure(job, result))
         return
     if job.eval_cell_id is None:
         DecisionJob.objects.filter(pk=job.pk, status=DecisionJob.Status.RUNNING).update(
@@ -207,7 +234,7 @@ def _trained(job: DecisionJob, result: Any) -> None:
         DecisionJob.objects.filter(pk=job.pk, status=DecisionJob.Status.RUNNING).update(
             status=DecisionJob.Status.SUCCEEDED,
             result=result,
-            evaluation={"error": "The evaluation could not start."},
+            evaluation={"status": "failed", "error": "The evaluation could not start."},
             completed_at=timezone.now(),
         )
         return
@@ -216,12 +243,30 @@ def _trained(job: DecisionJob, result: Any) -> None:
     )
 
 
+def _training_failure(job: DecisionJob, result: Any) -> str:
+    """Log the worker's message and return the copy shown on the job."""
+    error = result.get("error") if isinstance(result, dict) else None
+    if not isinstance(error, dict):
+        logger.error("Decision job %s training returned no result", job.id)
+        return _UNEXPECTED_TRAINING
+    code = str(error.get("code") or "unknown")
+    logger.error("Decision job %s training failed: %s: %s", job.id, code, error.get("message"))
+    copy = _TRAINING_COPY.get(code, _UNEXPECTED_TRAINING)
+    skipped = error.get("skipped") or {}
+    return copy.format(
+        model=job.model_id,
+        max_context_length=model(job.model_id)["max_context_length"],
+        too_long=skipped.get("too_long", 0),
+        rejected=skipped.get("rejected", 0),
+    )
+
+
 def _evaluated(job: DecisionJob, result: Any) -> None:
     try:
         evaluation = evaluate(job.eval_cell, result)
     except (decisions.DecisionRowError, KeyError, TypeError, ValueError):
         logger.exception("Decision job %s returned an unusable evaluation", job.id)
-        evaluation = {"error": "The evaluation failed."}
+        evaluation = {"status": "failed", "error": "The evaluation failed."}
     DecisionJob.objects.filter(pk=job.pk, status=DecisionJob.Status.EVALUATING).update(
         status=DecisionJob.Status.SUCCEEDED, evaluation=evaluation, completed_at=timezone.now()
     )
@@ -233,54 +278,104 @@ def evaluate(cell: Cell, result: Any) -> dict:
     if not isinstance(result, dict):
         raise ValueError("no evaluation result")
     gold = [decisions.record(row.input, row.expected_output) for row in rows.iter_rows(cell)]
+    base = _metrics(gold, result["base"])
+    trained = _metrics(gold, result["trained"])
     return {
+        "status": _evaluation_status(base, trained),
         "rows": len(gold),
-        "base": _metrics(gold, result["base"]),
-        "trained": _metrics(gold, result["trained"]),
+        "base": base,
+        "trained": trained,
     }
+
+
+def _evaluation_status(base: dict, trained: dict) -> str:
+    if base["n"] == 0 or trained["n"] == 0:
+        return "failed"
+    if base["unanswered"]["total"] == 0 and trained["unanswered"]["total"] == 0:
+        return "complete"
+    return "partial"
 
 
 def _metrics(gold: list[dict], answered: list[Any]) -> dict:
     if len(answered) != len(gold):
         raise ValueError("the evaluation skipped rows")
     per_question: dict[str, dict[str, list]] = {}
-    failed = 0
-    for record, answers in zip(gold, answered, strict=True):
+    by_reason: dict[str, int] = {}
+    sample = None
+    for record, row in zip(gold, answered, strict=True):
+        if not isinstance(row, dict):
+            raise ValueError("the evaluation returned an unusable row")
+        error = row.get("error")
+        if error is not None:
+            if not isinstance(error, dict):
+                raise ValueError("the evaluation returned an unusable error")
+            code = str(error.get("code") or "runtime_error")
+            sample = sample or error.get("message")
         for key, question in record["questions"].items():
             keys = decisions.options(question)
             target = [record["gold"][key]["probabilities"][k] for k in keys]
-            slot = per_question.setdefault(key, {"pairs": [], "true": [], "pred": []})
+            slot = per_question.setdefault(key, {"pairs": [], "true": [], "pred": [], "ties": 0})
+            leader = decisions.gold_option(record["gold"][key]["probabilities"])
+            if leader is None:
+                slot["ties"] += 1
+            if error is not None:
+                by_reason[code] = by_reason.get(code, 0) + 1
+                continue
             try:
-                predicted = decisions.predicted(question, (answers or {}).get(key))
+                predicted = decisions.predicted(question, (row.get("answers") or {}).get(key))
             except decisions.DecisionRowError:
-                failed += 1
+                by_reason["unusable_answer"] = by_reason.get("unusable_answer", 0) + 1
                 continue
             slot["pairs"].append((target, predicted))
-            slot["true"].append(keys[target.index(max(target))])
-            slot["pred"].append(keys[predicted.index(max(predicted))])
+            if leader is not None:
+                slot["true"].append(leader)
+                slot["pred"].append(keys[predicted.index(max(predicted))])
     questions = {key: _scores(slot) for key, slot in per_question.items()}
-    pairs = [pair for slot in per_question.values() for pair in slot["pairs"]]
     overall = _scores(
         {
-            "pairs": pairs,
+            "pairs": [pair for slot in per_question.values() for pair in slot["pairs"]],
             "true": [t for slot in per_question.values() for t in slot["true"]],
             "pred": [p for slot in per_question.values() for p in slot["pred"]],
+            "ties": sum(slot["ties"] for slot in per_question.values()),
         },
         classes=False,
     )
-    return {**overall, "unanswered": failed, "questions": questions}
+    # Each question's baseline and macro F1 is pooled by its scored rows, so the overall
+    # baseline weights per-question baselines by the rows they are measured on.
+    scored = {key: len(slot["true"]) for key, slot in per_question.items()}
+    if sum(scored.values()):
+        overall["majority_baseline"] = round(
+            sum(questions[key]["majority_baseline"] * n for key, n in scored.items() if n)
+            / sum(scored.values()),
+            6,
+        )
+    macro = [q["macro_f1"] for q in questions.values() if q["macro_f1"] is not None]
+    if macro:
+        overall["macro_f1"] = round(sum(macro) / len(macro), 6)
+    unanswered = {"total": sum(by_reason.values()), "by_reason": by_reason, "sample": sample}
+    return {**overall, "unanswered": unanswered, "questions": questions}
 
 
 def _scores(slot: dict, *, classes: bool = True) -> dict:
     pairs = slot["pairs"]
     if not pairs:
-        return {"n": 0, "accuracy": None, "log_loss": None, "brier": None}
+        return {
+            "n": 0,
+            "ties": slot["ties"],
+            "accuracy": None,
+            "majority_baseline": None,
+            "macro_f1": None,
+            "log_loss": None,
+            "brier": None,
+        }
     n = len(pairs)
+    truth = slot["true"]
     scores = {
         "n": n,
-        "accuracy": round(
-            sum(t == p for t, p in zip(slot["true"], slot["pred"], strict=True)) / n, 6
-        ),
+        "ties": slot["ties"],
+        "accuracy": None,
+        "majority_baseline": None,
+        "macro_f1": None,
         "log_loss": round(
             sum(
                 -math.fsum(g * math.log(max(p, 1e-12)) for g, p in zip(t, q, strict=True))
@@ -294,8 +389,16 @@ def _scores(slot: dict, *, classes: bool = True) -> dict:
             6,
         ),
     }
+    if truth:
+        scores["accuracy"] = round(
+            sum(t == p for t, p in zip(truth, slot["pred"], strict=True)) / len(truth), 6
+        )
+        scores["majority_baseline"] = round(Counter(truth).most_common(1)[0][1] / len(truth), 6)
     if classes:
-        scores["class_metrics"] = per_class_metrics(slot["pred"], slot["true"]) or None
+        scores["class_metrics"] = per_class_metrics(slot["pred"], truth) or None
+        if scores["class_metrics"]:
+            f1 = [cls["f1"] for cls in scores["class_metrics"]["classes"]]
+            scores["macro_f1"] = round(sum(f1) / len(f1), 6)
     return scores
 
 
@@ -360,6 +463,9 @@ def answer(
         request = decisions.request({"state": state, "questions": questions})
     except decisions.DecisionRowError as exc:
         raise InputValidationError(str(exc)) from exc
+    problems = decisions.violations(request["questions"], spec["limits"])
+    if problems:
+        raise InputValidationError(problems[0])
     payload = {
         "repo": spec["repo"],
         "family": spec["family"],
@@ -389,19 +495,31 @@ def answer(
         raise DecisionWarmingError from exc
     except Exception as exc:
         logger.exception("Decision request failed for %s", model_id)
-        raise DecisionUnavailableError from exc
+        raise DecisionUnavailableError("runtime_error") from exc
     latency = time.monotonic() - started
-    if isinstance(result, dict) and result.get("error") == "max_length_exceeded":
-        raise InputValidationError(
-            f"The state and questions exceed {spec['max_context_length']} tokens."
+    error = result.get("error") if isinstance(result, dict) else None
+    if error is not None:
+        code = error.get("code") if isinstance(error, dict) else None
+        if code == "request_rejected":
+            raise InputValidationError(error.get("message") or "The request was rejected.")
+        if code == "max_length_exceeded":
+            raise InputValidationError(
+                f"The state and questions exceed {spec['max_context_length']} tokens."
+            )
+        logger.error(
+            "Decision model %s could not answer: %s: %s",
+            model_id,
+            code,
+            error.get("message") if isinstance(error, dict) else None,
         )
+        raise DecisionUnavailableError(code if code in UNAVAILABLE_REASONS else "runtime_error")
     answers = result.get("answers") if isinstance(result, dict) else None
     try:
         for key, question in request["questions"].items():
             decisions.predicted(question, (answers or {}).get(key))
     except decisions.DecisionRowError as exc:
         logger.error("Decision model %s returned an unusable answer: %s", model_id, exc)
-        raise DecisionUnavailableError from exc
+        raise DecisionUnavailableError("runtime_error") from exc
     _charge_request(project, user, spec["id"], latency, job, gpu)
     usage = result.get("usage") or {}
     return {

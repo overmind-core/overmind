@@ -13,6 +13,21 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DecisionDataset } from './DecisionDataset';
+import {
+    DecisionDatasetFromJSON,
+    DecisionDatasetFromJSONTyped,
+    DecisionDatasetToJSON,
+    DecisionDatasetToJSONTyped,
+} from './DecisionDataset';
+import type { DecisionCandidate } from './DecisionCandidate';
+import {
+    DecisionCandidateFromJSON,
+    DecisionCandidateFromJSONTyped,
+    DecisionCandidateToJSON,
+    DecisionCandidateToJSONTyped,
+} from './DecisionCandidate';
+
 /**
  *
  * @export
@@ -27,16 +42,22 @@ export interface DecisionRecommendation {
     model: string | null;
     /**
      *
-     * @type {number}
-     * @memberof DecisionRecommendation
-     */
-    longestRowTokens: number;
-    /**
-     *
      * @type {string}
      * @memberof DecisionRecommendation
      */
     reason: string;
+    /**
+     *
+     * @type {DecisionDataset}
+     * @memberof DecisionRecommendation
+     */
+    dataset: DecisionDataset;
+    /**
+     *
+     * @type {Array<DecisionCandidate>}
+     * @memberof DecisionRecommendation
+     */
+    candidates: Array<DecisionCandidate>;
 }
 
 /**
@@ -44,8 +65,9 @@ export interface DecisionRecommendation {
  */
 export function instanceOfDecisionRecommendation(value: object): value is DecisionRecommendation {
     if (!('model' in value) || value['model'] === undefined) return false;
-    if (!('longestRowTokens' in value) || value['longestRowTokens'] === undefined) return false;
     if (!('reason' in value) || value['reason'] === undefined) return false;
+    if (!('dataset' in value) || value['dataset'] === undefined) return false;
+    if (!('candidates' in value) || value['candidates'] === undefined) return false;
     return true;
 }
 
@@ -60,8 +82,9 @@ export function DecisionRecommendationFromJSONTyped(json: any, ignoreDiscriminat
     return {
 
         'model': json['model'],
-        'longestRowTokens': json['longest_row_tokens'],
         'reason': json['reason'],
+        'dataset': DecisionDatasetFromJSON(json['dataset']),
+        'candidates': ((json['candidates'] as Array<any>).map(DecisionCandidateFromJSON)),
     };
 }
 
@@ -77,7 +100,8 @@ export function DecisionRecommendationToJSONTyped(value?: DecisionRecommendation
     return {
 
         'model': value['model'],
-        'longest_row_tokens': value['longestRowTokens'],
         'reason': value['reason'],
+        'dataset': DecisionDatasetToJSON(value['dataset']),
+        'candidates': ((value['candidates'] as Array<any>).map(DecisionCandidateToJSON)),
     };
 }

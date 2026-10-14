@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DecisionLimits } from './DecisionLimits';
+import {
+    DecisionLimitsFromJSON,
+    DecisionLimitsFromJSONTyped,
+    DecisionLimitsToJSON,
+    DecisionLimitsToJSONTyped,
+} from './DecisionLimits';
+
 /**
  *
  * @export
@@ -61,6 +69,12 @@ export interface DecisionModel {
      * @memberof DecisionModel
      */
     maxContextLength: number;
+    /**
+     *
+     * @type {DecisionLimits}
+     * @memberof DecisionModel
+     */
+    limits: DecisionLimits;
 }
 
 /**
@@ -74,6 +88,7 @@ export function instanceOfDecisionModel(value: object): value is DecisionModel {
     if (!('hiddenSize' in value) || value['hiddenSize'] === undefined) return false;
     if (!('architectureContext' in value) || value['architectureContext'] === undefined) return false;
     if (!('maxContextLength' in value) || value['maxContextLength'] === undefined) return false;
+    if (!('limits' in value) || value['limits'] === undefined) return false;
     return true;
 }
 
@@ -94,6 +109,7 @@ export function DecisionModelFromJSONTyped(json: any, ignoreDiscriminator: boole
         'hiddenSize': json['hidden_size'],
         'architectureContext': json['architecture_context'],
         'maxContextLength': json['max_context_length'],
+        'limits': DecisionLimitsFromJSON(json['limits']),
     };
 }
 
@@ -115,5 +131,6 @@ export function DecisionModelToJSONTyped(value?: DecisionModel | null, ignoreDis
         'hidden_size': value['hiddenSize'],
         'architecture_context': value['architectureContext'],
         'max_context_length': value['maxContextLength'],
+        'limits': DecisionLimitsToJSON(value['limits']),
     };
 }

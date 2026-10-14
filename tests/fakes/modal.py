@@ -347,12 +347,17 @@ def _decision_answer(question: dict) -> dict:
 class DecisionBackend:
     """The ``overmind-decision`` app: staged records, training, evaluation and scoring.
     Training and evaluation are held until released; scoring answers each question with
-    its first option at 0.9."""
+    its first option at 0.9. Set ``train_error``, ``trained_error`` or ``score_error`` to
+    make the worker report that error in place of a result."""
 
     cloud: FakeModal
     staged: dict[str, dict[str, str | None]] = field(default_factory=dict)
     trained: list[dict] = field(default_factory=list)
     scored: list[dict] = field(default_factory=list)
+    train_error: dict | None = None
+    trained_error: dict | None = None
+    score_error: dict | None = None
+    train_metrics: dict = field(default_factory=dict)
 
     def install(self, *, warm: bool = True) -> DecisionBackend:
         self.cloud.deploy(DECISION_APP, "upload_records", self._upload)
@@ -369,7 +374,13 @@ class DecisionBackend:
 
     def _train(self, payload: dict) -> dict:
         self.trained.append(payload)
-        return {"model": payload["repo"], "saved": f"/artifacts/{payload['job_id']}/adapter"}
+        if self.train_error is not None:
+            return {"error": self.train_error}
+        return {
+            "model": payload["repo"],
+            "saved": f"/artifacts/{payload['job_id']}/adapter",
+            **self.train_metrics,
+        }
 
     def _records(self, job_id: str, name: str) -> list[dict]:
         import json
@@ -377,14 +388,21 @@ class DecisionBackend:
         return [json.loads(line) for line in (self.staged[job_id][name] or "").splitlines()]
 
     def _evaluate(self, payload: dict) -> dict:
-        answers = [
-            {key: _decision_answer(q) for key, q in record["questions"].items()}
-            for record in self._records(payload["job_id"], "eval")
+        records = self._records(payload["job_id"], "eval")
+        base = [
+            {"answers": {key: _decision_answer(q) for key, q in record["questions"].items()}}
+            for record in records
         ]
-        return {"base": answers, "trained": answers}
+        if self.trained_error is not None:
+            trained = [{"error": self.trained_error} for _ in records]
+        else:
+            trained = base
+        return {"base": base, "trained": trained}
 
     def _score(self, payload: dict) -> dict:
         self.scored.append(payload)
+        if self.score_error is not None:
+            return {"error": self.score_error}
         return {
             "answers": {key: _decision_answer(q) for key, q in payload["questions"].items()},
             "usage": {"input_tokens": 12, "output_tokens": 0},

@@ -27,12 +27,35 @@ import {
   useDecisionRecommendation,
 } from "@/hooks/use-decision-jobs";
 import { errorMessage } from "@/lib/notify";
-import type { Dataset } from "@/openapi";
+import type { Dataset, DecisionLimits } from "@/openapi";
 
 const NO_EVAL = "none";
 
 const decisionReady = (dataset: Dataset, intent: "train" | "eval") =>
   intentOf(dataset) === intent && dataset.decisionReady;
+
+type DatasetShape = { options: number; score_levels: number; questions: number };
+
+// The widest question shape of a dataset's active version, as the server measured it.
+const shapeOf = (dataset: Dataset | undefined): DatasetShape | null => {
+  const active = dataset?.cells.find((cell) => cell.version === dataset.activeVersion);
+  return (
+    (active?.intentReport as { decision?: { shape?: DatasetShape } } | null)?.decision?.shape ??
+    null
+  );
+};
+
+// The first serving limit the dataset's shape exceeds, or null when the model takes it.
+const overLimit = (limits: DecisionLimits, shape: DatasetShape | null): string | null => {
+  if (!shape) return null;
+  if (shape.options > limits.options)
+    return `Takes up to ${limits.options} options; this dataset has ${shape.options}.`;
+  if (shape.score_levels > limits.scoreLevels)
+    return `Takes up to ${limits.scoreLevels} score levels; this dataset has ${shape.score_levels}.`;
+  if (shape.questions > limits.questions)
+    return `Takes up to ${limits.questions} questions; this dataset has ${shape.questions}.`;
+  return null;
+};
 
 export function NewDecisionJobDialog({
   open,
@@ -59,6 +82,9 @@ export function NewDecisionJobDialog({
   const chosen = listed || (train.length === 1 ? train[0].id : "");
   const recommendation = useDecisionRecommendation(projectId, chosen);
   const modelId = pick?.dataset === chosen ? pick.model : (recommendation.data?.model ?? "");
+  const shape = shapeOf(train.find((dataset) => dataset.id === chosen));
+  const selected = models.find((model) => model.id === modelId);
+  const blocked = selected !== undefined && overLimit(selected.limits, shape) !== null;
 
   const submit = () =>
     create.mutate(
@@ -121,11 +147,17 @@ export function NewDecisionJobDialog({
                 <SelectValue placeholder="Choose a model" />
               </SelectTrigger>
               <SelectContent>
-                {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.id}
-                  </SelectItem>
-                ))}
+                {models.map((model) => {
+                  const reason = overLimit(model.limits, shape);
+                  return (
+                    <SelectItem disabled={reason !== null} key={model.id} value={model.id}>
+                      <span className="flex flex-col">
+                        <span>{model.id}</span>
+                        {reason && <span className="text-xs text-muted-foreground">{reason}</span>}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             {recommendation.data?.reason && (
@@ -142,7 +174,7 @@ export function NewDecisionJobDialog({
           <Button onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>
-          <Button disabled={!chosen || !modelId || create.isPending} onClick={submit}>
+          <Button disabled={!chosen || !modelId || blocked || create.isPending} onClick={submit}>
             {create.isPending ? <Spinner className="size-3" /> : <Icon.training />}
             Start training
           </Button>
