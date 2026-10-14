@@ -240,6 +240,7 @@ def _ledger() -> Iterator[dict]:
             fh.seek(0)
             fh.truncate()
             fh.write(json.dumps(ledger))
+            fh.flush()
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
