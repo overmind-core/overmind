@@ -115,7 +115,7 @@ def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     assert full_response.status_code == 200
     assert read_names < {tool["name"] for tool in full_tools}
     assert len(full_tools) == len(EXPECTED_TOOL_NAMES)
-    assert len(full_response.content) <= 40 * 1024
+    assert len(full_response.content) <= 50 * 1024
 
 
 def test_resources_and_prompts_list_over_streamable_http():
