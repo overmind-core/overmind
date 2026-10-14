@@ -9,7 +9,7 @@ import logging
 from django.conf import settings
 from django.db import connections
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q
-from django.http import StreamingHttpResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -26,6 +26,7 @@ from overbae.api.dataset_serializers import (
     DatasetSerializer,
     DatasetSplitCreateSerializer,
     ExecutionSerializer,
+    PreparePromptSerializer,
     RowsPageSerializer,
 )
 from overbae.api.scoping import project_ids_for
@@ -41,8 +42,10 @@ from overbae.services.datasets import (
     selection,
     store,
     versions,
+    workshop,
 )
 from overbae.services.datasets import export as export_svc
+from overbae.services.mcp.prompts import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +230,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if matched == 0:
                 raise ValidationError({"source": "No traces match the selection."})
             payload["traces"] = traces.spec()
+        if payload.get("version") is not None:
+            origin = get_object_or_404(Dataset, pk=payload["version"]["dataset"], project=project)
+            try:
+                cell = versions.resolve_cell(origin, payload["version"].get("version"))
+            except lifecycle.DatasetError as exc:
+                raise ValidationError({"source": exc.detail}) from exc
+            payload["version"] = {"dataset_id": str(origin.id), "cell_id": str(cell.id)}
         if payload.get("text"):
             try:
                 payload["rows"] = files.parse_text(
@@ -288,6 +298,57 @@ class DatasetViewSet(viewsets.ModelViewSet):
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(
+        summary="Cancel the source import; the dataset keeps no source",
+        request=None,
+        responses={200: DatasetSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="cancel-import")
+    def cancel_import(self, request, id=None):
+        dataset = self.get_object()
+        try:
+            dataset = dispatch.cancel_import(dataset)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetSerializer(dataset).data)
+
+    @extend_schema(
+        summary="Cancel a queued or running script run; nothing it produced is kept",
+        request=None,
+        responses={200: ExecutionSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"executions/(?P<execution_id>[0-9a-f-]{36})/cancel",
+    )
+    def cancel_execution(self, request, id=None, execution_id=None):
+        dataset = self.get_object()
+        try:
+            run = workshop.cancel_run(dataset, execution_id)
+        except lifecycle.DatasetError as exc:
+            raise NotFound(exc.detail) from exc
+        return Response(ExecutionSerializer(run).data)
+
+    @extend_schema(
+        summary="The prepare-dataset agent prompt for a version",
+        parameters=[_CELL_PARAM],
+        responses={200: PreparePromptSerializer},
+    )
+    @action(detail=True, methods=["get"], url_path="prepare-prompt")
+    def prepare_prompt(self, request, id=None):
+        dataset = self.get_object()
+        _path, cell = self._table(dataset, request)
+        result = get_prompt(
+            "prepare-dataset",
+            {
+                "dataset": str(dataset.id),
+                "version": cell.label,
+                "project_id": str(dataset.project_id),
+            },
+        )
+        return Response({"prompt": result.messages[0].content.text})
 
     @extend_schema(
         summary="The dataset's latest script runs, newest first",
@@ -432,6 +493,28 @@ class DatasetViewSet(viewsets.ModelViewSet):
         response["X-Overmind-Cell"] = str(cell.id)
         response["X-Overmind-Version"] = version
         response["X-Overmind-Fingerprint"] = cell.fingerprint
+        return response
+
+    @extend_schema(
+        summary="Download the file a version's script read as attachment",
+        parameters=[_CELL_PARAM],
+        responses={(200, "application/octet-stream"): OpenApiTypes.BINARY},
+    )
+    @action(detail=True, methods=["get"], url_path="attachment")
+    def attachment(self, request, id=None):
+        dataset = self.get_object()
+        _path, cell = self._table(dataset, request)
+        sha256 = (cell.attachment or {}).get("sha256")
+        path = paths.attachment_path(dataset.id, sha256) if sha256 else None
+        if path is None or not path.exists():
+            raise NotFound(f"{cell.label} read no attachment.")
+        response = FileResponse(
+            path.open("rb"),
+            as_attachment=True,
+            filename=cell.attachment.get("filename") or "attachment",
+            content_type="application/octet-stream",
+        )
+        response["X-Overmind-Sha256"] = sha256
         return response
 
     def get_renderers(self):

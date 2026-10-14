@@ -23,6 +23,7 @@ import type {
   Execution,
   PaginatedDatasetList,
   PatchedDatasetRequest,
+  PreparePrompt,
   RowsPage,
 } from '../models/index';
 import {
@@ -42,9 +43,20 @@ import {
     PaginatedDatasetListToJSON,
     PatchedDatasetRequestFromJSON,
     PatchedDatasetRequestToJSON,
+    PreparePromptFromJSON,
+    PreparePromptToJSON,
     RowsPageFromJSON,
     RowsPageToJSON,
 } from '../models/index';
+
+export interface DatasetsAttachmentRetrieveRequest {
+    id: string;
+    cell?: string;
+}
+
+export interface DatasetsCancelImportCreateRequest {
+    id: string;
+}
 
 export interface DatasetsColumnsListRequest {
     id: string;
@@ -64,6 +76,11 @@ export interface DatasetsDestroyRequest {
 export interface DatasetsEventsRetrieveRequest {
     id: string;
     format?: DatasetsEventsRetrieveFormatEnum;
+}
+
+export interface DatasetsExecutionsCancelCreateRequest {
+    executionId: string;
+    id: string;
 }
 
 export interface DatasetsExecutionsListRequest {
@@ -92,6 +109,11 @@ export interface DatasetsListRequest {
 export interface DatasetsPartialUpdateRequest {
     id: string;
     patchedDatasetRequest?: PatchedDatasetRequest;
+}
+
+export interface DatasetsPreparePromptRetrieveRequest {
+    id: string;
+    cell?: string;
 }
 
 export interface DatasetsResumeImportCreateRequest {
@@ -128,6 +150,124 @@ export interface DatasetsSplitCreateRequest {
  *
  */
 export class DatasetsApi extends runtime.BaseAPI {
+
+    /**
+     * Download the file a version\'s script read as attachment
+     */
+    async datasetsAttachmentRetrieveRaw(requestParameters: DatasetsAttachmentRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Blob>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsAttachmentRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['cell'] != null) {
+            queryParameters['cell'] = requestParameters['cell'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/attachment/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.BlobApiResponse(response);
+    }
+
+    /**
+     * Download the file a version\'s script read as attachment
+     */
+    async datasetsAttachmentRetrieve(requestParameters: DatasetsAttachmentRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Blob> {
+        const response = await this.datasetsAttachmentRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Cancel the source import; the dataset keeps no source
+     */
+    async datasetsCancelImportCreateRaw(requestParameters: DatasetsCancelImportCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Dataset>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsCancelImportCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/cancel-import/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetFromJSON(jsonValue));
+    }
+
+    /**
+     * Cancel the source import; the dataset keeps no source
+     */
+    async datasetsCancelImportCreate(requestParameters: DatasetsCancelImportCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
+        const response = await this.datasetsCancelImportCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Per-column stats of a version
@@ -371,6 +511,71 @@ export class DatasetsApi extends runtime.BaseAPI {
      */
     async datasetsEventsRetrieve(requestParameters: DatasetsEventsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
         const response = await this.datasetsEventsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Cancel a queued or running script run; nothing it produced is kept
+     */
+    async datasetsExecutionsCancelCreateRaw(requestParameters: DatasetsExecutionsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Execution>> {
+        if (requestParameters['executionId'] == null) {
+            throw new runtime.RequiredError(
+                'executionId',
+                'Required parameter "executionId" was null or undefined when calling datasetsExecutionsCancelCreate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsExecutionsCancelCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/executions/{execution_id}/cancel/`;
+        urlPath = urlPath.replace(`{${"execution_id"}}`, encodeURIComponent(String(requestParameters['executionId'])));
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ExecutionFromJSON(jsonValue));
+    }
+
+    /**
+     * Cancel a queued or running script run; nothing it produced is kept
+     */
+    async datasetsExecutionsCancelCreate(requestParameters: DatasetsExecutionsCancelCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Execution> {
+        const response = await this.datasetsExecutionsCancelCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -642,6 +847,67 @@ export class DatasetsApi extends runtime.BaseAPI {
      */
     async datasetsPartialUpdate(requestParameters: DatasetsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
         const response = await this.datasetsPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The prepare-dataset agent prompt for a version
+     */
+    async datasetsPreparePromptRetrieveRaw(requestParameters: DatasetsPreparePromptRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PreparePrompt>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsPreparePromptRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['cell'] != null) {
+            queryParameters['cell'] = requestParameters['cell'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/prepare-prompt/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PreparePromptFromJSON(jsonValue));
+    }
+
+    /**
+     * The prepare-dataset agent prompt for a version
+     */
+    async datasetsPreparePromptRetrieve(requestParameters: DatasetsPreparePromptRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PreparePrompt> {
+        const response = await this.datasetsPreparePromptRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

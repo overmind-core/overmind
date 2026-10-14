@@ -6,18 +6,32 @@ entries here cover the SDK surface.
 
 ## Unreleased
 
+### Added
+
+- `overmind dataset attach FILE --json` uploads a table without creating a
+  dataset and prints its `upload_id`, rows and sha256; a dataset script reads it
+  as the frame `attachment` through `try_dataset_script` or `add_dataset_version`.
+
 ### Changed
+
+- The dataset skills describe `create_dataset_from_version`, attachments,
+  version analytics and `cancel_dataset_job`. Skills version 1.5.0.
 
 - The datasets, training and inference skills describe decision models: decision
   rows, per-model limits, and the `check_decision_readiness` → `start_decision_job`
   → `get_job` → `run_decision_model` sequence. Skills version 1.4.0.
+
 - `overmind dataset upload --wait` waits only until the source has landed, and
   the next MCP step is `get_job(kind=dataset_import)`.
+
 - `overmind dataset export --cell` takes a version label such as `v3`.
+
 - The dataset skills describe versions added by scripts in Overmind's sandbox;
   the Data Workshop agent and its tools are gone. Skills version 1.3.0.
+
 - `overmind dataset upload` names the dataset after the file without its
   extension (`tickets.csv.gz` → `tickets`), as the Console does.
+
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 

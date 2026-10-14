@@ -56,14 +56,14 @@ def cleanup_data_tmp() -> dict[str, int]:
 
 @shared_task(name="overbae.tasks.cleanup_tmp.cleanup_uploads")
 def cleanup_uploads() -> dict[str, int]:
-    """A landing discards its upload; one that never became a dataset stays
-    until this removes it."""
+    """A landing discards its upload; one that never became a dataset or a script's
+    attachment stays until this removes it."""
     root = Path(settings.MEDIA_ROOT) / "uploads"
     if not root.is_dir():
         return {"removed": 0}
-    from overbae.services.datasets.imports import retained_uploads
+    from overbae.services.datasets import attachments, imports
 
-    retained = retained_uploads()
+    retained = imports.retained_uploads() | attachments.retained_uploads()
     cutoff = time.time() - _UPLOAD_MAX_AGE_SECONDS
     removed = 0
     for entry in os.scandir(root):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from mcp import types
 from mcp.shared.exceptions import McpError
@@ -16,6 +16,8 @@ class PromptDefinition:
     description: str
     arguments: tuple[types.PromptArgument, ...]
     template: str
+    # Text an optional argument renders as when the caller leaves it out.
+    defaults: Mapping[str, str] = field(default_factory=dict)
 
     def as_mcp_prompt(self) -> types.Prompt:
         return types.Prompt(
@@ -256,10 +258,18 @@ PROMPTS = (
         description="Shape a dataset for training or evaluation with scripts Overmind runs in its sandbox.",
         arguments=(
             _argument("dataset", "Dataset UUID from list_datasets."),
-            _argument("task", "What the user wants the dataset to become."),
+            _optional_argument("task", "What the user wants the dataset to become."),
+            _optional_argument("version", "Version to start from, such as v3; default active."),
+            _optional_argument("project_id", "Project UUID of the dataset."),
         ),
+        defaults={
+            "task": "the one the user describes; ask when it is unclear",
+            "version": "the active version",
+            "project_id": "the selected project",
+        },
         template=(
-            "Prepare dataset {dataset} for this task: {task}. Rules: "
+            "Prepare dataset {dataset} in project {project_id}, starting from {version}, "
+            "for this task: {task}. Rules: "
             "1. Call inspect_dataset and read preparation_context before writing a script. "
             "2. Compare the landed row count and some values with the user's local file before "
             "transforming. "
@@ -279,6 +289,11 @@ PROMPTS = (
             "OCR text may be wrong. "
             "13. For a decision model, build decision rows as overmind://decision-models "
             "describes; never mix them with chat rows. "
+            "14. Rows made outside Overmind, such as labels, are a table the user uploads with "
+            "`overmind dataset attach FILE --json`; pass its upload_id as attachment and merge "
+            "the frame attachment in the script, e.g. df.merge(attachment, on='source_row'). "
+            "15. To keep a version as its own dataset, or split it into train and eval, use "
+            "create_dataset_from_version. "
             "When a run returns queued or running, repeat the identical call. Finish with the "
             "active version, its row count and its fit."
         ),
@@ -406,6 +421,7 @@ def get_prompt(name: str, arguments: Mapping[str, str] | None = None) -> types.G
         for argument in prompt.arguments
         if argument.required and not values[argument.name]
     ]
+    values = {name: value or prompt.defaults.get(name, "") for name, value in values.items()}
     if missing:
         raise McpError(
             types.ErrorData(

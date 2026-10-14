@@ -11,10 +11,14 @@ import type { Cell } from "@/openapi";
 import { DatasetFromJSON, ExecutionFromJSON } from "@/openapi";
 
 const state = vi.hoisted(() => ({
+  cancelImport: vi.fn(),
+  cancelRun: vi.fn(),
+  create: vi.fn(),
   dataset: {} as ReturnType<typeof DatasetFromJSON>,
   executions: [] as ReturnType<typeof ExecutionFromJSON>[],
   guest: false,
   patch: vi.fn(),
+  prompt: vi.fn(),
   resume: vi.fn(),
   upgrade: vi.fn(),
 }));
@@ -23,8 +27,12 @@ vi.mock("@/client", () => ({
   default: {
     capabilities: { capabilitiesList: vi.fn(() => Promise.resolve({ results: [] })) },
     datasets: {
+      datasetsCancelImportCreate: state.cancelImport,
+      datasetsCreate: state.create,
+      datasetsExecutionsCancelCreate: state.cancelRun,
       datasetsExecutionsList: vi.fn(() => Promise.resolve(state.executions)),
       datasetsPartialUpdate: state.patch,
+      datasetsPreparePromptRetrieve: state.prompt,
       datasetsResumeImportCreate: state.resume,
       datasetsRetrieve: vi.fn(() => Promise.resolve(state.dataset)),
     },
@@ -135,6 +143,10 @@ beforeEach(() => {
     state: "error",
   });
   state.resume.mockImplementation(() => new Promise(() => {}));
+  state.cancelImport.mockImplementation(() => new Promise(() => {}));
+  state.cancelRun.mockImplementation(() => new Promise(() => {}));
+  state.create.mockImplementation(() => new Promise(() => {}));
+  state.prompt.mockResolvedValue({ prompt: "Prepare dataset dataset in project project" });
   state.patch.mockImplementation(() => new Promise(() => {}));
   queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false, staleTime: Infinity } },
@@ -315,6 +327,109 @@ it("renames the dataset and changes nothing else", async () => {
     expect(state.patch).toHaveBeenCalledWith({
       id: "dataset",
       patchedDatasetRequest: { name: "support v2" },
+    })
+  );
+});
+
+it("cancels the import while the source lands", async () => {
+  state.dataset = dataset({ state: "landing" });
+  showNotebook();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
+  await waitFor(() => expect(state.cancelImport).toHaveBeenCalledWith({ id: "dataset" }));
+});
+
+it("stops a running script from Activity", async () => {
+  state.dataset = dataset({ active: "c0", active_version: "v0", cells: [SOURCE], running: 1 });
+  state.executions = [
+    ExecutionFromJSON({
+      attachment: "labels.csv",
+      cell: null,
+      created_by: null,
+      error: "",
+      finished_at: null,
+      id: "run-live",
+      mode: "cell",
+      parent: "v0",
+      queued_at: "2026-10-12T10:00:00Z",
+      run_seconds: null,
+      script_head: "df = df.merge(attachment, on='source_row')",
+      started_at: "2026-10-12T10:00:00Z",
+      state: "running",
+      title: "Labels",
+      transient: false,
+    }),
+  ];
+  showNotebook();
+  fireEvent.click(screen.getByRole("button", { name: "Running 1 script" }));
+  const activity = await screen.findByRole("list", { name: "Activity" });
+  expect(within(activity).getByText("with labels.csv")).toBeTruthy();
+  fireEvent.click(within(activity).getByRole("button", { name: "Stop Labels" }));
+  await waitFor(() =>
+    expect(state.cancelRun).toHaveBeenCalledWith({ executionId: "run-live", id: "dataset" })
+  );
+});
+
+it("shows a version's label balance, empty fields and the file its script read", () => {
+  const labelled = cell({
+    analytics: {
+      inputs: { constant: ["model"], empty: [{ field: "input.order", rows: 3 }] },
+      labels: [
+        {
+          classes: [
+            { label: "refund", rows: 4 },
+            { label: "other", rows: 2 },
+          ],
+          field: "expected_output",
+          labels: 2,
+          majority: { label: "refund", share: 0.6667 },
+          rows: 6,
+        },
+      ],
+    },
+    attachment: { bytes: 60, filename: "labels.csv", rows: 6, sha256: "ab12" },
+    id: "c2",
+    parent: "c0",
+    position: 2,
+    rows: 6,
+    script: "df = df.merge(attachment, on='source_row')",
+    title: "Labels",
+    version: "v2",
+  });
+  state.dataset = dataset({ active: "c2", active_version: "v2", cells: [SOURCE, labelled] });
+  showNotebook();
+  const card = screen.getByRole("article", { name: "v2 Labels" });
+  const chips = within(card).getByLabelText("Analytics");
+  expect(within(chips).getByText("Majority refund 67%")).toBeTruthy();
+  expect(within(chips).getByText("1 field with empty values")).toBeTruthy();
+  expect(within(chips).getByText("1 constant field")).toBeTruthy();
+  expect(within(card).getByRole("button", { name: "labels.csv" })).toBeTruthy();
+});
+
+it("copies the prepare-dataset prompt for a version", async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  state.dataset = dataset({ active: "c1", active_version: "v1", cells: [SOURCE, NORMALIZED] });
+  showNotebook();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare v1 with agent" }));
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith("Prepare dataset dataset in project project")
+  );
+  expect(state.prompt).toHaveBeenCalledWith({ cell: "c1", id: "dataset" });
+});
+
+it("lands a version as a new dataset", async () => {
+  state.dataset = dataset({ active: "c1", active_version: "v1", cells: [SOURCE, NORMALIZED] });
+  showNotebook();
+  fireEvent.click(screen.getByRole("button", { name: "New dataset from v1" }));
+  const dialog = await screen.findByRole("dialog", { name: "New dataset from v1" });
+  expect(within(dialog).getByText("96 rows", { selector: "p" })).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Create dataset" }));
+  await waitFor(() =>
+    expect(state.create).toHaveBeenCalledWith({
+      datasetCreateRequest: expect.objectContaining({
+        name: "support v1",
+        source: { version: { dataset: "dataset", version: "c1" } },
+      }),
     })
   );
 });

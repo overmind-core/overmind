@@ -18,14 +18,17 @@ names are not unique, so continue with returned UUIDs. Read
 ## Land and inspect
 
 Use `create_dataset_from_traces` for a trace selection (explicit IDs, or the
-supported filters/search) and `create_dataset_from_llm_calls` for LLM calls.
+supported filters/search), `create_dataset_from_llm_calls` for LLM calls and
+`create_dataset_from_version` to land a version of another dataset, whole or
+split into train and eval.
 For local tables, documents or images, use the `upload-dataset-file` prompt or
 read `overmind://dataset-upload` and run its CLI command. MCP does not carry
 file bytes, and credentials never go in chat.
 
 Poll `get_job(kind=dataset_import, id=...)` until the source lands, then call
 `inspect_dataset`. A blocked import can be retried with
-`resume_dataset_import`. Use `query_dataset` (SQL over table `t`) for bounded
+`resume_dataset_import`; `cancel_dataset_job` stops an import or, with
+`execution`, a script run. Use `query_dataset` (SQL over table `t`) for bounded
 read-only checks; one sample does not establish the meaning of every row.
 
 ## Shape with scripts
@@ -51,6 +54,10 @@ Follow the `prepare-dataset` prompt's rules:
 1. Preparation is done when the version exists in Overmind and is active.
 1. Document rows are text elements: group them into pages or chunks with a
    script. OCR text may be wrong.
+1. Rows made outside Overmind, such as labels, are a table the user uploads
+   with `overmind dataset attach FILE --json`. Pass its `upload_id` as
+   `attachment`; the script reads it as the frame `attachment`, e.g.
+   `df.merge(attachment, on="source_row")`.
 
 A run that returns `queued` or `running` is still working: repeat the
 identical call. A failed run creates no version; read its error and printed
@@ -88,7 +95,9 @@ reports the decision fit.
 
 ## Hand off the version
 
-Verify the chosen version with `query_dataset`. Report the dataset UUID, the
+Verify the chosen version with `query_dataset`. Each version's `analytics`
+gives label balance with the majority baseline and the empty or constant input
+fields; report them with the fit. Report the dataset UUID, the
 version label, intent, row count, fit and what each version changed. Fit
 findings are advisory; only unreadable or technically incompatible data blocks
 a consumer. Never activate a version the user did not agree to.

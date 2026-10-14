@@ -86,9 +86,10 @@ Each works directly with the configured MCP connection and can be used on its ow
   Account connections require `project_id` for every project operation and
   resource URI query. Follow returned resource links; selection is per request.
   Project keys remain limited to their configured project.
-- There are no public product tools for deletion, cancellation, or removal.
-  Deployment recovery is limited to `retry_deployment` for failed or deleted
-  deployments; do not invent other lifecycle tools.
+- There are no public product tools for deletion or removal. The lifecycle
+  tools are `retry_deployment` for failed or deleted deployments and
+  `cancel_dataset_job` for a dataset import or script run; do not invent
+  others.
 - Treat dataset landing, evaluator writes, job starts, deployment changes, and
   active-model changes as mutations. Confirm user intent where the workflow
   requires approval; the server does not add a confirmation dialog.

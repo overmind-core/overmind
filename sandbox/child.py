@@ -113,8 +113,20 @@ def _write(df, out_path: str, pd, np, tables) -> None:
             step = max(1, min(10_000, tables.BATCH_BYTES * step // max(piece.nbytes, 1)))
 
 
+def _read(path: str, pd, np, pq, tables):
+    kinds = {c["name"]: c["type"] for c in tables.read_manifest(path)}
+    frame = pq.read_table(path, pre_buffer=False, use_threads=False).to_pandas(
+        self_destruct=True, split_blocks=True
+    )
+    frame.index = pd.Index(np.arange(len(frame)))
+    for col, kind in kinds.items():
+        if kind == "json" and col in frame.columns:
+            frame[col] = frame[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
+    return frame
+
+
 def main(argv: list[str]) -> None:
-    limits, script_path, in_path, out_path, mode = argv
+    limits, script_path, in_path, out_path, mode, attachment_path = argv
     _limit(*json.loads(limits))
 
     import numpy as np
@@ -129,14 +141,8 @@ def main(argv: list[str]) -> None:
 
     pa.set_cpu_count(2)
     pa.set_io_thread_count(2)
-    kinds = {c["name"]: c["type"] for c in tables.read_manifest(in_path)}
-    src = pq.read_table(in_path, pre_buffer=False, use_threads=False).to_pandas(
-        self_destruct=True, split_blocks=True
-    )
-    src.index = pd.Index(np.arange(len(src)))
-    for col, kind in kinds.items():
-        if kind == "json" and col in src.columns:
-            src[col] = src[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
+    src = _read(in_path, pd, np, pq, tables)
+    attachment = _read(attachment_path, pd, np, pq, tables) if attachment_path else None
     namespace = {
         "pd": pd,
         "pandas": pd,
@@ -144,6 +150,7 @@ def main(argv: list[str]) -> None:
         "numpy": np,
         "source": src,
         "df": src.copy(),
+        "attachment": attachment,
         "prepare_examples": examples.prepare_examples,
     }
     with open(script_path, encoding="utf-8") as fh:
@@ -160,7 +167,7 @@ def main(argv: list[str]) -> None:
     if mode == "inspect":
         return
     df = _frame(namespace.pop("df", None), src, pd, tables)
-    del src
+    del src, attachment
     namespace.clear()
     _write(df, out_path, pd, np, tables)
 

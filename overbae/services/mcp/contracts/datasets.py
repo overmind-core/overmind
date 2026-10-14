@@ -36,7 +36,8 @@ _SUMMARY_CHARS = 240
 _PATH_RE = re.compile(r"(?:/[\w.-]+)+")
 
 DatasetState = Literal["landing", "idle", "error"]
-RunStatus = Literal["queued", "running", "ok", "failed"]
+RunStatus = Literal["queued", "running", "ok", "failed", "cancelled"]
+SourceKind = Literal["file", "traces", "llm_calls", "version"]
 
 
 def _clip(value: str, limit: int = _SCRIPT_CHARS) -> str:
@@ -111,7 +112,7 @@ class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
     intent: Literal["train", "eval", "pending"]
-    source_kind: Literal["file", "traces", "llm_calls"]
+    source_kind: SourceKind
     state: DatasetState
     capability: CapabilityRef | None = None
     active: ActiveVersion | None = None
@@ -132,6 +133,8 @@ class VersionSummary(MCPModel):
     intent_report: dict[str, Any] = Field(default_factory=dict)
     capability_report: dict[str, Any] = Field(default_factory=dict)
     impact: dict[str, Any] = Field(default_factory=dict)
+    analytics: dict[str, Any] = Field(default_factory=dict)
+    attachment: dict[str, Any] = Field(default_factory=dict)
     used: bool
     created_at: datetime
 
@@ -167,9 +170,19 @@ class SourceFile(MCPModel):
     extraction: dict[str, Any] = Field(default_factory=dict)
 
 
+class SourceVersion(MCPModel):
+    dataset: str
+    name: str = Field(default="", max_length=255)
+    version: str = Field(min_length=1, max_length=32)
+    cell_id: str
+    fingerprint: str = Field(default="", max_length=64)
+    resource: ResourceLinkContract
+
+
 class DatasetSource(MCPModel):
     files: list[SourceFile] = Field(default_factory=list, max_length=_LIST_CAP)
     limitations: list[str] = Field(default_factory=list, max_length=50)
+    version: SourceVersion | None = None
 
 
 class DatasetDetail(DatasetListItem):
@@ -368,10 +381,43 @@ class CreateDatasetFromLlmCallsInput(MCPModel):
         return self
 
 
+def _attachment_field():
+    return Field(
+        default=None,
+        min_length=36,
+        max_length=36,
+        description="upload_id from `overmind dataset attach FILE --json`; the script reads "
+        "it as the frame attachment.",
+    )
+
+
+class CreateDatasetFromVersionInput(MCPModel):
+    dataset: str = _dataset_field()
+    version: str | None = _version_field()
+    name: str = Field(min_length=1, max_length=249)
+    intent: Literal["train", "eval"] | None = Field(
+        default=None, description="Omit to keep the source dataset's intent."
+    )
+    capability: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Capability uuid. Omit to keep the source dataset's; null means none.",
+    )
+    split: SplitInput | None = None
+
+    @model_validator(mode="after")
+    def split_fixes_intent(self):
+        if self.split is not None and self.intent is not None:
+            raise ValueError("split fixes the intents; omit intent")
+        return self
+
+
 class TryDatasetScriptInput(MCPModel):
     dataset: str = _dataset_field()
     parent: str | None = _version_field()
     script: str = Field(min_length=1, max_length=_SCRIPT_INPUT_CHARS)
+    attachment: str | None = _attachment_field()
 
 
 class ProbeDatasetVersionInput(MCPModel):
@@ -385,6 +431,7 @@ class AddDatasetVersionInput(MCPModel):
     parent: str | None = _version_field()
     title: str = Field(min_length=1, max_length=120)
     script: str = Field(min_length=1, max_length=_SCRIPT_INPUT_CHARS)
+    attachment: str | None = _attachment_field()
 
 
 class AddSyntheticExamplesInput(MCPModel):
@@ -415,6 +462,21 @@ class UpdateDatasetInput(MCPModel):
 
 class ResumeDatasetImportInput(MCPModel):
     dataset: str = _dataset_field()
+
+
+class CancelDatasetJobInput(MCPModel):
+    dataset: str = _dataset_field()
+    execution: str | None = Field(
+        default=None, min_length=36, max_length=36, description="Run id; omit for the import."
+    )
+
+
+class CancelDatasetJobOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
+    kind: Literal["dataset_import", "execution"]
+    id: str
+    status: str = Field(min_length=1, max_length=16)
+    resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=2)
 
 
 class ScriptRunOutput(MCPModel):
@@ -555,6 +617,8 @@ def version_summary(dataset, cell: Cell) -> VersionSummary:
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
         impact=_jsonable(cell.impact or {}),
+        analytics=_jsonable(cell.analytics or {}),
+        attachment=_jsonable(cell.attachment or {}),
         used=cell.used_at is not None,
         created_at=cell.created_at,
     )
@@ -726,6 +790,21 @@ def _detail_summary(dataset, total: int, active: Cell | None, running: int) -> s
     return text + "."
 
 
+def _source_version(dataset) -> SourceVersion | None:
+    spec = dataset.source_spec or {}
+    if dataset.source_kind != Dataset.SourceKind.VERSION or not spec.get("cell_id"):
+        return None
+    ds_id = quote(str(spec["dataset_id"]), safe="")
+    return SourceVersion(
+        dataset=str(spec["dataset_id"]),
+        name=str(spec.get("dataset_name") or "")[:255],
+        version=str(spec.get("version") or "v0")[:32],
+        cell_id=str(spec["cell_id"]),
+        fingerprint=str(spec.get("fingerprint") or "")[:64],
+        resource=_link(f"overmind://datasets/{ds_id}", spec.get("dataset_name") or "Dataset"),
+    )
+
+
 def _source(dataset) -> DatasetSource:
     spec = dataset.source_spec or {}
     described = spec.get("files") or (
@@ -742,6 +821,7 @@ def _source(dataset) -> DatasetSource:
             for item in described[:_LIST_CAP]
         ],
         limitations=list((spec.get("extraction") or {}).get("limitations", []))[:50],
+        version=_source_version(dataset),
     )
 
 
@@ -795,6 +875,8 @@ def _run_summary(run: workshop.Run, done: str) -> str:
         return "Queued. Repeat the identical call to get the result."
     if run.status == Execution.State.RUNNING:
         return "Running. Repeat the identical call to get the result."
+    if run.status == Execution.State.CANCELLED:
+        return "Cancelled. The identical call runs it again."
     if run.status == Execution.State.FAILED:
         execution = run.execution
         if execution is not None and execution.transient:

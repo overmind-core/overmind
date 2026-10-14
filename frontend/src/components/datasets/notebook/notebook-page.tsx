@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import {
   type CapabilityChoice,
@@ -26,7 +27,10 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
+  preparePrompt,
   rankOf,
+  useCancelExecutionMutation,
+  useCancelImportMutation,
   useDatasetEvents,
   useDatasetQuery,
   usePatchDatasetMutation,
@@ -35,6 +39,7 @@ import {
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import { writeClipboardText } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
@@ -58,6 +63,9 @@ export function DatasetNotebook({
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const patch = usePatchDatasetMutation(datasetId);
   const resume = useResumeImportMutation(datasetId);
+  const cancelImport = useCancelImportMutation(datasetId);
+  const cancelRun = useCancelExecutionMutation(datasetId);
+  const [copyFrom, setCopyFrom] = useState<Cell | null>(null);
   const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
   const [focus, setFocus] = useState<FlowFocus | null>(
@@ -80,7 +88,12 @@ export function DatasetNotebook({
       setLanding({ stage: event.stage, traces: event.traces });
       return;
     }
-    if (event.type === "land_done" || event.type === "land_failed") setLanding({});
+    if (
+      event.type === "land_done" ||
+      event.type === "land_failed" ||
+      event.type === "land_cancelled"
+    )
+      setLanding({});
     refresh();
   });
 
@@ -147,6 +160,11 @@ export function DatasetNotebook({
                 `${datasetDisplayName(dataset)}-${cell.version}`
               ).catch((e) => notify.error(e, "Export failed")),
             onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
+            onNewDataset: guard(() => setCopyFrom(cell)),
+            onPrepare: () =>
+              void writeClipboardText(preparePrompt(datasetId, cell.id))
+                .then(() => notify.success("Prompt copied"))
+                .catch((e) => notify.error(e, "Couldn't copy the prompt")),
             onUse: guard(handOff),
           }}
           active={cell.id === dataset.active}
@@ -227,8 +245,21 @@ export function DatasetNotebook({
             </span>
           )}
         </div>
+        {dataset.state === "landing" && (
+          <Button
+            aria-busy={cancelImport.isPending}
+            disabled={cancelImport.isPending}
+            onClick={guard(() => cancelImport.mutate())}
+            size="xs"
+            variant="secondary"
+          >
+            <Icon.stop />
+            Cancel import
+          </Button>
+        )}
         <WorkshopStatus
           dataset={dataset}
+          onCancelRun={guard((id: string) => cancelRun.mutate(id))}
           onShowVersion={(label) => {
             const target = cells.find((cell) => cell.version === label);
             if (target) show(target.id);
@@ -303,6 +334,23 @@ export function DatasetNotebook({
           />
         )}
       </div>
+      <NewDatasetDialog
+        initialCapabilityId={dataset.capability ?? undefined}
+        initialVersion={
+          copyFrom
+            ? {
+                cellId: copyFrom.id,
+                datasetId,
+                datasetName: datasetDisplayName(dataset),
+                rows: copyFrom.rows,
+                version: copyFrom.version,
+              }
+            : undefined
+        }
+        onOpenChange={(open) => !open && setCopyFrom(null)}
+        open={!!copyFrom}
+        projectId={projectId}
+      />
     </div>
   );
 }

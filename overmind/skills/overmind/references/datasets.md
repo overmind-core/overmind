@@ -16,7 +16,7 @@ on its versions in Overmind's sandbox. Dataset names are not unique: call
 
 ```
 list_datasets
-→ create_dataset_from_traces | create_dataset_from_llm_calls | CLI upload
+→ create_dataset_from_traces | create_dataset_from_llm_calls | create_dataset_from_version | CLI upload
 → get_job(kind=dataset_import, id=DATASET)
 → inspect_dataset
 → query_dataset / probe_dataset_version to understand the rows
@@ -44,6 +44,11 @@ capability from the rows when none is bound.
   capability since a timestamp: the call's request and its recorded
   completion. The application is not run. `split` hashes `span_id` into train
   and eval.
+- `create_dataset_from_version` lands a version (active by default) of another
+  project dataset as a new dataset's source. It keeps the source dataset's
+  intent and capability unless you give them, and `source.version` on
+  `inspect_dataset` names the dataset and version it came from. `split` cuts it
+  into train and eval like any other source.
 - For a local file, run `overmind dataset upload FILE --json` (add
   `--intent train|eval`, `--split PERCENT`, `--project-id` as needed). Tables:
   CSV, TSV, JSON, JSONL, NDJSON, Parquet, up to 2 GiB, gzip allowed. For a JSON
@@ -55,6 +60,8 @@ capability from the rows when none is bound.
   none. Poll `get_job(kind=dataset_import)`. A blocked import keeps its source;
   `resume_dataset_import` retries it when `next_actions` offers it. A source
   that cannot land (an unreadable file, say) offers no retry.
+- `cancel_dataset_job(dataset)` stops a queued, running or blocked import. The
+  dataset keeps no source and its state becomes `error`; it cannot be resumed.
 
 ### Documents
 
@@ -73,7 +80,8 @@ The uploaded file is deleted after landing.
 
 ### Splits
 
-One dataset has one intent. `split` on `create_dataset_from_traces`, or
+One dataset has one intent. `split` on `create_dataset_from_traces` or
+`create_dataset_from_version`, or
 `--split PERCENT` on the CLI, lands `<name> train` and `<name> eval` with
 disjoint rows. REST and MCP splits accept `group_by`, `stratify_by` and
 `deduplicate` (default true): exact duplicates are removed and matching
@@ -95,6 +103,15 @@ refused import names the module. `open()`, `exec()` and `eval()` are refused.
 There is no network, and a run cannot see other runs or the platform's data.
 A run stops after 300 s, 120 s of CPU, or when it outgrows the memory reserved
 for its parent; files it writes count toward that memory.
+
+A script can also read one table made outside Overmind, such as labels.
+Upload it with `overmind dataset attach FILE --json` (CSV, TSV, JSON, JSONL or
+Parquet, within the upload limits), then pass its `upload_id` as `attachment`
+to `try_dataset_script` or `add_dataset_version`. The script reads it as the
+frame `attachment` and merges it, for example
+`df = df.merge(attachment, on="source_row")`. The version records the file's
+name, rows and sha256 and keeps a copy with the dataset; the same parent,
+script and file return the same version.
 
 Keep `source_row`: it is row identity across versions, and diffs, impact and
 consumers rely on it. Rows a script adds get no `source_row`; rows from `add_synthetic_examples` get new
@@ -120,7 +137,9 @@ held, input evidence removed and instructions changed. Read the impact and
 tell the user what changed.
 
 Runs are idempotent. A call that returns `queued` or `running` is still
-working: repeat the identical call. The same parent and script return the same
+working: repeat the identical call. `cancel_dataset_job(dataset, execution)`
+stops a queued or running run; nothing it produced is kept, and the identical
+call runs it again. The same parent and script return the same
 version. A failed run creates no version; it returns the error and the printed
 output, and the identical call returns that failure for an hour. A failure the
 platform caused (`transient: true`) runs again on the next identical call.
@@ -139,6 +158,11 @@ across training and held-out evaluation.
 active; with `expected_active` it fails with `active_conflict` when someone
 else changed the active version first. Activate only what the user agreed to.
 `update_dataset` sets the name, intent or capability.
+
+Each version's `analytics` reports label balance and the majority baseline
+wherever `expected_output` is categorical (the value itself, or each key of an
+object, such as a decision row's questions), and the input fields that are
+empty on some rows or hold one value on every row.
 
 Evaluation, training and the optimiser read the active version or a chosen
 one and mark it **Used**: a used version cannot be deleted, and the run links

@@ -29,6 +29,8 @@ class CellSerializer(serializers.ModelSerializer):
             "capability_report",
             "fits",
             "stats",
+            "analytics",
+            "attachment",
             "impact",
             "stdout",
             "seconds",
@@ -152,6 +154,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     parent = serializers.SerializerMethodField()
     cell = serializers.SerializerMethodField()
     created_by = serializers.SerializerMethodField()
+    attachment = serializers.SerializerMethodField()
 
     class Meta:
         model = Execution
@@ -165,6 +168,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
             "script_head",
             "parent",
             "cell",
+            "attachment",
             "queued_at",
             "started_at",
             "finished_at",
@@ -187,6 +191,9 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_cell(self, obj) -> str | None:
         return obj.cell.label if obj.cell_id else None
 
+    def get_attachment(self, obj) -> str | None:
+        return (obj.attachment or {}).get("filename")
+
     def get_created_by(self, obj) -> str | None:
         user = obj.created_by
         if user is None:
@@ -194,10 +201,18 @@ class ExecutionSerializer(serializers.ModelSerializer):
         return user.get_full_name() or user.email
 
 
+class VersionSourceSerializer(serializers.Serializer):
+    dataset = serializers.UUIDField()
+    version = serializers.CharField(
+        max_length=80, required=False, allow_blank=True, help_text="v3 or its id; blank = active"
+    )
+
+
 class SourceSerializer(serializers.Serializer):
-    """Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows``, ``traces`` or ``llm_calls``.
-    ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``.
-    ``llm_calls`` is ``{capability_id, since, until?, model?, limit?}``."""
+    """Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows``, ``traces``,
+    ``llm_calls`` or ``version``. ``traces`` is a traces-list selection or
+    ``{"trace_ids": [...]}``. ``llm_calls`` is ``{capability_id, since, until?, model?,
+    limit?}``. ``version`` is a version of another dataset in the project."""
 
     upload_id = serializers.UUIDField(required=False, allow_null=True)
     uploads = serializers.ListField(
@@ -208,6 +223,7 @@ class SourceSerializer(serializers.Serializer):
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
     traces = serializers.JSONField(required=False)
     llm_calls = serializers.JSONField(required=False)
+    version = VersionSourceSerializer(required=False)
     json_rows_field = serializers.CharField(
         max_length=200,
         required=False,
@@ -217,12 +233,13 @@ class SourceSerializer(serializers.Serializer):
     def validate(self, attrs):
         keys = [
             k
-            for k in ("uploads", "upload_id", "text", "rows", "traces", "llm_calls")
+            for k in ("uploads", "upload_id", "text", "rows", "traces", "llm_calls", "version")
             if attrs.get(k)
         ]
         if len(keys) != 1:
             raise serializers.ValidationError(
-                "Give exactly one source: uploads, upload_id, text, rows, traces or llm_calls."
+                "Give exactly one source: uploads, upload_id, text, rows, traces, llm_calls "
+                "or version."
             )
         if attrs.get("upload_id"):
             attrs["upload_id"] = str(attrs["upload_id"])
@@ -275,6 +292,10 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
 class DatasetPairSerializer(serializers.Serializer):
     train = DatasetSerializer()
     eval = DatasetSerializer()
+
+
+class PreparePromptSerializer(serializers.Serializer):
+    prompt = serializers.CharField()
 
 
 class RowsPageSerializer(serializers.Serializer):

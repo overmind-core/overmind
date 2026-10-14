@@ -227,6 +227,13 @@ def _dataset_upload_resource(uri: str) -> dict:
         ),
         "chunk_bytes": files.CHUNK_BYTES,
         "command": "overmind dataset upload FILE --json",
+        "attachment": (
+            "A table for a script, such as labels made outside Overmind: `overmind dataset "
+            "attach FILE --json` uploads it without creating a dataset and prints upload_id "
+            "and sha256. Pass upload_id as attachment to try_dataset_script or "
+            "add_dataset_version; the script reads it as the frame attachment. The version "
+            "records the file's sha256 and keeps a copy with the dataset."
+        ),
         "json_rows_field": (
             "For a JSON object that wraps the rows, --json-rows-field FIELD (API: "
             "json_rows_field on inspect and source.json_rows_field on create) selects the "

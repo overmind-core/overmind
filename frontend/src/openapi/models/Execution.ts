@@ -90,6 +90,12 @@ export interface Execution {
     readonly cell: string | null;
     /**
      *
+     * @type {string}
+     * @memberof Execution
+     */
+    readonly attachment: string | null;
+    /**
+     *
      * @type {Date}
      * @memberof Execution
      */
@@ -135,6 +141,7 @@ export function instanceOfExecution(value: object): value is Execution {
     if (!('scriptHead' in value) || value['scriptHead'] === undefined) return false;
     if (!('parent' in value) || value['parent'] === undefined) return false;
     if (!('cell' in value) || value['cell'] === undefined) return false;
+    if (!('attachment' in value) || value['attachment'] === undefined) return false;
     if (!('queuedAt' in value) || value['queuedAt'] === undefined) return false;
     if (!('startedAt' in value) || value['startedAt'] === undefined) return false;
     if (!('finishedAt' in value) || value['finishedAt'] === undefined) return false;
@@ -162,6 +169,7 @@ export function ExecutionFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'scriptHead': json['script_head'],
         'parent': json['parent'],
         'cell': json['cell'],
+        'attachment': json['attachment'],
         'queuedAt': (new Date(json['queued_at'])),
         'startedAt': (json['started_at'] == null ? null : new Date(json['started_at'])),
         'finishedAt': (json['finished_at'] == null ? null : new Date(json['finished_at'])),
@@ -174,7 +182,7 @@ export function ExecutionToJSON(json: any): Execution {
     return ExecutionToJSONTyped(json, false);
 }
 
-export function ExecutionToJSONTyped(value?: Omit<Execution, 'id'|'mode'|'title'|'state'|'transient'|'error'|'script_head'|'parent'|'cell'|'queued_at'|'started_at'|'finished_at'|'run_seconds'|'created_by'> | null, ignoreDiscriminator: boolean = false): any {
+export function ExecutionToJSONTyped(value?: Omit<Execution, 'id'|'mode'|'title'|'state'|'transient'|'error'|'script_head'|'parent'|'cell'|'attachment'|'queued_at'|'started_at'|'finished_at'|'run_seconds'|'created_by'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

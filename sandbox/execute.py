@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Iterator
@@ -135,15 +136,19 @@ def audit(script: str) -> list[str]:
 
 
 SCRIPT_MODES = ("cell", "inspect")
+ATTACHMENT = "attachment.parquet"
+
+
+def _frame_bytes(header: dict) -> int:
+    return int(header["input_bytes"]) + int((header.get("attachment") or {}).get("frame_bytes", 0))
 
 
 def need_for(header: dict) -> int:
     """``input_bytes`` is the frame's uncompressed size for a script and the file's size
-    for a document."""
-    declared = int(header["input_bytes"])
+    for a document; a script's attachment adds its own frame."""
     if header["mode"] == "extract":
-        return max(2 * GIB, 4 * declared)
-    return max(GIB, int(declared * _FRAME_FACTOR) + _CHILD_BASE_BYTES)
+        return max(2 * GIB, 4 * int(header["input_bytes"]))
+    return max(GIB, int(_frame_bytes(header) * _FRAME_FACTOR) + _CHILD_BASE_BYTES)
 
 
 def refusal(header: dict, need: int, budget: int) -> str:
@@ -169,8 +174,12 @@ def input_matches(header: dict, path: Path) -> bool:
     declared = int(header["input_bytes"])
     if header["mode"] == "extract":
         return path.stat().st_size == declared
+    attachment = header.get("attachment")
     try:
-        return tables.uncompressed_bytes(path) <= declared
+        return tables.uncompressed_bytes(path) <= declared and (
+            not attachment
+            or tables.uncompressed_bytes(path.with_name(ATTACHMENT)) <= attachment["frame_bytes"]
+        )
     except (OSError, ValueError):
         return False
 
@@ -458,7 +467,7 @@ class Child:
     env: dict[str, str] | None = None
 
 
-def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
+def spawn(child: Child, scratch: Path, slot: Slot, stop: threading.Event | None = None) -> Outcome:
     uid = slot.uid
     hand_over(scratch, uid)
     rlimits = [
@@ -505,6 +514,9 @@ def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
                     break
                 except subprocess.TimeoutExpired:
                     pass
+                if stop is not None and stop.is_set():
+                    stopped = f"The {child.noun} was cancelled."
+                    break
                 members = _members(proc.pid, uid)
                 if tick % _DISK_EVERY == 0:
                     try:
@@ -554,9 +566,11 @@ def spawn(child: Child, scratch: Path, slot: Slot) -> Outcome:
     return Outcome(ok=True, stdout=stdout, seconds=seconds)
 
 
-def run(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
+def run(
+    header: dict, scratch: Path, source: Path, slot: Slot, stop: threading.Event | None = None
+) -> Outcome:
     if header["mode"] == "extract":
-        return _extract(header, scratch, source, slot)
+        return _extract(header, scratch, source, slot, stop)
     produce_frame = header["mode"] == "cell"
     noun = "cell" if produce_frame else "script"
     (scratch / "script.py").write_text(header["script"], encoding="utf-8")
@@ -567,12 +581,13 @@ def run(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
             source.name,
             "output.parquet",
             "cell" if produce_frame else "inspect",
+            ATTACHMENT if header.get("attachment") else "",
         ],
         noun=noun,
         cpu_seconds=SCRIPT_CPU_SECONDS,
         wall_seconds=SCRIPT_WALL_SECONDS,
     )
-    outcome = spawn(child, scratch, slot)
+    outcome = spawn(child, scratch, slot, stop)
     if outcome.ok and produce_frame:
         outcome.output = claim(scratch / "output.parquet")
         if outcome.output is None:
@@ -580,7 +595,9 @@ def run(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
     return outcome
 
 
-def _extract(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
+def _extract(
+    header: dict, scratch: Path, source: Path, slot: Slot, stop: threading.Event | None
+) -> Outcome:
     child = Child(
         argv=[
             str(Path(__file__).with_name("documents") / "child.py"),
@@ -594,7 +611,7 @@ def _extract(header: dict, scratch: Path, source: Path, slot: Slot) -> Outcome:
         # Any process can read another's command line; only its own uid can read its environment.
         env={"SANDBOX_FILENAME": header["filename"]},
     )
-    outcome = spawn(child, scratch, slot)
+    outcome = spawn(child, scratch, slot, stop)
     if not outcome.ok:
         return outcome
     unreadable = Outcome(error="The extraction's output could not be read.", stdout=outcome.stdout)

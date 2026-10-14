@@ -7,10 +7,15 @@ from django.db.models import Q
 
 from overbae.models import Dataset, DatasetImport
 from overbae.services.datasets import files, imports, selection
-from overbae.services.datasets.land import SPLIT_POSITIONS
+from overbae.services.datasets.land import SPLIT_POSITIONS, LandError, version_source
 from overbae.services.datasets.lifecycle import DatasetError, refuse_deleted_capability
 
-_SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads", "llm_calls")
+_SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads", "llm_calls", "version")
+_SOURCE_KINDS = {
+    "llm_calls": Dataset.SourceKind.LLM_CALLS,
+    "traces": Dataset.SourceKind.TRACES,
+    "version": Dataset.SourceKind.VERSION,
+}
 
 
 def _user_id(user) -> str | None:
@@ -22,9 +27,19 @@ def _check_source(source: dict) -> None:
     keys = [k for k in _SOURCE_KEYS if source.get(k) not in (None, "", [])]
     if len(keys) != 1:
         raise DatasetError(
-            "Give exactly one source: traces, rows, upload_id, uploads or llm_calls.",
+            "Give exactly one source: traces, rows, upload_id, uploads, llm_calls or version.",
             code="source",
         )
+
+
+def _copied(project, source: dict):
+    """The version a ``version`` source reads, or None for any other source."""
+    if source.get("version") is None:
+        return None
+    try:
+        return version_source(project.id, source["version"])
+    except LandError as exc:
+        raise DatasetError(str(exc), code="source") from exc
 
 
 def _new(project, user, name: str, source: dict, intent: str | None, capability) -> Dataset:
@@ -34,12 +49,9 @@ def _new(project, user, name: str, source: dict, intent: str | None, capability)
         capability=capability,
         name=(name or "").strip(),
         intent=intent or Dataset.Intent.PENDING,
-        source_kind=(
-            Dataset.SourceKind.LLM_CALLS
-            if source.get("llm_calls") is not None
-            else Dataset.SourceKind.TRACES
-            if source.get("traces") is not None
-            else Dataset.SourceKind.FILE
+        source_kind=next(
+            (kind for key, kind in _SOURCE_KINDS.items() if source.get(key) is not None),
+            Dataset.SourceKind.FILE,
         ),
         state=Dataset.State.LANDING,
         created_by=user if getattr(user, "pk", None) else None,
@@ -59,8 +71,16 @@ def create_dataset(
     capability=None,
     infer_capability: bool = True,
 ) -> Dataset:
-    """Land one trace selection, LLM-call selection, row collection, upload or ordered upload collection."""
+    """Land one trace selection, LLM-call selection, row collection, upload, ordered upload
+    collection or version of another dataset. A version keeps its dataset's intent and
+    capability unless they are given."""
     _check_source(source)
+    copied = _copied(project, source)
+    if copied is not None:
+        if intent in (None, Dataset.Intent.PENDING):
+            intent = copied.dataset.intent
+        if capability is None and infer_capability:
+            capability = copied.dataset.capability
     if source.get("llm_calls") is not None and intent not in (
         Dataset.Intent.TRAIN,
         Dataset.Intent.EVAL,
@@ -96,6 +116,9 @@ def create_split(
 ) -> tuple[Dataset, Dataset]:
     """One source, read once, landed as a train dataset and an eval dataset."""
     _check_source(source)
+    copied = _copied(project, source)
+    if copied is not None and capability is None and infer_capability:
+        capability = copied.dataset.capability
     if not 1 <= int(eval_percent) <= 99:
         raise DatasetError("eval_percent must be between 1 and 99.", code="split")
     from overbae.services.datasets.llm_calls import HASH_POSITION, Selection, SelectionError
@@ -111,7 +134,9 @@ def create_split(
             raise DatasetError("Two LLM calls are needed to split.", code="split")
     elif position not in SPLIT_POSITIONS:
         raise DatasetError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.", code="split")
-    if source.get("rows") is not None:
+    if copied is not None:
+        known = copied.rows
+    elif source.get("rows") is not None:
         known = len(source["rows"])
     elif source.get("traces") is not None:
         known = selection.TraceSource.parse(source["traces"]).count(project.id)
@@ -164,5 +189,20 @@ def resume_import(dataset) -> Dataset:
     if pending is None:
         raise DatasetError("The source import is not blocked.", code="import_not_blocked")
     imports.resume(pending.pk)
+    dataset.refresh_from_db()
+    return dataset
+
+
+def cancel_import(dataset) -> Dataset:
+    pending = (
+        DatasetImport.objects.filter(
+            Q(dataset=dataset) | Q(evaluation=dataset), state__in=imports.OPEN_STATES
+        )
+        .order_by("queued_at")
+        .first()
+    )
+    if pending is None:
+        raise DatasetError("No import is running.", code="import_not_running")
+    imports.cancel(pending.pk)
     dataset.refresh_from_db()
     return dataset

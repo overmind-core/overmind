@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import json
 import uuid
 from unittest.mock import Mock
@@ -44,7 +45,12 @@ def client_project(db):
 def test_inspection_counts_the_same_rows_that_land(name, content, rows):
     upload_id = _upload(name, content)
     inspection = files.inspect_upload(upload_id, size=len(content))
-    assert inspection == {"filename": name, "bytes": len(content), "rows": rows}
+    assert inspection == {
+        "filename": name,
+        "bytes": len(content),
+        "rows": rows,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
     assert len(list(files.FileRows(files.upload_data_path(upload_id), filename=name))) == rows
 
 
@@ -110,7 +116,12 @@ def test_inspection_endpoint_counts_rows_and_reports_validation_errors(client_pr
     url = f"/api/uploads/{upload_id}/inspect/"
     result = client.post(url, {"size": len(content)}, format="json")
     assert result.status_code == 200, result.data
-    assert result.data == {"filename": "data.csv", "bytes": len(content), "rows": 2}
+    assert result.data == {
+        "filename": "data.csv",
+        "bytes": len(content),
+        "rows": 2,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
     assert client.post(url, {"size": -1}, format="json").status_code == 400
     assert client.post(url, {"size": 999}, format="json").status_code == 400
     assert client.post("/api/uploads/not-a-uuid/inspect/", {"size": 0}).status_code == 404

@@ -309,6 +309,7 @@ models/PlanUsage.ts
 models/PlanUsageUnit.ts
 models/PositionEnum.ts
 models/PostResultsRequest.ts
+models/PreparePrompt.ts
 models/Project.ts
 models/ProjectInvite.ts
 models/ProjectInviteCreateRequest.ts
@@ -379,5 +380,6 @@ models/UserMe.ts
 models/UserOnboarding.ts
 models/Verdict.ts
 models/VerdictOutcomeEnum.ts
+models/VersionSourceRequest.ts
 models/index.ts
 runtime.ts

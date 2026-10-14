@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -264,3 +265,146 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
         {"dataset": created["dataset"]["id"], "sql": "select capability_id from t"},
     )["rows"]
     assert rows == [{"capability_id": answer["id"]}]
+
+
+def test_a_version_lands_as_its_own_dataset_or_split_into_train_and_eval(
+    workshop, cli, sample_agent, worker, rest_for, tmp_path
+):
+    source = upload(cli, sample_agent, tickets(tmp_path, n=6), "--intent", "eval")
+    drain(worker)
+    version = prepare(workshop, source, "eval")
+    project = workshop.project()["id"]
+
+    copy = rest_for(cli.project_key(sample_agent)).request(
+        "POST",
+        "/api/datasets/",
+        json={
+            "project": project,
+            "name": "tickets copy",
+            "source": {"version": {"dataset": source, "version": version}},
+        },
+    )
+    split = workshop.call(
+        "create_dataset_from_version",
+        {"dataset": source, "name": "tickets", "split": {"eval_percent": 50, "position": "head"}},
+    )
+    drain(worker)
+
+    copied = workshop.call("inspect_dataset", {"dataset": copy["id"]})
+    assert (copied["state"], copied["intent"], copied["source_kind"]) == ("idle", "eval", "version")
+    assert copied["source"]["version"]["dataset"] == source
+    assert copied["source"]["version"]["version"] == version
+    assert copied["active"]["rows"] == 6
+    train = workshop.call("inspect_dataset", {"dataset": split["dataset"]["id"]})
+    evaluation = workshop.call("inspect_dataset", {"dataset": split["eval_dataset"]["id"]})
+    assert (train["intent"], evaluation["intent"]) == ("train", "eval")
+    assert train["active"]["rows"] + evaluation["active"]["rows"] == 6
+    assert evaluation["contamination_report"]["eval_rows"] == evaluation["active"]["rows"]
+    assert train["source"]["version"]["version"] == version
+
+
+def _add_with(workshop, call, attachment) -> dict:
+    return workshop.call(
+        "add_dataset_version", {**call, "title": "Labels", "attachment": attachment}
+    )
+
+
+def test_labels_made_outside_overmind_merge_into_a_version_that_keeps_the_file(
+    workshop, cli, sample_agent, worker, beat, clock, tmp_path
+):
+    dataset = upload(cli, sample_agent, tickets(tmp_path, n=6), "--intent", "eval")
+    drain(worker)
+    labels = tmp_path / "labels.csv"
+    labels.write_text(
+        "source_row,label\n" + "".join(f"{i},{'refund' if i < 4 else 'other'}\n" for i in range(6))
+    )
+    attached = json.loads(
+        cli.run("dataset", "attach", str(labels), "--json", cwd=sample_agent.repo)
+    )
+    assert attached["sha256"] == hashlib.sha256(labels.read_bytes()).hexdigest()
+    assert attached["rows"] == 6
+    script = "df = df.merge(attachment, on='source_row')\ndf['expected_output'] = df['label']"
+    call = {"dataset": dataset, "parent": "v0", "script": script}
+
+    tried = workshop.call("try_dataset_script", {**call, "attachment": attached["upload_id"]})
+    assert (tried["status"], tried["rows"]) == ("ok", 6)
+    added = _add_with(workshop, call, attached["upload_id"])
+    assert added["status"] == "ok", added["error"]
+    version = added["version"]
+    assert version["attachment"]["sha256"] == attached["sha256"]
+    [balance] = version["analytics"]["labels"]
+    assert balance["field"] == "expected_output"
+    assert balance["majority"] == {"label": "refund", "share": 0.6667}
+    assert _add_with(workshop, call, attached["upload_id"])["version"]["id"] == version["id"]
+    assert workshop.call("add_dataset_version", {**call, "title": "No file"})["status"] == "failed"
+
+    clock.shift(25 * 3600)
+    beat("overbae.tasks.cleanup_tmp.cleanup_uploads")
+    with pytest.raises(AssertionError, match="attachment is missing"):
+        workshop.call("try_dataset_script", {**call, "attachment": attached["upload_id"]})
+    kept = httpx.get(
+        f"{cli.api_url}/api/datasets/{dataset}/attachment/",
+        params={"cell": version["version"]},
+        headers={"X-Api-Key": cli.project_key(sample_agent)},
+    )
+    assert kept.content == labels.read_bytes()
+
+
+def _running(rest, dataset) -> dict:
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        runs = rest.request("GET", f"/api/datasets/{dataset}/executions/")
+        running = [run for run in runs if run["state"] == "running"]
+        if running:
+            return running[0]
+        time.sleep(0.2)
+    raise AssertionError("No run started.")
+
+
+def test_a_cancelled_script_run_stops_frees_the_project_and_keeps_no_version(
+    workshop, cli, sample_agent, worker, settings, rest_for, tmp_path
+):
+    settings.WORKSHOP_PROJECT_CONCURRENCY = 1
+    dataset = upload(cli, sample_agent, tickets(tmp_path), "--intent", "eval")
+    drain(worker)
+    rest = rest_for(cli.project_key(sample_agent))
+    slow = "import time\ntime.sleep(120)\ndf = df.head(1)"
+
+    with ThreadPoolExecutor(1) as pool:
+        pending = pool.submit(_add, workshop, dataset, "v0", "Slow", slow)
+        run = _running(rest, dataset)
+        started = time.monotonic()
+        stopped = workshop.call("cancel_dataset_job", {"dataset": dataset, "execution": run["id"]})
+        assert (stopped["kind"], stopped["status"]) == ("execution", "cancelled")
+        assert pending.result()["status"] == "cancelled"
+
+    quick = _add(workshop, dataset, "v0", "Two rows", "df = df.head(2)")
+    assert quick["status"] == "ok"
+    assert time.monotonic() - started < 30
+    tree = _versions(workshop, dataset)
+    assert sorted(tree) == ["v0", "v1"]
+    assert tree["v1"]["title"] == "Two rows"
+
+
+def test_a_cancelled_landing_lands_nothing_and_cannot_be_resumed(
+    workshop, cli, sample_agent, worker, settings
+):
+    settings.SANDBOX_URL = "http://127.0.0.1:9"
+    dataset = upload(cli, sample_agent, DOCUMENTS / "native.pdf")
+    job = f"overmind://jobs/dataset_import/{dataset}"
+    deadline = time.monotonic() + 30
+    while workshop.read(job)["import"]["state"] != "running":
+        assert time.monotonic() < deadline, "The import did not start."
+        time.sleep(0.1)
+
+    stopped = workshop.call("cancel_dataset_job", {"dataset": dataset})
+    assert (stopped["kind"], stopped["status"]) == ("dataset_import", "cancelled")
+    drain(worker)
+
+    landed = workshop.read(job)
+    assert (landed["state"], landed["import"]["state"]) == ("error", "cancelled")
+    assert landed["error"] == "The import was cancelled."
+    detail = workshop.call("inspect_dataset", {"dataset": dataset})
+    assert (detail["versions"], detail["next_actions"]) == ([], [])
+    with pytest.raises(AssertionError, match="not blocked"):
+        workshop.call("resume_dataset_import", {"dataset": dataset})

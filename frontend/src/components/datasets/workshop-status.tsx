@@ -75,6 +75,7 @@ const MODE_LABEL: Record<Execution["mode"], string> = {
 };
 
 const STATE_TEXT: Record<Exclude<Execution["state"], "ok">, string> = {
+  cancelled: "Cancelled",
   failed: "Failed",
   queued: "Waiting",
   running: "Running",
@@ -83,10 +84,13 @@ const STATE_TEXT: Record<Exclude<Execution["state"], "ok">, string> = {
 function RunLine({
   run,
   onShowVersion,
+  onCancel,
 }: {
   run: Execution;
   onShowVersion: (label: string) => void;
+  onCancel?: () => void;
 }) {
+  const live = run.state === "queued" || run.state === "running";
   // A traceback ends with the exception; its first line only names the frame.
   const failure =
     run.state === "failed"
@@ -120,6 +124,19 @@ function RunLine({
         </span>
         <span>{formatSmart(run.queuedAt)}</span>
         {run.parent && <span className="font-mono">from {run.parent}</span>}
+        {run.attachment && <span className="truncate">with {run.attachment}</span>}
+        {live && onCancel && (
+          <Button
+            aria-label={`Stop ${run.title || run.scriptHead}`}
+            className="ml-auto"
+            onClick={onCancel}
+            size="xs"
+            variant="secondary"
+          >
+            <Icon.stop />
+            Stop
+          </Button>
+        )}
         {run.cell && (
           <Button
             aria-label={`Show ${run.cell}`}
@@ -140,9 +157,11 @@ function RunLine({
 export function WorkshopStatus({
   dataset,
   onShowVersion,
+  onCancelRun,
 }: {
   dataset: Dataset;
   onShowVersion: (label: string) => void;
+  onCancelRun?: (executionId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const runs = useDatasetExecutionsQuery(dataset.id, open);
@@ -172,6 +191,7 @@ export function WorkshopStatus({
             {runs.data.map((run) => (
               <RunLine
                 key={run.id}
+                onCancel={onCancelRun ? () => onCancelRun(run.id) : undefined}
                 onShowVersion={(label) => {
                   setOpen(false);
                   onShowVersion(label);

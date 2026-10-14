@@ -38,6 +38,7 @@ class UploadInspectionSerializer(serializers.Serializer):
     filename = serializers.CharField()
     bytes = serializers.IntegerField()
     rows = serializers.IntegerField(allow_null=True)
+    sha256 = serializers.CharField()
 
 
 class OctetStreamParser(BaseParser):

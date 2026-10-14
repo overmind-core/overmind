@@ -3,6 +3,7 @@ import { useState } from "react";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { SourceDetails } from "@/components/datasets/notebook/source";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Icon, type IconName } from "@/components/ui/icons";
-import { columnsOf, fitOf } from "@/hooks/use-datasets";
+import { columnsOf, downloadAttachment, fitOf } from "@/hooks/use-datasets";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
@@ -31,6 +33,8 @@ interface VersionActions {
   onExport: (fmt: "jsonl" | "csv") => void;
   onIntent: (intent: "train" | "eval") => void;
   onCapability: (id: string | null) => void;
+  onNewDataset: () => void;
+  onPrepare: () => void;
 }
 
 interface Suggestion {
@@ -583,6 +587,104 @@ function Changes({ impact }: { impact: Impact }) {
   );
 }
 
+interface LabelBalance {
+  field: string;
+  rows: number;
+  labels: number;
+  classes: Array<{ label: string; rows: number }>;
+  majority: { label: string; share: number };
+}
+
+interface Analytics {
+  labels?: LabelBalance[];
+  inputs?: { empty?: Array<{ field: string; rows: number }>; constant?: string[] };
+}
+
+const percent = (share: number) => `${Math.round(share * 100)}%`;
+
+function AnalyticsChip({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: "neutral" | "warning";
+  children: React.ReactNode;
+}) {
+  return (
+    <HoverCard closeDelay={80} openDelay={150}>
+      <HoverCardTrigger asChild>
+        <button className="cursor-default" type="button">
+          <Badge size="chip" variant={tone}>
+            {label}
+          </Badge>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-72 p-0">
+        <ul className="flex flex-col py-1 text-xs">{children}</ul>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+function Line({ name, value }: { name: string; value: string }) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-1">
+      <span className="truncate font-mono">{name}</span>
+      <span className="shrink-0 tabular-nums text-muted-foreground">{value}</span>
+    </li>
+  );
+}
+
+function AnalyticsChips({ analytics }: { analytics: Analytics }) {
+  const labels = analytics.labels ?? [];
+  const empty = analytics.inputs?.empty ?? [];
+  const constant = analytics.inputs?.constant ?? [];
+  if (!labels.length && !empty.length && !constant.length) return null;
+  return (
+    <div aria-label="Analytics" className="flex flex-wrap items-center gap-1 px-3 pb-2.5">
+      {labels.map((balance) => (
+        <AnalyticsChip
+          key={balance.field}
+          label={`${balance.field === "expected_output" ? "" : `${balance.field.replace(/^expected_output\./, "")} · `}Majority ${balance.majority.label} ${percent(balance.majority.share)}`}
+          tone="neutral"
+        >
+          {balance.classes.map((item) => (
+            <Line
+              key={item.label}
+              name={item.label}
+              value={`${count(item.rows)} · ${percent(item.rows / balance.rows)}`}
+            />
+          ))}
+          {balance.labels > balance.classes.length && (
+            <Line name="Other labels" value={count(balance.labels - balance.classes.length)} />
+          )}
+        </AnalyticsChip>
+      ))}
+      {empty.length > 0 && (
+        <AnalyticsChip label={`${plural(empty.length, "field")} with empty values`} tone="warning">
+          {empty.map((item) => (
+            <Line key={item.field} name={item.field} value={plural(item.rows, "row")} />
+          ))}
+        </AnalyticsChip>
+      )}
+      {constant.length > 0 && (
+        <AnalyticsChip label={plural(constant.length, "constant field")} tone="warning">
+          {constant.map((field) => (
+            <Line key={field} name={field} value="One value" />
+          ))}
+        </AnalyticsChip>
+      )}
+    </div>
+  );
+}
+
+interface AttachmentInfo {
+  filename: string;
+  rows?: number | null;
+  sha256: string;
+}
+
 const CONSUMER_BUTTON = "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20";
 
 export function VersionCard({
@@ -619,6 +721,7 @@ export function VersionCard({
   const decision = decisionReport(cell);
   const columns = columnsOf(cell).length;
   const changes = (cell.impact ?? {}) as Impact;
+  const attachment = (cell.attachment ?? {}) as Partial<AttachmentInfo>;
 
   return (
     <article
@@ -645,6 +748,35 @@ export function VersionCard({
             </span>
           </span>
           <span className="nodrag flex h-full items-center border-l border-border/70">
+            <Button
+              aria-label={`Prepare ${cell.version} with agent`}
+              className="h-full rounded-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.onPrepare();
+              }}
+              size="icon-xs"
+              title="Prepare with agent: copy the prompt"
+              type="button"
+              variant="ghost"
+            >
+              <Icon.ai />
+            </Button>
+            <Button
+              aria-label={`New dataset from ${cell.version}`}
+              className="h-full rounded-none"
+              disabled={!editable}
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.onNewDataset();
+              }}
+              size="icon-xs"
+              title="New dataset from this version"
+              type="button"
+              variant="ghost"
+            >
+              <Icon.datasetAdd />
+            </Button>
             <ExportDialog
               columns={columns}
               onExport={actions.onExport}
@@ -782,6 +914,25 @@ export function VersionCard({
                 <ScriptCode aria-label={`Script of ${cell.version}`} source={cell.script} />
               </div>
             )}
+            {attachment.sha256 && attachment.filename && (
+              <p className="flex items-center gap-1.5 px-3 pb-2.5 text-xs text-muted-foreground">
+                <Icon.file className="size-3 shrink-0" />
+                <span>attachment</span>
+                <button
+                  className="truncate font-mono text-foreground hover:underline"
+                  onClick={() =>
+                    void downloadAttachment(datasetId, cell.id, attachment.filename!).catch((e) =>
+                      notify.error(e, "Download failed")
+                    )
+                  }
+                  title={`sha256 ${attachment.sha256}`}
+                  type="button"
+                >
+                  {attachment.filename}
+                </button>
+                {attachment.rows != null && <span>{plural(attachment.rows, "row")}</span>}
+              </p>
+            )}
             {cell.stdout && (
               <>
                 <SectionHeader
@@ -799,6 +950,7 @@ export function VersionCard({
             <Changes impact={changes} />
           </>
         )}
+        <AnalyticsChips analytics={(cell.analytics ?? {}) as Analytics} />
         <div className="border-t border-border/70">
           <SectionHeader
             label="Data"

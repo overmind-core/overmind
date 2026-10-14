@@ -256,7 +256,17 @@ EXTRACT_BUSY_RETRY_SECONDS = 5
 EXTRACT_UNREACHABLE_RETRY_SECONDS = (2, 4, 8)
 
 
-def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
+CANCELLED = "The import was cancelled."
+
+
+def _pause(seconds: float, stop: Any) -> None:
+    if stop is None:
+        time.sleep(seconds)
+    elif stop.wait(seconds):
+        raise LandError(CANCELLED, code="cancelled")
+
+
+def _extract(path: Path, filename: str, output: Path, stop: Any = None) -> dict[str, Any]:
     """The sandbox parses documents; a busy or unreachable sandbox is waited out here,
     under the import's lease, before the import is blocked."""
     header = {
@@ -268,15 +278,17 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
     unreachable = 0
     while True:
         try:
-            reply = executions.sandbox_call(header, path, output)
+            reply = executions.sandbox_call(header, path, output, stop=stop)
             break
+        except executions.SandboxCancelledError:
+            raise LandError(CANCELLED, code="cancelled") from None
         except executions.SandboxBusyError:
             if time.monotonic() > deadline:
                 raise LandError(
                     "Overmind is busy reading other documents. Retry the import.",
                     code="sandbox_busy",
                 ) from None
-            time.sleep(EXTRACT_BUSY_RETRY_SECONDS)
+            _pause(EXTRACT_BUSY_RETRY_SECONDS, stop)
         except executions.SandboxUnavailableError as exc:
             logger.warning("sandbox unavailable for extraction of %s: %s", filename, exc)
             if unreachable == len(EXTRACT_UNREACHABLE_RETRY_SECONDS):
@@ -284,7 +296,7 @@ def _extract(path: Path, filename: str, output: Path) -> dict[str, Any]:
                     "Documents cannot be read right now. Retry the import.",
                     code="sandbox_unavailable",
                 ) from None
-            time.sleep(EXTRACT_UNREACHABLE_RETRY_SECONDS[unreachable])
+            _pause(EXTRACT_UNREACHABLE_RETRY_SECONDS[unreachable], stop)
             unreachable += 1
         except executions.SandboxRefusedError as exc:
             logger.error("sandbox refused extraction of %s: %s", filename, exc)
@@ -318,7 +330,9 @@ class _Extracted:
             yield from store.iter_rows(output)
 
 
-def _read_documents(sources: list[tuple[Path, str]], *, on_extract: Any = None) -> Landing:
+def _read_documents(
+    sources: list[tuple[Path, str]], *, on_extract: Any = None, stop: Any = None
+) -> Landing:
     directory = tempfile.TemporaryDirectory(prefix="documents-")
     outputs = []
     described = []
@@ -327,7 +341,7 @@ def _read_documents(sources: list[tuple[Path, str]], *, on_extract: Any = None) 
         if on_extract is not None:
             on_extract(filename)
         output = Path(directory.name) / f"{index}.parquet"
-        extraction = _extract(path, filename, output)
+        extraction = _extract(path, filename, output, stop)
         digest = extraction.pop("sha256", "")
         for limitation in extraction.get("limitations", []):
             if limitation not in limitations:
@@ -360,7 +374,11 @@ def read_file(path: Path, *, filename: str, json_rows_field: str | None = None) 
 
 
 def read_uploads(
-    upload_ids: list[str], *, json_rows_field: str | None = None, on_extract: Any = None
+    upload_ids: list[str],
+    *,
+    json_rows_field: str | None = None,
+    on_extract: Any = None,
+    stop: Any = None,
 ) -> Landing:
     stored = []
     for upload_id in upload_ids:
@@ -373,7 +391,7 @@ def read_uploads(
     if any(documents):
         if not all(documents):
             raise LandError(files.MIXED, code="mixed_sources")
-        return _read_documents(stored, on_extract=on_extract)
+        return _read_documents(stored, on_extract=on_extract, stop=stop)
     parts = []
     sources = []
     for path, filename in stored:
@@ -390,6 +408,53 @@ def read_uploads(
 
 def read_rows(rows: Iterable[Any], *, spec: dict[str, Any] | None = None) -> Landing:
     return Landing(_Cleaned(rows), kind=Dataset.SourceKind.FILE, spec=spec or {})
+
+
+def version_source(project_id: Any, spec: dict[str, Any]) -> Cell:
+    cell = (
+        Cell.objects.select_related("dataset")
+        .filter(pk=spec.get("cell_id"), dataset_id=spec.get("dataset_id"))
+        .filter(dataset__project_id=project_id)
+        .first()
+    )
+    if cell is None or not paths.cell_path(cell.dataset_id, cell.pk).exists():
+        raise LandError("The source version was deleted.", code="source_missing")
+    return cell
+
+
+class _Copied:
+    """A version's rows; each keeps the version and ``source_row`` it came from."""
+
+    def __init__(self, cell: Cell, path: Path) -> None:
+        self.cell, self.path = cell, path
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        origin = str(self.cell.pk)
+        for row in store.records(self.path):
+            provenance = row.get("_overmind_provenance")
+            row["_overmind_provenance"] = {
+                **(provenance if isinstance(provenance, dict) else {}),
+                "copied_from": {"cell_id": origin, "source_row": row.get(store.SOURCE_ROW)},
+            }
+            yield row
+
+
+def read_version(project_id: Any, spec: dict[str, Any]) -> Landing:
+    """A version of another dataset in this project, as a new source."""
+    cell = version_source(project_id, spec)
+    path = paths.cell_path(cell.dataset_id, cell.pk)
+    return Landing(
+        _Cleaned(_Copied(cell, path)),
+        kind=Dataset.SourceKind.VERSION,
+        spec={
+            "dataset_id": str(cell.dataset_id),
+            "dataset_name": cell.dataset.name,
+            "cell_id": str(cell.pk),
+            "version": cell.label,
+            "fingerprint": cell.fingerprint,
+        },
+        manifest=store.read_manifest(path),
+    )
 
 
 def land_rows(

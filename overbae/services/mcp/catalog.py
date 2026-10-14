@@ -23,7 +23,7 @@ CostClass = Literal["free", "compute", "llm", "gpu"]
 AsyncMode = Literal["sync", "job", "task"]
 _TOOL_NAME = r"^[a-z][a-z0-9_]{0,63}$"
 _FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment"})
+_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment", "cancel_dataset_job"})
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {

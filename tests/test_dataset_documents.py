@@ -81,7 +81,12 @@ def test_a_text_pdf_lands_one_row_per_element_with_pages_and_regions(client_proj
     inspected = client.post(
         f"/api/uploads/{upload_id}/inspect/", {"size": len(content)}, format="json"
     )
-    assert inspected.data == {"filename": "native.pdf", "bytes": len(content), "rows": None}
+    assert inspected.data == {
+        "filename": "native.pdf",
+        "bytes": len(content),
+        "rows": None,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
 
     dataset = _land(client, project, [upload_id])
 

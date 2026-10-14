@@ -3,11 +3,20 @@ the result; it never writes or chooses a script."""
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from overbae.models import Capability, Cell, Dataset, Execution
-from overbae.services.datasets import diff, executions, lifecycle, paths, synthetic, versions
+from overbae.services.datasets import (
+    attachments,
+    diff,
+    executions,
+    lifecycle,
+    paths,
+    synthetic,
+    versions,
+)
 from overbae.services.datasets.lifecycle import DatasetError
 
 UNSET: Any = object()
@@ -32,9 +41,24 @@ def _ready(dataset: Dataset) -> None:
         raise DatasetError("The dataset has no source.", code="no_source")
 
 
-def _run(dataset: Dataset, *, mode: str, parent: Cell, script: str, title: str, user) -> Run:
+def _run(
+    dataset: Dataset,
+    *,
+    mode: str,
+    parent: Cell,
+    script: str,
+    title: str,
+    user,
+    attachment: str | None = None,
+) -> Run:
     submitted = executions.submit(
-        dataset, mode=mode, parent=parent, script=script, title=title, user=user
+        dataset,
+        mode=mode,
+        parent=parent,
+        script=script,
+        title=title,
+        user=user,
+        attachment=attachments.describe(attachment) if attachment else None,
     )
     if submitted.run is None:
         return Run(None, submitted.cell)
@@ -42,7 +66,9 @@ def _run(dataset: Dataset, *, mode: str, parent: Cell, script: str, title: str, 
     return Run(run, run.cell if run.cell_id else None)
 
 
-def try_script(dataset: Dataset, parent: Any, script: str, *, user=None) -> Run:
+def try_script(
+    dataset: Dataset, parent: Any, script: str, *, attachment: str | None = None, user=None
+) -> Run:
     _ready(dataset)
     return _run(
         dataset,
@@ -51,6 +77,7 @@ def try_script(dataset: Dataset, parent: Any, script: str, *, user=None) -> Run:
         script=script,
         title="",
         user=user,
+        attachment=attachment,
     )
 
 
@@ -66,7 +93,15 @@ def probe(dataset: Dataset, version: Any, script: str, *, user=None) -> Run:
     )
 
 
-def add_version(dataset: Dataset, parent: Any, title: str, script: str, *, user=None) -> Run:
+def add_version(
+    dataset: Dataset,
+    parent: Any,
+    title: str,
+    script: str,
+    *,
+    attachment: str | None = None,
+    user=None,
+) -> Run:
     _ready(dataset)
     return _run(
         dataset,
@@ -75,7 +110,18 @@ def add_version(dataset: Dataset, parent: Any, title: str, script: str, *, user=
         script=script,
         title=title,
         user=user,
+        attachment=attachment,
     )
+
+
+def cancel_run(dataset: Dataset, execution: Any) -> Execution:
+    try:
+        run = dataset.executions.filter(pk=uuid.UUID(str(execution))).first()
+    except ValueError:
+        run = None
+    if run is None:
+        raise DatasetError("No such run on this dataset.", code="no_execution", field="execution")
+    return executions.cancel(run)
 
 
 def add_synthetic_examples(

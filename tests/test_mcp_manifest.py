@@ -20,7 +20,7 @@ SECRET_INPUT_PARTS = {
     "token",
 }
 FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment"}
+ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment", "cancel_dataset_job"}
 
 
 def _serialized_tools(permissions: frozenset[str]) -> bytes:
@@ -110,6 +110,7 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
         "run_evaluation": (False, False, True, "llm", "job"),
         "start_finetune": (False, False, True, "gpu", "job"),
         "retry_deployment": (False, False, True, "gpu", "job"),
+        "cancel_dataset_job": (False, True, False, "free", "sync"),
         "run_inference": (False, False, True, "llm", "sync"),
         "get_model_swap_prompt": (True, True, False, "free", "sync"),
         "inspect_connectors": (True, True, True, "compute", "sync"),

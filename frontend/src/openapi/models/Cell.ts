@@ -102,6 +102,18 @@ export interface Cell {
      * @type {any}
      * @memberof Cell
      */
+    readonly analytics: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof Cell
+     */
+    readonly attachment: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof Cell
+     */
     readonly impact: any | null;
     /**
      *
@@ -152,6 +164,8 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('capabilityReport' in value) || value['capabilityReport'] === undefined) return false;
     if (!('fits' in value) || value['fits'] === undefined) return false;
     if (!('stats' in value) || value['stats'] === undefined) return false;
+    if (!('analytics' in value) || value['analytics'] === undefined) return false;
+    if (!('attachment' in value) || value['attachment'] === undefined) return false;
     if (!('impact' in value) || value['impact'] === undefined) return false;
     if (!('stdout' in value) || value['stdout'] === undefined) return false;
     if (!('seconds' in value) || value['seconds'] === undefined) return false;
@@ -184,6 +198,8 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'capabilityReport': json['capability_report'],
         'fits': json['fits'],
         'stats': json['stats'],
+        'analytics': json['analytics'],
+        'attachment': json['attachment'],
         'impact': json['impact'],
         'stdout': json['stdout'],
         'seconds': json['seconds'],
@@ -197,7 +213,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'version'|'position'|'parent'|'title'|'script'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'impact'|'stdout'|'seconds'|'used_at'|'frozen'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'version'|'position'|'parent'|'title'|'script'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'analytics'|'attachment'|'impact'|'stdout'|'seconds'|'used_at'|'frozen'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

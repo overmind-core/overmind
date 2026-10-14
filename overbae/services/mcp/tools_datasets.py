@@ -22,8 +22,11 @@ from overbae.services.mcp.contracts.datasets import (
     AddDatasetVersionInput,
     AddDatasetVersionOutput,
     AddSyntheticExamplesInput,
+    CancelDatasetJobInput,
+    CancelDatasetJobOutput,
     CreateDatasetFromLlmCallsInput,
     CreateDatasetFromTracesInput,
+    CreateDatasetFromVersionInput,
     DatasetDetail,
     DatasetMutationOutput,
     DatasetOutput,
@@ -40,6 +43,7 @@ from overbae.services.mcp.contracts.datasets import (
     TryDatasetScriptInput,
     TryDatasetScriptOutput,
     UpdateDatasetInput,
+    dataset_import_job_link,
     dataset_output,
     dataset_resource_link,
     mutation_output,
@@ -299,12 +303,66 @@ def _create_dataset_from_llm_calls_sync(
     )
 
 
+def _create_dataset_from_version_sync(
+    payload: CreateDatasetFromVersionInput, context: MCPContext
+) -> DatasetMutationOutput:
+    origin = mcp_dataset(context, payload.dataset)
+    cell = _version(origin, payload.version)
+    capability = (
+        _resolve_capability_uuid(context, payload.capability) if payload.capability else None
+    )
+    source = {"version": {"dataset_id": str(origin.id), "cell_id": str(cell.id)}}
+    inherit = "capability" not in payload.model_fields_set
+    try:
+        if payload.split is not None:
+            train, evaluation = dispatch.create_split(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source=source,
+                eval_percent=payload.split.eval_percent,
+                position=payload.split.position,
+                group_by=payload.split.group_by,
+                stratify_by=payload.split.stratify_by,
+                deduplicate=payload.split.deduplicate,
+                capability=capability,
+                infer_capability=inherit,
+            )
+        else:
+            train = dispatch.create_dataset(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source=source,
+                intent=payload.intent,
+                capability=capability,
+                infer_capability=inherit,
+            )
+            evaluation = None
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    landing = f"{origin.name or 'Dataset'} {cell.label}, {cell.rows} rows"
+    return mutation_output(
+        train,
+        summary=f"Dataset landing started from {landing}."
+        if evaluation is None
+        else f"Split landing started from {landing}, cut into a train and an eval dataset.",
+        eval_dataset=evaluation,
+    )
+
+
 def _try_dataset_script_sync(
     payload: TryDatasetScriptInput, context: MCPContext
 ) -> TryDatasetScriptOutput:
     dataset = mcp_dataset(context, payload.dataset)
     try:
-        run = workshop.try_script(dataset, payload.parent, payload.script, user=context.user)
+        run = workshop.try_script(
+            dataset,
+            payload.parent,
+            payload.script,
+            attachment=payload.attachment,
+            user=context.user,
+        )
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return try_output(dataset, run)
@@ -327,7 +385,12 @@ def _add_dataset_version_sync(
     dataset = mcp_dataset(context, payload.dataset)
     try:
         run = workshop.add_version(
-            dataset, payload.parent, payload.title, payload.script, user=context.user
+            dataset,
+            payload.parent,
+            payload.title,
+            payload.script,
+            attachment=payload.attachment,
+            user=context.user,
         )
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
@@ -409,6 +472,32 @@ def _resume_dataset_import_sync(
     return mutation_output(dataset, summary="Source import resumed.")
 
 
+def _cancel_dataset_job_sync(
+    payload: CancelDatasetJobInput, context: MCPContext
+) -> CancelDatasetJobOutput:
+    dataset = mcp_dataset(context, payload.dataset)
+    try:
+        if payload.execution:
+            run = workshop.cancel_run(dataset, payload.execution)
+            return CancelDatasetJobOutput(
+                summary=f"The run is {run.state}.",
+                kind="execution",
+                id=str(run.id),
+                status=run.state,
+                resource_links=[dataset_resource_link(dataset)],
+            )
+        dataset = dispatch.cancel_import(dataset)
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return CancelDatasetJobOutput(
+        summary="The import was cancelled.",
+        kind="dataset_import",
+        id=str(dataset.id),
+        status="cancelled",
+        resource_links=[dataset_resource_link(dataset), dataset_import_job_link(dataset)],
+    )
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -423,6 +512,7 @@ _IDEMPOTENT = {
     "add_synthetic_examples",
     "activate_dataset_version",
     "update_dataset",
+    "cancel_dataset_job",
 }
 
 
@@ -480,6 +570,17 @@ def register_dataset_tools(catalog) -> None:
             CreateDatasetFromLlmCallsInput,
             DatasetMutationOutput,
             _create_dataset_from_llm_calls_sync,
+            False,
+            "task",
+        ),
+        (
+            "create_dataset_from_version",
+            "Create dataset from version",
+            "Land a version (active by default) of a project dataset as a new dataset, keeping "
+            "its lineage. split lands train and eval.",
+            CreateDatasetFromVersionInput,
+            DatasetMutationOutput,
+            _create_dataset_from_version_sync,
             False,
             "task",
         ),
@@ -563,6 +664,17 @@ def register_dataset_tools(catalog) -> None:
             _resume_dataset_import_sync,
             False,
             "task",
+        ),
+        (
+            "cancel_dataset_job",
+            "Cancel dataset job",
+            "Stop the dataset's source import, or with execution one queued or running script "
+            "run. Nothing it produced is kept.",
+            CancelDatasetJobInput,
+            CancelDatasetJobOutput,
+            _cancel_dataset_job_sync,
+            False,
+            "sync",
         ),
     ]
     for (

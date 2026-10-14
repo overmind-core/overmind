@@ -6,6 +6,7 @@ import hmac
 import os
 import shutil
 import tempfile
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -46,8 +47,20 @@ def _check(header: dict[str, Any]) -> None:
         filename = header.get("filename")
         if not isinstance(filename, str) or not filename.strip() or "\0" in filename:
             raise FramingError("A filename is required.")
-    elif not isinstance(header.get("script"), str):
-        raise FramingError("A script is required.")
+    else:
+        if not isinstance(header.get("script"), str):
+            raise FramingError("A script is required.")
+        attachment = header.get("attachment")
+        if attachment is not None and not (
+            isinstance(attachment, dict)
+            and all(
+                isinstance(attachment.get(key), int)
+                and not isinstance(attachment.get(key), bool)
+                and 0 < attachment[key] <= MAX_INPUT_BYTES
+                for key in ("bytes", "frame_bytes")
+            )
+        ):
+            raise FramingError("An attachment needs its bytes and frame_bytes.")
 
 
 async def _body(request: Request) -> AsyncIterator[bytes]:
@@ -79,18 +92,35 @@ async def _drain(chunks: AsyncIterator[bytes]) -> None:
             pass
 
 
-async def _store(chunks: AsyncIterator[bytes], first: bytes, target: Path, limit: int) -> None:
-    written = len(first)
-    with open(target, "wb") as fh:
-        fh.write(first)
-        async for chunk in chunks:
-            written += len(chunk)
-            if written > limit:
-                await _drain(chunks)
-                break
-            fh.write(chunk)
-    if written > limit:
-        raise FramingError("The body is larger than input_bytes allows.")
+async def _store(chunks: AsyncIterator[bytes], first: bytes, parts: list[tuple[Path, int]]) -> None:
+    """``parts`` is ``[(path, bytes)]`` in body order: every part but the last is exactly
+    its bytes long; the last takes the rest, up to its bytes."""
+    pending = first
+    for index, (path, limit) in enumerate(parts):
+        last = index == len(parts) - 1
+        written = 0
+        with open(path, "wb") as fh:
+            while last or written < limit:
+                if not pending:
+                    pending = await anext(chunks, b"")
+                    if not pending:
+                        break
+                piece = pending[: limit - written]
+                if not piece:
+                    await _drain(chunks)
+                    raise FramingError("The body is larger than input_bytes allows.")
+                fh.write(piece)
+                written += len(piece)
+                pending = pending[len(piece) :]
+        if not last and written < limit:
+            raise FramingError("The body ended before the attachment.")
+
+
+async def _disconnected(request: Request, stop: threading.Event) -> None:
+    # The body is read, so the next message is the client leaving: a cancelled run.
+    while (await request.receive())["type"] != "http.disconnect":
+        pass
+    stop.set()
 
 
 async def _send(outcome: execute.Outcome, finish) -> AsyncIterator[bytes]:
@@ -151,18 +181,28 @@ async def run(request: Request) -> Response:
         execute.release(slot)
 
     source = scratch / ("document" if header["mode"] == "extract" else "input.parquet")
+    attachment = header.get("attachment")
+    stop = threading.Event()
+    watch = None
     try:
         # A frame's file is never larger than its uncompressed bytes plus the footer.
         limit = header["input_bytes"] + (0 if header["mode"] == "extract" else 64 * 1024**2)
-        await _store(chunks, first, source, limit)
+        parts = [(source, limit)]
+        if attachment:
+            parts.insert(0, (scratch / execute.ATTACHMENT, attachment["bytes"]))
+        await _store(chunks, first, parts)
         if not execute.input_matches(header, source):
             raise FramingError("The body does not match input_bytes.")
-        outcome = await run_in_threadpool(execute.run, header, scratch, source, slot)
+        watch = asyncio.create_task(_disconnected(request, stop))
+        outcome = await run_in_threadpool(execute.run, header, scratch, source, slot, stop)
     except FramingError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400, background=BackgroundTask(finish))
     except BaseException:
         await run_in_threadpool(finish)
         raise
+    finally:
+        if watch is not None:
+            watch.cancel()
     # The reservation covers the output too, until the reply has been sent.
     return StreamingResponse(_send(outcome, finish), media_type="application/octet-stream")
 

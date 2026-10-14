@@ -3,14 +3,17 @@ sandbox client. The sandbox executes every script; the worker only moves frames.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import functools
 import hashlib
 import json
 import logging
 import shutil
 import tempfile
+import threading
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -25,7 +28,16 @@ from django.db.models import Max
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset, Execution
-from overbae.services.datasets import events, measure, paths, review, store, synthetic
+from overbae.services.datasets import (
+    attachments,
+    events,
+    heartbeat,
+    measure,
+    paths,
+    review,
+    store,
+    synthetic,
+)
 from overbae.services.datasets.lifecycle import DatasetError
 from sandbox import tables
 from sandbox.protocol import CHUNK_BYTES, HeaderReader, header_bytes
@@ -47,6 +59,7 @@ STALE_QUEUED_SECONDS = 20 * 60
 PREVIEW_ROWS = 3
 MAX_PREVIEW_COLUMNS = 200
 VALUE_CHARS = 400
+STOP_POLL_SECONDS = 0.5
 
 STOPPED = "The run stopped without a result."
 UNAVAILABLE = "Scripts cannot run right now."
@@ -54,6 +67,7 @@ REFUSED = "The run could not start. Run it again later."
 NO_MEMORY = "Not enough memory was free to start the run."
 NO_SLOT = "The run waited 15 minutes behind other runs in this project."
 FAILED_ON_WORKER = "The run failed for a reason outside the script. Run it again."
+CANCELLED = "Cancelled."
 
 _TAKE_SLOT = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -79,6 +93,14 @@ class SandboxRefusedError(Exception):
     same request cannot help."""
 
 
+class SandboxCancelledError(Exception):
+    """The caller stopped waiting; closing the request stops the run in the sandbox."""
+
+
+class RunCancelledError(Exception):
+    pass
+
+
 @dataclass
 class Retry:
     countdown: float
@@ -89,8 +111,8 @@ def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def key(mode: str, dataset_id: Any, parent_id: Any, script: str) -> str:
-    return sha256(json.dumps([mode, str(dataset_id), str(parent_id or ""), script]))
+def key(mode: str, dataset_id: Any, parent_id: Any, identity: str) -> str:
+    return sha256(json.dumps([mode, str(dataset_id), str(parent_id or ""), identity]))
 
 
 @functools.cache
@@ -194,6 +216,8 @@ def _stale(run: Execution, now) -> bool:
 def _reusable(run: Execution, now) -> bool:
     if run.state in (Execution.State.QUEUED, Execution.State.RUNNING):
         return True
+    if run.state == Execution.State.CANCELLED:
+        return False
     recent = run.finished_at is not None and run.finished_at > now - timedelta(
         seconds=RESULT_SECONDS
     )
@@ -216,15 +240,17 @@ def submit(
     script: str,
     title: str = "",
     user: Any = None,
+    attachment: dict[str, Any] | None = None,
     enqueue: bool = True,
 ) -> Submitted:
     if parent.dataset_id != dataset.pk:
         raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
-    run_key = key(mode, dataset.pk, parent.pk, script)
+    identity = attachments.identity(script, attachment)
+    run_key = key(mode, dataset.pk, parent.pk, identity)
     with transaction.atomic():
         locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
         if mode in (Execution.Mode.CELL, Execution.Mode.SYNTHETIC):
-            existing = Cell.objects.filter(parent=parent, script_sha256=sha256(script)).first()
+            existing = Cell.objects.filter(parent=parent, script_sha256=sha256(identity)).first()
             if existing is not None:
                 return Submitted(cell=existing)
         now = timezone.now()
@@ -243,6 +269,7 @@ def submit(
             mode=mode,
             title=title.strip()[:120],
             script=script,
+            attachment=attachment or {},
             created_by=user if getattr(user, "pk", None) else None,
             queued_at=now,
         )
@@ -269,25 +296,28 @@ def wait(run: Execution, seconds: float = WAIT_SECONDS) -> Execution:
     return run
 
 
-def sandbox_call(
-    header: dict[str, Any], payload: Path, output: Path, *, timeout: float = 1500
+async def _post(
+    header: dict[str, Any], payloads: list[Path], output: Path, timeout: float
 ) -> dict[str, Any]:
-    def body() -> Iterator[bytes]:
+    async def body() -> AsyncIterator[bytes]:
         yield header_bytes(header)
-        with open(payload, "rb") as fh:
-            while chunk := fh.read(CHUNK_BYTES):
-                yield chunk
+        for payload in payloads:
+            with open(payload, "rb") as fh:
+                while chunk := fh.read(CHUNK_BYTES):
+                    yield chunk
 
     try:
-        with httpx.stream(
-            "POST",
-            f"{settings.SANDBOX_URL}/v1/run",
-            content=body(),
-            headers={"Authorization": f"Bearer {settings.SANDBOX_TOKEN}"},
-            timeout=httpx.Timeout(timeout, connect=5),
-        ) as response:
+        async with (
+            httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5)) as client,
+            client.stream(
+                "POST",
+                f"{settings.SANDBOX_URL}/v1/run",
+                content=body(),
+                headers={"Authorization": f"Bearer {settings.SANDBOX_TOKEN}"},
+            ) as response,
+        ):
             if response.status_code == 503:
-                response.read()
+                await response.aread()
                 try:
                     busy = response.json().get("busy") is True
                 except ValueError:
@@ -296,18 +326,53 @@ def sandbox_call(
                     raise SandboxBusyError
                 raise SandboxUnavailableError("503")
             if response.status_code != 200:
-                response.read()
+                await response.aread()
                 detail = f"{response.status_code}: {response.text[:200]}"
                 if 400 <= response.status_code < 500:
                     raise SandboxRefusedError(detail)
                 raise SandboxUnavailableError(detail)
             reader = HeaderReader()
             with open(output, "wb") as out:
-                for chunk in response.iter_bytes(CHUNK_BYTES):
+                async for chunk in response.aiter_bytes(CHUNK_BYTES):
                     out.write(reader.feed(chunk))
             return reader.finish()
     except httpx.TransportError as exc:
         raise SandboxUnavailableError(str(exc)) from exc
+
+
+async def _until_stopped(call, stop: threading.Event | None) -> dict[str, Any]:
+    task = asyncio.ensure_future(call)
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
+        if done:
+            return task.result()
+        if stop is not None and stop.is_set():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            raise SandboxCancelledError
+
+
+def sandbox_call(
+    header: dict[str, Any],
+    payload: Path,
+    output: Path,
+    *,
+    attachment: Path | None = None,
+    stop: threading.Event | None = None,
+    timeout: float = 1500,
+) -> dict[str, Any]:
+    """One sandbox run. Setting ``stop`` closes the request, which ends the run there."""
+    if attachment is not None:
+        header = {
+            **header,
+            "attachment": {
+                "bytes": attachment.stat().st_size,
+                "frame_bytes": tables.uncompressed_bytes(attachment),
+            },
+        }
+    payloads = [payload] if attachment is None else [attachment, payload]
+    return asyncio.run(_until_stopped(_post(header, payloads, output, timeout), stop))
 
 
 def _clip(value: Any) -> Any:
@@ -352,14 +417,17 @@ def add_version(
     title: str,
     script: str,
     identity: str | None = None,
+    attachment: dict[str, Any] | None = None,
     stdout: str = "",
     seconds: float = 0.0,
     user: Any = None,
+    settle: Callable[[Cell], bool] | None = None,
 ) -> Cell:
     """Finalize ``output`` against ``parent`` and store it as a new child version.
     ``identity`` is what makes the version unique under its parent; it defaults to the
-    script."""
-    digest = sha256(script if identity is None else identity)
+    script and the file it read. ``settle`` finishes the run in the version's
+    transaction; when it returns False the run was cancelled and no version is kept."""
+    digest = sha256(attachments.identity(script, attachment) if identity is None else identity)
     parent_path = paths.cell_path(dataset.pk, parent.pk)
     with tempfile.TemporaryDirectory(prefix="version-") as scratch:
         final = Path(scratch) / "version.parquet"
@@ -373,6 +441,7 @@ def add_version(
         measured = Dataset.objects.select_related("capability").get(pk=dataset.pk)
         fields = measure.describe_frame(measured, final)
         destination: Path | None = None
+        retained: Path | None = None
         try:
             with transaction.atomic():
                 locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
@@ -388,19 +457,30 @@ def add_version(
                     impact=impact,
                     input_fingerprint=parent.fingerprint,
                     seconds=round(seconds, 3),
+                    attachment={k: attachment[k] for k in ("filename", "bytes", "rows", "sha256")}
+                    if attachment
+                    else {},
                     created_by=user if getattr(user, "pk", None) else None,
                     **fields,
                 )
                 destination = paths.cell_path(dataset.pk, cell.pk)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(final, destination)
+                if attachment:
+                    retained = attachments.retain(dataset.pk, attachment)
+                if settle is not None and not settle(cell):
+                    raise RunCancelledError
         except BaseException as exc:
             # The row rolled back; a file moved before the commit failed has no row.
-            if destination is not None:
-                destination.unlink(missing_ok=True)
+            for path in (destination, retained):
+                if path is not None:
+                    path.unlink(missing_ok=True)
             if isinstance(exc, IntegrityError):
                 existing = Cell.objects.filter(parent=parent, script_sha256=digest).first()
                 if existing is not None:
+                    if settle is not None:
+                        with transaction.atomic():
+                            settle(existing)
                     return existing
             raise
     transaction.on_commit(
@@ -509,76 +589,107 @@ def perform(
             release_slot(run)
 
 
+def _cancelled(run: Execution) -> bool:
+    return Execution.objects.filter(pk=run.pk, state=Execution.State.CANCELLED).exists()
+
+
 def _execute(run: Execution, *, unreachable: int, retries: bool) -> Retry | None:
-    dataset, parent = run.dataset, run.parent
-    if parent is None:
+    if run.parent is None:
         finish(run, Execution.State.FAILED, error="The version this run read was deleted.")
         return None
-    if run.mode == Execution.Mode.SYNTHETIC:
-        _finish_synthetic(run)
+    try:
+        if run.mode == Execution.Mode.SYNTHETIC:
+            _finish_synthetic(run)
+            return None
+        with (
+            tempfile.TemporaryDirectory(prefix="execution-") as scratch,
+            heartbeat.watch(lambda: _cancelled(run), owner=f"execution {run.pk}") as stop,
+        ):
+            return _run_script(run, Path(scratch), stop, unreachable=unreachable, retries=retries)
+    except RunCancelledError:
         return None
+
+
+def _run_script(
+    run: Execution, scratch: Path, stop: threading.Event, *, unreachable: int, retries: bool
+) -> Retry | None:
+    dataset, parent = run.dataset, run.parent
     parent_path = paths.cell_path(dataset.pk, parent.pk)
-    started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="execution-") as scratch:
-        output = Path(scratch) / "output.parquet"
+    output = scratch / "output.parquet"
+    attached = None
+    if run.attachment:
+        attached = scratch / "attachment.parquet"
         try:
-            header = sandbox_call(
-                {
-                    "mode": "inspect" if run.mode == Execution.Mode.PROBE else "cell",
-                    "script": run.script,
-                    "input_bytes": tables.uncompressed_bytes(parent_path),
-                },
-                parent_path,
-                output,
-            )
-        except SandboxBusyError:
-            if retries and not _waited_too_long(run):
-                _requeue(run)
-                return Retry(BUSY_RETRY_SECONDS, unreachable)
-            finish(run, Execution.State.FAILED, error=NO_MEMORY, transient=True)
+            attachments.write_frame(dataset.pk, run.attachment, attached)
+        except DatasetError as exc:
+            finish(run, Execution.State.FAILED, error=exc.detail)
             return None
-        except SandboxUnavailableError as exc:
-            logger.warning("sandbox unavailable for execution %s: %s", run.pk, exc)
-            if retries and unreachable < len(UNREACHABLE_RETRY_SECONDS):
-                _requeue(run)
-                return Retry(UNREACHABLE_RETRY_SECONDS[unreachable], unreachable + 1)
-            finish(run, Execution.State.FAILED, error=UNAVAILABLE, transient=True)
-            return None
-        except SandboxRefusedError as exc:
-            logger.error("sandbox refused execution %s: %s", run.pk, exc)
-            finish(run, Execution.State.FAILED, error=REFUSED, transient=True)
-            return None
-        elapsed = time.monotonic() - started
-        run_seconds = float(header.get("seconds") or 0.0)
-        timings = {
-            "run_seconds": round(run_seconds, 3),
-            "transfer_seconds": round(max(elapsed - run_seconds, 0.0), 3),
-        }
-        stdout = str(header.get("stdout") or "")[-STDOUT_CHARS:]
-        if not header.get("ok"):
-            finish(
-                run,
-                Execution.State.FAILED,
-                error=str(header.get("error") or "The script failed."),
-                stdout=stdout,
-                **timings,
-            )
-        elif run.mode == Execution.Mode.TRY:
-            finish(run, Execution.State.OK, stdout=stdout, result=preview(output), **timings)
-        elif run.mode == Execution.Mode.PROBE:
-            finish(run, Execution.State.OK, stdout=stdout, **timings)
-        else:
-            cell = add_version(
-                dataset,
-                parent,
-                output,
-                title=run.title,
-                script=run.script,
-                stdout=stdout,
-                seconds=run_seconds,
-                user=run.created_by,
-            )
-            finish(run, Execution.State.OK, stdout=stdout, cell=cell, **timings)
+    started = time.monotonic()
+    try:
+        header = sandbox_call(
+            {
+                "mode": "inspect" if run.mode == Execution.Mode.PROBE else "cell",
+                "script": run.script,
+                "input_bytes": tables.uncompressed_bytes(parent_path),
+            },
+            parent_path,
+            output,
+            attachment=attached,
+            stop=stop,
+        )
+    except SandboxCancelledError:
+        return None
+    except SandboxBusyError:
+        if retries and not _waited_too_long(run):
+            _requeue(run)
+            return Retry(BUSY_RETRY_SECONDS, unreachable)
+        finish(run, Execution.State.FAILED, error=NO_MEMORY, transient=True)
+        return None
+    except SandboxUnavailableError as exc:
+        logger.warning("sandbox unavailable for execution %s: %s", run.pk, exc)
+        if retries and unreachable < len(UNREACHABLE_RETRY_SECONDS):
+            _requeue(run)
+            return Retry(UNREACHABLE_RETRY_SECONDS[unreachable], unreachable + 1)
+        finish(run, Execution.State.FAILED, error=UNAVAILABLE, transient=True)
+        return None
+    except SandboxRefusedError as exc:
+        logger.error("sandbox refused execution %s: %s", run.pk, exc)
+        finish(run, Execution.State.FAILED, error=REFUSED, transient=True)
+        return None
+    elapsed = time.monotonic() - started
+    run_seconds = float(header.get("seconds") or 0.0)
+    timings = {
+        "run_seconds": round(run_seconds, 3),
+        "transfer_seconds": round(max(elapsed - run_seconds, 0.0), 3),
+    }
+    stdout = str(header.get("stdout") or "")[-STDOUT_CHARS:]
+    if not header.get("ok"):
+        finish(
+            run,
+            Execution.State.FAILED,
+            error=str(header.get("error") or "The script failed."),
+            stdout=stdout,
+            **timings,
+        )
+    elif run.mode == Execution.Mode.TRY:
+        finish(run, Execution.State.OK, stdout=stdout, result=preview(output), **timings)
+    elif run.mode == Execution.Mode.PROBE:
+        finish(run, Execution.State.OK, stdout=stdout, **timings)
+    else:
+        add_version(
+            dataset,
+            parent,
+            output,
+            title=run.title,
+            script=run.script,
+            attachment=run.attachment,
+            stdout=stdout,
+            seconds=run_seconds,
+            user=run.created_by,
+            settle=lambda cell: finish(
+                run, Execution.State.OK, stdout=stdout, cell=cell, **timings
+            ),
+        )
     _log(run, parent_path.stat().st_size if parent_path.exists() else 0)
     return None
 
@@ -592,7 +703,7 @@ def _finish_synthetic(run: Execution) -> None:
         except DatasetError as exc:
             finish(run, Execution.State.FAILED, error=exc.detail)
             return
-        cell = add_version(
+        add_version(
             run.dataset,
             run.parent,
             output,
@@ -600,14 +711,24 @@ def _finish_synthetic(run: Execution) -> None:
             script="",
             identity=run.script,
             user=run.created_by,
+            settle=lambda cell: finish(
+                run,
+                Execution.State.OK,
+                cell=cell,
+                run_seconds=round(time.monotonic() - started, 3),
+                transfer_seconds=0.0,
+            ),
         )
-    finish(
-        run,
-        Execution.State.OK,
-        cell=cell,
-        run_seconds=round(time.monotonic() - started, 3),
-        transfer_seconds=0.0,
-    )
+
+
+def cancel(run: Execution) -> Execution:
+    """Stop a queued or running run. A queued run never starts; a running one is closed
+    in the sandbox by its worker, which then keeps nothing it produced."""
+    for expected in (Execution.State.QUEUED, Execution.State.RUNNING):
+        if finish(run, Execution.State.CANCELLED, error=CANCELLED, expected=expected):
+            break
+    run.refresh_from_db()
+    return run
 
 
 def run_now(
@@ -618,9 +739,17 @@ def run_now(
     script: str,
     title: str = "",
     user: Any = None,
+    attachment: dict[str, Any] | None = None,
 ) -> Submitted:
     submitted = submit(
-        dataset, mode=mode, parent=parent, script=script, title=title, user=user, enqueue=False
+        dataset,
+        mode=mode,
+        parent=parent,
+        script=script,
+        title=title,
+        user=user,
+        attachment=attachment,
+        enqueue=False,
     )
     if submitted.run is not None and submitted.run.state == Execution.State.QUEUED:
         perform(submitted.run.pk, slots=False, retries=False)

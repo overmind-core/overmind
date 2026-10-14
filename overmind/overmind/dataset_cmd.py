@@ -40,7 +40,7 @@ WINDOWS_RESERVED_BASENAMES = {
     *(f"LPT{number}" for number in range(1, 10)),
 }
 
-dataset_app = typer.Typer(help="Land local files as datasets.")
+dataset_app = typer.Typer(help="Land local files as datasets and attach tables to dataset scripts.")
 console = Console()
 
 
@@ -160,6 +160,85 @@ def wait_until_ready(
             client.close()
 
 
+def _stage(client: requests.Session, base_url: str, path: Path, json_rows_field: str | None) -> dict[str, Any]:
+    """Send one local file through /api/uploads/ and inspect it; returns the inspection
+    with its upload_id."""
+    try:
+        total = path.stat().st_size
+    except OSError as exc:
+        raise DatasetUploadError(f"Cannot read {path}: {exc.strerror or exc}") from exc
+    try:
+        reserved_response = client.post(
+            f"{base_url}{UPLOAD_PATH}",
+            json={"filename": path.name},
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise DatasetUploadError(f"reserve upload failed: {exc}") from exc
+    reserved = _json(reserved_response, "reserve upload")
+    upload_id = str(reserved.get("upload_id") or "")
+    if not upload_id:
+        raise DatasetUploadError("reserve upload returned no upload_id.")
+    chunk_bytes = _required_int(reserved, "chunk_bytes", "reserve upload")
+    max_bytes = _required_int(reserved, "max_bytes", "reserve upload")
+    if total > max_bytes:
+        raise DatasetUploadError(f"{path.name} is {total} bytes; the server limit is {max_bytes} bytes.")
+
+    try:
+        state_response = client.get(f"{base_url}{UPLOAD_PATH}{upload_id}/", timeout=DEFAULT_TIMEOUT)
+    except requests.RequestException as exc:
+        raise DatasetUploadError(f"read upload state failed: {exc}") from exc
+    state = _json(state_response, "read upload state")
+    sent = state.get("received")
+    if isinstance(sent, bool) or not isinstance(sent, int) or sent < 0 or sent > total:
+        raise DatasetUploadError("read upload state returned an invalid byte offset.")
+
+    with path.open("rb") as source:
+        source.seek(sent)
+        while sent < total:
+            chunk = source.read(min(chunk_bytes, total - sent))
+            if not chunk:
+                raise DatasetUploadError("local file ended before the advertised size.")
+            # The server stores a chunk once however often it is sent, so a
+            # dropped connection is answered by sending the same bytes again.
+            for attempt in range(CHUNK_ATTEMPTS):
+                try:
+                    chunk_response = client.put(
+                        f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
+                        params={"offset": sent},
+                        data=chunk,
+                        headers={"Content-Type": "application/octet-stream"},
+                        timeout=CHUNK_TIMEOUT,
+                    )
+                    break
+                except requests.RequestException as exc:
+                    if attempt == CHUNK_ATTEMPTS - 1:
+                        raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
+                    time.sleep(2**attempt)
+            chunk_state = _json(chunk_response, "upload chunk")
+            received = chunk_state.get("received")
+            if isinstance(received, bool) or not isinstance(received, int) or received <= sent or received > total:
+                raise DatasetUploadError("upload chunk returned an invalid byte offset.")
+            sent = received
+            source.seek(sent)
+
+    try:
+        inspect_response = client.post(
+            f"{base_url}{UPLOAD_PATH}{upload_id}/inspect/",
+            json={"size": total, **({"json_rows_field": json_rows_field} if json_rows_field else {})},
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise DatasetUploadError(f"inspect upload failed: {exc}") from exc
+    return {**_json(inspect_response, "inspect upload"), "upload_id": upload_id}
+
+
+def _session(api_key: str, session: requests.Session | None) -> requests.Session:
+    client = session or requests.Session()
+    client.headers.update({"X-Api-Key": api_key, "Content-Type": "application/json"})
+    return client
+
+
 def upload_file(
     path: Path,
     *,
@@ -185,81 +264,10 @@ def upload_file(
     if split is not None and intent:
         raise DatasetUploadError("split fixes the intents; drop --intent.")
     capability = (capability or "").strip() or None
-    try:
-        total = path.stat().st_size
-    except OSError as exc:
-        raise DatasetUploadError(f"Cannot read {path}: {exc.strerror or exc}") from exc
-
-    owns_session = session is None
-    client = session or requests.Session()
-    client.headers.update({"X-Api-Key": api_key, "Content-Type": "application/json"})
+    client = _session(api_key, session)
     base_url = api_url.rstrip("/")
     try:
-        try:
-            reserved_response = client.post(
-                f"{base_url}{UPLOAD_PATH}",
-                json={"filename": path.name},
-                timeout=DEFAULT_TIMEOUT,
-            )
-        except requests.RequestException as exc:
-            raise DatasetUploadError(f"reserve upload failed: {exc}") from exc
-        reserved = _json(reserved_response, "reserve upload")
-        upload_id = str(reserved.get("upload_id") or "")
-        if not upload_id:
-            raise DatasetUploadError("reserve upload returned no upload_id.")
-        chunk_bytes = _required_int(reserved, "chunk_bytes", "reserve upload")
-        max_bytes = _required_int(reserved, "max_bytes", "reserve upload")
-        if total > max_bytes:
-            raise DatasetUploadError(f"{path.name} is {total} bytes; the server limit is {max_bytes} bytes.")
-
-        try:
-            state_response = client.get(f"{base_url}{UPLOAD_PATH}{upload_id}/", timeout=DEFAULT_TIMEOUT)
-        except requests.RequestException as exc:
-            raise DatasetUploadError(f"read upload state failed: {exc}") from exc
-        state = _json(state_response, "read upload state")
-        sent = state.get("received")
-        if isinstance(sent, bool) or not isinstance(sent, int) or sent < 0 or sent > total:
-            raise DatasetUploadError("read upload state returned an invalid byte offset.")
-
-        with path.open("rb") as source:
-            source.seek(sent)
-            while sent < total:
-                chunk = source.read(min(chunk_bytes, total - sent))
-                if not chunk:
-                    raise DatasetUploadError("local file ended before the advertised size.")
-                # The server stores a chunk once however often it is sent, so a
-                # dropped connection is answered by sending the same bytes again.
-                for attempt in range(CHUNK_ATTEMPTS):
-                    try:
-                        chunk_response = client.put(
-                            f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
-                            params={"offset": sent},
-                            data=chunk,
-                            headers={"Content-Type": "application/octet-stream"},
-                            timeout=CHUNK_TIMEOUT,
-                        )
-                        break
-                    except requests.RequestException as exc:
-                        if attempt == CHUNK_ATTEMPTS - 1:
-                            raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
-                        time.sleep(2**attempt)
-                chunk_state = _json(chunk_response, "upload chunk")
-                received = chunk_state.get("received")
-                if isinstance(received, bool) or not isinstance(received, int) or received <= sent or received > total:
-                    raise DatasetUploadError("upload chunk returned an invalid byte offset.")
-                sent = received
-                source.seek(sent)
-
-        try:
-            inspect_response = client.post(
-                f"{base_url}{UPLOAD_PATH}{upload_id}/inspect/",
-                json={"size": total, **({"json_rows_field": json_rows_field} if json_rows_field else {})},
-                timeout=DEFAULT_TIMEOUT,
-            )
-        except requests.RequestException as exc:
-            raise DatasetUploadError(f"inspect upload failed: {exc}") from exc
-        _json(inspect_response, "inspect upload")
-
+        upload_id = _stage(client, base_url, path, json_rows_field)["upload_id"]
         body: dict[str, Any] = {
             "project": project_id,
             "name": Path(path.name.removesuffix(".gz").removesuffix(".GZ")).stem or path.name,
@@ -301,8 +309,43 @@ def upload_file(
             result["eval_state"] = str(evaluation.get("state") or "landing")
         return result
     finally:
-        if owns_session:
+        if session is None:
             client.close()
+
+
+def attach_file(
+    path: Path,
+    *,
+    api_key: str,
+    api_url: str,
+    json_rows_field: str | None = None,
+    session: requests.Session | None = None,
+) -> dict[str, Any]:
+    """Stage one local table for a script without creating a dataset. MCP
+    try_dataset_script and add_dataset_version take its upload_id as attachment."""
+    json_rows_field = (json_rows_field or "").strip() or None
+    if json_rows_field and not path.name.lower().removesuffix(".gz").endswith(".json"):
+        raise DatasetUploadError("--json-rows-field applies to .json files only.")
+    client = _session(api_key, session)
+    try:
+        staged = _stage(client, api_url.rstrip("/"), path, json_rows_field)
+    finally:
+        if session is None:
+            client.close()
+    if staged.get("rows") is None:
+        raise DatasetUploadError("Attach a table: CSV, TSV, JSON, JSONL or Parquet.")
+    upload_id = staged["upload_id"]
+    return {
+        "upload_id": upload_id,
+        "filename": str(staged.get("filename") or path.name),
+        "bytes": staged.get("bytes"),
+        "rows": staged.get("rows"),
+        "sha256": staged.get("sha256"),
+        "next_mcp_actions": [
+            {"tool": "try_dataset_script", "arguments": {"attachment": upload_id}},
+            {"tool": "add_dataset_version", "arguments": {"attachment": upload_id}},
+        ],
+    }
 
 
 def _redact_secret(message: str, secret: str) -> str:
@@ -521,6 +564,51 @@ def upload(
         console.print(f"Eval dataset {result['eval_id']} is {result['eval_state']}.")
     if not wait:
         console.print("Next: get_job(kind=dataset_import, id=<dataset id>), then inspect_dataset.")
+
+
+@dataset_app.command("attach")
+def attach(
+    file: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True),
+    ],
+    api_key: Annotated[
+        str,
+        typer.Option("--api-key", envvar="OVERMIND_API_KEY", help="Overmind API key", show_default=False),
+    ] = "",
+    api_url: Annotated[
+        str,
+        typer.Option("--api-url", envvar="OVERMIND_API_URL", help="Overmind backend base URL"),
+    ] = "",
+    path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
+    json_rows_field: Annotated[
+        str | None,
+        typer.Option("--json-rows-field", metavar="FIELD", help="Top-level JSON array field to read."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print machine-readable output")] = False,
+) -> None:
+    """Upload FILE (a table) for a dataset script to read as the frame attachment,
+    without creating a dataset."""
+    try:
+        config = load(path) if path.exists() else Config()
+        key = resolve_api_key(api_key, config)
+        if not key:
+            raise DatasetUploadError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
+        result = attach_file(
+            file,
+            api_key=key,
+            api_url=resolve_api_url(api_url, config),
+            json_rows_field=json_rows_field,
+        )
+    except (DatasetUploadError, OSError, ValueError) as exc:
+        _emit_error(str(exc), as_json=as_json)
+        raise typer.Exit(1) from exc
+
+    if as_json:
+        typer.echo(json.dumps(result, ensure_ascii=False))
+        return
+    console.print(f"Uploaded {result['filename']}: {result['rows']} rows, sha256 {result['sha256']}.")
+    console.print(f"Next: add_dataset_version with attachment={result['upload_id']}.")
 
 
 @dataset_app.command("export")

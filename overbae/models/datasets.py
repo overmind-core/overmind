@@ -14,6 +14,7 @@ class Dataset(models.Model):
         FILE = "file"
         TRACES = "traces"
         LLM_CALLS = "llm_calls"
+        VERSION = "version"
 
     class Intent(models.TextChoices):
         TRAIN = "train"
@@ -33,7 +34,8 @@ class Dataset(models.Model):
     source_kind = models.CharField(
         max_length=16, choices=SourceKind.choices, default=SourceKind.FILE
     )
-    # {filename} for a file; {trace_ids} or a traces-list selection for traces.
+    # {filename} for a file; {trace_ids} or a traces-list selection for traces; for a
+    # version, {dataset_id, dataset_name, cell_id, version, fingerprint} of the version read.
     source_spec = models.JSONField(default=dict, blank=True)
     capability = models.ForeignKey(
         "overbae.Capability",
@@ -152,6 +154,10 @@ class Cell(models.Model):
     capability_report = models.JSONField(default=dict, blank=True)
     # The six numbers training planners read; see contract.stats.
     stats = models.JSONField(default=dict, blank=True)
+    # {labels: [...], inputs: {...}}; see contract.analytics.
+    analytics = models.JSONField(default=dict, blank=True)
+    # {filename, bytes, rows, sha256} of the file the script read as ``attachment``.
+    attachment = models.JSONField(default=dict, blank=True)
     impact = models.JSONField(default=dict, blank=True)
     seconds = models.FloatField(default=0.0)
     used_at = models.DateTimeField(null=True, blank=True)
@@ -220,6 +226,7 @@ class Execution(models.Model):
         RUNNING = "running"
         OK = "ok"
         FAILED = "failed"
+        CANCELLED = "cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     key = models.CharField(max_length=64)
@@ -235,7 +242,9 @@ class Execution(models.Model):
     title = models.CharField(max_length=120, blank=True, default="")
     # The script, or for synthetic runs the canonical JSON of rows and instruction.
     script = models.TextField(blank=True, default="")
-    state = models.CharField(max_length=8, choices=State.choices, default=State.QUEUED)
+    # {upload_id, filename, bytes, rows, sha256} of the file the script reads as ``attachment``.
+    attachment = models.JSONField(default=dict, blank=True)
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
     # The platform caused the failure; an identical call runs again at once.
     transient = models.BooleanField(default=False)
     error = models.TextField(blank=True, default="")

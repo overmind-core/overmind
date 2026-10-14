@@ -18,13 +18,15 @@
  * * `running` - Running
  * * `ok` - Ok
  * * `failed` - Failed
+ * * `cancelled` - Cancelled
  * @export
  */
 export const ExecutionStateEnum = {
     queued: 'queued',
     running: 'running',
     ok: 'ok',
-    failed: 'failed'
+    failed: 'failed',
+    cancelled: 'cancelled'
 } as const;
 export type ExecutionStateEnum = typeof ExecutionStateEnum[keyof typeof ExecutionStateEnum];
 

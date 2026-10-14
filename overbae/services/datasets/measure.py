@@ -11,7 +11,8 @@ from overbae.services.datasets import alignment, contract, paths, store
 def describe_frame(dataset, path, *, report=None):
     frame = store.Frame(path)
     report = report or contract.measure(frame)
-    null_rates = {c["name"]: c["null_rate"] for c in store.column_stats(path)}
+    column_stats = store.column_stats(path)
+    null_rates = {c["name"]: c["null_rate"] for c in column_stats}
     capability_report = (
         alignment.capability_contract(dataset.capability, frame, dataset.intent)
         if dataset.capability_id is not None
@@ -28,6 +29,7 @@ def describe_frame(dataset, path, *, report=None):
         },
         "capability_report": capability_report,
         "stats": contract.stats(frame),
+        "analytics": contract.analytics(frame, column_stats),
         "updated_at": timezone.now(),
     }
 

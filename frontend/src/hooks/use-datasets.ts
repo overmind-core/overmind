@@ -65,6 +65,7 @@ export type DatasetEvent =
   | { type: "land_started" | "land_done" }
   | { type: "land_progress"; stage?: string; traces?: number }
   | { type: "land_failed"; error?: string }
+  | { type: "land_cancelled" }
   | {
       type: "execution_queued" | "execution_started" | "execution_finished";
       execution_id: string;
@@ -394,6 +395,43 @@ export function useResumeImportMutation(id: string) {
     onError: (e) => notify.error(e, "Couldn't retry the import"),
     onSuccess: () => invalidateDataset(qc, id),
   });
+}
+
+export function useCancelImportMutation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.datasets.datasetsCancelImportCreate({ id }),
+    onError: (e) => notify.error(e, "Couldn't cancel the import"),
+    onSuccess: () => invalidateDataset(qc, id),
+  });
+}
+
+export function useCancelExecutionMutation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (executionId: string) =>
+      apiClient.datasets.datasetsExecutionsCancelCreate({ executionId, id }),
+    onError: (e) => notify.error(e, "Couldn't cancel the run"),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: datasetKeys.executions(id) });
+      invalidateDataset(qc, id);
+    },
+  });
+}
+
+/** The prepare-dataset MCP prompt filled with this project, dataset and version. */
+export async function preparePrompt(id: string, cell: string): Promise<string> {
+  return (await apiClient.datasets.datasetsPreparePromptRetrieve({ cell, id })).prompt;
+}
+
+export async function downloadAttachment(id: string, cell: string, filename: string) {
+  const blob = await apiClient.datasets.datasetsAttachmentRetrieve({ cell, id });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function downloadExport(

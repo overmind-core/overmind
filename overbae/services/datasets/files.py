@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import hashlib
 import io
 import json
 import logging
@@ -277,10 +278,16 @@ def inspect_upload(
         raise FileError("The file is empty." if is_document(filename) else "The file has no rows.")
     path = upload_data_path(upload_id)
     bare = filename.lower().removesuffix(".gz")
+    digest = _sha256(path)
     if is_document(filename):
-        record = {"bytes": size, "mtime_ns": stored_stat(path).st_mtime_ns, "rows": None}
+        record = {
+            "bytes": size,
+            "mtime_ns": stored_stat(path).st_mtime_ns,
+            "rows": None,
+            "sha256": digest,
+        }
         _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
-        return {"filename": filename, "bytes": size, "rows": None}
+        return {"filename": filename, "bytes": size, "rows": None, "sha256": digest}
     try:
         if bare.endswith(".parquet"):
             rows = pq.ParquetFile(path).metadata.num_rows
@@ -310,9 +317,22 @@ def inspect_upload(
         raise FileError(message) from exc
     if not rows:
         raise FileError("The file has no rows.")
-    record = {"bytes": size, "mtime_ns": stored_stat(path).st_mtime_ns, "rows": rows}
+    record = {
+        "bytes": size,
+        "mtime_ns": stored_stat(path).st_mtime_ns,
+        "rows": rows,
+        "sha256": digest,
+    }
     _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
-    return {"filename": filename, "bytes": size, "rows": rows}
+    return {"filename": filename, "bytes": size, "rows": rows, "sha256": digest}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _inspection_path(upload_id: Any) -> Path:

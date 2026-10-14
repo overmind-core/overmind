@@ -37,6 +37,12 @@ export interface UploadInspection {
      * @memberof UploadInspection
      */
     rows: number | null;
+    /**
+     *
+     * @type {string}
+     * @memberof UploadInspection
+     */
+    sha256: string;
 }
 
 /**
@@ -46,6 +52,7 @@ export function instanceOfUploadInspection(value: object): value is UploadInspec
     if (!('filename' in value) || value['filename'] === undefined) return false;
     if (!('bytes' in value) || value['bytes'] === undefined) return false;
     if (!('rows' in value) || value['rows'] === undefined) return false;
+    if (!('sha256' in value) || value['sha256'] === undefined) return false;
     return true;
 }
 
@@ -62,6 +69,7 @@ export function UploadInspectionFromJSONTyped(json: any, ignoreDiscriminator: bo
         'filename': json['filename'],
         'bytes': json['bytes'],
         'rows': json['rows'],
+        'sha256': json['sha256'],
     };
 }
 
@@ -79,5 +87,6 @@ export function UploadInspectionToJSONTyped(value?: UploadInspection | null, ign
         'filename': value['filename'],
         'bytes': value['bytes'],
         'rows': value['rows'],
+        'sha256': value['sha256'],
     };
 }

@@ -398,3 +398,139 @@ def _tool_call_turns(inp: Any) -> int:
         for m in messages
         if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls")
     )
+
+
+_LABEL_CHARS = 120
+_MAX_LABELS = 50
+_SHOWN_LABELS = 20
+_MAX_LABEL_FIELDS = 20
+_MAX_INPUT_FIELDS = 100
+_LISTED_FIELDS = 50
+
+
+def _label(value: Any) -> str | None:
+    """``value`` as a class label, or None when it is not one. A ``{option: weight}``
+    answer counts as its heaviest option."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else None
+    if isinstance(value, str):
+        text = value.strip()
+        return text if 0 < len(text) <= _LABEL_CHARS else None
+    if (
+        isinstance(value, dict)
+        and value
+        and all(isinstance(w, (int, float)) and not isinstance(w, bool) for w in value.values())
+    ):
+        return _label(str(max(value, key=lambda option: value[option])))
+    return None
+
+
+def _label_balance(frame: Frame) -> list[dict[str, Any]]:
+    """Label counts per categorical field of ``expected_output``: the value itself, or
+    each key of an object (a decision row's question keys). A field stops counting once
+    it shows free text or more than ``_MAX_LABELS`` labels."""
+    if "expected_output" not in frame:
+        return []
+    fields: dict[str, Counter[str] | None] = {}
+    for value in frame.values("expected_output"):
+        value = _as_obj(value)
+        if _missing(value):
+            continue
+        items = (
+            [(f"expected_output.{key}", item) for key, item in value.items()]
+            if isinstance(value, dict) and _label(value) is None
+            else [("expected_output", value)]
+        )
+        for name, item in items:
+            if name not in fields and len(fields) >= _MAX_LABEL_FIELDS:
+                continue
+            counts = fields.setdefault(name, Counter())
+            if counts is None or _missing(item):
+                continue
+            label = _label(item)
+            if label is None or (label not in counts and len(counts) >= _MAX_LABELS):
+                fields[name] = None
+                continue
+            counts[label] += 1
+    report = []
+    for name, counts in fields.items():
+        labelled = sum(counts.values()) if counts else 0
+        if not counts or labelled < 2 * len(counts):
+            continue
+        ranked = counts.most_common()
+        report.append(
+            {
+                "field": name,
+                "rows": labelled,
+                "labels": len(ranked),
+                "classes": [{"label": k, "rows": v} for k, v in ranked[:_SHOWN_LABELS]],
+                "majority": {"label": ranked[0][0], "share": round(ranked[0][1] / labelled, 4)},
+            }
+        )
+    return report
+
+
+def _input_fields(frame: Frame, column_stats: list[dict[str, Any]]) -> dict[str, Any]:
+    """Columns, and the keys of an object ``input`` (a decision row's state), that are
+    empty on some rows or hold one value on every row."""
+    rows = len(frame)
+    empty: list[dict[str, Any]] = []
+    constant: list[str] = []
+    checked = 0
+    for stat in column_stats:
+        name = stat["name"]
+        if name in ("source_row", "expected_output") or name.startswith("_overmind_"):
+            continue
+        checked += 1
+        missing = round(stat["null_rate"] * rows)
+        if missing:
+            empty.append({"field": name, "rows": missing})
+        if rows > 1 and stat["distinct"] == 1:
+            constant.append(name)
+    # name -> [rows holding the key, rows where it is empty, first value, varies]
+    keys: dict[str, list[Any]] = {}
+    objects = 0
+    if "input" in frame:
+        for value in frame.values("input"):
+            value = _as_obj(value)
+            if decisions.is_request(value):
+                value = _as_obj(value.get("state"))
+            if not isinstance(value, dict):
+                continue
+            objects += 1
+            for key, item in value.items():
+                name = f"input.{key}"
+                if name not in keys and len(keys) >= _MAX_INPUT_FIELDS:
+                    continue
+                seen = keys.setdefault(name, [0, 0, None, False])
+                seen[0] += 1
+                if _missing(item):
+                    seen[1] += 1
+                    continue
+                digest = json.dumps(item, sort_keys=True, default=str)[:4096]
+                if seen[2] is None:
+                    seen[2] = digest
+                elif digest != seen[2]:
+                    seen[3] = True
+    for name, (present, blank, first, varies) in keys.items():
+        checked += 1
+        missing = objects - present + blank
+        if missing:
+            empty.append({"field": name, "rows": missing})
+        if objects > 1 and first is not None and not varies:
+            constant.append(name)
+    return {
+        "fields": checked,
+        "empty": empty[:_LISTED_FIELDS],
+        "constant": constant[:_LISTED_FIELDS],
+    }
+
+
+def analytics(frame: Frame, column_stats: list[dict[str, Any]]) -> dict[str, Any]:
+    """Label balance with its majority baseline wherever ``expected_output`` is
+    categorical, and the input fields that are empty or constant."""
+    return {"labels": _label_balance(frame), "inputs": _input_fields(frame, column_stats)}

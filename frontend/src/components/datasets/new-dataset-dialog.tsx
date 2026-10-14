@@ -63,6 +63,15 @@ const stripExtension = (name: string) =>
 
 type Readiness = { source: SourceRequest; rows?: number } | { hint: string };
 
+/** A version of another dataset in the project, landed as the new dataset's source. */
+export interface VersionSource {
+  datasetId: string;
+  datasetName: string;
+  cellId: string;
+  version: string;
+  rows: number;
+}
+
 export interface NewDatasetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -71,6 +80,7 @@ export interface NewDatasetDialogProps {
   initialTraceIds?: string[];
   initialSelection?: TraceSelectionSpec | null;
   initialSelectionCount?: number;
+  initialVersion?: VersionSource;
   onDone?: (dataset: Dataset) => void;
 }
 
@@ -82,10 +92,12 @@ export function NewDatasetDialog({
   initialTraceIds,
   initialSelection,
   initialSelectionCount,
+  initialVersion,
   onDone,
 }: NewDatasetDialogProps) {
   const navigate = useNavigate();
   const fromTraces = (initialTraceIds?.length ?? 0) > 0 || !!initialSelection;
+  const fixedSource = fromTraces || !!initialVersion;
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
@@ -134,6 +146,13 @@ export function NewDatasetDialog({
 
   const mixed = new Set(upload.files.map((file) => isDocument(file.file.name))).size > 1;
   const readiness = useMemo((): Readiness => {
+    if (initialVersion)
+      return {
+        rows: initialVersion.rows,
+        source: {
+          version: { dataset: initialVersion.datasetId, version: initialVersion.cellId },
+        },
+      };
     if (initialTraceIds?.length)
       return { rows: initialTraceIds.length, source: { traces: { trace_ids: initialTraceIds } } };
     if (initialSelection)
@@ -151,7 +170,14 @@ export function NewDatasetDialog({
       rows: counted ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0) : undefined,
       source: { uploads: upload.files.map((file) => file.uploadId!) },
     };
-  }, [mixed, upload.files, initialTraceIds, initialSelection, initialSelectionCount]);
+  }, [
+    mixed,
+    upload.files,
+    initialTraceIds,
+    initialSelection,
+    initialSelectionCount,
+    initialVersion,
+  ]);
   const ready = "source" in readiness;
   const rows = ready ? readiness.rows : undefined;
   const splitError =
@@ -166,11 +192,13 @@ export function NewDatasetDialog({
     rows !== undefined && rows >= 2 && validPercent ? evaluationRows(rows, evalPercent) : undefined;
 
   const capabilityName = capabilities.find((c) => c.id === capabilityId)?.name;
-  const suggestedName = !fromTraces
-    ? stripExtension(upload.files[0]?.file.name ?? "")
-    : capabilityName
-      ? `${capabilityName} traces`
-      : "Traces";
+  const suggestedName = initialVersion
+    ? `${initialVersion.datasetName} ${initialVersion.version}`
+    : !fromTraces
+      ? stripExtension(upload.files[0]?.file.name ?? "")
+      : capabilityName
+        ? `${capabilityName} traces`
+        : "Traces";
   useEffect(() => {
     if (!nameTouched) setName(suggestedName);
   }, [nameTouched, suggestedName]);
@@ -223,7 +251,9 @@ export function NewDatasetDialog({
     <Dialog onOpenChange={(next) => !busy && onOpenChange(next)} open={open}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>New dataset</DialogTitle>
+          <DialogTitle>
+            {initialVersion ? `New dataset from ${initialVersion.version}` : "New dataset"}
+          </DialogTitle>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-5">
           <div className="flex flex-col gap-1.5">
@@ -240,7 +270,7 @@ export function NewDatasetDialog({
             />
           </div>
 
-          {!fromTraces ? (
+          {!fixedSource ? (
             <section
               aria-label="Upload files"
               className={cn(
@@ -317,12 +347,25 @@ export function NewDatasetDialog({
             </section>
           ) : (
             <div className="rounded-md border border-border bg-muted px-3 py-3">
-              <p className="text-sm">
-                {initialTraceIds?.length
-                  ? `${initialTraceIds.length.toLocaleString()} selected traces`
-                  : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
-              </p>
-              <p className="text-xs text-muted-foreground">One row per trace</p>
+              {initialVersion ? (
+                <>
+                  <p className="text-sm">
+                    {initialVersion.datasetName} {initialVersion.version}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {`${initialVersion.rows.toLocaleString()} ${initialVersion.rows === 1 ? "row" : "rows"}`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    {initialTraceIds?.length
+                      ? `${initialTraceIds.length.toLocaleString()} selected traces`
+                      : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">One row per trace</p>
+                </>
+              )}
             </div>
           )}
 
@@ -357,7 +400,9 @@ export function NewDatasetDialog({
                 <SelectContent>
                   {PURPOSES.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      {initialVersion && option.value === "pending"
+                        ? "Same as the source"
+                        : option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

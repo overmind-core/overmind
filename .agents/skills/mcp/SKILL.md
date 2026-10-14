@@ -143,9 +143,10 @@ the catalog/auth layer for every tool—do not add one-off handler checks.
 
 The public surface remains read and write only. The catalog rejects destructive
 tool names and destructive metadata. Do not add delete, remove, cancel, or
-undeploy operations without an explicit public-surface decision. The sole
-documented lifecycle exception is `retry_deployment`; do not add other retry
-operations without an explicit public-surface decision.
+undeploy operations without an explicit public-surface decision. The documented
+lifecycle exceptions are `retry_deployment` and `cancel_dataset_job` (stops a
+dataset import or script run; nothing it produced is kept); do not add other
+retry or cancel operations without an explicit public-surface decision.
 
 ## Adding or changing a tool
 
