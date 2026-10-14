@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
+from typing import get_args
 
 import pytest
 from pydantic import BaseModel
@@ -8,6 +11,7 @@ from pydantic import BaseModel
 from overbae.models import APIToken, Project, User
 from overbae.services.mcp.catalog import CatalogError, ToolCatalog, ToolDefinition
 from overbae.services.mcp.context import MCPContext
+from overbae.services.mcp.errors import DATASET_ERROR_CODES, ErrorCode
 
 
 class ReadInput(BaseModel):
@@ -105,3 +109,11 @@ async def test_unexpected_failure_is_logged_but_not_exposed_to_the_client(caplog
     assert "MCP tool read_state failed" in caplog.text
     assert "private database diagnostic" in caplog.text
     assert "user data" not in caplog.text
+
+
+def test_every_raised_error_code_is_declared():
+    source = "\n".join(path.read_text() for path in Path("overbae").rglob("*.py"))
+    raised = set(re.findall(r"MCPError\(\s*\"([a-z_]+)\"", source))
+    raised |= set(DATASET_ERROR_CODES.values())
+
+    assert raised - set(get_args(ErrorCode)) == set()

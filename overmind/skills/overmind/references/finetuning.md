@@ -58,8 +58,8 @@ eval set, and the same train and eval versions. A model that is not in
 1. Call `estimate_finetune` for each approved base model when cost or duration
    matters.
 1. For Modal, after selecting the model and context, call `prepare_training_data`
-   with the dataset and version (`cell`), `base_model`, `context_length`, `training_type` (`lora`
-   or `full`) and any separate validation dataset. This is a CPU compute operation;
+   with the dataset and `version`, `base_model`, `context_length`, `training_type` (`lora`
+   or `full`) and any separate validation dataset and `validation_version`. This is a CPU compute operation;
    include it in spend approval. Poll the returned receipt with
    `get_job(kind="training_preparation", id=...)`. Inspect exact token counts,
    supervised content and incompatible source-row IDs. Do not start until ready.

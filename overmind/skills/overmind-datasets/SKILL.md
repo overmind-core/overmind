@@ -17,10 +17,10 @@ names are not unique, so continue with returned UUIDs. Read
 
 ## Land and inspect
 
-Use `create_dataset_from_traces` for a trace selection (explicit IDs, or the
-supported filters/search), `create_dataset_from_llm_calls` for LLM calls and
-`create_dataset_from_version` to land a version of another dataset, whole or
-split into train and eval.
+Use `create_dataset` with a `source`: `{kind: traces}` for a trace selection
+(explicit IDs, or `query_traces` filters/search), `{kind: llm_calls}` for LLM
+calls, or `{kind: version}` to land a version of another dataset. `split` lands
+any source as a train and an eval dataset.
 For local tables, documents or images, use the `upload-dataset-file` prompt or
 read `overmind://dataset-upload` and run its CLI command. MCP does not carry
 file bytes, and credentials never go in chat.

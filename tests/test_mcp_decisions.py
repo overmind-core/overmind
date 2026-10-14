@@ -50,8 +50,13 @@ def test_an_agent_learns_the_row_format_trains_and_follows_the_job(fake_modal):
     )
     assert not started.isError, started.structuredContent
     job = started.structuredContent["job"]
-    assert (job["status"], job["version"], job["eval_version"]) == ("queued", "v0", "v0")
-    assert job["dataset"] == str(train.id)
+    versions = job["versions"]
+    assert (job["status"], versions["train"]["version"], versions["eval"]["version"]) == (
+        "queued",
+        "v0",
+        "v0",
+    )
+    assert versions["train"]["dataset"] == str(train.id)
 
     decision_jobs.start(job["id"])
     fake_modal.release("train_decision")
@@ -140,7 +145,7 @@ def test_start_pins_the_requested_version_and_defaults_to_the_active_one(fake_mo
         context,
     )
     assert not pinned.isError, pinned.structuredContent
-    assert pinned.structuredContent["job"]["version"] == "v0"
+    assert pinned.structuredContent["job"]["versions"]["train"]["version"] == "v0"
     decision_jobs.start(pinned.structuredContent["job"]["id"])
     staged = backend.staged[pinned.structuredContent["job"]["id"]]["records"]
     assert len(staged.splitlines()) == 3
@@ -148,14 +153,14 @@ def test_start_pins_the_requested_version_and_defaults_to_the_active_one(fake_mo
     active = _call(
         "start_decision_job", {"model": "vllm-sr/d3-edge", "dataset": "Tickets"}, context
     )
-    assert active.structuredContent["job"]["version"] == "v1"
+    assert active.structuredContent["job"]["versions"]["train"]["version"] == "v1"
 
     missing = _call(
         "start_decision_job",
         {"model": "vllm-sr/d3-edge", "dataset": "Tickets", "version": "v9"},
         context,
     )
-    assert missing.structuredContent["error"]["code"] == "cell_not_found"
+    assert missing.structuredContent["error"]["code"] == "version_not_found"
 
 
 def test_start_names_an_unknown_model_as_model_not_found(fake_modal):
@@ -321,8 +326,8 @@ def test_readiness_recommends_a_fitting_model_for_decision_rows(fake_modal):
     assert not result.isError, result.structuredContent
     body = result.structuredContent
     assert (body["ready"], body["missing"]) == (True, [])
-    assert body["dataset"]["version"] == "v0"
-    assert body["eval_dataset"]["version"] == "v0"
+    assert body["dataset"]["version"]["version"] == "v0"
+    assert body["eval_dataset"]["version"]["version"] == "v0"
     assert (
         "train/eval split — 2 overlapping training rows; review the split before training"
         in body["warnings"]

@@ -322,10 +322,13 @@ def test_dataset_resource_matches_inspect_fields_and_hides_paths(settings):
     assert payload["active"]["version"]
     assert [version["version"] for version in payload["versions"]] == ["v0"]
     assert payload["versions_total"] == 1
-    assert payload["sample"]["cell_id"] == payload["active"]["id"]
+    assert payload["sample"]["id"] == payload["active"]["id"]
     assert len(payload["sample"]["rows"]) == 2
     assert payload["next_actions"]
-    assert payload["human_action"]["command"] == "overmind dataset export DATASET --json"
+    assert payload["human_action"]["command"] == (
+        "overmind dataset export DATASET --cell VERSION --json"
+    )
+    assert payload["human_action"]["arguments"]["version"] == "v0"
     assert "api_key" not in json.dumps(payload["human_action"]).lower()
     assert "OVERMIND_API_KEY" not in encoded
     assert str(settings.MEDIA_ROOT) not in encoded
@@ -342,7 +345,7 @@ def test_get_job_dataset_import_tracks_state_and_emits_job_resource_link():
     context = _tool_context(project)
     uri = f"overmind://jobs/dataset_import/{dataset.id}"
 
-    for state in (Dataset.State.LANDING, Dataset.State.ERROR):
+    for state, status in ((Dataset.State.LANDING, "queued"), (Dataset.State.ERROR, "failed")):
         Dataset.objects.filter(pk=dataset.pk).update(
             state=state, error="clipped-secret" if state == Dataset.State.ERROR else ""
         )
@@ -353,13 +356,13 @@ def test_get_job_dataset_import_tracks_state_and_emits_job_resource_link():
         body = result.structuredContent
         assert body["kind"] == "dataset_import"
         assert body["id"] == str(dataset.id)
-        assert body["status"] == state
+        assert body["status"] == status
         assert body["resource"]["uri"] == uri
         links = [str(item.uri) for item in result.content if isinstance(item, types.ResourceLink)]
         assert uri in links
         assert f"overmind://datasets/{dataset.id}" in links
         job = _read(project, uri)
-        assert job["status"] == state
+        assert job["status"] == status
         assert job["dataset"]["uri"] == f"overmind://datasets/{dataset.id}"
 
     assert result.structuredContent["job_error"] == "clipped-secret"

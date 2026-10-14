@@ -16,6 +16,7 @@ from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.rows import RowStoreError
 from overbae.services.mcp.context import MCPContext
+from overbae.services.mcp.contracts.common import VersionRef
 from overbae.services.mcp.contracts.decisions import (
     CheckDecisionReadinessInput,
     CheckDecisionReadinessOutput,
@@ -34,8 +35,9 @@ from overbae.services.mcp.contracts.finetuning import FineTuneCreditReadiness
 from overbae.services.mcp.errors import (
     MCPError,
     dataset_mcp_error,
-    mcp_cell,
     mcp_dataset,
+    mcp_version,
+    pinned_versions,
 )
 from overbae.services.mcp.resources import resource_link
 
@@ -74,10 +76,7 @@ def decision_job_contract(job: DecisionJob) -> DecisionJobContract:
         id=str(job.id),
         model=job.model_id,
         status=job.status,
-        dataset=str(job.cell.dataset_id),
-        version=job.cell.label,
-        eval_dataset=str(job.eval_cell.dataset_id) if job.eval_cell_id else None,
-        eval_version=job.eval_cell.label if job.eval_cell_id else None,
+        versions=pinned_versions(train=job.cell, eval=job.eval_cell),
         error=job.error or None,
         evaluation=job.evaluation or {},
         evaluation_status=job.evaluation_status,
@@ -210,6 +209,10 @@ def _candidate(row: dict) -> DecisionCandidate:
     return DecisionCandidate(**row)
 
 
+def _ref(cell) -> VersionRef | None:
+    return VersionRef(id=str(cell.id), version=cell.label) if cell is not None else None
+
+
 def _decision_warnings(cell) -> list[str]:
     return ((cell.intent_report or {}).get("decision") or {}).get("warnings") or []
 
@@ -218,7 +221,7 @@ def _readiness(
     payload: CheckDecisionReadinessInput, context: MCPContext
 ) -> CheckDecisionReadinessOutput:
     dataset = mcp_dataset(context, payload.dataset)
-    cell = mcp_cell(dataset, payload.version) or dataset.active_cell
+    cell = mcp_version(dataset, payload.version) or dataset.active_cell
     missing: list[str] = []
     warnings: list[str] = []
     train_ok = False
@@ -235,7 +238,10 @@ def _readiness(
     eval_dataset = mcp_dataset(context, payload.eval_dataset) if payload.eval_dataset else None
     eval_cell = eval_ok = None
     if eval_dataset is not None:
-        eval_cell = mcp_cell(eval_dataset, payload.eval_version) or eval_dataset.active_cell
+        eval_cell = (
+            mcp_version(eval_dataset, payload.eval_version, field="eval_version")
+            or eval_dataset.active_cell
+        )
         if eval_cell is None:
             missing.append("eval dataset — The dataset has no version yet.")
         else:
@@ -280,14 +286,14 @@ def _readiness(
             id=str(dataset.id),
             name=dataset.name or str(dataset.id)[:8],
             intent=public_intent(dataset.intent),
-            version=cell.label if cell is not None else None,
+            version=_ref(cell),
         ),
         eval_dataset=(
             DecisionDatasetReference(
                 id=str(eval_dataset.id),
                 name=eval_dataset.name or str(eval_dataset.id)[:8],
                 intent=public_intent(eval_dataset.intent),
-                version=eval_cell.label if eval_cell is not None else None,
+                version=_ref(eval_cell),
             )
             if eval_dataset is not None
             else None
@@ -331,7 +337,7 @@ def register_decision_tools(catalog) -> None:
             ToolDefinition(
                 name="start_decision_job",
                 title="Start decision job",
-                description="Train a decision model on decision rows (overmind://decision-models). version and eval_version pin versions.",
+                description="Train a decision model on decision rows (overmind://decision-models). Pass version and eval_version; the job pins them.",
                 input_model=StartDecisionJobInput,
                 output_model=StartDecisionJobOutput,
                 read_only=False,

@@ -421,11 +421,12 @@ def _spec_name(spec: Any) -> str:
 
 
 def sample_units_for_dataset(
-    dataset, *, limit: int = DEFAULT_SAMPLE_LIMIT, mode: str | None = None
+    dataset, *, limit: int = DEFAULT_SAMPLE_LIMIT, mode: str | None = None, cell=None
 ) -> list[EvalUnit]:
-    """``generate`` mode prefers a recent generate run's regenerated trajectory,
-    which carries the real ``final_output``; otherwise the dataset rows
-    normalized exactly as run assembly does. ``[]`` means skip the check."""
+    """Units from ``cell`` (the active version by default). ``generate`` mode prefers a
+    recent generate run's regenerated trajectory, which carries the real
+    ``final_output``; otherwise the rows normalized exactly as run assembly does.
+    ``[]`` means skip the check."""
     from overbae.services.eval import normalizer  # noqa: PLC0415 — avoid import cycle
     from overbae.services.eval.grounding import build_reference_context  # noqa: PLC0415
     from overbae.tasks.eval import normalize_datapoint  # noqa: PLC0415 — task layer
@@ -436,7 +437,7 @@ def sample_units_for_dataset(
 
     if mode == GENERATE:
         run_units = _units_from_recent_generate_run(
-            dataset, limit, output_fields, output_schema, reference_context, input_schema
+            dataset, limit, output_fields, output_schema, reference_context, input_schema, cell
         )
         if run_units:
             return run_units
@@ -444,7 +445,7 @@ def sample_units_for_dataset(
     from overbae.services.datasets.rows import sample_rows  # noqa: PLC0415
 
     try:
-        datapoints = sample_rows(dataset, limit)
+        datapoints = sample_rows(dataset, limit, cell)
     except Exception as exc:  # noqa: BLE001 — additive check, never fatal
         logger.warning("binding dry-run: row fetch failed for %s: %s", dataset, exc)
         return []
@@ -661,12 +662,14 @@ def _units_from_recent_generate_run(
     output_schema: dict[str, Any],
     reference_context: dict[str, Any],
     input_schema: dict[str, Any],
+    cell=None,
 ) -> list[EvalUnit]:
     from overbae.models import EvalSample, EvalVariant  # noqa: PLC0415 — avoid import cycle
 
+    runs = {"run__cell": cell} if cell is not None else {"run__dataset": dataset}
     try:
         samples = list(
-            EvalSample.objects.filter(run__dataset=dataset, variant__mode=EvalVariant.Mode.GENERATE)
+            EvalSample.objects.filter(**runs, variant__mode=EvalVariant.Mode.GENERATE)
             .exclude(degraded=True)
             .order_by("-created_at")[: max(limit * 4, limit)]
         )

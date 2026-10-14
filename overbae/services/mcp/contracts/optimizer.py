@@ -8,9 +8,10 @@ from typing import Any, Literal
 from pydantic import Field
 
 from overbae.services.mcp.contracts.common import (
-    DatasetCellContract,
+    DatasetVersionContract,
     MCPModel,
     ResourceLinkContract,
+    version_field,
 )
 
 OptimizerMode = Literal["optimize", "model_comparison", "hybrid"]
@@ -20,7 +21,7 @@ class OptimizerDatasetReadiness(MCPModel):
     id: str
     name: str
     intent: str | None
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
     usable: bool
     issue: str | None = Field(default=None, max_length=500)
 
@@ -70,8 +71,7 @@ class CheckOptimizerReadinessInput(MCPModel):
     capability: str = Field(min_length=1, max_length=255)
     dataset: str | None = Field(default=None, max_length=255)
     eval_set: str | None = Field(default=None, max_length=255)
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
     mode: OptimizerMode = "optimize"
     model_ids: list[str] = Field(default_factory=list, max_length=5)
 
@@ -95,8 +95,7 @@ class StartOptimizerInput(MCPModel):
     capability: str = Field(min_length=1, max_length=255)
     dataset: str = Field(min_length=1, max_length=255)
     eval_set: str | None = Field(default=None, max_length=255)
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
     mode: OptimizerMode = "optimize"
     model_ids: list[str] = Field(default_factory=list, max_length=5)
     entrypoint: str = Field(default="", max_length=512)
@@ -111,7 +110,7 @@ class OptimizerExperimentReference(MCPModel):
     status: str
     mode: OptimizerMode
     capability: ResourceLinkContract
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
     resource: ResourceLinkContract
 
 
@@ -178,7 +177,7 @@ class OptimizerResultSummary(MCPModel):
     status: str
     mode: OptimizerMode
     capability: ResourceLinkContract
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
     current_iteration: int = Field(ge=0)
     num_iterations: int = Field(ge=0)
     scores: dict[str, Any] = Field(default_factory=dict, max_length=100)

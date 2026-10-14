@@ -96,7 +96,7 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
         next(n for n in order if n.startswith("sft_"))
     )
     pinned = {v["id"]: v for v in workshop.call("inspect_dataset", {"dataset": train})["versions"]}
-    assert pinned[finetune()["cell"]]["used"] is True
+    assert pinned[finetune()["versions"]["train"]["id"]]["used"] is True
 
     fake_modal.release("sft_")
 

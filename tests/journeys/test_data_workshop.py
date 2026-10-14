@@ -193,12 +193,12 @@ def test_an_uploaded_eval_file_is_prepared_evaluated_and_marked_used(
     assert prepared["fits"]["ok"] is True
 
     ready = workshop.call("check_evaluation_readiness", {"dataset": dataset})
-    assert ready["dataset"]["cell"]["fits"] is True
+    assert ready["dataset"]["version"]["fits"] is True
 
     run = evaluate(workshop, dataset)
     drain(worker)
-    assert run["cell"]["version"] == version
-    assert run["cell"]["fingerprint"] == prepared["fingerprint"]
+    assert run["version"]["version"] == version
+    assert run["version"]["fingerprint"] == prepared["fingerprint"]
     assert workshop.read(run["resource"]["uri"])["status"] == "completed"
     assert _versions(workshop, dataset)[version]["used"] is True
 
@@ -231,8 +231,12 @@ def test_personal_data_in_traces_is_redacted_in_the_dataset(
         "task_executions"
     ]
     created = workshop.call(
-        "create_dataset_from_traces",
-        {"name": "with pii", "trace_ids": [execution["trace_id"]], "intent": "eval"},
+        "create_dataset",
+        {
+            "name": "with pii",
+            "source": {"kind": "traces", "trace_ids": [execution["trace_id"]]},
+            "intent": "eval",
+        },
     )
     drain(worker)
     rows = workshop.call(
@@ -251,10 +255,10 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
         "task_executions"
     ]
     created = workshop.call(
-        "create_dataset_from_traces",
+        "create_dataset",
         {
             "name": "answers",
-            "trace_ids": [execution["trace_id"]],
+            "source": {"kind": "traces", "trace_ids": [execution["trace_id"]]},
             "intent": "eval",
             "capability": answer["id"],
         },
@@ -285,8 +289,12 @@ def test_a_version_lands_as_its_own_dataset_or_split_into_train_and_eval(
         },
     )
     split = workshop.call(
-        "create_dataset_from_version",
-        {"dataset": source, "name": "tickets", "split": {"eval_percent": 50, "position": "head"}},
+        "create_dataset",
+        {
+            "name": "tickets",
+            "source": {"kind": "version", "dataset": source},
+            "split": {"eval_percent": 50, "position": "head"},
+        },
     )
     drain(worker)
 

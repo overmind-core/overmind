@@ -220,12 +220,17 @@ def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(fa
         {"dataset": str(dataset.id), "capability": str(capability.id)},
         context,
     )
-    unassigned = _call("check_finetune_readiness", {"dataset": str(dataset.id)}, context)
+    omitted = _call("check_finetune_readiness", {"dataset": str(dataset.id)}, context)
+    unassigned = _call(
+        "check_finetune_readiness", {"dataset": str(dataset.id), "capability": None}, context
+    )
 
     assert not selected.isError, selected.structuredContent
     assert not unassigned.isError, unassigned.structuredContent
     assert selected.structuredContent["task_type"] == "code_generation"
     assert selected.structuredContent["task_type_source"] == "capability"
+    assert omitted.structuredContent["capability"]["id"] == str(capability.id)
+    assert unassigned.structuredContent["capability"] is None
     assert unassigned.structuredContent["task_type_source"] == "heuristic"
     definition = next(
         item for item in CATALOG.definitions() if item.name == "check_finetune_readiness"
@@ -277,8 +282,32 @@ def test_estimate_prices_the_chosen_cell_without_creating_a_job():
     one, four = one.structuredContent, four.structuredContent
     assert four["trained_tokens"] == 4 * one["trained_tokens"]
     assert four["cost_estimate"]["usd"] >= one["cost_estimate"]["usd"]
-    assert four["cell"]["id"] == str(dataset.active_cell.id)
-    assert four["cell"]["rows"] == dataset.active_cell.rows
+    assert four["version"]["id"] == str(dataset.active_cell.id)
+    assert four["version"]["rows"] == dataset.active_cell.rows
+    assert not FinetuningJob.objects.filter(project=context.project).exists()
+
+
+def test_start_without_a_capability_requires_the_eval_dataset_and_set():
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
+    _, train, evaluation, _ = training_setup(context)
+    arguments = {
+        "dataset": str(train.id),
+        "capability": None,
+        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+    }
+
+    no_eval = _call("start_finetune", arguments, context).structuredContent["error"]
+    no_set = _call(
+        "start_finetune", {**arguments, "eval_dataset": str(evaluation.id)}, context
+    ).structuredContent["error"]
+
+    assert (no_eval["code"], no_eval["fields"]) == (
+        "finetune_not_ready",
+        {"eval_dataset": "required"},
+    )
+    assert (no_set["code"], no_set["fields"]) == ("finetune_not_ready", {"eval_set": "required"})
     assert not FinetuningJob.objects.filter(project=context.project).exists()
 
 
@@ -295,6 +324,10 @@ def test_start_uses_serializer_and_worker_task(
     if unassigned_set:
         _eval_set.capability = None
         _eval_set.save(update_fields=["capability"])
+    defaults = capability_choice == "omitted" and not unassigned_set
+    if defaults:
+        capability.active_eval_set = _eval_set
+        capability.save(update_fields=["active_eval_set"])
     calls = {}
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
@@ -313,6 +346,15 @@ def test_start_uses_serializer_and_worker_task(
                 else {}
             ),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            **(
+                {}
+                if defaults
+                else {
+                    "eval_dataset": str(_evaluation.id),
+                    "eval_version": "v0",
+                    "eval_set": str(_eval_set.id),
+                }
+            ),
             **({"baseline_model": capability.model} if capability_choice == "selected" else {}),
             **(
                 {
@@ -329,7 +371,7 @@ def test_start_uses_serializer_and_worker_task(
     )
     assert result.isError is False, result.structuredContent
     job = FinetuningJob.objects.get(project=context.project)
-    assert job.capability_id == (capability.id if capability_choice == "selected" else None)
+    assert job.capability_id == (None if capability_choice == "none" else capability.id)
     if capability_choice == "selected":
         assert job.baseline_model == capability.model
     assert job.eval_dataset_id == _evaluation.id
@@ -351,7 +393,15 @@ def test_start_uses_serializer_and_worker_task(
         f"overmind://jobs/finetune/{job.id}"
     )
     assert job.cell_id == train.active_cell.id
-    assert result.structuredContent["cell"]["id"] == str(job.cell_id)
+    versions = result.structuredContent["versions"]
+    assert versions["train"] == {
+        "dataset": str(train.id),
+        "version": "v0",
+        "id": str(job.cell_id),
+        "fingerprint": train.active_cell.fingerprint,
+    }
+    assert versions["eval"]["id"] == str(job.eval_cell_id)
+    assert versions["validation"] is None
     train.active_cell.refresh_from_db()
     assert train.active_cell.used_at is not None
 
@@ -746,9 +796,9 @@ def test_readiness_reports_chosen_cell_rows_and_contract_failure():
     assert result.isError is False
     output = result.structuredContent
     assert output["ready"] is False
-    assert output["dataset"]["cell"]["id"] == str(cell.id)
-    assert output["dataset"]["cell"]["rows"] == 7
-    assert output["dataset"]["cell"]["fits"] is False
+    assert output["dataset"]["version"]["id"] == str(cell.id)
+    assert output["dataset"]["version"]["rows"] == 7
+    assert output["dataset"]["version"]["fits"] is False
     assert any("training dataset" in item for item in output["missing"])
 
 
@@ -777,7 +827,9 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
             "dataset": str(train.id),
             "capability": str(capability.id),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
-            "cell": str(extra.id),
+            "version": str(extra.id),
+            "eval_dataset": str(_evaluation.id),
+            "eval_set": str(_eval_set.id),
             "baseline_model": "ft-selected-benchmark",
         },
         context,
@@ -788,7 +840,7 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
     assert job.baseline_model == "ft-selected-benchmark"
     extra.refresh_from_db()
     assert extra.used_at is not None
-    assert result.structuredContent["cell"]["id"] == str(extra.id)
+    assert result.structuredContent["versions"]["train"]["id"] == str(extra.id)
 
 
 def test_activation_receipt_can_be_polled_and_is_project_scoped():

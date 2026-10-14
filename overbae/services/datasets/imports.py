@@ -60,11 +60,11 @@ def _uploads(source):
     )
 
 
-def _source_inputs(inputs):
+def _source_inputs(inputs, dataset):
     inputs = {**inputs, "source": dict(inputs["source"])}
     source = inputs["source"]
     if source.get("rows") is not None:
-        upload_id, _filename = files.begin_upload("pasted.jsonl")
+        upload_id, _filename = files.begin_upload("pasted.jsonl", project=dataset.project_id)
         with files.upload_data_path(upload_id).open("w", encoding="utf-8") as output:
             for row in source["rows"]:
                 output.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -77,7 +77,8 @@ def _source_inputs(inputs):
             stat = files.stored_stat(files.upload_data_path(upload_id))
         except OSError:
             stat = None
-        if not filename or stat is None:
+        owned = files.belongs(upload_id, project=dataset.project_id, user=dataset.created_by_id)
+        if not filename or stat is None or not owned:
             raise DatasetError(
                 "The source upload is missing. Upload it again.", code="source_missing"
             )
@@ -138,7 +139,7 @@ def queue_landing_receipt(dataset, task_id, inputs, *, published=False, preserve
     was_error = locked.state == Dataset.State.ERROR or (
         evaluation is not None and evaluation.state == Dataset.State.ERROR
     )
-    inputs, manifest = _source_inputs(inputs)
+    inputs, manifest = _source_inputs(inputs, locked)
     now = timezone.now()
     run = DatasetImport.objects.create(
         id=task_id,

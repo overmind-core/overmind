@@ -251,8 +251,12 @@ def test_run_uses_existing_serializer_and_task(monkeypatch):
     run = EvalRun.objects.get(id=result.structuredContent["run_id"])
     assert run.dataset_id == dataset.id
     assert run.cell_id == dataset.active_cell.id
-    assert result.structuredContent["cell"]["id"] == str(run.cell_id)
-    assert result.structuredContent["cell"]["rows"] == dataset.active_cell.rows
+    assert result.structuredContent["version"] == {
+        "dataset": str(dataset.id),
+        "version": dataset.active_cell.label,
+        "id": str(run.cell_id),
+        "fingerprint": dataset.active_cell.fingerprint,
+    }
     assert calls["kwargs"] == {"kwargs": {"eval_run_id": str(run.id)}}
     assert result.structuredContent["job"]["resource"]["uri"].startswith(
         "overmind://jobs/eval_run/"
@@ -444,7 +448,7 @@ def test_run_rejects_nonfitting_eval_cell_and_records_explicit_cell(monkeypatch)
             "name": "Explicit",
             "dataset": str(dataset.id),
             "evaluator_ids": [str(evaluator.id)],
-            "cell": str(extra.id),
+            "version": str(extra.id),
             "variants": [{"mode": "existing"}],
         },
         context,

@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
@@ -24,6 +24,7 @@ from overbae.models import (
     DecisionJob,
     DeployedModel,
     EvalSet,
+    Execution,
     FinetuningJob,
     ModelActivation,
     OptimizerCandidate,
@@ -45,9 +46,21 @@ from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
 from overbae.services.mcp.context import get_context, project_context
-from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
+from overbae.services.mcp.contracts.datasets import (
+    import_receipt,
+    import_status,
+    next_actions,
+    run_payload,
+    serialize_dataset_detail,
+)
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
-from overbae.services.mcp.errors import MCPError, error_payload, internal_error
+from overbae.services.mcp.errors import (
+    MCPError,
+    error_payload,
+    finetune_versions,
+    internal_error,
+    pinned_version,
+)
 from overbae.services.mcp.references import project_references
 from overbae.services.model_activation import activation_progress
 
@@ -56,6 +69,7 @@ _MAX_EVENTS = 20
 _MAX_LIST = 50
 _OPTIMIZER_PATCH_CAP = 4_000
 _ERROR_CAP = 1_000
+_PINNED = ("cell", "validation_cell", "eval_cell")
 
 
 def _normalize_key(key: object) -> str:
@@ -268,7 +282,9 @@ def _dataset_export_resource(uri: str) -> dict:
     return {
         "uri": uri,
         "kind": "dataset_export",
-        "command": "overmind dataset export DATASET --json",
+        "command": "overmind dataset export DATASET --cell VERSION --json",
+        "version": "--cell takes a version label such as v3 or its id; default is the active one. "
+        "An export carries source_row, which an attachment merges on.",
         "formats": ["jsonl", "csv"],
         "dataset": "Use the dataset id supplied by MCP; the CLI does not resolve dataset names.",
         "auth": "X-Api-Key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
@@ -651,32 +667,28 @@ def _dataset_link(dataset) -> dict[str, str]:
     return dict(link)
 
 
-def _dataset_human_action(dataset) -> dict:
-    if dataset.source_kind == Dataset.SourceKind.FILE and dataset.state == Dataset.State.LANDING:
-        return {
-            "command": "overmind dataset upload FILE --json",
-            "arguments": {"file": "<path>", "project_id": str(dataset.project_id)},
-        }
-    return {
-        "command": "overmind dataset export DATASET --json",
-        "arguments": {"dataset": str(dataset.id)},
-    }
-
-
 def _dataset_detail_payload(dataset, *, uri: str) -> dict:
-    detail = serialize_dataset_detail(dataset)
-    payload = detail.model_dump(mode="json", by_alias=True)
+    from overbae.services.datasets.lifecycle import DatasetError
+    from overbae.services.datasets.versions import resolve_cell
+
+    requested = (parse_qs(urlparse(uri).query).get("version") or [""])[0]
+    try:
+        selected = resolve_cell(dataset, requested) if requested else None
+    except DatasetError as exc:
+        raise _not_found("dataset version", requested) from exc
+    payload = serialize_dataset_detail(dataset, selected=selected).model_dump(
+        mode="json", by_alias=True
+    )
     payload["uri"] = uri
     payload.setdefault("kind", "dataset")
-    if not payload.get("human_action"):
-        payload["human_action"] = _dataset_human_action(dataset)
     return payload
 
 
 def dataset_import_job_payload(dataset, uri: str) -> dict:
     active = dataset.active
     actions = [action.model_dump(mode="json") for action in next_actions(dataset, active)]
-    receipt = DatasetImport.objects.filter(Q(dataset=dataset) | Q(evaluation=dataset)).first()
+    receipt = import_receipt(dataset)
+    status = import_status(dataset, receipt)
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
         "jobs", f"dataset_import/{dataset.id}", (dataset.name or "Dataset import")[:160]
@@ -686,7 +698,7 @@ def dataset_import_job_payload(dataset, uri: str) -> dict:
         "kind": "dataset_import",
         "id": str(dataset.id),
         "name": dataset.name,
-        "status": dataset.state,
+        "status": status,
         "state": dataset.state,
         "error": _clip_text(dataset.error, _ERROR_CAP) or None,
         "import": (
@@ -798,6 +810,7 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
         "status": run.status,
         "data_source": run.data_source,
         "dataset": str(run.dataset_id) if run.dataset_id else None,
+        "version": pinned_version(run.cell).model_dump(mode="json") if run.cell_id else None,
         "max_items": run.max_items,
         "sampling": run.sampling,
         "error": run.error[:1_000],
@@ -856,7 +869,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
     normalized_id = _uuid_ref(value)
     job = (
         FinetuningJob.objects.filter(project=project, id=normalized_id)
-        .select_related("capability", "dataset", "deployed_model")
+        .select_related("capability", "dataset", "deployed_model", *_PINNED)
         .first()
         if normalized_id
         else None
@@ -886,8 +899,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         },
         "capability": job.capability.slug if job.capability_id else None,
         "dataset": str(job.dataset_id) if job.dataset_id else None,
-        "cell": str(job.cell_id) if job.cell_id else None,
-        "eval_cell": str(job.eval_cell_id) if job.eval_cell_id else None,
+        "versions": finetune_versions(job).model_dump(mode="json"),
         "progress": _safe_finetune_progress(progress),
         "loss": safe_json(loss[:100] if isinstance(loss, list) else []),
         "error": job.error_message[:1_000],
@@ -1174,6 +1186,17 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
         return _optimizer_resource(project, value, uri)
     normalized_id = _uuid_ref(value)
+    if kind == "dataset_run":
+        run = (
+            Execution.objects.filter(project=project, pk=normalized_id)
+            .select_related("parent", "cell")
+            .first()
+            if normalized_id
+            else None
+        )
+        if run is None:
+            raise _not_found("dataset run", value)
+        return {"uri": uri, "kind": kind, **run_payload(run)}
     if kind == "dataset_import":
         job = _load_dataset_job(project, normalized_id)
         if job is None:
@@ -1293,7 +1316,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ("capability", "overmind://capabilities/{capability}", "Capability details"),
         ("trace", "overmind://traces/{trace_id}", "Trace and bounded spans"),
         ("session", "overmind://sessions/{session}", "Session and trace references"),
-        ("dataset", "overmind://datasets/{dataset}", "Dataset metadata"),
+        (
+            "dataset",
+            "overmind://datasets/{dataset}",
+            "Dataset and version tree; ?version=v3 adds it in full",
+        ),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
         ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and evaluator members"),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),

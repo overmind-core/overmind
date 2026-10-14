@@ -33,6 +33,11 @@ class Run:
             return Execution.State.OK
         return self.execution.state
 
+    @property
+    def created(self) -> bool:
+        """False when the parent, script and attachment already named a version."""
+        return self.execution is not None
+
 
 def _ready(dataset: Dataset) -> None:
     if dataset.state == Dataset.State.LANDING:
@@ -58,7 +63,11 @@ def _run(
         script=script,
         title=title,
         user=user,
-        attachment=attachments.describe(attachment) if attachment else None,
+        attachment=attachments.describe(
+            attachment, project=dataset.project_id, user=getattr(user, "pk", None)
+        )
+        if attachment
+        else None,
     )
     if submitted.run is None:
         return Run(None, submitted.cell)
@@ -185,13 +194,15 @@ def update_dataset(
     return dataset
 
 
-def status(dataset: Dataset, cell_offset: int = 0, cell_limit: int = 50) -> dict[str, Any]:
+def status(dataset: Dataset, offset: int = 0, limit: int = 50, live: int = 20) -> dict[str, Any]:
     cells = dataset.cells.select_related("parent").order_by("position")
+    running = dataset.executions.filter(
+        state__in=[Execution.State.QUEUED, Execution.State.RUNNING]
+    ).order_by("queued_at")
     return {
-        "versions": list(cells[cell_offset : cell_offset + cell_limit]),
+        "versions": list(cells[offset : offset + limit]),
         "total": cells.count(),
-        "active": dataset.cells.filter(pk=dataset.active_id).first() if dataset.active_id else None,
-        "running": dataset.executions.filter(
-            state__in=[Execution.State.QUEUED, Execution.State.RUNNING]
-        ).count(),
+        "active": cells.filter(pk=dataset.active_id).first() if dataset.active_id else None,
+        "running": list(running[:live]),
+        "running_total": running.count(),
     }

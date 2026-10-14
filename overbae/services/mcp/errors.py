@@ -30,7 +30,18 @@ ErrorCode = Literal[
     "dataset_not_found",
     "dataset_busy",
     "dataset_invalid",
-    "cell_not_found",
+    "dataset_not_ready",
+    "dataset_stopped",
+    "version_not_found",
+    "run_not_found",
+    "attachment_missing",
+    "attachment_invalid",
+    "import_not_running",
+    "import_not_blocked",
+    "request_key_conflict",
+    "request_key_pending",
+    "no_traces",
+    "no_calls",
     "query_invalid",
     "dataset_intent_mismatch",
     "dataset_locked",
@@ -38,6 +49,10 @@ ErrorCode = Literal[
     "query_timeout",
     "query_result_too_large",
     "eval_set_not_found",
+    "eval_set_invalid",
+    "invalid_judge_model",
+    "preparation_invalid",
+    "benchmark_model_invalid",
     "evaluator_not_found",
     "evaluator_invalid",
     "evaluation_not_ready",
@@ -133,20 +148,26 @@ def error_payload(error: MCPError) -> dict[str, Any]:
     return error.data.model_dump(mode="json")
 
 
-_DATASET_ERROR_CODES: dict[str, ErrorCode] = {
+DATASET_ERROR_CODES: dict[str, ErrorCode] = {
     "intent": "dataset_intent_mismatch",
     "landing": "dataset_busy",
-    "no_cell": "cell_not_found",
-    "no_version": "cell_not_found",
-    "cell_mismatch": "cell_not_found",
+    "land_stopped": "dataset_stopped",
+    "no_cell": "version_not_found",
+    "no_version": "version_not_found",
+    "cell_mismatch": "version_not_found",
+    "no_execution": "run_not_found",
     "frozen": "dataset_locked",
     "active_conflict": "active_conflict",
+    "attachment_missing": "attachment_missing",
+    "attachment_invalid": "attachment_invalid",
+    "import_not_running": "import_not_running",
+    "import_not_blocked": "import_not_blocked",
 }
 
 
 def dataset_mcp_error(error) -> MCPError:
     """Translate ``DatasetError``; do not re-check contracts here."""
-    code = _DATASET_ERROR_CODES.get(getattr(error, "code", ""), "dataset_invalid")
+    code = DATASET_ERROR_CODES.get(getattr(error, "code", ""), "dataset_invalid")
     message = str(getattr(error, "detail", None) or error)
     field = getattr(error, "field", "")
     fields = {field: message[:300]} if field else None
@@ -157,7 +178,12 @@ def dataset_mcp_error(error) -> MCPError:
             retryable=True,
             fields=fields,
         )
-    return MCPError(code, message, fields=fields)
+    if code == "dataset_locked":
+        message += (
+            " To change it, land the version as a new dataset with create_dataset "
+            "(source kind version)."
+        )
+    return MCPError(code, message, fields=fields, retryable=code == "attachment_missing")
 
 
 _DATASET_URI = "overmind://datasets/"
@@ -184,30 +210,29 @@ def mcp_dataset(context, reference: str):
     return dataset
 
 
-def mcp_cell(dataset, ref: str | None):
+def mcp_version(dataset, ref: str | None, *, field: str = "version"):
     """Optional version; blank means the caller should use the active one."""
     from overbae.services.datasets.versions import resolve_cell
 
     if not ref:
         return None
     try:
-        return resolve_cell(dataset, ref, field="cell")
+        return resolve_cell(dataset, ref, field=field)
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
 
 
-def mcp_check(dataset, intent: str, ref: str | None = None):
+def mcp_check(dataset, intent: str, ref: str | None = None, *, field: str = "version"):
     from overbae.services.datasets import use
-    from overbae.services.datasets.lifecycle import DatasetError
 
     try:
-        return use.check(dataset, intent, cell=mcp_cell(dataset, ref))
+        return use.check(dataset, intent, cell=mcp_version(dataset, ref, field=field))
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
 
 
-def mcp_cell_contract(dataset, cell, intent: str):
-    from overbae.services.mcp.contracts.common import DatasetCellContract
+def version_contract(dataset, cell, intent: str):
+    from overbae.services.mcp.contracts.common import DatasetVersionContract
 
     if cell is None:
         return None
@@ -217,7 +242,7 @@ def mcp_cell_contract(dataset, cell, intent: str):
             dataset_use.check(dataset, intent, cell=cell)
         except DatasetError as exc:
             fits, reason = False, exc.detail
-    return DatasetCellContract(
+    return DatasetVersionContract(
         id=str(cell.id),
         version=cell.label,
         title=cell.title,
@@ -227,3 +252,31 @@ def mcp_cell_contract(dataset, cell, intent: str):
         reason="" if fits else str(reason)[:500],
         warnings=review.warnings(dataset, cell),
     )
+
+
+def pinned_version(cell):
+    """A version a job or run read, as every launch output and resource names it."""
+    from overbae.services.mcp.contracts.common import PinnedVersion
+
+    if cell is None:
+        return None
+    return PinnedVersion(
+        dataset=str(cell.dataset_id),
+        version=cell.label,
+        id=str(cell.id),
+        fingerprint=cell.fingerprint or "",
+    )
+
+
+def pinned_versions(*, train=None, validation=None, eval=None):
+    from overbae.services.mcp.contracts.common import PinnedVersions
+
+    return PinnedVersions(
+        train=pinned_version(train),
+        validation=pinned_version(validation),
+        eval=pinned_version(eval),
+    )
+
+
+def finetune_versions(job):
+    return pinned_versions(train=job.cell, validation=job.validation_cell, eval=job.eval_cell)

@@ -18,7 +18,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import alignment, land, review, use
 from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
-from overbae.services.mcp.errors import mcp_cell_contract
+from overbae.services.mcp.errors import version_contract
 from overbae.services.training_preparation import request_preparation
 
 pytestmark = pytest.mark.django_db
@@ -120,8 +120,8 @@ def test_a_fitting_eval_version_leads_to_evaluation_readiness_without_warnings(c
         "check_evaluation_readiness",
         "check_optimizer_readiness",
     ]
-    assert detail.versions[0].fits.ok
-    contract = mcp_cell_contract(ds, ds.active_cell, "eval")
+    assert detail.versions[0].fits is True
+    contract = version_contract(ds, ds.active_cell, "eval")
     assert contract.fits and contract.warnings == []
     assert use.use(ds, "eval").used_at is not None
 

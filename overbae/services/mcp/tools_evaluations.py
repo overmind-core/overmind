@@ -58,10 +58,11 @@ from overbae.services.mcp.contracts.evaluations import (
 )
 from overbae.services.mcp.errors import (
     MCPError,
-    mcp_cell,
-    mcp_cell_contract,
     mcp_check,
     mcp_dataset,
+    mcp_version,
+    pinned_version,
+    version_contract,
 )
 from overbae.services.mcp.resources import resource_link, safe_json
 
@@ -180,13 +181,6 @@ def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     return capability
 
 
-def _cell_ref(*values: str | None) -> str | None:
-    for value in values:
-        if value:
-            return value
-    return None
-
-
 def _credits_available(user) -> bool:
     from overbae.api.credit_gate import PaymentRequired, require_credits
 
@@ -237,7 +231,7 @@ def _readiness_sync(
                 f"this dataset has intent={public_intent(dataset.intent)}."
             )
         raise MCPError("dataset_intent_mismatch", message)
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
+    cell = mcp_version(dataset, payload.version) or dataset.active_cell
 
     capability = dataset.capability
     eval_set = None
@@ -248,7 +242,7 @@ def _readiness_sync(
             context, str(capability.active_eval_set_id), capability=capability
         )
 
-    units = binding_check.sample_units_for_dataset(dataset, mode=payload.mode)
+    units = binding_check.sample_units_for_dataset(dataset, mode=payload.mode, cell=cell)
     readiness: list[EvaluatorReadinessContract] = []
     if eval_set is not None:
         seen: set[str] = set()
@@ -281,9 +275,9 @@ def _readiness_sync(
         id=str(dataset.id),
         name=dataset.name,
         intent=public_intent(dataset.intent),
-        cell=mcp_cell_contract(dataset, cell, "eval"),
+        version=version_contract(dataset, cell, "eval"),
     )
-    ready = ready and bool(dataset_data.cell and dataset_data.cell.fits)
+    ready = ready and bool(dataset_data.version and dataset_data.version.fits)
     eval_set_data = (
         EvalSetReadinessContract(
             id=str(eval_set.id),
@@ -550,7 +544,7 @@ def _run_sync(payload: RunEvaluationInput, context: MCPContext) -> RunEvaluation
     from overbae.tasks.eval import run_eval_run
 
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_check(dataset, "eval", _cell_ref(payload.cell, payload.version))
+    cell = mcp_check(dataset, "eval", payload.version)
 
     eval_set = None
     if payload.eval_set:
@@ -641,7 +635,7 @@ def _run_sync(payload: RunEvaluationInput, context: MCPContext) -> RunEvaluation
         status=run.status,
         run_id=str(run.id),
         job=job,
-        cell=mcp_cell_contract(dataset, run.cell or cell, "eval"),
+        version=pinned_version(run.cell or cell),
         variants=variant_rows,
         resource=run_link,
         resource_links=[run_link, job.resource, dataset_link],

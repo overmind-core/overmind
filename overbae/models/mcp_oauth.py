@@ -40,3 +40,19 @@ class MCPOAuthToken(models.Model):
             "scope": "account",
             "permission": [s.removeprefix("overmind:") for s in self.scopes],
         }
+
+
+class MCPRequestKey(models.Model):
+    """The first result of a create or start call, replayed for the same key."""
+
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="+")
+    tool = models.CharField(max_length=64)
+    key = models.CharField(max_length=128)
+    payload_sha256 = models.CharField(max_length=64)
+    result = models.JSONField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["project", "tool", "key"], name="mcp_request_key_once")
+        ]

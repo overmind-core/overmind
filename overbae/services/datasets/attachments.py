@@ -15,15 +15,16 @@ from overbae.services.datasets.lifecycle import DatasetError
 from sandbox import tables
 
 
-def describe(upload_id: str) -> dict[str, Any]:
-    """The checked upload as a run records it."""
+def describe(upload_id: str, *, project: Any, user: Any = None) -> dict[str, Any]:
+    """The checked upload as a run records it; another project's upload does not exist."""
     try:
         upload_id = str(uuid.UUID(str(upload_id)))
     except ValueError:
         raise DatasetError("attachment is an upload id.", field="attachment") from None
     filename = files.upload_filename(upload_id)
     record = files.inspection(upload_id)
-    if not filename or record is None or not record.get("sha256"):
+    owned = files.belongs(upload_id, project=project, user=user)
+    if not filename or record is None or not record.get("sha256") or not owned:
         raise DatasetError(
             "The attachment is missing or not inspected. Upload it with "
             "`overmind dataset attach FILE --json`.",
@@ -62,6 +63,7 @@ def _source(dataset_id: Any, attachment: dict[str, Any]) -> Path:
         raise DatasetError(
             "The attachment upload expired or changed. Upload it again.",
             code="attachment_missing",
+            field="attachment",
         )
     return upload
 

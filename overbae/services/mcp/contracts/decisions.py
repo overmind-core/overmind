@@ -7,16 +7,24 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from overbae.services.mcp.contracts.common import MCPModel, ResourceLinkContract
+from overbae.services.mcp.contracts.common import (
+    MCPModel,
+    PinnedVersions,
+    ResourceLinkContract,
+    VersionRef,
+    request_key_field,
+    version_field,
+)
 from overbae.services.mcp.contracts.finetuning import FineTuneCreditReadiness
 
 
 class StartDecisionJobInput(MCPModel):
     model: str = Field(min_length=1, max_length=255)
-    dataset: str
-    version: str | None = Field(default=None, max_length=32)
-    eval_dataset: str | None = None
-    eval_version: str | None = Field(default=None, max_length=32)
+    dataset: str = Field(min_length=1, max_length=255)
+    version: str | None = version_field()
+    eval_dataset: str | None = Field(default=None, min_length=1, max_length=255)
+    eval_version: str | None = version_field()
+    request_key: str | None = request_key_field()
 
 
 class DecisionTraining(MCPModel):
@@ -32,10 +40,7 @@ class DecisionJobContract(MCPModel):
     id: str
     model: str
     status: str
-    dataset: str
-    version: str
-    eval_dataset: str | None = None
-    eval_version: str | None = None
+    versions: PinnedVersions
     error: str | None = None
     evaluation: dict[str, Any] = Field(default_factory=dict)
     evaluation_status: str | None = None
@@ -74,14 +79,14 @@ class DecisionDatasetReference(MCPModel):
     id: str
     name: str = Field(max_length=255)
     intent: str
-    version: str | None = None
+    version: VersionRef | None = None
 
 
 class CheckDecisionReadinessInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
     eval_dataset: str | None = Field(default=None, min_length=1, max_length=255)
-    eval_version: str | None = Field(default=None, max_length=32)
+    eval_version: str | None = version_field()
 
 
 class CheckDecisionReadinessOutput(MCPModel):

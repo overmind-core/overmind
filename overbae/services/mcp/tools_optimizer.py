@@ -43,7 +43,7 @@ from overbae.services.mcp.contracts.optimizer import (
     StartOptimizerInput,
     StartOptimizerOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_dataset
+from overbae.services.mcp.errors import MCPError, mcp_dataset, mcp_version, version_contract
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.optimizer_create import (
     create_optimizer_experiment,
@@ -53,13 +53,6 @@ from overbae.services.optimizer_prereqs import optimizer_prerequisite_report
 from overbae.services.plan_limits import PlanLimitExceeded
 
 _PATCH_CAP = 4_000
-
-
-def _cell_ref(*values: str | None) -> str | None:
-    for value in values:
-        if value:
-            return value
-    return None
 
 
 def _uuid(value: str) -> str | None:
@@ -202,7 +195,7 @@ def _dataset_readiness(
         id=str(dataset.id),
         name=dataset.name or str(dataset.id)[:8],
         intent=public_intent(dataset.intent),
-        cell=mcp_cell_contract(dataset, chosen, "eval"),
+        version=version_contract(dataset, chosen, "eval"),
         usable=issue is None,
         issue=issue,
     )
@@ -251,7 +244,7 @@ def _readiness_sync(
     explicit_cell = None
     dataset = _resolve_dataset(context, payload.dataset) if payload.dataset else None
     if dataset is not None:
-        explicit_cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version))
+        explicit_cell = mcp_version(dataset, payload.version)
     if dataset is None:
         for candidate in Dataset.objects.filter(
             project=context.project, capability=capability, intent=Dataset.Intent.EVAL
@@ -312,7 +305,6 @@ def _start_sync(payload: StartOptimizerInput, context: MCPContext) -> StartOptim
             capability=payload.capability,
             dataset=payload.dataset,
             eval_set=payload.eval_set,
-            cell=payload.cell,
             version=payload.version,
             mode=payload.mode,
             model_ids=payload.model_ids,
@@ -327,7 +319,7 @@ def _start_sync(payload: StartOptimizerInput, context: MCPContext) -> StartOptim
         )
     capability = _resolve_capability(context, payload.capability)
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version))
+    cell = mcp_version(dataset, payload.version)
     eval_set = (
         _resolve_eval_set(context, payload.eval_set, capability=capability)
         if payload.eval_set
@@ -374,11 +366,7 @@ def _start_sync(payload: StartOptimizerInput, context: MCPContext) -> StartOptim
         status=experiment.status,
         mode=experiment.mode,
         capability=resource_link("capabilities", str(capability.id), capability.name),
-        cell=mcp_cell_contract(
-            experiment.dataset or dataset,
-            experiment.cell or cell,
-            "eval",
-        ),
+        version=version_contract(experiment.dataset or dataset, experiment.cell or cell, "eval"),
         resource=exp_link,
     )
     return StartOptimizerOutput(
@@ -529,7 +517,7 @@ def _inspect_sync(
         capability=resource_link(
             "capabilities", str(experiment.capability.id), experiment.capability.name
         ),
-        cell=mcp_cell_contract(experiment.dataset, experiment.cell, "eval")
+        version=version_contract(experiment.dataset, experiment.cell, "eval")
         if experiment.dataset_id
         else None,
         current_iteration=experiment.current_iteration,

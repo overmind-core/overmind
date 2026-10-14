@@ -22,9 +22,14 @@ _CLASSIFIER_INPUTS = ("output_kind", "modality", "has_tool_calls")
 
 
 def get_recommendation(
-    dataset_id: str, capability_id: str | None = None, *, eval_dataset_id: str | None = None
+    dataset_id: str,
+    capability_id: str | None = None,
+    *,
+    cell: Any = None,
+    eval_cell: Any = None,
 ) -> dict[str, Any]:
-    """Ranked fine-tuning candidates for a dataset, grounded in its capability's context.
+    """Ranked fine-tuning candidates for a dataset version (the active one by default),
+    grounded in its capability's context and sized for ``eval_cell`` when given.
 
     Without ``capability_id`` classify the dataset, even if it has a capability mapping.
     """
@@ -39,7 +44,7 @@ def get_recommendation(
     if capability_id:
         capability = Capability.objects.get(pk=capability_id, project_id=dataset.project_id)
 
-    stats = dataset_stats(dataset)
+    stats = dataset_stats(dataset, cell)
     if capability is not None:
         task_type = classify_capability_task(capability)
         source = "capability" if task_type != "unknown" else "unknown"
@@ -53,12 +58,8 @@ def get_recommendation(
         if capability is not None
         else None,
     )
-    if eval_dataset_id:
-        evaluation = Dataset.objects.get(pk=eval_dataset_id, project_id=dataset.project_id)
-        cell = evaluation.active_cell
-        if cell is None:
-            raise InputValidationError("The evaluation dataset has no readable version.")
-        budget = evaluation_budget(cell, capability=capability)
+    if eval_cell is not None:
+        budget = evaluation_budget(eval_cell, capability=capability)
         accepted = []
         for candidate in analysis["candidates"]:
             try:

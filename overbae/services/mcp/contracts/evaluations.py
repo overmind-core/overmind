@@ -10,9 +10,12 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.services.eval.decisions import policy_for
 from overbae.services.mcp.contracts.common import (
-    DatasetCellContract,
+    DatasetVersionContract,
     MCPModel,
+    PinnedVersion,
     ResourceLinkContract,
+    request_key_field,
+    version_field,
 )
 
 EvaluatorKind = Literal["llm_judge", "trajectory", "deterministic", "statistical", "agentic"]
@@ -150,8 +153,7 @@ class CheckEvaluationReadinessInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("eval_set", "eval_set_id", "eval_set_name"),
     )
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
     mode: EvaluationMode = "existing"
     variants: list[EvaluationContextVariantContract] = Field(default_factory=list, max_length=20)
 
@@ -221,7 +223,7 @@ class EvaluationDatasetContract(MCPModel):
     id: str
     name: str
     intent: Literal["eval"]
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
 
 
 class EvaluatorReadinessContract(MCPModel):
@@ -346,8 +348,7 @@ class RunEvaluationInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("eval_set", "eval_set_id", "eval_set_name"),
     )
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
     evaluator_ids: list[str] = Field(
         default_factory=list,
         max_length=100,
@@ -360,6 +361,7 @@ class RunEvaluationInput(MCPModel):
     )
     max_items: int = Field(default=100, ge=1, le=100_000)
     sampling: float = Field(default=1.0, gt=0, le=1, allow_inf_nan=False)
+    request_key: str | None = request_key_field()
 
 
 class EvaluationJobContract(MCPModel):
@@ -381,7 +383,7 @@ class RunEvaluationOutput(MCPModel):
     status: Literal["pending", "running", "completed", "failed", "cancelled"]
     run_id: str
     job: EvaluationJobContract
-    cell: DatasetCellContract | None = None
+    version: PinnedVersion
     variants: list[EvaluationVariantSummaryContract] = Field(max_length=20)
     resource: ResourceLinkContract
     resource_links: list[ResourceLinkContract] = Field(max_length=3)

@@ -14,8 +14,8 @@ from overbae.models import Dataset, Project, ProjectMembership, User
 from overbae.services.datasets import files, paths
 
 
-def _upload(name, content):
-    upload_id, _ = files.begin_upload(name)
+def _upload(name, content, project=None):
+    upload_id, _ = files.begin_upload(name, project=project)
     files.append_chunk(upload_id, 0, content)
     return upload_id
 
@@ -154,7 +154,7 @@ def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_
     second = json.dumps(
         [{"input": f"q{i}", "expected_output": f"a{i}"} for i in range(7, 15)]
     ).encode()
-    ids = [_upload("first.csv", first), _upload("second.json", second)]
+    ids = [_upload("first.csv", first, project.id), _upload("second.json", second, project.id)]
     assert sum(files.inspect_upload(i, size=files.upload_received(i))["rows"] for i in ids) == 15
     body = {"project": str(project.id), "name": "Combined", "source": {"uploads": ids}}
     if split:
@@ -184,7 +184,7 @@ def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_
 @pytest.mark.parametrize("split", [False, True])
 def test_an_upload_lands_only_as_the_file_it_was_inspected_as(client_project, split):
     client, project = client_project
-    upload_id = _upload("data.jsonl", b'{"input":"one"}\n{"input":"two"}\n')
+    upload_id = _upload("data.jsonl", b'{"input":"one"}\n{"input":"two"}\n', project.id)
     body = {"project": str(project.id), "name": "Strict", "source": {"uploads": [upload_id]}}
     if split:
         body.update(eval_percent=50, position="tail")
@@ -200,8 +200,8 @@ def test_an_upload_lands_only_as_the_file_it_was_inspected_as(client_project, sp
 
 def test_invalid_multi_file_sources_are_rejected_before_creation(client_project):
     client, project = client_project
-    upload_id = _upload("data.csv", b"input\none\n")
-    empty_id, _ = files.begin_upload("empty.csv")
+    upload_id = _upload("data.csv", b"input\none\n", project.id)
+    empty_id, _ = files.begin_upload("empty.csv", project=project.id)
     for source in (
         {"uploads": []},
         {"uploads": [upload_id, upload_id]},

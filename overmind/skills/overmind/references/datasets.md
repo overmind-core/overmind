@@ -16,7 +16,7 @@ on its versions in Overmind's sandbox. Dataset names are not unique: call
 
 ```
 list_datasets
-→ create_dataset_from_traces | create_dataset_from_llm_calls | create_dataset_from_version | CLI upload
+→ create_dataset (source traces | llm_calls | version) | CLI upload
 → get_job(kind=dataset_import, id=DATASET)
 → inspect_dataset
 → query_dataset / probe_dataset_version to understand the rows
@@ -34,17 +34,16 @@ Landing stores the rows as they arrive as `v0`, measures them and makes `v0`
 active. It proposes the intent from the row shape when none is given and the
 capability from the rows when none is bound.
 
-- `create_dataset_from_traces` lands one row per trace: identity, runtime,
+- `create_dataset` with `source.kind = traces` lands one row per trace: identity, runtime,
   `input`, `output`, the wire `messages` and `tools`, and the trace's score.
-  Give `trace_ids`, or `filters` and/or `search`. An unknown filter key is
+  Give `trace_ids`, or `filters` (the `query_traces` arguments) and/or `search`. An unknown filter key is
   refused, and a selection that matches no trace is refused before any dataset
   exists. Use `query_failures` first when the selection should be a
   capability's recent failures.
-- `create_dataset_from_llm_calls` lands one row per `llm_call` span for a
+- `source.kind = llm_calls` lands one row per `llm_call` span for a
   capability since a timestamp: the call's request and its recorded
-  completion. The application is not run. `split` hashes `span_id` into train
-  and eval.
-- `create_dataset_from_version` lands a version (active by default) of another
+  completion. The application is not run.
+- `source.kind = version` lands a version (active by default) of another
   project dataset as a new dataset's source. It keeps the source dataset's
   intent and capability unless you give them, and `source.version` on
   `inspect_dataset` names the dataset and version it came from. `split` cuts it
@@ -80,9 +79,7 @@ The uploaded file is deleted after landing.
 
 ### Splits
 
-One dataset has one intent. `split` on `create_dataset_from_traces` or
-`create_dataset_from_version`, or
-`--split PERCENT` on the CLI, lands `<name> train` and `<name> eval` with
+One dataset has one intent. `split` on `create_dataset`, or `--split PERCENT` on the CLI, lands `<name> train` and `<name> eval` with
 disjoint rows. REST and MCP splits accept `group_by`, `stratify_by` and
 `deduplicate` (default true): exact duplicates are removed and matching
 inputs, traces, conversations, chosen groups and synthetic seeds stay on one

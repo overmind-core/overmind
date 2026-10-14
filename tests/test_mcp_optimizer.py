@@ -104,8 +104,8 @@ def test_start_calls_shared_create_service_and_returns_cli_next_step():
     assert experiment.openrouter_key_source == OptimizerExperiment.OpenRouterKeySource.PLATFORM
     assert experiment.capability == capability
     assert output["job"]["id"] == output["experiment_id"]
-    assert output["experiment"]["cell"]["id"] == str(dataset.active_cell.id)
-    assert output["experiment"]["cell"]["rows"] == dataset.active_cell.rows
+    assert output["experiment"]["version"]["id"] == str(dataset.active_cell.id)
+    assert output["experiment"]["version"]["rows"] == dataset.active_cell.rows
     assert output["next_action"]["state"] == "run_executioner"
     assert f"start -e {output['experiment_id']}" in output["next_action"]["command"]
 
@@ -237,12 +237,12 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
         {
             "capability": capability.slug,
             "dataset": str(dataset.id),
-            "cell": str(extra.id),
+            "version": str(extra.id),
         },
         context,
     )
     assert result.isError is False, result.structuredContent
     experiment = OptimizerExperiment.objects.get(pk=result.structuredContent["experiment_id"])
     assert experiment.cell_id == extra.id
-    assert result.structuredContent["experiment"]["cell"]["id"] == str(extra.id)
-    assert result.structuredContent["experiment"]["cell"]["rows"] == 11
+    assert result.structuredContent["experiment"]["version"]["id"] == str(extra.id)
+    assert result.structuredContent["experiment"]["version"]["rows"] == 11

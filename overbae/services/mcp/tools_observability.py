@@ -24,6 +24,7 @@ from overbae.models import (
     ConnectorCredential,
     Dataset,
     DeployedModel,
+    Execution,
     FinetuningJob,
     ModelActivation,
     OptimizerExperiment,
@@ -45,6 +46,7 @@ from overbae.services.live_trace_scores import (
 )
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.common import PageContract, ResourceLinkContract
+from overbae.services.mcp.contracts.datasets import run_job_link, run_payload
 from overbae.services.mcp.contracts.observability import (
     FailureRow,
     GetJobInput,
@@ -63,7 +65,7 @@ from overbae.services.mcp.contracts.observability import (
     TraceHealth,
     TraceRow,
 )
-from overbae.services.mcp.errors import MCPError
+from overbae.services.mcp.errors import MCPError, finetune_versions, pinned_version
 from overbae.services.mcp.resources import (
     dataset_import_job_payload,
     resource_link,
@@ -277,7 +279,7 @@ def _query_failures_sync(payload: QueryFailuresInput, context: MCPContext) -> Qu
     )
 
 
-def _trace_filter_data(payload: QueryTracesInput, context: MCPContext) -> dict[str, str]:
+def trace_filter_data(payload: QueryTracesInput, context: MCPContext) -> dict[str, str]:
     data = {"project": str(context.project.id), "all_spans": str(payload.all_spans).lower()}
     if payload.capability:
         data["capability"] = str(_capability_or_error(context.project, payload.capability).id)
@@ -358,9 +360,7 @@ def _page(limit: int, offset: int, total: int, row_count: int) -> PageContract:
 
 def _query_traces_sync(payload: QueryTracesInput, context: MCPContext) -> QueryTracesOutput:
     query = Span.objects.filter(project=context.project).select_related("capability")
-    trace_filter = SpanFilter(
-        data=_query_dict(_trace_filter_data(payload, context)), queryset=query
-    )
+    trace_filter = SpanFilter(data=_query_dict(trace_filter_data(payload, context)), queryset=query)
     if not trace_filter.is_valid():
         raise MCPError("invalid_filter", "The trace filters are invalid.")
     query = trace_filter.qs
@@ -571,13 +571,14 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         details = {
             "data_source": job.data_source,
             "dataset_id": str(job.dataset_id) if job.dataset_id else None,
+            "version": pinned_version(job.cell).model_dump(mode="json") if job.cell_id else None,
             "summary": safe_json(job.summary or {}),
         }
         primary = _link("eval-runs", str(job.id), label)
     elif kind == "finetune_job":
         job = (
             FinetuningJob.objects.filter(project=context.project, id=normalized_id)
-            .select_related("capability")
+            .select_related("capability", "cell", "validation_cell", "eval_cell")
             .first()
             if normalized_id
             else None
@@ -592,6 +593,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "provider": job.provider,
             "capability": job.capability.slug if job.capability_id else None,
             "dataset_id": str(job.dataset_id),
+            "versions": finetune_versions(job).model_dump(mode="json"),
         }
         primary = _link("finetunes", str(job.id), label)
     elif kind == "dataset_import":
@@ -608,7 +610,11 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         snapshot = dataset_import_job_payload(job, uri["uri"])
         created_at, updated_at = job.created_at, job.updated_at
         completed_at = snapshot["completed_at"]
-        label, status, job_error = (job.name or "Dataset")[:160], job.state, job.error or None
+        label, status, job_error = (
+            (job.name or "Dataset")[:160],
+            snapshot["status"],
+            job.error or None,
+        )
         progress = snapshot["progress"]
         details = {
             "name": job.name,
@@ -623,6 +629,25 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         }
         primary = _link("jobs", f"dataset_import/{job.id}", label)
         underlying.append(_link("datasets", str(job.id), label))
+    elif kind == "dataset_run":
+        job = (
+            Execution.objects.filter(project=context.project, pk=normalized_id)
+            .select_related("dataset", "parent", "cell")
+            .first()
+            if normalized_id
+            else None
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "The script run was not found.")
+        details = safe_json(run_payload(job))
+        created_at, updated_at, completed_at = job.queued_at, job.started_at, job.finished_at
+        label, status, job_error = (
+            details["title"] or f"{job.mode} run",
+            job.state,
+            job.error or None,
+        )
+        primary = run_job_link(job)
+        underlying.append(_link("datasets", str(job.dataset_id), job.dataset.name or "Dataset"))
     elif kind == "optimizer_experiment":
         job = (
             OptimizerExperiment.objects.filter(project=context.project, id=normalized_id)

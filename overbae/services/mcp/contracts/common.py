@@ -11,6 +11,19 @@ class MCPModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+def version_field():
+    return Field(default=None, min_length=1, max_length=80)
+
+
+def request_key_field():
+    return Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="The same key within 24 h returns the first result instead of repeating it.",
+    )
+
+
 class ResourceLinkContract(MCPModel):
     uri: str = Field(pattern=r"^overmind://[^\s]+$", max_length=512)
     title: str = Field(min_length=1, max_length=160)
@@ -24,7 +37,25 @@ class JobReceipt(MCPModel):
     resource: ResourceLinkContract
 
 
-class DatasetCellContract(MCPModel):
+class VersionRef(MCPModel):
+    id: str
+    version: str = Field(max_length=32)
+
+
+class PinnedVersion(MCPModel):
+    dataset: str
+    version: str = Field(max_length=32)
+    id: str
+    fingerprint: str = Field(default="", max_length=64)
+
+
+class PinnedVersions(MCPModel):
+    train: PinnedVersion | None = None
+    validation: PinnedVersion | None = None
+    eval: PinnedVersion | None = None
+
+
+class DatasetVersionContract(MCPModel):
     id: str
     version: str = Field(default="", max_length=32)
     title: str = Field(default="", max_length=255)

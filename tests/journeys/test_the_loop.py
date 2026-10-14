@@ -67,10 +67,10 @@ def test_failing_traces_become_a_measured_winning_diff(
     assert all(e["success_score"] < 1 for e in executions)
 
     created = mcp.call(
-        "create_dataset_from_traces",
+        "create_dataset",
         {
             "name": "answer misses",
-            "trace_ids": [e["trace_id"] for e in executions],
+            "source": {"kind": "traces", "trace_ids": [e["trace_id"] for e in executions]},
             "intent": "eval",
             "capability": answer["id"],
         },
@@ -123,7 +123,7 @@ def test_failing_traces_become_a_measured_winning_diff(
     result = mcp.call("inspect_optimizer_result", {"experiment": state["experiment_id"]})
     scores = result["experiment"]["scores"]
     assert result["experiment"]["status"] == "completed"
-    assert result["experiment"]["cell"]["version"] == corrected["version"]["version"]
+    assert result["experiment"]["version"]["version"] == corrected["version"]["version"]
     assert scores["best"] > scores["baseline"]
 
     [baseline] = result["iterations"][0]["candidates"]

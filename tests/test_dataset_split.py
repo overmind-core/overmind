@@ -106,7 +106,7 @@ def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():
         end_time_ns=2,
         duration_ns=1,
     )
-    upload_id, _ = files.begin_upload("one.jsonl")
+    upload_id, _ = files.begin_upload("one.jsonl", project=project.id)
     files.append_chunk(upload_id, 0, b'{"input":"one"}\n')
     files.inspect_upload(upload_id, size=files.upload_received(upload_id))
     for source in (
@@ -150,7 +150,7 @@ def test_split_endpoint_returns_the_pair_and_validates_the_cut():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_mcp_create_from_traces_with_split_returns_both_datasets():
+def test_mcp_create_dataset_from_traces_with_split_returns_both_datasets():
     import asyncio
 
     from overbae.models import APIToken
@@ -184,12 +184,13 @@ def test_mcp_create_from_traces_with_split_returns_both_datasets():
         )
 
     def call(arguments):
-        return asyncio.run(CATALOG.call("create_dataset_from_traces", arguments, context))
+        return asyncio.run(CATALOG.call("create_dataset", arguments, context))
 
-    refused = call({"name": "T", "trace_ids": traces, "intent": "train", "split": {}})
+    source = {"kind": "traces", "trace_ids": traces}
+    refused = call({"name": "T", "source": source, "intent": "train", "split": {}})
     assert refused.isError is True
     result = call(
-        {"name": "T", "trace_ids": traces, "split": {"eval_percent": 25, "position": "head"}}
+        {"name": "T", "source": source, "split": {"eval_percent": 25, "position": "head"}}
     )
     assert result.isError is False, result.structuredContent
     body = result.structuredContent

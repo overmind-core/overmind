@@ -76,7 +76,7 @@ def test_try_previews_a_script_without_creating_a_version():
     assert body["columns"] == ["input", "expected_output", "tag"]
     assert [row["input"] for row in body["head"]] == ["q1", "q3"]
     assert dataset.cells.count() == 1
-    assert Execution.objects.get(pk=body["execution"]).mode == Execution.Mode.TRY
+    assert Execution.objects.get(pk=body["run"]).mode == Execution.Mode.TRY
 
 
 def test_a_try_previews_missing_values_as_null():
@@ -190,7 +190,7 @@ def test_the_same_parent_and_script_return_one_version_even_when_sent_at_once():
         {"dataset": str(dataset.id), "parent": "v0", "title": "Renamed", "script": KEEP},
         context,
     ).structuredContent
-    assert again["version"]["id"] == ids[0] and again["execution"] is None
+    assert again["version"]["id"] == ids[0] and again["run"] is None and again["created"] is False
 
 
 def test_branches_are_siblings_under_one_parent():
@@ -221,14 +221,13 @@ def test_a_failing_script_creates_no_version_and_its_failure_is_reused_for_an_ho
     assert "missing" in failed["error"] and failed["version"] is None
     assert dataset.cells.count() == 1
     assert (
-        _call("add_dataset_version", arguments, context).structuredContent["execution"]
-        == (failed["execution"])
+        _call("add_dataset_version", arguments, context).structuredContent["run"] == (failed["run"])
     )
-    Execution.objects.filter(pk=failed["execution"]).update(
+    Execution.objects.filter(pk=failed["run"]).update(
         finished_at=timezone.now() - timedelta(hours=1, minutes=1)
     )
     later = _call("add_dataset_version", arguments, context).structuredContent
-    assert later["status"] == "failed" and later["execution"] != failed["execution"]
+    assert later["status"] == "failed" and later["run"] != failed["run"]
 
 
 def test_an_unreachable_sandbox_fails_transiently_and_the_same_call_runs_again(settings):
@@ -245,7 +244,7 @@ def test_an_unreachable_sandbox_fails_transiently_and_the_same_call_runs_again(s
     )
     settings.SANDBOX_URL = working
     back = _call("try_dataset_script", arguments, context).structuredContent
-    assert back["status"] == "ok" and back["execution"] != down["execution"]
+    assert back["status"] == "ok" and back["run"] != down["run"]
 
 
 def test_a_sandbox_that_refuses_the_token_fails_the_run_without_blaming_the_script(settings):
@@ -351,7 +350,9 @@ def test_scripts_and_versions_are_refused_while_landing_and_unknown_versions_nam
         {"dataset": str(dataset.id), "parent": "v9", "title": "T", "script": KEEP},
         context,
     ).structuredContent["error"]
-    assert missing["code"] == "cell_not_found" and missing["fields"] == {"parent": "No version v9."}
+    assert missing["code"] == "version_not_found" and missing["fields"] == {
+        "parent": "No version v9."
+    }
     Dataset.objects.filter(pk=dataset.pk).update(state="landing")
     busy = _call("try_dataset_script", {"dataset": str(dataset.id), "script": KEEP}, context)
     assert busy.structuredContent["error"]["code"] == "dataset_busy"
@@ -464,7 +465,9 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
     for position in range(1, 4):
         _ran_cell(dataset, position=position, title=f"Step {position}", parent=active)
     result = _call(
-        "inspect_dataset", {"dataset": str(dataset.id), "cell_offset": 1, "cell_limit": 2}, context
+        "inspect_dataset",
+        {"dataset": str(dataset.id), "version_offset": 1, "version_limit": 2},
+        context,
     )
     by_name = _call("inspect_dataset", {"dataset": dataset.name}, context)
 
@@ -474,7 +477,10 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
     assert body["versions_total"] == 4
     assert body["active"]["id"] == str(active.id)
     assert len(body["capability_rank"]) == 20
-    assert body["next_actions"][0]["tool"] == "check_evaluation_readiness"
+    assert [(a["tool"], a["arguments"].get("version")) for a in body["next_actions"]] == [
+        ("activate_dataset_version", "v3"),
+        ("check_evaluation_readiness", "v0"),
+    ]
     assert by_name.isError is False
     assert by_name.structuredContent["id"] == str(dataset.id)
     Dataset.objects.create(project=context.project, name=dataset.name)
@@ -524,7 +530,7 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped():
     assert len(ok.structuredContent["rows"]) == 100
     assert ok.structuredContent["columns"] == ["input"]
     assert ok.structuredContent["truncated"] is True
-    assert foreign.structuredContent["error"]["code"] == "cell_not_found"
+    assert foreign.structuredContent["error"]["code"] == "version_not_found"
     assert write.structuredContent["error"]["code"] == "query_invalid"
 
 
@@ -558,21 +564,30 @@ def _root_span(project, trace_id: str) -> Span:
 def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selections():
     context = mcp_context(("read", "write"))
     unknown = _call(
-        "create_dataset_from_traces",
-        {"name": "Trace set", "filters": {"capability_name": "x"}},
+        "create_dataset",
+        {"name": "Trace set", "source": {"kind": "traces", "filters": {"capability_name": "x"}}},
         context,
     )
     assert unknown.isError is True
-    assert unknown.structuredContent["error"]["code"] == "invalid_input"
+    assert unknown.structuredContent["error"]["code"] == "invalid_filter"
     assert "capability_name" in unknown.structuredContent["error"]["message"]
     mixed = _call(
-        "create_dataset_from_traces",
-        {"name": "Trace set", "trace_ids": ["b" * 32], "filters": {"has_error": "true"}},
+        "create_dataset",
+        {
+            "name": "Trace set",
+            "source": {
+                "kind": "traces",
+                "trace_ids": ["b" * 32],
+                "filters": {"has_error": "true"},
+            },
+        },
         context,
     )
     assert mixed.isError is True
     empty = _call(
-        "create_dataset_from_traces", {"name": "Trace set", "trace_ids": ["b" * 32]}, context
+        "create_dataset",
+        {"name": "Trace set", "source": {"kind": "traces", "trace_ids": ["b" * 32]}},
+        context,
     )
     assert empty.isError is True
     assert empty.structuredContent["error"]["code"] == "no_traces"
@@ -590,12 +605,12 @@ def test_trace_creation_respects_the_capability_choice(split, choice):
         span = _root_span(context.project, trace_id)
         span.capability = matched
         span.save(update_fields=["capability"])
-    arguments = {"name": "Choice", "trace_ids": trace_ids}
+    arguments = {"name": "Choice", "source": {"kind": "traces", "trace_ids": trace_ids}}
     if choice != "automatic":
-        arguments["capability"] = None if choice == "none" else str(selected.id)
+        arguments["capability"] = None if choice == "none" else selected.slug
     if split:
         arguments["split"] = {"eval_percent": 30, "position": "tail"}
-    result = _call("create_dataset_from_traces", arguments, context)
+    result = _call("create_dataset", arguments, context)
     assert result.isError is False, result.structuredContent
     body = result.structuredContent
     ids = [body["dataset"]["id"]]
@@ -614,8 +629,8 @@ def test_trace_creation_returns_a_dataset_import_receipt():
     _root_span(context.project, "b" * 32)
 
     traces = _call(
-        "create_dataset_from_traces",
-        {"name": "Trace set", "trace_ids": ["b" * 32]},
+        "create_dataset",
+        {"name": "Trace set", "source": {"kind": "traces", "trace_ids": ["b" * 32]}},
         context,
     )
     for result in (traces,):
@@ -633,6 +648,7 @@ def test_trace_creation_returns_a_dataset_import_receipt():
     assert dataset.state == Dataset.State.IDLE, dataset.error
     assert dataset.active_cell.rows == 1
     job = _call("get_job", {"kind": "dataset_import", "id": str(dataset.id)}, context)
+    assert job.structuredContent["status"] == "landed"
     completed = job.structuredContent["completed_at"]
     assert completed is not None
     assert datetime.fromisoformat(completed) >= dataset.source.created_at
@@ -692,11 +708,12 @@ def test_llm_call_creation_refuses_an_empty_selection():
     context = mcp_context(("read", "write"))
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     result = _call(
-        "create_dataset_from_llm_calls",
+        "create_dataset",
         {
             "name": "Calls",
             "capability": str(capability.id),
-            "since": "2099-01-01T00:00:00+00:00",
+            "intent": "eval",
+            "source": {"kind": "llm_calls", "since": "2099-01-01T00:00:00+00:00"},
         },
         context,
     )
@@ -712,11 +729,14 @@ def test_llm_call_creation_lands_one_row_per_call():
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     _llm_span(context.project, capability, text="recorded")
     result = _call(
-        "create_dataset_from_llm_calls",
+        "create_dataset",
         {
             "name": "Calls",
             "capability": capability.slug,
-            "since": (timezone.now() - timedelta(hours=1)).isoformat(),
+            "source": {
+                "kind": "llm_calls",
+                "since": (timezone.now() - timedelta(hours=1)).isoformat(),
+            },
             "intent": "eval",
         },
         context,
@@ -733,3 +753,57 @@ def test_llm_call_creation_lands_one_row_per_call():
     row = frame.iloc[0].to_dict()
     assert row["expected_output"]["content"] == "recorded"
     assert "trace_id" not in row
+
+
+def test_a_query_traces_selection_lands_as_written_and_a_request_key_lands_it_once():
+    context = mcp_context(("read", "write"))
+    capability = Capability.objects.create(project=context.project, name="Support", slug="support")
+    for trace_id in ("a" * 32, "b" * 32):
+        span = _root_span(context.project, trace_id)
+        span.capability = capability
+        span.status_code = 2 if trace_id == "a" * 32 else 0
+        span.save(update_fields=["capability", "status_code"])
+    selection = {"capability": "support", "status": "error", "limit": 20, "offset": 0}
+    arguments = {
+        "name": "Errors",
+        "source": {"kind": "traces", "filters": selection},
+        "request_key": "errors-once",
+    }
+
+    first = _call("create_dataset", arguments, context).structuredContent
+    again = _call("create_dataset", arguments, context).structuredContent
+    changed = _call("create_dataset", {**arguments, "name": "Other"}, context).structuredContent
+
+    assert first.get("traces") == 1, first
+    assert again == first
+    assert Dataset.objects.filter(project=context.project).count() == 1
+    assert changed["error"]["code"] == "request_key_conflict"
+
+
+def test_a_queued_run_is_a_job_and_stopping_it_twice_returns_its_state():
+    context = mcp_context(("read", "write"))
+    dataset = _landed(context)
+    run = Execution.objects.create(
+        key=executions.key("try", dataset.id, dataset.source.id, KEEP),
+        project=context.project,
+        dataset=dataset,
+        parent=dataset.source,
+        mode="try",
+        script=KEEP,
+        state="queued",
+        queued_at=timezone.now(),
+    )
+
+    inspected = _call("inspect_dataset", {"dataset": str(dataset.id)}, context).structuredContent
+    job = _call("get_job", {"kind": "dataset_run", "id": str(run.id)}, context).structuredContent
+    stopped = _call("cancel_dataset_job", {"dataset": str(dataset.id), "run": str(run.id)}, context)
+    twice = _call("cancel_dataset_job", {"dataset": str(dataset.id), "run": str(run.id)}, context)
+    foreign = _call(
+        "get_job", {"kind": "dataset_run", "id": str(run.id)}, mcp_context(("read", "write"))
+    )
+
+    assert [(r["id"], r["state"]) for r in inspected["running"]] == [(str(run.id), "queued")]
+    assert (job["kind"], job["status"], job["details"]["parent"]) == ("dataset_run", "queued", "v0")
+    assert stopped.structuredContent["status"] == "cancelled"
+    assert twice.isError is False and twice.structuredContent["kind"] == "dataset_run"
+    assert foreign.structuredContent["error"]["code"] == "resource_not_found"

@@ -11,6 +11,7 @@ from overbae.models import (
     DeployedModel,
     FinetuningJob,
 )
+from overbae.services.finetuning_prereqs import stamp_hyperparameters_for_model
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
@@ -24,12 +25,13 @@ def _call(name: str, arguments: dict, context: MCPContext):
 @pytest.mark.parametrize("training_type", ["Lora", ["Lora"], 1, {"type": "unknown"}])
 def test_start_rejects_invalid_training_method_without_creating_job(training_type):
     context = mcp_context(("read", "write"))
-    capability, train, _, _ = training_setup(context)
+    capability, train, _, eval_set = training_setup(context)
     result = _call(
         "start_finetune",
         {
             "dataset": str(train.id),
             "capability": str(capability.id),
+            "eval_set": str(eval_set.id),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
             "hyperparameters": {"training_type": training_type},
         },
@@ -41,6 +43,36 @@ def test_start_rejects_invalid_training_method_without_creating_job(training_typ
     assert not FinetuningJob.objects.filter(project=context.project).exists()
     train.refresh_from_db()
     assert train.active_cell.used_at is None
+
+
+def test_training_type_and_hyperparameters_override_the_derived_defaults_key_by_key(monkeypatch):
+    context = mcp_context(("read", "write"))
+    _, train, evaluation, eval_set = training_setup(context)
+    monkeypatch.setattr(
+        "overbae.tasks.finetuning.run_finetuning.apply_async",
+        lambda **_kwargs: SimpleNamespace(id="celery-ft"),
+    )
+    derived = stamp_hyperparameters_for_model(
+        str(train.id), "Qwen/Qwen2.5-7B-Instruct", train.active_cell, "full"
+    )
+
+    result = _call(
+        "start_finetune",
+        {
+            "dataset": str(train.id),
+            "eval_dataset": str(evaluation.id),
+            "eval_set": str(eval_set.id),
+            "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "training_type": "full",
+            "hyperparameters": {"n_epochs": 1},
+        },
+        context,
+    )
+
+    assert result.isError is False, result.structuredContent
+    job = FinetuningJob.objects.get(project=context.project)
+    assert job.hyperparameters == {**derived, "n_epochs": 1}
+    assert job.hyperparameters["training_type"] == {"type": "Full"}
 
 
 @pytest.mark.parametrize("judge_model", ["", "gpt-5.6-luna"])
@@ -58,6 +90,7 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
         {
             "dataset": str(train.id),
             "capability": str(capability.id),
+            "eval_set": str(_eval_set.id),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
             "eval_judge_model": judge_model,
         },

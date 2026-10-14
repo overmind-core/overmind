@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 
 import duckdb
 from asgiref.sync import sync_to_async
+from pydantic import ValidationError as PydanticValidationError
 
 from overbae.models import Capability, Dataset
-from overbae.services.datasets import dispatch, paths, store, versions, workshop
+from overbae.services.datasets import dispatch, imports, paths, store, versions, workshop
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.selection import TraceSource, TraceSourceError
@@ -24,9 +24,7 @@ from overbae.services.mcp.contracts.datasets import (
     AddSyntheticExamplesInput,
     CancelDatasetJobInput,
     CancelDatasetJobOutput,
-    CreateDatasetFromLlmCallsInput,
-    CreateDatasetFromTracesInput,
-    CreateDatasetFromVersionInput,
+    CreateDatasetInput,
     DatasetDetail,
     DatasetMutationOutput,
     DatasetOutput,
@@ -43,46 +41,38 @@ from overbae.services.mcp.contracts.datasets import (
     TryDatasetScriptInput,
     TryDatasetScriptOutput,
     UpdateDatasetInput,
+    VersionRef,
     dataset_import_job_link,
     dataset_output,
     dataset_resource_link,
+    import_receipt,
+    import_status,
     mutation_output,
+    mutation_ref,
     probe_output,
+    run_job_link,
     sanitize_error,
     serialize_dataset_detail,
     serialize_dataset_list_item,
     try_output,
     version_output,
 )
-from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
+from overbae.services.mcp.contracts.observability import QueryTracesInput
+from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset, mcp_version
+from overbae.services.mcp.tools_observability import trace_filter_data
 
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
 QUERY_SECONDS = 10
 QUERY_MAX_BYTES = 32 * 1024
 QUERY_MAX_COLUMNS = 200
-
-
-def _uuid(value: str) -> str | None:
-    try:
-        return str(uuid.UUID(value))
-    except (AttributeError, TypeError, ValueError):
-        return None
+_QUERY_TRACE_PAGING = frozenset({"limit", "offset", "cursor", "all_spans"})
+_QUERY_TRACE_FILTERS = frozenset(QueryTracesInput.model_fields) - _QUERY_TRACE_PAGING
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     from overbae.services.capabilities import identity
 
     capability = identity.lookup(context.project.id, str(reference))
-    if capability is None:
-        raise MCPError("capability_not_found", "The capability was not found in this project.")
-    return capability
-
-
-def _resolve_capability_uuid(context: MCPContext, reference: str) -> Capability:
-    capability_id = _uuid(reference)
-    if capability_id is None:
-        raise MCPError("invalid_input", "Capability references must be UUIDs.")
-    capability = Capability.objects.filter(project=context.project, id=capability_id).first()
     if capability is None:
         raise MCPError("capability_not_found", "The capability was not found in this project.")
     return capability
@@ -98,20 +88,25 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
         query = query.filter(state=payload.state)
     if payload.search:
         query = query.filter(name__icontains=payload.search.strip())
+    offset = payload.offset
+    if payload.cursor is not None:
+        if not payload.cursor.isdigit():
+            raise MCPError("invalid_input", "The cursor is invalid.", fields={"cursor": "invalid"})
+        offset = int(payload.cursor)
     total = query.count()
     datasets = list(
         query.select_related("capability", "active").order_by("-created_at")[
-            payload.offset : payload.offset + payload.limit
+            offset : offset + payload.limit
         ]
     )
     items = [serialize_dataset_list_item(dataset) for dataset in datasets]
-    next_offset = payload.offset + len(items)
+    next_offset = offset + len(items)
     return ListDatasetsOutput(
         summary=f"{len(items)} datasets.",
         datasets=items,
         page=PageContract(
             limit=payload.limit,
-            offset=payload.offset,
+            offset=offset,
             total=total,
             has_more=next_offset < total,
             next_cursor=str(next_offset) if next_offset < total else None,
@@ -121,10 +116,12 @@ def _list_datasets_sync(payload: ListDatasetsInput, context: MCPContext) -> List
 
 
 def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> DatasetDetail:
+    dataset = mcp_dataset(context, payload.dataset)
     return serialize_dataset_detail(
-        mcp_dataset(context, payload.dataset),
-        offset=payload.cell_offset,
-        limit=payload.cell_limit,
+        dataset,
+        offset=payload.version_offset,
+        limit=payload.version_limit,
+        selected=mcp_version(dataset, payload.version),
     )
 
 
@@ -171,8 +168,7 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
     return QueryDatasetOutput(
         summary=f"{len(rows)} rows from {cell.label}.",
         dataset=str(dataset.id),
-        cell_id=str(cell.id),
-        version=cell.label,
+        version=VersionRef(id=str(cell.id), version=cell.label),
         columns=columns,
         rows=rows,
         n=len(rows),
@@ -181,173 +177,129 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
     )
 
 
-def _create_dataset_from_traces_sync(
-    payload: CreateDatasetFromTracesInput, context: MCPContext
-) -> DatasetMutationOutput:
-    capability = (
-        _resolve_capability_uuid(context, payload.capability) if payload.capability else None
-    )
+def _trace_source(context: MCPContext, source) -> TraceSource:
+    """A query_traces selection is accepted as it was written: its argument names are
+    translated to traces-list filters, and any other key must already be one."""
+    filters = {k: v for k, v in (source.filters or {}).items() if k not in _QUERY_TRACE_PAGING}
+    named = {key: filters.pop(key) for key in list(filters) if key in _QUERY_TRACE_FILTERS}
+    search, ordering = source.search, ""
+    if named:
+        try:
+            query = QueryTracesInput.model_validate(named)
+        except PydanticValidationError as exc:
+            fields = {
+                ".".join(map(str, issue["loc"])): issue["msg"][:300]
+                for issue in exc.errors(include_input=False, include_url=False)[:20]
+            }
+            raise MCPError(
+                "invalid_filter", "The trace filters are invalid.", fields=fields
+            ) from None
+        translated = trace_filter_data(query, context)
+        translated.pop("project", None)
+        translated.pop("all_spans", None)
+        filters.update(translated)
+        search = search or query.search
+        ordering = query.ordering if "ordering" in named else ""
     try:
-        source = TraceSource.parse(
+        return TraceSource.parse(
             {
-                "trace_ids": payload.trace_ids,
-                "filters": payload.filters,
-                "search": payload.search,
-                "limit": payload.limit,
+                "trace_ids": source.trace_ids,
+                "filters": filters,
+                "search": search,
+                "ordering": ordering,
+                "limit": source.limit,
             }
         )
-        matched = source.count(context.project.id)
     except TraceSourceError as exc:
-        raise MCPError("invalid_input", str(exc)) from exc
-    if matched == 0:
-        raise MCPError(
-            "no_traces", "No traces match the selection. Widen the filters or check the ids."
-        )
-    try:
-        if payload.split is not None:
-            train, evaluation = dispatch.create_split(
-                project=context.project,
-                user=context.user,
-                name=payload.name,
-                source={"traces": source.spec()},
-                eval_percent=payload.split.eval_percent,
-                position=payload.split.position,
-                group_by=payload.split.group_by,
-                stratify_by=payload.split.stratify_by,
-                deduplicate=payload.split.deduplicate,
-                capability=capability,
-                infer_capability="capability" not in payload.model_fields_set,
-            )
-        else:
-            train = dispatch.create_dataset(
-                project=context.project,
-                user=context.user,
-                name=payload.name,
-                source={"traces": source.spec()},
-                intent=payload.intent,
-                capability=capability,
-                infer_capability="capability" not in payload.model_fields_set,
-            )
-            evaluation = None
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
-    return mutation_output(
-        train,
-        summary=f"Dataset landing started: {matched} traces, one row each."
-        if evaluation is None
-        else f"Split landing started: {matched} traces cut into a train and an eval dataset.",
-        traces=matched,
-        eval_dataset=evaluation,
-    )
+        raise MCPError("invalid_filter", str(exc)) from exc
 
 
-def _create_dataset_from_llm_calls_sync(
-    payload: CreateDatasetFromLlmCallsInput, context: MCPContext
-) -> DatasetMutationOutput:
-    from overbae.services.datasets.llm_calls import HASH_POSITION, Selection, SelectionError
+def _llm_calls_source(context: MCPContext, source, capability: Capability):
+    from overbae.services.datasets.llm_calls import Selection, SelectionError
 
-    capability = _resolve_capability(context, payload.capability)
-    raw = {
-        "capability_id": str(capability.id),
-        "since": payload.since,
-        "limit": payload.limit,
-    }
-    if payload.until:
-        raw["until"] = payload.until
-    if payload.model:
-        raw["model"] = payload.model
+    raw = {"capability_id": str(capability.id), "since": source.since, "limit": source.limit}
+    if source.until:
+        raw["until"] = source.until
+    if source.model:
+        raw["model"] = source.model
     try:
         selection = Selection.parse(raw)
         matched = selection.count(context.project.id)
     except SelectionError as exc:
         raise MCPError("invalid_input", str(exc)) from exc
-    if matched == 0:
-        raise MCPError(
-            "no_calls",
-            "No LLM calls match the selection. Widen the window or check the capability.",
-        )
+    return selection, matched
+
+
+def _create_dataset_sync(payload: CreateDatasetInput, context: MCPContext) -> DatasetMutationOutput:
+    from overbae.services.datasets.llm_calls import HASH_POSITION
+
+    explicit = "capability" in payload.model_fields_set
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    source = payload.source
+    counts: dict[str, int] = {}
+    if source.kind == "traces":
+        selection = _trace_source(context, source)
+        try:
+            counts["traces"] = selection.count(context.project.id)
+        except TraceSourceError as exc:
+            raise MCPError("invalid_filter", str(exc)) from exc
+        if counts["traces"] == 0:
+            raise MCPError(
+                "no_traces", "No traces match the selection. Widen the filters or check the ids."
+            )
+        spec = {"traces": selection.spec()}
+        what = f"{counts['traces']} traces"
+    elif source.kind == "llm_calls":
+        selection, counts["calls"] = _llm_calls_source(context, source, capability)
+        if counts["calls"] == 0:
+            raise MCPError(
+                "no_calls",
+                "No LLM calls match the selection. Widen the window or check the capability.",
+            )
+        spec = {"llm_calls": selection.spec()}
+        what = f"{counts['calls']} LLM calls"
+    else:
+        origin = mcp_dataset(context, source.dataset)
+        cell = _version(origin, source.version)
+        spec = {"version": {"dataset_id": str(origin.id), "cell_id": str(cell.id)}}
+        what = f"{origin.name or 'Dataset'} {cell.label}, {cell.rows} rows"
+    split = payload.split
     try:
-        if payload.split:
+        if split is not None:
             train, evaluation = dispatch.create_split(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
-                source={"llm_calls": selection.spec()},
-                eval_percent=payload.eval_percent,
-                position=HASH_POSITION,
+                source=spec,
+                eval_percent=split.eval_percent,
+                position=split.position
+                or (HASH_POSITION if source.kind == "llm_calls" else "tail"),
+                group_by=split.group_by,
+                stratify_by=split.stratify_by,
+                deduplicate=split.deduplicate,
                 capability=capability,
-                infer_capability=False,
+                infer_capability=not explicit,
             )
         else:
             train = dispatch.create_dataset(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
-                source={"llm_calls": selection.spec()},
+                source=spec,
                 intent=payload.intent,
                 capability=capability,
-                infer_capability=False,
+                infer_capability=not explicit,
             )
             evaluation = None
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return mutation_output(
         train,
-        summary=(
-            f"Dataset landing started: {matched} LLM calls."
-            if evaluation is None
-            else f"Split landing started: {matched} LLM calls cut into a train and an eval dataset."
-        ),
-        calls=matched,
-        eval_dataset=evaluation,
-    )
-
-
-def _create_dataset_from_version_sync(
-    payload: CreateDatasetFromVersionInput, context: MCPContext
-) -> DatasetMutationOutput:
-    origin = mcp_dataset(context, payload.dataset)
-    cell = _version(origin, payload.version)
-    capability = (
-        _resolve_capability_uuid(context, payload.capability) if payload.capability else None
-    )
-    source = {"version": {"dataset_id": str(origin.id), "cell_id": str(cell.id)}}
-    inherit = "capability" not in payload.model_fields_set
-    try:
-        if payload.split is not None:
-            train, evaluation = dispatch.create_split(
-                project=context.project,
-                user=context.user,
-                name=payload.name,
-                source=source,
-                eval_percent=payload.split.eval_percent,
-                position=payload.split.position,
-                group_by=payload.split.group_by,
-                stratify_by=payload.split.stratify_by,
-                deduplicate=payload.split.deduplicate,
-                capability=capability,
-                infer_capability=inherit,
-            )
-        else:
-            train = dispatch.create_dataset(
-                project=context.project,
-                user=context.user,
-                name=payload.name,
-                source=source,
-                intent=payload.intent,
-                capability=capability,
-                infer_capability=inherit,
-            )
-            evaluation = None
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
-    landing = f"{origin.name or 'Dataset'} {cell.label}, {cell.rows} rows"
-    return mutation_output(
-        train,
-        summary=f"Dataset landing started from {landing}."
+        summary=f"Landing started from {what}."
         if evaluation is None
-        else f"Split landing started from {landing}, cut into a train and an eval dataset.",
+        else f"Split landing started from {what}, cut into a train and an eval dataset.",
         eval_dataset=evaluation,
+        **counts,
     )
 
 
@@ -450,7 +402,7 @@ def _update_dataset_sync(payload: UpdateDatasetInput, context: MCPContext) -> Da
         changes["intent"] = payload.intent
     if "capability" in payload.model_fields_set:
         changes["capability"] = (
-            _resolve_capability_uuid(context, payload.capability) if payload.capability else None
+            _resolve_capability(context, payload.capability) if payload.capability else None
         )
     if not changes:
         raise MCPError("invalid_input", "Give name, intent or capability.")
@@ -476,25 +428,45 @@ def _cancel_dataset_job_sync(
     payload: CancelDatasetJobInput, context: MCPContext
 ) -> CancelDatasetJobOutput:
     dataset = mcp_dataset(context, payload.dataset)
-    try:
-        if payload.execution:
-            run = workshop.cancel_run(dataset, payload.execution)
-            return CancelDatasetJobOutput(
-                summary=f"The run is {run.state}.",
-                kind="execution",
-                id=str(run.id),
-                status=run.state,
-                resource_links=[dataset_resource_link(dataset)],
-            )
-        dataset = dispatch.cancel_import(dataset)
-    except DatasetError as exc:
-        raise dataset_mcp_error(exc) from exc
+    if payload.run:
+        try:
+            run = workshop.cancel_run(dataset, payload.run)
+        except DatasetError as exc:
+            raise dataset_mcp_error(exc) from exc
+        return CancelDatasetJobOutput(
+            summary="The run was stopped."
+            if run.state == "cancelled"
+            else f"The run is {run.state}.",
+            kind="dataset_run",
+            id=str(run.id),
+            status=run.state,
+            resource_links=[dataset_resource_link(dataset), run_job_link(run)],
+        )
+    receipt = import_receipt(dataset)
+    if receipt is None:
+        raise MCPError("import_not_running", "This dataset has no import.")
+    if receipt.state in imports.OPEN_STATES:
+        try:
+            imports.cancel(receipt.pk)
+        except DatasetError as exc:
+            if exc.code != "import_not_running":
+                raise dataset_mcp_error(exc) from exc
+        receipt.refresh_from_db()
+    targets = list(
+        Dataset.objects.filter(pk__in=[receipt.dataset_id, receipt.evaluation_id]).order_by(
+            "-intent"
+        )
+    )
+    dataset = next(target for target in targets if target.pk == dataset.pk)
+    status = import_status(dataset, receipt)
     return CancelDatasetJobOutput(
-        summary="The import was cancelled.",
+        summary="The import was stopped." if status == "stopped" else f"The import is {status}.",
         kind="dataset_import",
         id=str(dataset.id),
-        status="cancelled",
-        resource_links=[dataset_resource_link(dataset), dataset_import_job_link(dataset)],
+        status=status,
+        datasets=[mutation_ref(target) for target in targets],
+        resource_links=[dataset_import_job_link(dataset)]
+        + [dataset_resource_link(target) for target in targets],
     )
 
 
@@ -533,8 +505,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "One dataset: its version tree, active version, consumer requirements "
-            "(preparation_context), a sample and next actions.",
+            "One dataset: its version tree, the active and an optional version in full, "
+            "consumer requirements (preparation_context), live runs, a sample and next actions.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -553,41 +525,22 @@ def register_dataset_tools(catalog) -> None:
             "sync",
         ),
         (
-            "create_dataset_from_traces",
-            "Create dataset from traces",
-            "Land one row per trace. Give trace_ids, or filters and/or search. "
+            "create_dataset",
+            "Create dataset",
+            "Land traces (trace_ids, filters such as a query_traces selection, or search), "
+            "llm_calls since a time, or a version of a project dataset as a new dataset. "
             "Empty selections are refused. split lands train and eval.",
-            CreateDatasetFromTracesInput,
+            CreateDatasetInput,
             DatasetMutationOutput,
-            _create_dataset_from_traces_sync,
-            False,
-            "task",
-        ),
-        (
-            "create_dataset_from_llm_calls",
-            "Create dataset from LLM calls",
-            "Land one row per llm_call since a timestamp. split hashes span_id into train and eval.",
-            CreateDatasetFromLlmCallsInput,
-            DatasetMutationOutput,
-            _create_dataset_from_llm_calls_sync,
-            False,
-            "task",
-        ),
-        (
-            "create_dataset_from_version",
-            "Create dataset from version",
-            "Land a version (active by default) of a project dataset as a new dataset, keeping "
-            "its lineage. split lands train and eval.",
-            CreateDatasetFromVersionInput,
-            DatasetMutationOutput,
-            _create_dataset_from_version_sync,
+            _create_dataset_sync,
             False,
             "task",
         ),
         (
             "try_dataset_script",
             "Try dataset script",
-            "Run a script on a version in the sandbox and preview the resulting df. Creates nothing.",
+            "Run a script on a version in the sandbox and preview the resulting df. Creates "
+            "nothing. While queued or running, poll get_job with the returned job.",
             TryDatasetScriptInput,
             TryDatasetScriptOutput,
             _try_dataset_script_sync,
@@ -608,7 +561,7 @@ def register_dataset_tools(catalog) -> None:
             "add_dataset_version",
             "Add dataset version",
             "Run a script on a parent version in the sandbox and store the resulting df as a new, "
-            "inactive version.",
+            "inactive version. While queued or running, poll get_job with the returned job.",
             AddDatasetVersionInput,
             AddDatasetVersionOutput,
             _add_dataset_version_sync,
@@ -638,7 +591,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "activate_dataset_version",
             "Activate dataset version",
-            "Make a version the one training, evaluation and the optimizer use.",
+            "Set the default version consumers read when no version is given; started jobs keep "
+            "their pinned versions.",
             ActivateDatasetVersionInput,
             DatasetOutput,
             _activate_dataset_version_sync,
@@ -668,8 +622,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "cancel_dataset_job",
             "Cancel dataset job",
-            "Stop the dataset's source import, or with execution one queued or running script "
-            "run. Nothing it produced is kept.",
+            "Stop the dataset's source import (both halves of a split), or with run one script "
+            "run. Nothing it produced is kept; a finished job returns its state.",
             CancelDatasetJobInput,
             CancelDatasetJobOutput,
             _cancel_dataset_job_sync,

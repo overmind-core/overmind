@@ -14,8 +14,9 @@ entries here cover the SDK surface.
 
 ### Changed
 
-- The dataset skills describe `create_dataset_from_version`, attachments,
-  version analytics and `cancel_dataset_job`. Skills version 1.5.0.
+- The dataset skills describe `create_dataset` (traces, LLM calls or a version as
+  the source), attachments, version analytics, `cancel_dataset_job` and one
+  `version` field for every version reference. Skills version 1.5.0.
 
 - The datasets, training and inference skills describe decision models: decision
   rows, per-model limits, and the `check_decision_readiness` → `start_decision_job`

@@ -10,11 +10,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import BaseParser, JSONParser
 from rest_framework.response import Response
 
+from overbae.models import APIToken, ProjectMembership
 from overbae.services.datasets import files
 
 
 class BeginUploadSerializer(serializers.Serializer):
     filename = serializers.CharField(max_length=255)
+    project = serializers.UUIDField(required=False)
 
 
 class UploadStateSerializer(serializers.Serializer):
@@ -49,6 +51,24 @@ class OctetStreamParser(BaseParser):
 
     def parse(self, stream, media_type=None, parser_context=None):
         return stream.read()
+
+
+def _upload_project(request, requested):
+    """The project the upload is bound to: a project key's own, or a project the caller
+    belongs to. Without either, the upload is bound to the caller alone."""
+    token = request.auth if isinstance(request.auth, APIToken) else None
+    if token is not None and not token.is_account_scoped:
+        allowed = {str(project) for project in token.allowed_project_ids()}
+        if requested is None and len(allowed) == 1:
+            return next(iter(allowed))
+        if requested is not None and str(requested) in allowed:
+            return requested
+        raise ValidationError({"project": "This API key cannot upload to that project."})
+    if requested is None:
+        return None
+    if not ProjectMembership.objects.filter(user=request.user, project_id=requested).exists():
+        raise ValidationError({"project": "Project not found."})
+    return requested
 
 
 class UploadViewSet(viewsets.ViewSet):
@@ -86,8 +106,11 @@ class UploadViewSet(viewsets.ViewSet):
     def create(self, request):
         payload = BeginUploadSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
+        project = _upload_project(request, payload.validated_data.get("project"))
         try:
-            upload_id, name = files.begin_upload(payload.validated_data["filename"])
+            upload_id, name = files.begin_upload(
+                payload.validated_data["filename"], project=project, user=request.user.pk
+            )
         except files.FileError as exc:
             raise ValidationError({"detail": exc.detail}) from exc
         return Response(

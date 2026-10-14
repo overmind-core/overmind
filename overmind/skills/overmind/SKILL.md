@@ -118,9 +118,10 @@ Follow these for ALL Overmind work:
    `list_deployed_models`, or `job_status` tools. Use `list_datasets`,
    `query_*`, `inspect_*`, `get_job`, and resource reads. Never paste raw
    UUIDs to the user when a name/slug exists.
-   Dataset names are not unique: `list_datasets` then pass that UUID to
-   `inspect_dataset` / `query_dataset` (those two reject names). Fine-tune,
-   eval, and optimizer tools also accept a unique dataset name.
+   Dataset names are not unique: every dataset tool accepts a name only when
+   it is unique, so prefer the UUID from `list_datasets`. Versions are always
+   `version` (label such as `v3`, or the version id), with `eval_version` and
+   `validation_version` beside them.
    Capability tools accept name, slug, or id. Stamp the capability resource
    `id` into the SDK. Pass a READY deployed-model UUID to `set_active_model`
    (omit to clear), then poll the returned `model_activation` job until verification and routing complete. See [references/capabilities.md](references/capabilities.md).
@@ -131,11 +132,12 @@ Follow these for ALL Overmind work:
    `train`; eval runs and optimizer experiments need `eval`. `pending` is
    refused. There is no reingest tool and no dual-intent dataset. Set intent
    at upload (`overmind dataset upload FILE --json --intent train|eval`), at
-   create (`create_dataset_from_traces` / `_failures`), or later with
-   `update_dataset(intent=...)`.
-   `create_dataset_from_traces` with `split` lands one selection as a train
-   dataset and an eval dataset with disjoint rows; so does `--split PERCENT`
-   on `overmind dataset upload`.
+   create (`create_dataset`), or later with `update_dataset(intent=...)`.
+   Intent and capability are fixed once a version was used; create a new
+   dataset from that version to change them.
+   `create_dataset` with `split` lands one source (traces, LLM calls or a
+   version) as a train dataset and an eval dataset with disjoint rows; so does
+   `--split PERCENT` on `overmind dataset upload`.
    Read the contracts section below.
 1. **Errors are values; mutations run immediately.** Every tool returns
    `{"error": "..."}` instead of raising — follow `fields` when present.
@@ -223,11 +225,14 @@ Observability:
 
 Datasets:
 
-`list_datasets`, `inspect_dataset`, `query_dataset`,
-`create_dataset_from_traces`, `create_dataset_from_llm_calls`,
+`list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset`,
 `try_dataset_script`, `probe_dataset_version`, `add_dataset_version`,
 `add_synthetic_examples`, `diff_dataset_versions`, `activate_dataset_version`,
-`update_dataset`, `resume_dataset_import`.
+`update_dataset`, `resume_dataset_import`, `cancel_dataset_job`.
+
+Decision models:
+
+`check_decision_readiness`, `start_decision_job`, `run_decision_model`.
 
 Evaluations:
 
@@ -258,9 +263,10 @@ Instrumentation:
 
 `get_instrumentation_plan`, `verify_instrumentation`.
 
-The server does not expose delete, cancel, or generic API tools. Use
-`retry_deployment` only for its documented failed/deleted deployment recovery
-case.
+The server does not expose delete or generic API tools. The only lifecycle
+tools are `retry_deployment`, for its documented failed/deleted deployment
+recovery case, and `cancel_dataset_job`, which stops a dataset import or
+script run.
 Use the returned structured fields and resource links rather than guessing
 older endpoint-shaped names.
 
@@ -289,7 +295,8 @@ technical fit and task suitability separately.
 What each workflow accepts:
 
 - **Eval runs** (`run_evaluation`) and **optimizer experiments**
-  (`start_optimizer`) use the active version of an **eval** dataset.
+  (`start_optimizer`) use an **eval** dataset at the `version` you pass, else
+  its active version. Pass the version explicitly when launching.
 - **Fine-tuning** (`start_finetune`) uses a **train** version, plus a
   separate **eval** dataset for in-training judge evals.
 
@@ -321,7 +328,7 @@ Typical loop (local setup once, then MCP):
    stamp the capability's `id` and use the ticket fan-out workflow in
    [references/telemetry.md](references/telemetry.md).
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
-   (`create_dataset_from_traces`, or CLI upload).
+   (`create_dataset` with a traces source, or CLI upload).
 1. **Shape it** — `inspect_dataset`, then `try_dataset_script` and
    `add_dataset_version`; activate with `activate_dataset_version` only after
    the user agrees.
@@ -441,7 +448,7 @@ local work is needed:
   `--format jsonl|csv`, `--cell`, or `--output PATH`. Use the dataset id
   supplied by MCP; the CLI does not resolve names, uses the server filename when
   no output path is given, and refuses overwrite. For traces, select traces,
-  call `create_dataset_from_traces`, poll `get_job(kind=dataset_import)`,
+  call `create_dataset`, poll `get_job(kind=dataset_import)`,
   shape and activate a version, then run the local export. There is no
   `export_trace` MCP tool.
 - MCP does not carry checkpoint bytes or presigned URLs. Resolve and read the

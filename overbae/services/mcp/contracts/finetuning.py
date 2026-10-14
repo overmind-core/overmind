@@ -8,27 +8,41 @@ from uuid import UUID
 from pydantic import Field
 
 from overbae.services.mcp.contracts.common import (
-    DatasetCellContract,
+    DatasetVersionContract,
     JobReceipt,
     MCPModel,
+    PinnedVersions,
     ResourceLinkContract,
+    request_key_field,
+    version_field,
 )
+
+TrainingType = Literal["lora", "full"]
+
+
+def _capability_field():
+    return Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Omit for the train dataset's capability; null for none.",
+    )
 
 
 class CheckFinetuneReadinessInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
-    capability: str | None = Field(
-        default=None, max_length=255, description="Optional capability; omit or null for none."
-    )
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
+    capability: str | None = _capability_field()
+    eval_dataset: str | None = Field(default=None, min_length=1, max_length=255)
+    eval_version: str | None = version_field()
+    eval_set: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class FineTuneDatasetReadiness(MCPModel):
     id: str
     name: str
     intent: Literal["train"] | None
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
     validation: dict[str, Any]
 
 
@@ -36,7 +50,7 @@ class FineTuneEvalDatasetReadiness(MCPModel):
     id: str
     name: str
     intent: Literal["eval"]
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
 
 
 class FineTuneCapabilityReadiness(MCPModel):
@@ -92,8 +106,7 @@ class EstimateFinetuneInput(MCPModel):
     base_model: str = Field(min_length=1, max_length=255)
     n_epochs: int = Field(default=3, ge=1, le=20)
     use_lora: bool = True
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
+    version: str | None = version_field()
 
 
 class FineTuneTimeEstimate(MCPModel):
@@ -106,18 +119,19 @@ class EstimateFinetuneOutput(MCPModel):
     cost_estimate: dict[str, Any] | None = None
     time_estimate: FineTuneTimeEstimate
     trained_tokens: int = Field(ge=0)
-    cell: DatasetCellContract | None = None
+    version: DatasetVersionContract | None = None
     resource_links: list[ResourceLinkContract] = Field(max_length=1)
 
 
 class PrepareTrainingInput(MCPModel):
     retry_failed: bool = False
-    training_type: Literal["lora", "full"] = "lora"
+    training_type: TrainingType = "lora"
     dataset: str = Field(min_length=1, max_length=255)
+    version: str | None = version_field()
     base_model: str = Field(min_length=1, max_length=255)
     context_length: int = Field(ge=128, le=2_000_000)
-    validation_dataset: str | None = None
-    cell: str | None = None
+    validation_dataset: str | None = Field(default=None, min_length=1, max_length=255)
+    validation_version: str | None = version_field()
 
 
 class PrepareTrainingOutput(MCPModel):
@@ -138,19 +152,14 @@ class StartFinetuneInput(MCPModel):
         max_length=255,
         description="Run-specific benchmark: codebase incumbent or ready trained serving model ID in this project. Omit for capability default.",
     )
-    capability: str | None = Field(
-        default=None, max_length=255, description="Optional capability; omit or null for none."
-    )
-    eval_dataset: str | None = Field(default=None, max_length=255)
-    eval_set: str | None = Field(default=None, max_length=255)
+    capability: str | None = _capability_field()
+    eval_dataset: str | None = Field(default=None, min_length=1, max_length=255)
+    eval_set: str | None = Field(default=None, min_length=1, max_length=255)
     eval_judge_model: str = Field(default="", max_length=255)
-    validation_dataset: str | None = Field(default=None, max_length=255)
-    cell: str | None = Field(default=None, max_length=255)
-    version: str | None = Field(default=None, max_length=32)
-    eval_cell: str | None = Field(default=None, max_length=255)
-    eval_version: str | None = Field(default=None, max_length=32)
-    validation_cell: str | None = Field(default=None, max_length=255)
-    validation_version: str | None = Field(default=None, max_length=32)
+    validation_dataset: str | None = Field(default=None, min_length=1, max_length=255)
+    version: str | None = version_field()
+    eval_version: str | None = version_field()
+    validation_version: str | None = version_field()
     validation_enabled: bool = True
     eval_incumbent_before: bool | None = Field(
         default=None,
@@ -166,8 +175,12 @@ class StartFinetuneInput(MCPModel):
     split_method: Literal["random", "ordered"] = "random"
     name: str | None = Field(default=None, max_length=255)
     use_case: str = Field(default="", max_length=10_000)
-    hyperparameters: dict[str, Any] | None = None
+    training_type: TrainingType | None = None
+    hyperparameters: dict[str, Any] | None = Field(
+        default=None, description="Keys override the derived defaults one by one."
+    )
     group_id: UUID | None = None
+    request_key: str | None = request_key_field()
 
 
 class FineTuneJobReference(JobReceipt):
@@ -179,7 +192,7 @@ class StartFinetuneOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     finetune: FineTuneJobReference
     job: FineTuneJobReference
-    cell: DatasetCellContract | None = None
+    versions: PinnedVersions
     resource_links: list[ResourceLinkContract] = Field(max_length=3)
 
 

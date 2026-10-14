@@ -14,8 +14,6 @@ from overbae.api.serializers import CapabilitySerializer
 from overbae.core.errors import InputValidationError
 from overbae.models import Capability, Dataset, DeployedModel, EvalSet, EvalSetMember, FinetuningJob
 from overbae.services.capabilities import identity
-from overbae.services.datasets import review
-from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.rows import RowStoreError
@@ -67,10 +65,11 @@ from overbae.services.mcp.contracts.inference import (
 )
 from overbae.services.mcp.errors import (
     MCPError,
-    mcp_cell,
-    mcp_cell_contract,
+    finetune_versions,
     mcp_check,
     mcp_dataset,
+    mcp_version,
+    version_contract,
 )
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
@@ -170,13 +169,6 @@ def _resolve_finetune(context: MCPContext, reference: str) -> FinetuningJob:
     if job is None:
         raise MCPError("finetune_not_found", "The fine-tuning job was not found in this project.")
     return job
-
-
-def _cell_ref(*values: str | None) -> str | None:
-    for value in values:
-        if value:
-            return value
-    return None
 
 
 def _require_credits(context: MCPContext) -> None:
@@ -290,73 +282,108 @@ def _evaluator_readiness(
     )
 
 
-def _readiness_sync(
-    payload: CheckFinetuneReadinessInput, context: MCPContext
-) -> CheckFinetuneReadinessOutput:
-    dataset = _resolve_dataset(context, payload.dataset)
+def _selected_capability(context: MCPContext, payload, dataset: Dataset) -> Capability | None:
+    """Omitted means the train dataset's capability; an explicit null means none."""
+    if "capability" in payload.model_fields_set:
+        return _resolve_capability(context, payload.capability) if payload.capability else None
+    capability = dataset.capability
+    if capability is None or capability.status != Capability.Status.CURRENT:
+        return None
+    return capability
+
+
+def _missing_eval_dataset(capability: Capability | None) -> str:
+    if capability is None:
+        return "eval dataset — pass eval_dataset; no capability selects one"
+    return (
+        f"eval dataset — pass eval_dataset; capability {capability.name} does not own "
+        "exactly one fitting eval dataset"
+    )
+
+
+def _missing_eval_set(capability: Capability | None) -> str:
+    if capability is None:
+        return "eval set — pass eval_set; no capability selects one"
+    return f"eval set — pass eval_set; capability {capability.name} has no active eval set"
+
+
+def _require_train(dataset: Dataset) -> None:
     if public_intent(dataset.intent) != Dataset.Intent.TRAIN:
         raise MCPError(
             "dataset_intent_mismatch",
             "Fine-tuning requires a Train dataset.",
             fields={"dataset": "Expected intent=train."},
         )
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
-    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+
+
+def _readiness_sync(
+    payload: CheckFinetuneReadinessInput, context: MCPContext
+) -> CheckFinetuneReadinessOutput:
+    dataset = _resolve_dataset(context, payload.dataset)
+    _require_train(dataset)
+    cell = mcp_version(dataset, payload.version) or dataset.active_cell
+    capability = _selected_capability(context, payload, dataset)
+    eval_dataset = (
+        _resolve_dataset(context, payload.eval_dataset)
+        if payload.eval_dataset
+        else default_eval_dataset(capability)
+    )
+    eval_cell = (
+        mcp_version(eval_dataset, payload.eval_version, field="eval_version")
+        or eval_dataset.active_cell
+        if eval_dataset is not None
+        else None
+    )
+    eval_set = (
+        _resolve_eval_set(context, payload.eval_set, capability=capability)
+        if payload.eval_set
+        else default_eval_set(capability)
+    )
     try:
-        report = finetune_prerequisite_report(context.project, dataset, capability=capability)
+        report = finetune_prerequisite_report(
+            dataset,
+            cell,
+            capability=capability,
+            eval_dataset=eval_dataset,
+            eval_cell=eval_cell,
+        )
     except RowStoreError:
         report = {
-            "missing": [],
+            "missing": ["training dataset — the rows could not be read"],
             "catalog": {},
             "n_candidates": 0,
             "recommendations": [],
             "has_tool_calling": False,
             "excluded": [],
         }
-    eval_dataset = default_eval_dataset(context.project, capability)
-    eval_set = default_eval_set(context.project, capability)
     evaluator_readiness = _evaluator_readiness(capability, eval_set)
     credits = FineTuneCreditReadiness(required=True, available=_credits_available(context))
-    missing = [
-        item
-        for item in (report.get("missing") or [])
-        if not str(item).startswith("training dataset")
-    ]
-    fits, reason = (False, "no version yet") if cell is None else cell.fits("train")
-    if cell is not None and fits:
-        try:
-            dataset_use.check(dataset, "train", cell=cell)
-        except DatasetError as exc:
-            fits, reason = False, exc.detail
-    if cell is None or not fits:
-        missing.insert(0, f"training dataset — {reason}")
-        validation = ValidationResult(False, "unknown", 0, errors=[reason])
-    else:
-        validation = validate_dataset(str(dataset.id), cell_id=str(cell.id))
-        if not validation.valid:
-            missing.insert(
-                0,
-                "training dataset — fix the rows the validator lists in a new version",
-            )
-    if not evaluator_readiness.ready:
+    missing = list(report.get("missing") or [])
+    if eval_dataset is None:
+        missing.append(_missing_eval_dataset(capability))
+    if eval_set is None:
+        missing.append(_missing_eval_set(capability))
+    elif not evaluator_readiness.ready:
         missing.append("evaluator — select at least one active generative evaluator")
     if not credits.available:
         missing.append("credits — add credits before starting fine-tuning")
+    validation = report.get("validation") or ValidationResult(
+        False, "unknown", 0, errors=[next(iter(missing), "no version yet")]
+    )
     ready = not missing
     dataset_data = FineTuneDatasetReadiness(
         id=str(dataset.id),
         name=dataset.name or str(dataset.id)[:8],
         intent=public_intent(dataset.intent),
-        cell=mcp_cell_contract(dataset, cell, "train"),
+        version=version_contract(dataset, cell, "train"),
         validation=safe_json(validation.as_dict()),
     )
-    eval_cell = eval_dataset.active_cell if eval_dataset is not None else None
     eval_dataset_data = (
         FineTuneEvalDatasetReadiness(
             id=str(eval_dataset.id),
             name=eval_dataset.name or str(eval_dataset.id)[:8],
             intent=public_intent(eval_dataset.intent),
-            cell=mcp_cell_contract(eval_dataset, eval_cell, "eval"),
+            version=version_contract(eval_dataset, eval_cell, "eval"),
         )
         if eval_dataset is not None
         else None
@@ -372,19 +399,7 @@ def _readiness_sync(
         summary="Fine-tuning is ready." if ready else "Fine-tuning is not ready.",
         ready=ready,
         missing=missing,
-        warnings=[
-            finding
-            for finding in (report.get("warnings") or [])
-            if not finding.startswith("training dataset:")
-        ]
-        + (
-            [
-                f"training dataset: {finding}"
-                for finding in review.warnings(dataset, cell, capability=capability)
-            ]
-            if cell
-            else []
-        ),
+        warnings=report.get("warnings") or [],
         dataset=dataset_data,
         capability=(
             FineTuneCapabilityReadiness(
@@ -414,17 +429,12 @@ def _readiness_sync(
 
 def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> EstimateFinetuneOutput:
     dataset = _resolve_dataset(context, payload.dataset)
-    if public_intent(dataset.intent) != Dataset.Intent.TRAIN:
-        raise MCPError(
-            "dataset_intent_mismatch",
-            "Fine-tuning requires a Train dataset.",
-            fields={"dataset": "Expected intent=train."},
-        )
-    cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
+    _require_train(dataset)
+    cell = mcp_version(dataset, payload.version) or dataset.active_cell
     if cell is None or not cell.fits("train")[0]:
         raise MCPError(
             "finetune_not_ready",
-            "Fine-tuning requires a train cell that fits the train contract.",
+            "Fine-tuning requires a train version that fits the train contract.",
         )
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
@@ -445,35 +455,60 @@ def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> Estim
         cost_estimate=safe_json(estimate.get("cost_estimate")),
         time_estimate=FineTuneTimeEstimate.model_validate(estimate["time_estimate"]),
         trained_tokens=estimate["trained_tokens"],
-        cell=mcp_cell_contract(dataset, cell, "train"),
+        version=version_contract(dataset, cell, "train"),
         resource_links=[resource_link("datasets", str(dataset.id), dataset.name or "Dataset")],
     )
+
+
+def _hyperparameters(payload: StartFinetuneInput, dataset: Dataset, cell) -> dict[str, Any]:
+    if payload.training_type and "training_type" in (payload.hyperparameters or {}):
+        raise MCPError(
+            "invalid_input",
+            "Give training_type once: as the training_type argument, not inside hyperparameters.",
+        )
+    try:
+        derived = stamp_hyperparameters_for_model(
+            str(dataset.id), payload.base_model, cell, payload.training_type
+        )
+    except ValueError as error:
+        raise MCPError(
+            "finetune_invalid", f"Default fine-tuning settings could not be derived: {error}"
+        ) from error
+    return {**derived, **(payload.hyperparameters or {})}
 
 
 def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetuneOutput:
     if payload.hyperparameters is not None and _contains_sensitive_key(payload.hyperparameters):
         raise MCPError("invalid_input", "Provider credentials are not accepted in tool input.")
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_check(dataset, "train", _cell_ref(payload.cell, payload.version))
-    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    cell = mcp_check(dataset, "train", payload.version)
+    capability = _selected_capability(context, payload, dataset)
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
 
     eval_dataset = (
         _resolve_dataset(context, payload.eval_dataset)
         if payload.eval_dataset
-        else default_eval_dataset(context.project, capability)
+        else default_eval_dataset(capability)
     )
     if eval_dataset is None:
-        raise MCPError("finetune_not_ready", "An eval dataset is required to start fine-tuning.")
-    eval_cell = mcp_check(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
+        raise MCPError(
+            "finetune_not_ready",
+            _missing_eval_dataset(capability).split(" — ", 1)[1].capitalize() + ".",
+            fields={"eval_dataset": "required"},
+        )
+    eval_cell = mcp_check(eval_dataset, "eval", payload.eval_version, field="eval_version")
     eval_set = (
         _resolve_eval_set(context, payload.eval_set, capability=capability)
         if payload.eval_set
-        else default_eval_set(context.project, capability)
+        else default_eval_set(capability)
     )
     if eval_set is None:
-        raise MCPError("finetune_not_ready", "An eval set is required to start fine-tuning.")
+        raise MCPError(
+            "finetune_not_ready",
+            _missing_eval_set(capability).split(" — ", 1)[1].capitalize() + ".",
+            fields={"eval_set": "required"},
+        )
 
     validation_dataset = (
         _resolve_dataset(context, payload.validation_dataset)
@@ -483,9 +518,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     validation_cell = None
     if validation_dataset is not None:
         validation_cell = mcp_check(
-            validation_dataset,
-            "train",
-            _cell_ref(payload.validation_cell, payload.validation_version),
+            validation_dataset, "train", payload.validation_version, field="validation_version"
         )
     validation = validate_dataset(
         str(dataset.id),
@@ -502,17 +535,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             "The training dataset failed validation.",
             fields={"dataset": "Fix the dataset validation errors before starting."},
         )
-    if payload.hyperparameters is None:
-        try:
-            hyperparameters = stamp_hyperparameters_for_model(
-                str(dataset.id), payload.base_model, cell
-            )
-        except ValueError as error:
-            raise MCPError(
-                "finetune_invalid", "Default fine-tuning settings could not be derived."
-            ) from error
-    else:
-        hyperparameters = payload.hyperparameters
+    hyperparameters = _hyperparameters(payload, dataset, cell)
 
     catalog_entry = find_catalog_model(payload.base_model) or {}
     name = payload.name or default_finetune_name(
@@ -556,18 +579,31 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
         raise MCPError(
             "finetune_dispatch_failed", "The fine-tuning job could not be queued.", retryable=True
         ) from error
+    job = FinetuningJob.objects.select_related("cell", "validation_cell", "eval_cell").get(
+        pk=job.pk
+    )
+    versions = finetune_versions(job)
     job_link = resource_link("jobs", f"finetune/{job.id}", job.name or "Fine-tuning job")
     finetune_link = resource_link("finetunes", str(job.id), job.name or "Fine-tuning job")
     job_ref = FineTuneJobReference(
         id=str(job.id), name=job.name, status=job.status, resource=finetune_link
     )
+    pinned = ", ".join(
+        f"{role} {version.version}"
+        for role, version in (
+            ("train", versions.train),
+            ("validation", versions.validation),
+            ("eval", versions.eval),
+        )
+        if version is not None
+    )
     return StartFinetuneOutput(
-        summary="Fine-tuning job queued.",
+        summary=f"Fine-tuning job queued on pinned {pinned}.",
         finetune=job_ref,
         job=FineTuneJobReference(
             id=str(job.id), name=job.name, status=job.status, resource=job_link
         ),
-        cell=mcp_cell_contract(dataset, job.cell or cell, "train"),
+        versions=versions,
         resource_links=[finetune_link, job_link],
     )
 
@@ -768,22 +804,30 @@ def _model_swap_prompt_sync(
     )
 
 
-def _prepare_training_sync(payload, context):
+def _prepare_training_sync(
+    payload: PrepareTrainingInput, context: MCPContext
+) -> PrepareTrainingOutput:
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_cell(dataset, payload.cell) or dataset.active_cell
+    cell = mcp_version(dataset, payload.version) or dataset.active_cell
     validation = (
         _resolve_dataset(context, payload.validation_dataset)
         if payload.validation_dataset
         else None
     )
-    if cell is None or (validation is not None and validation.active_cell is None):
+    validation_cell = (
+        mcp_version(validation, payload.validation_version, field="validation_version")
+        or validation.active_cell
+        if validation is not None
+        else None
+    )
+    if cell is None or (validation is not None and validation_cell is None):
         raise MCPError("dataset_not_ready", "Select completed dataset versions.")
     try:
         prep = request_preparation(
             cell,
             payload.base_model,
             payload.context_length,
-            validation_cell=validation.active_cell if validation else None,
+            validation_cell=validation_cell,
             training_type=payload.training_type,
         )
         if payload.retry_failed and prep.state == "failed":
@@ -836,7 +880,9 @@ def register_finetuning_tools(catalog) -> None:
         (
             "check_finetune_readiness",
             "Check fine-tuning readiness",
-            "Inspect fine-tuning prerequisites, dataset shape, catalog models, evaluators, and credits. Ranking uses the capability task, or the dataset task when no capability is selected.",
+            "Check the chosen train and eval versions, catalog models, evaluators and credits. "
+            "capability defaults to the train dataset's; eval_dataset is required unless that "
+            "capability owns exactly one fitting eval dataset.",
             CheckFinetuneReadinessInput,
             CheckFinetuneReadinessOutput,
             _readiness_sync,
@@ -862,7 +908,9 @@ def register_finetuning_tools(catalog) -> None:
         (
             "start_finetune",
             "Start fine-tuning",
-            "Queue training; training_type is an object with type Lora or Full.",
+            "Queue training on explicit version, eval_version and validation_version; the job "
+            "pins them. training_type (lora or full) and hyperparameters override the derived "
+            "defaults key by key.",
             StartFinetuneInput,
             StartFinetuneOutput,
             _start_sync,

@@ -1227,16 +1227,22 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Capability not found."}, status=404)
 
         eval_dataset_id = request.data.get("eval_dataset_id") or None
+        eval_cell = None
         if eval_dataset_id:
             try:
-                Dataset.objects.get(
+                evaluation = Dataset.objects.select_related("active").get(
                     pk=eval_dataset_id, project_id=dataset.project_id, intent=Dataset.Intent.EVAL
                 )
             except (Dataset.DoesNotExist, ValidationError, ValueError):
                 return Response({"detail": "Eval dataset not found."}, status=404)
+            eval_cell = evaluation.active_cell
+            if eval_cell is None:
+                raise drf_serializers.ValidationError(
+                    {"detail": "The evaluation dataset has no readable version."}
+                )
         try:
             analysis = get_recommendation(
-                str(dataset.id), capability_id=capability_id, eval_dataset_id=eval_dataset_id
+                str(dataset.id), capability_id=capability_id, eval_cell=eval_cell
             )
         except InputValidationError as exc:
             raise drf_serializers.ValidationError({"detail": exc.detail}) from exc
