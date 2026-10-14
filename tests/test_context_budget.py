@@ -21,7 +21,11 @@ from overbae.models import (
 from overbae.services import deployment, serving_context
 from overbae.services.eval import funnel, runner, snapshots
 from overbae.services.eval.comparison import compare_runs
-from overbae.services.inference_client import ContextBudgetError, InferenceClient
+from overbae.services.inference_client import (
+    ContextBudgetError,
+    InferenceClient,
+    InferenceClientError,
+)
 from overbae.tasks import eval as eval_tasks
 
 
@@ -224,6 +228,32 @@ def test_provider_context_rejection_is_actionable_without_leaking_body(scripted,
         )
     assert "private body" not in str(error.value)
     assert inference.calls[0].json["max_tokens"] == DEFAULT_OUTPUT_TOKENS
+
+
+REFUSED = {"error": {"code": "context_length_exceeded", "message": "private body"}}
+
+
+@pytest.mark.parametrize(
+    ("reply", "stream"),
+    [({"json_body": REFUSED}, False), ({"text": f"data: {json.dumps(REFUSED)}\n\n"}, True)],
+)
+def test_a_context_refusal_inside_a_successful_reply_is_classified(scripted, reply, stream):
+    scripted("https://inference.test").reply(200, **reply)
+    client = InferenceClient(base_url="https://inference.test", api_key="test")
+    request = {"model_id": "model", "messages": [{"role": "user", "content": "q"}]}
+    with pytest.raises(ContextBudgetError, match="reserved output exceed"):
+        if stream:
+            list(client.stream_chat_completions(**request))
+        else:
+            client.chat_completions(**request)
+
+
+def test_an_unrelated_output_limit_error_is_not_a_context_refusal(scripted):
+    scripted("https://inference.test").reply(400, text="max_tokens must be an integer")
+    client = InferenceClient(base_url="https://inference.test", api_key="test")
+    with pytest.raises(InferenceClientError) as error:
+        client.chat_completions(model_id="model", messages=[{"role": "user", "content": "q"}])
+    assert not isinstance(error.value, ContextBudgetError)
 
 
 def test_impossible_gpu_context_is_rejected_instead_of_selecting_an_undersized_gpu(monkeypatch):

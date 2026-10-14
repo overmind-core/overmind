@@ -260,7 +260,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "modal" },
     { name = "pre-commit" },
     { name = "python-dotenv" },
     { name = "ruff" },
@@ -356,7 +355,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "modal", specifier = ">=0.64" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "ruff", specifier = ">=0.12.0" },

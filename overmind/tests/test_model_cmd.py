@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -72,6 +74,7 @@ def test_download_checkpoint_streams_metadata_and_artifact(tmp_path: Path):
     assert output.read_bytes() == b"0123456789"
     assert session.calls[0][1] == "https://api.example/api/deployed-models/deployment-1/checkpoints/"
     assert session.calls[0][2]["headers"] == {"X-Api-Key": "api-secret"}
+    assert session.calls[0][2]["allow_redirects"] is False
     assert session.calls[1][1] == url
     assert session.calls[1][2] == {"timeout": 120, "stream": True}
     assert metadata.closed is True
@@ -245,3 +248,49 @@ def test_download_checkpoint_command_uses_config_and_emits_safe_json(tmp_path: P
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == result_data
+
+
+def _serve(handler):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_download_checkpoint_never_sends_the_api_key_through_a_redirect(tmp_path: Path):
+    seen: list[dict] = []
+
+    class Elsewhere(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(dict(self.headers))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"files": []}')
+
+        def log_message(self, *args):
+            pass
+
+    elsewhere = _serve(Elsewhere)
+
+    class Api(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://localhost:{elsewhere.server_port}/other")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    api = _serve(Api)
+    try:
+        with pytest.raises(CheckpointDownloadError, match="HTTP 302"):
+            download_checkpoint(
+                "deployment-1",
+                output=tmp_path / "model.zip",
+                api_key="api-secret",
+                api_url=f"http://127.0.0.1:{api.server_port}",
+            )
+    finally:
+        api.shutdown()
+        elsewhere.shutdown()
+    assert seen == []
+    assert not (tmp_path / "model.zip").exists()

@@ -1,5 +1,6 @@
 import uuid
 
+from django.db.models import Exists, OuterRef
 from django.db.models.expressions import RawSQL
 from django_filters import rest_framework as filters
 from rest_framework.exceptions import ValidationError
@@ -156,6 +157,9 @@ class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
     # ``span_type=llm_call``, which ingest stamps on unlabelled spans by default.
     # The param name is frozen: it is in the OpenAPI schema and in saved filters.
     has_model = filters.BooleanFilter(method="filter_has_model")
+    capability = filters.ModelChoiceFilter(
+        queryset=Capability.objects.all(), method="filter_capability"
+    )
     # Spans ingest could not attribute to a current capability — the graph floor.
     unbound = filters.BooleanFilter(field_name="capability", lookup_expr="isnull")
 
@@ -163,7 +167,6 @@ class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
         model = Span
         fields = [
             "project",
-            "capability",
             "conversation",
             "trace_id",
             "span_id",
@@ -180,6 +183,20 @@ class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
             return queryset
         # One row per trace by head span — must match `SpanViewSet.get_queryset`.
         return Span.trace_heads(queryset, self._scoped_project_ids(queryset))
+
+    def filter_capability(self, queryset, name, value):
+        if self.form.cleaned_data.get("all_spans"):
+            return queryset.filter(capability=value)
+        # A trace belongs to every capability that ran in it, not only its head's.
+        return queryset.filter(
+            Exists(
+                Span.objects.filter(
+                    project_id=OuterRef("project_id"),
+                    trace_id=OuterRef("trace_id"),
+                    capability=value,
+                )
+            )
+        )
 
     def filter_min_duration_ms(self, queryset, name, value):
         return queryset.filter(duration_ns__gte=int(value) * 1_000_000)

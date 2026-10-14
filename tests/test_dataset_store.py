@@ -43,6 +43,22 @@ def test_manifest_infers_column_kinds(table):
     }
 
 
+def test_values_a_typed_column_cannot_hold_are_kept_as_json(tmp_path):
+    columns = {
+        "huge": [2**63, -(2**63) - 1, 3],
+        "mixed": [1, "a", True],
+        "wide": [2**53 + 1, 0.5, None],
+        "near": [2**53, 0.5, 1],
+    }
+    rows = [{name: values[i] for name, values in columns.items()} for i in range(3)]
+    path = tmp_path / "wide.parquet"
+    store.write_rows(path, rows)
+    frame = store.Frame(path)
+    assert frame.kinds == {"huge": "json", "mixed": "json", "wide": "json", "near": "number"}
+    for name, values in columns.items():
+        assert list(frame.values(name)) == values
+
+
 def test_frames_decode_json_columns(table):
     frame = store.Frame(table)
     assert list(frame.values("input")) == [{"q": "hi"}, {"q": "bye"}, "plain"]
@@ -80,6 +96,9 @@ def test_column_stats_and_rows_by_index(table):
 def test_query_is_sandboxed(table):
     result = store.query("select source_row, json_extract_string(input, '$.q') q from t", t=table)
     assert result["rows"][0] == {"source_row": 0, "q": "hi"}
+    result = store.query("select input, input -> '$.q' AS q, expected_output from t", t=table)
+    assert result["rows"][0] == {"input": {"q": "hi"}, "q": "hi", "expected_output": "hello"}
+    assert result["rows"][2]["input"] == "plain"
     for sql in (
         "select * from read_csv('/etc/passwd')",
         "copy (select 1) to '/tmp/out.csv'",

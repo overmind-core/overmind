@@ -160,17 +160,16 @@ def test_a_job_trains_on_a_frozen_version_evaluates_it_and_charges_once(
     assert finished["checkpoint_ready"] is True
     trained = finished["evaluation"]["trained"]
     assert finished["evaluation"]["rows"] == 2
+    assert finished["evaluation"]["train_overlap"] == 2
     assert finished["evaluation"]["status"] == "complete"
     assert finished["evaluation_status"] == "complete"
     assert (trained["n"], trained["unanswered"]["total"]) == (6, 0)
-    # The fake answers every question with its first option at 0.9.
-    assert trained["questions"]["route"]["accuracy"] == 0.5
+    # The fake answers every question with its first option at 0.9; the weighted
+    # route answer is scored by log loss and Brier, not accuracy.
+    route = trained["questions"]["route"]
+    assert (route["accuracy"], route["soft"]) == (1.0, 1)
     assert trained["questions"]["urgent"]["accuracy"] == 0.5
     assert trained["questions"]["tone"]["accuracy"] == 1.0
-    assert trained["questions"]["route"]["class_metrics"]["confusion_matrix"] == {
-        "labels": ["billing", "shipping"],
-        "matrix": [[1, 0], [1, 0]],
-    }
 
     decision_jobs.advance(job.id)
     charges = BillingTelemetry.objects.filter(user=user, service=BillingService.FINETUNING_JOB)
@@ -209,31 +208,40 @@ def test_an_evaluation_reports_always_answering_the_majority_as_the_baseline(
     urgent = _evaluated_urgent(owner, make_dataset, decision, fake_modal, held_out)
 
     # The fake always answers "true" at 0.7, so accuracy is the share of urgent rows.
-    assert (urgent["majority_baseline"], urgent["accuracy"], urgent["ties"]) == (0.86, 0.14, 0)
+    assert (urgent["majority_baseline"], urgent["accuracy"], urgent["soft"]) == (0.86, 0.14, 0)
 
 
-def test_a_shared_top_weight_is_a_tie_kept_out_of_accuracy_but_not_log_loss_or_brier(
+def test_a_weighted_gold_answer_is_kept_out_of_accuracy_but_not_log_loss_or_brier(
     owner, make_dataset, decision, fake_modal
 ):
     held_out = [
         _urgent_row("true", "a"),
         _urgent_row("true", "b"),
         _urgent_row("false", "c"),
-        _urgent_row({"true": 0.5, "false": 0.5}, "d"),
+        _urgent_row({"true": 0.75, "false": 0.25}, "d"),
+        _urgent_row({"true": 0.5, "false": 0.5}, "e"),
     ]
 
     urgent = _evaluated_urgent(owner, make_dataset, decision, fake_modal, held_out)
 
-    assert (urgent["n"], urgent["ties"]) == (4, 1)
+    assert (urgent["n"], urgent["soft"]) == (5, 2)
     assert urgent["accuracy"] == pytest.approx(2 / 3, abs=1e-6)
     assert urgent["majority_baseline"] == pytest.approx(2 / 3, abs=1e-6)
-    # Predicted [0.7, 0.3] on every row: true rows, false row and the 0.5/0.5 row.
-    assert urgent["brier"] == pytest.approx((0.18 + 0.18 + 0.98 + 0.08) / 4, abs=1e-6)
+    # Predicted [0.7, 0.3] on every row: true rows, false row, 0.75/0.25 and 0.5/0.5.
+    assert urgent["brier"] == pytest.approx((0.18 + 0.18 + 0.98 + 0.005 + 0.08) / 5, abs=1e-6)
     assert urgent["log_loss"] == pytest.approx(
-        (2 * -math.log(0.7) + -math.log(0.3) + 0.5 * -math.log(0.7) + 0.5 * -math.log(0.3)) / 4,
+        (
+            2 * -math.log(0.7)
+            + -math.log(0.3)
+            + 0.75 * -math.log(0.7)
+            + 0.25 * -math.log(0.3)
+            + 0.5 * -math.log(0.7)
+            + 0.5 * -math.log(0.3)
+        )
+        / 5,
         abs=1e-6,
     )
-    # Tie rows are out of the argmax set: only true, true and false remain.
+    # Weighted rows are out of the argmax set: only true, true and false remain.
     assert urgent["macro_f1"] == 0.4
 
 

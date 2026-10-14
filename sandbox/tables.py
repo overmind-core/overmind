@@ -1,8 +1,9 @@
 """The frame file format.
 
 Every table carries a column manifest ``[{name, type}]`` where ``type`` is one of
-``string | integer | number | boolean | datetime | json``. Nested values are
-stored as JSON text so a messy upload never fails schema unification.
+``string | integer | number | boolean | datetime | json``. Nested values, integers
+outside int64 and columns mixing scalar types are stored as JSON text, so a messy
+upload never fails schema unification and keeps every value as it arrived.
 
 The cell sandbox loads this module by path: no Django or DuckDB imports.
 """
@@ -101,7 +102,7 @@ def kind_of(value: Any) -> str | None:
     if isinstance(value, bool):
         return "boolean"
     if isinstance(value, int):
-        return "integer"
+        return "integer" if -(2**63) <= value < 2**63 else "json"
     if isinstance(value, float):
         return "number"
     if isinstance(value, (dt.datetime, pd.Timestamp)):
@@ -113,33 +114,45 @@ def union_kind(kinds: Iterable[str]) -> str:
     kinds = set(kinds)
     if not kinds:
         return "string"
-    if "json" in kinds:
-        return "json"
-    if kinds <= {"integer", "number"}:
-        return "number" if "number" in kinds else "integer"
     if len(kinds) == 1:
         return kinds.pop()
-    return "string"
+    if kinds == {"integer", "number"}:
+        return "number"
+    return "json"
 
 
 def infer_kind(values: Iterable[Any]) -> str:
-    return union_kind(k for k in map(kind_of, values) if k is not None)
+    builder = ManifestBuilder()
+    for value in values:
+        builder.add({"value": value})
+    return builder.kind("value") if builder.kinds else "string"
 
 
 class ManifestBuilder:
     def __init__(self) -> None:
         self.kinds: dict[str, set[str]] = {}
+        self.inexact: set[str] = set()
 
     def add(self, row: dict[str, Any]) -> None:
         for key, value in row.items():
-            kinds = self.kinds.setdefault(str(key), set())
+            name = str(key)
+            kinds = self.kinds.setdefault(name, set())
             if "json" not in kinds:
                 kind = kind_of(value)
                 if kind is not None:
                     kinds.add(kind)
+                if kind == "integer" and float(value) != value:
+                    self.inexact.add(name)
+
+    def kind(self, name: str) -> str:
+        kinds = self.kinds[name]
+        # A float column would round this column's integers.
+        if name in self.inexact and "number" in kinds:
+            return "json"
+        return union_kind(kinds)
 
     def manifest(self) -> list[dict[str, str]]:
-        return [{"name": name, "type": union_kind(kinds)} for name, kinds in self.kinds.items()]
+        return [{"name": name, "type": self.kind(name)} for name in self.kinds]
 
 
 def infer_manifest(rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
@@ -153,7 +166,8 @@ def kind_of_series(series: pd.Series) -> str:
     if pd.api.types.is_bool_dtype(series):
         return "boolean"
     if pd.api.types.is_integer_dtype(series):
-        return "integer"
+        maximum = series.max()
+        return "json" if pd.notna(maximum) and maximum >= 2**63 else "integer"
     if pd.api.types.is_float_dtype(series):
         return "number"
     if pd.api.types.is_datetime64_any_dtype(series):

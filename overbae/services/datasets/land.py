@@ -1,8 +1,9 @@
 """Landing: rows arrive verbatim as cell 0, stamped with ``source_row``.
 
 A trace source lands one row per trace: the traces-table facts, the wire
-transcript, the delivered I/O and the trace's score. Landing never rejects a
-row and never triggers scoring. It proposes the capability rank and the intent.
+transcript, the delivered I/O and the trace's score, scoped to the selected
+capability's invocation when the trace holds one. Landing never triggers
+scoring. It proposes the capability rank and the intent.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from overbae.services.datasets import (
     store,
 )
 from overbae.services.datasets.partition import preserve_lineage, split_positions
+from overbae.services.eval import units
 from sandbox import tables
 
 logger = logging.getLogger(__name__)
@@ -437,10 +439,15 @@ def _attr(span: Span, key: str) -> Any:
 
 
 def _root(spans: list[Span]) -> Span:
-    """The parentless span; an interrupted trace has none, so its longest span stands in."""
+    """The parentless span, else the one span whose parent did not arrive; an
+    interrupted trace with several orphans falls back to its longest span."""
     for span in spans:
         if span.parent_span_id is None:
             return span
+    ids = {span.span_id for span in spans}
+    orphans = [span for span in spans if span.parent_span_id not in ids]
+    if len(orphans) == 1:
+        return orphans[0]
     return max(spans, key=lambda s: s.duration_ns or 0)
 
 
@@ -499,9 +506,12 @@ def _error(root: Span, spans: list[Span]) -> str | None:
     return None
 
 
-def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
+def trace_row(
+    spans: list[Span], *, score: float | None, capability_id: str | None = None
+) -> dict[str, Any]:
     """One row for one trace: the traces-table facts, the wire transcript and the
-    capability's delivered I/O. ``spans`` is the whole trace in start order."""
+    capability's delivered I/O. ``spans`` is the whole trace, or one capability
+    invocation's subtree, in start order."""
     from overbae.services.eval import chatml, normalizer
 
     root = _root(spans)
@@ -513,7 +523,10 @@ def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
     raw_in, raw_out = normalizer.capability_io(spans)
     delivered = _delivered(spans)
     usage = _usage(spans)
-    capability = root.capability or next((s.capability for s in spans if s.capability_id), None)
+    capabilities = {str(s.capability_id): s.capability for s in spans if s.capability_id}
+    capability = capabilities.get(capability_id) or (
+        next(iter(capabilities.values())) if len(capabilities) == 1 else None
+    )
     conversation = next(
         (s.conversation.external_id for s in (root, *spans) if s.conversation_id), None
     )
@@ -550,23 +563,52 @@ def _chunks(items: Iterable[str], size: int) -> Iterator[list[str]]:
         yield batch
 
 
-def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, float]:
-    """The trace's score is its last scored task execution: the terminal unit of a
-    single-task trace, the latest turn of a session."""
+def _scores(project_id: Any, trace_ids: list[str]) -> dict[str, list[tuple[str, float]]]:
+    """Each trace's scored task executions by unit span, oldest first: the row's
+    score is the last one inside the spans it lands."""
     rows = (
         TaskExecution.objects.filter(project_id=project_id, trace_id__in=trace_ids)
         .exclude(success_score=None)
         .order_by("started_at", "created_at")
-        .values_list("trace_id", "success_score")
+        .values_list("trace_id", "unit_span_id", "success_score")
     )
-    return dict(rows)
+    scores: dict[str, list[tuple[str, float]]] = {}
+    for trace_id, span_id, score in rows:
+        scores.setdefault(trace_id, []).append((span_id, score))
+    return scores
+
+
+def _invocation(spans: list[Span], capability_id: str | None) -> list[Span]:
+    """The capability's outermost invocation and its subtree; the whole trace
+    when the capability did not run in it."""
+    if not capability_id:
+        return spans
+    matches = [s for s in spans if str(s.capability_id) == capability_id]
+    outermost = [
+        s
+        for s in matches
+        if not any(str(a.capability_id) == capability_id for a in units.ancestor_chain(spans, s))
+    ]
+    if not outermost:
+        return spans
+    if len(outermost) > 1:
+        raise LandError(
+            f"Trace {spans[0].trace_id} has {len(outermost)} separate invocations of the "
+            "selected capability. Select LLM calls, or land rows for each invocation."
+        )
+    return sorted(units.subtree_spans(spans, outermost[0]), key=lambda s: s.start_time_ns or 0)
 
 
 def iter_trace_rows(
-    project_id: Any, trace_ids: Iterable[str], *, on_progress: Any = None
+    project_id: Any,
+    trace_ids: Iterable[str],
+    *,
+    capability_id: str | None = None,
+    on_progress: Any = None,
 ) -> Iterator[dict[str, Any]]:
     """Two queries per chunk of traces, then pure assembly; a trace whose spans
-    are gone is skipped."""
+    are gone is skipped, and one with repeated invocations of ``capability_id``
+    fails the landing."""
     done = 0
     for chunk in _chunks(trace_ids, TRACE_CHUNK):
         spans = (
@@ -582,8 +624,18 @@ def iter_trace_rows(
             trace_spans = by_trace.get(trace_id)
             if not trace_spans:
                 continue
+            scoped = _invocation(trace_spans, capability_id)
+            ids = {s.span_id for s in scoped}
+            score = next(
+                (
+                    value
+                    for span_id, value in reversed(scores.get(trace_id, []))
+                    if scoped is trace_spans or span_id in ids
+                ),
+                None,
+            )
             try:
-                row = trace_row(trace_spans, score=scores.get(trace_id))
+                row = trace_row(scoped, score=score, capability_id=capability_id)
             except Exception:  # noqa: BLE001 — one unreadable trace must not sink the batch
                 logger.warning("trace %s did not land", trace_id, exc_info=True)
                 continue
@@ -593,12 +645,25 @@ def iter_trace_rows(
             on_progress(done)
 
 
-def read_traces(project_id: Any, spec: dict[str, Any], *, on_progress: Any = None) -> Landing:
-    """One row per trace, in selection order. ``spec`` is a ``TraceSource`` payload."""
+def read_traces(
+    project_id: Any,
+    spec: dict[str, Any],
+    *,
+    capability_id: Any = None,
+    on_progress: Any = None,
+) -> Landing:
+    """One row per trace, in selection order. ``spec`` is a ``TraceSource`` payload;
+    its capability filter, else the destination ``capability_id``, scopes each row."""
     try:
         source = selection.TraceSource.parse(spec)
+        selected = source.filters.get("capability") or capability_id
         rows = _Spool(
-            iter_trace_rows(project_id, source.iter_trace_ids(project_id), on_progress=on_progress)
+            iter_trace_rows(
+                project_id,
+                source.iter_trace_ids(project_id),
+                capability_id=str(selected) if selected else None,
+                on_progress=on_progress,
+            )
         )
     except selection.TraceSourceError as exc:
         raise LandError(str(exc)) from exc
@@ -616,9 +681,10 @@ def land_traces(
     user: Any = None,
     on_progress: Any = None,
 ) -> Dataset:
-    return commit(
-        dataset, read_traces(dataset.project_id, spec, on_progress=on_progress), user=user
+    read = read_traces(
+        dataset.project_id, spec, capability_id=dataset.capability_id, on_progress=on_progress
     )
+    return commit(dataset, read, user=user)
 
 
 # A tool call whose arguments carry a serialised agent state can weigh hundreds of

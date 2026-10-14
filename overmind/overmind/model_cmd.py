@@ -55,7 +55,7 @@ def _safe_filename(name: object) -> str:
 
 def _check_response(response: requests.Response, operation: str) -> None:
     status_code = getattr(response, "status_code", None)
-    if not isinstance(status_code, int) or status_code >= 400:
+    if not isinstance(status_code, int) or not 200 <= status_code < 300:
         suffix = f" (HTTP {status_code})" if isinstance(status_code, int) else ""
         raise CheckpointDownloadError(f"{operation} failed{suffix}.")
 
@@ -96,6 +96,8 @@ def download_checkpoint(
                 f"{api_url.rstrip('/')}{CHECKPOINTS_PATH.format(deployment_id=quote(deployment_id, safe=''))}",
                 headers={"X-Api-Key": api_key},
                 timeout=METADATA_TIMEOUT,
+                # requests keeps custom headers across hosts on redirect, so the key would follow.
+                allow_redirects=False,
             )
         except requests.RequestException as exc:
             raise CheckpointDownloadError("Checkpoint metadata request failed.") from exc

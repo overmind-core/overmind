@@ -188,27 +188,26 @@ export function RunsTable({
     });
 
   const toggleSelectAll = () =>
-    setSelectedIds(allSelected ? new Set() : new Set(pageRows.map((r) => r.id!)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const r of pageRows) allSelected ? next.delete(r.id!) : next.add(r.id!);
+      return next;
+    });
 
   const clearSelection = () => {
     setSelectedIds(new Set());
   };
 
   const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
     setBulkDeletePending(true);
     try {
-      await Promise.all(
-        [...selectedIds].map(
-          (id) =>
-            new Promise<void>((resolve, reject) =>
-              deleteRun.mutate(id, { onError: reject, onSuccess: () => resolve() })
-            )
-        )
-      );
-      toast.success(`${plural(selectedIds.size, "run")} deleted`);
-      clearSelection();
-    } catch (e) {
-      notify.error(e, "Couldn't delete some of the selected runs");
+      const results = await Promise.allSettled(ids.map((id) => deleteRun.mutateAsync(id)));
+      const failed = ids.filter((_, i) => results[i].status === "rejected");
+      const deleted = ids.length - failed.length;
+      if (deleted > 0) toast.success(`${plural(deleted, "run")} deleted`);
+      if (failed.length > 0) toast.error(`${plural(failed.length, "run")} not deleted`);
+      setSelectedIds(new Set(failed));
     } finally {
       setBulkDeletePending(false);
     }
@@ -469,38 +468,39 @@ export function RunsTable({
     />
   );
 
-  const banner = someSelected ? (
-    <div className="flex shrink-0 items-center gap-2 rounded-md border bg-wash-subtle px-3 py-2 text-sm">
-      <Checkbox
-        aria-label="Select all runs"
-        checked={allSelected ? true : someSelected ? "indeterminate" : false}
-        onCheckedChange={toggleSelectAll}
-      />
-      <span className="flex-1 text-muted-foreground">{selectedIds.size} selected</span>
-      <ConfirmDialog
-        confirmLabel={`Delete ${plural(selectedIds.size, "run")}`}
-        description={`This permanently deletes ${plural(selectedIds.size, "selected run")}.`}
-        destructive
-        isPending={bulkDeletePending}
-        onConfirm={handleBulkDelete}
-        title={`Delete ${plural(selectedIds.size, "run")}?`}
-        trigger={
-          <Button className="px-2 text-xs" size="sm" variant="destructive">
-            <Icon.delete /> Delete {selectedIds.size}
-          </Button>
-        }
-      />
-      <Button
-        aria-label="Clear selection"
-        className="px-2 text-xs"
-        onClick={clearSelection}
-        size="sm"
-        variant="ghost"
-      >
-        <Icon.close />
-      </Button>
-    </div>
-  ) : null;
+  const banner =
+    selectedIds.size > 0 ? (
+      <div className="flex shrink-0 items-center gap-2 rounded-md border bg-wash-subtle px-3 py-2 text-sm">
+        <Checkbox
+          aria-label="Select all runs"
+          checked={allSelected ? true : someSelected ? "indeterminate" : false}
+          onCheckedChange={toggleSelectAll}
+        />
+        <span className="flex-1 text-muted-foreground">{selectedIds.size} selected</span>
+        <ConfirmDialog
+          confirmLabel={`Delete ${plural(selectedIds.size, "run")}`}
+          description={`This permanently deletes ${plural(selectedIds.size, "selected run")}.`}
+          destructive
+          isPending={bulkDeletePending}
+          onConfirm={handleBulkDelete}
+          title={`Delete ${plural(selectedIds.size, "run")}?`}
+          trigger={
+            <Button className="px-2 text-xs" size="sm" variant="destructive">
+              <Icon.delete /> Delete {selectedIds.size}
+            </Button>
+          }
+        />
+        <Button
+          aria-label="Clear selection"
+          className="px-2 text-xs"
+          onClick={clearSelection}
+          size="sm"
+          variant="ghost"
+        >
+          <Icon.close />
+        </Button>
+      </div>
+    ) : null;
 
   return (
     <DataTable

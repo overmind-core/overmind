@@ -84,7 +84,7 @@ def job(monkeypatch, sft):
         baseline_model=capability.model,
         eval_incumbent_before=True,
         eval_model_before=False,
-        status=FinetuningJob.Status.PREPARING,
+        status=FinetuningJob.Status.QUEUED,
     )
 
 
@@ -233,6 +233,7 @@ def test_retry_preserves_eval_results_and_resets_failed_before_links(job):
 
 
 def test_evaluation_choices_are_immutable_after_setup_starts(job):
+    job.status = FinetuningJob.Status.PREPARING
     serializer = FinetuningJobSerializer(job, data={"eval_incumbent_before": False}, partial=True)
     assert not serializer.is_valid()
     assert "eval_incumbent_before" in serializer.errors
@@ -292,7 +293,10 @@ def test_launched_modal_job_prepares_data_before_gpu_submission(
     assert submitted["status"] == job.status == "preparing"
     assert submitted["gpu"] == []
     assert inspect.call_count == (1 if state == "queued" else 0)
-    resume.assert_called_once_with(kwargs={"job_id": str(job.id)}, countdown=15)
+    job.refresh_from_db()
+    resume.assert_called_once_with(
+        kwargs={"job_id": str(job.id)}, countdown=15, task_id=job.celery_task_id
+    )
 
 
 def test_preprocessing_worker_failure_preserves_actionable_error_and_never_submits_gpu(

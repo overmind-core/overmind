@@ -48,6 +48,7 @@ interface Scores {
 
 interface Evaluation {
   rows?: number;
+  train_overlap?: number;
   base?: Scores;
   trained?: Scores;
   error?: string;
@@ -174,6 +175,11 @@ function Metrics({ evaluation }: { evaluation: Evaluation }) {
   const questions = Object.keys(trained.questions ?? {});
   return (
     <div className="flex flex-col gap-3">
+      {!!evaluation.train_overlap && (
+        <Alert variant="warning">
+          {evaluation.train_overlap} training rows overlap the evaluation version
+        </Alert>
+      )}
       <Table>
         <TableHeader>
           <TableRow>

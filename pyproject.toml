@@ -97,10 +97,6 @@ dev = [
     "ruff>=0.12.0",
     "pre-commit>=4.5.1",
     "python-dotenv>=1.2.1",
-    # Deploy/manage the hosted GLiNER PII NER service (overbae/modal/modal_pii_ner.py).
-    # The gliner/torch/transformers weights live in the Modal image only — never
-    # in this venv — so only the lightweight `modal` client is a dev dependency.
-    "modal>=0.64",
 ]
 test = [
     "overmind[tracing]>=0.1.49",

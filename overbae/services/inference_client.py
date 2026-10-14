@@ -15,7 +15,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-from modal_shared.context_budget import reserve_output
+from modal_shared.context_budget import is_context_limit_error, reserve_output
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import WEIGHTS_PATH_HEADER
 from modal_shared.shared import routing_headers as _routing_headers
@@ -153,15 +153,7 @@ class InferenceClient:
             raise InferenceClientError(f"Request to InferenceAPIServer failed: {exc}") from exc
 
         if not resp.ok:
-            if resp.status_code == 400 and any(
-                marker in resp.text.lower()
-                for marker in (
-                    "context length",
-                    "max_model_len",
-                    "max_tokens",
-                    "max_completion_tokens",
-                )
-            ):
+            if is_context_limit_error(resp.status_code, resp.content):
                 raise ContextBudgetError(CONTEXT_BUDGET_MESSAGE)
             raise InferenceClientError(
                 f"InferenceAPIServer returned {resp.status_code}: {resp.text[:400]}"
@@ -170,6 +162,8 @@ class InferenceClient:
             return resp
         result = resp.json()
         if isinstance(result, dict) and "error" in result:
+            if is_context_limit_error(resp.status_code, result):
+                raise ContextBudgetError(CONTEXT_BUDGET_MESSAGE)
             raise InferenceClientError(f"InferenceAPIServer failed: {result['error']}")
         return result
 
@@ -203,6 +197,10 @@ class InferenceClient:
             for line in resp.iter_lines(chunk_size=1):
                 if line:
                     decoded = line.decode("utf-8") if isinstance(line, bytes) else line
+                    if decoded.startswith("data:") and '"error"' in decoded:
+                        event = decoded.removeprefix("data:").strip()
+                        if is_context_limit_error(resp.status_code, event):
+                            raise ContextBudgetError(CONTEXT_BUDGET_MESSAGE)
                     yield decoded + "\n\n"
         finally:
             resp.close()

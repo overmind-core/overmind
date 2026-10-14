@@ -1705,6 +1705,11 @@ class ModalRunner(BaseFinetuningRunner):
                 return clamp_gemma4_training_gpu(job.base_model, gpu, count)
         return clamp_gemma4_training_gpu(job.base_model, "H200", 4)
 
+    def training_gpu(self, job) -> tuple[str, int]:
+        """The GPU ``submit`` launched on, from the plan context it recorded."""
+        context_length = int((job.hyperparameters or {}).get("context_length") or 0)
+        return self._select_training_gpu(job, context_length=context_length)
+
     @staticmethod
     def _gpu_string(gpu_type: str, gpu_count: int) -> str:
         return gpu_type if gpu_count <= 1 else f"{gpu_type}:{gpu_count}"

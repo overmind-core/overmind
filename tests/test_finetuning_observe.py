@@ -115,6 +115,28 @@ def test_queued_without_remote_still_enqueues_submit(remote, fake_modal):
     assert _polls(fake_modal) == 0
 
 
+def test_queued_job_is_not_resubmitted_when_no_worker_answers(remote, fake_modal):
+    job = _job(status=FinetuningJob.Status.QUEUED, remote_job_id="", started_at=None)
+    sent = reconcile_training(workers_answer=False)
+    assert [k for _, k in sent if k.get("job_id") == str(job.id)] == []
+
+
+def test_a_second_delivery_of_the_submission_task_exits(remote, fake_modal):
+    from overbae.tasks.finetuning import run_finetuning
+
+    job = _job(
+        status=FinetuningJob.Status.PREPARING,
+        remote_job_id="",
+        celery_task_id="the-claiming-task",
+        started_at=None,
+    )
+    assert run_finetuning(job_id=str(job.id))["status"] == FinetuningJob.Status.PREPARING
+    assert fake_modal.spawns() == []
+    job.refresh_from_db()
+    assert job.celery_task_id == "the-claiming-task"
+    assert not job.events.exists()
+
+
 def test_preparing_with_remote_id_is_observed(remote, fake_modal):
     job = _job(status=FinetuningJob.Status.PREPARING, started_at=None)
     remote()

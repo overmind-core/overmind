@@ -125,7 +125,9 @@ def prepare_training(job, fake_modal):
     return preparation
 
 
-def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str, dict]]:
+def reconcile_training(
+    active_tasks: list[dict] | None = None, *, workers_answer: bool = True
+) -> list[tuple[str, dict]]:
     from unittest.mock import MagicMock, patch
 
     from overbae.celery import get_celery_app
@@ -133,11 +135,11 @@ def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str
 
     sent: list[tuple[str, dict]] = []
     broker = MagicMock()
-    broker.active.return_value = {"w1": active_tasks or []}
-    broker.reserved.return_value = {}
-    broker.scheduled.return_value = {}
+    broker.active.return_value = {"w1": active_tasks or []} if workers_answer else None
+    broker.reserved.return_value = {} if workers_answer else None
+    broker.scheduled.return_value = {} if workers_answer else None
 
-    def _send(name, kwargs=None):
+    def _send(name, kwargs=None, **options):
         sent.append((name, kwargs or {}))
         return MagicMock(id=str(uuid.uuid4()))
 

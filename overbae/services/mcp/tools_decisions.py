@@ -10,6 +10,7 @@ from asgiref.sync import sync_to_async
 from overbae.core.errors import InputValidationError
 from overbae.models import DecisionJob
 from overbae.services import decision_jobs, decision_recommend
+from overbae.services.datasets import rows
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
@@ -249,8 +250,14 @@ def _readiness(
     if train_ok:
         try:
             report = decision_recommend.recommend(dataset, str(cell.id), eval_cell=eval_ok)
+            overlap = rows.contamination(cell, eval_ok)["overlap_count"] if eval_ok else 0
         except RowStoreError as exc:
             missing.append(f"training dataset — {exc}")
+        else:
+            if overlap:
+                warnings.append(
+                    f"train/eval split — {overlap} overlapping training rows; review the split before training"
+                )
     if report is not None and not report["picks"]:
         missing.append("model — No model fits.")
 

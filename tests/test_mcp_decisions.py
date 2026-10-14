@@ -323,6 +323,10 @@ def test_readiness_recommends_a_fitting_model_for_decision_rows(fake_modal):
     assert (body["ready"], body["missing"]) == (True, [])
     assert body["dataset"]["version"] == "v0"
     assert body["eval_dataset"]["version"] == "v0"
+    assert (
+        "train/eval split — 2 overlapping training rows; review the split before training"
+        in body["warnings"]
+    )
     assert body["picks"]
     assert {pick["model"] for pick in body["picks"]} <= {
         row["model"] for row in body["recommendations"]

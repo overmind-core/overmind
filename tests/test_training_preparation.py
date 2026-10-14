@@ -370,9 +370,11 @@ def test_training_waits_for_resized_preparation_without_submitting_gpu_work(retr
     resized = preparation.for_job(job)
     assert result["status"] == "preparing"
     inspect.assert_called_once_with(str(resized.id))
-    queue.assert_called_once_with(kwargs={"job_id": str(job.id)}, countdown=15)
     assert fake_modal.spawns() == []
     job.refresh_from_db()
+    queue.assert_called_once_with(
+        kwargs={"job_id": str(job.id)}, countdown=15, task_id=job.celery_task_id
+    )
     assert job.status == "preparing" and not job.remote_job_id
 
 

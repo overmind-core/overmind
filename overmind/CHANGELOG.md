@@ -59,6 +59,9 @@ entries here cover the SDK surface.
 
 ### Fixed
 
+- `overmind model download-checkpoint` does not follow a redirect on the request
+  that carries the API key, so the key never reaches another host, and only a 2xx
+  reply counts as success.
 - `overmind dataset export --json` reports the version, cell and fingerprint
   whatever case the server sends its headers in.
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from typing import Any
 
 from celery import shared_task
@@ -148,8 +149,10 @@ def _record_event(job, event_type: str, message: str = "", data: dict | None = N
 
 
 def _charge_modal_finetuning(job) -> None:
-    """Bill Modal GPU wall-clock on terminal transition. Never raises."""
+    """Bill Modal GPU wall-clock once, on the terminal transition. Never raises."""
     from decimal import Decimal
+
+    from django.db import transaction
 
     from overbae.models import BillingService, FinetuningJob
     from overbae.services.billing_ledger import charge_credits
@@ -158,12 +161,10 @@ def _charge_modal_finetuning(job) -> None:
 
     if job.provider != FinetuningJob.Provider.MODAL:
         return
-    if job.cost_synced_at is not None:
-        return
     if not job.started_at or not job.completed_at:
         return
     try:
-        gpu_type, gpu_count = ModalRunner()._select_training_gpu(job)
+        gpu_type, gpu_count = ModalRunner().training_gpu(job)
     except Exception:  # noqa: BLE001 — billing must never fail the job
         logger.exception("Modal GPU selection failed for job %s", job.pk)
         return
@@ -175,29 +176,35 @@ def _charge_modal_finetuning(job) -> None:
     cost = Decimal(str(round(seconds * gpu_count * rate, 4)))
     if cost <= 0:
         return
-    job.cost_usd = cost
-    job.cost_synced_at = timezone.now()
-    job.save(update_fields=["cost_usd", "cost_synced_at", "updated_at"])
-    if not job.triggered_by_id:
-        return
+    now = timezone.now()
     try:
-        charge_credits(
-            job.triggered_by,
-            cost,
-            BillingService.FINETUNING_JOB,
-            project_id=job.project_id,
-            idempotency_key=f"finetuning-job:{job.id}:{cost}",
-            metadata={
-                "job_id": str(job.id),
-                "provider": "modal",
-                "gpu_type": gpu_type,
-                "gpu_count": gpu_count,
-                "seconds": seconds,
-                "cost_usd": str(cost),
-            },
-        )
+        with transaction.atomic():
+            marked = FinetuningJob.objects.filter(pk=job.pk, cost_synced_at=None).update(
+                cost_usd=cost, cost_synced_at=now, updated_at=now
+            )
+            if not marked:
+                return
+            if job.triggered_by_id:
+                charge_credits(
+                    job.triggered_by,
+                    cost,
+                    BillingService.FINETUNING_JOB,
+                    project_id=job.project_id,
+                    idempotency_key=f"finetuning-job:{job.id}",
+                    metadata={
+                        "job_id": str(job.id),
+                        "provider": "modal",
+                        "gpu_type": gpu_type,
+                        "gpu_count": gpu_count,
+                        "seconds": seconds,
+                        "cost_usd": str(cost),
+                    },
+                )
     except Exception:  # noqa: BLE001
         logger.exception("Failed to charge Modal finetuning job %s", job.pk)
+        return
+    job.cost_usd = cost
+    job.cost_synced_at = now
 
 
 def _transition(job, status: str, *, message: str = "", error: str = "") -> None:
@@ -237,6 +244,72 @@ def _transition(job, status: str, *, message: str = "", error: str = "") -> None
 
 def _remote_id(job) -> str:
     return job.remote_job_id
+
+
+def cancel_finetuning_job(job) -> None:
+    """The status flips first and only from a live state, so a job that ended
+    meanwhile keeps its outcome; the remote run, task and evals stop after.
+    ``job`` is reloaded."""
+    from overbae.celery import app as celery_app
+    from overbae.models import FinetuningJob
+    from overbae.services.finetuning_eval import cancel_related_evals
+    from overbae.services.finetuning_runner import get_runner
+
+    live = (
+        FinetuningJob.Status.QUEUED,
+        FinetuningJob.Status.PREPARING,
+        FinetuningJob.Status.RUNNING,
+        FinetuningJob.Status.DEPLOYING,
+    )
+    flipped = FinetuningJob.objects.filter(pk=job.pk, status__in=live).update(
+        status=FinetuningJob.Status.CANCELLED, completed_at=timezone.now()
+    )
+    job.refresh_from_db()
+    if not flipped:
+        return
+
+    remote_error = ""
+    if job.remote_job_id:
+        try:
+            get_runner(job.provider).cancel(job.remote_job_id)
+        except Exception as exc:  # noqa: BLE001 — the job stays cancelled
+            remote_error = str(exc)
+            logger.warning(
+                "Remote cancel failed for finetuning job %s (%s): %s",
+                job.id,
+                job.remote_job_id,
+                exc,
+            )
+            FinetuningJob.objects.filter(pk=job.pk).update(
+                error_message=f"Cancelled (remote cancel warning: {remote_error})"
+            )
+            job.error_message = f"Cancelled (remote cancel warning: {remote_error})"
+    if job.celery_task_id:
+        try:
+            celery_app.control.revoke(job.celery_task_id, terminate=True)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Celery revoke failed for finetuning job %s task %s",
+                job.id,
+                job.celery_task_id,
+                exc_info=True,
+            )
+    try:
+        cancel_related_evals(job)
+    except Exception:  # noqa: BLE001 — the cancel must still complete
+        logger.warning(
+            "Failed cancelling related evals for finetuning job %s", job.id, exc_info=True
+        )
+    _record_event(
+        job,
+        "status_change",
+        message="Cancelled by user",
+        data={
+            "status": FinetuningJob.Status.CANCELLED,
+            **({"remote_error": remote_error} if remote_error else {}),
+        },
+    )
+    _charge_modal_finetuning(job)
 
 
 def _persist_snapshot_progress(
@@ -400,12 +473,34 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     return {"status": "deploying", "job_id": remote}
 
 
+def _claim_submission(job, token: str) -> bool:
+    """One task submits a job: a queued job goes to the first claimant, a preparing
+    one only to the task it handed off to. A duplicate delivery claims nothing."""
+    from django.db.models import Q
+
+    from overbae.models import FinetuningJob
+
+    claimed = (
+        FinetuningJob.objects.filter(pk=job.pk, remote_job_id="")
+        .filter(
+            Q(status=FinetuningJob.Status.QUEUED)
+            | Q(status=FinetuningJob.Status.PREPARING, celery_task_id=token)
+        )
+        .update(status=FinetuningJob.Status.PREPARING, celery_task_id=token)
+    )
+    if claimed:
+        job.status = FinetuningJob.Status.PREPARING
+        job.celery_task_id = token
+    return bool(claimed)
+
+
 @shared_task(
     name="overbae.tasks.finetuning.run_finetuning",
+    bind=True,
     autoretry_for=(),
     max_retries=0,
 )
-def run_finetuning(*, job_id: str) -> dict[str, Any]:
+def run_finetuning(self, *, job_id: str) -> dict[str, Any]:
     from django.conf import settings
 
     from overbae.models import FinetuningJob
@@ -441,6 +536,10 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
     existing_remote_id = _remote_id(job)
 
     if not existing_remote_id:
+        token = self.request.id or str(uuid.uuid4())
+        if not _claim_submission(job, token):
+            job.refresh_from_db(fields=["status"])
+            return {"status": job.status, "job_id": str(job.id)}
         try:
             from overbae.services.finetuning_eval import start_before_evals
 
@@ -463,10 +562,13 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                     )
                     if preparation.state == "queued":
                         inspect_preparation.delay(str(preparation.id))
-                    result = run_finetuning.apply_async(
-                        kwargs={"job_id": str(job.id)}, countdown=15
+                    successor = str(uuid.uuid4())
+                    FinetuningJob.objects.filter(pk=job.pk, celery_task_id=token).update(
+                        celery_task_id=successor
                     )
-                    FinetuningJob.objects.filter(pk=job.pk).update(celery_task_id=result.id)
+                    run_finetuning.apply_async(
+                        kwargs={"job_id": str(job.id)}, countdown=15, task_id=successor
+                    )
                     return {"status": "preparing", "job_id": str(job.id)}
                 job.hyperparameters = {
                     **job.hyperparameters,
@@ -514,7 +616,16 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                     if p and os.path.exists(p):
                         os.unlink(p)
 
-            FinetuningJob.objects.filter(pk=job.pk).update(remote_job_id=result.remote_id)
+            recorded = FinetuningJob.objects.filter(
+                pk=job.pk,
+                status=FinetuningJob.Status.PREPARING,
+                celery_task_id=token,
+                remote_job_id="",
+            ).update(remote_job_id=result.remote_id)
+            if not recorded:
+                _cancel_remote(runner, result.remote_id)
+                job.refresh_from_db(fields=["status"])
+                return {"status": job.status, "job_id": str(job.id)}
             job.remote_job_id = result.remote_id
 
             val_note = ""

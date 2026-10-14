@@ -264,6 +264,7 @@ def _training_failure(job: DecisionJob, result: Any) -> str:
 def _evaluated(job: DecisionJob, result: Any) -> None:
     try:
         evaluation = evaluate(job.eval_cell, result)
+        evaluation["train_overlap"] = rows.contamination(job.cell, job.eval_cell)["overlap_count"]
     except (decisions.DecisionRowError, KeyError, TypeError, ValueError):
         logger.exception("Decision job %s returned an unusable evaluation", job.id)
         evaluation = {"status": "failed", "error": "The evaluation failed."}
@@ -314,10 +315,10 @@ def _metrics(gold: list[dict], answered: list[Any]) -> dict:
         for key, question in record["questions"].items():
             keys = decisions.options(question)
             target = [record["gold"][key]["probabilities"][k] for k in keys]
-            slot = per_question.setdefault(key, {"pairs": [], "true": [], "pred": [], "ties": 0})
-            leader = decisions.gold_option(record["gold"][key]["probabilities"])
+            slot = per_question.setdefault(key, {"pairs": [], "true": [], "pred": [], "soft": 0})
+            leader = _single_option(record["gold"][key]["probabilities"])
             if leader is None:
-                slot["ties"] += 1
+                slot["soft"] += 1
             if error is not None:
                 by_reason[code] = by_reason.get(code, 0) + 1
                 continue
@@ -336,7 +337,7 @@ def _metrics(gold: list[dict], answered: list[Any]) -> dict:
             "pairs": [pair for slot in per_question.values() for pair in slot["pairs"]],
             "true": [t for slot in per_question.values() for t in slot["true"]],
             "pred": [p for slot in per_question.values() for p in slot["pred"]],
-            "ties": sum(slot["ties"] for slot in per_question.values()),
+            "soft": sum(slot["soft"] for slot in per_question.values()),
         },
         classes=False,
     )
@@ -356,12 +357,19 @@ def _metrics(gold: list[dict], answered: list[Any]) -> dict:
     return {**overall, "unanswered": unanswered, "questions": questions}
 
 
+def _single_option(probabilities: dict[str, float]) -> str | None:
+    """The option a one-hot gold answer names. A weighted answer has no single right
+    option, so it is scored by log loss and Brier only."""
+    leader = decisions.gold_option(probabilities)
+    return leader if leader is not None and math.isclose(probabilities[leader], 1.0) else None
+
+
 def _scores(slot: dict, *, classes: bool = True) -> dict:
     pairs = slot["pairs"]
     if not pairs:
         return {
             "n": 0,
-            "ties": slot["ties"],
+            "soft": slot["soft"],
             "accuracy": None,
             "majority_baseline": None,
             "macro_f1": None,
@@ -372,7 +380,7 @@ def _scores(slot: dict, *, classes: bool = True) -> dict:
     truth = slot["true"]
     scores = {
         "n": n,
-        "ties": slot["ties"],
+        "soft": slot["soft"],
         "accuracy": None,
         "majority_baseline": None,
         "macro_f1": None,

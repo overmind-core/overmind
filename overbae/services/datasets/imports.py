@@ -540,6 +540,7 @@ def _read_parts(run, targets):
         read = landing.read_traces(
             run.dataset.project_id,
             source["traces"],
+            capability_id=run.dataset.capability_id,
             on_progress=lambda done: events.publish(
                 run.dataset_id,
                 {

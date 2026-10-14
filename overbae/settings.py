@@ -282,15 +282,6 @@ STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 
-# The hosted GLiNER endpoint handles unstructured PII (PERSON/LOCATION/ORG);
-# structured secrets stay on the local regex/checksum validators.
-PII_NER_ENDPOINT_URL = os.environ.get("PII_NER_ENDPOINT_URL", "")
-PII_NER_TOKEN = os.environ.get("PII_NER_TOKEN", "")
-# Minimum GLiNER confidence, applied at decode by the endpoint so changing it
-# needs no redeploy. Calibrated on the medical corpus: 0.80 drops zero-shot false
-# positives such as anatomy read as LOCATION while keeping real named entities.
-PII_NER_MIN_SCORE = float(os.environ.get("PII_NER_MIN_SCORE", "0.8"))
-
 AUTH_USER_MODEL = "overbae.User"
 
 REST_FRAMEWORK = {

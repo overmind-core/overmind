@@ -429,7 +429,17 @@ def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
 
 
 def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
-    con = connect(**tables)
+    """Like ``connect``, with json columns typed JSON so a query's JSON results
+    can be told from text."""
+    con = connect()
+    for name, path in tables.items():
+        typed = ", ".join(
+            f"CAST({_quote(spec['name'])} AS JSON) AS {_quote(spec['name'])}"
+            for spec in read_manifest(path)
+            if spec["type"] == "json"
+        )
+        replace = f" REPLACE ({typed})" if typed else ""
+        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT *{replace} FROM {_scan(path)}")
     allowed = ", ".join("'" + str(path).replace("'", "''") + "'" for path in tables.values())
     con.execute(f"SET allowed_paths = [{allowed}]")
     con.execute("SET enable_external_access = false")
@@ -444,7 +454,8 @@ class QueryTimeoutError(StoreError):
 def query(
     sql: str, *, limit: int | None = 200, timeout: float | None = None, **tables: Path
 ) -> dict[str, Any]:
-    """Read-only SQL over registered tables. Returns decoded rows and columns."""
+    """Read-only SQL over registered tables. Returns rows, with JSON values decoded,
+    and columns."""
     con = connect_sandboxed(**tables)
     sql = sql.strip().rstrip(";").strip()
     timer = threading.Timer(timeout, con.interrupt) if timeout else None
@@ -453,7 +464,8 @@ def query(
             timer.start()
         cur = con.execute(f"SELECT * FROM ({sql}) LIMIT {int(limit)}" if limit else sql)
         cols = [d[0] for d in cur.description]
-        rows = _records(cur)
+        kinds = {d[0]: "json" if str(d[1]) == "JSON" else "string" for d in cur.description}
+        rows = [{k: value(v, kinds[k]) for k, v in row.items()} for row in _records(cur)]
     except duckdb.InterruptException as exc:
         raise QueryTimeoutError(f"The query ran longer than {timeout:g}s and was stopped.") from exc
     finally:

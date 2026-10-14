@@ -865,78 +865,10 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, id=None):
-        from django.utils import timezone
-
-        from overbae.services.finetuning_runner import get_runner
+        from overbae.tasks.finetuning import cancel_finetuning_job
 
         job = self.get_object()
-        if job.is_terminal:
-            return Response(FinetuningJobSerializer(job).data)
-
-        # Use the job's recorded provider so cancel hits the right backend
-        # even if FINETUNING_BACKEND later changed. Legacy providers (tinker)
-        # fall through to "together": the remote cancel fails and is logged,
-        # but the local status still flips.
-        backend = {
-            FinetuningJob.Provider.BASETEN: "baseten",
-            FinetuningJob.Provider.MODAL: "modal",
-        }.get(job.provider, "together")
-
-        remote_error = ""
-        if job.remote_job_id:
-            try:
-                get_runner(backend).cancel(job.remote_job_id)
-            except Exception as exc:  # noqa: BLE001 — still flip local status
-                remote_error = str(exc)
-                logger.warning(
-                    "Remote cancel failed for finetuning job %s (%s): %s",
-                    job.id,
-                    job.remote_job_id,
-                    exc,
-                )
-
-        if job.celery_task_id:
-            try:
-                from overbae.celery import app as celery_app
-
-                celery_app.control.revoke(job.celery_task_id, terminate=True)
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "Celery revoke failed for finetuning job %s task %s",
-                    job.id,
-                    job.celery_task_id,
-                    exc_info=True,
-                )
-
-        FinetuningJob.objects.filter(pk=job.pk).update(
-            status=FinetuningJob.Status.CANCELLED,
-            completed_at=timezone.now(),
-            **(
-                {"error_message": f"Cancelled (remote cancel warning: {remote_error})"}
-                if remote_error
-                else {}
-            ),
-        )
-        job.refresh_from_db()
-        try:
-            from overbae.services.finetuning_eval import cancel_related_evals
-
-            cancel_related_evals(job)
-        except Exception:  # noqa: BLE001 — cancel path must still return
-            logger.warning(
-                "Failed cancelling related evals for finetuning job %s",
-                job.id,
-                exc_info=True,
-            )
-        FinetuningJobEvent.objects.create(
-            job=job,
-            event_type="status_change",
-            message="Cancelled by user",
-            data={
-                "status": FinetuningJob.Status.CANCELLED,
-                **({"remote_error": remote_error} if remote_error else {}),
-            },
-        )
+        cancel_finetuning_job(job)
         return Response(FinetuningJobSerializer(job).data)
 
     @extend_schema(
@@ -1038,7 +970,6 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         2. ``job.result.epoch_losses`` (completion snapshot)
         3. ``FinetuningJobEvent`` progress events (legacy)
         """
-        from overbae.models import FinetuningJobEvent
 
         job = self.get_object()
         steps, train_loss, eval_loss = [], [], []
@@ -2126,7 +2057,12 @@ class DeployedModelViewSet(
         try:
             file = get_checkpoint_download_url(instance.finetuning_job)
         except CheckpointArchiveError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            code = {
+                "not_configured": status.HTTP_503_SERVICE_UNAVAILABLE,
+                "no_weights": status.HTTP_404_NOT_FOUND,
+                "not_ready": status.HTTP_409_CONFLICT,
+            }.get(exc.code, status.HTTP_502_BAD_GATEWAY)
+            return Response({"detail": str(exc)}, status=code)
         return Response(ModelCheckpointsSerializer({"files": [file]}).data)
 
     @extend_schema(

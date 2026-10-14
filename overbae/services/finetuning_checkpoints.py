@@ -22,7 +22,11 @@ _MIN_ARCHIVE_BYTES = 1 << 20
 
 
 class CheckpointArchiveError(Exception):
-    pass
+    """``code``: ``not_configured``, ``no_weights``, ``not_ready`` or ``unreachable``."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _s3_key(finetuning_job) -> str:
@@ -68,11 +72,15 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
     """
     bucket = getattr(settings, "AWS_BUCKET_NAME", "") or ""
     if not bucket:
-        raise CheckpointArchiveError("Checkpoint downloads are not configured.")
+        raise CheckpointArchiveError(
+            "Checkpoint downloads are not configured.", code="not_configured"
+        )
     if finetuning_job.provider not in ("baseten", "modal"):
-        raise CheckpointArchiveError("No downloadable weights for this fine-tuning job.")
+        raise CheckpointArchiveError(
+            "No downloadable weights for this fine-tuning job.", code="no_weights"
+        )
 
-    from botocore.exceptions import ClientError  # noqa: PLC0415
+    from botocore.exceptions import BotoCoreError, ClientError  # noqa: PLC0415
 
     s3 = _s3_client()
     key = _s3_key(finetuning_job)
@@ -83,10 +91,18 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
         code = exc.response.get("Error", {}).get("Code", "")
         if code in ("404", "NoSuchKey", "NotFound"):
             raise CheckpointArchiveError(
-                "Checkpoint archive not ready yet — try again once the model has deployed."
+                "Checkpoint archive not ready yet — try again once the model has deployed.",
+                code="not_ready",
             ) from exc
         logger.warning("S3 head_object failed for %s: %s", key, exc)
-        raise CheckpointArchiveError("Could not reach the checkpoint archive.") from exc
+        raise CheckpointArchiveError(
+            "Could not reach the checkpoint archive.", code="unreachable"
+        ) from exc
+    except BotoCoreError as exc:
+        logger.warning("S3 head_object failed for %s: %s", key, exc)
+        raise CheckpointArchiveError(
+            "Could not reach the checkpoint archive.", code="unreachable"
+        ) from exc
 
     try:
         url = s3.generate_presigned_url(
@@ -94,9 +110,11 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=_PRESIGN_EXPIRES_S,
         )
-    except ClientError as exc:
+    except (BotoCoreError, ClientError) as exc:
         logger.warning("S3 presign failed for %s: %s", key, exc)
-        raise CheckpointArchiveError("Could not generate a download link.") from exc
+        raise CheckpointArchiveError(
+            "Could not generate a download link.", code="unreachable"
+        ) from exc
 
     return {
         "name": "checkpoint.zip",

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 
 from overbae.services.finetuning_checkpoints import (
     CheckpointArchiveError,
@@ -32,21 +32,31 @@ def test_get_checkpoint_download_url_rejects_unsupported_provider(settings):
         get_checkpoint_download_url(_job(provider="together"))
 
 
-def test_get_checkpoint_download_url_missing_object(settings):
+@pytest.mark.parametrize(
+    ("failure", "code"),
+    [
+        (
+            ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"),
+            "not_ready",
+        ),
+        (NoCredentialsError(), "unreachable"),
+    ],
+)
+def test_get_checkpoint_download_url_classifies_a_failed_lookup(settings, failure, code):
     settings.AWS_BUCKET_NAME = "ft-bucket"
     settings.AWS_REGION = "eu-west-1"
     settings.AWS_ACCESS_KEY_ID = "ak"
     settings.AWS_SECRET_ACCESS_KEY = "sk"
 
-    err = ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
     mock_s3 = MagicMock()
-    mock_s3.head_object.side_effect = err
+    mock_s3.head_object.side_effect = failure
 
     with (
         patch("boto3.client", return_value=mock_s3),
-        pytest.raises(CheckpointArchiveError, match="not ready yet"),
+        pytest.raises(CheckpointArchiveError) as error,
     ):
         get_checkpoint_download_url(_job())
+    assert error.value.code == code
 
 
 def test_get_checkpoint_download_url_success(settings):

@@ -2,6 +2,7 @@
 Beat: every 15 s."""
 
 import logging
+import uuid
 
 from celery import shared_task
 
@@ -23,14 +24,15 @@ def _reconcile() -> dict:
     celery_app = get_celery_app()
     inspect = celery_app.control.inspect(timeout=2)
 
-    active: dict = inspect.active() or {}
-    reserved: dict = inspect.reserved() or {}
-    scheduled: dict = inspect.scheduled() or {}
+    # None means no worker answered: the tasks are unknown, so nothing is resubmitted.
+    replies = (inspect.active(), inspect.reserved(), inspect.scheduled())
+    workers_known = all(reply is not None for reply in replies)
     running_task_ids: set[str] = set()
-    for tasks in (*active.values(), *reserved.values(), *scheduled.values()):
-        for t in tasks:
-            req = t.get("request", t)  # scheduled entries nest under "request"
-            running_task_ids.add(req.get("id"))
+    for reply in replies:
+        for tasks in (reply or {}).values():
+            for t in tasks:
+                req = t.get("request", t)  # scheduled entries nest under "request"
+                running_task_ids.add(req.get("id"))
 
     orphaned_jobs = list(
         FinetuningJob.objects.filter(status__in=_ACTIVE_STATUSES).order_by("created_at")
@@ -46,18 +48,23 @@ def _reconcile() -> dict:
             # Submit still in flight (inspect is best-effort). A second run_finetuning
             # here starts a second GPU job.
             continue
-        if job.celery_task_id and job.celery_task_id in running_task_ids:
+        if not workers_known or job.celery_task_id in running_task_ids:
             continue
-        task_name = _RUN_TASK
+        # A task still waiting in the broker is invisible here; ``run_finetuning``
+        # claims the job, so whichever of the two runs second exits.
+        task_id = str(uuid.uuid4())
+        handed_off = FinetuningJob.objects.filter(
+            pk=job.pk, status=job.status, remote_job_id=""
+        ).update(celery_task_id=task_id)
+        if not handed_off:
+            continue
         logger.info(
             "Reconciler: re-enqueuing %s for orphaned job %s (status=%s)",
-            task_name,
+            _RUN_TASK,
             job.id,
             job.status,
         )
-        result = celery_app.send_task(task_name, kwargs={"job_id": str(job.id)})
-        job.celery_task_id = result.id
-        job.save(update_fields=["celery_task_id"])
+        celery_app.send_task(_RUN_TASK, kwargs={"job_id": str(job.id)}, task_id=task_id)
         kicked += 1
 
     return {"orphaned_found": len(orphaned_jobs), "kicked": kicked, "observed": observed}

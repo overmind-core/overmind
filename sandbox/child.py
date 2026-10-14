@@ -89,15 +89,14 @@ def _write(df, out_path: str, pd, np, tables) -> None:
     manifest = []
     for col in df.columns:
         series = df[col]
-        if series.dtype == object:
-            filled = series.dropna()
-            if not filled.empty and filled.map(lambda v: isinstance(v, bool | np.bool_)).all():
-                df[col] = series.astype("boolean")
-                kind = "boolean"
-            elif filled.map(lambda v: isinstance(v, dict | list | tuple)).any():
-                kind = "json"
-            else:
-                kind = "string"
+        filled = series.dropna() if series.dtype == object else None
+        if (
+            filled is not None
+            and not filled.empty
+            and filled.map(lambda v: isinstance(v, bool | np.bool_)).all()
+        ):
+            df[col] = series.astype("boolean")
+            kind = "boolean"
         else:
             kind = tables.kind_of_series(series)
         manifest.append({"name": col, "type": kind})

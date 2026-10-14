@@ -215,7 +215,7 @@ def test_an_unreadable_file_is_refused_before_it_becomes_a_dataset(
 
 @pytest.mark.xfail(
     strict=True,
-    reason="overbae/services/pii is not called from any landing path; trace rows keep PII.",
+    reason="Trace landing does not redact personal data; trace rows keep it.",
 )
 def test_personal_data_in_traces_is_redacted_in_the_dataset(
     workshop, sample_agent, live_api, support_desk_llm, worker
@@ -240,10 +240,6 @@ def test_personal_data_in_traces_is_redacted_in_the_dataset(
     assert "jane.doe@example.com" not in json.dumps(rows)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="A row from a two-capability trace is labelled with the first capability.",
-)
 def test_trace_rows_carry_the_capability_they_were_selected_for(
     workshop, sample_agent, live_api, support_desk_llm, worker
 ):

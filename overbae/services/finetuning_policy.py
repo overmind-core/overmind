@@ -433,7 +433,7 @@ def derive_baseten_training_plan(
             f"{'QLoRA' if use_lora else 'full-FT'} heuristic ({params_b:g}B)"
         )
 
-    warmup_ratio = float(hp.get("warmup_ratio") or 0.05)
+    warmup_ratio = float(hp["warmup_ratio"]) if hp.get("warmup_ratio") is not None else 0.05
     weight_decay = float(hp["weight_decay"]) if hp.get("weight_decay") is not None else 0.01
 
     # Never larger than the corpus — an over-sized batch degenerates to 1 step.
