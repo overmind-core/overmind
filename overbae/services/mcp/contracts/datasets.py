@@ -817,11 +817,13 @@ def next_actions(dataset, active: Cell | None, pair: SplitPair | None = None) ->
             )
         ]
     if dataset.state == STOPPED:
+        if dataset.source_kind == Dataset.SourceKind.FILE:
+            return []
         return [
             NextAction(
                 tool="create_dataset",
                 reason="The import was stopped; create the dataset again from its source.",
-                arguments={"name": dataset.name or ""},
+                arguments={"name": dataset.name or "", "source": {"kind": dataset.source_kind}},
             )
         ]
     if dataset.state != Dataset.State.IDLE:
