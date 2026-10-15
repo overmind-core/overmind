@@ -6,7 +6,9 @@ import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { setStoredProjectId } from "@/hooks/use-project-search-sync";
 import { errorMessage } from "@/lib/notify";
+import type { Project } from "@/openapi";
 
 export function DataProjectForm({ onCreated }: { onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
@@ -27,6 +29,15 @@ export function DataProjectForm({ onCreated }: { onCreated: (id: string) => void
         },
       }),
     onSuccess: (project) => {
+      setStoredProjectId(project.id);
+      client.setQueryData(
+        ["projects"],
+        (current: { projects: Array<Project & { projectId: string }> } | undefined) => {
+          const projects = current?.projects ?? [];
+          if (projects.some((item) => item.projectId === project.id)) return current;
+          return { projects: [...projects, { ...project, projectId: project.id }] };
+        }
+      );
       void client.invalidateQueries({ queryKey: ["projects"] });
       onCreated(project.id);
     },

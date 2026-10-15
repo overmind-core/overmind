@@ -32,7 +32,7 @@ export function useProjectSearchSync() {
   const { projectId } = useSearch({ from: "/_auth" });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { data } = useProjectsList();
+  const { data, isFetching } = useProjectsList();
 
   useEffect(() => {
     const projects = data?.projects;
@@ -74,7 +74,10 @@ export function useProjectSearchSync() {
       return;
     }
 
+    // The list refetch is still in flight after a project is created. The id
+    // is real; bouncing home would drop the dataset dialog onto no project.
     if (projectId && !isValid(projectId)) {
+      if (isFetching) return;
       clearStoredProjectId();
       navigate({ replace: true, search: {}, to: "/" });
       return;
@@ -82,8 +85,16 @@ export function useProjectSearchSync() {
 
     const storedId = getStoredProjectId();
     if (storedId && isValid(storedId)) {
-      // Merge, not replace, so unrelated params survive the restore.
-      navigate({ replace: true, search: (prev) => ({ ...prev, projectId: storedId }), to: "." });
+      // Pathname can flip to /datasets before this hook sees the new projectId.
+      // The navigation already in flight carries that id; keep it.
+      navigate({
+        replace: true,
+        search: (prev) => {
+          if ("projectId" in prev && prev.projectId) return prev;
+          return { ...prev, projectId: storedId };
+        },
+        to: ".",
+      });
       return;
     }
 
@@ -93,5 +104,5 @@ export function useProjectSearchSync() {
     if (projectId || pathname !== "/") {
       navigate({ replace: true, search: {}, to: "/" });
     }
-  }, [projectId, pathname, navigate, data]);
+  }, [projectId, pathname, navigate, data, isFetching]);
 }
