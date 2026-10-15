@@ -112,9 +112,10 @@ it("compares all models once and omits hard-label aliases", () => {
     ["Second", 1],
   ] as const) {
     for (const value of ["75.0%", "0.2000", "0.4800"]) {
-      expect(screen.getByRole("button", { name: `${name}: ${value}` }).style.backgroundColor).toBe(
-        seriesColor(colorIndex)
-      );
+      const bar = screen.getByRole("button", { name: `${name}: ${value}` });
+      expect(
+        bar.querySelector<HTMLElement>("[style*='background-color']")?.style.backgroundColor
+      ).toBe(seriesColor(colorIndex));
     }
   }
   expect(screen.getAllByRole("table")).toHaveLength(1);
@@ -212,9 +213,10 @@ it("shows confidence as a separate metric and retains adjusted scores without re
     ["Base", 2],
     ["Trained", 0],
   ] as const) {
-    expect(screen.getByRole("button", { name: `${name}: 71.2%` }).style.backgroundColor).toBe(
-      seriesColor(colorIndex)
-    );
+    const metric = screen.getByRole("button", { name: `${name}: 71.2%` });
+    expect(
+      metric.querySelector<HTMLElement>("[style*='background-color']")?.style.backgroundColor
+    ).toBe(seriesColor(colorIndex));
     for (const mode of ["Original", "Adjusted"]) {
       const bar = screen.getByRole("button", { name: new RegExp(`${name} · ${mode}:`) });
       expect(

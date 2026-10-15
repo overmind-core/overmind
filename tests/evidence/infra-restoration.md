@@ -95,6 +95,10 @@ release or routing was changed by this work.
   without adding a runtime dependency. SDK lint passed and all 600 SDK tests
   passed locally. The already-bumped SDK version remains 0.1.92, above main's
   0.1.90.
+- Frontend CI passed lint, typechecking and design guardrails, with 873 tests
+  passing and two stale colour assertions. Both selectors now inspect the
+  rendered bar inside the button; the UI is unchanged. All five tests in the
+  affected file passed on rerun, and frontend typechecking passed again.
 
 Logs are in `/tmp/infra-restore-*`. This is functional and isolation evidence,
 not a representative production load qualification.
