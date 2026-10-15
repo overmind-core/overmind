@@ -269,9 +269,7 @@ class EvaluationContextRequestSerializer(EvaluationScopeSerializer):
 class EvalRunCreateSerializer(EvaluationScopeSerializer):
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, default="")
-    max_items = serializers.IntegerField(
-        required=False, min_value=0, max_value=EvalRun.ROW_LIMIT, default=0
-    )
+    max_items = serializers.IntegerField(required=False, min_value=0, default=0)
     sampling = serializers.FloatField(required=False, min_value=0.0, max_value=1.0, default=1.0)
 
     def validate(self, attrs):

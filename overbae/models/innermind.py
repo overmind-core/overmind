@@ -228,8 +228,7 @@ class EvalRun(models.Model):
         blank=True,
         related_name="eval_runs",
     )
-    # 0 => every row, up to ROW_LIMIT. Selection never exceeds it.
-    ROW_LIMIT = 800
+    # 0 => every row.
     max_items = models.PositiveIntegerField(default=0)
     sampling = models.FloatField(default=1.0)
     eval_set = models.ForeignKey(

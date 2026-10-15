@@ -111,8 +111,8 @@ to `run_evaluation`, or as `eval_judge_model` to `start_finetune`.
 A target is one side of a comparison: `recorded` scores the outputs already in
 the dataset; `generate` runs a model (`model_name` from the catalog) over the
 recorded context. It does not invoke the live application. Mark at most one
-target `is_baseline`. A run scores at most 800 rows. Sampling draws across the
-pinned version and repeats the same selection for the same version and budget.
+target `is_baseline`. Dataset sampling draws across the complete pinned
+version and repeats the same selection for the same version and budget.
 
 Call `run_evaluation` only after readiness is green, with a run name, the
 dataset UUID, the cell UUID, an optional eval set and judge, 1–6 `targets`,
