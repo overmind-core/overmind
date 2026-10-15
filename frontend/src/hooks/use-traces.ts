@@ -288,6 +288,7 @@ export function buildTracesListRequest(params: {
   if (filters.capability === UNBOUND_CAPABILITY) request.unbound = true;
   else if (filters.capability) request.capability = filters.capability;
   if (filters.trace_id) request.traceId = filters.trace_id;
+  if (filters.signal_event) request.signalEvent = filters.signal_event;
   if (filters.session) request.session = filters.session;
   if (filters.span_type) request.spanType = filters.span_type as TracesListRequest["spanType"];
   if (filters.status_code) request.statusCode = Number(filters.status_code);

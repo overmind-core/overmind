@@ -53,6 +53,7 @@ export interface TracesListRequest {
     serviceName?: string;
     serviceNameIn?: Array<string>;
     session?: string;
+    signalEvent?: string;
     spanId?: string;
     spanType?: string;
     startTimeNsGte?: number;
@@ -99,6 +100,7 @@ export interface TracesServicesListRequest {
     serviceName?: string;
     serviceNameIn?: Array<string>;
     session?: string;
+    signalEvent?: string;
     spanId?: string;
     spanType?: string;
     startTimeNsGte?: number;
@@ -218,6 +220,10 @@ export class TracesApi extends runtime.BaseAPI {
 
         if (requestParameters['session'] != null) {
             queryParameters['session'] = requestParameters['session'];
+        }
+
+        if (requestParameters['signalEvent'] != null) {
+            queryParameters['signal_event'] = requestParameters['signalEvent'];
         }
 
         if (requestParameters['spanId'] != null) {
@@ -523,6 +529,10 @@ export class TracesApi extends runtime.BaseAPI {
 
         if (requestParameters['session'] != null) {
             queryParameters['session'] = requestParameters['session'];
+        }
+
+        if (requestParameters['signalEvent'] != null) {
+            queryParameters['signal_event'] = requestParameters['signalEvent'];
         }
 
         if (requestParameters['spanId'] != null) {

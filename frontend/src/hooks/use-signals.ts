@@ -53,12 +53,13 @@ export const useDeleteSignalSubscriptionMutation = (projectId: string | undefine
 
 export const useSignalEventsQuery = (
   projectId: string | undefined,
-  filters: { signalType?: string; unseen?: boolean; page?: number } = {}
+  filters: { signalType?: string; unseen?: boolean; page?: number; session?: string } = {}
 ) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
       apiClient.signalEvents.signalEventsList({
+        conversation: filters.session,
         page: filters.page,
         pageSize: 50,
         project: projectId,
@@ -68,6 +69,7 @@ export const useSignalEventsQuery = (
     queryKey: [
       "signal-events",
       projectId,
+      filters.session ?? null,
       filters.signalType ?? null,
       !!filters.unseen,
       filters.page ?? 1,

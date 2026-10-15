@@ -120,6 +120,17 @@ class LLMActivityFilterMixin:
 
 
 class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
+    signal_event = filters.UUIDFilter(method="filter_signal_event")
+
+    def filter_signal_event(self, queryset, name, value):
+        event = SignalEvent.objects.filter(
+            pk=value, project_id__in=self._scoped_project_ids(queryset)
+        ).first()
+        if event is None:
+            return queryset.none()
+        trace_ids = event.details.get("trace_ids") or [event.trace_id]
+        return queryset.filter(project_id=event.project_id, trace_id__in=trace_ids)
+
     capability = filters.UUIDFilter(method="filter_capability")
     name = filters.CharFilter(lookup_expr="icontains")
     operation = filters.CharFilter(lookup_expr="icontains")

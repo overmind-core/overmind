@@ -143,9 +143,15 @@ run beforehand is only for comparisons you drive yourself.
 
 ## Signals
 
-`list_signals` returns the catalog and the project's subscriptions;
-`set_signal_subscription` turns one on for the project or one capability
-(`low_scores`, `repeated_failure`, `score_drop`, `tool_failure` and `errors`
-are a good start). Read events from `overmind://signal-events`. A
-`repeated_failure` names the expectation that keeps failing: open a failing
-trace and decide with the user whether the agent or the expectation changes.
+`list_signals` reports defaults, effective enabled state and explicit overrides.
+Deterministic checks run automatically every five minutes over spans received in
+the last day. `set_signal_subscription` disables, enables or configures a check;
+a capability setting overrides its project setting. `plan_drift` remains off
+until explicitly enabled because it makes additional model calls.
+
+Read saved findings from `overmind://signal-events`. Events include conversation
+identity and their source trace inventory. `query_traces(signal_event=EVENT_ID)`
+inspects the retained evidence in the same project. The Console exposes Sessions,
+Signals and Traces inside Observability. A `repeated_failure` names the expectation
+that keeps failing: inspect its evidence before deciding whether the agent or the
+expectation should change.

@@ -1,6 +1,4 @@
-"""Signals: patterns over recent spans that a project subscribes to. A subscribed signal
-checks each conversation (or trace, outside a conversation) and records one
-deduplicated ``SignalEvent`` per finding per day."""
+"""Automatic checks over recent conversations and traces, with per-project overrides."""
 
 from __future__ import annotations
 
@@ -53,6 +51,7 @@ def spikes(spans: list[Span], factor: float, measure) -> list[str]:
 class Signal:
     name: ClassVar[str]
     description: ClassVar[str]
+    default_enabled: ClassVar[bool] = True
     # Class attributes a subscription's ``config`` may override.
     params: ClassVar[tuple[str, ...]] = ()
 
@@ -275,6 +274,7 @@ class PlanDriftSignal(Signal):
     a judge that keeps failing stops after ``MAX_ATTEMPTS``."""
 
     name = "plan_drift"
+    default_enabled = False
     description = "Jev judges steps as not working toward the intent."
     expectation = "The step works toward the intent."
 
@@ -587,6 +587,7 @@ class SignalFactory:
             {
                 "signal_type": name,
                 "description": cls.description,
+                "default_enabled": cls.default_enabled,
                 "params": {param: getattr(cls, param) for param in cls.params},
             }
             for name, cls in self.signals.items()
@@ -596,6 +597,15 @@ class SignalFactory:
 signal_factory = SignalFactory()
 
 
+def effective_subscriptions(project_id, configured: list[SignalSubscription]):
+    overridden = {s.signal_type for s in configured if s.capability_id is None}
+    return configured + [
+        SignalSubscription(id=None, project_id=project_id, signal_type=name)
+        for name, cls in signal_factory.signals.items()
+        if cls.default_enabled and name not in overridden
+    ]
+
+
 def group_key(span: Span) -> str:
     return (
         f"conversation:{span.conversation_id}" if span.conversation_id else f"trace:{span.trace_id}"
@@ -603,12 +613,13 @@ def group_key(span: Span) -> str:
 
 
 def dedupe_key(subscription: SignalSubscription, key: str, day: str) -> str:
-    raw = f"{subscription.pk}:{key}:{day}"
+    identity = subscription.pk or f"default:{subscription.project_id}:{subscription.signal_type}"
+    raw = f"{identity}:{key}:{day}"
     return hashlib.sha256(raw.encode()).hexdigest()[:64]
 
 
 class SignalRunner:
-    """Runs one project's enabled subscriptions over the last day of spans."""
+    """Runs defaults and explicit overrides over one project's last day of spans."""
 
     def __init__(self, project_id):
         self.project_id = project_id
@@ -621,23 +632,29 @@ class SignalRunner:
         return sorted([span async for span in recent], key=lambda span: span.start_time_ns)
 
     async def run(self) -> int:
-        subscriptions = [
-            s
-            async for s in SignalSubscription.objects.filter(
-                project_id=self.project_id, enabled=True
-            )
+        configured = [
+            s async for s in SignalSubscription.objects.filter(project_id=self.project_id)
         ]
-        if not subscriptions:
-            return 0
+        subscriptions = effective_subscriptions(self.project_id, configured)
         spans = await self.spans()
         day = timezone.now().date().isoformat()
         events = []
         for subscription in subscriptions:
+            if not subscription.enabled:
+                continue
+            overridden_capabilities = {
+                s.capability_id
+                for s in configured
+                if s.signal_type == subscription.signal_type and s.capability_id
+            }
             scoped = [
                 span
                 for span in spans
-                if not subscription.capability_id
-                or span.capability_id == subscription.capability_id
+                if (
+                    span.capability_id == subscription.capability_id
+                    if subscription.capability_id
+                    else span.capability_id not in overridden_capabilities
+                )
             ]
             signal = signal_factory.get_signal(subscription)
             for key, group in group_by(scoped, group_key).items():
@@ -653,12 +670,16 @@ class SignalRunner:
                     SignalEvent(
                         project_id=self.project_id,
                         capability_id=subscription.capability_id or first.capability_id,
-                        subscription=subscription,
+                        subscription=subscription if subscription.pk else None,
                         signal_type=signal.name,
                         conversation_id=first.conversation_id,
                         trace_id=group[-1].trace_id,
                         message=message,
-                        details={"spans": len(group), "group": key},
+                        details={
+                            "spans": len(group),
+                            "group": key,
+                            "trace_ids": list(dict.fromkeys(span.trace_id for span in group)),
+                        },
                         dedupe_key=dedupe_key(subscription, key, day),
                     )
                 )
@@ -666,9 +687,10 @@ class SignalRunner:
         return len(created)
 
 
-def projects_with_subscriptions() -> list:
+def projects_with_recent_spans() -> list:
     return list(
-        SignalSubscription.objects.filter(enabled=True)
+        Span.objects.filter(received_at__gte=timezone.now() - WINDOW)
+        .order_by()
         .values_list("project_id", flat=True)
         .distinct()
     )

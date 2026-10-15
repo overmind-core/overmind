@@ -70,7 +70,7 @@ def score_trajectories(*, trace_ids: list[str] | None = None) -> dict:
 @shared_task(name="overbae.tasks.innermind.run_signals")
 def run_signals() -> dict:
     created = 0
-    for project_id in signals.projects_with_subscriptions():
+    for project_id in signals.projects_with_recent_spans():
         # A run outlasting the beat would otherwise overlap the next one; the timeout frees
         # the lock of a worker that died mid-run.
         lock = f"signals:run:{project_id}"

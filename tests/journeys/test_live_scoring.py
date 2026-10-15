@@ -277,17 +277,15 @@ def test_scored_spans_trajectories_and_drift_verdicts_are_never_judged_again(
     assert len(fake_llm.decisions) == judged
 
 
-def test_a_subscribed_signal_raises_one_event_per_conversation_seen_on_every_surface(
+def test_default_signals_raise_deduplicated_events_seen_on_every_surface(
     project, live_api, worker, beat
 ):
     mcp, rest, key = project
     project_id = mcp.project()["id"]
     answer = mcp.capability("answer")
 
-    subscribed = mcp.call(
-        "set_signal_subscription", {"signal_type": "tool_failure", "enabled": True}
-    )
-    assert subscribed["subscription"]["enabled"] is True
+    checks = mcp.call("list_signals", {})["signals"]
+    assert next(check for check in checks if check["signal_type"] == "tool_failure")["enabled"]
 
     failing = Trace(answer["id"], GOOD_REPLY, tools=[False, False, True])
     failing.send(live_api.url, key)
@@ -296,15 +294,19 @@ def test_a_subscribed_signal_raises_one_event_per_conversation_seen_on_every_sur
     beat(RUN_SIGNALS)
 
     events = rest.request(
-        "GET", "/api/signal-events/", params={"project": project_id, "unseen": "true"}
+        "GET",
+        "/api/signal-events/",
+        params={"project": project_id, "unseen": "true", "signal_type": "tool_failure"},
     )["results"]
     assert [(e["signal_type"], e["trace_id"]) for e in events] == [("tool_failure", failing.hex)]
     assert "lookup_order (2/3)" in events[0]["message"]
 
     listed = mcp.call("list_signals", {})
-    assert listed["unseen_events"] == 1
+    assert listed["unseen_events"] >= 1
     over_mcp = mcp.read("overmind://signal-events")
-    assert [e["id"] for e in over_mcp["events"]] == [events[0]["id"]]
+    assert events[0]["id"] in [e["id"] for e in over_mcp["events"]]
+    evidence = mcp.call("query_traces", {"signal_event": events[0]["id"]})
+    assert [trace["trace_id"] for trace in evidence["traces"]] == [failing.hex]
 
     rest.request("POST", "/api/signal-events/mark-seen/", json={"project": project_id})
     assert mcp.call("list_signals", {})["unseen_events"] == 0

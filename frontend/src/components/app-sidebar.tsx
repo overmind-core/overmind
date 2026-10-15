@@ -69,7 +69,6 @@ const flagOn = (flag: Flag | null): boolean => flag === null || featureFlags[fla
 const platformNavTree: NavEntry[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
   { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
-  { flag: null, icon: Icon.bell, label: "Signals", to: "/signals" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
   {
     icon: Icon.agentTesting,
@@ -165,7 +164,7 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
     const runningCount = runningByRoute[route] ?? 0;
     if (runningCount > 0) badges[route] = { count: runningCount, tone: "running" };
   }
-  if (unseenSignals > 0) badges["/signals"] = { count: unseenSignals, tone: "success" };
+  if (unseenSignals > 0) badges["/observability"] = { count: unseenSignals, tone: "success" };
   return badges;
 }
 
@@ -198,7 +197,10 @@ function NavLink({
         <Link
           className="!py-2.5"
           onClick={handleClick}
-          search={(e) => ({ projectId: e.projectId })}
+          search={(e) => ({
+            projectId: e.projectId,
+            ...(to === "/observability" ? { view: "sessions" } : {}),
+          })}
           to={to}
         >
           <Icon className="!size-[17px]" />

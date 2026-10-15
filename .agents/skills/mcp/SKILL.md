@@ -5,6 +5,12 @@ description: End-to-end workflow for adding or changing Overmind MCP tools, reso
 
 # Adding or changing MCP
 
+Contract 7.8.0 makes automatic signal defaults and evidence inspection MCP-ready.
+`list_signals` returns `default_enabled` and effective `enabled` values; explicit
+capability settings override project settings. `plan_drift` remains opt-in.
+`query_traces(signal_event=UUID)` scopes to that event's retained source traces;
+signal resources include conversation identity and the retained trace inventory.
+
 Contract 7.6.2 is MCP-ready: exhausted prediction collection completes scoring
 from verified available outputs. `results.completion` retains per-suite/per-arm
 expected, scored, missing, invalid and incompatible counts, plus stage issues.

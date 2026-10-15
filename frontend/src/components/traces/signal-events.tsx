@@ -1,10 +1,6 @@
 import { useState } from "react";
 
-import { createFileRoute } from "@tanstack/react-router";
-import * as z from "zod";
-
 import { EntityRef } from "@/components/entity-ref";
-import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DateTime } from "@/components/ui/datetime";
@@ -19,8 +15,6 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { PageShell } from "@/components/ui/page-shell";
 import {
   Select,
   SelectContent,
@@ -38,7 +32,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import {
   useCreateSignalSubscriptionMutation,
@@ -52,88 +45,67 @@ import { humanizeKey } from "@/lib/label-case";
 import { cn } from "@/lib/utils";
 import type { SignalCatalogEntry, SignalSubscription, SignalTypeEnum } from "@/openapi";
 
-const signalsSearchSchema = z.object({
-  page: z.coerce.number().min(1).optional().default(1).catch(1),
-  projectId: z.string().optional(),
-  signal: z.string().optional(),
-  unseen: z.boolean().optional().catch(undefined),
-  view: z.enum(["events", "subscriptions"]).optional().default("events").catch("events"),
-});
-
-export const Route = createFileRoute("/_auth/signals")({
-  component: SignalsPage,
-  validateSearch: signalsSearchSchema,
-});
-
 const ALL = "__all__";
 
-function SignalsPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
-  const { projectId, view } = search;
-  const patch = (updates: Partial<z.infer<typeof signalsSearchSchema>>) =>
-    navigate({ replace: true, resetScroll: false, search: (prev) => ({ ...prev, ...updates }) });
-
-  const header = (
-    <PageHeader
-      actions={
-        projectId ? (
-          <Tabs onValueChange={(v) => patch({ page: 1, view: v as typeof view })} value={view}>
-            <TabsList>
-              <TabsTrigger value="events">Events</TabsTrigger>
-              <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        ) : null
-      }
-      description="Signals detected on production traces."
-      icon={<Icon.bell aria-hidden className="size-6 shrink-0" />}
-      title="Signals"
-    />
-  );
-
-  if (!projectId) {
-    return (
-      <PageShell header={header} variant="full">
-        <ProjectRequiredEmptyState />
-      </PageShell>
-    );
-  }
-
+function SignalChecks({ projectId }: { projectId: string }) {
   return (
-    <PageShell header={header} variant="full">
-      {view === "events" ? (
-        <EventsView
-          onChange={patch}
-          page={search.page}
-          projectId={projectId}
-          signal={search.signal}
-          unseen={!!search.unseen}
-        />
-      ) : (
-        <SubscriptionsView projectId={projectId} />
-      )}
-    </PageShell>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary">
+          <Icon.settings />
+          Signal checks
+        </Button>
+      </DialogTrigger>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>Signal checks</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Checks run automatically every five minutes over the last 24 hours of received traces.
+            Disable noisy checks or adjust their thresholds here. Plan drift is off by default
+            because it makes additional model calls.
+          </p>
+          <SubscriptionsView projectId={projectId} />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function EventsView({
+export function SignalEvents({
   projectId,
+  session,
+  onSelect,
   signal,
   unseen,
   page,
   onChange,
 }: {
   projectId: string;
+  session?: string;
+  onSelect: (id: string, conversation?: string | null) => void;
   signal: string | undefined;
   unseen: boolean;
   page: number;
   onChange: (updates: { signal?: string; unseen?: boolean; page?: number }) => void;
 }) {
   const catalog = useSignalCatalogQuery();
-  const events = useSignalEventsQuery(projectId, { page, signalType: signal, unseen });
+  const events = useSignalEventsQuery(projectId, { page, session, signalType: signal, unseen });
   const markSeen = useMarkSignalsSeenMutation(projectId);
   const guard = useGuestGate();
+  const subscriptions = useSignalSubscriptionsQuery(projectId);
+  const enabledCount = catalog.data?.filter((entry) => {
+    const override = subscriptions.data?.results.find(
+      (sub) => !sub.capability && sub.signalType === entry.signalType
+    );
+    return (
+      (override?.enabled ?? entry.defaultEnabled) ||
+      subscriptions.data?.results.some(
+        (sub) => sub.capability && sub.signalType === entry.signalType && sub.enabled
+      )
+    );
+  }).length;
   const rows = events.data?.results ?? [];
   const count = events.data?.count ?? 0;
 
@@ -167,23 +139,44 @@ function EventsView({
         <span className="font-mono text-xs tabular-nums text-muted-foreground">{count} events</span>
         <Button
           className="ml-auto"
-          disabled={markSeen.isPending}
-          onClick={guard(() => markSeen.mutate(undefined))}
+          disabled={markSeen.isPending || !rows.some((event) => !event.seenAt)}
+          onClick={guard(() =>
+            markSeen.mutate(rows.filter((event) => !event.seenAt).map((event) => event.id))
+          )}
           size="sm"
           variant="secondary"
         >
           <Icon.success />
-          Mark all seen
+          Mark page seen
         </Button>
+        <SignalChecks projectId={projectId} />
       </div>
       {events.isLoading ? (
         <LoadingState />
+      ) : events.isError ? (
+        <EmptyState
+          action={
+            <Button onClick={() => events.refetch()} variant="secondary">
+              Retry
+            </Button>
+          }
+          description="Try again to load recorded findings."
+          size="section"
+          title="Couldn't load signals"
+        />
       ) : rows.length === 0 ? (
         <EmptyState
           className="rounded-md border border-dashed bg-wash-subtle"
+          description={
+            signal || unseen
+              ? "No events match these filters."
+              : enabledCount === 0
+                ? "Enable checks using Signal checks above."
+                : "Automatic checks inspect recent traces every five minutes. An empty list does not confirm that every trace has been checked."
+          }
           icon={Icon.bell}
           size="section"
-          title="No signal events"
+          title={enabledCount === 0 ? "Signal checks are disabled" : "No recorded signals"}
         />
       ) : (
         <div className="overflow-auto rounded-md border border-border">
@@ -193,7 +186,7 @@ function EventsView({
                 <TableHead className="w-44">Signal</TableHead>
                 <TableHead>Message</TableHead>
                 <TableHead className="w-40">Capability</TableHead>
-                <TableHead className="w-36">Trace</TableHead>
+                <TableHead className="w-36">Evidence</TableHead>
                 <TableHead className="w-40">Occurred</TableHead>
               </TableRow>
             </TableHeader>
@@ -211,7 +204,13 @@ function EventsView({
                     </span>
                   </TableCell>
                   <TableCell className="max-w-md text-sm">
-                    <ExpandableText text={event.message} title={humanizeKey(event.signalType)} />
+                    <button
+                      className="cursor-pointer text-left hover:underline"
+                      onClick={() => onSelect(event.id, event.conversation)}
+                      type="button"
+                    >
+                      {event.message}
+                    </button>
                   </TableCell>
                   <TableCell>
                     {event.capability ? (
@@ -225,16 +224,14 @@ function EventsView({
                     )}
                   </TableCell>
                   <TableCell>
-                    {event.traceId ? (
-                      <EntityRef
-                        id={event.traceId}
-                        kind="trace"
-                        name={event.traceId.slice(0, 12)}
-                        projectId={projectId}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <Button
+                      onClick={() => onSelect(event.id, event.conversation)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      View traces
+                      <Icon.chevronRight />
+                    </Button>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     <DateTime value={event.occurredAt} />
@@ -349,7 +346,7 @@ function SubscriptionRow({
     else
       create.mutate({
         config: body.config ?? {},
-        enabled: body.enabled ?? true,
+        enabled: body.enabled ?? entry.defaultEnabled,
         project: projectId,
         signalType: entry.signalType as SignalTypeEnum,
       });
@@ -357,7 +354,7 @@ function SubscriptionRow({
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-sm">{entry.signalType}</TableCell>
+      <TableCell className="text-sm">{humanizeKey(entry.signalType)}</TableCell>
       <TableCell className="max-w-md text-sm text-muted-foreground">
         <ExpandableText text={entry.description} title={humanizeKey(entry.signalType)} />
       </TableCell>
@@ -386,7 +383,7 @@ function SubscriptionRow({
       <TableCell className="text-center">
         <Switch
           aria-label={`Toggle ${entry.signalType}`}
-          checked={subscription?.enabled ?? false}
+          checked={subscription?.enabled ?? entry.defaultEnabled}
           disabled={create.isPending || update.isPending}
           onCheckedChange={guard((enabled: boolean) => save({ config, enabled }))}
           size="sm"

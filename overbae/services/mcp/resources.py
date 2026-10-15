@@ -959,6 +959,7 @@ def _signal_events_resource(project, uri: str) -> dict:
             {
                 "id": str(event.id),
                 "signal_type": event.signal_type,
+                "conversation_id": str(event.conversation_id) if event.conversation_id else None,
                 "capability": event.capability.slug if event.capability_id else None,
                 "message": event.message[:1_000],
                 "details": safe_json(event.details),

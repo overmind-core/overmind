@@ -37,6 +37,12 @@ export interface SignalCatalogEntry {
      * @memberof SignalCatalogEntry
      */
     params: { [key: string]: any; };
+    /**
+     *
+     * @type {boolean}
+     * @memberof SignalCatalogEntry
+     */
+    defaultEnabled: boolean;
 }
 
 /**
@@ -46,6 +52,7 @@ export function instanceOfSignalCatalogEntry(value: object): value is SignalCata
     if (!('signalType' in value) || value['signalType'] === undefined) return false;
     if (!('description' in value) || value['description'] === undefined) return false;
     if (!('params' in value) || value['params'] === undefined) return false;
+    if (!('defaultEnabled' in value) || value['defaultEnabled'] === undefined) return false;
     return true;
 }
 
@@ -62,6 +69,7 @@ export function SignalCatalogEntryFromJSONTyped(json: any, ignoreDiscriminator: 
         'signalType': json['signal_type'],
         'description': json['description'],
         'params': json['params'],
+        'defaultEnabled': json['default_enabled'],
     };
 }
 
@@ -79,5 +87,6 @@ export function SignalCatalogEntryToJSONTyped(value?: SignalCatalogEntry | null,
         'signal_type': value['signalType'],
         'description': value['description'],
         'params': value['params'],
+        'default_enabled': value['defaultEnabled'],
     };
 }

@@ -193,6 +193,7 @@ def _trace_filter_data(payload: QueryTracesInput, context: MCPContext) -> dict[s
     values = payload.model_dump(exclude_none=True, mode="json")
     direct_fields = (
         "trace_id",
+        "signal_event",
         "span_id",
         "name",
         "operation",

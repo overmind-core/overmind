@@ -163,7 +163,10 @@ def test_the_console_shows_the_synced_agent_and_its_traces(
         console.sees(truth["name"])
 
     console.goto(f"/observability?projectId={project}")
-    console.click("Root traces")
+    console.click("Signals")
+    console.sees("Signal checks")
+    console.click("Sessions")
+    console.click("Traces")
     console.sees("handle_ticket")
 
 

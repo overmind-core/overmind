@@ -15,6 +15,7 @@ import {
   useRecentFilterParams,
 } from "@/components/traces/filters";
 import { sessionsColumns } from "@/components/traces/sessions-columns";
+import { SignalEvents } from "@/components/traces/signal-events";
 import { TraceSelectionBar } from "@/components/traces/trace-selection-bar";
 import { tracesColumns } from "@/components/traces/traces-columns";
 import {
@@ -36,6 +37,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TraceSelectionSpec } from "@/hooks/use-datasets";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { type SessionRow, useSessionDetail, useSessionsList } from "@/hooks/use-sessions";
@@ -99,9 +101,11 @@ function TracesPage() {
     error__isnull,
     view,
     session,
+    signal_event: signalEvent,
   } = search;
   const isSessionsView = view === "sessions";
-  const tracesView: TracesViewMode = view;
+  const isSignalsView = view === "signals";
+  const tracesView: TracesViewMode = isSessionsView ? "sessions" : "roots";
 
   const status: "all" | "success" | "error" =
     error__isnull === "true" ? "error" : error__isnull === "false" ? "success" : "all";
@@ -118,7 +122,8 @@ function TracesPage() {
     !!searchTerm ||
     timeRange !== "all" ||
     status !== "all" ||
-    !!session;
+    !!session ||
+    !!signalEvent;
 
   const [searchInput, setSearchInput] = useState(searchTerm ?? "");
 
@@ -183,19 +188,6 @@ function TracesPage() {
     [setSearch]
   );
 
-  // Ordering fields differ per view, so switching resets sort + page.
-  const handleViewChange = useCallback(
-    (v: TracesViewMode) => {
-      setSearch({
-        ordering: undefined,
-        page: 1,
-        session: v === "sessions" ? undefined : session,
-        view: v,
-      });
-    },
-    [setSearch, session]
-  );
-
   const handleResetAll = useCallback(() => {
     navigate({
       search: {
@@ -228,8 +220,16 @@ function TracesPage() {
     }
     f.all_spans = "false";
     if (session) f.session = session;
+    if (signalEvent) f.signal_event = signalEvent;
     return f;
-  }, [advancedFilters, error__isnull, search.received_at__gte, search.received_at__lte, session]);
+  }, [
+    advancedFilters,
+    error__isnull,
+    search.received_at__gte,
+    search.received_at__lte,
+    session,
+    signalEvent,
+  ]);
 
   const activeCapabilityId = useMemo(() => {
     const entry = advancedFilters.find(
@@ -245,7 +245,7 @@ function TracesPage() {
 
   const { data, isFetched, isFetching, isRefetching, error, refetch, dataUpdatedAt } =
     useTracesList({
-      enabled: !isSessionsView,
+      enabled: !isSessionsView && !isSignalsView,
       filters: apiFilters,
       ordering: tracesOrdering,
       page,
@@ -400,7 +400,7 @@ function TracesPage() {
           </Link>
         </Button>
       }
-      description="Search, score and explore production traces."
+      description="Explore sessions, investigate signals and inspect their traces."
       icon={
         <Icon.observabilityTitle
           aria-hidden
@@ -444,7 +444,6 @@ function TracesPage() {
     onSearchChange: setSearchInput,
     onStatusChange: handleStatusChange,
     onTimeRangeChange: handleTimeRangeChange,
-    onViewChange: handleViewChange,
     projectId,
     searchValue: searchInput,
     status,
@@ -454,7 +453,48 @@ function TracesPage() {
 
   return (
     <PageShell header={header} variant="full">
-      {isSessionsView ? (
+      <Tabs
+        className="w-fit pb-3"
+        onValueChange={(next) => {
+          navigate({
+            search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
+            to: "/observability",
+          });
+          setSearchInput("");
+          handleClearSelection();
+        }}
+        value={view}
+      >
+        <TabsList aria-label="Observability views">
+          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="signals">Signals</TabsTrigger>
+          <TabsTrigger value="roots">Traces</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {isSignalsView ? (
+        <SignalEvents
+          onChange={setSearch}
+          onSelect={(id, conversation) => {
+            navigate({
+              search: {
+                page: 1,
+                projectId,
+                session: conversation || undefined,
+                signal_event: id,
+                timeRange: "all",
+                view: "roots",
+              },
+              to: "/observability",
+            });
+            setSearchInput("");
+          }}
+          page={page}
+          projectId={projectId}
+          session={session}
+          signal={search.signal}
+          unseen={!!search.unseen}
+        />
+      ) : isSessionsView ? (
         <DataTable<SessionRow>
           columns={sessionsColumns}
           data={sessionsData}
@@ -476,7 +516,13 @@ function TracesPage() {
           onPageChange={(p) => setSearch({ page: p })}
           onPageSizeChange={(s) => setSearch({ page: 1, page_size: s })}
           onRowClick={(row) =>
-            setSearch({ ordering: undefined, page: 1, session: row.id, view: "roots" })
+            setSearch({
+              ordering: undefined,
+              page: 1,
+              session: row.id,
+              signal_event: undefined,
+              view: "roots",
+            })
           }
           ordering={sessionOrdering}
           page={page}
@@ -487,7 +533,21 @@ function TracesPage() {
       ) : (
         <DataTable<TraceRow>
           banner={
-            session ? (
+            signalEvent ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Traces checked for the selected signal.</span>
+                <Button
+                  aria-label="Clear signal filter"
+                  onClick={() =>
+                    setSearch({ page: 1, session: undefined, signal_event: undefined })
+                  }
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  <Icon.close />
+                </Button>
+              </div>
+            ) : session ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="chip-label inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm border border-primary/40 bg-primary/5 px-2.5 text-xs text-primary">
                   <Icon.session className="size-3.5 shrink-0" />
@@ -540,7 +600,7 @@ function TracesPage() {
         />
       )}
 
-      {!isSessionsView && (
+      {!isSessionsView && !isSignalsView && (
         <TraceSelectionBar
           allPagesSelected={allPagesSelection != null}
           onAddToDataset={featureFlags.datasets ? () => setShowAddToDataset(true) : undefined}

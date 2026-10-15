@@ -110,6 +110,12 @@ class QueryTracesInput(MCPModel):
     session: str | None = Field(default=None, min_length=1, max_length=512)
     search: str | None = Field(default=None, min_length=1, max_length=255)
     trace_id: str | None = Field(default=None, min_length=1, max_length=64)
+    signal_event: str | None = Field(
+        default=None,
+        min_length=36,
+        max_length=36,
+        description="Inspect the traces retained as evidence for this signal event UUID.",
+    )
     span_id: str | None = Field(default=None, min_length=1, max_length=16)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     operation: str | None = Field(default=None, min_length=1, max_length=512)

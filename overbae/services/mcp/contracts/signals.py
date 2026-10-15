@@ -31,6 +31,8 @@ class SignalCatalogEntryContract(MCPModel):
     signal_type: str
     description: str
     params: dict[str, Any] = Field(default_factory=dict)
+    default_enabled: bool
+    enabled: bool
     subscriptions: list[SignalSubscriptionContract] = Field(default_factory=list, max_length=20)
 
 

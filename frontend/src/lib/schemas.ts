@@ -58,6 +58,8 @@ export const tracesSearchSchema = z.object({
   service_name__icontains: z.string().optional(),
   /** A Conversation UUID, not a span or trace id. */
   session: z.string().optional(),
+  signal: z.string().optional(),
+  signal_event: z.string().uuid().optional().catch(undefined),
   source: z.string().optional(),
 
   source__in: z.string().optional(),
@@ -79,7 +81,8 @@ export const tracesSearchSchema = z.object({
   trace_group: z.string().optional(),
   trace_group__icontains: z.string().optional(),
   trace_id: z.string().optional(),
-  view: z.enum(["roots", "sessions"]).optional().catch("roots").default("roots"),
+  unseen: z.boolean().optional().catch(undefined),
+  view: z.enum(["roots", "sessions", "signals"]).optional().catch("roots").default("roots"),
 });
 
 /**

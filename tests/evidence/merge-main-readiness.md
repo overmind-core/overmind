@@ -119,3 +119,25 @@ Tesseract version and extraction provenance.
   training/evaluation/inference. It does not prove every provider, every data
   format, production load or model quality. The existing automated suite supplies
   broader regression coverage; no claim of zero possible regressions is made.
+
+## Observability signals follow-up
+
+Observability now has three direct view toggles: Sessions, Signals and Traces.
+The separate Signals route/sidebar entry is removed. Switching views clears
+hidden session/signal filters; selecting a finding opens its retained source
+traces, with project isolation shared by REST and MCP. Deterministic checks run
+by default, with explicit project/capability overrides preserved. Plan drift
+remains opt-in because it makes model calls. No schema migration is required.
+
+Validation: 36 focused backend/MCP tests, all 875 frontend tests and all six
+live-scoring journeys passed; frontend type checking, lint, design/contrast/control
+checks and a production build passed. The docs broken-link check passed.
+Local MCP confirmed 24 default checks and saved findings for both Hermes (102)
+and browser-use (104); selected findings resolved to their recorded trace evidence.
+
+A mistakenly broad journey invocation was interrupted after encountering the
+obsolete "Root traces" Console selector; both affected Console tests now use
+"Traces" and the navigation test covers all three view toggles. The non-browser
+live-scoring file then passed in isolation. Console/browser verification was
+blocked by automatic approval review under the earlier MCP-only testing
+instruction, so the updated browser tests have not been rerun.

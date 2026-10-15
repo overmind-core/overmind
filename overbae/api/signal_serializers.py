@@ -9,6 +9,7 @@ class SignalCatalogEntrySerializer(serializers.Serializer):
     signal_type = serializers.CharField()
     description = serializers.CharField()
     params = serializers.DictField()
+    default_enabled = serializers.BooleanField()
 
 
 class SignalSubscriptionSerializer(serializers.ModelSerializer):

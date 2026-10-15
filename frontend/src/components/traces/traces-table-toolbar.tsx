@@ -26,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NATIVE_DATE_TRIGGER } from "@/lib/colors";
 import { cn } from "@/lib/utils";
@@ -134,13 +133,6 @@ function presetIsActive(existing: FilterEntry[], needed: FilterEntry[]): boolean
 /** Mirrors the `?view=` search param. */
 export type TracesViewMode = "roots" | "sessions";
 
-const VIEW_LABELS: Record<TracesViewMode, string> = {
-  roots: "Root traces",
-  sessions: "Sessions",
-};
-
-const VIEW_MODES: TracesViewMode[] = ["roots", "sessions"];
-
 const ALL_CAPABILITIES = "__all__";
 
 interface TracesTableToolbarProps<TData> {
@@ -159,7 +151,6 @@ interface TracesTableToolbarProps<TData> {
   onFiltersChange: (filters: FilterEntry[]) => void;
 
   view: TracesViewMode;
-  onViewChange: (value: TracesViewMode) => void;
 
   projectId: string;
 
@@ -184,7 +175,6 @@ export function TracesTableToolbar<TData>({
   filters,
   onFiltersChange,
   view,
-  onViewChange,
   projectId,
   onResetAll,
   onRefresh,
@@ -276,20 +266,6 @@ export function TracesTableToolbar<TData>({
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          className="w-auto shrink-0"
-          onValueChange={(value) => onViewChange(value as TracesViewMode)}
-          value={view}
-        >
-          <TabsList>
-            {VIEW_MODES.map((mode) => (
-              <TabsTrigger key={mode} value={mode}>
-                {VIEW_LABELS[mode]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
         {lastUpdatedAt != null && (
           <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <span className={cn("size-1.5 rounded-xs bg-success", isFetching && "animate-pulse")} />

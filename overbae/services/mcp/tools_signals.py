@@ -55,11 +55,20 @@ def _list_sync(payload: ListSignalsInput, context: MCPContext) -> ListSignalsOut
     by_type: dict[str, list[SignalSubscriptionContract]] = {}
     for subscription in subscriptions.filter(scope):
         by_type.setdefault(subscription.signal_type, []).append(_contract(subscription))
-    entries = [
-        {**entry, "subscriptions": by_type.get(entry["signal_type"], [])[:20]}
-        for entry in signal_factory.catalog()
-    ]
-    enabled = sum(any(sub.enabled for sub in subs) for subs in by_type.values())
+    entries = []
+    for entry in signal_factory.catalog():
+        overrides = by_type.get(entry["signal_type"], [])
+        selected = next((s for s in overrides if s.capability), None) or next(
+            (s for s in overrides if s.capability is None), None
+        )
+        entries.append(
+            {
+                **entry,
+                "enabled": selected.enabled if selected else entry["default_enabled"],
+                "subscriptions": overrides[:20],
+            }
+        )
+    enabled = sum(entry["enabled"] for entry in entries)
     return ListSignalsOutput(
         summary=f"{len(entries)} signals, {enabled} enabled.",
         signals=entries,
@@ -113,8 +122,10 @@ def register_signal_tools(catalog) -> None:
         ToolDefinition(
             name="list_signals",
             title="List signals",
-            description="List every available signal with its params and the project's "
-            "subscriptions, plus the unseen event count. Read events at overmind://signal-events.",
+            description="List automatic signal checks, effective enabled state, defaults and "
+            "project/capability overrides, plus the unseen event count. Deterministic checks "
+            "run by default; plan_drift requires opt-in model calls. Read events at "
+            "overmind://signal-events.",
             input_model=ListSignalsInput,
             output_model=ListSignalsOutput,
             read_only=True,
@@ -130,8 +141,9 @@ def register_signal_tools(catalog) -> None:
         ToolDefinition(
             name="set_signal_subscription",
             title="Set signal subscription",
-            description="Enable, disable or configure one signal for the project or one "
-            "capability. Signals run every five minutes over the last day of spans.",
+            description="Override one signal for the project or one capability. Deterministic "
+            "checks run by default; plan_drift requires opt-in model calls. Capability settings "
+            "override project settings. Checks run every five minutes over the last day of spans.",
             input_model=SetSignalSubscriptionInput,
             output_model=SetSignalSubscriptionOutput,
             read_only=False,

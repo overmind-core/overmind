@@ -19,7 +19,7 @@ def test_selected_traces_open_the_landed_workshop_source(
     )
     drain(worker)
     console.goto(f"/observability?projectId={project}")
-    console.click("Root traces")
+    console.click("Traces")
     console.sees("handle_ticket")
     console._browser.call(
         lambda: console._page.get_by_role("checkbox", name="Select row", exact=True).first.click()

@@ -61,7 +61,6 @@ function renderToolbar(onFiltersChange = vi.fn(), filters: FilterEntry[] = []) {
         onSearchChange={vi.fn()}
         onStatusChange={vi.fn()}
         onTimeRangeChange={vi.fn()}
-        onViewChange={vi.fn()}
         projectId="proj-1"
         searchValue=""
         status="all"
