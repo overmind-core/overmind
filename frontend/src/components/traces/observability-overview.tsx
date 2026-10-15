@@ -94,6 +94,7 @@ function OverviewContent({
   }
   const failedChecks = data.issues.filter((issue) => issue.kind === "check" && issue.occurrences);
   const signals = data.issues.filter((issue) => issue.kind === "signal");
+  const observedDays = data.daily.filter((day) => day.runs > 0).length;
   return (
     <div className="flex flex-col gap-5 pb-6">
       {data.truncated && (
@@ -117,90 +118,111 @@ function OverviewContent({
 
       <section aria-label="Behaviour metrics" className="flex flex-col gap-2">
         <h3 className="text-xs text-muted-foreground">Metrics</h3>
-        <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
-          <MonitorChartCard
-            emptyHint="No scored checks in this period"
-            help="The share of scored checks at or above their pass threshold. Missing and errored checks do not become failures."
-            subtitle="checks passing · daily UTC"
-            title="Quality"
-            values={[
-              {
-                label: "Period",
-                value:
-                  data.checkPassRate == null ? "—" : `${(data.checkPassRate * 100).toFixed(1)}%`,
-              },
-              { label: "Checks", value: count.format(data.checks) },
-              { label: "Failed", value: count.format(data.failedChecks) },
-            ]}
-          >
-            <DailyTrend
-              daily={data.daily}
-              format={(value) => `${value.toFixed(1)}%`}
-              measure={(day) => (day.checks ? (day.passedChecks / day.checks) * 100 : null)}
-              name="Check pass rate"
-            />
-          </MonitorChartCard>
-          <MonitorChartCard
-            emptyHint="No runs in this period"
-            help="A run counts once when any of its spans has an error status."
-            subtitle="runs with errors · daily UTC"
-            title="Reliability"
-            values={[
-              { label: "Period", value: rate(data.errorRuns, data.runs) },
-              { label: "Error runs", value: count.format(data.errorRuns) },
-              { label: "Runs", value: count.format(data.runs) },
-            ]}
-          >
-            <DailyTrend
-              daily={data.daily}
-              format={(value) => `${value.toFixed(1)}%`}
-              measure={(day) => (day.runs ? (day.errorRuns / day.runs) * 100 : null)}
-              name="Runs with errors"
-            />
-          </MonitorChartCard>
-          <MonitorChartCard
-            emptyHint="No root durations recorded"
-            help="Duration is measured on recorded root spans. A missing root duration is excluded."
-            subtitle="p95 run duration · daily UTC"
-            title="Speed"
-            values={[
-              {
-                label: "Period p95",
-                value: data.p95DurationMs == null ? "—" : duration(data.p95DurationMs),
-              },
-              { label: "Measured", value: count.format(data.measuredDurationRuns) },
-              { label: "Runs", value: count.format(data.runs) },
-            ]}
-          >
-            <DailyTrend
-              daily={data.daily}
-              format={duration}
-              measure={(day) => day.p95DurationMs}
-              name="p95 duration"
-            />
-          </MonitorChartCard>
-          <MonitorChartCard
-            emptyHint="No cost data recorded"
-            help="Recorded USD usage from model calls. Runs with missing cost are excluded, and this is not a billing total."
-            subtitle="average recorded per run · daily UTC"
-            title="Cost"
-            values={[
-              {
-                label: "Period mean",
-                value: data.averageCostUsd == null ? "—" : money(data.averageCostUsd),
-              },
-              { label: "Measured", value: count.format(data.measuredCostRuns) },
-              { label: "Runs", value: count.format(data.runs) },
-            ]}
-          >
-            <DailyTrend
-              daily={data.daily}
-              format={money}
-              measure={(day) => day.averageCostUsd}
-              name="Average recorded cost"
-            />
-          </MonitorChartCard>
-        </div>
+        {observedDays < 2 ? (
+          <Card className="flex flex-col gap-4 p-4">
+            <div className="flex flex-wrap gap-x-8 gap-y-4">
+              <HeaderStat label="Checks passing" primary>
+                {data.checkPassRate == null ? "—" : `${(data.checkPassRate * 100).toFixed(1)}%`}
+              </HeaderStat>
+              <HeaderStat label="Runs with errors">{rate(data.errorRuns, data.runs)}</HeaderStat>
+              <HeaderStat label="p95 run duration">
+                {data.p95DurationMs == null ? "—" : duration(data.p95DurationMs)}
+              </HeaderStat>
+              <HeaderStat label="Mean recorded cost">
+                {data.averageCostUsd == null ? "—" : money(data.averageCostUsd)}
+              </HeaderStat>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {observedDays ? "Activity falls on one UTC day." : "No runs recorded."} Daily trends
+              appear after activity on another day.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+            <MonitorChartCard
+              emptyHint="No scored checks in this period"
+              help="The share of scored checks at or above their pass threshold. Missing and errored checks do not become failures."
+              subtitle="checks passing · daily UTC"
+              title="Quality"
+              values={[
+                {
+                  label: "Period",
+                  value:
+                    data.checkPassRate == null ? "—" : `${(data.checkPassRate * 100).toFixed(1)}%`,
+                },
+                { label: "Checks", value: count.format(data.checks) },
+                { label: "Failed", value: count.format(data.failedChecks) },
+              ]}
+            >
+              <DailyTrend
+                daily={data.daily}
+                format={(value) => `${value.toFixed(1)}%`}
+                measure={(day) => (day.checks ? (day.passedChecks / day.checks) * 100 : null)}
+                name="Check pass rate"
+              />
+            </MonitorChartCard>
+            <MonitorChartCard
+              emptyHint="No runs in this period"
+              help="A run counts once when any of its spans has an error status."
+              subtitle="runs with errors · daily UTC"
+              title="Reliability"
+              values={[
+                { label: "Period", value: rate(data.errorRuns, data.runs) },
+                { label: "Error runs", value: count.format(data.errorRuns) },
+                { label: "Runs", value: count.format(data.runs) },
+              ]}
+            >
+              <DailyTrend
+                daily={data.daily}
+                format={(value) => `${value.toFixed(1)}%`}
+                measure={(day) => (day.runs ? (day.errorRuns / day.runs) * 100 : null)}
+                name="Runs with errors"
+              />
+            </MonitorChartCard>
+            <MonitorChartCard
+              emptyHint="No root durations recorded"
+              help="Duration is measured on recorded root spans. A missing root duration is excluded."
+              subtitle="p95 run duration · daily UTC"
+              title="Speed"
+              values={[
+                {
+                  label: "Period p95",
+                  value: data.p95DurationMs == null ? "—" : duration(data.p95DurationMs),
+                },
+                { label: "Measured", value: count.format(data.measuredDurationRuns) },
+                { label: "Runs", value: count.format(data.runs) },
+              ]}
+            >
+              <DailyTrend
+                daily={data.daily}
+                format={duration}
+                measure={(day) => day.p95DurationMs}
+                name="p95 duration"
+              />
+            </MonitorChartCard>
+            <MonitorChartCard
+              emptyHint="No cost data recorded"
+              help="Recorded USD usage from model calls. Runs with missing cost are excluded, and this is not a billing total."
+              subtitle="average recorded per run · daily UTC"
+              title="Cost"
+              values={[
+                {
+                  label: "Period mean",
+                  value: data.averageCostUsd == null ? "—" : money(data.averageCostUsd),
+                },
+                { label: "Measured", value: count.format(data.measuredCostRuns) },
+                { label: "Runs", value: count.format(data.runs) },
+              ]}
+            >
+              <DailyTrend
+                daily={data.daily}
+                format={money}
+                measure={(day) => day.averageCostUsd}
+                name="Average recorded cost"
+              />
+            </MonitorChartCard>
+          </div>
+        )}
       </section>
 
       <section aria-label="Recurring behaviour" className="flex flex-col gap-2">

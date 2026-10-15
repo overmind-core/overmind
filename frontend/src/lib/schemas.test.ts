@@ -18,7 +18,7 @@ describe("schemas", () => {
       expect(result.page).toBe(1);
       expect(result.page_size).toBe(25);
       expect(result.view).toBe("overview");
-      expect(result.overviewDays).toBe(7);
+      expect(result.overviewDays).toBe(30);
     });
 
     it("parses valid search params", () => {

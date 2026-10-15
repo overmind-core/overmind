@@ -46,8 +46,8 @@ export const tracesSearchSchema = z.object({
   overviewDays: z
     .union([z.literal(7), z.literal(30), z.literal(90)])
     .optional()
-    .default(7)
-    .catch(7),
+    .default(30)
+    .catch(30),
 
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
