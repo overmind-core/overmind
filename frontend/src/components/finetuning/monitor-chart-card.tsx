@@ -2,7 +2,11 @@ import type { ReactNode } from "react";
 
 import { HelpTip } from "@/components/finetuning/finetuning-chrome";
 import type { MetricSeries } from "@/components/finetuning/loss-chart";
-import { type MetricKind, MetricSummary } from "@/components/finetuning/metric-summary";
+import {
+  type MetricKind,
+  MetricSummary,
+  MetricSummaryValues,
+} from "@/components/finetuning/metric-summary";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +21,7 @@ export function MonitorChartCard({
   isLoading,
   className,
   summary,
+  values,
 }: {
   title: string;
   subtitle?: string;
@@ -26,6 +31,7 @@ export function MonitorChartCard({
   isLoading?: boolean;
   className?: string;
   summary?: { series: MetricSeries[]; kind: MetricKind; terminal?: boolean };
+  values?: { label: string; value: ReactNode }[];
 }) {
   const hasContent = children != null && children !== false && children !== true;
   return (
@@ -50,6 +56,7 @@ export function MonitorChartCard({
         </div>
       )}
       {summary && !isLoading && <MetricSummary {...summary} />}
+      {values && !isLoading && <MetricSummaryValues values={values} />}
     </Card>
   );
 }

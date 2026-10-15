@@ -116,9 +116,9 @@ Navigation order: Overmind (home), Agent, Observability, Datasets, then an
 (Training, Inference), then Settings and Projects. Docs and Discord are
 external links. A command palette provides keyboard navigation.
 
-- **Observability** — traces and sessions with a trace detail panel, span trees
-  and flame charts. Previously called "Traces"; sessions are a view within it
-  rather than a separate destination.
+- **Observability** — a metrics overview of scored quality, errors, speed, recorded
+  cost and recurring behaviour, with Sessions, Signals and Traces as investigation
+  views. Trace detail retains span trees and flame charts.
 - **Agent** — the product graph: one agent per project, made of capabilities
   (Agent > Capabilities > Tasks) mapped from a local scan, with each capability's
   prompt, tools, control flow, and input/output contracts pinned to file and

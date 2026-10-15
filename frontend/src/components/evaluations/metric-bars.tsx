@@ -11,11 +11,17 @@ export function MetricBars({
   description,
   rows,
   percentage = false,
+  valueFormatter,
+  onSelect,
+  emptyHint,
 }: {
   title: string;
   benchmark: string;
   description?: string;
   percentage?: boolean;
+  valueFormatter?: (value: number) => string;
+  onSelect?: (key: string) => void;
+  emptyHint?: string;
   rows: { key: string; name: string; value: number; colorIndex: number }[];
 }) {
   const [hover, setHover] = useState<{ x: number; row: number } | null>(null);
@@ -24,8 +30,9 @@ export function MetricBars({
   const max = highest === min ? min + 1 : highest;
   const position = (value: number) => ((value - min) / (max - min)) * 100;
   const zero = position(0);
-  const number = (value: number) =>
-    percentage ? `${(value * 100).toFixed(1)}%` : value.toFixed(4);
+  const number =
+    valueFormatter ??
+    ((value: number) => (percentage ? `${(value * 100).toFixed(1)}%` : value.toFixed(4)));
   const row = hover ? rows[hover.row] : undefined;
   return (
     <Card className="min-w-0">
@@ -36,97 +43,107 @@ export function MetricBars({
           {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
         </div>
       </div>
-      <div className="relative" onMouseLeave={() => setHover(null)}>
-        <svg
-          aria-label={`${benchmark} · ${title}`}
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          preserveAspectRatio="none"
-          role="img"
-          viewBox="0 0 100 100"
-        >
-          {[0.25, 0.5, 0.75].map((fraction) => (
-            <line
-              key={fraction}
-              stroke="var(--border)"
-              strokeDasharray="3 3"
-              vectorEffect="non-scaling-stroke"
-              x1={fraction * 100}
-              x2={fraction * 100}
-              y1={0}
-              y2={100}
-            />
-          ))}
-          {hover && (
-            <line
-              stroke="var(--muted-foreground)"
-              strokeDasharray="3 3"
-              vectorEffect="non-scaling-stroke"
-              x1={hover.x}
-              x2={hover.x}
-              y1={0}
-              y2={100}
-            />
-          )}
-        </svg>
-        {rows.map((item, index) => (
-          <div
-            className="relative h-12"
-            key={item.key}
-            onMouseMove={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              setHover({
-                row: index,
-                x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
-              });
-            }}
+      {rows.length === 0 && emptyHint ? (
+        <p className="px-5 py-8 text-sm text-muted-foreground">{emptyHint}</p>
+      ) : (
+        <div className="relative" onMouseLeave={() => setHover(null)}>
+          <svg
+            aria-label={`${benchmark} · ${title}`}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            preserveAspectRatio="none"
+            role="img"
+            viewBox="0 0 100 100"
           >
-            <button
-              aria-label={`${item.name}: ${number(item.value)}`}
-              className="absolute bottom-1 h-4 min-w-px cursor-default focus-visible:outline focus-visible:outline-ring"
-              onBlur={() => setHover(null)}
-              onFocus={() => setHover({ row: index, x: position(item.value) })}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setHover(null);
+            {[0.25, 0.5, 0.75].map((fraction) => (
+              <line
+                key={fraction}
+                stroke="var(--border)"
+                strokeDasharray="3 3"
+                vectorEffect="non-scaling-stroke"
+                x1={fraction * 100}
+                x2={fraction * 100}
+                y1={0}
+                y2={100}
+              />
+            ))}
+            {hover && (
+              <line
+                stroke="var(--muted-foreground)"
+                strokeDasharray="3 3"
+                vectorEffect="non-scaling-stroke"
+                x1={hover.x}
+                x2={hover.x}
+                y1={0}
+                y2={100}
+              />
+            )}
+          </svg>
+          {rows.map((item, index) => (
+            <div
+              className="relative h-12"
+              key={item.key}
+              onMouseMove={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setHover({
+                  row: index,
+                  x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+                });
               }}
-              style={{
-                backgroundColor: seriesColor(item.colorIndex),
-                left: `${Math.min(zero, position(item.value))}%`,
-                width: `${Math.abs(position(item.value) - zero)}%`,
-              }}
-              type="button"
-            />
-            <div className="pointer-events-none absolute inset-x-3 top-1.5 flex items-center justify-between gap-3 text-xs">
-              <span className="flex min-w-0 items-center gap-2 bg-card/90">
+            >
+              <button
+                aria-label={`${item.name}: ${number(item.value)}`}
+                className={`absolute inset-0 focus-visible:outline focus-visible:outline-ring ${onSelect ? "cursor-pointer" : "cursor-default"}`}
+                onBlur={() => setHover(null)}
+                onClick={() => onSelect?.(item.key)}
+                onFocus={() => setHover({ row: index, x: position(item.value) })}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setHover(null);
+                }}
+                type="button"
+              >
                 <span
-                  className="size-2 shrink-0 rounded-xs"
-                  style={{ backgroundColor: seriesColor(item.colorIndex) }}
+                  aria-hidden
+                  className="absolute bottom-1 h-4 min-w-px"
+                  style={{
+                    backgroundColor: seriesColor(item.colorIndex),
+                    left: `${Math.min(zero, position(item.value))}%`,
+                    width: `${Math.abs(position(item.value) - zero)}%`,
+                  }}
                 />
-                <span className="truncate">{item.name}</span>
-              </span>
-              <span className="shrink-0 bg-card/90 font-mono tabular-nums">
-                {number(item.value)}
-              </span>
+              </button>
+              <div className="pointer-events-none absolute inset-x-3 top-1.5 flex items-center justify-between gap-3 text-xs">
+                <span className="flex min-w-0 items-center gap-2 bg-card/90">
+                  <span
+                    className="size-2 shrink-0 rounded-xs"
+                    style={{ backgroundColor: seriesColor(item.colorIndex) }}
+                  />
+                  <span className="truncate">{item.name}</span>
+                </span>
+                <span className="shrink-0 bg-card/90 font-mono tabular-nums">
+                  {number(item.value)}
+                </span>
+              </div>
             </div>
+          ))}
+          {row && hover && (
+            <div
+              className="pointer-events-none absolute z-10 max-w-full"
+              style={{ right: 8, top: Math.min(hover.row + 1, rows.length) * 48 + 12 }}
+            >
+              <GraphTooltip
+                active
+                label={benchmark}
+                payload={[{ color: seriesColor(row.colorIndex), name: row.name, value: row.value }]}
+                valueFormatter={number}
+              />
+            </div>
+          )}
+          <div className="flex justify-between px-3 py-2 font-mono text-xs text-muted-foreground">
+            <span>{number(min)}</span>
+            <span>{number(max)}</span>
           </div>
-        ))}
-        {row && hover && (
-          <div
-            className="pointer-events-none absolute z-10 max-w-full"
-            style={{ right: 8, top: Math.min(hover.row + 1, rows.length) * 48 + 12 }}
-          >
-            <GraphTooltip
-              active
-              label={benchmark}
-              payload={[{ color: seriesColor(row.colorIndex), name: row.name, value: row.value }]}
-              valueFormatter={number}
-            />
-          </div>
-        )}
-        <div className="flex justify-between px-3 py-2 font-mono text-xs text-muted-foreground">
-          <span>{number(min)}</span>
-          <span>{number(max)}</span>
         </div>
-      </div>
+      )}
     </Card>
   );
 }

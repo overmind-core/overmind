@@ -17,7 +17,8 @@ describe("schemas", () => {
       expect(result.ordering).toBe("-start_time_ns");
       expect(result.page).toBe(1);
       expect(result.page_size).toBe(25);
-      expect(result.view).toBe("roots");
+      expect(result.view).toBe("overview");
+      expect(result.overviewDays).toBe(7);
     });
 
     it("parses valid search params", () => {

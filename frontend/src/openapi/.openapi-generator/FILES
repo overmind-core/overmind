@@ -24,6 +24,7 @@ apis/InferenceRequestsApi.ts
 apis/McpOauthApi.ts
 apis/ModelsApi.ts
 apis/NativeEvaluationsApi.ts
+apis/ObservabilityApi.ts
 apis/OptimizerCandidatesApi.ts
 apis/OptimizerExperimentsApi.ts
 apis/ProjectsApi.ts
@@ -110,6 +111,7 @@ models/ConsentDetails.ts
 models/ConsentRedirect.ts
 models/CreateIterationRequest.ts
 models/CreditTopUpRequestRequest.ts
+models/DailyOverview.ts
 models/Dataset.ts
 models/DatasetAnalytics.ts
 models/DatasetAnalyticsCheck.ts
@@ -249,6 +251,7 @@ models/NativeModelProgress.ts
 models/NativeMonitor.ts
 models/NativeSample.ts
 models/NativeSamplePrediction.ts
+models/ObservabilityOverview.ts
 models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
 models/OptimizerCandidate.ts
@@ -262,6 +265,11 @@ models/OptimizerExperimentsResultsCreate200Response.ts
 models/OptimizerIteration.ts
 models/OptimizerIterationStatusEnum.ts
 models/OverallComparison.ts
+models/OverviewCapability.ts
+models/OverviewIssue.ts
+models/OverviewIssueKindEnum.ts
+models/OverviewModel.ts
+models/OverviewTool.ts
 models/Package.ts
 models/PackageFile.ts
 models/PackageSource.ts

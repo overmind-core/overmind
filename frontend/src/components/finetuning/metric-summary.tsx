@@ -1,8 +1,31 @@
+import type { ReactNode } from "react";
+
 import type { MetricPoint, MetricSeries } from "@/components/finetuning/loss-chart";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
 
 export type MetricKind = "loss" | "accuracy" | "learningRate" | "gradient";
+
+export function MetricSummaryValues({
+  values,
+  bordered = true,
+}: {
+  values: { label: string; value: ReactNode }[];
+  bordered?: boolean;
+}) {
+  return (
+    <div className={bordered ? "border-t border-border/70" : undefined}>
+      <dl className="grid grid-cols-3 gap-2 px-3 py-3">
+        {values.map(({ label, value }) => (
+          <div className="min-w-0" key={label}>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="mt-1 font-mono text-sm tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 export function recordedPoints(points: MetricPoint[]): MetricPoint[] {
   return points
@@ -104,14 +127,7 @@ export function MetricSummary({
                 <span className="truncate">{item.name}</span>
               </div>
             )}
-            <dl className="grid grid-cols-3 gap-2 px-3 py-3">
-              {values.map(({ label, value }) => (
-                <div className="min-w-0" key={label}>
-                  <dt className="text-xs text-muted-foreground">{label}</dt>
-                  <dd className="mt-1 font-mono text-sm tabular-nums">{value}</dd>
-                </div>
-              ))}
-            </dl>
+            <MetricSummaryValues bordered={false} values={values} />
           </div>
         );
       })}

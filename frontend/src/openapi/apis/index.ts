@@ -26,6 +26,7 @@ export * from './InferenceRequestsApi';
 export * from './McpOauthApi';
 export * from './ModelsApi';
 export * from './NativeEvaluationsApi';
+export * from './ObservabilityApi';
 export * from './OptimizerCandidatesApi';
 export * from './OptimizerExperimentsApi';
 export * from './ProjectsApi';

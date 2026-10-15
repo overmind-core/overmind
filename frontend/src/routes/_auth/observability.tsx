@@ -14,6 +14,7 @@ import {
   serializeFiltersToSearchParams,
   useRecentFilterParams,
 } from "@/components/traces/filters";
+import { ObservabilityOverview } from "@/components/traces/observability-overview";
 import { sessionsColumns } from "@/components/traces/sessions-columns";
 import { SignalEvents } from "@/components/traces/signal-events";
 import { TraceSelectionBar } from "@/components/traces/trace-selection-bar";
@@ -102,7 +103,9 @@ function TracesPage() {
     view,
     session,
     signal_event: signalEvent,
+    overviewDays,
   } = search;
+  const isOverviewView = view === "overview" && !traceId;
   const isSessionsView = view === "sessions";
   const isSignalsView = view === "signals";
   const tracesView: TracesViewMode = isSessionsView ? "sessions" : "roots";
@@ -245,7 +248,7 @@ function TracesPage() {
 
   const { data, isFetched, isFetching, isRefetching, error, refetch, dataUpdatedAt } =
     useTracesList({
-      enabled: !isSessionsView && !isSignalsView,
+      enabled: !isOverviewView && !isSessionsView && !isSignalsView,
       filters: apiFilters,
       ordering: tracesOrdering,
       page,
@@ -400,7 +403,7 @@ function TracesPage() {
           </Link>
         </Button>
       }
-      description="Explore sessions, investigate signals and inspect their traces."
+      description="See behaviour patterns, investigate signals and inspect the recorded runs."
       icon={
         <Icon.observabilityTitle
           aria-hidden
@@ -463,15 +466,41 @@ function TracesPage() {
           setSearchInput("");
           handleClearSelection();
         }}
-        value={view}
+        value={traceId ? "roots" : view}
       >
         <TabsList aria-label="Observability views">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
           <TabsTrigger value="signals">Signals</TabsTrigger>
           <TabsTrigger value="roots">Traces</TabsTrigger>
         </TabsList>
       </Tabs>
-      {isSignalsView ? (
+      {isOverviewView ? (
+        <ObservabilityOverview
+          days={overviewDays}
+          onDaysChange={(days) => setSearch({ overviewDays: days })}
+          onOpenSignal={(signal) =>
+            navigate({
+              search: { page: 1, projectId, signal, view: "signals" },
+              to: "/observability",
+            })
+          }
+          onOpenTrace={(selectedTraceId) =>
+            navigate({
+              params: { traceId: selectedTraceId },
+              search: { page: 1, projectId, view: "roots" },
+              to: "/observability/$traceId",
+            })
+          }
+          onOpenTraces={(filters) =>
+            navigate({
+              search: { page: 1, projectId, view: "roots", ...filters },
+              to: "/observability",
+            })
+          }
+          projectId={projectId}
+        />
+      ) : isSignalsView ? (
         <SignalEvents
           onChange={setSearch}
           onSelect={(id, conversation) => {
@@ -600,7 +629,7 @@ function TracesPage() {
         />
       )}
 
-      {!isSessionsView && !isSignalsView && (
+      {!isOverviewView && !isSessionsView && !isSignalsView && (
         <TraceSelectionBar
           allPagesSelected={allPagesSelection != null}
           onAddToDataset={featureFlags.datasets ? () => setShowAddToDataset(true) : undefined}
