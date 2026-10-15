@@ -836,8 +836,10 @@ def otlp_traces(request):
             continue
         all_spans.extend(spans)
 
+    rejected = 0
     if all_spans:
         with transaction.atomic():  # bulk-upsert spans (idempotent on ``span_id``)
+            all_spans, rejected = _drop_foreign_spans(all_spans)
             Span.objects.bulk_create(
                 all_spans,
                 update_conflicts=True,
@@ -866,8 +868,24 @@ def otlp_traces(request):
         {
             "spans_ingested": len(all_spans),
             "spans_post_processed": post_processed,
+            "spans_rejected": rejected,
         }
     )
+
+
+def _drop_foreign_spans(spans: list[Span]) -> tuple[list[Span], int]:
+    """``span_id`` is the primary key, so an upsert would rewrite a span that another
+    project owns. Locks the existing rows and keeps only spans this batch may update."""
+    owners = dict(
+        Span.objects.select_for_update()
+        .filter(span_id__in=[s.span_id for s in spans])
+        .values_list("span_id", "project_id")
+    )
+    kept = [s for s in spans if owners.get(s.span_id, s.project_id) == s.project_id]
+    rejected = len(spans) - len(kept)
+    if rejected:
+        logger.warning("OTLP ingest rejected %d span(s) owned by another project", rejected)
+    return kept, rejected
 
 
 def _update_evidence_profiles(spans: list[Span]) -> None:

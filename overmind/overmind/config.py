@@ -24,6 +24,8 @@ _CAP_FIELDS = (
     "source_path",
     "system_prompt",
     "tools_summary",
+    "decision_logic",
+    "policy_markdown",
 )
 _METRIC_FIELDS = (
     "name",
@@ -60,6 +62,8 @@ class Capability:
     source_path: str = ""
     system_prompt: str = ""
     tools_summary: str = ""
+    decision_logic: str = ""
+    policy_markdown: str = ""
     archived: bool = False
     eval_metrics: list[EvalMetric] = field(default_factory=list)
     capability_card: dict[str, Any] = field(default_factory=dict)
@@ -135,6 +139,8 @@ class Config:
                 source_path=raw.get("source_path") or "",
                 system_prompt=raw.get("system_prompt") or "",
                 tools_summary=raw.get("tools_summary") or "",
+                decision_logic=raw.get("decision_logic") or "",
+                policy_markdown=raw.get("policy_markdown") or "",
                 archived=bool(raw.get("archived")),
                 eval_metrics=metrics,
                 capability_card=dict(card),
@@ -316,6 +322,8 @@ def load(path: Path = DEFAULT_PATH) -> Config:
             source_path=body.get("source_path") or "",
             system_prompt=body.get("system_prompt") or "",
             tools_summary=body.get("tools_summary") or "",
+            decision_logic=body.get("decision_logic") or "",
+            policy_markdown=body.get("policy_markdown") or "",
             archived=bool(body.get("archived")),
             eval_metrics=[_metric_from_dict(m) for m in metrics_raw or []],
             capability_card=dict(card),
@@ -370,6 +378,10 @@ def _config_to_toml_dict(config: Config) -> dict[str, Any]:
             body["system_prompt"] = cap.system_prompt
         if cap.tools_summary:
             body["tools_summary"] = cap.tools_summary
+        if cap.decision_logic:
+            body["decision_logic"] = cap.decision_logic
+        if cap.policy_markdown:
+            body["policy_markdown"] = cap.policy_markdown
         if cap.archived:
             body["archived"] = True
         if cap.capability_card:

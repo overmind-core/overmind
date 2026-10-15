@@ -17,6 +17,7 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
+from overbae.services.codebase.flow import build_capability_flow
 
 PROJECT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
@@ -258,6 +259,44 @@ def test_system_prompt_and_capability_card_roundtrip(client):
     assert cap.improvement_metadata.get("system_prompt") == "You are helpful."
     assert cap.improvement_metadata["capability_card"]["trajectory_map"][0]["id"] == "happy-path"
     assert Behaviour.objects.filter(capability=cap, key="happy-path").exists()
+
+
+@pytest.mark.django_db
+def test_scan_modes_utilities_and_policy_reach_the_capability(client):
+    card = {
+        "task": "Write cited reports",
+        "success_criteria": ["every claim cites a source"],
+        "modes": [{"name": "outline", "purpose": "plan sections", "prompt": "Plan {topic}"}],
+        "llm_utilities": [
+            {"name": "choose_agent", "called_by": "support-agent", "cardinality": "per_run"}
+        ],
+    }
+    posted = client.post(
+        "/api/v1/sync",
+        _snapshot(
+            [
+                _cap(
+                    capability_card=card,
+                    decision_logic="Outline first, then draft each section.",
+                    policy_markdown="- Cite only retrieved sources.",
+                )
+            ]
+        ),
+        format="json",
+    )
+    assert posted.status_code == 200, posted.data
+    row = posted.data["capabilities"][0]
+    assert row["decision_logic"] == "Outline first, then draft each section."
+    assert row["policy_markdown"] == "- Cite only retrieved sources."
+
+    cap = Capability.objects.get(slug="support-agent")
+    assert cap.decision_logic == "Outline first, then draft each section."
+    assert cap.policy_markdown == "- Cite only retrieved sources."
+    flow = build_capability_flow(cap)
+    assert flow["modes"][0]["prompt"] == "Plan {topic}"
+    assert [(u["name"], u["cardinality"]) for u in flow["llm_utilities"]] == [
+        ("choose_agent", "per_run")
+    ]
 
 
 @pytest.mark.django_db

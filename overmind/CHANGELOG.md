@@ -8,6 +8,10 @@ entries here cover the SDK surface.
 
 ### Fixed
 
+- `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
+  capability card, utilities under their `called_by` parent) and its
+  `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips
+  them.
 - The dataset skills cancel a script run with `run`, call a stopped import
   `stopped`, and poll `get_job(kind=dataset_run)`. Skills version 1.5.1.
 

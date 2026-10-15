@@ -38,6 +38,8 @@ class CapabilitySerializer(serializers.Serializer):
     source_path = serializers.CharField(required=False, allow_blank=True)
     system_prompt = serializers.CharField(required=False, allow_blank=True)
     tools_summary = serializers.CharField(required=False, allow_blank=True)
+    decision_logic = serializers.CharField(required=False, allow_blank=True)
+    policy_markdown = serializers.CharField(required=False, allow_blank=True)
     eval_metrics = EvalMetricSerializer(many=True, required=False)
     capability_card = serializers.DictField(required=False)
     eval_matrix = serializers.ListField(child=serializers.DictField(), required=False)

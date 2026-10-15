@@ -124,6 +124,13 @@ def test_executor_does_not_retry_permanent_errors():
     assert attempts["n"] == 1
 
 
+def test_executor_defers_everything_once_the_deadline_has_passed():
+    results = JudgeExecutor(max_workers=1, max_retries=0).run(
+        [JudgeTask(key="late", fn=lambda: "ran")], timeout_s=0.0
+    )
+    assert results["late"].deferred
+
+
 def test_judge_preserves_oversized_evidence(fake_llm):
     prompt = "RUBRIC " + ("evidence " * 50000) + " RETURN JSON"
     fake_llm.on(lambda r: True, '{"explanation":"ok","score":7}')

@@ -213,6 +213,16 @@ def failure_reason(outcome: JudgeOutcome) -> str:
     }.get(outcome.stats.get("error_kind"), "Judge output failed to parse.")
 
 
+def release_db_connection() -> None:
+    """Drop this thread's connection before a long wait; Django reopens it on the next query.
+
+    Scoring fans out units × judge threads per worker slot, and each one idling on an
+    LLM call with a connection open exhausts Postgres ``max_connections``.
+    """
+    if not connection.in_atomic_block:
+        connection.close()
+
+
 def diagnostics(outcome: JudgeOutcome) -> list[dict]:
     metadata = outcome.stats.get("judge")
     return [{"_judge": metadata}] if metadata else []
@@ -269,6 +279,7 @@ def invoke_judge(
     )
     attempts = []
     started = time.monotonic()
+    release_db_connection()
     for attempt in range(2):
         error_kind = ""
         try:
@@ -501,7 +512,7 @@ class JudgeExecutor:
     def run(self, tasks: list[JudgeTask], *, timeout_s: float | None = None) -> dict[Any, Outcome]:
         if not tasks:
             return {}
-        deadline = time.monotonic() + timeout_s if timeout_s else None
+        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
         results: dict[Any, Outcome] = {}
         results_lock = threading.Lock()
         heap: list[_QueueItem] = []
@@ -569,10 +580,11 @@ class JudgeExecutor:
             threading.Thread(target=worker, args=(lane,), name=f"judge-exec-{lane}", daemon=True)
             for lane in range(workers)
         ]
+        release_db_connection()
         for t in threads:
             t.start()
         for t in threads:
-            t.join(timeout=(timeout_s + 30.0) if timeout_s else None)
+            t.join(timeout=(timeout_s + 30.0) if timeout_s is not None else None)
 
         # Anything unfinished (hung thread, deadline race) lands as deferred.
         for task in tasks:

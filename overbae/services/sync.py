@@ -29,6 +29,7 @@ _CAP_COLUMNS = (
     "model",
     "source_path",
     "tools_summary",
+    "policy_markdown",
 )
 
 _SETTINGS_REPO_SUMMARY = "repo_summary"
@@ -97,9 +98,10 @@ def _fill(cap: Capability, data: dict) -> None:
         cap.tools_summary = tools_summary_from_card(
             card, data.get("tools_summary") or cap.tools_summary or ""
         )[:4096]
-        cap.decision_logic = decision_logic_from_card(
-            card, data.get("decision_logic") or cap.decision_logic or ""
-        )[:4096]
+        cap.decision_logic = decision_logic_from_card(card, cap.decision_logic or "")[:4096]
+    # The scan's own account of the routing outranks the card-derived summary.
+    if data.get("decision_logic"):
+        cap.decision_logic = data["decision_logic"][:4096]
 
     meta = dict(cap.improvement_metadata or {})
     if "system_prompt" in data and data["system_prompt"] is not None:
@@ -202,6 +204,8 @@ def _cap_row(cap: Capability) -> dict[str, Any]:
         "source_path": cap.source_path,
         "system_prompt": meta.get(_META_SYSTEM_PROMPT) or "",
         "tools_summary": cap.tools_summary,
+        "decision_logic": cap.decision_logic,
+        "policy_markdown": cap.policy_markdown,
         "eval_metrics": list(meta.get(_META_EVAL_METRICS) or []),
         "capability_card": meta.get(_META_CAPABILITY_CARD) or {},
         "eval_matrix": list(meta.get(_META_EVAL_MATRIX) or []),

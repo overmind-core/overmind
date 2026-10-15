@@ -36,7 +36,7 @@ from overbae.services.eval import envelope as eval_envelope
 from overbae.services.eval import grounding as eval_grounding
 from overbae.services.eval.eval_set import STRUCTURAL_TRACE_GATES
 from overbae.services.eval.evaluators import base as eval_base
-from overbae.services.eval.funnel import JudgeExecutor
+from overbae.services.eval.funnel import JudgeExecutor, release_db_connection
 from overbae.services.eval.span_evidence import build_span_tree, produced_identity_fields
 from overbae.services.eval.units import (
     ResolvedUnit,
@@ -1306,6 +1306,7 @@ def _score_multi_entry(
                 except Exception as exc:  # noqa: BLE001
                     outcomes.append(exc)
         else:
+            release_db_connection()
             with ThreadPoolExecutor(
                 max_workers=min(workers, len(phase)), thread_name_prefix="trace-units"
             ) as pool:

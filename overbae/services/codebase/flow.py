@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from overbae.services.codebase.artifacts import (
+    normalize_llm_utilities,
     normalize_modes,
     normalize_tool_spec,
     normalize_trajectory_map,
@@ -140,7 +141,7 @@ def build_capability_flow(capability: Any) -> dict[str, Any]:
     domain = str(card.get("domain") or "").strip()
     task = str(card.get("task") or capability.description or "").strip()
 
-    llm_utilities: list[dict[str, Any]] = []
+    llm_utilities = normalize_llm_utilities(card.get("llm_utilities"))
 
     if has_card and not is_fallback:
         source = "capability_card"

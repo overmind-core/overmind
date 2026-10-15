@@ -434,6 +434,39 @@ def _normalize_expected_output(expected: Any) -> dict[str, Any]:
     return {"description": "", "example": None, "quality_signals": []}
 
 
+_UTILITY_CARDINALITIES = {"per_run", "per_row", "per_candidate", "unknown"}
+
+
+def normalize_llm_utilities(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for util in value:
+        if not isinstance(util, dict) or not str(util.get("name") or "").strip():
+            continue
+        cardinality = str(util.get("cardinality") or "").strip()
+        out.append(
+            {
+                **{
+                    key: str(util.get(key) or "").strip()
+                    for key in (
+                        "name",
+                        "purpose",
+                        "called_by",
+                        "source_path",
+                        "entrypoint_fn",
+                        "model",
+                        "io_contract",
+                        "prompt_excerpt",
+                    )
+                },
+                "cardinality": cardinality if cardinality in _UTILITY_CARDINALITIES else "unknown",
+                "structured_output": bool(util.get("structured_output")),
+            }
+        )
+    return out
+
+
 def normalize_capability_card(card: dict[str, Any]) -> dict[str, Any]:
     tool_spec = normalize_tool_spec(card.get("tool_spec"))
     vocabulary = card.get("vocabulary")
@@ -459,6 +492,7 @@ def normalize_capability_card(card: dict[str, Any]) -> dict[str, Any]:
         "trajectory_map": normalize_trajectory_map(card.get("trajectory_map"), tool_spec),
         "anchors": normalize_anchors(card.get("anchors")),
         "modes": normalize_modes(card.get("modes")),
+        "llm_utilities": normalize_llm_utilities(card.get("llm_utilities")),
         "provenance": {"paths": _provenance_paths(card)},
         "_fallback": is_fallback,
     }
