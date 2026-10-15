@@ -134,7 +134,8 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const evalQuery = useAllEvalRunsQuery(projectId);
   const optimizerQuery = useOptimizerExperimentsQuery(projectId);
   const unseen = useUnseenCompletions();
-  const unseenSignals = useUnseenSignalCountQuery(projectId).data ?? 0;
+  const unseenSignals =
+    useUnseenSignalCountQuery(featureFlags.signals ? projectId : undefined).data ?? 0;
 
   const running = buildRunningJobs({
     evalRuns: evalQuery.data?.results,

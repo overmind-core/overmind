@@ -10,4 +10,5 @@ export const featureFlags = {
   finetuning: readFlag("VITE_FEATURE_FINETUNING"),
   inference: readFlag("VITE_FEATURE_INFERENCE"),
   mcp: readFlag("VITE_FEATURE_MCP"),
+  signals: readFlag("VITE_FEATURE_SIGNALS"),
 } as const;

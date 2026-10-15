@@ -104,7 +104,7 @@ function TracesPage() {
     signal_event: signalEvent,
   } = search;
   const isSessionsView = view === "sessions";
-  const isSignalsView = view === "signals";
+  const isSignalsView = featureFlags.signals && view === "signals";
   const tracesView: TracesViewMode = isSessionsView ? "sessions" : "roots";
 
   const status: "all" | "success" | "error" =
@@ -123,7 +123,7 @@ function TracesPage() {
     timeRange !== "all" ||
     status !== "all" ||
     !!session ||
-    !!signalEvent;
+    (featureFlags.signals && !!signalEvent);
 
   const [searchInput, setSearchInput] = useState(searchTerm ?? "");
 
@@ -220,7 +220,7 @@ function TracesPage() {
     }
     f.all_spans = "false";
     if (session) f.session = session;
-    if (signalEvent) f.signal_event = signalEvent;
+    if (featureFlags.signals && signalEvent) f.signal_event = signalEvent;
     return f;
   }, [
     advancedFilters,
@@ -400,7 +400,11 @@ function TracesPage() {
           </Link>
         </Button>
       }
-      description="Explore sessions, investigate signals and inspect their traces."
+      description={
+        featureFlags.signals
+          ? "Explore sessions, investigate signals and inspect their traces."
+          : "Explore sessions and inspect their traces."
+      }
       icon={
         <Icon.observabilityTitle
           aria-hidden
@@ -463,11 +467,11 @@ function TracesPage() {
           setSearchInput("");
           handleClearSelection();
         }}
-        value={traceId ? "roots" : view}
+        value={traceId || (view === "signals" && !featureFlags.signals) ? "roots" : view}
       >
         <TabsList aria-label="Observability views">
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="signals">Signals</TabsTrigger>
+          {featureFlags.signals && <TabsTrigger value="signals">Signals</TabsTrigger>}
           <TabsTrigger value="roots">Traces</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -533,7 +537,7 @@ function TracesPage() {
       ) : (
         <DataTable<TraceRow>
           banner={
-            signalEvent ? (
+            featureFlags.signals && signalEvent ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>Traces checked for the selected signal.</span>
                 <Button
