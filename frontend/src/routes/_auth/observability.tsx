@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatches } from "@tanstack/react-router";
 import type { OnChangeFn, RowSelectionState, VisibilityState } from "@tanstack/react-table";
 
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
@@ -396,19 +396,30 @@ function TracesPage() {
   const header = (
     <PageHeader
       actions={
-        <Button asChild size="sm" variant="secondary">
-          <Link search={(prev) => prev} to="/observability/integrations">
-            <Icon.integrations />
-            Integrations
-          </Link>
-        </Button>
-      }
-      description="See behaviour patterns, investigate signals and inspect the recorded runs."
-      icon={
-        <Icon.observabilityTitle
-          aria-hidden
-          className="size-6 shrink-0 [image-rendering:pixelated] invert"
-        />
+        projectId ? (
+          <Tabs
+            className="w-auto"
+            onValueChange={(next) => {
+              navigate({
+                search: {
+                  page: 1,
+                  projectId,
+                  timeRange: "all",
+                  view: next === "reporting" ? "overview" : "roots",
+                },
+                to: "/observability",
+              });
+              setSearchInput("");
+              handleClearSelection();
+            }}
+            value={isOverviewView ? "reporting" : "tracing"}
+          >
+            <TabsList aria-label="Observability mode">
+              <TabsTrigger value="reporting">Reporting</TabsTrigger>
+              <TabsTrigger value="tracing">Tracing</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null
       }
       title="Observability"
     />
@@ -456,25 +467,26 @@ function TracesPage() {
 
   return (
     <PageShell header={header} variant="full">
-      <Tabs
-        className="w-fit pb-3"
-        onValueChange={(next) => {
-          navigate({
-            search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
-            to: "/observability",
-          });
-          setSearchInput("");
-          handleClearSelection();
-        }}
-        value={traceId ? "roots" : view}
-      >
-        <TabsList aria-label="Observability views">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="signals">Signals</TabsTrigger>
-          <TabsTrigger value="roots">Traces</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {!isOverviewView && (
+        <Tabs
+          className="w-fit pb-3"
+          onValueChange={(next) => {
+            navigate({
+              search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
+              to: "/observability",
+            });
+            setSearchInput("");
+            handleClearSelection();
+          }}
+          value={traceId ? "roots" : view}
+        >
+          <TabsList aria-label="Tracing views">
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="signals">Signals</TabsTrigger>
+            <TabsTrigger value="roots">Traces</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
       {isOverviewView ? (
         <ObservabilityOverview
           days={overviewDays}
