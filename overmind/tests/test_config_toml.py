@@ -133,10 +133,12 @@ def test_convert_json_to_toml_keeps_scan_modes_utilities_and_policy(tmp_path: Pa
                     "capability_card": {"task": "write"},
                 },
                 {"slug_hint": "chat", "name": "Chat", "capability_card": {"task": "chat"}},
+                {"slug_hint": "chat-pro", "name": "Chat", "capability_card": {"task": "chat"}},
             ],
             "llm_utilities": [
                 {"name": "choose_agent", "called_by": "writer", "cardinality": "per_run"},
-                {"name": "title_maker", "called_by": "Chat"},
+                {"name": "title_maker", "called_by": "chat-pro"},
+                {"name": "ambiguous_helper", "called_by": "Chat"},
             ],
         })
     )
@@ -148,8 +150,9 @@ def test_convert_json_to_toml_keeps_scan_modes_utilities_and_policy(tmp_path: Pa
     assert writer.policy_markdown == "- Cite only retrieved sources."
     assert writer.capability_card["modes"][0]["prompt"] == "Plan {topic}"
     assert [u["name"] for u in writer.capability_card["llm_utilities"]] == ["choose_agent"]
-    chat = load(dest).capabilities["chat"]
-    assert [u["name"] for u in chat.capability_card["llm_utilities"]] == ["title_maker"]
+    caps = load(dest).capabilities
+    assert "llm_utilities" not in caps["chat"].capability_card
+    assert [u["name"] for u in caps["chat-pro"].capability_card["llm_utilities"]] == ["title_maker"]
 
     wire = {c["slug"]: c for c in load(dest).to_snapshot()["capabilities"]}
     assert wire["writer"]["decision_logic"] == "Outline first, then draft each section."

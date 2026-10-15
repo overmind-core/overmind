@@ -838,14 +838,8 @@ def otlp_traces(request):
 
     rejected = 0
     if all_spans:
-        with transaction.atomic():  # bulk-upsert spans (idempotent on ``span_id``)
-            all_spans, rejected = _drop_foreign_spans(all_spans)
-            Span.objects.bulk_create(
-                all_spans,
-                update_conflicts=True,
-                unique_fields=["span_id"],
-                update_fields=_SPAN_UPSERT_FIELDS,
-            )
+        with transaction.atomic():
+            all_spans, rejected = _persist_owned_spans(all_spans)
 
     # Spans are already persisted, so one poison span must not 500 the batch:
     # OTel exporters retry a 500 forever, re-ingesting the same payload.
@@ -873,16 +867,32 @@ def otlp_traces(request):
     )
 
 
-def _drop_foreign_spans(spans: list[Span]) -> tuple[list[Span], int]:
-    """``span_id`` is the primary key, so an upsert would rewrite a span that another
-    project owns. Locks the existing rows and keeps only spans this batch may update."""
+def _persist_owned_spans(spans: list[Span]) -> tuple[list[Span], int]:
+    """Idempotent on ``span_id`` within a project, but ``span_id`` is the primary key
+    across projects: insert-or-skip first, then re-read the owners under lock and
+    update only rows this batch's project owns, so a concurrent first writer keeps
+    its span. Returns the persisted spans and how many were rejected."""
+    batch: dict[str, Span] = {}
+    rejected = 0
+    for span in spans:
+        held = batch.get(span.span_id)
+        if held is not None and held.project_id != span.project_id:
+            rejected += 1
+            continue
+        batch[span.span_id] = span
+    ids = list(batch)
+    existing = set(Span.objects.filter(span_id__in=ids).values_list("span_id", flat=True))
+    Span.objects.bulk_create(list(batch.values()), ignore_conflicts=True)
     owners = dict(
         Span.objects.select_for_update()
-        .filter(span_id__in=[s.span_id for s in spans])
+        .filter(span_id__in=ids)
         .values_list("span_id", "project_id")
     )
-    kept = [s for s in spans if owners.get(s.span_id, s.project_id) == s.project_id]
-    rejected = len(spans) - len(kept)
+    kept = [s for s in batch.values() if owners.get(s.span_id) == s.project_id]
+    rejected += len(batch) - len(kept)
+    Span.objects.bulk_update(
+        [s for s in kept if s.span_id in existing], _SPAN_UPSERT_FIELDS, batch_size=500
+    )
     if rejected:
         logger.warning("OTLP ingest rejected %d span(s) owned by another project", rejected)
     return kept, rejected

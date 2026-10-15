@@ -40,17 +40,28 @@ def _metrics_from_matrix(matrix: list) -> list[EvalMetric]:
     return metrics
 
 
-def _parent_keys(raw: dict[str, Any]) -> list[str]:
-    keys = (raw.get("slug"), raw.get("slug_hint"), raw.get("name"))
-    return list(dict.fromkeys(str(k).strip() for k in keys if str(k or "").strip()))
-
-
 def _utilities_by_parent(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Scan ``llm_utilities`` sit at the top level; ``called_by`` names the parent capability."""
+    """Scan ``llm_utilities`` sit at the top level; ``called_by`` names the parent by slug,
+    else by a name no other capability shares. Unresolvable utilities attach nowhere."""
+    caps = [raw for raw in data.get("capabilities") or [] if isinstance(raw, dict) and _slug_of(raw)]
+    parent: dict[str, str] = {}
+    for raw in caps:
+        for key in (raw.get("slug"), raw.get("slug_hint")):
+            if str(key or "").strip():
+                parent.setdefault(str(key).strip(), _slug_of(raw))
+    names: dict[str, list[str]] = {}
+    for raw in caps:
+        name = str(raw.get("name") or "").strip()
+        if name:
+            names.setdefault(name, []).append(_slug_of(raw))
+    for name, slugs in names.items():
+        if len(slugs) == 1 and name not in parent:
+            parent[name] = slugs[0]
     grouped: dict[str, list[dict[str, Any]]] = {}
     for util in data.get("llm_utilities") or []:
-        if isinstance(util, dict) and str(util.get("called_by") or "").strip():
-            grouped.setdefault(str(util["called_by"]).strip(), []).append(util)
+        slug = parent.get(str(util.get("called_by") or "").strip()) if isinstance(util, dict) else None
+        if slug:
+            grouped.setdefault(slug, []).append(util)
     return grouped
 
 
@@ -71,9 +82,8 @@ def analysis_json_to_config(data: dict[str, Any], *, base: Config | None = None)
         card = dict(raw.get("capability_card") if isinstance(raw.get("capability_card"), dict) else {})
         if isinstance(raw.get("modes"), list) and not card.get("modes"):
             card["modes"] = raw["modes"]
-        parent_utilities = [util for key in _parent_keys(raw) for util in utilities.get(key, [])]
-        if parent_utilities and not card.get("llm_utilities"):
-            card["llm_utilities"] = parent_utilities
+        if utilities.get(slug) and not card.get("llm_utilities"):
+            card["llm_utilities"] = utilities[slug]
         matrix = raw.get("eval_matrix") if isinstance(raw.get("eval_matrix"), list) else []
         caps[slug] = Capability(
             slug=slug,
