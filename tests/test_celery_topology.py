@@ -177,24 +177,25 @@ def test_landing_has_dedicated_prefork_capacity():
     assert any(bulk_queue in queues for queues in _compose_worker_queues().values())
 
 
-def test_new_producers_wait_for_healthy_landing_capacity():
+def test_deploy_rolls_services_with_the_aws_cli():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]
-
-    def prerequisites(name):
-        needs = jobs[name].get("needs", [])
-        needs = [needs] if isinstance(needs, str) else needs
-        return set(needs).union(*(prerequisites(n) for n in needs))
-
-    assert "deploy-landing" in jobs, "Provisioned landing consumers need a deployment gate"
-    assert "migrate" in prerequisites("deploy-landing"), "New workers require the migrated schema"
-    assert "deploy-landing" in prerequisites("deploy-api"), "Publishers must follow ready consumers"
-    assert "deploy-landing" in prerequisites("deploy-workers")
-    landing_steps = jobs["deploy-landing"]["steps"]
-    assert any("deploy_ecs.py" in step.get("run", "") for step in landing_steps)
-    assert any(
-        step.get("env", {}).get("SERVICE") == "celery-landing-worker" for step in landing_steps
-    )
+    needs = jobs["deploy-workers"].get("needs", [])
+    needs = [needs] if isinstance(needs, str) else needs
+    assert "deploy-api" in needs, "Workers roll after the API service"
+    services = set(jobs["deploy-workers"]["strategy"]["matrix"]["service"])
+    assert services == {
+        "celery-beat",
+        "celery-control-worker",
+        "celery-io-worker",
+        "celery-batch-worker",
+        "celery-landing-worker",
+        "celery-interactive-worker",
+        "sandbox",
+    }
+    runs = "\n".join(step.get("run", "") for job in jobs.values() for step in job.get("steps", []))
+    assert "deploy_ecs.py" not in runs
+    assert "aws ecs update-service" in runs
 
 
 def _deployed_commands() -> dict[str, str]:

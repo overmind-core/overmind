@@ -25,8 +25,7 @@ not rewrite old manifests. Current recipes do not install dependencies at runtim
 
 ## First cutover
 
-1. Build the release image without deploying (`build_only`). Deploy the exact
-   pinned training, decision-serving and decision-evaluation worker releases.
+1. Deploy the exact pinned training, decision-serving and decision-evaluation worker releases.
 1. Put the public API in maintenance mode. Stop new submissions and the scheduler,
    drain queued and active work, and reconcile all outstanding provider calls.
    Record each ECS service's desired count and autoscaling settings. Suspend
@@ -39,15 +38,12 @@ not rewrite old manifests. Current recipes do not install dependencies at runtim
    `PYTHONPATH=. uv run python scripts/validate_migration_upgrade.py origin/main`
    (repeat with the previous branch commit and `fresh`). It never targets the
    application's database.
-1. Run `scripts/deploy_ecs.py migrate --cluster CLUSTER --image IMMUTABLE_IMAGE`.
-   Migration archives legacy rows under transactional table locks before dropping fields.
-   No application container performs implicit database bootstrap.
-1. Deploy using `scripts/deploy_ecs.py deploy --cluster CLUSTER --image IMAGE --service SERVICE --desired-count RECORDED_COUNT`. Start sandbox, then
-   landing, the remaining workers (including interactive), beat,
-   and finally API. Restore recorded capacity explicitly; the script refuses to
-   guess counts for stopped services. Each deployment waits for readiness before
-   continuing. Keep maintenance mode until the checks below pass. Later automated
-   releases preserve desired counts and follow the same consumer-first ordering.
+1. Restore each service's recorded desired count, then run the Deploy API workflow.
+   It registers a new task definition for the immutable image and updates the API
+   service first. The image entrypoint applies migrations unless the task definition
+   sets `RUN_DB_BOOTSTRAP=0`. Landing, sandbox, the other workers and beat then roll
+   in parallel. The workflow does not change desired count. Keep maintenance mode
+   until the checks below pass.
 1. Verify source upload/export, OCR, pipeline preview/publication/cancellation,
    preparation, bounded training, held-out evaluation and inference through the
    intended project-scoped MCP endpoint. Check sandbox runtime identity and interactive consumer health,
