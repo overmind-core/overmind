@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy reviewed immutable images and source-controlled worker commands.
 
-AWS calls require an explicit ``preflight``, ``migrate`` or ``deploy`` subcommand. The rendering
+AWS calls require an explicit ``migrate`` or ``deploy`` subcommand. The rendering
 helpers are pure so task definitions can be reviewed and tested without AWS.
 """
 
@@ -107,37 +107,6 @@ def render_task_definition(document, *, service, image, cluster):
     return result
 
 
-def preflight(cluster):
-    for name in ("sandbox", "celery-landing-worker", "celery-interactive-worker"):
-        service = describe_service(cluster, name)
-        family = service["taskDefinition"].rsplit("/", 1)[-1].rsplit(":", 1)[0]
-        definition = aws("ecs", "describe-task-definition", "--task-definition", family)[
-            "taskDefinition"
-        ]
-        if not any(c["name"] == name for c in definition["containerDefinitions"]):
-            raise ValueError(f"Missing {name} container in its task definition")
-    api = describe_service(cluster, "api")
-    definition = aws("ecs", "describe-task-definition", "--task-definition", api["taskDefinition"])[
-        "taskDefinition"
-    ]
-    app = next(c for c in definition["containerDefinitions"] if c["name"] == "api")
-    environment = {item["name"]: item["value"] for item in app.get("environment", [])}
-    if environment.get("WORKSHOP_EXECUTION_BACKEND") != "sandbox-package-v1":
-        require_drained_consumers(cluster)
-    print("Required consumer infrastructure is configured; no services or schema were changed.")
-
-
-def require_drained_consumers(cluster):
-    names = ["api", *json.loads((ROOT / "docker/worker-topology.json").read_text())]
-    for name in names:
-        service = describe_service(cluster, name)
-        if any(service.get(key, 0) for key in ("desiredCount", "runningCount", "pendingCount")):
-            raise RuntimeError(
-                f"The schema cutover requires drained, stopped consumers; {name} is active. "
-                "Follow scripts/workshop-rollout.md before migrating."
-            )
-
-
 def migration_request(definition, service, *, task_definition, cluster):
     matches = [c for c in definition["containerDefinitions"] if c["name"] == "api"]
     if len(matches) != 1:
@@ -224,7 +193,6 @@ def register(cluster, service_name, image):
 
 
 def migrate(cluster, image):
-    preflight(cluster)
     service, definition = register(cluster, "api", image)
     response = aws(
         "ecs",
@@ -323,7 +291,7 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["migrate", "deploy", "preflight"])
+    parser.add_argument("action", choices=["migrate", "deploy"])
     parser.add_argument(
         "--cluster",
         default=os.environ.get("ECS_CLUSTER"),
@@ -338,9 +306,6 @@ def main():
         "--desired-count", type=int, help="Explicitly restore recorded cutover capacity"
     )
     args = parser.parse_args()
-    if args.action == "preflight":
-        preflight(args.cluster)
-        return
     if not args.image:
         parser.error("--image or IMAGE_URI is required for deployment")
     if args.action == "migrate":

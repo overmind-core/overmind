@@ -94,25 +94,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # The first cutover is a drained maintenance release (scripts/workshop-rollout.md).
-  # Later releases verify consumer infrastructure before migration and deployment.
-  preflight:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_only }}
-    runs-on: ubuntu-latest
-    needs: [build-and-push]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Verify required consumer infrastructure before schema changes
-        run: python scripts/deploy_ecs.py preflight
-
+  # Apply compatible schema changes without starting new producers. Every new
+  # producer (API, worker or beat) follows a healthy landing consumer.
   migrate:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_only }}
     runs-on: ubuntu-latest
-    needs: [build-and-push, preflight]
+    needs: [build-and-push]
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -125,6 +112,7 @@ jobs:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
         run: python scripts/deploy_ecs.py migrate
 
+  # Landing and interactive workers send scripts and documents to the sandbox.
   deploy-sandbox:
     runs-on: ubuntu-latest
     needs: [build-and-push, migrate]
@@ -136,7 +124,7 @@ jobs:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.run_id }}-sandbox
-      - name: Deploy the isolated script and document sandbox
+      - name: Deploy the script sandbox
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: sandbox

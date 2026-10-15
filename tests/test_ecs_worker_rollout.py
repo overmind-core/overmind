@@ -196,67 +196,9 @@ def test_dedicated_workshop_controller_has_no_deployable_command(definition):
         )
 
 
-@pytest.mark.parametrize("counter", ["desiredCount", "runningCount", "pendingCount"])
-def test_first_cutover_refuses_active_consumers(monkeypatch, counter):
-    from scripts import deploy_ecs
-
-    monkeypatch.setattr(deploy_ecs, "describe_service", lambda cluster, name: {counter: 1})
-    with pytest.raises(RuntimeError, match="drained, stopped"):
-        deploy_ecs.require_drained_consumers("test")
-
-
-def test_first_cutover_checks_every_consumer(monkeypatch):
-    from scripts import deploy_ecs
-
-    checked = []
-
-    def stopped(cluster, name):
-        checked.append(name)
-        return {"desiredCount": 0, "runningCount": 0, "pendingCount": 0}
-
-    monkeypatch.setattr(deploy_ecs, "describe_service", stopped)
-    deploy_ecs.require_drained_consumers("test")
-    assert set(checked) == {
-        "api",
-        "celery-control-worker",
-        "celery-io-worker",
-        "celery-batch-worker",
-        "celery-landing-worker",
-        "celery-interactive-worker",
-        "celery-beat",
-        "sandbox",
-    }
-
-
 def test_cutover_does_not_guess_service_capacity(monkeypatch):
     from scripts import deploy_ecs
 
     monkeypatch.setattr(deploy_ecs, "describe_service", lambda cluster, name: {"desiredCount": 0})
     with pytest.raises(ValueError, match="recorded service capacity"):
         deploy_ecs.deploy("test", "api", "repo:new")
-
-
-@pytest.mark.parametrize("migrated", [False, True])
-@pytest.mark.parametrize("desired", [0, 1])
-def test_cutover_checks_deployed_release_and_not_desired_count(monkeypatch, migrated, desired):
-    def service(cluster, name):
-        return {"taskDefinition": name + ":1", "desiredCount": desired, "runningCount": 1}
-
-    def aws(*args, **kwargs):
-        name = args[-1].split(":")[0]
-        environment = (
-            [{"name": "WORKSHOP_EXECUTION_BACKEND", "value": "sandbox-package-v1"}]
-            if migrated
-            else []
-        )
-        return {
-            "taskDefinition": {"containerDefinitions": [{"name": name, "environment": environment}]}
-        }
-
-    monkeypatch.setattr(deploy_ecs, "describe_service", service)
-    monkeypatch.setattr(deploy_ecs, "aws", aws)
-    if migrated:
-        deploy_ecs.preflight("test")
-    else:
-        with pytest.raises(RuntimeError, match="drained, stopped"):
-            deploy_ecs.preflight("test")

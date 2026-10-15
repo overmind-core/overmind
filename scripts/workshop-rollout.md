@@ -39,12 +39,8 @@ not rewrite old manifests. Current recipes do not install dependencies at runtim
    `PYTHONPATH=. uv run python scripts/validate_migration_upgrade.py origin/main`
    (repeat with the previous branch commit and `fresh`). It never targets the
    application's database.
-1. Run `scripts/deploy_ecs.py preflight --cluster CLUSTER`, then
-   `scripts/deploy_ecs.py migrate --cluster CLUSTER --image IMMUTABLE_IMAGE`.
-   Preflight checks the currently deployed API release marker and refuses the
-   first schema cutover while old consumers are active; it never infers cutover
-   from a desired count of zero. Migration
-   archives legacy rows under transactional table locks before dropping fields.
+1. Run `scripts/deploy_ecs.py migrate --cluster CLUSTER --image IMMUTABLE_IMAGE`.
+   Migration archives legacy rows under transactional table locks before dropping fields.
    No application container performs implicit database bootstrap.
 1. Deploy using `scripts/deploy_ecs.py deploy --cluster CLUSTER --image IMAGE --service SERVICE --desired-count RECORDED_COUNT`. Start sandbox, then
    landing, the remaining workers (including interactive), beat,
