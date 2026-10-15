@@ -55,8 +55,8 @@ Contract 7.6.0 adds MCP-ready `save_training_plan` and `training_plan` workflow
 inspection. Pilot/full experiment bindings consume immutable task/data/partition
 and attributed evidence snapshots. Contract 7.6.3 removes mandatory pilot selection
 from full-run eligibility: full runs may launch directly; optional pilot selection
-still requires matching measured development metrics and a verified checkpoint. The bounded discovery budget is 86 KiB
-for 73 tools. Source/package byte transfers remain CLI-guided. Hardware profiles
+still requires matching measured development metrics and a verified checkpoint. The bounded discovery budget is 91 KiB
+for 76 tools. Source/package byte transfers remain CLI-guided. Hardware profiles
 are not quality evidence, and exploratory jobs are not universally gated.
 
 For every new or modified Overmind capability, function, API workflow, or
@@ -244,7 +244,7 @@ Readiness/preparation/estimate/launch accept the same strict monitoring policy;
 provider capabilities and unmeasured check costs remain explicit. Cancellation
 records intent first and preserves durable evidence. Evidence responses have a
 128 KiB lossless bound and return an error rather than clipping values. The current
-tool-manifest budget is 86 KiB. Refresh the connected catalogue after deployment.
+tool-manifest budget is 91 KiB. Refresh the connected catalogue after deployment.
 Native per-question metrics and assessments have `collections` descriptors in
 check/checkpoint overviews. Pass a descriptor's `field` JSON Pointer with
 `offset`/`limit` for exact retained object entries or array items. Append escaped
