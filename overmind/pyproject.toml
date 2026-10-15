@@ -78,6 +78,7 @@ dev = [
     "pytest-cov>=5.0",
     "pre-commit>=4.5.1",
     "ruff>=0.15.7",
+    "openai>=1.70.0",
 ]
 
 

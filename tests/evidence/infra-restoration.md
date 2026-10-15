@@ -88,8 +88,13 @@ release or routing was changed by this work.
   volumes. Sandbox health and runtime identity matched; landing and interactive
   worker registration checks passed before resuming the scheduler.
 - The live CLI/MCP pipeline smoke test was explicitly skipped at the user's
-  request. No dataset was created for that test. Frontend and SDK code were
-  unchanged by this reconciliation; their earlier results remain historical.
+  request. No dataset was created for that test. Frontend code was unchanged;
+  its earlier local results remain historical.
+- Clean SDK CI exposed a missing `openai` test dependency in the existing span
+  integration test. It is now declared in the development group and lockfile,
+  without adding a runtime dependency. SDK lint passed and all 600 SDK tests
+  passed locally. The already-bumped SDK version remains 0.1.92, above main's
+  0.1.90.
 
 Logs are in `/tmp/infra-restore-*`. This is functional and isolation evidence,
 not a representative production load qualification.
