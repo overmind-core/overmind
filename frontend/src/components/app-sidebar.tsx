@@ -199,7 +199,7 @@ function NavLink({
           onClick={handleClick}
           search={(e) => ({
             projectId: e.projectId,
-            ...(to === "/observability" ? { view: "overview" } : {}),
+            ...(to === "/observability" ? { view: "sessions" } : {}),
           })}
           to={to}
         >

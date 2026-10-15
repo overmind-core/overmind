@@ -43,7 +43,6 @@ from overbae.api.health import health_check
 from overbae.api.inference_requests import DeploymentInferenceView, InferenceRequestView
 from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
-from overbae.api.observability import ObservabilityOverviewView
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
@@ -131,11 +130,6 @@ router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
 urlpatterns = [
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
-    path(
-        "api/observability/overview/",
-        ObservabilityOverviewView.as_view(),
-        name="observability-overview",
-    ),
     path(
         "api/deployed-models/<uuid:deployment_id>/inference/",
         DeploymentInferenceView.as_view(),

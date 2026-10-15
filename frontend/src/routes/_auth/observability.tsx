@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { createFileRoute, Outlet, useMatches } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
 import type { OnChangeFn, RowSelectionState, VisibilityState } from "@tanstack/react-table";
 
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
@@ -14,7 +14,6 @@ import {
   serializeFiltersToSearchParams,
   useRecentFilterParams,
 } from "@/components/traces/filters";
-import { ObservabilityOverview } from "@/components/traces/observability-overview";
 import { sessionsColumns } from "@/components/traces/sessions-columns";
 import { SignalEvents } from "@/components/traces/signal-events";
 import { TraceSelectionBar } from "@/components/traces/trace-selection-bar";
@@ -103,9 +102,7 @@ function TracesPage() {
     view,
     session,
     signal_event: signalEvent,
-    overviewDays,
   } = search;
-  const isOverviewView = view === "overview" && !traceId;
   const isSessionsView = view === "sessions";
   const isSignalsView = view === "signals";
   const tracesView: TracesViewMode = isSessionsView ? "sessions" : "roots";
@@ -248,7 +245,7 @@ function TracesPage() {
 
   const { data, isFetched, isFetching, isRefetching, error, refetch, dataUpdatedAt } =
     useTracesList({
-      enabled: !isOverviewView && !isSessionsView && !isSignalsView,
+      enabled: !isSessionsView && !isSignalsView,
       filters: apiFilters,
       ordering: tracesOrdering,
       page,
@@ -396,30 +393,19 @@ function TracesPage() {
   const header = (
     <PageHeader
       actions={
-        projectId ? (
-          <Tabs
-            className="w-auto"
-            onValueChange={(next) => {
-              navigate({
-                search: {
-                  page: 1,
-                  projectId,
-                  timeRange: "all",
-                  view: next === "reporting" ? "overview" : "roots",
-                },
-                to: "/observability",
-              });
-              setSearchInput("");
-              handleClearSelection();
-            }}
-            value={isOverviewView ? "reporting" : "tracing"}
-          >
-            <TabsList aria-label="Observability mode">
-              <TabsTrigger value="reporting">Reporting</TabsTrigger>
-              <TabsTrigger value="tracing">Tracing</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        ) : null
+        <Button asChild size="sm" variant="secondary">
+          <Link search={(prev) => prev} to="/observability/integrations">
+            <Icon.integrations />
+            Integrations
+          </Link>
+        </Button>
+      }
+      description="Explore sessions, investigate signals and inspect their traces."
+      icon={
+        <Icon.observabilityTitle
+          aria-hidden
+          className="size-6 shrink-0 [image-rendering:pixelated] invert"
+        />
       }
       title="Observability"
     />
@@ -467,52 +453,25 @@ function TracesPage() {
 
   return (
     <PageShell header={header} variant="full">
-      {!isOverviewView && (
-        <Tabs
-          className="w-fit pb-3"
-          onValueChange={(next) => {
-            navigate({
-              search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
-              to: "/observability",
-            });
-            setSearchInput("");
-            handleClearSelection();
-          }}
-          value={traceId ? "roots" : view}
-        >
-          <TabsList aria-label="Tracing views">
-            <TabsTrigger value="sessions">Sessions</TabsTrigger>
-            <TabsTrigger value="signals">Signals</TabsTrigger>
-            <TabsTrigger value="roots">Traces</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
-      {isOverviewView ? (
-        <ObservabilityOverview
-          days={overviewDays}
-          onDaysChange={(days) => setSearch({ overviewDays: days })}
-          onOpenSignal={(signal) =>
-            navigate({
-              search: { page: 1, projectId, signal, view: "signals" },
-              to: "/observability",
-            })
-          }
-          onOpenTrace={(selectedTraceId) =>
-            navigate({
-              params: { traceId: selectedTraceId },
-              search: { page: 1, projectId, view: "roots" },
-              to: "/observability/$traceId",
-            })
-          }
-          onOpenTraces={(filters) =>
-            navigate({
-              search: { page: 1, projectId, view: "roots", ...filters },
-              to: "/observability",
-            })
-          }
-          projectId={projectId}
-        />
-      ) : isSignalsView ? (
+      <Tabs
+        className="w-fit pb-3"
+        onValueChange={(next) => {
+          navigate({
+            search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
+            to: "/observability",
+          });
+          setSearchInput("");
+          handleClearSelection();
+        }}
+        value={traceId ? "roots" : view}
+      >
+        <TabsList aria-label="Observability views">
+          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="signals">Signals</TabsTrigger>
+          <TabsTrigger value="roots">Traces</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {isSignalsView ? (
         <SignalEvents
           onChange={setSearch}
           onSelect={(id, conversation) => {
@@ -641,7 +600,7 @@ function TracesPage() {
         />
       )}
 
-      {!isOverviewView && !isSessionsView && !isSignalsView && (
+      {!isSessionsView && !isSignalsView && (
         <TraceSelectionBar
           allPagesSelected={allPagesSelection != null}
           onAddToDataset={featureFlags.datasets ? () => setShowAddToDataset(true) : undefined}

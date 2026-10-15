@@ -43,12 +43,6 @@ export const tracesSearchSchema = z.object({
   operation: z.string().optional(),
   operation__icontains: z.string().optional(),
   ordering: z.string().optional().default("-start_time_ns"),
-  overviewDays: z
-    .union([z.literal(7), z.literal(30), z.literal(90)])
-    .optional()
-    .default(30)
-    .catch(30),
-
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
   projectId: z.string().optional(),
@@ -87,11 +81,7 @@ export const tracesSearchSchema = z.object({
   trace_group__icontains: z.string().optional(),
   trace_id: z.string().optional(),
   unseen: z.boolean().optional().catch(undefined),
-  view: z
-    .enum(["overview", "roots", "sessions", "signals"])
-    .optional()
-    .catch("overview")
-    .default("overview"),
+  view: z.enum(["roots", "sessions", "signals"]).optional().catch("roots").default("roots"),
 });
 
 /**

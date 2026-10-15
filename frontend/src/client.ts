@@ -49,7 +49,6 @@ import {
   McpOauthApi,
   ModelsApi,
   NativeEvaluationsApi,
-  ObservabilityApi,
   OptimizerExperimentsApi,
   ProjectsApi,
   ResponseError,
@@ -438,7 +437,6 @@ export class API {
   trainingPreparations: TrainingPreparationsApi;
   dataPartitions: DataPartitionsApi;
   nativeEvaluations: NativeEvaluationsApi;
-  observability: ObservabilityApi;
   trainingExperiments: TrainingExperimentsApi;
   trainingPlans: TrainingPlansApi;
   decisionJobs: DecisionJobsApi;
@@ -481,7 +479,6 @@ export class API {
     this.trainingPreparations = new TrainingPreparationsApi(this.cfg);
     this.dataPartitions = new DataPartitionsApi(this.cfg);
     this.nativeEvaluations = new NativeEvaluationsApi(this.cfg);
-    this.observability = new ObservabilityApi(this.cfg);
     this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
     this.trainingPlans = new TrainingPlansApi(this.cfg);
     this.decisionJobs = new DecisionJobsApi(this.cfg);

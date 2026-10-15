@@ -17,8 +17,7 @@ describe("schemas", () => {
       expect(result.ordering).toBe("-start_time_ns");
       expect(result.page).toBe(1);
       expect(result.page_size).toBe(25);
-      expect(result.view).toBe("overview");
-      expect(result.overviewDays).toBe(30);
+      expect(result.view).toBe("roots");
     });
 
     it("parses valid search params", () => {
@@ -30,6 +29,10 @@ describe("schemas", () => {
       expect(result.projectId).toBe("proj-1");
       expect(result.timeRange).toBe("past24h");
       expect(result.search).toBe("test");
+    });
+
+    it("opens old reporting links in Traces", () => {
+      expect(tracesSearchSchema.parse({ view: "overview" }).view).toBe("roots");
     });
 
     it("parses DRF-style filter lookups", () => {
