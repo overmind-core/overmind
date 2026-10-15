@@ -62,21 +62,36 @@ def check_script(config):
 def evaluator_rows(evaluator):
     """(name, type, source) triples: a judge prompt is one llm row, each checklist
     item its own llm row, a recognised check a deterministic row."""
-    name = (evaluator.display_name or evaluator.name)[:240]
-    if evaluator.kind == "deterministic":
-        script = check_script(evaluator.config or {})
+    if evaluator is None:
+        return []
+    if not isinstance(evaluator, dict):
+        evaluator = {
+            field: getattr(evaluator, field)
+            for field in (
+                "display_name",
+                "name",
+                "kind",
+                "config",
+                "checklist",
+                "rubric_md",
+                "description",
+            )
+        }
+    name = (evaluator.get("display_name") or evaluator.get("name") or "evaluator")[:240]
+    if evaluator.get("kind") == "deterministic":
+        script = check_script(evaluator.get("config") or {})
         if script:
             return [(name, "deterministic", script)]
     questions = [
         str(item.get("q")).strip()
-        for item in evaluator.checklist or []
+        for item in evaluator.get("checklist") or []
         if isinstance(item, dict) and str(item.get("q") or "").strip()
     ]
     if questions:
         if len(questions) == 1:
             return [(name, "llm", questions[0])]
         return [(f"{name} · {index}", "llm", q) for index, q in enumerate(questions, 1)]
-    text = (evaluator.rubric_md or evaluator.description or "").strip()
+    text = (evaluator.get("rubric_md") or evaluator.get("description") or "").strip()
     return [(name, "llm", text)] if text else []
 
 
@@ -162,7 +177,9 @@ def forward(apps, schema_editor):
         matrix = []
         seen = set()
         for run_evaluator in run_evaluators.order_by("order"):
-            for name, kind, source in evaluator_rows(run_evaluator.evaluator):
+            for name, kind, source in evaluator_rows(
+                run_evaluator.snapshot or run_evaluator.evaluator
+            ):
                 if name not in seen:
                     seen.add(name)
                     matrix.append(

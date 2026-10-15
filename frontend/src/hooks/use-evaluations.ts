@@ -4,11 +4,13 @@ import apiClient from "@/client";
 import { notify } from "@/lib/notify";
 import { backoffPolling } from "@/lib/poll";
 import type {
+  EvalMatrix,
   EvalMatrixRequest,
   EvalRun,
   EvalRunsActivityListOrderingEnum,
   EvalRunsActivityListStatusEnum,
   EvaluationActivity,
+  PaginatedEvalMatrixList,
   PaginatedEvalRunList,
 } from "@/openapi";
 
@@ -45,13 +47,26 @@ export const useProjectDatasetsForEvalQuery = (projectId: string | undefined) =>
     queryKey: ["datasets", "list", projectId, "eval"],
   });
 
+export const fetchAllEvalMatrix = async (projectId: string): Promise<PaginatedEvalMatrixList> => {
+  const results: EvalMatrix[] = [];
+  for (let page = 1; ; page += 1) {
+    const data = await apiClient.evalMatrix.evalMatrixList({
+      ordering: "name",
+      page,
+      pageSize: 100,
+      project: projectId,
+    });
+    results.push(...data.results);
+    if (!data.next) return { ...data, next: null, previous: null, results };
+  }
+};
+
 /** Project-wide rows have a null capability; a capability-scoped query returns
  *  both its own rows and the project-wide ones. */
 export const useEvalMatrixQuery = (projectId: string | undefined, capabilityId?: string) =>
   useQuery({
     enabled: !!projectId,
-    queryFn: () =>
-      apiClient.evalMatrix.evalMatrixList({ ordering: "name", pageSize: 500, project: projectId }),
+    queryFn: () => fetchAllEvalMatrix(projectId!),
     queryKey: ["eval-matrix", projectId],
     select: (data) =>
       capabilityId

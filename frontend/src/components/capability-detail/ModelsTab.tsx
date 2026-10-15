@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 
@@ -12,20 +12,33 @@ import {
   FineTunedModelIdentity,
   TrainingJobChip,
 } from "@/components/inference/model-identity";
+import { ServingStatusBadge } from "@/components/inference/serving-status";
 import { DeployedModelStatusBadge } from "@/components/inference/status-badge";
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { QueryError } from "@/components/ui/query-error";
-import { SectionCard } from "@/components/ui/section-card";
+import { SearchInput } from "@/components/ui/search-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { TableSectionHeader } from "@/components/ui/table-section-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { blockedReason, useSetActiveModel } from "@/hooks/use-capability-active-model";
 import { useGuestGate } from "@/hooks/use-guest-gate";
-import { useDeployedModelQuery, useDeployedModelsQuery } from "@/hooks/use-inference";
+import {
+  useDeployedModelQuery,
+  useDeployedModelsQuery,
+  useModelLiveQuery,
+} from "@/hooks/use-inference";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { featureFlags } from "@/lib/feature-flags";
 import { formatNumber } from "@/lib/formatters";
@@ -202,86 +215,80 @@ function FineTunedRow({
 }
 
 /**
- * `overmind/<capability-uuid>` has no second, memorable form, so this card is the only
- * place a customer can obtain the string their code needs — hence copyable.
+ * Keep routing identity and the copyable alias attached to the model table,
+ * including when the active deployment is outside the current page.
  */
-function LiveModelCard({
+function LiveModelSummary({
   alias,
   live,
   liveId,
+  capability,
+  models,
 }: {
+  capability: Capability;
+  models: DeployedModel[];
   alias: string;
   live: DeployedModel | null;
   liveId: string | null;
 }) {
   // The live deployment need not be on this page: a fine-tune can be pinned across
   // sibling capabilities, and the table shows one page of 100.
-  const { data: fetched } = useDeployedModelQuery(live ? undefined : (liveId ?? undefined));
-  const served = live ?? fetched ?? null;
+  const { data: fetched } = useDeployedModelQuery(liveId ?? undefined);
+  const served = fetched ?? live ?? null;
+  const { data: liveStats } = useModelLiveQuery(served?.id, served?.status === "ready");
 
   return (
-    <SectionCard
-      description="The deployment this capability's alias answers with. Switching takes effect on the next request."
-      headerEnd={served ? <DeployedModelStatusBadge status={served.status} /> : null}
-      icon={<Icon.server className="size-3" />}
-      title="Live model"
-    >
-      <div className="space-y-4">
-        {served && served.status !== "ready" ? (
-          <Alert variant="destructive">
-            <span>This deployment isn't ready, so the alias is failing for every caller.</span>
-          </Alert>
-        ) : null}
+    <div className="space-y-3 px-4 py-4">
+      {served && served.status !== "ready" ? (
+        <Alert variant="destructive">
+          <span>This deployment isn't ready, so the alias is failing for every caller.</span>
+        </Alert>
+      ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0 space-y-1.5">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0 space-y-2 rounded-md bg-wash-subtle px-3 py-3">
+          <div className="flex items-center gap-2">
             <p className="pixel-label text-xs text-muted-foreground">Serving now</p>
-            {served ? (
-              <>
-                <FineTunedModelIdentity
-                  baseModelId={served.baseModelId}
-                  capabilityName={served.capabilityName}
-                  displayName={served.finetuningJobName}
-                  modelId={served.modelId}
-                  size="lg"
-                />
-                {/* A sibling, not a suffix — inside the truncated id it truncates
-                    away first. */}
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <p
-                    className="min-w-0 truncate font-mono text-xs text-muted-foreground"
-                    title={served.modelId}
-                  >
-                    {served.modelId}
-                  </p>
-                  {served.maxModelLen > 0 ? (
-                    <p className="shrink-0 text-xs text-muted-foreground">
-                      {formatNumber(served.maxModelLen)} token context
-                    </p>
-                  ) : null}
-                </div>
-              </>
-            ) : liveId ? (
-              <p className={cn(PROSE, "text-sm text-muted-foreground")}>
-                A deployment from elsewhere in this project — not listed below.
-              </p>
-            ) : (
-              <p className={cn(PROSE, "text-sm text-muted-foreground")}>
-                Nothing yet. Train a fine-tune, then make it live here.
-              </p>
-            )}
+            {served ? <ServingStatusBadge live={liveStats} status={served.status} /> : null}
           </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <p className="pixel-label text-xs text-muted-foreground">Alias for your code</p>
-            <CopyableModelRef modelId={alias} />
-            <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-              Send it as the model field from any OpenAI-compatible client.
+          {served ? (
+            <>
+              <FineTunedModelIdentity
+                baseModelId={served.baseModelId}
+                capabilityName={served.capabilityName}
+                displayName={served.finetuningJobName}
+                modelId={served.modelId}
+                size="lg"
+              />
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">Model reference</span>
+                <CopyableModelRef modelId={served.modelId} />
+                {served.maxModelLen > 0 ? (
+                  <span className="text-xs text-muted-foreground">
+                    {formatNumber(served.maxModelLen)} token context
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : liveId ? (
+            <p className={cn(PROSE, "text-sm text-muted-foreground")}>
+              A model is serving from another deployment.
             </p>
-          </div>
+          ) : (
+            <p className={cn(PROSE, "text-sm text-muted-foreground")}>No model is serving yet.</p>
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-2 rounded-md bg-wash-subtle px-3 py-3">
+          <p className="pixel-label text-xs text-muted-foreground">API alias</p>
+          <CopyableModelRef modelId={alias} />
+          <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+            Use this value for the model field in an OpenAI-compatible request.
+          </p>
         </div>
       </div>
-    </SectionCard>
+      <ModelActivationStatus capability={capability} models={models} showTraffic={false} />
+    </div>
   );
 }
 
@@ -298,6 +305,26 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
     refetch,
   } = useDeployedModelsQuery({ capability: capabilityId, pageSize: 100, projectId });
   const models = deployed?.results ?? [];
+  const [modelSearch, setModelSearch] = useState("");
+  const [modelStatus, setModelStatus] = useState("all");
+  const filteredModels = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase();
+    return models.filter((model) => {
+      const matchesSearch =
+        !query ||
+        [model.modelId, model.finetuningJobName, model.baseModelId, model.status]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      return matchesSearch && (modelStatus === "all" || model.status === modelStatus);
+    });
+  }, [modelSearch, modelStatus, models]);
+  const hasModelFilters = !!modelSearch || modelStatus !== "all";
+  const clearModelFilters = () => {
+    setModelSearch("");
+    setModelStatus("all");
+  };
 
   // Shared with the run card and the model detail page, so every entry point
   // retargets the alias under the same rules — including the narrowing confirmation.
@@ -327,14 +354,9 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <LiveModelCard alias={`overmind/${capabilityId}`} live={live} liveId={liveId} />
-        <ModelActivationStatus capability={capability} models={models} />
-
-        <SectionCard
-          contentClassName="p-0"
-          headerEnd={
+        <TableSectionHeader
+          actions={
             <div className="flex items-center gap-2">
-              <Badge variant="secondary">{rowCount}</Badge>
               {featureFlags.finetuning && projectId && (
                 <Button
                   onClick={guard(() =>
@@ -348,9 +370,61 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
               )}
             </div>
           }
-          icon={<Icon.model className="size-3" />}
+          count={rowCount}
+          description="Models available to this capability and their deployment status."
+          icon={
+            <Icon.inferenceTitle
+              aria-hidden
+              className="size-6 shrink-0 [image-rendering:pixelated] invert"
+            />
+          }
           title="Models"
-        >
+          toolbar={
+            <ListToolbar
+              filters={
+                <Select onValueChange={setModelStatus} value={modelStatus}>
+                  <SelectTrigger
+                    aria-label="Filter models by status"
+                    className="w-36"
+                    size="default"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="queued">Queued</SelectItem>
+                    <SelectItem value="quantizing">Quantizing</SelectItem>
+                    <SelectItem value="deploying">Deploying</SelectItem>
+                    <SelectItem value="warming">Warming</SelectItem>
+                    <SelectItem value="ready">Ready</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="deleting">Deleting</SelectItem>
+                  </SelectContent>
+                </Select>
+              }
+              hasActiveFilters={hasModelFilters}
+              onClearFilters={clearModelFilters}
+              search={
+                <SearchInput
+                  className="min-w-[220px] flex-1"
+                  label="Search models"
+                  onChange={(e) => setModelSearch(e.target.value)}
+                  onClear={() => setModelSearch("")}
+                  placeholder="Search models…"
+                  value={modelSearch}
+                />
+              }
+            />
+          }
+        />
+        <div className="overflow-hidden rounded-md border border-border bg-card">
+          <LiveModelSummary
+            alias={`overmind/${capabilityId}`}
+            capability={capability}
+            live={live}
+            liveId={liveId}
+            models={models}
+          />
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
@@ -399,7 +473,7 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortRows(models, (m, key) =>
+              {sortRows(filteredModels, (m, key) =>
                 key === "live"
                   ? m.id === liveId
                   : key === "model"
@@ -439,6 +513,17 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
                 </TableRow>
               )}
 
+              {filteredModels.length === 0 && models.length > 0 && (
+                <TableRow>
+                  <TableCell
+                    className="py-10 text-center text-sm text-muted-foreground"
+                    colSpan={6}
+                  >
+                    No models match these filters.
+                  </TableCell>
+                </TableRow>
+              )}
+
               {models.length === 0 && !capability.model && (
                 <TableRow>
                   <TableCell
@@ -451,7 +536,7 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
               )}
             </TableBody>
           </Table>
-        </SectionCard>
+        </div>
 
         {narrowingConfirm}
       </div>

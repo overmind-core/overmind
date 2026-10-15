@@ -20,6 +20,13 @@ import {
     CapabilityFlowTrajectoryToolUseToJSON,
     CapabilityFlowTrajectoryToolUseToJSONTyped,
 } from './CapabilityFlowTrajectoryToolUse';
+import type { CapabilityFlowTransition } from './CapabilityFlowTransition';
+import {
+    CapabilityFlowTransitionFromJSON,
+    CapabilityFlowTransitionFromJSONTyped,
+    CapabilityFlowTransitionToJSON,
+    CapabilityFlowTransitionToJSONTyped,
+} from './CapabilityFlowTransition';
 
 /**
  *
@@ -27,6 +34,12 @@ import {
  * @interface CapabilityFlowTrajectoryStep
  */
 export interface CapabilityFlowTrajectoryStep {
+    /**
+     *
+     * @type {Array<CapabilityFlowTransition>}
+     * @memberof CapabilityFlowTrajectoryStep
+     */
+    transitions?: Array<CapabilityFlowTransition>;
     /**
      *
      * @type {string}
@@ -89,6 +102,7 @@ export function CapabilityFlowTrajectoryStepFromJSONTyped(json: any, ignoreDiscr
     }
     return {
 
+        'transitions': json['transitions'] == null ? undefined : ((json['transitions'] as Array<any>).map(CapabilityFlowTransitionFromJSON)),
         'step': json['step'],
         'kind': json['kind'] == null ? undefined : json['kind'],
         'anchors': json['anchors'] == null ? undefined : json['anchors'],
@@ -110,6 +124,7 @@ export function CapabilityFlowTrajectoryStepToJSONTyped(value?: CapabilityFlowTr
 
     return {
 
+        'transitions': value['transitions'] == null ? undefined : ((value['transitions'] as Array<any>).map(CapabilityFlowTransitionToJSON)),
         'step': value['step'],
         'kind': value['kind'],
         'anchors': value['anchors'],

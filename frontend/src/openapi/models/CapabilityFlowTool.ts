@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { CapabilityFlowToolBranch } from './CapabilityFlowToolBranch';
+import {
+    CapabilityFlowToolBranchFromJSON,
+    CapabilityFlowToolBranchFromJSONTyped,
+    CapabilityFlowToolBranchToJSON,
+    CapabilityFlowToolBranchToJSONTyped,
+} from './CapabilityFlowToolBranch';
 import type { CapabilityFlowToolArgument } from './CapabilityFlowToolArgument';
 import {
     CapabilityFlowToolArgumentFromJSON,
@@ -65,6 +72,12 @@ export interface CapabilityFlowTool {
     arguments?: Array<CapabilityFlowToolArgument>;
     /**
      *
+     * @type {Array<CapabilityFlowToolBranch>}
+     * @memberof CapabilityFlowTool
+     */
+    branches?: Array<CapabilityFlowToolBranch>;
+    /**
+     *
      * @type {string}
      * @memberof CapabilityFlowTool
      */
@@ -109,6 +122,7 @@ export function CapabilityFlowToolFromJSONTyped(json: any, ignoreDiscriminator: 
         'sideEffect': json['side_effect'] == null ? undefined : json['side_effect'],
         'returns': json['returns'] == null ? undefined : json['returns'],
         'arguments': json['arguments'] == null ? undefined : ((json['arguments'] as Array<any>).map(CapabilityFlowToolArgumentFromJSON)),
+        'branches': json['branches'] == null ? undefined : ((json['branches'] as Array<any>).map(CapabilityFlowToolBranchFromJSON)),
         'integration': json['integration'] == null ? undefined : json['integration'],
         'cluster': json['cluster'] == null ? undefined : json['cluster'],
         'provenance': json['provenance'] == null ? undefined : json['provenance'],
@@ -132,6 +146,7 @@ export function CapabilityFlowToolToJSONTyped(value?: CapabilityFlowTool | null,
         'side_effect': value['sideEffect'],
         'returns': value['returns'],
         'arguments': value['arguments'] == null ? undefined : ((value['arguments'] as Array<any>).map(CapabilityFlowToolArgumentToJSON)),
+        'branches': value['branches'] == null ? undefined : ((value['branches'] as Array<any>).map(CapabilityFlowToolBranchToJSON)),
         'integration': value['integration'],
         'cluster': value['cluster'],
         'provenance': value['provenance'],

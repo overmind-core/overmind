@@ -7,6 +7,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
+from overbae.innermind.checks import render
+
 from .conftest import GOOD_REPLY
 from .stack import drain
 
@@ -306,3 +308,40 @@ def test_a_subscribed_signal_raises_one_event_per_conversation_seen_on_every_sur
 
     rest.request("POST", "/api/signal-events/mark-seen/", json={"project": project_id})
     assert mcp.call("list_signals", {})["unseen_events"] == 0
+
+
+def test_json_checks_grade_the_outer_payload_even_when_strings_contain_fences(
+    project, live_api, worker
+):
+    mcp, rest, key = project
+    capability = mcp.capability("answer")["id"]
+    definitions = [
+        ("outer keys", "json_required_keys", {"REQUIRED_KEYS": ["history"]}),
+        ("outer shape", "schema_field_conformance", {"FIELDS": {"history": {"type": "array"}}}),
+        ("outer JSON", "output_is_valid_json", {}),
+    ]
+    for name, check, params in definitions:
+        mcp.call(
+            "create_eval_matrix_row",
+            {
+                "capability": capability,
+                "name": name,
+                "type": "deterministic",
+                "source": render(check, params),
+                "span_name": "handle_ticket",
+            },
+        )
+    payload = json.dumps({"history": [], "answer": '```json\n{"value":1}\n```'})
+    for reply, expected in [
+        (payload, 1.0),
+        ("```json\n" + payload + "\n```", 1.0),
+        ('{"broken": ```json\n{"history":[]}\n```}', 0.0),
+    ]:
+        trace = Trace(capability, reply, tools=[])
+        trace.send(live_api.url, key)
+        drain(worker)
+        metrics = _spans(rest, mcp.project()["id"], trace)[trace.root_id.hex()]["eval_attributes"][
+            "metrics"
+        ]
+        for name, _, _ in definitions:
+            assert metrics[name]["score"] == expected, metrics[name]

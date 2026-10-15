@@ -15,7 +15,9 @@ from overbae.models import (
     Conversation,
     Dataset,
     DeployedModel,
+    EvalMatrix,
     EvalRun,
+    EvalSet,
     FinetuningJob,
     OptimizerExperiment,
     Project,
@@ -638,3 +640,72 @@ def test_native_running_resource_retains_latest_metrics_and_contract():
     assert resource["loss"][-1]["step"] == 250
     assert resource["progress"]["metrics_history"][-1]["step"] == 250
     assert "must-redact" not in json.dumps(resource)
+
+
+def test_capability_resource_exposes_tool_branches_and_execution_steps():
+    project, _ = _project()
+    branch = {
+        "condition": "Select element",
+        "basis": "code",
+        "action": "Read options",
+        "outcome": "Choices",
+        "next": "Decide again",
+        "provenance": ["tools.py#L20-L35"],
+    }
+    capability = Capability.objects.create(
+        project=project,
+        name="Browser",
+        slug="browser",
+        improvement_metadata={
+            "capability_card": {
+                "tool_spec": [
+                    {"name": "click", "purpose": "Activate", "args": "index", "branches": [branch]}
+                ]
+            }
+        },
+    )
+    context = MCPContext(
+        user=User(email="reader@example.com"),
+        token=APIToken(scope={"scope": "project", "permission": ["read"]}),
+        project=project,
+    )
+
+    async def read():
+        with bind_context(context):
+            contents = list(await read_resource(f"overmind://capabilities/{capability.id}"))
+        return json.loads(contents[0].content)
+
+    result = asyncio.run(read())
+    assert result["tool_spec"][0]["branches"] == [branch]
+    assert result["trajectory_map"] == []
+
+
+def test_eval_set_pages_preserve_complete_sources_and_project_scope():
+    project, key = _project()
+    _, other_key = _project()
+    eval_set = EvalSet.objects.create(project=project, name="Audit")
+    sources = ["def evaluate(span):\n    return True\n# " + str(i) * 2500 for i in range(3)]
+    for i, source in enumerate(sources):
+        eval_set.rows.add(
+            EvalMatrix.objects.create(
+                project=project, name=f"row-{i}", type="deterministic", source=source
+            )
+        )
+    uri = f"overmind://eval-sets/{eval_set.id}"
+    with TestClient(create_mcp_application()) as client:
+
+        def read(suffix, api_key=key):
+            return client.post(
+                "/api/mcp/",
+                json=_rpc("resources/read", {"uri": uri + suffix}),
+                headers={"X-Api-Key": api_key, "Accept": "application/json"},
+            ).json()
+
+        first = json.loads(read("?limit=2")["result"]["contents"][0]["text"])
+        last = json.loads(read("?limit=2&offset=2")["result"]["contents"][0]["text"])
+        assert [r["source"] for r in first["rows"] + last["rows"]] == sources
+        assert first["total"] == 3 and first["next_offset"] == 2
+        assert last["next_offset"] is None and not last["rows_truncated"]
+        assert "error" in read("?offset=-1")
+        assert "error" in read("?limit=101")
+        assert "error" in read("", other_key)

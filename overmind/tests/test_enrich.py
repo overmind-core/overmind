@@ -39,6 +39,18 @@ def test_convert_enriches_then_stamps_verified(tmp_path: Path):
                                 "file": "app/agent.py#L99-L99",
                             },
                         ],
+                        "tool_spec": [
+                            {
+                                "name": "search",
+                                "branches": [
+                                    {
+                                        "condition": "When requested",
+                                        "basis": "code",
+                                        "provenance": ["app/agent.py#L2-L3", "missing.py#L1-L2"],
+                                    }
+                                ],
+                            }
+                        ],
                         "trajectory_map": [
                             {
                                 "id": "handle-turn",
@@ -62,3 +74,5 @@ def test_convert_enriches_then_stamps_verified(tmp_path: Path):
     paths = {p["id"]: p for p in card["trajectory_map"]}
     assert paths["handle-turn"]["anchors"] == ["app.agent.run_turn"]
     assert paths["handle-turn"]["verified"] is True
+
+    assert card["tool_spec"][0]["branches"][0]["provenance"] == ["app/agent.py#L2-L3"]

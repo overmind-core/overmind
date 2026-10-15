@@ -61,6 +61,7 @@ class EvalMatrixRowContract(MCPModel):
     name: str
     type: MatrixType
     source: str = Field(max_length=20_000)
+    definition_source: Literal["stock", "code", "config", "custom", "unknown"]
     capability: str | None = None
     span_type: str = ""
     span_name: str = ""

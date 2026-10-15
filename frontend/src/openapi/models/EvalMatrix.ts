@@ -20,6 +20,13 @@ import {
     EvalMatrixTypeEnumToJSON,
     EvalMatrixTypeEnumToJSONTyped,
 } from './EvalMatrixTypeEnum';
+import type { DefinitionSourceEnum } from './DefinitionSourceEnum';
+import {
+    DefinitionSourceEnumFromJSON,
+    DefinitionSourceEnumFromJSONTyped,
+    DefinitionSourceEnumToJSON,
+    DefinitionSourceEnumToJSONTyped,
+} from './DefinitionSourceEnum';
 
 /**
  *
@@ -65,6 +72,12 @@ export interface EvalMatrix {
     source: string;
     /**
      *
+     * @type {DefinitionSourceEnum}
+     * @memberof EvalMatrix
+     */
+    readonly definitionSource: DefinitionSourceEnum;
+    /**
+     *
      * @type {string}
      * @memberof EvalMatrix
      */
@@ -106,6 +119,7 @@ export function instanceOfEvalMatrix(value: object): value is EvalMatrix {
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('source' in value) || value['source'] === undefined) return false;
+    if (!('definitionSource' in value) || value['definitionSource'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -127,6 +141,7 @@ export function EvalMatrixFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'name': json['name'],
         'type': EvalMatrixTypeEnumFromJSON(json['type']),
         'source': json['source'],
+        'definitionSource': DefinitionSourceEnumFromJSON(json['definition_source']),
         'spanType': json['span_type'] == null ? undefined : json['span_type'],
         'spanName': json['span_name'] == null ? undefined : json['span_name'],
         'enabled': json['enabled'] == null ? undefined : json['enabled'],
@@ -139,7 +154,7 @@ export function EvalMatrixToJSON(json: any): EvalMatrix {
     return EvalMatrixToJSONTyped(json, false);
 }
 
-export function EvalMatrixToJSONTyped(value?: Omit<EvalMatrix, 'id'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalMatrixToJSONTyped(value?: Omit<EvalMatrix, 'id'|'definition_source'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

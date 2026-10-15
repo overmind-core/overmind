@@ -510,6 +510,21 @@ class CapabilityFlowToolArgumentSerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True, required=False, default="")
 
 
+class CapabilityFlowTransitionSerializer(serializers.Serializer):
+    target = serializers.CharField()
+    condition = serializers.CharField()
+
+
+class CapabilityFlowToolBranchSerializer(serializers.Serializer):
+    transitions = CapabilityFlowTransitionSerializer(many=True, required=False, default=list)
+    condition = serializers.CharField()
+    basis = serializers.CharField()
+    action = serializers.CharField(allow_blank=True)
+    outcome = serializers.CharField(allow_blank=True)
+    next = serializers.CharField(allow_blank=True)
+    provenance = serializers.ListField(child=serializers.CharField())
+
+
 class CapabilityFlowToolSerializer(serializers.Serializer):
     name = serializers.CharField()
     purpose = serializers.CharField(allow_blank=True)
@@ -518,6 +533,7 @@ class CapabilityFlowToolSerializer(serializers.Serializer):
     side_effect = serializers.CharField(allow_blank=True, required=False, default="none")
     returns = serializers.CharField(allow_blank=True, required=False, default="")
     arguments = CapabilityFlowToolArgumentSerializer(many=True, required=False, default=list)
+    branches = CapabilityFlowToolBranchSerializer(many=True, required=False, default=list)
     integration = serializers.CharField(allow_blank=True, required=False, default="")
     cluster = serializers.CharField(allow_blank=True, required=False, default="")
     provenance = serializers.ListField(child=serializers.CharField(), required=False, default=list)
@@ -568,10 +584,11 @@ class CapabilityFlowTrajectoryToolUseSerializer(serializers.Serializer):
 
 
 class CapabilityFlowTrajectoryStepSerializer(serializers.Serializer):
+    transitions = CapabilityFlowTransitionSerializer(many=True, required=False, default=list)
     step = serializers.CharField()
     kind = serializers.CharField(allow_blank=True, required=False, default="agent_step")
     anchors = serializers.ListField(child=serializers.CharField(), required=False, default=list)
-    # In/Action/Out contract; blank on agent steps.
+    # Source-authored In/Action/Out contract for any execution step.
     input = serializers.CharField(allow_blank=True, required=False, default="")
     action = serializers.CharField(allow_blank=True, required=False, default="")
     output = serializers.CharField(allow_blank=True, required=False, default="")
@@ -593,12 +610,19 @@ class CapabilityFlowTrajectoryPathSerializer(serializers.Serializer):
     provenance = serializers.ListField(child=serializers.CharField())
 
 
+class CapabilityFlowModelResolutionSerializer(serializers.Serializer):
+    default_model = serializers.CharField(allow_blank=True)
+    selection = serializers.CharField(allow_blank=True)
+    provenance = serializers.ListField(child=serializers.CharField())
+
+
 class CapabilityFlowSerializer(serializers.Serializer):
     """Typed execution-graph contract for one capability (see ``build_capability_flow``)."""
 
     has_card = serializers.BooleanField()
     is_fallback = serializers.BooleanField()
     source = serializers.CharField()
+    model_resolution = CapabilityFlowModelResolutionSerializer(required=False)
     task = serializers.CharField(allow_blank=True)
     modality = serializers.CharField(allow_blank=True)
     domain = serializers.CharField(allow_blank=True)

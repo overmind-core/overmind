@@ -3,6 +3,25 @@ from __future__ import annotations
 from overbae.services.codebase import artifacts as A  # noqa: N812
 
 
+def test_model_resolution_preserves_defaults_without_inventing_an_active_model():
+    card = _valid_card()
+    card["model_resolution"] = {
+        "default_model": "bu-2-0",
+        "selection": "Caller-supplied model overrides the code default.",
+        "provenance": ["llm.py#L40-L90"],
+    }
+    normalized = A.normalize_capability_card(card)
+    assert normalized["model_resolution"] == card["model_resolution"]
+    assert "model" not in normalized
+    assert A.normalize_capability_card(_valid_card())["model_resolution"] == {
+        "default_model": "",
+        "selection": "",
+        "provenance": [],
+    }
+    card["model_resolution"] = "unknown"
+    assert A.normalize_capability_card(card)["model_resolution"]["default_model"] == ""
+
+
 def _valid_card() -> dict:
     return {
         "task": "Answer clinical questions with grounded reasoning.",
@@ -461,16 +480,12 @@ def test_normalize_trajectory_map_backbone_steps_and_may_use():
     assert path["tools"] == ["post_update", "Fetch-Data"]
 
 
-def test_normalize_trajectory_steps_blanks_contract_on_agent_steps():
+def test_unknown_step_kinds_preserve_execution_details_as_agent_steps():
     _, steps = A.normalize_trajectory_steps(
-        [
-            {"step": "harness work", "kind": "agent_step", "input": "leak", "output": "leak"},
-            {"step": "odd kind", "kind": "explodes", "action": "leak"},
-        ],
-        None,
+        [{"step": "harness work", "kind": "unknown", "action": "Read state"}], None
     )
-    assert steps[0]["input"] == "" and steps[0]["output"] == ""
-    assert steps[1]["kind"] == "agent_step" and steps[1]["action"] == ""
+    assert steps[0]["kind"] == "agent_step"
+    assert steps[0]["action"] == "Read state"
 
 
 def test_normalize_trajectory_map_is_idempotent_on_backbone_paths():
@@ -497,3 +512,74 @@ def test_normalize_capability_card_filters_step_anchors_and_validates_may_use():
     (path,) = A.normalize_capability_card(card)["trajectory_map"]
     assert path["steps"][0]["anchors"] == ["m.run"]
     assert path["steps"][1]["may_use"] == [{"tool": "Fetch-Data", "when": "the answer needs rows"}]
+
+
+def test_tool_branches_retain_partial_evidence_without_inventing_transitions():
+    tool = A.normalize_tool_spec(
+        [
+            {
+                "name": "click",
+                "branches": [
+                    {
+                        "condition": "A select element",
+                        "basis": "code",
+                        "action": "Read options",
+                        "outcome": "Choices",
+                        "provenance": ["tools.py#L20-L35"],
+                    },
+                    {"condition": "Maybe", "basis": "guess", "outcome": "Unknown"},
+                    "invalid",
+                ],
+            }
+        ]
+    )[0]
+    assert tool["branches"] == [
+        {
+            "condition": "A select element",
+            "basis": "code",
+            "action": "Read options",
+            "outcome": "Choices",
+            "next": "",
+            "provenance": ["tools.py#L20-L35"],
+        }
+    ]
+
+
+def test_agent_steps_keep_source_authored_execution_contracts():
+    _, steps = A.normalize_trajectory_steps(
+        [
+            {
+                "step": "Capture page state",
+                "kind": "agent_step",
+                "input": "Browser session",
+                "action": "Read DOM",
+                "output": "Current page",
+            }
+        ],
+        None,
+    )
+    assert steps[0]["input"] == "Browser session"
+    assert steps[0]["action"] == "Read DOM"
+    assert steps[0]["output"] == "Current page"
+
+
+def test_tool_and_step_transitions_keep_explicit_targets_and_conditions():
+    transitions = [{"target": "Agent.record", "condition": "The action batch returns"}]
+    tool = A.normalize_tool_spec(
+        [
+            {
+                "name": "click",
+                "branches": [
+                    {
+                        "condition": "Element exists",
+                        "basis": "code",
+                        "provenance": ["tools.py#L1-L20"],
+                        "transitions": transitions,
+                    }
+                ],
+            }
+        ]
+    )[0]
+    _, steps = A.normalize_trajectory_steps([{"step": "Record", "transitions": transitions}], None)
+    assert tool["branches"][0]["transitions"] == transitions
+    assert steps[0]["transitions"] == transitions

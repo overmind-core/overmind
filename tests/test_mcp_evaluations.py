@@ -117,6 +117,7 @@ def test_matrix_rows_are_created_and_deleted_but_never_edited():
     )
 
     assert created.structuredContent["row"]["capability"] == "support"
+    assert created.structuredContent["row"]["definition_source"] == "custom"
     assert escaping.structuredContent["error"]["code"] == "eval_matrix_row_invalid"
     assert not EvalMatrix.objects.filter(name="Escape").exists()
     assert edit.isError

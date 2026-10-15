@@ -86,6 +86,7 @@ function highlight(source: string, kind: CellKind): ReactNode[] {
 export function ScriptCode({
   source,
   kind = "python",
+  className,
   onChange,
   onRun,
   onFocus,
@@ -93,6 +94,7 @@ export function ScriptCode({
 }: {
   source: string;
   kind?: CellKind;
+  className?: string;
   onChange?: (value: string) => void;
   onRun?: () => void;
   onFocus?: () => void;
@@ -130,7 +132,10 @@ export function ScriptCode({
   return (
     <div
       aria-label={ariaLabel}
-      className="nodrag nopan nowheel flex max-h-80 min-w-0 gap-3 overflow-auto overscroll-contain"
+      className={cn(
+        "nodrag nopan nowheel flex max-h-80 min-w-0 gap-3 overflow-auto overscroll-contain",
+        className
+      )}
       role="region"
       tabIndex={editable ? undefined : 0}
     >
@@ -169,7 +174,7 @@ export function ScriptCode({
           </>
         ) : (
           <pre className={cn("whitespace-pre-wrap break-words text-foreground/90", METRICS)}>
-            <code>{nodes}</code>
+            <code className="[font-family:inherit]">{nodes}</code>
           </pre>
         )}
       </div>

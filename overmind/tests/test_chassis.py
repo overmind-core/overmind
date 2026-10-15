@@ -177,3 +177,23 @@ def test_chassis_cli_prints_digest(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "app.agent.run_turn" in result.output
     assert "5 functions across 1 files" in result.output
+
+
+def test_declarations_keep_the_entrypoint_module_when_class_names_repeat(tmp_path):
+    for name in ("browser", "helper"):
+        (tmp_path / f"{name}.py").write_text(
+            textwrap.dedent(f'''
+            import overmind
+            class Agent:
+                @overmind.entry_point(capability_id="{name}")
+                def run(self):
+                    return self.{name}_result()
+                @overmind.observe(expectations=["{name} result is accurate"])
+                def {name}_result(self):
+                    return "result"
+        ''')
+        )
+    assert declared_expectations(tmp_path) == {
+        name: [{"expectation": f"{name} result is accurate", "span_name": f"Agent.{name}_result"}]
+        for name in ("browser", "helper")
+    }

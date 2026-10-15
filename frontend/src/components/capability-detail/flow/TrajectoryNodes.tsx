@@ -1,8 +1,13 @@
+import { useState } from "react";
+
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 
-import { FileRef } from "@/components/capability-detail/file-ref";
-import { ModelProviderChip } from "@/components/model-provider-chip";
+import { getModelProviderInfo } from "@/components/model-provider";
+import { getProviderIcon, ModelProviderChip } from "@/components/model-provider-chip";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogBody,
@@ -13,216 +18,311 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
-import { PROSE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
+import type { EvalMatrix } from "@/openapi";
 import type {
-  CapabilitiesNodeData,
-  ClusterNodeData,
+  ActionGroupNodeData,
+  ActionNodeData,
+  BranchControls,
   EntryNodeData,
-  StepCapability,
+  EvaluationScopesNodeData,
+  OutcomeNodeData,
   StepNodeData,
   TerminalNodeData,
 } from "./buildTrajectoryGraph";
+import { TrajectoryEvaluationList } from "./TrajectoryEvaluationList";
+import styles from "./TrajectoryNodes.module.css";
+import { TrajectoryScoredCount } from "./TrajectoryRunScores";
 
 const HANDLE_CLASS =
-  "!size-2.5 !rounded-xs !border-2 !border-background !shadow-none transition-colors";
+  "!size-2 !rounded-xs !border !border-background !shadow-none transition-colors";
+
+const NODE_TONES = {
+  model: "bg-cat-4/15 text-cat-4",
+  outcome: "bg-cat-5/15 text-cat-5",
+  result: "bg-cat-2/15 text-cat-2",
+  step: "bg-cat-1/15 text-cat-1",
+  task: "bg-primary/15 text-primary",
+  tool: "bg-cat-3/15 text-cat-3",
+};
 
 const TERMINAL_META: Record<
   string,
-  { label: string; variant: "success" | "neutral" | "warning" | "error"; icon: string }
+  { label: string; variant: "success" | "neutral" | "warning" | "error" }
 > = {
-  emits_record: { icon: "text-success", label: "Emits record", variant: "success" },
-  error_exit: { icon: "text-destructive", label: "Error exit", variant: "error" },
-  escalates: { icon: "text-warning", label: "Escalates", variant: "warning" },
-  returns_empty: { icon: "text-muted-foreground", label: "Returns empty", variant: "neutral" },
-};
-
-/** How each trajectory claim class reads on a card. */
-const CLAIM_META: Record<string, { label: string; title: string }> = {
-  code_path: {
-    label: "Code path",
-    title: "Control flow in the source determines this route",
-  },
-  decision_surface: {
-    label: "Runtime-decided",
-    title: "A model chooses the route at runtime; the map records the decision point",
-  },
-  declared_task: {
-    label: "Declared task",
-    title: "The builder's own architecture or prompt names this unit of work",
-  },
+  emits_record: { label: "Emits record", variant: "success" },
+  error_exit: { label: "Error exit", variant: "error" },
+  escalates: { label: "Escalates", variant: "warning" },
+  returns_empty: { label: "Returns empty", variant: "neutral" },
 };
 
 function NodeCard({
   icon,
+  controls,
   title,
   subtitle,
+  headerDetail,
   footer,
   width,
-  iconClass,
+  tone = "step",
   dotClass,
   hasTarget = true,
   hasSource = true,
+  sourcePosition = Position.Right,
+  targetPosition = Position.Left,
+  actionHandle = false,
+  returnTarget = false,
+  returnSource = false,
   selected,
   children,
+  evaluations,
+  evaluationLabel,
+  emptyEvaluationLabel,
 }: {
   icon?: React.ReactNode;
-  title: React.ReactNode;
+  controls?: React.ReactNode;
+  title: string;
   subtitle?: string;
-  footer: React.ReactNode;
+  headerDetail?: React.ReactNode;
+  footer?: React.ReactNode;
   width: number;
-  iconClass: string;
+  tone?: keyof typeof NODE_TONES;
   dotClass: string;
   hasTarget?: boolean;
   hasSource?: boolean;
+  sourcePosition?: Position;
+  targetPosition?: Position;
+  actionHandle?: boolean;
+  returnTarget?: boolean;
+  returnSource?: boolean;
   selected?: boolean;
   children?: React.ReactNode;
+  evaluations?: EvalMatrix[];
+  evaluationLabel?: string;
+  emptyEvaluationLabel?: string;
 }) {
+  const [evaluationsOpen, setEvaluationsOpen] = useState(false);
   return (
-    <div
-      className={cn(
-        "group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-card text-left text-card-foreground transition-colors",
-        // Shadows are off system-wide (`--shadow-*: none`), so selection reads
-        // through border + ring.
-        selected && "border-ring ring-1 ring-ring",
-        "hover:border-border hover:bg-accent/40"
-      )}
+    <Collapsible
+      className="relative"
+      onOpenChange={setEvaluationsOpen}
+      open={evaluationsOpen}
       style={{ width }}
     >
-      {hasTarget && (
-        <Handle className={cn(HANDLE_CLASS, dotClass)} position={Position.Left} type="target" />
-      )}
-      {hasSource && (
-        <Handle className={cn(HANDLE_CLASS, dotClass)} position={Position.Right} type="source" />
-      )}
-
-      <header
+      <Card
         className={cn(
-          "flex items-start gap-2 bg-wash-raised px-3 py-2.5",
-          children && "border-b border-border/70"
+          "group relative flex flex-col overflow-hidden text-left transition-colors",
+          // Shadows are off system-wide (`--shadow-*: none`), so selection reads
+          // through border + ring.
+          selected && "border-ring ring-1 ring-ring"
         )}
+        style={{ width }}
       >
-        {icon && (
-          <span className={cn("flex h-5 w-4 shrink-0 items-center justify-center", iconClass)}>
-            {icon}
-          </span>
+        {hasTarget && (
+          <Handle className={cn(HANDLE_CLASS, dotClass)} position={targetPosition} type="target" />
         )}
-        <div className="min-w-0 flex-1">
-          <div
-            className="text-sm font-semibold leading-5 text-foreground"
-            title={typeof title === "string" ? title : undefined}
-          >
-            {title}
-          </div>
-          {subtitle ? (
-            <p className="truncate text-xs leading-4 text-muted-foreground" title={subtitle}>
-              {subtitle}
-            </p>
-          ) : null}
-        </div>
-        <span className="shrink-0 leading-5">{footer}</span>
-      </header>
+        {hasSource && sourcePosition !== Position.Bottom && (
+          <Handle className={cn(HANDLE_CLASS, dotClass)} position={sourcePosition} type="source" />
+        )}
 
-      {children ? <div className="flex flex-col gap-2.5 p-3">{children}</div> : null}
-    </div>
+        {actionHandle && (
+          <Handle
+            className={cn(HANDLE_CLASS, dotClass)}
+            id="actions"
+            position={Position.Bottom}
+            type="source"
+          />
+        )}
+
+        {returnTarget && (
+          <Handle
+            className={cn(HANDLE_CLASS, dotClass)}
+            id="retry"
+            position={Position.Top}
+            type="target"
+          />
+        )}
+        {returnTarget && (
+          <Handle
+            className={cn(HANDLE_CLASS, dotClass)}
+            id="return"
+            position={Position.Bottom}
+            type="target"
+          />
+        )}
+        {returnSource && (
+          <Handle
+            className={cn(HANDLE_CLASS, dotClass)}
+            id="return"
+            position={Position.Right}
+            type="source"
+          />
+        )}
+
+        <header className={cn(styles.header, "space-y-3 bg-wash-raised px-4 py-3")}>
+          <div className="flex items-center gap-3">
+            {icon && (
+              <span
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-sm border border-current/20",
+                  NODE_TONES[tone]
+                )}
+              >
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="break-words text-sm font-semibold leading-5 text-foreground">
+                {title}
+              </div>
+              {subtitle && (
+                <p className="mt-1 truncate text-xs text-muted-foreground" title={subtitle}>
+                  {subtitle}
+                </p>
+              )}
+            </div>
+            {footer}
+            {controls && <div className="shrink-0">{controls}</div>}
+          </div>
+          {headerDetail}
+        </header>
+        {children ? <div className="space-y-3 p-4 text-left">{children}</div> : null}
+
+        {evaluations && !evaluations.length && (
+          <p
+            className="flex items-center gap-2 border-t border-border/70 bg-wash-subtle px-4 py-3 text-xs text-muted-foreground"
+            title={emptyEvaluationLabel}
+          >
+            <Icon.evaluations className="size-3" />0 evaluations
+          </p>
+        )}
+        {!!evaluations?.length && (
+          <CollapsibleTrigger
+            aria-label={`${evaluationsOpen ? "Hide" : "Show"} ${evaluations.length} evaluation${evaluations.length === 1 ? "" : "s"}`}
+            className="nodrag nopan flex w-full items-center gap-2 border-t border-border/70 bg-wash-subtle px-4 py-3 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Icon.evaluations className="size-3.5" />
+            <span className="flex-1">
+              {evaluations.length} evaluation{evaluations.length === 1 ? "" : "s"}
+            </span>
+            <TrajectoryScoredCount names={evaluations.map((row) => row.name)} />
+            {evaluationsOpen ? (
+              <Icon.chevronUp className="size-3.5" />
+            ) : (
+              <Icon.chevronDown className="size-3.5" />
+            )}
+          </CollapsibleTrigger>
+        )}
+      </Card>
+      {!!evaluations?.length && (
+        <CollapsibleContent className="mt-2">
+          <TrajectoryEvaluationList
+            label={evaluationLabel ?? "On span completion"}
+            rows={evaluations}
+          />
+        </CollapsibleContent>
+      )}
+      {hasSource && sourcePosition === Position.Bottom && (
+        <Handle
+          className={cn(HANDLE_CLASS, dotClass)}
+          id="outcomes"
+          position={sourcePosition}
+          type="source"
+        />
+      )}
+    </Collapsible>
   );
 }
 
 function PixelFooter({ children }: { children: React.ReactNode }) {
-  return <span className="pixel-label text-xs leading-5 text-muted-foreground">{children}</span>;
+  return (
+    <span className="shrink-0 rounded-sm bg-card px-2 py-1 text-xs leading-4 text-muted-foreground">
+      {children}
+    </span>
+  );
 }
 
-function EntryNode({ data, selected }: NodeProps) {
+function BranchToggle({ id, data, label }: { id: string; data: BranchControls; label?: string }) {
+  if (!data.childCount) return null;
+  return (
+    <Button
+      aria-expanded={!data.collapsed}
+      aria-label={label || `${data.collapsed ? "Expand" : "Collapse"} branches from ${id}`}
+      className="nodrag nopan"
+      onClick={(event) => {
+        event.stopPropagation();
+        data.onToggle?.(id);
+      }}
+      size="icon-sm"
+      variant="ghost"
+    >
+      {data.collapsed ? <Icon.chevronRight /> : <Icon.chevronDown />}
+    </Button>
+  );
+}
+
+function EntryNode({ data, id, selected }: NodeProps) {
   const d = data as unknown as EntryNodeData;
   return (
     <NodeCard
+      controls={(d.childCount ?? 0) > 1 ? <BranchToggle data={d} id={id} /> : undefined}
       dotClass="!bg-primary/80"
+      emptyEvaluationLabel="No saved whole-run evaluations"
+      evaluationLabel="Whole-run evaluations · on completion"
+      evaluations={d.evaluations}
       footer={<PixelFooter>Entry</PixelFooter>}
       hasTarget={false}
       icon={<Icon.agent className="size-4" />}
-      iconClass="text-primary"
       selected={selected}
-      subtitle={d.task || undefined}
+      subtitle={d.entrypoint || undefined}
       title={d.capabilityName || "Capability"}
-      width={240}
+      tone="task"
+      width={320}
     >
-      <p className="text-xs text-muted-foreground">
+      <Preview text={d.task} />
+      <section className="text-xs text-muted-foreground">
         {d.pathCount} mapped execution path{d.pathCount === 1 ? "" : "s"}
-      </p>
+      </section>
     </NodeCard>
   );
 }
 
-function IoSection({
-  label,
-  entries,
-}: {
-  label: string;
-  entries: { label: string; condition?: string }[];
-}) {
-  if (entries.length === 0) return null;
-  return (
-    <section>
-      <p className="pixel-label mb-1 text-xs text-muted-foreground">{label}</p>
-      <div className="flex flex-col gap-1">
-        {entries.map((entry, i) => (
-          <div key={`${entry.label}-${i}`}>
-            <p className="text-xs leading-snug text-foreground">{entry.label}</p>
-            {entry.condition ? (
-              <p className={cn(PROSE, "text-xs leading-snug text-muted-foreground")}>
-                when {entry.condition}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ContractRow({ label, text }: { label: string; text: string }) {
+function Preview({ text, label }: { text: string; label?: string }) {
   if (!text) return null;
   return (
     <section>
-      <p className="pixel-label mb-1 text-xs text-muted-foreground">{label}</p>
-      <p className={cn(PROSE, "text-xs leading-snug text-foreground")}>{text}</p>
+      {label && <p className="mb-1 text-xs text-muted-foreground">{label}</p>}
+      <p
+        className="nodrag nopan nowheel max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to scroll long source text on the canvas.
+        tabIndex={0}
+      >
+        {text}
+      </p>
     </section>
   );
 }
 
-function MayUseList({ capabilities }: { capabilities: StepCapability[] }) {
-  if (capabilities.length === 0) return null;
+function FieldPreview({ label, text }: { label: string; text: string }) {
+  if (!text) return null;
   return (
-    <section>
-      <p className="pixel-label mb-1 text-xs text-muted-foreground">May use</p>
-      <div
-        aria-label={`Conditional tools, ${capabilities.length}`}
-        className="nodrag nowheel -mr-1 flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-        role="group"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be focusable so keyboard users can scroll it (WAI keyboard guidance)
+    <div className="space-y-1 text-xs leading-5">
+      <span className="block text-muted-foreground">{label}</span>
+      <p
+        className="nodrag nopan nowheel max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to scroll long source text on the canvas.
         tabIndex={0}
       >
-        {capabilities.map((cap) => (
-          <div key={cap.tool}>
-            <p className="inline-flex items-center gap-1 font-mono text-xs leading-snug text-foreground">
-              <Icon.tool className="size-3 shrink-0" />
-              {cap.tool}
-            </p>
-            {cap.when ? (
-              <p className={cn(PROSE, "text-xs leading-snug text-muted-foreground")}>
-                when {cap.when}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
+        {text}
+      </p>
+    </div>
   );
 }
 
 function SystemPrompt({ text, excerpt }: { text: string; excerpt: boolean }) {
   const label = excerpt ? "System prompt (excerpt)" : "System prompt";
-  if (!text) return <ContractRow label="System prompt" text="Not captured" />;
+  if (!text) return null;
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -232,12 +332,14 @@ function SystemPrompt({ text, excerpt }: { text: string; excerpt: boolean }) {
           onClick={(event) => event.stopPropagation()}
           type="button"
         >
-          <span className="pixel-label mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            {label}
+          <span className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            {excerpt ? "Instructions · excerpt" : "Instructions"}
             <Icon.expand className="size-3 shrink-0" />
           </span>
-          <span className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-snug text-foreground">
-            {text}
+          <span className="block rounded-sm bg-code-surface p-3">
+            <span className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
+              {text}
+            </span>
           </span>
         </button>
       </DialogTrigger>
@@ -264,259 +366,303 @@ function SystemPrompt({ text, excerpt }: { text: string; excerpt: boolean }) {
   );
 }
 
-function StepNode({ data, selected }: NodeProps) {
+function StepNode({ data, id, selected }: NodeProps) {
   const d = data as unknown as StepNodeData;
   const shared = d.pathNames.length > 1;
-  const branches = d.outputs.some((o) => o.condition);
   const invocation = d.actor === "model";
+  const displayedModel = d.model || d.modelResolution?.defaultModel || "";
+  const provider = getModelProviderInfo(displayedModel);
+  const ProviderIcon = getProviderIcon(provider.id);
   return (
     <NodeCard
-      dotClass={invocation ? "!bg-primary/80" : "!bg-cat-4/80"}
-      footer={
-        <PixelFooter>{invocation ? "Model call" : shared ? "Shared step" : "Step"}</PixelFooter>
+      actionHandle={d.hasActions}
+      controls={(d.childCount ?? 0) > 1 ? <BranchToggle data={d} id={id} /> : undefined}
+      dotClass={invocation ? "!bg-cat-4" : "!bg-cat-1"}
+      evaluationLabel="Step evaluations · on completion"
+      evaluations={d.evaluations ?? []}
+      footer={invocation ? undefined : <PixelFooter>{shared ? "Shared step" : "Step"}</PixelFooter>}
+      headerDetail={
+        invocation ? (
+          <div className="space-y-2" title={d.modelResolution?.selection}>
+            {displayedModel ? (
+              <ModelProviderChip
+                className="w-full h-8 rounded-sm border-border/60 bg-card px-3 [&>span]:text-foreground"
+                model={displayedModel}
+                showProvider={false}
+              />
+            ) : (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Icon.model className="size-3.5" />
+                {d.modelResolution?.selection ? "Selected at runtime" : "Model not captured"}
+              </span>
+            )}
+            {!d.model && displayedModel && (
+              <span className="text-xs text-muted-foreground">Source default</span>
+            )}
+          </div>
+        ) : undefined
       }
       icon={
-        invocation ? null : branches || d.condition ? (
-          <Icon.gitBranch className="size-4" />
+        invocation ? (
+          ProviderIcon ? (
+            <ProviderIcon className="size-5" />
+          ) : (
+            <Icon.model className="size-4" />
+          )
         ) : (
           <Icon.algorithm className="size-4" />
         )
       }
-      iconClass={invocation ? "text-primary" : "text-cat-4"}
+      returnTarget
       selected={selected}
-      subtitle={invocation ? d.label : shared ? undefined : d.pathNames[0]}
       title={
-        invocation ? (
-          d.model ? (
-            <ModelProviderChip compact model={d.model} />
-          ) : (
-            "Model not captured"
-          )
-        ) : (
-          d.label
-        )
+        invocation ? (provider.id === "unknown" ? "Model call" : provider.providerLabel) : d.label
       }
-      width={280}
+      tone={invocation ? "model" : "step"}
+      width={320}
     >
-      {invocation && <SystemPrompt excerpt={d.promptIsExcerpt} text={d.systemPrompt} />}
-      {shared ? (
-        <div className="flex flex-wrap gap-1">
-          {d.pathNames.map((name) => (
-            <span
-              className="rounded-sm border border-border/60 bg-wash-raised px-1.5 py-0.5 text-xs leading-4 text-muted-foreground"
-              key={name}
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {d.contract ? (
-        <>
-          <ContractRow label="In" text={d.contract.input} />
-          <ContractRow label="Action" text={d.contract.action} />
-          <ContractRow label="Out" text={d.contract.output} />
-        </>
-      ) : (
-        <>
-          <IoSection entries={d.inputs.map((label) => ({ label }))} label="In" />
-          <IoSection entries={d.outputs} label="Out" />
-        </>
+      {invocation && d.modelResolution?.selection && (
+        <Preview label="Model selection" text={d.modelResolution.selection} />
       )}
-      {!invocation && <MayUseList capabilities={d.mayUse} />}
-      {d.decisionNote ? (
-        <p
-          className={cn(
-            PROSE,
-            "rounded-sm border border-dashed border-border bg-wash-raised px-2 py-1.5 text-xs leading-snug text-muted-foreground"
-          )}
-        >
-          {d.decisionNote}
-        </p>
-      ) : null}
-      {d.condition ? (
+      <Preview text={invocation ? d.label : d.contract?.action || ""} />
+      <section className="space-y-3 rounded-sm bg-wash-subtle p-3">
+        <FieldPreview label="Input" text={d.contract?.input || d.inputs.join(", ")} />
+        <FieldPreview
+          label="Output"
+          text={d.contract?.output || d.outputs.map((output) => output.label).join(", ")}
+        />
+      </section>
+      {invocation && d.systemPrompt && (
         <section>
-          <p className="pixel-label mb-1 text-xs text-muted-foreground">When</p>
-          <p className={cn(PROSE, "text-xs leading-snug text-foreground")}>{d.condition}</p>
+          <SystemPrompt excerpt={d.promptIsExcerpt} text={d.systemPrompt} />
         </section>
-      ) : null}
+      )}
+      {d.condition && (
+        <section>
+          <FieldPreview label="When" text={d.condition} />
+        </section>
+      )}
     </NodeCard>
   );
 }
 
-function ClusterNode({ data, selected }: NodeProps) {
-  const d = data as unknown as ClusterNodeData;
+function ActionGroupNode({ data, id, selected }: NodeProps) {
+  const d = data as unknown as ActionGroupNodeData;
+  return (
+    <div
+      className={cn(
+        styles.header,
+        "relative w-[320px] rounded-md border border-border bg-wash-raised",
+        selected && "border-ring ring-1 ring-ring"
+      )}
+    >
+      <Handle className={cn(HANDLE_CLASS, "!bg-cat-3")} position={Position.Top} type="target" />
+      <Handle className={cn(HANDLE_CLASS, "!bg-cat-3")} position={Position.Bottom} type="source" />
+      <Handle
+        className={cn(HANDLE_CLASS, "!bg-cat-3")}
+        id="return"
+        position={Position.Bottom}
+        style={{ left: "calc(100% - 16px)" }}
+        type="source"
+      />
+      <button
+        aria-expanded={!d.collapsed}
+        aria-label={`${d.collapsed ? "Expand" : "Collapse"} ${d.label} tools`}
+        className="nodrag nopan flex w-full items-center gap-3 rounded-sm px-4 py-3 text-left hover:bg-accent/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={(event) => {
+          event.stopPropagation();
+          d.onToggle?.(id);
+        }}
+        type="button"
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-cat-3/20 bg-cat-3/15 text-cat-3">
+          <Icon.tool className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">{d.label}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {d.childCount ?? 0} available tool{d.childCount === 1 ? "" : "s"}
+          </span>
+        </span>
+        {d.collapsed ? (
+          <Icon.chevronRight className="size-4 text-muted-foreground" />
+        ) : (
+          <Icon.chevronDown className="size-4 text-muted-foreground" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+function ActionNode({ data, id, selected }: NodeProps) {
+  const d = data as unknown as ActionNodeData;
   return (
     <NodeCard
-      dotClass="!bg-cat-2/80"
-      footer={
-        <Badge className="h-5 px-1.5 text-xs font-medium" variant="neutral">
-          {d.tools.length} tool{d.tools.length === 1 ? "" : "s"}
-        </Badge>
-      }
+      dotClass="!bg-cat-3"
+      evaluationLabel="Action evaluations · on completion"
+      evaluations={d.evaluations}
+      footer={<PixelFooter>Tool</PixelFooter>}
       icon={<Icon.tool className="size-4" />}
-      iconClass="text-cat-2"
+      returnSource
       selected={selected}
-      subtitle={d.sideEffectMix || undefined}
-      title={d.name}
-      width={300}
+      sourcePosition={Position.Bottom}
+      title={d.tool.name}
+      tone="tool"
+      width={320}
     >
-      <div
-        aria-label={`${d.name} tools, ${d.tools.length}`}
-        className="nodrag nowheel -mr-1 flex max-h-40 flex-col gap-1.5 overflow-y-auto pr-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-        role="group"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be focusable so keyboard users can scroll it (WAI keyboard guidance)
-        tabIndex={0}
-      >
-        {d.tools.map((tool) => (
-          <div key={tool.label}>
-            <p className="inline-flex items-center gap-1 font-mono text-xs leading-snug text-foreground">
-              <Icon.tool className="size-3 shrink-0" />
-              {tool.label}
-            </p>
-            {tool.purpose ? (
-              <p className="truncate text-xs text-muted-foreground" title={tool.purpose}>
-                {tool.purpose}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      <Preview text={d.tool.purpose} />
+      <section className="space-y-3 rounded-sm bg-wash-subtle p-3">
+        <FieldPreview
+          label="Input"
+          text={
+            d.tool.args ||
+            d.tool.arguments?.map((argument) => argument.name).join(", ") ||
+            "Not captured"
+          }
+        />
+        <FieldPreview label="Returns" text={d.tool.returns || "Not captured"} />
+      </section>
+      <section className="space-y-2">
+        {d.when ? (
+          <FieldPreview label="When" text={d.when} />
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {d.modelSelected ? <Icon.model className="size-3" /> : <Icon.help className="size-3" />}
+            {d.modelSelected ? "Chosen by model" : "Selection condition not captured"}
+          </p>
+        )}
+      </section>
+      <section className="!p-0">
+        <button
+          aria-expanded={d.expanded}
+          aria-label={`${d.expanded ? "Hide" : "Show"} outcomes for ${d.tool.name}`}
+          className="nodrag nopan flex w-full items-center gap-2 rounded-sm bg-wash-raised px-3 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          onClick={(event) => {
+            event.stopPropagation();
+            d.onToggle?.(id);
+          }}
+          type="button"
+        >
+          <Icon.gitBranch className="size-3 shrink-0" />
+          <span className="flex-1">
+            {d.tool.branches?.length
+              ? `${d.tool.branches.length} outcome${d.tool.branches.length === 1 ? "" : "s"}`
+              : "Conditions unmapped"}
+          </span>
+          {d.expanded ? (
+            <Icon.chevronDown className="size-3" />
+          ) : (
+            <Icon.chevronRight className="size-3" />
+          )}
+        </button>
+      </section>
     </NodeCard>
   );
 }
 
-function CapabilitiesNode({ data, selected }: NodeProps) {
-  const d = data as unknown as CapabilitiesNodeData;
+function OutcomeNode({ data, selected }: NodeProps) {
+  const d = data as unknown as OutcomeNodeData;
+  const branch = d.branch;
   return (
     <NodeCard
-      dotClass="!bg-cat-2/80"
-      footer={
-        <Badge className="h-5 px-1.5 text-xs font-medium" variant="neutral">
-          Model action
-        </Badge>
+      dotClass="!bg-cat-5"
+      footer={d.recordedInvocations ? undefined : <PixelFooter>Outcome</PixelFooter>}
+      hasSource={!!d.continues}
+      headerDetail={
+        d.recordedInvocations && d.recordedInvocations > 1 ? (
+          <p className="text-xs leading-5 text-muted-foreground">
+            Latest of {d.recordedInvocations} captured results
+          </p>
+        ) : undefined
       }
-      icon={<Icon.tool className="size-4" />}
-      iconClass="text-cat-2"
+      icon={<Icon.gitBranch className="size-4" />}
       selected={selected}
-      subtitle={`${d.tools.length} tool${d.tools.length === 1 ? "" : "s"} the model may select at "${d.forLabel}"`}
-      title="May use"
-      width={300}
+      sourcePosition={Position.Bottom}
+      targetPosition={Position.Top}
+      title={d.recordedInvocations ? "Captured result" : branch?.action || "Local outcome"}
+      tone="outcome"
+      width={320}
     >
-      <div
-        aria-label={`Conditional tools, ${d.tools.length}`}
-        className="nodrag nowheel -mr-1 flex max-h-72 flex-col gap-2 overflow-y-auto pr-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-        role="group"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be focusable so keyboard users can scroll it (WAI keyboard guidance)
-        tabIndex={0}
-      >
-        {d.tools.map((cap) => (
-          <div key={cap.tool}>
-            <p className="inline-flex items-center gap-1 font-mono text-xs leading-snug text-foreground">
-              <Icon.tool className="size-3 shrink-0" />
-              {cap.tool}
-            </p>
-            {cap.when ? (
-              <p className={cn(PROSE, "text-xs leading-snug text-muted-foreground")}>
-                when {cap.when}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      <Preview text={branch?.outcome || d.returns || "Outcome not captured"} />
+      {!d.recordedInvocations && (
+        <section className="space-y-3 rounded-sm bg-wash-subtle p-3">
+          <FieldPreview label="Then" text={branch?.next || "Next step not captured"} />
+          {branch?.transitions?.map((transition, index) => (
+            <FieldPreview
+              key={`${transition.target}-${index}`}
+              label="When"
+              text={transition.condition}
+            />
+          ))}
+        </section>
+      )}
     </NodeCard>
+  );
+}
+
+function EvaluationScopesNode({ data }: NodeProps) {
+  const d = data as unknown as EvaluationScopesNodeData;
+  return (
+    <div className="w-[320px] space-y-4 rounded-md border border-border bg-card p-4">
+      <p className="text-sm font-medium">Other evaluation scopes</p>
+      {d.broad.length > 0 && (
+        <TrajectoryEvaluationList label="Across matching spans" rows={d.broad} />
+      )}
+      {d.unmapped.length > 0 && (
+        <div className="space-y-2">
+          <TrajectoryEvaluationList label="Not mapped to a step" rows={d.unmapped} />
+          <p className="text-xs leading-snug text-muted-foreground">
+            No unique step anchor matches these spans.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
 function TerminalNode({ data, selected }: NodeProps) {
   const d = data as unknown as TerminalNodeData;
   const meta = TERMINAL_META[d.terminalKind] ?? {
-    icon: "text-muted-foreground",
     label: d.terminalKind || "unknown",
     variant: "neutral" as const,
   };
   return (
     <NodeCard
-      dotClass="!bg-cat-5/80"
+      dotClass="!bg-cat-2"
       footer={
         <Badge className="h-5 px-1.5 text-xs font-medium" variant={meta.variant}>
           {meta.label}
         </Badge>
       }
       hasSource={false}
-      icon={<Icon.target className="size-4" />}
-      iconClass={meta.icon}
+      icon={
+        d.terminalKind === "error_exit" ? (
+          <Icon.failed className="size-4" />
+        ) : d.terminalKind === "escalates" ? (
+          <Icon.send className="size-4" />
+        ) : (
+          <Icon.target className="size-4" />
+        )
+      }
       selected={selected}
-      subtitle={d.terminalDescription || undefined}
-      title={d.pathName}
-      width={300}
+      title="Result"
+      tone="result"
+      width={320}
     >
-      {CLAIM_META[d.claim] ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className="rounded-sm border border-border/60 bg-wash-raised px-1.5 py-0.5 text-xs leading-4 text-muted-foreground"
-            title={CLAIM_META[d.claim].title}
-          >
-            {CLAIM_META[d.claim].label}
-          </span>
-          {d.verified ? (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-wash-raised px-1.5 py-0.5 text-xs leading-4 text-success"
-              title="Anchors verified against the source call graph"
-            >
-              <Icon.success className="size-3" />
-              Verified
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      {d.routing ? (
-        <section>
-          <p className="pixel-label mb-1 text-xs text-muted-foreground">Selected when</p>
-          <p className={cn(PROSE, "text-xs leading-snug text-foreground")}>{d.routing}</p>
-        </section>
-      ) : null}
-      {d.promptQuote ? (
-        <section>
-          <p className="pixel-label mb-1 text-xs text-muted-foreground">Declared in prompt</p>
-          <p
-            className={cn(
-              PROSE,
-              "border-l-2 border-border pl-2 text-xs italic leading-snug text-muted-foreground"
-            )}
-          >
-            "{d.promptQuote}"
-          </p>
-        </section>
-      ) : null}
-      {d.tools.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {d.tools.map((tool) => (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-border bg-wash-raised px-1.5 py-0.5 font-mono text-xs leading-4 text-muted-foreground"
-              key={tool}
-            >
-              <Icon.tool className="size-3" />
-              {tool}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {d.provenance.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {d.provenance.map((reference) => (
-            <FileRef key={reference} reference={reference} />
-          ))}
-        </div>
-      ) : null}
+      <Preview
+        label={d.recordedOutput === undefined ? undefined : "Captured output"}
+        text={d.recordedOutput ?? d.terminalDescription}
+      />
     </NodeCard>
   );
 }
 
 export const trajectoryNodeTypes = {
-  capabilities: CapabilitiesNode,
-  cluster: ClusterNode,
+  action: ActionNode,
+  actionGroup: ActionGroupNode,
   entry: EntryNode,
+  evaluations: EvaluationScopesNode,
+  outcome: OutcomeNode,
   step: StepNode,
   terminal: TerminalNode,
 } as const;

@@ -90,8 +90,27 @@ def test_evaluators_sets_and_variant_runs_become_matrix_rows_sets_and_grouped_ru
             }
             run.save(update_fields=["summary"])
             run_evaluator = old.get_model("overbae", "RunEvaluator")
-            run_evaluator.objects.create(run=run, evaluator=judge, order=0)
+            run_evaluator.objects.create(
+                run=run,
+                evaluator=judge,
+                snapshot={
+                    "name": "resolves",
+                    "kind": "llm_judge",
+                    "rubric_md": "The frozen rule confirms the refund amount.",
+                },
+                order=0,
+            )
             run_evaluator.objects.create(run=run, evaluator=check, order=1)
+            run_evaluator.objects.create(
+                run=run,
+                evaluator=None,
+                snapshot={
+                    "name": "deleted-check",
+                    "kind": "deterministic",
+                    "config": {"check": "contains", "reference": "refund"},
+                },
+                order=2,
+            )
 
             executor.loader.build_graph()
             executor.migrate([TARGET])
@@ -120,7 +139,12 @@ def test_evaluators_sets_and_variant_runs_become_matrix_rows_sets_and_grouped_ru
             assert runs["recorded"].pk == run.pk
             assert runs["recorded"].group == runs["fake/model"].group
             assert runs["recorded"].is_baseline and not runs["fake/model"].is_baseline
-            assert [m["name"] for m in runs["fake/model"].matrix] == ["resolves", "mentions-order"]
+            for migrated_run in runs.values():
+                matrix = {row["name"]: row for row in migrated_run.matrix}
+                assert list(matrix) == ["resolves", "mentions-order", "deleted-check"]
+                assert matrix["resolves"]["source"] == "The frozen rule confirms the refund amount."
+                assert matrix["deleted-check"]["type"] == "deterministic"
+                assert "needle = 'refund'" in matrix["deleted-check"]["source"]
             assert runs["recorded"].summary["score"] == 0.5
             assert runs["fake/model"].summary["score"] == 0.9
         finally:

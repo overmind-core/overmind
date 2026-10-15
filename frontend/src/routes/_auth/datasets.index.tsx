@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
+import floppyDiskIcon from "@/assets/floppy-disk-save.svg";
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
@@ -94,6 +95,14 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
           }
           count={query.data?.length}
           description="Source data and step-by-step transformations for training and evaluation."
+          icon={
+            <img
+              alt=""
+              aria-hidden="true"
+              className="size-6 shrink-0 [image-rendering:pixelated]"
+              src={floppyDiskIcon}
+            />
+          }
           title="Datasets"
         />
       }

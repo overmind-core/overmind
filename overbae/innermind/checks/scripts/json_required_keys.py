@@ -9,10 +9,14 @@ REQUIRED_KEYS = ()
 
 
 def parse(text):
-    fence = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL | re.IGNORECASE)
-    if fence:
-        text = fence.group(1)
-    return json.loads(text)
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except ValueError:
+        fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+        if not fence:
+            raise
+        return json.loads(fence.group(1))
 
 
 def records_carry(items, key):

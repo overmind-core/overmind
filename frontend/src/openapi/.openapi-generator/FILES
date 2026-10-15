@@ -59,12 +59,15 @@ models/Capability.ts
 models/CapabilityFlow.ts
 models/CapabilityFlowExpectedOutput.ts
 models/CapabilityFlowMode.ts
+models/CapabilityFlowModelResolution.ts
 models/CapabilityFlowTool.ts
 models/CapabilityFlowToolArgument.ts
+models/CapabilityFlowToolBranch.ts
 models/CapabilityFlowTrajectoryPath.ts
 models/CapabilityFlowTrajectoryStep.ts
 models/CapabilityFlowTrajectoryTerminal.ts
 models/CapabilityFlowTrajectoryToolUse.ts
+models/CapabilityFlowTransition.ts
 models/CapabilityFlowUtility.ts
 models/CapabilityList.ts
 models/CapabilityProposalMethodEnum.ts
@@ -130,6 +133,7 @@ models/DecisionInputRequest.ts
 models/DecisionModelOption.ts
 models/DecisionParticipantRequest.ts
 models/DecisionPerformance.ts
+models/DefinitionSourceEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts

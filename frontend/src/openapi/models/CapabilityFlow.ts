@@ -34,6 +34,13 @@ import {
     CapabilityFlowExpectedOutputToJSON,
     CapabilityFlowExpectedOutputToJSONTyped,
 } from './CapabilityFlowExpectedOutput';
+import type { CapabilityFlowModelResolution } from './CapabilityFlowModelResolution';
+import {
+    CapabilityFlowModelResolutionFromJSON,
+    CapabilityFlowModelResolutionFromJSONTyped,
+    CapabilityFlowModelResolutionToJSON,
+    CapabilityFlowModelResolutionToJSONTyped,
+} from './CapabilityFlowModelResolution';
 import type { CapabilityFlowMode } from './CapabilityFlowMode';
 import {
     CapabilityFlowModeFromJSON,
@@ -73,6 +80,12 @@ export interface CapabilityFlow {
      * @memberof CapabilityFlow
      */
     source: string;
+    /**
+     *
+     * @type {CapabilityFlowModelResolution}
+     * @memberof CapabilityFlow
+     */
+    modelResolution?: CapabilityFlowModelResolution;
     /**
      *
      * @type {string}
@@ -224,6 +237,7 @@ export function CapabilityFlowFromJSONTyped(json: any, ignoreDiscriminator: bool
         'hasCard': json['has_card'],
         'isFallback': json['is_fallback'],
         'source': json['source'],
+        'modelResolution': json['model_resolution'] == null ? undefined : CapabilityFlowModelResolutionFromJSON(json['model_resolution']),
         'task': json['task'],
         'modality': json['modality'],
         'domain': json['domain'],
@@ -259,6 +273,7 @@ export function CapabilityFlowToJSONTyped(value?: CapabilityFlow | null, ignoreD
         'has_card': value['hasCard'],
         'is_fallback': value['isFallback'],
         'source': value['source'],
+        'model_resolution': CapabilityFlowModelResolutionToJSON(value['modelResolution']),
         'task': value['task'],
         'modality': value['modality'],
         'domain': value['domain'],

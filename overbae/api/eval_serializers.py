@@ -10,6 +10,7 @@ from rest_framework.exceptions import PermissionDenied
 from overbae.api.serializers import _user_project_ids
 from overbae.core.model_registry import judge_picker_models
 from overbae.innermind import context, deterministic, generation, runs
+from overbae.innermind.definitions import DefinitionSource, definition_source
 from overbae.models import (
     Cell,
     Dataset,
@@ -47,6 +48,11 @@ def require_same_project(project, **objects) -> None:
 
 
 class EvalMatrixSerializer(serializers.ModelSerializer):
+    definition_source = serializers.SerializerMethodField()
+
+    def get_definition_source(self, obj) -> DefinitionSource:
+        return definition_source(obj)
+
     class Meta:
         model = EvalMatrix
         fields = [
@@ -56,6 +62,7 @@ class EvalMatrixSerializer(serializers.ModelSerializer):
             "name",
             "type",
             "source",
+            "definition_source",
             "span_type",
             "span_name",
             "enabled",

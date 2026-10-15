@@ -1,0 +1,2141 @@
+{
+  "toolSpec": [
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "annotate_preview"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_cdp"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_dialog"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_exec"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_navigate"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_snapshot"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_click"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_type"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_scroll"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_back"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_press"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_get_images"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_vision"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_console"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Browser interaction",
+      "name": "browser_vault"
+    },
+    {
+      "branches": [
+        {
+          "action": "Ask the user",
+          "basis": "code",
+          "condition": "Questions validate and this surface supplies an input callback",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Report unavailable input",
+          "basis": "code",
+          "condition": "Questions are invalid or this surface supplies no callback",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Report the input failure",
+          "basis": "code",
+          "condition": "The input callback raises an error",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "clarify"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "process_manage"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "close_terminal"
+    },
+    {
+      "branches": [
+        {
+          "action": "Run programmatic tool code",
+          "basis": "code",
+          "condition": "code is a string",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Reject the malformed call",
+          "basis": "code",
+          "condition": "command is supplied without code, or code is not a string",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "execute_code"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "computer_use"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Integration setup",
+      "name": "manage_connections"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Integration setup",
+      "name": "manage_catalog"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "cronjob_manage"
+    },
+    {
+      "branches": [
+        {
+          "action": "Wait for the command",
+          "basis": "code",
+          "condition": "Execution is permitted and runs in the foreground",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Start a tracked process",
+          "basis": "code",
+          "condition": "Execution is permitted and background=true, or a long timeout promotes it to background",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Continue the process asynchronously",
+          "basis": "code",
+          "condition": "A foreground command yields to background execution",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Return the refusal",
+          "basis": "code",
+          "condition": "Pre-execution checks or approval reject the command",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Report an environment failure",
+          "basis": "code",
+          "condition": "The execution environment cannot be reached",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "terminal"
+    },
+    {
+      "branches": [
+        {
+          "action": "Manage running child agents",
+          "basis": "code",
+          "condition": "action is list, steer or stop",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Start child work in the background",
+          "basis": "code",
+          "condition": "The model requests a valid spawn from the top-level agent and spawn gates permit it",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Run the child batch and await its result",
+          "basis": "code",
+          "condition": "An eligible child agent requests a valid spawn",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Decline the spawn",
+          "basis": "code",
+          "condition": "Spawning is paused, depth/budget is exhausted, or task/route validation fails",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "delegate_task"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "discord"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "discord_admin"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "drive_preview"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "feishu_doc_read"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "feishu_drive_list_comments"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "feishu_drive_list_comment_replies"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "feishu_drive_reply_comment"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "feishu_drive_add_comment"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "read_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "write_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Replace matching file text",
+          "basis": "code",
+          "condition": "mode is replace and required path/old_string/new_string pass validation and file guards",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Apply a file patch",
+          "basis": "code",
+          "condition": "mode is patch and patch content passes validation and file guards",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Report the edit failure",
+          "basis": "code",
+          "condition": "Mode, required arguments, file access checks or patch application fail",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "patch"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Workspace execution",
+      "name": "search_files"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "focus_pane"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "image_generate"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_show"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_list"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_complete"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_block"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_schedule"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_request_review"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_request_changes"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_heartbeat"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_comment"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_attach"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_attach_url"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_attachments"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_create"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_unblock"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "kanban_link"
+    },
+    {
+      "branches": [
+        {
+          "action": "Apply a memory batch",
+          "basis": "code",
+          "condition": "A valid operations list passes memory target and write/delete gates",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Update the selected memory",
+          "basis": "code",
+          "condition": "A valid add, patch or remove action passes the write/delete gates",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "action": "Keep memory unchanged",
+          "basis": "code",
+          "condition": "Target, action, required content or a memory gate rejects the request",
+          "transitions": [
+            {
+              "condition": "The tool round persists results and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Memory and skills",
+      "name": "memory"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "desktop_preview"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "desktop_project"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "react_to_message"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "read_terminal"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "read_window_below"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Task coordination",
+      "name": "todo_list"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Memory and skills",
+      "name": "session_search"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "set_theme"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Integration setup",
+      "name": "setup_beat"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Memory and skills",
+      "name": "skill_manage"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Memory and skills",
+      "name": "skills_list"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Memory and skills",
+      "name": "skill_view"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "show_tip"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Desktop interaction",
+      "name": "gui_tour"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "text_to_speech"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "video_generate"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "vision_analyze"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "video_analyze"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Web research",
+      "name": "web_search"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Web research",
+      "name": "web_extract"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Web research",
+      "name": "x_search"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "xai_video_edit"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Media",
+      "name": "xai_video_extend"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "yb_query_group_info"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "yb_query_group_members"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "yb_send_dm"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "yb_search_sticker"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return the tool result",
+          "basis": "code",
+          "condition": "The dispatched handler returns a result or a recorded error",
+          "transitions": [
+            {
+              "condition": "The batch results are persisted and no guardrail halts the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Persistence fails or a guardrail halts the turn",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        }
+      ],
+      "cluster": "Connected services",
+      "name": "yb_send_sticker"
+    }
+  ],
+  "trajectoryMap": [
+    {
+      "claim": "decision_surface",
+      "divergences": [],
+      "id": "conversation-turn",
+      "name": "Tool-assisted conversation",
+      "routing": "",
+      "steps": [
+        {
+          "anchors": ["agent.turn_context.build_turn_context"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Bind the user turn",
+          "transitions": [
+            {
+              "condition": "The standard provider loop is selected; any configured prelude has completed",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "api_mode is codex_app_server",
+              "target": "agent.conversation_loop._codex_app_server_turn"
+            },
+            {
+              "condition": "Initial context compression times out and returns a failed turn",
+              "target": "terminal"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_preflight_gate.run_preflight_gate"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Prepare the model request",
+          "transitions": [
+            {
+              "condition": "Preflight permits the request and iteration budget remains",
+              "target": "agent.turn_api_call.perform_api_call"
+            },
+            {
+              "condition": "Preflight requests another preparation pass",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "A stopping guard ends the normal loop",
+              "target": "agent.turn_finalizer.finalize_turn"
+            },
+            {
+              "condition": "Preflight returns an early result",
+              "target": "terminal"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_api_call.perform_api_call"],
+          "kind": "model_invocation",
+          "mayUse": [],
+          "step": "Choose the next action",
+          "transitions": [
+            {
+              "condition": "The normalized assistant message contains tool calls",
+              "target": "agent.turn_tool_round.run_tool_round"
+            },
+            {
+              "condition": "The normalized assistant message contains no tool calls",
+              "target": "agent.turn_final_response.finish_text_response"
+            },
+            {
+              "condition": "Retry recovery or response normalization requests another iteration",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "The retry or normalization verdict stops the loop",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_tool_round.run_tool_round"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Validate and record tool calls",
+          "transitions": [
+            {
+              "condition": "Valid calls remain and the tool-call message was persisted",
+              "target": "agent.tool_executor._run_agent_tool_execution_middleware"
+            },
+            {
+              "condition": "Tool-call validation requests a corrected response",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "The tool-call message cannot be persisted",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.tool_executor._run_agent_tool_execution_middleware"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Apply policy and execute tools",
+          "transitions": [
+            {
+              "condition": "The batch results were persisted and no guardrail halted the turn",
+              "target": "agent.turn_preflight.compress_after_tool_results"
+            },
+            {
+              "condition": "Result persistence fails or a guardrail requests a controlled halt",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_preflight.compress_after_tool_results"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Return results to context",
+          "transitions": [
+            {
+              "condition": "Post-tool processing allows continuation and iteration budget remains",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "Post-tool processing ends the turn, or execution is interrupted or out of budget",
+              "target": "agent.turn_finalizer.finalize_turn"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_final_response.finish_text_response"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Check the proposed response",
+          "transitions": [
+            {
+              "condition": "A recovery, truncation or stop gate requests continuation",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            },
+            {
+              "condition": "The response is accepted or a stop verdict ends the loop",
+              "target": "agent.turn_finalizer.finalize_turn"
+            },
+            {
+              "condition": "Response recovery returns an early result",
+              "target": "terminal"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.turn_finalizer.finalize_turn"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Save the turn outcome",
+          "transitions": [
+            {
+              "condition": "Finalization returns the turn result",
+              "target": "terminal"
+            }
+          ]
+        },
+        {
+          "anchors": ["agent.conversation_loop._codex_app_server_turn"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Delegate to the configured runtime",
+          "transitions": [
+            {
+              "condition": "The configured runtime returns a result",
+              "target": "terminal"
+            },
+            {
+              "condition": "The adapter returns no result and the normal provider loop resumes",
+              "target": "agent.turn_preflight_gate.run_preflight_gate"
+            }
+          ]
+        }
+      ],
+      "terminal": {
+        "description": "Turn result with the final response, conversation messages and completion state; may be incomplete, failed or interrupted.",
+        "kind": "emits_record"
+      },
+      "tools": []
+    }
+  ]
+}

@@ -73,6 +73,23 @@ function ModelValue({ capability }: { capability: Capability }) {
   // Also the fallback when a routed deployment can't be read: what the code names
   // is stale but true, which beats an "unavailable" dead end.
   if (models.length === 0) {
+    const resolution = capability.flow?.modelResolution;
+    if (resolution?.selection)
+      return (
+        <span
+          className="flex min-h-6 items-center gap-2 text-xs text-muted-foreground"
+          title={resolution.selection}
+        >
+          {resolution.defaultModel ? (
+            <>
+              <ModelProviderChip model={resolution.defaultModel} />
+              <span>Source default</span>
+            </>
+          ) : (
+            "Selected at runtime"
+          )}
+        </span>
+      );
     return (
       <span className="flex h-6 items-center text-sm text-muted-foreground">No model set</span>
     );

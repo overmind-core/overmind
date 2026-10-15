@@ -254,11 +254,14 @@ def declared_expectations(repo_root: str | Path) -> dict[str, list[dict[str, str
         except (OSError, SyntaxError):
             continue
 
-        def visit(node: ast.AST, prefix: str) -> None:
+        module_prefix = module_dotted_path(file.relative_to(root).as_posix())
+
+        def visit(node: ast.AST, prefix: str, module: str = module_prefix) -> None:
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     qualname = f"{prefix}{child.name}"
                     if found := _declared_on(child, qualname):
+                        found.qualname = f"{module}.{qualname}"
                         declared.append(found)
                     visit(child, f"{qualname}.<locals>.")
                 elif isinstance(child, ast.ClassDef):

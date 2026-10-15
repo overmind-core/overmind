@@ -41,6 +41,7 @@ export const Icon = {
   clipboard: glyph("clipboard"),
   close: glyph("cancel"), // the "X" — close / dismiss / cancel only
   code: glyph("braces"),
+  collapse: glyph("collapse"),
   columns: glyph("grid-3x2"),
   components: glyph("blocks"),
   copy: glyph("copy"),
@@ -67,6 +68,7 @@ export const Icon = {
   folderAdd: glyph("folder-plus"),
   folderOpen: glyph("folder-open"),
   forward: glyph("arrow-right"),
+  fullscreen: glyph("scale"),
   gitBranch: glyph("git-branch"),
   grid: glyph("grid-3x3"),
   hash: glyph("hash"),
@@ -113,6 +115,7 @@ export const Icon = {
   sort: glyph("sort-vertical"),
   sortable: glyph("chevrons-vertical"),
   stop: glyph("power-off"),
+  subtract: glyph("minus"),
   success: glyph("check"),
   successDouble: glyph("check-double"),
   target: glyph("target"),

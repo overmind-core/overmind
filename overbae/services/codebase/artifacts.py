@@ -89,6 +89,47 @@ def normalize_tool_arguments(value: Any) -> list[dict[str, Any]]:
     return out
 
 
+def normalize_transitions(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {"target": str(item["target"]).strip(), "condition": str(item["condition"]).strip()}
+        for item in value
+        if isinstance(item, dict)
+        and str(item.get("target") or "").strip()
+        and str(item.get("condition") or "").strip()
+    ]
+
+
+def normalize_tool_branches(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    branches = []
+    for branch in value:
+        if not isinstance(branch, dict) or branch.get("basis") not in ("code", "prompt"):
+            continue
+        provenance = _coerce_paths(branch.get("provenance"))
+        condition = str(branch.get("condition") or "").strip()
+        if not provenance or not condition:
+            continue
+        branches.append(
+            {
+                "condition": condition,
+                "basis": branch["basis"],
+                "action": str(branch.get("action") or "").strip(),
+                "outcome": str(branch.get("outcome") or "").strip(),
+                "next": str(branch.get("next") or "").strip(),
+                **(
+                    {"transitions": normalize_transitions(branch["transitions"])}
+                    if "transitions" in branch
+                    else {}
+                ),
+                "provenance": provenance,
+            }
+        )
+    return branches
+
+
 def normalize_tool_spec(value: Any) -> list[dict[str, Any]]:
     """The ``args`` string is kept alongside ``arguments`` for older readers."""
     if not isinstance(value, list):
@@ -108,6 +149,7 @@ def normalize_tool_spec(value: Any) -> list[dict[str, Any]]:
                 "side_effect": _coerce_side_effect(tool.get("side_effect")),
                 "returns": str(tool.get("returns") or "").strip(),
                 "arguments": normalize_tool_arguments(tool.get("arguments")),
+                "branches": normalize_tool_branches(tool.get("branches")),
                 "integration": str(tool.get("integration") or "").strip(),
                 # Semantic cluster: groups similar tools in the flow UI and judge grounding.
                 "cluster": str(tool.get("cluster") or "").strip(),
@@ -280,8 +322,7 @@ def normalize_trajectory_steps(
     Every entry becomes a structured step — legacy milestone strings (stale
     stored cards, prompt-disobedient outputs) coerce to bare agent steps, so a
     non-empty sequence never yields ``steps == []``. A ``model_invocation``
-    step keeps its In/Action/Out contract (``input`` / ``action`` /
-    ``output``); the contract is blanked on agent steps.
+    step and an agent step both keep source-authored In/Action/Out contracts.
     """
     if not isinstance(raw_sequence, list):
         return [], []
@@ -293,7 +334,6 @@ def normalize_trajectory_steps(
                 continue
             kind = str(entry.get("kind") or "").strip().lower()
             kind = kind if kind in STEP_KINDS else "agent_step"
-            is_model = kind == "model_invocation"
             anchors = entry.get("anchors")
             steps.append(
                 {
@@ -302,10 +342,15 @@ def normalize_trajectory_steps(
                     "anchors": [str(a).strip() for a in anchors if str(a).strip()]
                     if isinstance(anchors, list)
                     else [],
-                    "input": str(entry.get("input") or "").strip() if is_model else "",
-                    "action": str(entry.get("action") or "").strip() if is_model else "",
-                    "output": str(entry.get("output") or "").strip() if is_model else "",
+                    "input": str(entry.get("input") or "").strip(),
+                    "action": str(entry.get("action") or "").strip(),
+                    "output": str(entry.get("output") or "").strip(),
                     "may_use": _normalize_may_use(entry.get("may_use"), allowed_canon),
+                    **(
+                        {"transitions": normalize_transitions(entry["transitions"])}
+                        if "transitions" in entry
+                        else {}
+                    ),
                 }
             )
         elif str(entry).strip():
@@ -434,6 +479,18 @@ def _normalize_expected_output(expected: Any) -> dict[str, Any]:
     return {"description": "", "example": None, "quality_signals": []}
 
 
+def normalize_model_resolution(value: Any) -> dict[str, Any]:
+    value = value if isinstance(value, dict) else {}
+    paths = value.get("provenance")
+    return {
+        "default_model": str(value.get("default_model") or "").strip(),
+        "selection": str(value.get("selection") or "").strip(),
+        "provenance": [p for p in paths if isinstance(p, str) and p.strip()]
+        if isinstance(paths, list)
+        else [],
+    }
+
+
 def normalize_capability_card(card: dict[str, Any]) -> dict[str, Any]:
     tool_spec = normalize_tool_spec(card.get("tool_spec"))
     vocabulary = card.get("vocabulary")
@@ -444,6 +501,7 @@ def normalize_capability_card(card: dict[str, Any]) -> dict[str, Any]:
         "task": str(card.get("task") or "").strip(),
         "modality": str(card.get("modality") or "").strip(),
         "domain": str(card.get("domain") or "").strip(),
+        "model_resolution": normalize_model_resolution(card.get("model_resolution")),
         "input_schema": _as_schema_dict(card.get("input_schema")),
         "output_fields": _as_schema_dict(card.get("output_fields")),
         "expected_output": _normalize_expected_output(card.get("expected_output")),

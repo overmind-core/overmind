@@ -1,0 +1,15 @@
+.header {
+  position: relative;
+  isolation: isolate;
+}
+
+.header::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background-image: url("/console-noise.svg");
+  border-radius: inherit;
+  opacity: 0.3;
+}

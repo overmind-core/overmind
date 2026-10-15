@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
@@ -405,9 +405,14 @@ async function fetchTraceDetail(traceId: string): Promise<TraceDetailView> {
 // A live trace refetches until the root span arrives or the settle window passes.
 const LIVE_TRACE_POLL_MS = 4_000;
 
-export function useTraceDetail(traceId: string | undefined, projectId: string | undefined) {
+export function useTraceDetail(
+  traceId: string | undefined,
+  projectId: string | undefined,
+  retainPreviousData = false
+) {
   return useQuery({
     enabled: !!traceId && !!projectId,
+    placeholderData: retainPreviousData ? keepPreviousData : undefined,
     queryFn: () => fetchTraceDetail(traceId!),
     queryKey: ["trace", traceId, projectId],
     refetchInterval: (query) =>

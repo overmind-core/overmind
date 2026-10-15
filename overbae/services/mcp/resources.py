@@ -23,6 +23,7 @@ from overbae.api.eval_serializers import run_progress
 from overbae.core.errors import InputValidationError
 from overbae.innermind import comparison
 from overbae.innermind import context as eval_context
+from overbae.innermind.definitions import definition_source
 from overbae.models import (
     Capability,
     Cell,
@@ -52,6 +53,7 @@ from overbae.services import (
     operational_progress,
     training_monitoring,
 )
+from overbae.services.codebase.flow import build_capability_flow
 from overbae.services.datasets import paths, pipeline_bindings, pipeline_packages, workbench
 from overbae.services.datasets.imports import status as import_status
 from overbae.services.datasets.lifecycle import DatasetError
@@ -600,6 +602,7 @@ def _capability_resource(project, value: str, uri: str) -> dict:
     capability = Capability.objects.select_related(
         "active_model", "benchmark_model", "activation"
     ).get(pk=capability.pk)
+    flow = build_capability_flow(capability)
     active_model = capability.active_model
     benchmark = capability.benchmark_model
     from overbae.services.datasets.rows import capability_dataset_rows
@@ -618,6 +621,8 @@ def _capability_resource(project, value: str, uri: str) -> dict:
         "active_eval_set": str(capability.active_eval_set_id)
         if capability.active_eval_set_id
         else None,
+        "tool_spec": flow["tool_spec"],
+        "trajectory_map": flow["trajectory_map"],
         "eval_preload": (capability.improvement_metadata or {}).get("eval_preload"),
         "eval_matrix": [
             {
@@ -625,12 +630,14 @@ def _capability_resource(project, value: str, uri: str) -> dict:
                 "name": row.name,
                 "type": row.type,
                 "source": row.source[:2_000],
+                "definition_source": definition_source(row),
                 "span_type": row.span_type,
                 "span_name": row.span_name,
                 "enabled": row.enabled,
                 "scope": "capability" if row.capability_id else "project",
             }
             for row in EvalMatrix.objects.filter(project=project)
+            .select_related("capability")
             .filter(Q(capability=capability) | Q(capability__isnull=True))
             .order_by("name")[:_MAX_LIST]
         ],
@@ -842,7 +849,17 @@ def _eval_set_resource(project, value: str, uri: str) -> dict:
     )
     if eval_set is None:
         raise _not_found("eval set", value)
-    rows = list(eval_set.rows.order_by("name")[:101])
+    params = parse_qs(urlparse(uri).query)
+    try:
+        offset = int(params.get("offset", [0])[0])
+        limit = int(params.get("limit", [20])[0])
+        if offset < 0 or not 1 <= limit <= 100:
+            raise ValueError
+    except ValueError:
+        raise MCPError("invalid_input", "Use a nonnegative offset and limit 1–100") from None
+    query = eval_set.rows.select_related("capability").order_by("name", "id")
+    total = query.count()
+    rows = list(query[offset : offset + limit])
     return {
         "uri": uri,
         "kind": "eval_set",
@@ -857,14 +874,18 @@ def _eval_set_resource(project, value: str, uri: str) -> dict:
                 "id": str(row.id),
                 "name": row.name,
                 "type": row.type,
-                "source": row.source[:2_000],
+                "source": row.source,
+                "definition_source": definition_source(row),
                 "span_type": row.span_type,
                 "span_name": row.span_name,
                 "enabled": row.enabled,
             }
-            for row in rows[:100]
+            for row in rows
         ],
-        "rows_truncated": len(rows) > 100,
+        "rows_truncated": offset + len(rows) < total,
+        "total": total,
+        "offset": offset,
+        "next_offset": offset + len(rows) if offset + len(rows) < total else None,
     }
 
 
@@ -1676,7 +1697,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
             "Untrusted script diagnostics; step, channel, offset and limit",
         ),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
-        ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and its matrix rows"),
+        (
+            "eval-set",
+            "overmind://eval-sets/{eval_set}",
+            "Eval set and complete matrix rows; limit (1–100, default 20) and offset page the set",
+        ),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
         ("deployment", "overmind://deployments/{deployment}", "Deployment status"),
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),

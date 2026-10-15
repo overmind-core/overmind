@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 
 import { toast } from "sonner";
 
+import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { MATRIX_TYPE_LABEL } from "@/components/evaluations/matrix-row-label";
 import {
   PYTHON_CHECK_EXAMPLES,
@@ -25,6 +26,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { SearchInput } from "@/components/ui/search-input";
 import {
   Select,
@@ -43,7 +45,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TableSectionHeader } from "@/components/ui/table-section-header";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useCreateEvalMatrixRowMutation,
   useDeleteEvalMatrixRowMutation,
@@ -51,7 +55,8 @@ import {
 } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { errorMessage } from "@/lib/notify";
-import type { EvalMatrix, EvalMatrixTypeEnum } from "@/openapi";
+import type { Capability, EvalMatrix, EvalMatrixTypeEnum } from "@/openapi";
+import { evaluationName, presentEvaluations, type ScopeKind } from "./evaluation-presentation";
 
 const SOURCE_LABEL: Record<string, string> = {
   deterministic: "Python check",
@@ -63,164 +68,449 @@ const SOURCE_PLACEHOLDER: Record<string, string> = {
   llm: "The answer cites the policy it relies on.",
 };
 
-/** Project-wide rows apply to every capability; a capability page passes its
- *  id so new rows are scoped to it. */
+const DEFINITION_LABEL: Record<string, string> = {
+  code: "Agent code",
+  config: "Repository configuration",
+  custom: "Platform / API",
+  stock: "Overmind catalogue",
+  unknown: "Not recorded",
+};
+
+const DEFINITION_DETAIL: Record<string, string> = {
+  code: "Declared in an SDK decorator. Change the repository declaration and run overmind sync to update it.",
+  config:
+    "Defined in overmind.toml. Change the repository configuration and run overmind sync to update it.",
+  custom: "Added through the platform or API.",
+  stock: "Supplied by Overmind and shared across capabilities in this project.",
+  unknown: "No matching saved declaration or recorded creator is available.",
+};
+
+const SCOPE_META: Record<ScopeKind, { label: string; tone: string }> = {
+  model: { label: "Model call", tone: "border-cat-4/40 bg-cat-4/10 text-cat-4" },
+  other: {
+    label: "Other scope",
+    tone: "border-muted-foreground/40 bg-wash-raised text-muted-foreground",
+  },
+  step: { label: "Execution step", tone: "border-cat-2/40 bg-cat-2/10 text-cat-2" },
+  tool: { label: "Tool call", tone: "border-cat-3/40 bg-cat-3/10 text-cat-3" },
+  whole: { label: "Whole agent", tone: "border-cat-6/40 bg-cat-6/10 text-cat-6" },
+};
+
+const SCOPE_GROUP_ORDER: ScopeKind[] = ["whole", "model", "step", "tool", "other"];
+
+const SCOPE_GROUP_DETAIL: Record<ScopeKind, string> = {
+  model: "Rules that assess model decisions",
+  other: "Rules that match spans without a unique step",
+  step: "Rules attached to a specific execution step",
+  tool: "Rules that check a tool call and its result",
+  whole: "Rules that assess the complete agent run",
+};
+
+const JUDGE_PROBABILITY_LABELS = [
+  { detail: "Fully meets the expectation", label: "Yes", score: "1.00" },
+  { detail: "Meets it with gaps or errors", label: "Partial", score: "0.50" },
+  { detail: "Does not meet the expectation", label: "No", score: "0.00" },
+] as const;
+
+function ScopeIcon({ kind, className }: { kind: ScopeKind; className?: string }) {
+  if (kind === "tool") return <Icon.tool className={className} />;
+  if (kind === "model") return <Icon.model className={className} />;
+  if (kind === "step") return <Icon.listBox className={className} />;
+  if (kind === "whole") return <Icon.capability className={className} />;
+  return <Icon.info className={className} />;
+}
+
+function MethodBadge({ type }: { type: EvalMatrixTypeEnum }) {
+  const isJudge = type === "llm";
+  return (
+    <span
+      className={`chip-label inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs ${
+        isJudge
+          ? "border-cat-4/40 bg-cat-4/10 text-cat-4"
+          : "border-cat-1/40 bg-cat-1/10 text-cat-1"
+      }`}
+    >
+      {isJudge ? <Icon.eval className="size-3" /> : <Icon.code className="size-3" />}
+      {isJudge ? "Model judge" : "Code check"}
+    </span>
+  );
+}
+
+function CodeSnippet({ source }: { source?: string }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-code-surface">
+      <div className="px-4 pt-3 text-xs text-muted-foreground">Python</div>
+      <div className="p-4">
+        <ScriptCode
+          aria-label="Python evaluation definition"
+          className="[&_.font-mono]:[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] [&_ol]:w-auto [&_ol]:min-w-5 [&_ol]:text-muted-foreground [&_pre]:w-max [&_pre]:min-w-full [&_pre]:whitespace-pre [&_pre]:break-normal"
+          source={source ?? ""}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function EvalMatrixTable({
   projectId,
   capabilityId,
+  capability,
+  actions,
 }: {
   projectId: string;
   capabilityId?: string;
+  capability?: Capability;
+  actions?: ReactNode;
 }) {
   const matrix = useEvalMatrixQuery(projectId, capabilityId);
   const guard = useGuestGate();
   const remove = useDeleteEvalMatrixRowMutation();
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("enabled");
+  const [part, setPart] = useState("all");
+  const [method, setMethod] = useState("all");
+  const presented = useMemo(
+    () => presentEvaluations(matrix.data ?? [], capability),
+    [matrix.data, capability]
+  );
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<EvalMatrix | null>(null);
   const query = search.trim().toLowerCase();
-  const rows = (matrix.data ?? []).filter((row) =>
-    `${row.name} ${row.type} ${row.spanType ?? ""} ${row.spanName ?? ""}`
-      .toLowerCase()
-      .includes(query)
-  );
+  const rows = presented.filter(({ row, name, description, scope }) => {
+    const enabled = row.enabled !== false;
+    return (
+      (part === "all" || scope.kind === part) &&
+      (method === "all" || row.type === method) &&
+      (status === "all" || (status === "enabled" ? enabled : !enabled)) &&
+      `${name} ${description} ${scope.label} ${scope.detail} ${row.name} ${row.type} ${row.spanType ?? ""} ${row.spanName ?? ""} ${DEFINITION_LABEL[row.definitionSource ?? "unknown"]}`
+        .toLowerCase()
+        .includes(query)
+    );
+  });
+  const groupedRows = SCOPE_GROUP_ORDER.map((kind) => ({
+    kind,
+    rows: rows.filter(({ scope }) => scope.kind === kind),
+  })).filter((group) => group.rows.length > 0);
+  const hasActiveFilters =
+    search.trim() !== "" || part !== "all" || method !== "all" || status !== "enabled";
+  const clearFilters = () => {
+    setSearch("");
+    setPart("all");
+    setMethod("all");
+    setStatus("enabled");
+  };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <SearchInput
-          className="min-w-[200px] flex-1"
-          label="Search matrix rows"
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch("")}
-          placeholder="Search matrix…"
-          value={search}
+    <TooltipProvider>
+      <div className="space-y-3">
+        <TableSectionHeader
+          actions={
+            <div className="flex items-center gap-2">
+              {actions}
+              <Button onClick={guard(() => setCreating(true))} size="sm">
+                <Icon.add />
+                Add evaluation
+              </Button>
+            </div>
+          }
+          count={presented.length}
+          description="See what is scored, where it runs, and how the score is produced."
+          icon={
+            <Icon.evaluations
+              aria-hidden
+              className="size-6 shrink-0 [image-rendering:pixelated] invert"
+            />
+          }
+          title="Evaluation coverage"
+          toolbar={
+            <ListToolbar
+              filters={
+                <>
+                  <Select onValueChange={setPart} value={part}>
+                    <SelectTrigger
+                      aria-label="Evaluation applies to"
+                      className="w-44"
+                      size="default"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All parts of the agent</SelectItem>
+                      <SelectItem value="whole">Whole agent</SelectItem>
+                      <SelectItem value="model">Model calls</SelectItem>
+                      <SelectItem value="step">Execution steps</SelectItem>
+                      <SelectItem value="tool">Tool calls</SelectItem>
+                      <SelectItem value="other">Other scopes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select onValueChange={setMethod} value={method}>
+                    <SelectTrigger aria-label="Evaluation method" className="w-36" size="default">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All methods</SelectItem>
+                      <SelectItem value="deterministic">Code checks</SelectItem>
+                      <SelectItem value="llm">Model judges</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select onValueChange={setStatus} value={status}>
+                    <SelectTrigger aria-label="Evaluation status" className="w-36" size="default">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enabled">Enabled</SelectItem>
+                      <SelectItem value="disabled">Disabled</SelectItem>
+                      <SelectItem value="all">All statuses</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              }
+              hasActiveFilters={hasActiveFilters}
+              onClearFilters={clearFilters}
+              search={
+                <SearchInput
+                  className="min-w-[220px] flex-1"
+                  label="Search evaluations"
+                  onChange={(e) => setSearch(e.target.value)}
+                  onClear={() => setSearch("")}
+                  placeholder="Search rules, steps or tools…"
+                  value={search}
+                />
+              }
+            />
+          }
         />
-        <Button onClick={guard(() => setCreating(true))}>
-          <Icon.add />
-          New row
-        </Button>
-      </div>
-      {matrix.isLoading ? (
-        <LoadingState />
-      ) : matrix.error ? (
-        <DismissibleAlert
-          error={new Error(errorMessage(matrix.error, "Couldn't load the eval matrix."))}
-          variant="destructive"
-        />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          className="rounded-md border border-dashed bg-wash-subtle"
-          icon={Icon.evaluations}
-          iconClassName="invert [image-rendering:pixelated]"
-          size="section"
-          title="No matrix rows"
-        />
-      ) : (
-        <div className="overflow-auto rounded-md border border-border">
-          <Table>
+        {matrix.isLoading ? (
+          <LoadingState />
+        ) : matrix.error ? (
+          <DismissibleAlert
+            error={new Error(errorMessage(matrix.error, "Couldn't load evaluations."))}
+            variant="destructive"
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            className="rounded-md border border-dashed bg-wash-subtle"
+            icon={Icon.evaluations}
+            iconClassName="invert [image-rendering:pixelated]"
+            size="section"
+            title="No evaluations match these filters"
+          />
+        ) : (
+          <Table
+            className="table-fixed min-w-[760px]"
+            containerClassName="overflow-hidden rounded-md border border-border bg-card"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Applies to</TableHead>
-                <TableHead>Scope</TableHead>
-                <TableHead className="w-20 text-center">Status</TableHead>
-                <TableHead className="w-10">
-                  <span className="sr-only">Delete</span>
+                <TableHead className="w-[44%]">Evaluation</TableHead>
+                <TableHead className="w-[28%]">Where it runs</TableHead>
+                <TableHead className="w-40">How it is scored</TableHead>
+                <TableHead className="w-32 text-right">
+                  <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="max-w-xs">
-                    <button
-                      className="truncate text-left font-mono text-sm hover:underline focus-visible:underline focus-visible:outline-none"
-                      onClick={() => setViewing(row)}
-                      title={row.name}
-                      type="button"
-                    >
-                      {row.name}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <Badge size="chip" variant="neutral">
-                      {MATRIX_TYPE_LABEL[row.type] ?? row.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {[row.spanType, row.spanName].filter(Boolean).join(" · ") || "Every span"}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {row.capability ? "Capability" : "Project-wide"}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge size="chip" variant={row.enabled === false ? "neutral" : "default"}>
-                      {row.enabled === false ? "Off" : "On"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <ConfirmDialog
-                      confirmLabel="Delete"
-                      description={`${row.name} stops scoring new spans and leaves every eval set. Existing scores are kept.`}
-                      destructive
-                      isPending={remove.isPending && remove.variables === row.id}
-                      onConfirm={() => remove.mutate(row.id)}
-                      title="Delete row?"
-                      trigger={
-                        <Button
-                          aria-label={`Delete ${row.name}`}
-                          className="text-muted-foreground/60 hover:text-destructive"
-                          onClick={guard(() => undefined)}
-                          size="icon-sm"
-                          variant="ghost"
+              {groupedRows.map(({ kind, rows: group }) => (
+                <Fragment key={kind}>
+                  <TableRow className="bg-wash-subtle/60 hover:bg-wash-subtle/60">
+                    <TableCell className="border-t border-border/70 px-3 py-2" colSpan={4}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`flex size-6 shrink-0 items-center justify-center rounded-sm border ${SCOPE_META[kind].tone}`}
                         >
-                          <Icon.delete className="size-3.5" />
-                        </Button>
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
+                          <ScopeIcon className="size-3" kind={kind} />
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {SCOPE_META[kind].label}
+                        </span>
+                        <Badge size="chip" variant="neutral">
+                          {group.length}
+                        </Badge>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {SCOPE_GROUP_DETAIL[kind]}
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {group.map(({ row, name, scope }) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="py-2.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="block min-w-0 truncate text-sm font-medium text-foreground">
+                                {name}
+                              </span>
+                              {row.enabled === false && (
+                                <Badge className="shrink-0" size="chip" variant="neutral">
+                                  Disabled
+                                </Badge>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-lg break-words">{name}</TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className={`flex size-6 shrink-0 items-center justify-center rounded-sm border ${SCOPE_META[scope.kind].tone}`}
+                              >
+                                <ScopeIcon className="size-3" kind={scope.kind} />
+                              </span>
+                              <span className="truncate text-sm text-foreground">
+                                {scope.label}
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm break-words">
+                            {scope.detail} · {row.spanName || row.spanType || "All matching spans"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <MethodBadge type={row.type} />
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            aria-label={`Inspect ${name}`}
+                            onClick={() => setViewing(row)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <Icon.view />
+                            Inspect
+                          </Button>
+                          <ConfirmDialog
+                            confirmLabel="Delete evaluation"
+                            description={`${row.name} stops scoring new spans and leaves every eval set. Existing scores are kept.`}
+                            destructive
+                            isPending={remove.isPending && remove.variables === row.id}
+                            onConfirm={() => remove.mutate(row.id)}
+                            title="Delete evaluation?"
+                            trigger={
+                              <Button
+                                aria-label={`Delete ${row.name}`}
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={guard(() => undefined)}
+                                size="icon-sm"
+                                variant="ghost"
+                              >
+                                <Icon.delete className="size-3.5" />
+                              </Button>
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </Fragment>
               ))}
             </TableBody>
           </Table>
-        </div>
-      )}
-      <Dialog onOpenChange={(open) => !open && setCreating(false)} open={creating}>
-        {creating && (
-          <MatrixRowForm
-            capabilityId={capabilityId}
-            onClose={() => setCreating(false)}
-            projectId={projectId}
-          />
         )}
-      </Dialog>
-      <MatrixRowDetail onClose={() => setViewing(null)} row={viewing} />
-    </div>
+        <Dialog onOpenChange={(open) => !open && setCreating(false)} open={creating}>
+          {creating && (
+            <MatrixRowForm
+              capabilityId={capabilityId}
+              onClose={() => setCreating(false)}
+              projectId={projectId}
+            />
+          )}
+        </Dialog>
+        <MatrixRowDetail capability={capability} onClose={() => setViewing(null)} row={viewing} />
+      </div>
+    </TooltipProvider>
   );
 }
 
-function MatrixRowDetail({ row, onClose }: { row: EvalMatrix | null; onClose: () => void }) {
+export function MatrixRowDetail({
+  row,
+  onClose,
+  capability,
+}: {
+  row: EvalMatrix | null;
+  onClose: () => void;
+  capability?: Capability;
+}) {
+  const presentation = row ? presentEvaluations([row], capability)[0] : null;
+  const definition = row?.definitionSource ?? "unknown";
   return (
     <Dialog onOpenChange={(open) => !open && onClose()} open={!!row}>
       <DialogContent size="lg">
-        <DialogHeader>
-          <div>
-            <DialogTitle className="font-mono">{row?.name}</DialogTitle>
-            <DialogDescription>
-              {[
-                row ? (MATRIX_TYPE_LABEL[row.type] ?? row.type) : "",
-                row?.capability ? "Capability" : "Project-wide",
-                [row?.spanType, row?.spanName].filter(Boolean).join(" · ") || "Every span",
-              ].join(" · ")}
+        <DialogHeader className="items-start">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {row && <MethodBadge type={row.type} />}
+              <Badge size="chip" variant={row?.enabled === false ? "neutral" : "success"}>
+                {row?.enabled === false ? "Disabled" : "Enabled"}
+              </Badge>
+            </div>
+            <DialogTitle>{row ? evaluationName(row) : "Evaluation"}</DialogTitle>
+            <DialogDescription className="max-w-2xl">
+              {DEFINITION_DETAIL[definition]}
             </DialogDescription>
           </div>
         </DialogHeader>
-        <DialogBody>
-          <pre className="whitespace-pre-wrap break-words rounded-sm border border-border bg-muted p-3 font-mono text-xs">
-            {row?.source}
-          </pre>
+        <DialogBody className="space-y-4">
+          <dl className="grid gap-x-6 gap-y-3 rounded-md bg-wash-subtle px-4 py-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Defined in</dt>
+              <dd className="mt-1">{DEFINITION_LABEL[definition]}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Target</dt>
+              <dd className="mt-1">{presentation?.scope.label}</dd>
+              <dd className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                {[row?.spanType, row?.spanName].filter(Boolean).join(" · ") || "All matching spans"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Coverage</dt>
+              <dd className="mt-1">{row?.capability ? "This capability" : "This project"}</dd>
+            </div>
+          </dl>
+          {row?.type === "llm" && (
+            <section className="space-y-3 rounded-md border border-border bg-wash-subtle p-4">
+              <div className="flex items-start gap-2.5">
+                <Icon.eval className="mt-0.5 size-4 shrink-0 text-cat-4" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">How the judge scores</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The judge returns a probability for each label. The final score is the weighted
+                    sum of those probabilities.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-3">
+                {JUDGE_PROBABILITY_LABELS.map(({ detail, label, score }) => (
+                  <div className="bg-card px-3 py-2.5" key={label}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{label}</span>
+                      <span className="font-mono text-xs tabular-nums text-cat-4">{score}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-foreground">
+              {row?.type === "llm" ? "Criterion" : "Check definition"}
+            </p>
+            {row?.type === "llm" ? (
+              <p className="whitespace-pre-wrap rounded-sm bg-wash-subtle p-3 text-sm leading-relaxed">
+                {row.source}
+              </p>
+            ) : (
+              <CodeSnippet source={row?.source} />
+            )}
+          </section>
         </DialogBody>
       </DialogContent>
     </Dialog>
@@ -265,10 +555,10 @@ function MatrixRowForm({
     };
     try {
       await create.mutateAsync({ ...body, project: projectId });
-      toast.success("Row created");
+      toast.success("Evaluation added");
       onClose();
     } catch (err) {
-      setError(new Error(errorMessage(err, "Couldn't save the row.")));
+      setError(new Error(errorMessage(err, "Couldn't save the evaluation.")));
     }
   }
 
@@ -276,7 +566,7 @@ function MatrixRowForm({
     <DialogContent showCloseButton={!pending} size="lg">
       <DialogHeader>
         <div>
-          <DialogTitle>New evaluation matrix</DialogTitle>
+          <DialogTitle>Add evaluation</DialogTitle>
         </div>
       </DialogHeader>
       <DialogBody className="space-y-4">
@@ -366,7 +656,7 @@ function MatrixRowForm({
           Cancel
         </Button>
         <Button disabled={!ready} onClick={() => void submit()}>
-          {pending ? "Creating…" : "Create row"}
+          {pending ? "Creating…" : "Add evaluation"}
         </Button>
       </DialogFooter>
     </DialogContent>

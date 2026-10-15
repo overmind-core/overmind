@@ -12,7 +12,6 @@ import { ModelsTab } from "@/components/capability-detail/ModelsTab";
 import { CapabilityNextStepNudge } from "@/components/capability-detail/next-step-nudge";
 import { CapabilityFactsBar } from "@/components/capability-overview/CapabilityFactsBar";
 import { CapabilityPromptCard } from "@/components/capability-overview/CapabilityPromptCard";
-import { ComponentsExplorer } from "@/components/capability-overview/ComponentsExplorer";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useCopy } from "@/components/ui/block-actions";
@@ -238,14 +237,11 @@ function CapabilityDetailPage() {
           expanded={flowFull === true}
           onExpandedChange={setFlowFull}
         />
-        <ComponentsExplorer flow={capability.flow} />
       </div>
-
-      <hr className="border-border/60" />
 
       <section
         aria-labelledby="capability-dataset-heading"
-        className="scroll-mt-6 space-y-4"
+        className="scroll-mt-6 space-y-4 pt-8"
         id="dataset"
       >
         <h2 className={TITLE.section} id="capability-dataset-heading">
@@ -255,30 +251,25 @@ function CapabilityDetailPage() {
       </section>
 
       {featureFlags.evaluations && projectId && (
-        <>
-          <hr className="border-border/60" />
-          <section
-            aria-labelledby="capability-evaluators-heading"
-            className="scroll-mt-6 space-y-4"
-            id="evaluators"
-          >
-            <h2 className={TITLE.section} id="capability-evaluators-heading">
-              Eval matrix
-            </h2>
-            <EvalMatrixTab
-              capability={capability}
-              capabilityId={capabilityId}
-              projectId={projectId}
-            />
-          </section>
-        </>
+        <section
+          aria-labelledby="capability-evaluators-heading"
+          className="scroll-mt-6 space-y-4 pt-8"
+          id="evaluators"
+        >
+          <h2 className={TITLE.section} id="capability-evaluators-heading">
+            Evaluations
+          </h2>
+          <EvalMatrixTab
+            capability={capability}
+            capabilityId={capabilityId}
+            projectId={projectId}
+          />
+        </section>
       )}
-
-      <hr className="border-border/60" />
 
       <section
         aria-labelledby="capability-models-heading"
-        className="scroll-mt-6 space-y-4"
+        className="scroll-mt-6 space-y-4 pt-8"
         id="models"
       >
         <h2 className={TITLE.section} id="capability-models-heading">
@@ -287,9 +278,7 @@ function CapabilityDetailPage() {
         <ModelsTab capability={capability} capabilityId={capabilityId} projectId={projectId} />
       </section>
 
-      <hr className="border-border/60" />
-
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3">
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3">
         <div className="min-w-0 flex-1 space-y-0.5 text-destructive">
           <p className="text-sm font-semibold">Danger zone</p>
           <p className={`${PROSE} text-sm leading-snug`}>
@@ -319,7 +308,7 @@ function CapabilityDetailPage() {
         title={`Delete ${capability.name}?`}
       />
 
-      {isGuest ? null : (
+      {isGuest || flowFull ? null : (
         <CapabilityNextStepNudge capabilityId={capabilityId} projectId={projectId} />
       )}
     </PageShell>

@@ -150,6 +150,10 @@ def _card_span_lists(card: Any) -> list[tuple[dict[str, Any], str]]:
         for entry in entries if isinstance(entries, list) else []:
             if isinstance(entry, dict):
                 out.append((entry, "provenance"))
+                branches = entry.get("branches")
+                for branch in branches if isinstance(branches, list) else []:
+                    if isinstance(branch, dict):
+                        out.append((branch, "provenance"))
     return out
 
 

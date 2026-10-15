@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from overbae.services.codebase.artifacts import (
+    normalize_model_resolution,
     normalize_modes,
     normalize_tool_spec,
     normalize_trajectory_map,
@@ -158,6 +159,7 @@ def build_capability_flow(capability: Any) -> dict[str, Any]:
         "modality": modality,
         "domain": domain,
         "model": str(capability.model or "").strip(),
+        "model_resolution": normalize_model_resolution(card.get("model_resolution")),
         "system_prompt": str(meta.get("system_prompt") or "").strip(),
         "system_prompt_excerpt": str(meta.get("system_prompt_excerpt") or "").strip(),
         "takes_files": _takes_files(modality, input_schema),

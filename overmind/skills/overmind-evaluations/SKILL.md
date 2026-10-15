@@ -34,7 +34,9 @@ evidence or overlap; do not fabricate expected outputs to make the data fit.
 Prefer the native `prepare-evaluation` prompt with dataset and eval set when
 available. Use `check_evaluation_readiness` with the selected cell and proposed
 targets. Resolve reported eval set rows, dataset and credit requirements. Read
-`overmind://eval-sets/{eval_set}` for set details.
+`overmind://eval-sets/{eval_set}` for set details. Pass `limit` (1–100, default
+20\) and follow `next_offset` until null to audit every row. Pages return complete
+evaluator sources; do not mistake the first page for the full suite.
 
 A run grades with the capability's active eval set unless given another. In a
 repository that set is the Default set `overmind sync` keeps: an llm row per

@@ -1,0 +1,781 @@
+{
+  "toolSpec": [
+    {
+      "branches": [
+        {
+          "action": "Finish with a successful result",
+          "basis": "code",
+          "condition": "The selected done action returns success=true",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Finish with an incomplete or unsuccessful result",
+          "basis": "code",
+          "condition": "The selected done action returns success=false",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Defer completion",
+          "basis": "code",
+          "condition": "done occurs after another queued action in the same batch",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Completion",
+      "name": "done"
+    },
+    {
+      "branches": [
+        {
+          "action": "Open search results",
+          "basis": "code",
+          "condition": "The selected engine is Google, Bing or DuckDuckGo",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Return a search error",
+          "basis": "code",
+          "condition": "The engine is unsupported or navigation fails",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Navigation",
+      "name": "search"
+    },
+    {
+      "branches": [
+        {
+          "action": "Open a new tab",
+          "basis": "code",
+          "condition": "new_tab is true and navigation succeeds",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Navigate the current tab",
+          "basis": "code",
+          "condition": "new_tab is false and the page loads with content",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Wait, recheck and reload once if still empty",
+          "basis": "code",
+          "condition": "The current HTTP page appears empty after navigation",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report an unavailable destination",
+          "basis": "code",
+          "condition": "A browser connection or network error prevents navigation",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Navigation",
+      "name": "navigate"
+    },
+    {
+      "branches": [
+        {
+          "action": "Return to the previous page",
+          "basis": "code",
+          "condition": "The browser can navigate backwards",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the navigation failure",
+          "basis": "code",
+          "condition": "Back navigation raises an error",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Navigation",
+      "name": "go_back"
+    },
+    {
+      "branches": [
+        {
+          "action": "Pause briefly",
+          "basis": "code",
+          "condition": "A wait duration is requested",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "wait"
+    },
+    {
+      "branches": [
+        {
+          "action": "Activate the element",
+          "basis": "code",
+          "condition": "An indexed element exists and accepts a normal click",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Read dropdown options instead",
+          "basis": "code",
+          "condition": "Click validation identifies a select element",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Click at the supplied coordinates",
+          "basis": "code",
+          "condition": "Coordinate clicking is enabled and coordinates are provided without an index",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the stale element",
+          "basis": "code",
+          "condition": "The indexed element no longer exists in the current page",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "click"
+    },
+    {
+      "branches": [
+        {
+          "action": "Type or clear text",
+          "basis": "code",
+          "condition": "The indexed input element exists",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the missing input",
+          "basis": "code",
+          "condition": "The indexed element is unavailable",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "input"
+    },
+    {
+      "branches": [
+        {
+          "action": "Upload the file",
+          "basis": "code",
+          "condition": "A permitted, non-empty local file or a remote-accessible path is available and a file input is found",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Reject the upload",
+          "basis": "code",
+          "condition": "A local path is unavailable, empty, missing, or escapes the managed file directory",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the missing upload target",
+          "basis": "code",
+          "condition": "The requested element index is absent",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Files",
+      "name": "upload_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Change the active tab",
+          "basis": "code",
+          "condition": "The requested tab resolves and switching succeeds",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Navigation",
+      "name": "switch"
+    },
+    {
+      "branches": [
+        {
+          "action": "Close the tab",
+          "basis": "code",
+          "condition": "The requested tab is open",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report that the tab is unavailable",
+          "basis": "code",
+          "condition": "The close attempt finds the tab already unavailable",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Navigation",
+      "name": "close"
+    },
+    {
+      "branches": [
+        {
+          "action": "Extract structured page content",
+          "basis": "code",
+          "condition": "An output schema is supplied directly or by the agent",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Extract information from the page",
+          "basis": "code",
+          "condition": "No output schema is supplied and a content chunk is available",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Reject the extraction offset",
+          "basis": "code",
+          "condition": "start_from_char is beyond the available page content",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page inspection",
+      "name": "extract"
+    },
+    {
+      "branches": [
+        {
+          "action": "Find text or regex matches",
+          "basis": "code",
+          "condition": "The page text query executes successfully",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the page-query failure",
+          "basis": "code",
+          "condition": "The page query throws, returns no result, or reports an error",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page inspection",
+      "name": "search_page"
+    },
+    {
+      "branches": [
+        {
+          "action": "Inspect matching DOM elements",
+          "basis": "code",
+          "condition": "The CSS selector query executes successfully",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the selector-query failure",
+          "basis": "code",
+          "condition": "The selector query throws, returns no result, or reports an error",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page inspection",
+      "name": "find_elements"
+    },
+    {
+      "branches": [
+        {
+          "action": "Scroll the page",
+          "basis": "code",
+          "condition": "No non-zero element index is supplied",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Scroll within the element",
+          "basis": "code",
+          "condition": "A non-zero index identifies a current element",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the scroll failure",
+          "basis": "code",
+          "condition": "The supplied element index is missing or scrolling fails",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "scroll"
+    },
+    {
+      "branches": [
+        {
+          "action": "Send keyboard input",
+          "basis": "code",
+          "condition": "The key sequence can be dispatched",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the key-input failure",
+          "basis": "code",
+          "condition": "Keyboard dispatch fails",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "send_keys"
+    },
+    {
+      "branches": [
+        {
+          "action": "Scroll to the text",
+          "basis": "code",
+          "condition": "The target text is found",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the unsuccessful search",
+          "basis": "code",
+          "condition": "The scroll-to-text operation fails to find or reach it",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "find_text"
+    },
+    {
+      "branches": [
+        {
+          "action": "Save a screenshot",
+          "basis": "code",
+          "condition": "A file_name is provided",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Request a screenshot in the next observation",
+          "basis": "code",
+          "condition": "No file_name is provided",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page inspection",
+      "name": "screenshot"
+    },
+    {
+      "branches": [
+        {
+          "action": "Export the current page as a PDF",
+          "basis": "code",
+          "condition": "PDF printing succeeds",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Files",
+      "name": "save_as_pdf"
+    },
+    {
+      "branches": [
+        {
+          "action": "Read available choices",
+          "basis": "code",
+          "condition": "The indexed element exists and options are returned",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the missing dropdown",
+          "basis": "code",
+          "condition": "The indexed element no longer exists",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page inspection",
+      "name": "dropdown_options"
+    },
+    {
+      "branches": [
+        {
+          "action": "Select the dropdown value",
+          "basis": "code",
+          "condition": "The element exists and the requested option is selected",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Return the available choices",
+          "basis": "code",
+          "condition": "Selection cannot complete but option information is returned",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the selection problem",
+          "basis": "code",
+          "condition": "The element is absent or selection fails",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "select_dropdown"
+    },
+    {
+      "branches": [
+        {
+          "action": "Append content to a file",
+          "basis": "code",
+          "condition": "append is true",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Write or replace the file content",
+          "basis": "code",
+          "condition": "append is false",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Files",
+      "name": "write_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Replace matching file content",
+          "basis": "code",
+          "condition": "A targeted text replacement is requested",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Files",
+      "name": "replace_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Read the external file",
+          "basis": "code",
+          "condition": "The filename is in the user-provided available paths",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Read from the managed file system",
+          "basis": "code",
+          "condition": "The filename is not one of the available external paths",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Files",
+      "name": "read_file"
+    },
+    {
+      "branches": [
+        {
+          "action": "Run JavaScript in page context",
+          "basis": "code",
+          "condition": "The JavaScript evaluation succeeds",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        },
+        {
+          "action": "Report the script error",
+          "basis": "code",
+          "condition": "JavaScript throws or page execution fails",
+          "transitions": [
+            {
+              "condition": "After the action batch finishes or stops",
+              "target": "browser_use.agent.service.Agent._post_process"
+            }
+          ]
+        }
+      ],
+      "cluster": "Page interaction",
+      "name": "evaluate"
+    }
+  ],
+  "trajectoryMap": [
+    {
+      "claim": "decision_surface",
+      "divergences": [],
+      "id": "browser-agent-loop",
+      "name": "Observe, decide and act",
+      "routing": "",
+      "steps": [
+        {
+          "anchors": ["browser_use.agent.service.Agent._prepare_context"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Observe the browser and prepare context"
+        },
+        {
+          "anchors": ["browser_use.agent.service.Agent.get_model_output"],
+          "kind": "model_invocation",
+          "mayUse": [],
+          "step": "Choose actions from the request, browser state and previous results"
+        },
+        {
+          "anchors": ["browser_use.agent.service.Agent.multi_act"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Dispatch actions and handle page changes"
+        },
+        {
+          "anchors": ["browser_use.agent.service.Agent._post_process"],
+          "kind": "agent_step",
+          "mayUse": [],
+          "step": "Record results and update progress",
+          "transitions": [
+            {
+              "condition": "The task is not done and execution limits allow another step",
+              "target": "browser_use.agent.service.Agent._prepare_context"
+            },
+            {
+              "condition": "The run finishes, is stopped, fails, or reaches its step limit",
+              "target": "terminal"
+            }
+          ]
+        }
+      ],
+      "terminal": {
+        "description": "AgentHistoryList with action results and an optional final answer, including incomplete runs.",
+        "kind": "emits_record"
+      },
+      "tools": []
+    }
+  ]
+}

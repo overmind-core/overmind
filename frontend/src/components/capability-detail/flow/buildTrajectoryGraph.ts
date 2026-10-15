@@ -1,27 +1,44 @@
-import type { Edge, Node } from "@xyflow/react";
-import ELK from "elkjs/lib/elk.bundled.js";
+import { type Edge, MarkerType, type Node } from "@xyflow/react";
+import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import type { CapabilityFlow, CapabilityFlowTrajectoryStep } from "@/openapi";
+import type {
+  CapabilityFlow,
+  CapabilityFlowTool,
+  CapabilityFlowToolBranch,
+  CapabilityFlowTrajectoryStep,
+  CapabilityFlowTransition,
+  EvalMatrix,
+} from "@/openapi";
+import { bindTrajectoryEvaluations } from "./bindTrajectoryEvaluations";
+import { packTrajectoryBlocks } from "./trajectoryPacking";
+import {
+  CONDITION_HEIGHT,
+  CONDITION_SPACE,
+  CONDITION_WIDTH,
+  crossingPoints,
+  outcomeRoute,
+  routeAroundBoxes,
+} from "./trajectoryRouting";
 
-export type EntryNodeData = {
+export type BranchControls = {
+  collapsed?: boolean;
+  childCount?: number;
+  onToggle?: (id: string) => void;
+};
+
+export type EntryNodeData = BranchControls & {
   kind: "entry";
   capabilityName: string;
   task: string;
   pathCount: number;
+  entrypoint?: string;
+  evaluations?: EvalMatrix[];
 };
 
-export type StepCapability = {
-  tool: string;
-  when: string;
-  purpose: string;
-  sideEffect: string;
-};
-
-/** The In/Action/Out facets of a model-invocation backbone step. */
 type InvocationContract = { input: string; action: string; output: string };
 type ModelContext = Pick<StepNodeData, "model" | "systemPrompt" | "promptIsExcerpt">;
 
-export type StepNodeData = {
+export type StepNodeData = BranchControls & {
   kind: "step";
   label: string;
   pathNames: string[];
@@ -30,65 +47,79 @@ export type StepNodeData = {
   condition: string;
   actor: "agent" | "model";
   model: string;
+  modelResolution?: CapabilityFlow["modelResolution"];
   systemPrompt: string;
   promptIsExcerpt: boolean;
-  /** Set on model invocations; null on agent steps. */
+  /** Null when the scan did not capture an execution contract. */
   contract: InvocationContract | null;
-  /** Conditional capability slots of a backbone step. */
-  mayUse: StepCapability[];
-  /**
-   * Set on a decision-surface model invocation: the route from here is chosen
-   * at runtime by user intent over the clustered option space, not by code.
-   */
-  decisionNote: string;
+  hasActions: boolean;
+  anchors?: string[];
+  evaluations?: EvalMatrix[];
 };
 
-export type CapabilitiesNodeData = {
-  kind: "capabilities";
-  /** The model-invocation step whose output selects these tools. */
-  forLabel: string;
-  tools: StepCapability[];
-};
-
-type ClusterTool = { label: string; purpose: string; sideEffect: string };
-
-/**
- * A semantic capability cluster in a decision surface's option space: tools
- * of similar function that serve similar tasks, grouped at extraction time.
- */
-export type ClusterNodeData = {
-  kind: "cluster";
-  name: string;
-  /** The model-invocation step whose runtime choice selects into this cluster. */
-  forLabel: string;
-  tools: ClusterTool[];
-  /** e.g. "12 read · 3 write" — the trust mix at a glance. */
-  sideEffectMix: string;
+export type EvaluationScopesNodeData = {
+  kind: "evaluations";
+  broad: EvalMatrix[];
+  unmapped: EvalMatrix[];
 };
 
 export type TerminalNodeData = {
   kind: "terminal";
-  pathId: string;
   pathName: string;
-  /** code_path | declared_task | decision_surface. */
-  claim: string;
-  /** declared_task citation into prompt/tool-purpose text. */
-  promptQuote: string;
-  /** Chassis-verified: anchors call-graph reachable from the entry anchor. */
-  verified: boolean;
   routing: string;
   terminalKind: string;
   terminalDescription: string;
-  tools: string[];
-  provenance: string[];
+  recordedOutput?: string;
 };
 
-type TrajectoryNodeData =
+export type ActionGroupNodeData = BranchControls & {
+  kind: "actionGroup";
+  label: string;
+  ownerId: string;
+  modelSelected?: boolean;
+};
+export type ActionNodeData = BranchControls & {
+  kind: "action";
+  tool: CapabilityFlowTool;
+  groupId: string;
+  modelSelected?: boolean;
+  when: string;
+  expanded: boolean;
+  evaluations: EvalMatrix[];
+};
+export type OutcomeNodeData = {
+  kind: "outcome";
+  branch: CapabilityFlowToolBranch | null;
+  actionId: string;
+  groupId: string;
+  returns?: string;
+  recordedInvocations?: number;
+  continues?: boolean;
+};
+
+export type TrajectoryRoute = {
+  crossings?: { x: number; y: number }[];
+  points: { x: number; y: number }[];
+  label?: { x: number; y: number };
+};
+
+type TrajectoryNodeData = (
   | EntryNodeData
+  | ActionGroupNodeData
+  | ActionNodeData
+  | OutcomeNodeData
   | StepNodeData
-  | CapabilitiesNodeData
-  | ClusterNodeData
-  | TerminalNodeData;
+  | EvaluationScopesNodeData
+  | TerminalNodeData
+) & {
+  routes?: Record<string, TrajectoryRoute>;
+  layoutPorts?: Partial<
+    Record<
+      "in" | "out" | "return" | "retry" | "actions" | "outcomes" | "returnOut",
+      { x: number; y: number }
+    >
+  >;
+};
 export type TrajectoryNode = Node<TrajectoryNodeData>;
 export type TrajectoryGraph = {
   /** Unpositioned (0,0) — run `relayout` for placement. */
@@ -97,79 +128,38 @@ export type TrajectoryGraph = {
   /** ELK placement (async). Uses `node.measured.height` when present, else
    * `estimateHeight` — call once with estimates for first paint, again after
    * React Flow measures the cards. Returns fresh nodes; input untouched. */
-  relayout: (measuredNodes: TrajectoryNode[]) => Promise<TrajectoryNode[]>;
+  relayout: (measuredNodes: TrajectoryNode[], visibleEdges?: Edge[]) => Promise<TrajectoryNode[]>;
 };
 
 const ROW_GAP = 56;
-/** Gap between wrapped lanes of a satellite group. */
-const LANE_GAP = 48;
-/** A satellite lane taller than this wraps into side-by-side lanes instead
- * of growing into an unreadable tower. */
-const MAX_LANE_HEIGHT = 1000;
+const NODE_WIDTH = 320;
 
-const NODE_WIDTH: Record<TrajectoryNodeData["kind"], number> = {
-  capabilities: 300,
-  cluster: 300,
-  entry: 240,
-  step: 280,
-  terminal: 300,
-};
-
-// Estimates for column packing: overestimate (extra air) rather than
-// underestimate (overlap).
+const evaluationHeight = (rows: EvalMatrix[] = []) => (rows.length ? 24 + rows.length * 58 : 28);
 const estimateHeight = (data: TrajectoryNodeData): number => {
   switch (data.kind) {
+    case "action":
+      return 340;
+    case "actionGroup":
+      return 72;
+    case "outcome":
+      return 220;
     case "entry":
-      return 110;
+      return 170;
     case "step":
-      return (
-        104 +
-        (data.pathNames.length > 1 ? 30 : 18) +
-        (data.contract
-          ? 3 * 48
-          : data.inputs.length * 20 +
-            data.outputs.reduce((sum, o) => sum + 20 + (o.condition ? 28 : 0), 0)) +
-        (data.condition ? 52 : 0) +
-        (data.actor === "model" ? 80 : 0) +
-        // The rendered may-use list is capped (max-h-56 + scroll).
-        (data.mayUse.length > 0 ? Math.min(28 + data.mayUse.length * 36, 252) : 0)
-      );
-    case "capabilities":
-      // Rendered list is capped (max-h-72 + scroll).
-      return Math.min(96 + data.tools.length * 44, 420);
-    case "cluster":
-      // Header + mix line + capped example list (max-h-40 + scroll).
-      return Math.min(128 + data.tools.length * 36, 320);
+      return 450;
     case "terminal":
-      return 120 + (data.routing ? 52 : 0) + data.tools.length * 8 + data.provenance.length * 26;
+      return 160;
+    case "evaluations":
+      return 120 + evaluationHeight(data.broad) + evaluationHeight(data.unmapped);
   }
 };
 
 const norm = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, " ");
 
-const slug = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "") || "x";
-
 const ENTRY_ID = "entry";
 
-// Word sequence, code punctuation flattened: "execute_tool per call" and
-// "execute_tool (any gated tool)" both compare as plain words.
-const words = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+const baseEdgeStyle = { stroke: "var(--muted-foreground)", strokeOpacity: 0.7, strokeWidth: 1.5 };
 
-// Card tool entries carry annotations — "execute_tool (any gated/mutation
-// tool)" names the identifier before the parenthetical.
-const toolIdentifier = (name: string): string => name.split("(")[0].trim();
-
-const baseEdgeStyle = { stroke: "var(--muted-foreground)", strokeOpacity: 0.5, strokeWidth: 1.5 };
-
-// mayUse: tool → when clause; first path's clause/contract wins on shared steps.
 type StepMeta = {
   id: string;
   label: string;
@@ -180,6 +170,8 @@ type StepMeta = {
   mayUse: Map<string, string>;
   /** Model invocation on a decision_surface path: option space = whole tool_spec. */
   decisionSurface: boolean;
+  transitions: CapabilityFlowTransition[];
+  anchors: Set<string>;
 };
 type EdgeMeta = { source: string; target: string; pathIds: Set<string> };
 
@@ -201,22 +193,12 @@ const commonContext = (contexts: ModelContext[]): ModelContext => ({
     : "",
 });
 
-/**
- * One graph reflecting the backbone execution topology: entry fans out into
- * the per-path step chains and each path lands on its terminal. Steps shared
- * across paths (by normalized label) dedupe into shared fan-in/fan-out nodes;
- * path-specific ones render as per-path cards with in/out/condition detail.
- * Model invocations carry their In/Action/Out contract and hang their may_use
- * tools off a capability satellite; decision-surface invocations loop through
- * the tool_spec's semantic clusters instead. Routing clauses surface on the
- * card that owns the branch: a shared node's output row, a unique card fed
- * straight from entry, or the terminal when a path has no card of its own.
- *
- * Pure and deterministic — the caller memoizes on the flow.
- */
+// Shared steps deduplicate by source anchors, execution contract and conditional tools.
 export const buildTrajectoryGraph = (
   flow: CapabilityFlow,
-  capabilityName: string
+  capabilityName: string,
+  evaluations: EvalMatrix[] = [],
+  entrypoint = ""
 ): TrajectoryGraph => {
   const paths = (flow.trajectoryMap ?? []).filter((p) => p.id);
   const byId = new Map(paths.map((p) => [p.id, p]));
@@ -247,10 +229,21 @@ export const buildTrajectoryGraph = (
     );
   }
 
+  const stepKey = (step: CapabilityFlowTrajectoryStep) =>
+    JSON.stringify([
+      norm(step.step ?? ""),
+      (step.anchors ?? []).slice().sort(),
+      step.kind ?? "agent_step",
+      step.input ?? "",
+      step.action ?? "",
+      step.output ?? "",
+      step.transitions ?? [],
+      (step.mayUse ?? []).map(({ tool, when }) => [tool, when ?? ""]).sort(),
+    ]);
   const sharedKeyPaths = new Map<string, Set<string>>();
   for (const p of paths) {
     for (const step of backbones.get(p.id)!) {
-      const key = norm((step.step ?? "").trim());
+      const key = stepKey(step);
       const bucket = sharedKeyPaths.get(key) ?? new Set();
       bucket.add(p.id);
       sharedKeyPaths.set(key, bucket);
@@ -260,10 +253,13 @@ export const buildTrajectoryGraph = (
   const stepMetas = new Map<string, StepMeta>();
   const chains = new Map<string, string[]>();
 
-  const stepIdFor = (pathId: string, label: string, index: number): string => {
-    const key = norm(label);
+  const sharedIds = new Map<string, string>();
+  const stepIdFor = (pathId: string, step: CapabilityFlowTrajectoryStep, index: number): string => {
+    const key = stepKey(step);
     const shared = (sharedKeyPaths.get(key)?.size ?? 0) > 1;
-    return shared ? `shared:${slug(key)}` : `step:${pathId}:${index}`;
+    if (!shared) return `step:${pathId}:${index}`;
+    if (!sharedIds.has(key)) sharedIds.set(key, `shared:${pathId}:${index}`);
+    return sharedIds.get(key)!;
   };
 
   for (const path of paths) {
@@ -273,10 +269,11 @@ export const buildTrajectoryGraph = (
     };
     backbones.get(path.id)!.forEach((step, index) => {
       const label = (step.step ?? "").trim();
-      const id = stepIdFor(path.id, label, index);
+      const id = stepIdFor(path.id, step, index);
       const isModel = step.kind === "model_invocation";
       const meta: StepMeta = stepMetas.get(id) ?? {
         actor: isModel ? ("model" as const) : ("agent" as const),
+        anchors: new Set<string>(),
         contract: null,
         decisionSurface: false,
         id,
@@ -284,10 +281,11 @@ export const buildTrajectoryGraph = (
         mayUse: new Map<string, string>(),
         modelContexts: [],
         pathIds: new Set<string>(),
+        transitions: step.transitions ?? [],
       };
+      for (const anchor of step.anchors ?? []) meta.anchors.add(anchor);
       if (isModel) meta.modelContexts.push(modelContextFor(step));
-      if (isModel && !meta.contract) {
-        meta.actor = "model";
+      if (!meta.contract && (isModel || step.input || step.action || step.output)) {
         meta.contract = {
           action: step.action ?? "",
           input: step.input ?? "",
@@ -315,6 +313,7 @@ export const buildTrajectoryGraph = (
   for (const path of paths) {
     const chain = chains.get(path.id)!;
     for (let i = 0; i < chain.length - 1; i++) {
+      if (stepMetas.get(chain[i])?.transitions.length) continue;
       const key = `${chain[i]}->${chain[i + 1]}`;
       const meta = edgeMetas.get(key) ?? {
         pathIds: new Set(),
@@ -342,16 +341,11 @@ export const buildTrajectoryGraph = (
     const routing = isBranchEdge(meta) ? byId.get([...meta.pathIds][0])!.routing.trim() : "";
     edges.push({
       id: `${meta.source}->${meta.target}`,
-      ...(routing && {
-        label: routing.length > 44 ? `${routing.slice(0, 43)}…` : routing,
-        labelBgPadding: [4, 2] as [number, number],
-        labelBgStyle: { fill: "var(--card)", fillOpacity: 0.9 },
-        labelStyle: { fill: "var(--muted-foreground)", fontSize: 10 },
-      }),
+      label: routing || undefined,
       source: meta.source,
       style: baseEdgeStyle,
       target: meta.target,
-      type: "smoothstep",
+      type: "condition",
     });
   }
 
@@ -384,13 +378,10 @@ export const buildTrajectoryGraph = (
       edges.push({
         id,
         label: "diverges",
-        labelBgPadding: [4, 2] as [number, number],
-        labelBgStyle: { fill: "var(--card)", fillOpacity: 0.9 },
-        labelStyle: { fill: "var(--muted-foreground)", fontSize: 10 },
         source,
         style: { ...baseEdgeStyle, strokeDasharray: "4 4", strokeOpacity: 0.35 },
         target,
-        type: "smoothstep",
+        type: "condition",
       });
     }
   }
@@ -434,296 +425,691 @@ export const buildTrajectoryGraph = (
       id,
       position: { x: 0, y: 0 },
       type: data.kind,
-      width: NODE_WIDTH[data.kind],
+      width: NODE_WIDTH,
     });
 
+  const actionGroups: {
+    id: string;
+    ownerId: string;
+    label: string;
+    tools: { id: string; tool: CapabilityFlowTool; when: string }[];
+  }[] = [];
+  for (const meta of stepMetas.values()) {
+    const options = meta.decisionSurface
+      ? (flow.toolSpec ?? [])
+      : [...meta.mayUse].map(
+          ([name]) =>
+            (flow.toolSpec ?? []).find((tool) => tool.name === name) ?? {
+              args: "",
+              name,
+              purpose: "",
+            }
+        );
+    const grouped = new Map<string, typeof options>();
+    for (const tool of options) {
+      const label = tool.cluster?.trim() || "Other actions";
+      grouped.set(label, [...(grouped.get(label) ?? []), tool]);
+    }
+    for (const [label, tools] of grouped) {
+      actionGroups.push({
+        id: `actions:${meta.id}:${label}`,
+        label,
+        ownerId: meta.id,
+        tools: tools.map((tool) => ({
+          id: `tool:${meta.id}:${tool.name}`,
+          tool,
+          when: meta.mayUse.get(tool.name) ?? "",
+        })),
+      });
+    }
+  }
+
+  const bindings = bindTrajectoryEvaluations(
+    evaluations,
+    entrypoint,
+    [...stepMetas.values()]
+      .map((meta) => ({ anchors: [...meta.anchors], id: meta.id }))
+      .concat(
+        actionGroups.flatMap((group) =>
+          group.tools.map(({ id, tool }) => ({ anchors: [tool.name], id }))
+        )
+      )
+  );
   push(ENTRY_ID, {
     capabilityName,
+    entrypoint,
+    evaluations: bindings.byNode.get(ENTRY_ID) ?? [],
     kind: "entry",
     pathCount: paths.length,
     task: flow.task ?? "",
   });
 
-  const specByName = new Map((flow.toolSpec ?? []).map((t) => [t.name, t]));
-  const capabilitiesOf = (meta: StepMeta): StepCapability[] =>
-    [...meta.mayUse].map(([tool, when]) => ({
-      purpose: specByName.get(tool)?.purpose ?? "",
-      sideEffect: (specByName.get(tool)?.sideEffect ?? "").trim(),
-      tool,
-      when,
-    }));
-
-  // The decision surface's option space: the whole tool_spec grouped by
-  // semantic cluster (unclustered tools pool under "other capabilities").
-  const clusters = new Map<string, ClusterTool[]>();
-  for (const spec of flow.toolSpec ?? []) {
-    const identifier = toolIdentifier(spec.name);
-    if (!words(identifier) || /llm/i.test(identifier)) continue;
-    const name = (spec.cluster ?? "").trim() || "other capabilities";
-    const bucket = clusters.get(name) ?? [];
-    bucket.push({
-      label: identifier,
-      purpose: spec.purpose ?? "",
-      sideEffect: (spec.sideEffect ?? "").trim(),
-    });
-    clusters.set(name, bucket);
-  }
-  const clusterCount = clusters.size;
-  const toolCount = [...clusters.values()].reduce((sum, bucket) => sum + bucket.length, 0);
-  const decisionNoteFor = (meta: StepMeta): string =>
-    meta.decisionSurface && toolCount > 0
-      ? `The route from here is decided at runtime by the user's intent — the model chooses from ${toolCount} capabilities across ${clusterCount} cluster${clusterCount === 1 ? "" : "s"}. The task mix is not enumerable from code.`
-      : "";
-
   for (const meta of stepMetas.values()) {
     push(meta.id, {
       actor: meta.actor,
+      anchors: [...meta.anchors],
       condition: cardCondition.get(meta.id) ?? "",
       contract: meta.contract,
-      decisionNote: decisionNoteFor(meta),
+      evaluations: bindings.byNode.get(meta.id) ?? [],
+      hasActions: actionGroups.some((group) => group.ownerId === meta.id),
       inputs: inputsOf.get(meta.id) ?? [],
       kind: "step",
       label: meta.label,
-      mayUse: capabilitiesOf(meta),
       ...commonContext(meta.modelContexts),
+      modelResolution: meta.actor === "model" ? flow.modelResolution : undefined,
       outputs: outputsOf.get(meta.id) ?? [],
       pathNames: paths.filter((p) => meta.pathIds.has(p.id)).map((p) => p.name || p.id),
     });
   }
 
-  // A model invocation's may_use tools hang off its output as a capability
-  // satellite; the dashed return edge is the results feeding back into the
-  // same invocation for another round.
-  const loopLabelProps = {
-    labelBgPadding: [4, 2] as [number, number],
-    labelBgStyle: { fill: "var(--card)", fillOpacity: 0.9 },
-    labelStyle: { fill: "var(--muted-foreground)", fontSize: 10 },
+  const connect = (source: string, target: string, sourceHandle?: string) =>
+    edges.push({
+      id: `${source}->${target}`,
+      source,
+      sourceHandle,
+      style: { ...baseEdgeStyle, strokeDasharray: "4 4" },
+      target,
+      type: "condition",
+    });
+  const targetsFor = (owner: StepMeta, target: string) => {
+    if (target === "terminal") return [...owner.pathIds].map((id) => `terminal-${id}`);
+    const candidates = [...stepMetas.values()].filter(
+      (meta) => meta.anchors.has(target) && [...meta.pathIds].some((id) => owner.pathIds.has(id))
+    );
+    return candidates.length === 1 ? [candidates[0].id] : [];
+  };
+  const returnEdge = (source: string, target: string, condition: string, groupId?: string) => {
+    edges.push({
+      data: { groupId, relation: "continuation" },
+      id: `return:${source}->${target}`,
+      label: condition,
+      markerEnd: { color: "var(--muted-foreground)", type: MarkerType.ArrowClosed },
+      source,
+      sourceHandle: source.startsWith("outcome:") ? "outcomes" : undefined,
+      style: baseEdgeStyle,
+      target,
+      targetHandle: target.startsWith("terminal-") ? undefined : "return",
+      type: "continuation",
+    });
   };
   for (const meta of stepMetas.values()) {
-    if (meta.actor !== "model" || meta.mayUse.size === 0) continue;
-    const capsId = `caps:${meta.id}`;
-    nodePathIds.set(capsId, new Set(meta.pathIds));
-    push(capsId, { forLabel: meta.label, kind: "capabilities", tools: capabilitiesOf(meta) });
-    edges.push({
-      id: `${meta.id}->${capsId}`,
-      label: "tool_calls",
-      ...loopLabelProps,
-      source: meta.id,
-      style: baseEdgeStyle,
-      target: capsId,
-      type: "smoothstep",
-    });
-    edges.push({
-      id: `${capsId}->${meta.id}`,
-      label: "results",
-      ...loopLabelProps,
-      source: capsId,
-      style: { ...baseEdgeStyle, strokeDasharray: "4 4" },
-      target: meta.id,
-      type: "smoothstep",
-    });
-  }
-
-  // A decision-surface invocation's option space is the WHOLE tool_spec: one
-  // SHARED satellite per semantic cluster (the option space belongs to the
-  // agent's tool surface, not to any single invocation), with every decision
-  // invocation looping tool_calls → results through it. Code binds no subset
-  // here, so there is no may_use.
-  const mixOf = (tools: ClusterTool[]): string => {
-    const counts = new Map<string, number>();
-    for (const tool of tools) {
-      const effect = tool.sideEffect || "none";
-      counts.set(effect, (counts.get(effect) ?? 0) + 1);
-    }
-    return [...counts].map(([effect, count]) => `${count} ${effect}`).join(" · ");
-  };
-  const decisionSteps = [...stepMetas.values()].filter((m) => m.decisionSurface);
-  if (decisionSteps.length > 0) {
-    for (const [name, tools] of clusters) {
-      const clusterId = `cluster:${slug(name)}`;
-      nodePathIds.set(clusterId, new Set(decisionSteps.flatMap((m) => [...m.pathIds])));
-      push(clusterId, {
-        forLabel: decisionSteps[0].label,
-        kind: "cluster",
-        name,
-        sideEffectMix: mixOf(tools),
-        tools,
-      });
-      for (const meta of decisionSteps) {
-        edges.push({
-          id: `${meta.id}->${clusterId}`,
-          label: "tool_calls",
-          ...loopLabelProps,
-          source: meta.id,
-          style: baseEdgeStyle,
-          target: clusterId,
-          type: "smoothstep",
-        });
-        edges.push({
-          id: `${clusterId}->${meta.id}`,
-          label: "results",
-          ...loopLabelProps,
-          source: clusterId,
-          style: { ...baseEdgeStyle, strokeDasharray: "4 4" },
-          target: meta.id,
-          type: "smoothstep",
-        });
+    for (const transition of meta.transitions)
+      for (const target of targetsFor(meta, transition.target)) {
+        const existing = edges.find((edge) => edge.source === meta.id && edge.target === target);
+        if (existing) {
+          existing.label = transition.condition;
+          existing.type = "condition";
+        } else {
+          const chain = chains.get([...meta.pathIds][0])!;
+          const backward = chain.indexOf(target) <= chain.indexOf(meta.id);
+          edges.push({
+            data: backward ? { relation: "continuation" } : undefined,
+            id: `${meta.id}->${target}`,
+            label: transition.condition,
+            markerEnd: { color: "var(--muted-foreground)", type: MarkerType.ArrowClosed },
+            source: meta.id,
+            style: backward
+              ? { ...baseEdgeStyle, strokeDasharray: "5 5", strokeOpacity: 0.5 }
+              : baseEdgeStyle,
+            target,
+            targetHandle: backward ? "retry" : undefined,
+            type: "condition",
+          });
+        }
       }
+  }
+  for (const group of actionGroups) {
+    const modelSelected = stepMetas.get(group.ownerId)!.decisionSurface;
+    push(group.id, {
+      kind: "actionGroup",
+      label: group.label,
+      modelSelected,
+      ownerId: group.ownerId,
+    });
+    connect(group.ownerId, group.id, "actions");
+    edges[edges.length - 1].style = {
+      ...baseEdgeStyle,
+      stroke: modelSelected ? "var(--cat-4)" : "var(--cat-3)",
+      strokeDasharray: "5 5",
+    };
+    for (const { id, tool, when } of group.tools) {
+      push(id, {
+        evaluations: bindings.byNode.get(id) ?? [],
+        expanded: true,
+        groupId: group.id,
+        kind: "action",
+        modelSelected,
+        tool,
+        when,
+      });
+      connect(group.id, id);
+      edges[edges.length - 1].data = { relation: "available-tool" };
+      (tool.branches?.length ? tool.branches : [null]).forEach((branch, index) => {
+        const outcomeId = `outcome:${id}:${index}`;
+        const destinations = (branch?.transitions ?? []).flatMap((transition) =>
+          targetsFor(stepMetas.get(group.ownerId)!, transition.target).map((target) => ({
+            condition: transition.condition,
+            target,
+          }))
+        );
+        push(outcomeId, {
+          actionId: id,
+          branch,
+          continues: destinations.length > 0,
+          groupId: group.id,
+          kind: "outcome",
+          returns: tool.returns,
+        });
+        connect(id, outcomeId, "outcomes");
+        const edge = edges[edges.length - 1];
+        edge.type = "condition";
+        edge.data = { basis: branch?.basis, relation: "tool-outcome" };
+        edge.style = {
+          ...baseEdgeStyle,
+          stroke: branch?.basis === "code" ? "var(--cat-1)" : "var(--cat-6)",
+          strokeDasharray: branch?.basis === "code" ? undefined : "5 5",
+        };
+        edge.label = branch?.condition || "Condition not captured";
+        for (const destination of destinations)
+          returnEdge(outcomeId, destination.target, destination.condition, group.id);
+      });
     }
   }
 
   for (const path of paths) {
     push(`terminal-${path.id}`, {
-      claim: path.claim ?? "code_path",
       kind: "terminal",
-      pathId: path.id,
       pathName: path.name || path.id,
-      promptQuote: path.promptQuote ?? "",
-      provenance: path.provenance,
       routing: pathsWithUnique.has(path.id) ? "" : path.routing,
       terminalDescription: path.terminal.description,
       terminalKind: path.terminal.kind,
-      tools: path.tools,
-      verified: path.verified ?? false,
     });
   }
 
-  // Only strictly forward chain edges constrain the layout: back-edges (a
-  // node re-entered later in a chain) still render but would form cycles
-  // that scramble ELK's layering.
-  const forward = new Set<string>();
-  for (const chain of chains.values()) {
-    const firstIndex = new Map<string, number>();
-    chain.forEach((id, i) => {
-      if (!firstIndex.has(id)) firstIndex.set(id, i);
+  if (bindings.broad.length || bindings.unmapped.length) {
+    push("evaluation-scopes", {
+      broad: bindings.broad,
+      kind: "evaluations",
+      unmapped: bindings.unmapped,
     });
-    for (let i = 0; i < chain.length - 1; i++) {
-      if (firstIndex.get(chain[i + 1])! > firstIndex.get(chain[i])!) {
-        forward.add(`${chain[i]}->${chain[i + 1]}`);
-      }
-    }
   }
 
   return {
     edges,
     nodes,
-    relayout: async (measuredNodes) => {
+    relayout: async (measuredNodes, visibleEdges = edges) => {
       const next = measuredNodes.map((node) => ({ ...node }));
-      await layout(next, edges, forward);
+      await layout(next, visibleEdges);
       return next;
     },
   };
 };
 
-const isSatellite = (node: TrajectoryNode): boolean =>
-  node.data.kind === "capabilities" || node.data.kind === "cluster";
-
 const elk = new ELK();
-
-const LAYOUT_OPTIONS = {
-  "elk.algorithm": "layered",
-  "elk.direction": "RIGHT",
-  // Keep layers/rows following path insertion order instead of re-shuffling.
-  "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "120",
-  "elk.spacing.nodeNode": String(ROW_GAP),
-};
-
-/** ELK layered layout, left→right, fed a pure DAG: forward chain edges plus
- * one anchor edge per satellite group. Satellites (capabilities, clusters)
- * are grouped per owner set and pre-packed into wrapped lanes, then fed to
- * ELK as one box per group: ELK places the box one layer right of its
- * owner(s) and a big orbit wraps instead of growing into a tower. Loop
- * returns and diverges annotations render over the result untouched. */
-const layout = async (
+const layoutCandidate = async (
   nodes: TrajectoryNode[],
   edges: Edge[],
-  forward: Set<string>
+  verticalTools: boolean,
+  singleRow: boolean
 ): Promise<void> => {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const heightOf = (n: TrajectoryNode) => n.measured?.height ?? estimateHeight(n.data);
-  const widthOf = (n: TrajectoryNode) => n.width ?? NODE_WIDTH[n.data.kind];
-
-  const owners = new Map<string, string[]>();
-  for (const edge of edges) {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (!source || !target || !isSatellite(target) || isSatellite(source)) continue;
-    const list = owners.get(target.id) ?? [];
-    if (!list.includes(source.id)) list.push(source.id);
-    owners.set(target.id, list);
-  }
-  const groupOf = new Map<string, string>();
-  const groups = new Map<string, TrajectoryNode[]>();
-  for (const node of nodes) {
-    if (!isSatellite(node)) continue;
-    const key = `sat:${[...(owners.get(node.id) ?? [node.id])].sort().join("|")}`;
-    groupOf.set(node.id, key);
-    const bucket = groups.get(key) ?? [];
-    bucket.push(node);
-    groups.set(key, bucket);
-  }
-
-  type Pack = { offsets: Map<string, { dx: number; dy: number }>; width: number; height: number };
-  const packs = new Map<string, Pack>();
-  for (const [key, sats] of groups) {
-    const offsets = new Map<string, { dx: number; dy: number }>();
-    let dx = 0;
-    let dy = 0;
-    let laneWidth = 0;
-    let height = 0;
-    for (const sat of sats) {
-      const h = heightOf(sat);
-      if (dy > 0 && dy + h > MAX_LANE_HEIGHT) {
-        dx += laneWidth + LANE_GAP;
-        dy = 0;
-        laneWidth = 0;
-      }
-      offsets.set(sat.id, { dx, dy });
-      laneWidth = Math.max(laneWidth, widthOf(sat));
-      dy += h + ROW_GAP;
-      height = Math.max(height, dy - ROW_GAP);
-    }
-    packs.set(key, { height, offsets, width: dx + laneWidth });
-  }
-
-  const seen = new Set<string>();
-  const elkEdges: { id: string; sources: string[]; targets: string[] }[] = [];
-  for (const edge of edges) {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (!source || !target || isSatellite(source)) continue;
-    if (!isSatellite(target) && !forward.has(edge.id)) continue;
-    const targetId = groupOf.get(target.id) ?? target.id;
-    if (source.id === targetId) continue;
-    const id = `${source.id}->${targetId}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    elkEdges.push({ id, sources: [source.id], targets: [targetId] });
-  }
-
-  const laid = await elk.layout({
-    children: [
-      ...nodes
-        .filter((n) => !isSatellite(n))
-        .map((n) => ({ height: heightOf(n), id: n.id, width: widthOf(n) })),
-      ...[...packs].map(([key, pack]) => ({ height: pack.height, id: key, width: pack.width })),
-    ],
-    edges: elkEdges,
+  const scopes = byId.get("evaluation-scopes");
+  const backbone = nodes.filter((n) => ["entry", "step", "terminal"].includes(n.data.kind));
+  const backboneIds = new Set(backbone.map((n) => n.id));
+  const backboneEdges = edges.filter((e) => backboneIds.has(e.source) && backboneIds.has(e.target));
+  const laid = await elk.layout<ElkNode>({
+    children: backbone.map((n) => ({
+      height: heightOf(n) + (n.id === ENTRY_ID && scopes ? ROW_GAP + heightOf(scopes) : 0),
+      id: n.id,
+      layoutOptions: { "elk.portConstraints": "FIXED_POS" },
+      ports: [
+        {
+          height: 0,
+          id: `${n.id}:out`,
+          layoutOptions: { "elk.port.side": "EAST" },
+          width: 0,
+          x: n.data.layoutPorts?.out?.x ?? NODE_WIDTH,
+          y: n.data.layoutPorts?.out?.y ?? heightOf(n) / 2,
+        },
+        {
+          height: 0,
+          id: `${n.id}:in`,
+          layoutOptions: { "elk.port.side": "WEST" },
+          width: 0,
+          x: n.data.layoutPorts?.in?.x ?? 0,
+          y: n.data.layoutPorts?.in?.y ?? heightOf(n) / 2,
+        },
+        {
+          height: 0,
+          id: `${n.id}:retry`,
+          layoutOptions: { "elk.port.side": "NORTH" },
+          width: 0,
+          x: n.data.layoutPorts?.retry?.x ?? NODE_WIDTH / 2,
+          y: n.data.layoutPorts?.retry?.y ?? 0,
+        },
+        {
+          height: 0,
+          id: `${n.id}:return`,
+          layoutOptions: { "elk.port.side": "SOUTH" },
+          width: 0,
+          x: n.data.layoutPorts?.return?.x ?? NODE_WIDTH / 2,
+          y: n.data.layoutPorts?.return?.y ?? heightOf(n),
+        },
+      ],
+      width: n.width ?? NODE_WIDTH,
+    })),
+    edges: backboneEdges.map((e) => ({
+      id: e.id,
+      layoutOptions: {
+        "elk.layered.priority.straightness":
+          backbone.findIndex((n) => n.id === e.target) ===
+          backbone.findIndex((n) => n.id === e.source) + 1
+            ? "100"
+            : "0",
+      },
+      sources: [`${e.source}:out`],
+      targets: [`${e.target}:${e.targetHandle || "in"}`],
+      ...(e.label
+        ? {
+            labels: [
+              {
+                height: CONDITION_HEIGHT,
+                layoutOptions: {
+                  "elk.edgeLabels.inline": "true",
+                  "elk.edgeLabels.placement": "CENTER",
+                },
+                text: String(e.label),
+                width: CONDITION_WIDTH,
+              },
+            ],
+          }
+        : {}),
+    })),
     id: "root",
-    layoutOptions: LAYOUT_OPTIONS,
+    layoutOptions: {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.cycleBreaking.strategy": "MODEL_ORDER",
+      "elk.layered.feedbackEdges": "true",
+      "elk.layered.layering.strategy": "LONGEST_PATH_SOURCE",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "24",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "32",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+      "elk.spacing.edgeEdge": "24",
+      "elk.spacing.edgeNode": "32",
+      "elk.spacing.nodeNode": String(ROW_GAP),
+    },
   });
-
-  for (const child of laid.children ?? []) {
-    const pack = packs.get(child.id);
-    if (pack) {
-      for (const [id, { dx, dy }] of pack.offsets) {
-        byId.get(id)!.position = { x: (child.x ?? 0) + dx, y: (child.y ?? 0) + dy };
-      }
-    } else {
-      byId.get(child.id)!.position = { x: child.x ?? 0, y: child.y ?? 0 };
+  for (const child of laid.children ?? [])
+    byId.get(child.id)!.position = { x: child.x ?? 0, y: child.y ?? 0 };
+  for (const node of nodes) node.data = { ...node.data, routes: {} };
+  for (const edge of laid.edges ?? []) {
+    const original = backboneEdges.find((e) => e.id === edge.id)!;
+    const section = edge.sections?.[0];
+    if (!section) continue;
+    const label = edge.labels?.[0];
+    let points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+    const source = byId.get(original.source)!,
+      target = byId.get(original.target)!;
+    const sourcePort = source.data.layoutPorts?.out;
+    const targetPort =
+      target.data.layoutPorts?.[
+        original.targetHandle === "retry"
+          ? "retry"
+          : original.targetHandle === "return"
+            ? "return"
+            : "in"
+      ];
+    // ELK clamps fixed ports to the card; React Flow handles protrude beyond it.
+    for (const [from, port, node] of [
+      [points[0], sourcePort, source],
+      [points.at(-1)!, targetPort, target],
+    ] as const) {
+      if (!port) continue;
+      const to = { x: node.position.x + port.x, y: node.position.y + port.y };
+      points = points.map((p) => ({
+        x: p.x === from.x ? to.x : p.x,
+        y: p.y === from.y ? to.y : p.y,
+      }));
     }
+    // ELK positions self-loop text beside its top leg even with inline labels.
+    if (original.source === original.target && label) {
+      const top = Math.min(...points.map((p) => p.y));
+      for (const point of points)
+        if (point.y === top) point.y = (label.y ?? 0) + CONDITION_HEIGHT / 2;
+    }
+    byId.get(original.source)!.data.routes![edge.id] = {
+      points,
+      ...(label ? { label: { x: label.x ?? 0, y: label.y ?? 0 } } : {}),
+    };
   }
+  const labelBoxes = backbone.flatMap((n) =>
+    Object.values(n.data.routes ?? {}).flatMap((r) =>
+      r.label ? [{ ...r.label, height: CONDITION_HEIGHT, width: CONDITION_WIDTH }] : []
+    )
+  );
+  if (scopes) {
+    scopes.position = {
+      x: byId.get(ENTRY_ID)?.position.x ?? 0,
+      y: (byId.get(ENTRY_ID)?.position.y ?? 0) + heightOf(byId.get(ENTRY_ID)!) + ROW_GAP,
+    };
+  }
+  // Tool → outcomes is the atomic layout block. Pack blocks into families,
+  // then families around their owner, rather than growing one unbounded column.
+  const groups = nodes.filter((n) => n.data.kind === "actionGroup");
+  const returnRows = new Map<string, number>();
+  const clusters = groups.map((group) => {
+    const members = [group];
+    const actions = nodes.filter((n) => n.data.kind === "action" && n.data.groupId === group.id);
+    const blocks = actions.map((action) => {
+      const outcomes = nodes.filter(
+        (n) => n.data.kind === "outcome" && n.data.actionId === action.id
+      );
+      const width = Math.max(NODE_WIDTH, outcomes.length * (NODE_WIDTH + ROW_GAP) - ROW_GAP);
+      const outcomeY = heightOf(action) + 24 + CONDITION_SPACE;
+      return {
+        action,
+        height: outcomes.length ? outcomeY + Math.max(...outcomes.map(heightOf)) : heightOf(action),
+        outcomes,
+        outcomeY,
+        width,
+      };
+    });
+    const packed = packTrajectoryBlocks(blocks, 120, verticalTools ? 1 : undefined);
+    const width = Math.max(NODE_WIDTH, packed.width);
+    group.position = { x: (width - NODE_WIDTH) / 2, y: 0 };
+    const offset = heightOf(group) + 80;
+    blocks.forEach((block, i) => {
+      const { x, y, rowBottom } = packed.items[i];
+      block.action.position = { x, y: y + offset };
+      members.push(block.action);
+      returnRows.set(block.action.id, rowBottom + offset + 32);
+      block.outcomes.forEach((outcome, j) => {
+        outcome.position = {
+          x: x + j * (NODE_WIDTH + ROW_GAP),
+          y: y + offset + block.outcomeY,
+        };
+        members.push(outcome);
+        returnRows.set(outcome.id, rowBottom + offset + 32);
+      });
+    });
+    return {
+      group,
+      height: actions.length ? offset + packed.height + 64 : heightOf(group),
+      members,
+      width,
+    };
+  });
+  const groupRegions = new Map<string, { x: number; y: number; width: number; height: number }>();
+  const executionCorridors = backbone.flatMap((n) =>
+    Object.values(n.data.routes ?? {}).flatMap((r) => [
+      ...r.points.slice(1).map((p, i) => ({
+        height: Math.abs(p.y - r.points[i].y) + 32,
+        width: Math.abs(p.x - r.points[i].x) + 32,
+        x: Math.min(p.x, r.points[i].x) - 16,
+        y: Math.min(p.y, r.points[i].y) - 16,
+      })),
+      ...(r.label ? [{ ...r.label, height: CONDITION_HEIGHT, width: CONDITION_WIDTH }] : []),
+    ])
+  );
+  const placedRegions: { x: number; y: number; width: number; height: number }[] = [];
+  for (const ownerId of new Set(groups.map((n) => (n.data as ActionGroupNodeData).ownerId))) {
+    const owner = byId.get(ownerId)!;
+    const owned = clusters
+      .filter((c) => (c.group.data as ActionGroupNodeData).ownerId === ownerId)
+      .sort((a, b) => b.members.length - a.members.length);
+    const packed = packTrajectoryBlocks(
+      owned,
+      owned.every((c) => c.members.length === 1) ? 80 : 160,
+      singleRow ? owned.length : undefined
+    );
+    const x = Math.max(0, owner.position.x + NODE_WIDTH / 2 - packed.width / 2);
+    const obstacles = [...backbone, ...(scopes ? [scopes] : [])]
+      .map((n) => ({
+        height: heightOf(n),
+        width: NODE_WIDTH,
+        x: n.position.x,
+        y: n.position.y,
+      }))
+      .concat(placedRegions, executionCorridors);
+    const y =
+      Math.max(
+        owner.position.y + heightOf(owner),
+        ...obstacles
+          .filter((b) => b.x < x + packed.width && b.x + b.width > x)
+          .map((b) => b.y + b.height)
+      ) + 140;
+    owned.forEach((cluster, i) => {
+      const at = packed.items[i];
+      groupRegions.set(cluster.group.id, {
+        height: cluster.height,
+        width: cluster.width,
+        x: x + at.x,
+        y: y + at.y,
+      });
+      for (const member of cluster.members) {
+        member.position = { x: member.position.x + x + at.x, y: member.position.y + y + at.y };
+        if (returnRows.has(member.id))
+          returnRows.set(member.id, returnRows.get(member.id)! + y + at.y);
+      }
+    });
+    placedRegions.push({ height: packed.height, width: packed.width, x, y });
+  }
+  // All visible edges share one geometry pass, so crossings include tool lanes as well as steps.
+  const endpoint = (node: TrajectoryNode, source: boolean, handle?: string | null) => {
+    const key = source ? (handle === "return" ? "returnOut" : handle || "out") : handle || "in";
+    const measured =
+      node.data.layoutPorts?.[key as keyof NonNullable<typeof node.data.layoutPorts>];
+    const width = NODE_WIDTH,
+      height = heightOf(node);
+    const bottom =
+      (source &&
+        (handle === "outcomes" ||
+          handle === "actions" ||
+          (!handle && node.data.kind === "actionGroup"))) ||
+      (!source && handle === "return");
+    const top =
+      !source &&
+      (handle === "retry" || node.data.kind === "outcome" || node.data.kind === "actionGroup");
+    const offset = measured ?? {
+      x: bottom || top ? width / 2 : source ? width : 0,
+      y: top ? 0 : bottom ? height : height / 2,
+    };
+    return { x: node.position.x + offset.x, y: node.position.y + offset.y };
+  };
+  const visibleEdges = edges.filter((e) => byId.has(e.source) && byId.has(e.target));
+  const globalObstacles = [...backbone, ...(scopes ? [scopes] : [])]
+    .map((n) => ({
+      height: heightOf(n),
+      width: NODE_WIDTH,
+      x: n.position.x,
+      y: n.position.y,
+    }))
+    .concat([...groupRegions.values()], labelBoxes);
+  const sharedReturns = new Map<string, { x: number; y: number }[]>();
+  for (const edge of visibleEdges) {
+    const source = byId.get(edge.source)!,
+      target = byId.get(edge.target)!;
+    if (source.data.routes?.[edge.id]) continue;
+    const start = endpoint(source, true, edge.sourceHandle),
+      end = endpoint(target, false, edge.targetHandle);
+    let points = outcomeRoute({ source: start, target: end });
+    if (source.data.kind === "step" && target.data.kind === "actionGroup") {
+      points = [
+        start,
+        ...routeAroundBoxes(
+          { x: start.x, y: start.y + 16 },
+          { x: end.x, y: end.y - 16 },
+          globalObstacles
+        ),
+        end,
+      ];
+    } else if (edge.data?.relation === "available-tool") {
+      const x = target.position.x - 24;
+      points = [
+        start,
+        { x: start.x, y: start.y + 24 },
+        { x, y: start.y + 24 },
+        { x, y: end.y },
+        end,
+      ];
+    } else if (edge.data?.relation === "continuation") {
+      const group = byId.get(String(edge.data?.groupId || source.id))!;
+      const region = groupRegions.get(group.id)!;
+      const right = region.x + region.width;
+      const destinations = [
+        ...new Set(
+          visibleEdges
+            .filter((e) => e.data?.relation === "continuation" && e.data?.groupId)
+            .map((e) => e.target)
+        ),
+      ];
+      const lane = Math.max(0, destinations.indexOf(edge.target));
+      const x = right + 40 + lane * 20,
+        y = group.position.y - 40 - lane * 24;
+      const bottom = returnRows.get(source.id) ?? null;
+      const key = `${group.id}:${edge.target}`;
+      let shared = sharedReturns.get(key);
+      if (!shared) {
+        const enter =
+          edge.targetHandle === "return"
+            ? { x: end.x, y: end.y + 16 }
+            : { x: end.x - 16, y: end.y };
+        shared = [...routeAroundBoxes({ x, y }, enter, globalObstacles), end];
+        sharedReturns.set(key, shared);
+      }
+      points = [
+        start,
+        ...(bottom === null
+          ? [{ x, y: start.y }]
+          : [
+              { x: start.x, y: bottom },
+              { x, y: bottom },
+            ]),
+        ...shared,
+      ];
+    } else if (
+      edge.data?.relation !== "tool-outcome" &&
+      Math.abs(start.x - end.x) > 1 &&
+      Math.abs(start.y - end.y) > 1
+    ) {
+      points = [
+        start,
+        { x: (start.x + end.x) / 2, y: start.y },
+        { x: (start.x + end.x) / 2, y: end.y },
+        end,
+      ];
+    }
+    source.data.routes![edge.id] = {
+      points,
+      ...(edge.data?.relation === "tool-outcome" && edge.label
+        ? { label: { x: end.x - CONDITION_WIDTH / 2, y: end.y - CONDITION_HEIGHT - 28 } }
+        : {}),
+    };
+  }
+  const routes = visibleEdges.map((edge) => ({
+    ...edge,
+    ...byId.get(edge.source)!.data.routes![edge.id],
+  }));
+  const crossings = crossingPoints(routes);
+  routes.forEach((edge, i) => {
+    byId.get(edge.source)!.data.routes![edge.id].crossings = crossings[i];
+  });
+};
+
+export function measureTrajectoryLayout(nodes: TrajectoryNode[], edges: Edge[]) {
+  const rectangles = nodes.map((n) => ({
+    id: n.id,
+    ...n.position,
+    height: n.measured?.height ?? estimateHeight(n.data),
+    width: NODE_WIDTH,
+  }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const routes = edges.flatMap((edge) => {
+    const route = byId.get(edge.source)?.data.routes?.[edge.id];
+    return route ? [{ id: edge.id, source: edge.source, target: edge.target, ...route }] : [];
+  });
+  const labels = routes.flatMap((r) =>
+    r.label ? [{ id: r.id, ...r.label, height: CONDITION_HEIGHT, width: CONDITION_WIDTH }] : []
+  );
+  const overlaps = (a: (typeof rectangles)[number], b: (typeof rectangles)[number]) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  let collisions = 0;
+  const boxes = [...rectangles, ...labels];
+  boxes.forEach((a, i) => {
+    for (const b of boxes.slice(i + 1)) if (overlaps(a, b)) collisions++;
+  });
+  for (const r of routes)
+    for (let i = 1; i < r.points.length; i++) {
+      const a = r.points[i - 1],
+        b = r.points[i];
+      for (const box of boxes) {
+        if ([r.source, r.target, r.id].includes(box.id)) continue;
+        if (
+          a.x === b.x
+            ? a.x > box.x &&
+              a.x < box.x + box.width &&
+              Math.max(a.y, b.y) > box.y &&
+              Math.min(a.y, b.y) < box.y + box.height
+            : a.y === b.y &&
+              a.y > box.y &&
+              a.y < box.y + box.height &&
+              Math.max(a.x, b.x) > box.x &&
+              Math.min(a.x, b.x) < box.x + box.width
+        )
+          collisions++;
+      }
+    }
+  const crossings = new Set(routes.flatMap((r) => (r.crossings ?? []).map((p) => `${p.x}:${p.y}`)))
+    .size;
+  const length = routes.reduce(
+    (sum, r) =>
+      sum +
+      r.points
+        .slice(1)
+        .reduce((s, p, i) => s + Math.abs(p.x - r.points[i].x) + Math.abs(p.y - r.points[i].y), 0),
+    0
+  );
+  const width = Math.max(
+    ...boxes.map((n) => n.x + n.width),
+    ...routes.flatMap((r) => r.points.map((p) => p.x))
+  );
+  const height = Math.max(
+    ...boxes.map((n) => n.y + n.height),
+    ...routes.flatMap((r) => r.points.map((p) => p.y))
+  );
+  return { collisions, crossings, height, length, width };
+}
+
+/** Compare a bounded set of structural arrangements, using geometry rather
+ * than screenshots. Crossings matter more than shaving a little canvas area. */
+const layout = async (nodes: TrajectoryNode[], edges: Edge[]): Promise<void> => {
+  const hasTools = nodes.some((n) => n.data.kind === "action");
+  let best: { nodes: TrajectoryNode[]; score: number } | undefined;
+  for (const vertical of hasTools ? [true, false] : [true])
+    for (const singleRow of [true, false]) {
+      const candidate = nodes.map((n) => ({
+        ...n,
+        data: { ...n.data },
+        position: { ...n.position },
+      }));
+      await layoutCandidate(candidate, edges, vertical, singleRow);
+      const { collisions, crossings, length, width, height } = measureTrajectoryLayout(
+        candidate,
+        edges
+      );
+      const score =
+        collisions * 10000 +
+        crossings * 4 +
+        length / (320 * Math.max(1, edges.length)) +
+        Math.sqrt(width * height) / 320;
+      if (!best || score < best.score) best = { nodes: candidate, score };
+    }
+  nodes.splice(0, nodes.length, ...best!.nodes);
 };
 
 /** Upstream subgraph of `focusId`: every node and edge on a chain that leads
@@ -734,6 +1120,7 @@ export const collectAncestors = (
 ): { nodeIds: Set<string>; edgeIds: Set<string> } => {
   const incoming = new Map<string, Edge[]>();
   for (const edge of graph.edges) {
+    if (edge.data?.relation === "continuation") continue;
     const bucket = incoming.get(edge.target) ?? [];
     bucket.push(edge);
     incoming.set(edge.target, bucket);

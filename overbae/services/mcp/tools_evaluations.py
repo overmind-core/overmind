@@ -18,6 +18,7 @@ from overbae.api.eval_serializers import (
     EvaluationContextRequestSerializer,
 )
 from overbae.innermind import comparison, runs
+from overbae.innermind.definitions import definition_source
 from overbae.models import Capability, Dataset, EvalMatrix, EvalRun, EvalSet
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.context import MCPContext
@@ -177,6 +178,7 @@ def _row_contract(row: EvalMatrix) -> EvalMatrixRowContract:
         name=row.name,
         type=row.type,
         source=row.source,
+        definition_source=definition_source(row),
         capability=row.capability.slug if row.capability_id else None,
         span_type=row.span_type,
         span_name=row.span_name,

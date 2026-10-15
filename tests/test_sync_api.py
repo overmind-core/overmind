@@ -387,3 +387,95 @@ def test_sync_normalizes_string_constraints_to_dicts(client):
     }
     assert stored[1]["rule"] == "At most 5 tool calls"
     assert stored[1]["type"] == "budget"
+
+
+@pytest.mark.django_db
+def test_evaluation_definitions_distinguish_catalogue_code_config_and_custom(client, project):
+    declared = [{"expectation": "Reports completed work accurately", "span_name": "Agent.run"}]
+    matrix = [
+        {
+            "name": "History is present",
+            "type": "deterministic",
+            "check": "json_required_keys",
+            "params": {"REQUIRED_KEYS": ["history"]},
+            "span_name": "Agent.run",
+        }
+    ]
+    response = client.post(
+        "/api/v1/sync", _snapshot([_cap(expectations=declared, eval_matrix=matrix)]), format="json"
+    )
+    assert response.status_code == 200
+    cap = Capability.objects.get(slug="support-agent")
+    custom = client.post(
+        "/api/eval-matrix/",
+        {
+            "project": str(project.pk),
+            "name": "Shared team requirement",
+            "type": "llm",
+            "source": "Includes an explanation",
+            "definition_source": "stock",
+        },
+        format="json",
+    )
+    assert custom.status_code == 201
+    assert custom.data["definition_source"] == "custom"
+
+    response = client.get(
+        "/api/eval-matrix/", {"project": str(project.pk), "capability": str(cap.pk)}
+    )
+    assert response.status_code == 200
+    rows = {r["name"]: r for r in response.data["results"]}
+    assert rows["output_is_valid_json"]["definition_source"] == "stock"
+    assert rows["json_required_keys"]["definition_source"] == "stock"
+    assert rows["History is present"]["definition_source"] == "config"
+    assert rows["Reports completed work accurately"]["definition_source"] == "code"
+    assert rows["Shared team requirement"]["definition_source"] == "custom"
+
+    # A familiar catalogue name alone must not establish catalogue provenance.
+    row = project.eval_matrix.get(name="output_is_valid_json", capability=None)
+    row.source = "def evaluate(span):\n    return True\n"
+    row.save(update_fields=["source"])
+    response = client.get(f"/api/eval-matrix/{row.pk}/")
+    assert response.data["definition_source"] == "unknown"
+
+
+@pytest.mark.django_db
+def test_sync_retains_tool_branch_conditions_and_local_outcomes(client):
+    branch = {
+        "condition": "The clicked element is a select input",
+        "basis": "code",
+        "action": "Read dropdown options",
+        "outcome": "Available choices are returned",
+        "next": "Return choices to the next decision",
+        "transitions": [{"target": "Agent.decide", "condition": "Action returns choices"}],
+        "provenance": ["tools.py#L20-L35"],
+    }
+    response = client.post(
+        "/api/v1/sync",
+        _snapshot(
+            [
+                _cap(
+                    capability_card={
+                        "task": "Operate the browser",
+                        "tool_spec": [
+                            {
+                                "name": "click",
+                                "purpose": "Activate an element",
+                                "args": "index",
+                                "branches": [branch],
+                            }
+                        ],
+                    }
+                )
+            ]
+        ),
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    capability = Capability.objects.get(project_id=PROJECT_ID, slug="support-agent")
+    detail = client.get(f"/api/capabilities/{capability.id}/")
+    assert detail.status_code == 200, detail.content
+    assert detail.json()["flow"]["tool_spec"][0]["branches"] == [branch]
+    assert capability.improvement_metadata["capability_card"]["tool_spec"][0]["branches"] == [
+        branch
+    ]

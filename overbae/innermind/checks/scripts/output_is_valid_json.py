@@ -1,13 +1,15 @@
-"""Output that opens as JSON, bare or in a ``` fence, parses. Plain text abstains."""
+"""Output that opens as JSON, bare or in a complete fence, parses. Plain text abstains."""
 
 
 def evaluate(span):
-    text = span.output
-    fence = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL | re.IGNORECASE)
-    if fence:
-        text = fence.group(1)
+    text = (span.output or "").strip()
     if not text.startswith(("{", "[")):
-        return None
+        fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+        if not fence:
+            return None
+        text = fence.group(1).strip()
+        if not text.startswith(("{", "[")):
+            return None
     try:
         json.loads(text)
     except ValueError as exc:

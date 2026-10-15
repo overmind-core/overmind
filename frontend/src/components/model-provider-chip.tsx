@@ -36,6 +36,7 @@ import Zhipu from "@lobehub/icons/es/Zhipu/components/Mono";
 
 import { getModelProviderInfo, type ProviderId } from "@/components/model-provider";
 import { Badge } from "@/components/ui/badge";
+import { Icon as SystemIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 export { getModelProviderInfo } from "@/components/model-provider";
@@ -86,6 +87,7 @@ type ModelProviderChipProps = {
   className?: string;
   children?: React.ReactNode;
   showModelId?: boolean;
+  showProvider?: boolean;
   compact?: boolean;
 };
 
@@ -141,6 +143,7 @@ export function ModelProviderChip({
   className,
   children,
   showModelId = true,
+  showProvider = true,
   compact = false,
 }: ModelProviderChipProps) {
   const info = getModelProviderInfo(model);
@@ -156,12 +159,18 @@ export function ModelProviderChip({
       title={model}
       variant="outline"
     >
-      <ProviderLogo
-        Icon={Icon}
-        providerLabel={info.providerLabel}
-        providerSlug={info.providerSlug}
-      />
-      <span className="shrink-0">{info.providerLabel}</span>
+      {showProvider ? (
+        <>
+          <ProviderLogo
+            Icon={Icon}
+            providerLabel={info.providerLabel}
+            providerSlug={info.providerSlug}
+          />
+          <span className="shrink-0">{info.providerLabel}</span>
+        </>
+      ) : (
+        <SystemIcon.model className="size-3.5 shrink-0" />
+      )}
       {showModelId && (
         <span className="min-w-0 truncate text-muted-foreground">{info.modelLabel}</span>
       )}

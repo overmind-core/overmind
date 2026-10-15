@@ -11,11 +11,13 @@ const mocks = vi.hoisted(() => ({
   capabilitiesPartialUpdate: vi.fn(),
   useDeployedModelQuery: vi.fn(),
   useDeployedModelsQuery: vi.fn(),
+  useModelLiveQuery: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-inference", () => ({
   useDeployedModelQuery: mocks.useDeployedModelQuery,
   useDeployedModelsQuery: mocks.useDeployedModelsQuery,
+  useModelLiveQuery: mocks.useModelLiveQuery,
 }));
 
 vi.mock("@/client", () => ({
@@ -77,10 +79,12 @@ afterEach(() => {
 
 const renderTab = (
   data: { count: number; results: DeployedModel[] } | undefined,
-  withBaseModel = capability
+  withBaseModel = capability,
+  liveStats?: { available: boolean; numTotalRunners: number }
 ) => {
   mocks.useDeployedModelsQuery.mockReturnValue({ data, error: null, isLoading: false });
   mocks.useDeployedModelQuery.mockReturnValue({ data: undefined, isLoading: false });
+  mocks.useModelLiveQuery.mockReturnValue({ data: liveStats });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
@@ -209,5 +213,19 @@ describe("ModelsTab benchmarks", () => {
     expect(screen.queryByLabelText(/as benchmark/)).toBeNull();
     expect(screen.getByLabelText("ft:m-live is live")).toBeTruthy();
     expect(mocks.capabilitiesPartialUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("ModelsTab serving state", () => {
+  it("uses inference worker state and omits request-history noise", () => {
+    const routed = { ...bareCapability, activeModel: "m-live" } as unknown as Capability;
+
+    renderTab({ count: 1, results: [model("m-live")] }, routed, {
+      available: true,
+      numTotalRunners: 0,
+    });
+
+    expect(screen.getByText("Asleep")).toBeTruthy();
+    expect(screen.queryByText("Waiting for first application request")).toBeNull();
   });
 });

@@ -474,3 +474,7 @@ An exact sample key is independent of, and cannot be combined with, these filter
 Contract 7.4.0 adds `view=labels` to `inspect_native_evaluation`: paginated per-label precision, recall, F1 and counts shared with Console/REST. Search labels or benchmark names; order by `label`, `benchmark`, `expected` or `participant-key:precision|recall|f1` with optional `-` for descending. Label inspection cannot combine sample keys or outcomes. Only hard references with fixed benchmark option order qualify; soft targets are not collapsed. Reads can rebuild the local projection for historical results without provider calls. Missing predictions and zero denominators stay explicit.
 
 Contract 7.5.0 makes `prepare_training_data` create the dashboard job atomically and return `training_job` alongside the preparation receipt. `get_job(kind=training_preparation)` also links that job. Matching `start_finetune` calls promote it after normal launch admission; preparing/awaiting-launch jobs and preparation retries cannot dispatch GPU training.
+
+Eval-set resources expose complete evaluator sources with `limit` (1–100, default
+20), `offset`, `total` and `next_offset`. Audits must follow every page; the
+resource remains project-scoped and does not start scoring.
