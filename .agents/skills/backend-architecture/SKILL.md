@@ -369,8 +369,9 @@ but detach failed baseline-eval links. After evals start once training finishes.
 The same pinned eval cell and frozen matrix are reused across the job's evaluations, all in one run group.
 Generate targets snapshot the capability prompt in params, injecting it only when
 the row has no system turn. They evaluate the raw model with recorded context, not
-the live application. Every selected training evaluation uses all rows of the pinned
-version, with no row cap or sampling; shared group baselines must also cover all rows.
+the live application. Every selected training evaluation scores at most 800 rows of the
+pinned version. A stored max_items or sampling can only reduce that selection. Shared
+group baselines still require max_items 0 and sampling 1.0, so they share that selection.
 Automatic intermediate-checkpoint judging is replaced by this explicit schedule;
 historical checkpoint results remain readable. MCP `start_finetune` accepts all four
 choices and the fine-tune resource returns `evaluation_plan`.

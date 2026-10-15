@@ -13,6 +13,7 @@ from overbae.innermind import runs
 from overbae.models import (
     Capability,
     DeployedModel,
+    EvalRun,
     EvalSet,
     FinetuningJob,
     FinetuningJobEval,
@@ -135,7 +136,7 @@ def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choi
 
 
 @pytest.mark.parametrize("hyperparameters", [{}, {"eval_max_items": 3}])
-def test_every_training_evaluation_uses_the_complete_dataset(job, hyperparameters):
+def test_training_evaluations_score_at_most_800_rows(job, hyperparameters):
     source = [
         {"input": {"case": i, "mode": f"worker-{i // 300}"}, "expected_output": f"answer-{i}"}
         for i in range(900)
@@ -157,14 +158,18 @@ def test_every_training_evaluation_uses_the_complete_dataset(job, hyperparameter
         "incumbent_after",
         "final",
     }
+    by_index = {index: row["input"] for index, row in enumerate(source)}
+    selections = []
     for row in job.job_evals.select_related("eval_run").all():
         run = row.eval_run
         assert run.max_items == 0
         assert run.sampling == 1.0
         assert run.cell_id == evaluation.active_cell.id
         items = runs.selected_rows(run)
-        assert [item.index for item in items] == list(range(900))
-        assert [item.input for item in items] == [row["input"] for row in source]
+        assert len(items) == EvalRun.ROW_LIMIT
+        assert [item.input for item in items] == [by_index[item.index] for item in items]
+        selections.append(tuple(item.index for item in items))
+    assert len(set(selections)) == 1
 
 
 @pytest.mark.parametrize("max_items,sampling", [(100, 1.0), (0, 0.5)])

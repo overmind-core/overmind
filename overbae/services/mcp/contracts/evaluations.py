@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, field_validator
 
+from overbae.models.innermind import EvalRun
 from overbae.services.mcp.contracts.common import (
     DatasetCellContract,
     MCPModel,
@@ -258,7 +259,7 @@ class RunEvaluationInput(EvaluationScopeInput):
             "is_baseline to compare every other target against it."
         ),
     )
-    max_items: int = Field(default=100, ge=1, le=100_000)
+    max_items: int = Field(default=100, ge=1, le=EvalRun.ROW_LIMIT)
     sampling: float = Field(default=1.0, gt=0, le=1, allow_inf_nan=False)
 
 

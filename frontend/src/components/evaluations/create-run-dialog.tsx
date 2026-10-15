@@ -186,7 +186,7 @@ function CreateRunForm({
     !!model &&
     Number.isInteger(maxItems) &&
     maxItems > 0 &&
-    maxItems <= 100000;
+    maxItems <= 800;
   const loadError = datasets.error || sets.error || catalog.error;
   return (
     <DialogContent
@@ -278,7 +278,7 @@ function CreateRunForm({
             <Field htmlFor="eval-max-items" label="Maximum samples">
               <Input
                 id="eval-max-items"
-                max={100000}
+                max={800}
                 min={1}
                 onChange={(e) => setMaxItems(e.target.valueAsNumber)}
                 type="number"

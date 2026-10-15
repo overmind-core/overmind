@@ -130,7 +130,8 @@ def relaunch(run: EvalRun) -> bool:
 
 def selected_rows(run: EvalRun) -> list[row_store.DatasetRow]:
     fraction = run.sampling if 0 < run.sampling <= 1 else 1.0
-    return select_rows(run.cell, limit=run.max_items or None, fraction=fraction)
+    requested = run.max_items or EvalRun.ROW_LIMIT
+    return select_rows(run.cell, limit=min(requested, EvalRun.ROW_LIMIT), fraction=fraction)
 
 
 def seed_rows(run: EvalRun) -> int:

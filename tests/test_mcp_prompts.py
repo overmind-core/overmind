@@ -219,8 +219,7 @@ def test_finetune_prompt_discovers_models_before_dataset_readiness():
     assert "dataset-independent model discovery" in text
     assert "dataset-specific narrowing and recommendations" in text
     assert "approve training and evaluation spend" in text
-    assert "every row of the pinned eval dataset" in text
-    assert "without sampling or a row cap" in text
+    assert "at most 800 rows of the pinned eval dataset" in text
     assert "exact OpenRouter catalog match" in text
     assert "without provisioning baseline inference" in text
     assert "Trained-checkpoint evaluations still wait for their own deployment" in text
