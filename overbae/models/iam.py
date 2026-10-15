@@ -269,3 +269,20 @@ class APIToken(models.Model):
             else account_scope(permission=permission),
         )
         return raw, instance
+
+
+class ProjectHistory(models.Model):
+    """Receipts retained when a project-level workflow is retired."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="history")
+    kind = models.CharField(max_length=32)
+    reference = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project", "kind", "reference"), name="unique_project_history"
+            )
+        ]

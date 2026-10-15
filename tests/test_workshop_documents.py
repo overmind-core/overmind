@@ -13,10 +13,25 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Dataset, Project, ProjectMembership, User
-from overbae.services.datasets import events, ocr, paths, store
+from overbae.services.datasets import documents, events, paths, store
 from overbae.tasks import datasets as tasks
+from sandbox.documents import ocr
+from sandbox.documents.extract import DocumentError as ParserError
+from sandbox.documents.extract import extract as parse_document
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+@pytest.fixture
+def in_process_parser(monkeypatch):
+    # Fault injection targets the parser; ordinary landing tests use the real service.
+    def parse(*args, **kwargs):
+        try:
+            return parse_document(*args, **kwargs)
+        except ParserError as exc:
+            raise documents.DocumentError(str(exc)) from exc
+
+    monkeypatch.setattr(documents, "extract", parse)
 
 
 @pytest.fixture
@@ -136,6 +151,40 @@ def land_pdf(workshop, name):
     return Dataset.objects.get(pk=created.data["id"]), content
 
 
+@pytest.mark.parametrize(
+    "name,expected,error",
+    [
+        ("policy.docx", "Customers may return items within 30 days.", ""),
+        ("notes.md", "Orders ship in two days.", ""),
+        ("faq.txt", "Where is my order?", ""),
+        ("text.png", "Order 991 shipped on Monday", ""),
+        ("password.pdf", "", "password protected"),
+        ("latin1.txt", "", "not UTF-8"),
+        ("blank.png", "", "No text was found"),
+    ],
+)
+def test_document_formats_preserve_text_or_fail_without_publication(
+    workshop, name, expected, error
+):
+    client, project = workshop
+    content = (Path(__file__).parent / "fixtures" / "documents" / name).read_bytes()
+    upload_id, _ = upload(client, name, content)
+    created = client.post(
+        "/api/datasets/",
+        {"project": str(project.id), "source": {"uploads": [upload_id]}},
+        format="json",
+    )
+    assert created.status_code == 201, created.data
+    dataset = Dataset.objects.get(pk=created.data["id"])
+    if error:
+        assert dataset.state == Dataset.State.ERROR and error in dataset.error
+        assert dataset.source is None
+    else:
+        assert dataset.state == Dataset.State.IDLE, dataset.error
+        rows = store.iter_rows(paths.cell_path(dataset.id, dataset.source.id))
+        assert any(expected in row["text"] for row in rows)
+
+
 def test_type3_native_text_survives_landing_without_ocr_replacement(workshop):
     dataset, content = land_pdf(workshop, "type3")
     assert dataset.source is not None, dataset.error
@@ -243,7 +292,7 @@ def image_bytes(format, *, variant="plain"):
     ],
 )
 def test_image_upload_extracts_text_with_upright_evidence_and_original_download(
-    workshop, monkeypatch, extension, format, variant
+    workshop, monkeypatch, extension, format, variant, in_process_parser
 ):
     client, project = workshop
     content = image_bytes(format, variant=variant)
@@ -299,7 +348,7 @@ def test_image_upload_extracts_text_with_upright_evidence_and_original_download(
 
 @pytest.mark.parametrize("failure", ["corrupt", "blank", "animated", "disguised", "oversized"])
 def test_invalid_image_does_not_partially_append_a_batch(
-    workshop, django_capture_on_commit_callbacks, monkeypatch, failure
+    workshop, django_capture_on_commit_callbacks, monkeypatch, failure, in_process_parser
 ):
     client, project = workshop
     created = client.post(
@@ -373,7 +422,7 @@ def test_image_can_be_added_to_an_existing_workshop(workshop, django_capture_on_
     assert "landing_progress" not in dataset.source_spec
 
 
-def test_native_pdf_does_not_require_ocr(workshop, monkeypatch):
+def test_native_pdf_does_not_require_ocr(workshop, monkeypatch, in_process_parser):
     def unavailable(*args, **kwargs):
         raise FileNotFoundError("tesseract")
 
@@ -392,7 +441,9 @@ def test_blank_pdf_reports_no_text_after_ocr(workshop):
 
 
 @pytest.mark.parametrize("failure", ["missing", "timeout", "failed"])
-def test_ocr_failure_never_lands_partial_native_rows(workshop, monkeypatch, failure):
+def test_ocr_failure_never_lands_partial_native_rows(
+    workshop, monkeypatch, failure, in_process_parser
+):
     run = subprocess.run
 
     def fail(command, *args, **kwargs):

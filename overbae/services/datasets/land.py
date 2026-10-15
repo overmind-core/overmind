@@ -441,7 +441,9 @@ def _error(root: Span, spans: list[Span]) -> str | None:
     return None
 
 
-def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
+def trace_row(
+    spans: list[Span], *, score: float | None, capability_id: str | None = None
+) -> dict[str, Any]:
     """``spans`` is one whole trace or selected invocation in start order."""
     from overbae.services.transcripts import chatml, normalizer
 
@@ -455,8 +457,12 @@ def trace_row(spans: list[Span], *, score: float | None) -> dict[str, Any]:
     delivered = _delivered(spans)
     usage = _usage(spans)
     capabilities = {s.capability_id: s.capability for s in spans if s.capability_id}
-    capability = root.capability or (
-        next(iter(capabilities.values())) if len(capabilities) == 1 else None
+    capability = (
+        root.capability
+        if capability_id and str(root.capability_id) == capability_id
+        else next(iter(capabilities.values()))
+        if len(capabilities) == 1
+        else None
     )
     conversation = next(
         (s.conversation.external_id for s in (root, *spans) if s.conversation_id), None
@@ -560,7 +566,7 @@ def iter_trace_rows(
             scoped = _preferred_spans(trace_spans, preferred_capability_id)
             score = _score(scoped)
             try:
-                row = trace_row(scoped, score=score)
+                row = trace_row(scoped, score=score, capability_id=preferred_capability_id)
             except Exception:  # noqa: BLE001 — one unreadable trace must not sink the batch
                 logger.warning("trace %s did not land", trace_id, exc_info=True)
                 continue
@@ -598,6 +604,9 @@ def land_traces(
     user: Any = None,
     on_progress: Any = None,
 ) -> Dataset:
+    from overbae.services.datasets.dispatch import _trace_preference
+
+    spec = _trace_preference({"traces": spec}, dataset.capability_id)["traces"]
     return commit(
         dataset, read_traces(dataset.project_id, spec, on_progress=on_progress), user=user
     )

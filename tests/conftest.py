@@ -1,8 +1,14 @@
 import ipaddress
 import os
+import secrets
 import socket
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections, transaction
@@ -381,3 +387,91 @@ def import_version(dataset, records, *, name="Native transformation"):
     assert run.state == "completed", run.error
     dataset.refresh_from_db()
     return dataset.active_cell
+
+
+@pytest.fixture(scope="session")
+def sandbox_server():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    url, token = f"http://127.0.0.1:{port}", secrets.token_hex(16)
+    scratch = tempfile.TemporaryDirectory(prefix="sandbox-test-")
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "SANDBOX_TOKEN": token,
+        "SANDBOX_ALLOW_SHARED_UID": "1",
+        # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
+        "TMPDIR": scratch.name,
+    }
+    command = [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)]
+    container = None
+    if sys.platform == "darwin":
+        container = "overmind-parser-test-" + secrets.token_hex(6)
+        subprocess.run(
+            ["docker", "network", "create", container],
+            check=True,
+            capture_output=True,
+        )
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            container,
+            "--network",
+            container,
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--init",
+            "-p",
+            f"127.0.0.1:{port}:8080",
+            "--tmpfs",
+            "/tmp:size=4g",
+            "-v",
+            f"{Path(__file__).resolve().parents[1] / 'sandbox'}:/code/sandbox:ro",
+            "-e",
+            f"SANDBOX_TOKEN={token}",
+            "--entrypoint",
+            "python",
+        ]
+        for capability in (
+            "CHOWN",
+            "DAC_OVERRIDE",
+            "FOWNER",
+            "KILL",
+            "SETGID",
+            "SETUID",
+            "SYS_PTRACE",
+        ):
+            command += ["--cap-add", capability]
+        command += ["overmind-dev", "-m", "sandbox"]
+    proc = subprocess.Popen(
+        command,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                if httpx.get(f"{url}/health", timeout=1).status_code == 200:
+                    break
+            except httpx.TransportError:
+                pass
+            if proc.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError("The test sandbox did not start.")
+            time.sleep(0.1)
+        yield url, token
+    finally:
+        if container:
+            subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+            subprocess.run(["docker", "network", "rm", container], check=False, capture_output=True)
+        elif proc.poll() is None:
+            proc.terminate()
+        proc.wait(timeout=10)
+        scratch.cleanup()
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(settings, sandbox_server):
+    settings.SANDBOX_URL, settings.SANDBOX_TOKEN = sandbox_server

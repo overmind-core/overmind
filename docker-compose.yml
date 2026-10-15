@@ -5,6 +5,8 @@ x-env-common: &env-common
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
   DJANGO_DEBUG: "True"
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+  SANDBOX_URL: http://sandbox:8080
+  SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
   DATABASE_URL: postgresql://overbae:overbae@postgres:5432/overbae
   CELERY_BROKER_URL: redis://redis:6379/0
   CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -44,6 +46,7 @@ x-build-common: &build-common
   volumes:
     - ./overbae:/code/overbae
     - ./modal_shared:/code/modal_shared
+    - ./sandbox:/code/sandbox:ro
     - ./manage.py:/code/manage.py
     - app_data:/data
     - ${HOME}/.aws:/data/tmp/.aws:ro
@@ -181,10 +184,13 @@ services:
     restart: unless-stopped
     environment:
       <<: *env-common
+    networks: [default, sandbox_net]
     depends_on:
       api:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      sandbox:
         condition: service_healthy
 
   celery-interactive-worker:
@@ -239,6 +245,7 @@ services:
     volumes:
       - ./overbae:/code/overbae:ro
       - ./modal_shared:/code/modal_shared:ro
+      - ./sandbox:/code/sandbox:ro
       - app_data:/data
       # Only the trusted controller gets the socket; script containers get no mounts.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -247,6 +254,47 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Parses documents without outbound network, app secrets or a shared data volume.
+  sandbox:
+    image: overmind-dev
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: python -m sandbox
+    init: true
+    # Root only starts runs as other uids, reclaims their files, kills them and reads
+    # their open files (SYS_PTRACE); runs hold no capability.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETUID
+      - SYS_PTRACE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
+      SANDBOX_MEMORY_BYTES: ${SANDBOX_MEMORY_BYTES:-0}
+    tmpfs:
+      - /tmp:size=8g
+    volumes:
+      - ./sandbox:/code/sandbox:ro
+    networks:
+      - sandbox_net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   grafana:
     image: grafana/grafana:11.5.0
@@ -280,3 +328,7 @@ volumes:
     name: overclaw_pg_data
   grafana_data:
   frontend_node_modules:
+
+networks:
+  sandbox_net:
+    internal: true

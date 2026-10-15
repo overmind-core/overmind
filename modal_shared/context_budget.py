@@ -13,26 +13,25 @@ CONTEXT_BUDGET_MESSAGE = (
 
 
 def is_context_limit_error(status: int, body: bytes | str | dict) -> bool:
+    """Whether a completion reply refuses the input plus reserved output: a 400, or
+    an error object in a 200 body or stream event."""
     if status not in (200, 400):
         return False
-    if isinstance(body, dict):
-        payload = body
-    else:
+    if isinstance(body, (bytes, str)):
+        text = body.decode("utf-8", "replace") if isinstance(body, bytes) else body
         try:
-            payload = json.loads(body)
-        except (ValueError, UnicodeError):
-            payload = {
-                "message": body.decode(errors="replace") if isinstance(body, bytes) else body
-            }
-    if not isinstance(payload, dict):
+            body = json.loads(text)
+        except ValueError:
+            body = {"message": text}
+    if not isinstance(body, dict):
         return False
-    error = payload.get("error", payload)
+    error = body.get("error", body if status == 400 else None)
+    if isinstance(error, str):
+        error = {"message": error}
     if not isinstance(error, dict):
         return False
-    if error.get("code") == "context_length_exceeded":
+    if "context_length_exceeded" in (error.get("code"), error.get("type")):
         return True
-    if status != 400:
-        return False
     message = str(error.get("message") or "").lower()
     return any(marker in message for marker in ("context length", "max_model_len")) or (
         any(marker in message for marker in ("max_tokens", "max_completion_tokens"))

@@ -13,6 +13,7 @@ from typing import Any
 
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.modelfam import resolve
+from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import context_headroom, get_training_context_policy
 from overbae.services.training_contract import baseline_evaluation_enabled, validate_effective_batch
 
@@ -194,6 +195,23 @@ def baseten_context_length(
             )
         chosen = min(chosen, int(model_max))
     return chosen
+
+
+def validate_requested_context_length(context_length: int, *, model_max: int | None):
+    if type(context_length) is not int:
+        raise InputValidationError("Context length must be an integer.")
+    if model_max is not None and context_length > model_max:
+        raise InputValidationError(
+            f"This training configuration supports at most {model_max} context tokens."
+        )
+    if not 128 <= context_length <= 2_000_000:
+        raise InputValidationError("Context length must be between 128 and 2,000,000 tokens.")
+    supported = baseten_context_length(model_max=model_max, requested=context_length)
+    if supported != context_length:
+        raise InputValidationError(
+            f"context_length={context_length} is unsupported; choose {supported} "
+            "or another supported context length."
+        )
 
 
 def estimated_training_context_length(

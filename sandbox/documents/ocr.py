@@ -15,8 +15,6 @@ import pypdfium2 as pdfium
 from docling_core.types.doc import BoundingBox, DoclingDocument
 from PIL import Image, ImageDraw, ImageOps
 
-from overbae.core.errors import InputValidationError
-
 PAGE_TIMEOUT = 60
 DOCUMENT_TIMEOUT = 1200
 MAX_PIXELS = 16_000_000
@@ -25,7 +23,7 @@ MAX_INPUT_PIXELS = 64_000_000
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
 
-class OcrError(InputValidationError):
+class OcrError(ValueError):
     pass
 
 

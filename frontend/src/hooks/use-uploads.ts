@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import apiClient from "@/client";
+import { formatBytes } from "@/lib/formatters";
 import type { UploadReserved, UploadState } from "@/openapi";
 import { ResponseError } from "@/openapi";
 
@@ -18,8 +19,6 @@ async function uploadError(err: unknown): Promise<Error> {
   }
   return err instanceof Error ? err : new Error("Upload failed.");
 }
-
-const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
 /** Send a file in chunks, resuming from whatever the server already holds. */
 const CHUNK_ATTEMPTS = 4;
@@ -61,7 +60,7 @@ async function uploadFile(
   }
   if (file.size > reserved.maxBytes) {
     throw new Error(
-      `${file.name} is ${gb(file.size)} — files are capped at ${gb(reserved.maxBytes)}.`
+      `${file.name} is ${formatBytes(file.size)}. The limit for this file type is ${formatBytes(reserved.maxBytes)}.`
     );
   }
   let sent = (await apiClient.uploads.uploadsRetrieve({ id: reserved.uploadId }, { signal }))

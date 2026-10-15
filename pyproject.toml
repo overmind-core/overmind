@@ -70,7 +70,7 @@ requires      = ["hatchling"]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["overbae", "modal_shared"]
+packages = ["overbae", "modal_shared", "sandbox"]
 
 [dependency-groups]
 dev = [

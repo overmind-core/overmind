@@ -2,8 +2,12 @@
 
 from django.db import migrations, models
 
+from overbae.migration_compat import RemoveFieldIfPresent
+
 
 def archive_usage(apps, schema_editor):
+    if not hasattr(apps.get_model("overbae", "OptimizerExperiment"), "cursor_usage"):
+        return
     experiments = apps.get_model("overbae", "OptimizerExperiment").objects.using(
         schema_editor.connection.alias
     )
@@ -14,9 +18,7 @@ def archive_usage(apps, schema_editor):
     ):
         state = experiment.state
         if not isinstance(state, dict):
-            raise RuntimeError(
-                f"Cannot archive usage in non-object state: {experiment.pk}"
-            )
+            raise RuntimeError(f"Cannot archive usage in non-object state: {experiment.pk}")
         if "archived_cursor_usage" in state:
             raise RuntimeError(f"Cursor usage archive already exists: {experiment.pk}")
         experiments.filter(pk=experiment.pk).update(
@@ -45,7 +47,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(archive_usage, restore_usage),
-        migrations.RemoveField(
+        RemoveFieldIfPresent(
             model_name="optimizerexperiment",
             name="cursor_usage",
         ),

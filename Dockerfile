@@ -33,8 +33,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_SYSTEM_PYTHON=1
 
 COPY pyproject.toml uv.lock README.md ./
-RUN mkdir -p overbae modal_shared \
-    && touch overbae/__init__.py modal_shared/__init__.py
+RUN mkdir -p overbae modal_shared sandbox \
+    && touch overbae/__init__.py modal_shared/__init__.py sandbox/__init__.py
 
 RUN uv sync --frozen --no-dev --no-editable
 
@@ -73,6 +73,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md ./
 COPY overbae ./overbae/
 COPY modal_shared ./modal_shared/
+COPY sandbox ./sandbox/
 COPY manage.py ./
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/worker_entrypoint.sh /usr/local/bin/worker-entrypoint.sh

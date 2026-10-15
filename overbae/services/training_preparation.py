@@ -35,6 +35,7 @@ from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
     baseten_context_length,
     estimated_training_context_length,
+    validate_requested_context_length,
 )
 from overbae.services.finetuning_validator import row_to_finetuning_line
 from overbae.services.training_contract import dataset_objective
@@ -63,18 +64,7 @@ def request_preparation(
     if training_type not in {"lora", "full"} or not training_enabled(model_config, training_type):
         raise InputValidationError("This model does not support the selected training type.")
     maximum = training_context_length(model_config, training_type)
-    if maximum is not None and context_length > maximum:
-        raise InputValidationError(
-            f"This training configuration supports at most {maximum} context tokens."
-        )
-    if not 128 <= context_length <= 2_000_000:
-        raise InputValidationError("Context length must be between 128 and 2,000,000 tokens.")
-    supported_context = baseten_context_length(model_max=maximum, requested=context_length)
-    if supported_context != context_length:
-        raise InputValidationError(
-            f"context_length={context_length} is unsupported; choose {supported_context} "
-            "or another supported context length."
-        )
+    validate_requested_context_length(context_length, model_max=maximum)
     for target in (cell, validation_cell):
         if target is not None:
             if target.dataset.project_id != cell.dataset.project_id:

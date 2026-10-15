@@ -50,6 +50,9 @@ def test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities(
     by_capability = {row["capability"] for row in rows if row["span_type"] == "llm_call"}
     assert by_capability == {"triage", "answer"}
     assert any(row["name"] == "lookup_order" and row["capability"] == "answer" for row in rows)
+    for capability in by_capability:
+        [match] = project.call("query_traces", {"capability": capability, "limit": 100})["traces"]
+        assert match["trace_id"] == root["trace_id"]
 
     agent_tokens = sum(
         r.total_tokens for r in fake_llm.requests if r.url.startswith("http://fake-llm")

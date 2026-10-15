@@ -132,6 +132,13 @@ def estimate_for_hyperparams(
     kind_label = "LoRA" if use_lora else "full"
     if not training_enabled(entry, kind):
         raise ValueError(f"Model {base_model} does not support {kind_label} fine-tuning")
+    requested_context = (hyperparameters or {}).get("context_length")
+    if active_backend() in {"modal", "baseten"} and requested_context is not None:
+        from overbae.services.finetuning_policy import validate_requested_context_length
+
+        validate_requested_context_length(
+            requested_context, model_max=training_context_length(entry, kind)
+        )
     max_tokens = int(stats.get("max_token_length") or 0)
     if max_tokens and active_backend() != "modal":
         model_max = training_context_length(entry, kind)

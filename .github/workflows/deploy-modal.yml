@@ -6,11 +6,16 @@ on:
     paths:
       - "overbae/modal/modal_vllm_worker.py"
       - "overbae/modal/modal_sft_worker.py"
+      - "overbae/modal/modal_decision_serving.py"
+      - "overbae/modal/modal_decision_evaluation.py"
       - "overbae/modal/register_model.py"
       - "overbae/modal/weight_ops.py"
       - "overbae/modal/models.json"
       - "modal_shared/**"
       - "overbae/services/sft_assets/**"
+      - "overbae/services/datasets/examples.py"
+      - "overbae/services/finetuning_validator.py"
+      - "overbae/services/finetuning_tool_validation.py"
       - ".github/workflows/deploy-modal.yml"
   # Prod: published GitHub release (same cut as API/frontend). Release events
   # ignore path filters, so prod always deploys even when the release commit
@@ -75,3 +80,13 @@ jobs:
         env:
           MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
         run: modal deploy overbae/modal/modal_sft_worker.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy decision serving worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_decision_serving.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy decision evaluation worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_decision_evaluation.py --env ${{ matrix.modal_env }}

@@ -139,7 +139,7 @@ def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str
     broker.reserved.return_value = {}
     broker.scheduled.return_value = {}
 
-    def _send(name, kwargs=None):
+    def _send(name, kwargs=None, **options):
         sent.append((name, kwargs or {}))
         return MagicMock(id=str(uuid.uuid4()))
 

@@ -118,7 +118,11 @@ preserves a draft; later attachment appends a new version. Original document/ima
 bytes, extraction metadata and row evidence remain retained. Local English Tesseract
 OCR covers scanned PDF regions and PNG/JPEG/WebP images. Image orientation and
 source coordinates survive extraction. OCR does not reconstruct visual tables.
-If the primary PDF parser returns no text on a page, `pdf_text.py` recovers the
+Document parsing runs in the isolated `sandbox` service (`sandbox/documents/`),
+without application credentials, media mounts or outbound network. The landing
+worker streams retained bytes and receives extraction progress; missing parser
+configuration fails closed. If the primary PDF parser returns no text on a page,
+`sandbox/documents/pdf_text.py` recovers the
 encoded layer through PDFium before OCR. This includes Type 3 text layers.
 `native_text_recovery` retains affected pages, engine/version, row/character
 counts and non-whitespace control-character count; rows carry their own method

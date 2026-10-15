@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 from conftest import frozen_dataset
 
+from overbae.core.errors import InputValidationError
 from overbae.models import Project
 from overbae.services import training_release
 from overbae.services.recommendation import estimate_for_hyperparams
@@ -108,6 +109,11 @@ def test_estimate_uses_the_selected_split_and_external_validation(native, settin
         "use_lora": True,
         "cell": dataset.active_cell,
     }
+    for context in (512, 4097, 2_000_001, True, "4096"):
+        with pytest.raises(InputValidationError):
+            estimate_for_hyperparams(
+                str(dataset.id), **common, hyperparameters={"context_length": context}
+            )
     with patch(
         "overbae.services.training_forecast.forecast",
         return_value={"training_seconds": None, "training_gpu_usd": None},

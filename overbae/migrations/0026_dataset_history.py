@@ -6,6 +6,8 @@ import django.db.models.deletion
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import migrations, models
 
+from overbae.migration_compat import AddFieldIfMissing, RemoveFieldIfPresent
+
 
 def archive_workshop(apps, schema_editor):
     alias = schema_editor.connection.alias
@@ -22,8 +24,17 @@ def archive_workshop(apps, schema_editor):
         )
 
     for dataset in Dataset.objects.using(alias).iterator(chunk_size=100):
+        spec = dict(dataset.source_spec)
+        archive = spec.pop("_migration_workshop_archive", None)
+        if archive:
+            save(dataset.pk, "pre_merge_workshop", "", archive)
+            for prior in archive["cells"]:
+                Cell.objects.using(alias).filter(pk=prior["id"]).update(
+                    **{key: value for key, value in prior.items() if key != "id"}
+                )
+            Dataset.objects.using(alias).filter(pk=dataset.pk).update(source_spec=spec)
         conversation = {
-            key: getattr(dataset, key)
+            key: getattr(dataset, key, None)
             for key in ("chat", "agent_id", "agent_messages", "agent_turn_key")
         }
         if any(conversation.values()):
@@ -94,6 +105,11 @@ class Migration(migrations.Migration):
                 to="overbae.dataset",
             ),
         ),
+        AddFieldIfMissing("cell", "state", models.CharField(default="ok", max_length=8)),
+        AddFieldIfMissing("cell", "error", models.TextField(blank=True, default="")),
+        AddFieldIfMissing("cell", "note", models.TextField(blank=True, default="")),
+        AddFieldIfMissing("cell", "review", models.JSONField(blank=True, default=dict)),
+        AddFieldIfMissing("cell", "quality_report", models.JSONField(blank=True, default=dict)),
         migrations.RunPython(archive_workshop),
         migrations.RemoveField(
             model_name="workshoppreference",
@@ -115,19 +131,19 @@ class Migration(migrations.Migration):
             model_name="workshopworkitem",
             name="unique_workshop_work_key",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfPresent(
             model_name="dataset",
             name="agent_id",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfPresent(
             model_name="dataset",
             name="agent_messages",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfPresent(
             model_name="dataset",
             name="agent_turn_key",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfPresent(
             model_name="dataset",
             name="chat",
         ),

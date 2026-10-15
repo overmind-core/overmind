@@ -1,10 +1,14 @@
 from django.db import migrations
 from django.db.models import Q
 
+from overbae.migration_compat import RemoveFieldIfPresent, RemoveIndexIfPresent
+
 
 def archive_ownership(apps, schema_editor):
     alias = schema_editor.connection.alias
     Dataset = apps.get_model("overbae", "Dataset")
+    if not hasattr(Dataset, "workshop_task_id"):
+        return
     History = apps.get_model("overbae", "DatasetHistory")
     Import = apps.get_model("overbae", "DatasetImport")
     for dataset in (
@@ -64,13 +68,13 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(archive_ownership, migrations.RunPython.noop),
-        migrations.RemoveIndex("dataset", "dataset_workshop_busy_idx"),
-        migrations.RemoveField("dataset", "workshop_task_id"),
-        migrations.RemoveField("dataset", "workshop_queued_at"),
-        migrations.RemoveField("dataset", "workshop_started_at"),
-        migrations.RemoveIndex("datasetimport", "dataset_import_handoff"),
-        migrations.RemoveField("datasetimport", "handoff_pending"),
-        migrations.RemoveField("datasetimport", "handoff_owner"),
-        migrations.RemoveField("datasetimport", "handoff_lease_until"),
-        migrations.RemoveField("datasetimport", "handoff_attempts"),
+        RemoveIndexIfPresent("dataset", "dataset_workshop_busy_idx"),
+        RemoveFieldIfPresent("dataset", "workshop_task_id"),
+        RemoveFieldIfPresent("dataset", "workshop_queued_at"),
+        RemoveFieldIfPresent("dataset", "workshop_started_at"),
+        RemoveIndexIfPresent("datasetimport", "dataset_import_handoff"),
+        RemoveFieldIfPresent("datasetimport", "handoff_pending"),
+        RemoveFieldIfPresent("datasetimport", "handoff_owner"),
+        RemoveFieldIfPresent("datasetimport", "handoff_lease_until"),
+        RemoveFieldIfPresent("datasetimport", "handoff_attempts"),
     ]
