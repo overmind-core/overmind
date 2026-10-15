@@ -10,6 +10,8 @@ apis/DatasetPipelinePackagesApi.ts
 apis/DatasetPipelinesApi.ts
 apis/DatasetTransfersApi.ts
 apis/DatasetsApi.ts
+apis/DecisionJobsApi.ts
+apis/DecisionModelsApi.ts
 apis/DecisionPerformanceApi.ts
 apis/DeployedModelsApi.ts
 apis/EvalMatrixApi.ts
@@ -132,9 +134,13 @@ models/DatasetValidationStats.ts
 models/DecisionComparisonRequestRequest.ts
 models/DecisionInputKindEnum.ts
 models/DecisionInputRequest.ts
+models/DecisionJob.ts
+models/DecisionJobCreateRequest.ts
+models/DecisionJobList.ts
 models/DecisionModelOption.ts
 models/DecisionParticipantRequest.ts
 models/DecisionPerformance.ts
+models/DecisionTrainingModelOption.ts
 models/DefinitionSourceEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
@@ -181,6 +187,7 @@ models/ExperimentRequestStageEnum.ts
 models/Exploration.ts
 models/ExplorationRequestKindEnum.ts
 models/ExplorationRequestRequest.ts
+models/FamilyEnum.ts
 models/FeedbackCreate.ts
 models/FeedbackCreateCategoryEnum.ts
 models/FeedbackCreateRequest.ts
@@ -279,6 +286,7 @@ models/PaginatedCapabilityListList.ts
 models/PaginatedConnectorCredentialList.ts
 models/PaginatedConnectorSyncRunList.ts
 models/PaginatedDatasetList.ts
+models/PaginatedDecisionJobListList.ts
 models/PaginatedDecisionPerformanceList.ts
 models/PaginatedDeployedModelList.ts
 models/PaginatedEvalMatrixList.ts

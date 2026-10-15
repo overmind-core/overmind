@@ -25,6 +25,7 @@ from overbae.models import (
     ConnectorSyncRun,
     Conversation,
     Dataset,
+    DecisionJob,
     DeployedModel,
     EvalSet,
     Feedback,
@@ -1061,6 +1062,7 @@ class FinetuningJobListSerializer(serializers.ModelSerializer):
         return contract(obj.cell, obj.hyperparameters)
 
     deployed_model_id = serializers.SerializerMethodField()
+    decision_job_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
 
     class Meta:
@@ -1096,6 +1098,7 @@ class FinetuningJobListSerializer(serializers.ModelSerializer):
             "provider",
             "output_model_name",
             "deployed_model_id",
+            "decision_job_id",
             "model_weights_location",
             "progress",
             "retry_count",
@@ -1117,6 +1120,11 @@ class FinetuningJobListSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.UUIDField(allow_null=True))
     def get_deployed_model_id(self, obj: FinetuningJob) -> str | None:
         return _deployed_model_id(obj)
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_decision_job_id(self, obj: FinetuningJob) -> str | None:
+        identity = getattr(obj, "decision_job", None)
+        return str(identity.pk) if identity is not None else None
 
 
 class FinetuningJobRunSerializer(serializers.Serializer):
@@ -1151,6 +1159,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     eval_judge_model = serializers.ChoiceField(choices=["", *judge_picker_models()], required=False)
     events = FinetuningJobEventSerializer(many=True, read_only=True)
     deployed_model_id = serializers.SerializerMethodField()
+    decision_job_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
     eval_dataset = serializers.PrimaryKeyRelatedField(
         queryset=Dataset.objects.all(), required=False, allow_null=True
@@ -1205,6 +1214,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "model_weights_location",
             "output_model_name",
             "deployed_model_id",
+            "decision_job_id",
             "progress",
             "result",
             "error_message",
@@ -1231,6 +1241,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "model_weights_location",
             "output_model_name",
             "deployed_model_id",
+            "decision_job_id",
             "progress",
             "result",
             "error_message",
@@ -1252,6 +1263,11 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.UUIDField(allow_null=True))
     def get_deployed_model_id(self, obj: FinetuningJob) -> str | None:
         return _deployed_model_id(obj)
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_decision_job_id(self, obj: FinetuningJob) -> str | None:
+        identity = getattr(obj, "decision_job", None)
+        return str(identity.pk) if identity is not None else None
 
     def validate_project(self, value):
         return _validate_project_ownership(self, value)
@@ -1297,6 +1313,13 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        def with_decision_identity(job):
+            from overbae.modal.decision_catalog import get as decision_catalog_model
+
+            if self.context.get("create_decision_job") or decision_catalog_model(job.base_model):
+                DecisionJob.objects.get_or_create(finetuning_job=job)
+            return job
+
         Project.objects.select_for_update().get(pk=validated_data["project"].pk)
         key = validated_data.get("request_key")
         prior = (
@@ -1321,7 +1344,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                         {"request_key": "This launch key already belongs to a different recipe."}
                     )
                 existing.launch_reused = True
-                return existing
+                return with_decision_identity(existing)
         if admit := self.context.get("admit_new_training"):
             admit()
         validated_data["requested_configuration"] = requested
@@ -1364,8 +1387,8 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             job.name = job.name or setup.name
             job.progress = {**setup.progress, "phase": "queued"}
             job.save(force_update=True)
-            return job
-        return super().create(validated_data)
+            return with_decision_identity(job)
+        return with_decision_identity(super().create(validated_data))
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -1584,10 +1607,24 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         entry = None
         training_kind_field = "lora"
         if base_model:
+            from overbae.modal.decision_catalog import get as decision_catalog_model
             from overbae.modal.training_type import training_enabled
             from overbae.services.recommendation import find_catalog_model
 
-            entry = find_catalog_model(base_model)
+            decision_model = decision_catalog_model(base_model)
+            if decision_model and not decision_model["training_available"]:
+                raise serializers.ValidationError(
+                    {
+                        "base_model": "This decision family does not yet have exact preparation and verified deployment."
+                    }
+                )
+
+            entry = find_catalog_model(
+                base_model,
+                decision=bool(
+                    selected_cell and dataset_objective(selected_cell) in DECISION_OBJECTIVES
+                ),
+            )
             if entry is None:
                 raise serializers.ValidationError(
                     {

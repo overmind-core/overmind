@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from modal_shared.modelfam.families import (
     ANTARES,
+    CLEF,
+    D1,
+    D3,
     DEFAULT,
     GEMMA4,
     GPT_OSS,
@@ -28,6 +31,9 @@ from modal_shared.modelfam.spec import FamilySpec
 
 # Order is load-bearing — specific before general (qwen35/coder before qwen_mm before qwen).
 _FAMILIES: tuple[FamilySpec, ...] = (
+    CLEF,
+    D3,
+    D1,
     GPT_OSS,
     PHI4,
     GEMMA4,

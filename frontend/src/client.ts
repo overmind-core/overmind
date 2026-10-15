@@ -34,6 +34,8 @@ import {
   DatasetPipelinesApi,
   DatasetsApi,
   DatasetTransfersApi,
+  DecisionJobsApi,
+  DecisionModelsApi,
   DecisionPerformanceApi,
   DeployedModelsApi,
   EvalMatrixApi,
@@ -439,6 +441,8 @@ export class API {
   observability: ObservabilityApi;
   trainingExperiments: TrainingExperimentsApi;
   trainingPlans: TrainingPlansApi;
+  decisionJobs: DecisionJobsApi;
+  decisionModels: DecisionModelsApi;
   decisionPerformance: DecisionPerformanceApi;
   optimizerExperiments: OptimizerExperimentsApi;
   /** OTLP trace ingestion (`POST /api/v1/traces`). */
@@ -480,6 +484,8 @@ export class API {
     this.observability = new ObservabilityApi(this.cfg);
     this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
     this.trainingPlans = new TrainingPlansApi(this.cfg);
+    this.decisionJobs = new DecisionJobsApi(this.cfg);
+    this.decisionModels = new DecisionModelsApi(this.cfg);
     this.decisionPerformance = new DecisionPerformanceApi(this.cfg);
     this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);

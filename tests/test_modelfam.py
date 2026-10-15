@@ -32,6 +32,10 @@ _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "mode
 
 # Ordering cases — first match wins.
 _ORDERING = [
+    ("Cloudflare/clef-flash", "clef"),
+    ("OvermindLab/qwen-3.5-0.8B-decision", "clef"),
+    ("vllm-sr/d3-mini", "d3"),
+    ("LiquidAI/d1-3B", "d1"),
     ("openai/gpt-oss-20b", "gpt_oss"),
     ("microsoft/Phi-4-mini-instruct", "phi4"),
     ("google/gemma-4-E4B-it", "gemma4"),

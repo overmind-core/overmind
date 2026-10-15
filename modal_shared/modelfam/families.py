@@ -4,10 +4,37 @@ from __future__ import annotations
 
 from modal_shared.modelfam.spec import FamilySpec
 from modal_shared.stacks import (
+    TRAIN_DECISION,
     TRAIN_U2026_8_GPOS,
     TRAIN_U2026_8_TF510,
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
+)
+
+CLEF = FamilySpec(
+    key="clef",
+    patterns=(
+        "cloudflare/clef",
+        "overmindlab/qwen-3.5-0.8b-decision",
+        "overmindlab/qwen-3.5-2b-decision",
+    ),
+    train_image=TRAIN_DECISION,
+    notes="Typed decision head; only the qualified native decision runtime may train it.",
+)
+
+D3 = FamilySpec(
+    key="d3",
+    patterns=("vllm-sr/d3",),
+    train_image=TRAIN_DECISION,
+    notes="Typed D3 runtime remains unavailable pending exact preparation and verified serving.",
+)
+
+D1 = FamilySpec(
+    key="d1",
+    patterns=("liquidai/d1-",),
+    train_image=TRAIN_DECISION,
+    trust_remote_code=True,
+    notes="Typed D1 runtime remains unavailable pending exact preparation and verified serving.",
 )
 
 GPT_OSS = FamilySpec(

@@ -27,11 +27,12 @@ def tier_models(*, backend: str | None = None) -> dict[str, list[dict[str, Any]]
     return get_tier_models(backend=backend or catalog_backend())
 
 
-def find_catalog_model(model_id: str) -> dict[str, Any] | None:
-    for models in tier_models().values():
-        for entry in models:
-            if entry.get("id") == model_id:
-                return entry
+def find_catalog_model(model_id: str, *, decision: bool = False) -> dict[str, Any] | None:
+    for backend in ["decision", None] if decision else [None]:
+        for models in tier_models(backend=backend).values():
+            for entry in models:
+                if entry.get("id") == model_id:
+                    return entry
     return None
 
 

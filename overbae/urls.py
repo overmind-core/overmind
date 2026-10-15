@@ -28,6 +28,7 @@ from overbae.api.data_exploration import DataExplorationViewSet
 from overbae.api.data_partitions import DataPartitionViewSet
 from overbae.api.dataset_transfers import DatasetTransferViewSet
 from overbae.api.datasets import DatasetViewSet
+from overbae.api.decision import DecisionJobViewSet, DecisionModelListView
 from overbae.api.decision_performance import DecisionPerformanceViewSet
 from overbae.api.eval_views import (
     EvalMatrixViewSet,
@@ -81,6 +82,7 @@ router.register(
 # Must precede ``projects`` so ``…/memberships`` is not captured as a project id.
 router.register("data-explorations", DataExplorationViewSet, basename="data-exploration")
 router.register(r"training-experiments", TrainingExperimentViewSet, basename="training-experiment")
+router.register(r"decision-jobs", DecisionJobViewSet, basename="decision-job")
 router.register("training-plans", TrainingPlanViewSet, basename="training-plan")
 router.register(
     r"decision-performance", DecisionPerformanceViewSet, basename="decision-performance"
@@ -128,6 +130,7 @@ router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="si
 router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
 urlpatterns = [
+    path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(
         "api/observability/overview/",
         ObservabilityOverviewView.as_view(),

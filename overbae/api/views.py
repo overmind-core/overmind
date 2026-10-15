@@ -754,6 +754,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             "validation_cell__dataset",
             "triggered_by",
             "deployed_model",
+            "decision_job",
         )
 
     def perform_create(self, serializer):

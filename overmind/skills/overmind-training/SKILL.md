@@ -37,6 +37,8 @@ Use `get_model_catalog` for initial model discovery, then
 returned requirements to identify technical blockers. Quality findings,
 overlap and incomplete semantic reviews remain visible advisory warnings.
 
+For typed decision training, call `list_decision_training_models` to see the explicit Clef, D3 and D1 families and their current launch availability. D3 and D1 are discoverable but unavailable until exact preparation and verified probability serving are qualified. Use `start_decision_job` for an available family and a stable `request_key`; it returns a separate `decision_job` ID and the underlying training run. Both IDs refer to the same preparation, monitoring, cancellation, billing and recovery lifecycle. `prepare_training_data` also returns the DecisionJob ID for an applicable setup run. Inspect it with `get_job(kind="decision_job")` or the linked resource, and pass either ID to `inspect_training_progress` and `cancel_finetune`.
+
 The model catalogue returns `openrouter_id` and `openrouter_status` for base
 benchmarks. Only `available` establishes a catalogue match; null IDs, `not_listed`
 and `catalog_unavailable` do not. Never substitute a different model size or variant.

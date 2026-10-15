@@ -12,6 +12,8 @@ export * from './DatasetPipelinePackagesApi';
 export * from './DatasetPipelinesApi';
 export * from './DatasetTransfersApi';
 export * from './DatasetsApi';
+export * from './DecisionJobsApi';
+export * from './DecisionModelsApi';
 export * from './DecisionPerformanceApi';
 export * from './DeployedModelsApi';
 export * from './EvalMatrixApi';

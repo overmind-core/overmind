@@ -285,6 +285,12 @@ export interface FinetuningJob {
     readonly deployedModelId: string | null;
     /**
      *
+     * @type {string}
+     * @memberof FinetuningJob
+     */
+    readonly decisionJobId: string | null;
+    /**
+     *
      * @type {any}
      * @memberof FinetuningJob
      */
@@ -416,6 +422,7 @@ export function instanceOfFinetuningJob(value: object): value is FinetuningJob {
     if (!('modelWeightsLocation' in value) || value['modelWeightsLocation'] === undefined) return false;
     if (!('outputModelName' in value) || value['outputModelName'] === undefined) return false;
     if (!('deployedModelId' in value) || value['deployedModelId'] === undefined) return false;
+    if (!('decisionJobId' in value) || value['decisionJobId'] === undefined) return false;
     if (!('progress' in value) || value['progress'] === undefined) return false;
     if (!('result' in value) || value['result'] === undefined) return false;
     if (!('errorMessage' in value) || value['errorMessage'] === undefined) return false;
@@ -480,6 +487,7 @@ export function FinetuningJobFromJSONTyped(json: any, ignoreDiscriminator: boole
         'modelWeightsLocation': json['model_weights_location'],
         'outputModelName': json['output_model_name'],
         'deployedModelId': json['deployed_model_id'],
+        'decisionJobId': json['decision_job_id'],
         'progress': json['progress'],
         'result': json['result'],
         'errorMessage': json['error_message'],
@@ -501,7 +509,7 @@ export function FinetuningJobToJSON(json: any): FinetuningJob {
     return FinetuningJobToJSONTyped(json, false);
 }
 
-export function FinetuningJobToJSONTyped(value?: Omit<FinetuningJob, 'requested_configuration'|'record'|'native_evaluation'|'id'|'cell_info'|'triggered_by'|'status'|'provider'|'model_weights_location'|'output_model_name'|'deployed_model_id'|'progress'|'result'|'error_message'|'retry_count'|'celery_task_id'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'|'events'> | null, ignoreDiscriminator: boolean = false): any {
+export function FinetuningJobToJSONTyped(value?: Omit<FinetuningJob, 'requested_configuration'|'record'|'native_evaluation'|'id'|'cell_info'|'triggered_by'|'status'|'provider'|'model_weights_location'|'output_model_name'|'deployed_model_id'|'decision_job_id'|'progress'|'result'|'error_message'|'retry_count'|'celery_task_id'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'|'events'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

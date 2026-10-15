@@ -19,6 +19,7 @@ from overbae.models import (
     Dataset,
     DatasetPipelineRun,
     DatasetTransfer,
+    DecisionJob,
     DeployedModel,
     FinetuningJob,
     InferenceRequest,
@@ -344,6 +345,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     completed_at = None
     label = kind
     underlying: list[ResourceLinkContract] = []
+    operation_ref = None
 
     if kind == "dataset_transfer":
         job = DatasetTransfer.objects.filter(project=context.project, pk=normalized_id).first()
@@ -415,7 +417,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     elif kind == "finetune_job":
         job = (
             FinetuningJob.objects.filter(project=context.project, id=normalized_id)
-            .select_related("capability")
+            .select_related("capability", "decision_job")
             .first()
             if normalized_id
             else None
@@ -432,7 +434,34 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "capability": job.capability.slug if job.capability_id else None,
             "dataset_id": str(job.dataset_id),
         }
+        identity = getattr(job, "decision_job", None)
+        if identity is not None:
+            details["decision_job"] = str(identity.id)
+            underlying.append(_link("jobs", f"decision_job/{identity.id}", "Decision job"))
         primary = _link("finetunes", str(job.id), label)
+    elif kind == "decision_job":
+        job = (
+            DecisionJob.objects.select_related("finetuning_job")
+            .filter(finetuning_job__project=context.project, pk=normalized_id)
+            .first()
+            if normalized_id
+            else None
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "The decision job was not found.")
+        run = job.finetuning_job
+        created_at, updated_at, completed_at = run.created_at, run.updated_at, run.completed_at
+        label, status, job_error = run.name or run.base_model, run.status, run.error_message or None
+        progress = finetune_progress_payload(run.progress or {})
+        details = {
+            "model": run.base_model,
+            "finetuning_job": str(run.id),
+            "monitoring": training_monitoring.summary(run),
+            "dataset_id": str(run.dataset_id),
+        }
+        primary = _link("jobs", f"decision_job/{job.id}", label)
+        underlying.append(_link("finetunes", str(run.id), "Training run"))
+        operation_ref = ("finetune_job", run.id)
     elif kind == "dataset_pipeline":
         job = (
             DatasetPipelineRun.objects.select_related("dataset", "pipeline", "source")
@@ -579,7 +608,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     else:
         raise MCPError("invalid_filter", "The requested job kind is not supported.")
 
-    operation = operational_progress.latest(context.project.pk, kind, job.id)
+    operation = operational_progress.latest(context.project.pk, *(operation_ref or (kind, job.id)))
     if operation:
         details["operation"] = operation
         underlying.append(_link("operations", operation["id"], "Operational timeline"))

@@ -3227,6 +3227,522 @@
         "tool-calling",
         "coding"
       ]
+    },
+    {
+      "id": "Cloudflare/clef",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "clef",
+      "hf_model_id": "Cloudflare/clef",
+      "tier": "large",
+      "params": "27.4B",
+      "total_params_b": 27.4,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 5120,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "clef",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": 53.08,
+        "decision_index_edition": "0.3.1"
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+    {
+      "id": "Cloudflare/clef-flash",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "clef-flash",
+      "hf_model_id": "Cloudflare/clef-flash",
+      "tier": "mid",
+      "params": "9.41B",
+      "total_params_b": 9.41,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 4096,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "clef",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": 47.61,
+        "decision_index_edition": "0.3.1"
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+    {
+      "id": "OvermindLab/qwen-3.5-0.8B-decision",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "qwen-3.5-0.8B-decision",
+      "hf_model_id": "OvermindLab/qwen-3.5-0.8B-decision",
+      "tier": "compact",
+      "params": "0.8B",
+      "total_params_b": 0.8,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 1024,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "clef",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": null,
+        "decision_index_edition": null
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+    {
+      "id": "OvermindLab/qwen-3.5-2B-decision",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "qwen-3.5-2B-decision",
+      "hf_model_id": "OvermindLab/qwen-3.5-2B-decision",
+      "tier": "small",
+      "params": "2B",
+      "total_params_b": 2.0,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 2048,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "clef",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": null,
+        "decision_index_edition": null
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+    {
+      "id": "vllm-sr/d3-edge",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3-edge",
+      "hf_model_id": "vllm-sr/d3-edge",
+      "tier": "compact",
+      "params": "0.594322B",
+      "total_params_b": 0.5943216,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 1024,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 20.2,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "vllm-sr/d3-lite",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3-lite",
+      "hf_model_id": "vllm-sr/d3-lite",
+      "tier": "compact",
+      "params": "0.852986B",
+      "total_params_b": 0.85298592,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 1024,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 32.3,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "vllm-sr/d3-nano",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3-nano",
+      "hf_model_id": "vllm-sr/d3-nano",
+      "tier": "small",
+      "params": "2.21324B",
+      "total_params_b": 2.213241664,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 2048,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 38.9,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "vllm-sr/d3-mini",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3-mini",
+      "hf_model_id": "vllm-sr/d3-mini",
+      "tier": "mid",
+      "params": "4.53927B",
+      "total_params_b": 4.539265536,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 2560,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 52.6,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "vllm-sr/d3-flash",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3-flash",
+      "hf_model_id": "vllm-sr/d3-flash",
+      "tier": "mid",
+      "params": "8.3927B",
+      "total_params_b": 8.392695024,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 4096,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 55.8,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "vllm-sr/d3",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d3",
+      "hf_model_id": "vllm-sr/d3",
+      "tier": "large",
+      "params": "26.0853B",
+      "total_params_b": 26.08533016,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 5120,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d3",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 66.3,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "LiquidAI/d1-omni-600M",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d1-omni-600M",
+      "hf_model_id": "LiquidAI/d1-omni-600M",
+      "tier": "compact",
+      "params": "0.587144B",
+      "total_params_b": 0.587143681,
+      "context_length": 16384,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 1024,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 16384,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d1",
+        "limits": {
+          "options": 255,
+          "score_levels": 10,
+          "questions": 100
+        },
+        "decision_index": 9.1,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+    },
+    {
+      "id": "LiquidAI/d1-3B",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "d1-3B",
+      "hf_model_id": "LiquidAI/d1-3B",
+      "tier": "small",
+      "params": "3.12B",
+      "total_params_b": 3.12,
+      "context_length": 32768,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 2048,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 32768
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "decision": {
+        "family": "d1",
+        "limits": {
+          "options": 255,
+          "score_levels": 255,
+          "questions": 100
+        },
+        "decision_index": 38.9,
+        "decision_index_edition": "0.3.2"
+      },
+      "disabled": true,
+      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     }
   ],
   "finetuning_providers": {

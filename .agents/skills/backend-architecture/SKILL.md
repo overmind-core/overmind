@@ -440,6 +440,8 @@ retry. Native comparisons remain independent batch measurements.
 
 ### Native decision training
 
+`DecisionJob` supplies a separate public UUID over a one-to-one `FinetuningJob` run. Its status, preparation, monitoring, cancellation, billing, provider recovery and verified deployment come from that run. REST and MCP return both IDs, and explicit preparation links a decision setup job before launch. The decision catalogue names Clef, D3 and D1 families. Clef uses the qualified shared runtime; D3 and D1 are discoverable but cannot launch until their family-specific preparation, checkpoint and serving contracts reach the same standard. Historical jobs from the retired independent lifecycle remain in `DatasetHistory` rather than being treated as new shared runs.
+
 `training_labels.prediction_labels` supplies `record.prediction_labels` to REST detail
 and the MCP finetune resource. It projects distinct questions, ordered options and
 declared score axes from the checksum-verified pinned cell, checking launch selection

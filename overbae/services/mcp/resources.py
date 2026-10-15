@@ -33,6 +33,7 @@ from overbae.models import (
     DatasetPipelinePackage,
     DatasetPipelineRun,
     DatasetTransfer,
+    DecisionJob,
     DeployedModel,
     EvalMatrix,
     EvalRun,
@@ -987,6 +988,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
             "eval_cell",
             "eval_set",
             "native_evaluation",
+            "decision_job",
         )
         .first()
         if normalized_id
@@ -1004,6 +1006,9 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "uri": uri,
         "kind": "finetune",
         "id": str(job.id),
+        "decision_job": str(job.decision_job.id)
+        if getattr(job, "decision_job", None) is not None
+        else None,
         "group_id": str(job.group_id) if job.group_id else None,
         "name": job.name,
         "status": job.status,
@@ -1339,6 +1344,24 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         return _eval_run_resource(project, value, uri)
     if kind in {"finetune", "finetune_job"}:
         return _finetune_resource(project, value, uri)
+    if kind == "decision_job":
+        decision = DecisionJob.objects.filter(
+            finetuning_job__project=project, pk=uuid_reference(value)
+        ).first()
+        if decision is None:
+            raise _not_found("decision job", value)
+        result = _finetune_resource(
+            project,
+            str(decision.finetuning_job_id),
+            f"overmind://finetunes/{decision.finetuning_job_id}",
+        )
+        return {
+            **result,
+            "uri": uri,
+            "kind": "decision_job",
+            "id": str(decision.id),
+            "finetuning_job": str(decision.finetuning_job_id),
+        }
     if kind in {"deployment", "model_deployment"}:
         return _deployment_resource(project, value, uri)
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
@@ -1607,7 +1630,9 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             raise MCPError("invalid_input", str(exc)) from None
     if host == "jobs" and len(segments) == 2:
         result = _job_resource(project, segments[0], segments[1], raw_uri)
-        operation = operational_progress.latest(project.pk, segments[0], segments[1])
+        operation_kind = "finetune_job" if segments[0] == "decision_job" else segments[0]
+        operation_id = result.get("finetuning_job", segments[1])
+        operation = operational_progress.latest(project.pk, operation_kind, operation_id)
         if operation:
             result["operation"] = operation
             result["operation_resource"] = resource_link(

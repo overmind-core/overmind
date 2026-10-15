@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
-from overbae.models import Dataset, TrainingPreparation
+from overbae.models import Dataset, DecisionJob, TrainingPreparation
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.training_preparation import begin_preparation, retry_preparation
 from overbae.tasks.training_preparation import inspect_preparation
@@ -29,10 +29,21 @@ class TrainingPreparationRequestSerializer(serializers.Serializer):
 
 class TrainingPreparationSerializer(serializers.ModelSerializer):
     training_job = serializers.SerializerMethodField()
+    decision_job = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.UUIDField(allow_null=True))
     def get_training_job(self, obj):
         job_id = obj.training_jobs.order_by("created_at").values_list("id", flat=True).first()
+        return str(job_id) if job_id else None
+
+    @extend_schema_field(serializers.UUIDField(allow_null=True))
+    def get_decision_job(self, obj):
+        job_id = (
+            DecisionJob.objects.filter(finetuning_job__preparation=obj)
+            .order_by("finetuning_job__created_at")
+            .values_list("id", flat=True)
+            .first()
+        )
         return str(job_id) if job_id else None
 
     class Meta:
@@ -40,6 +51,7 @@ class TrainingPreparationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "training_job",
+            "decision_job",
             "cell",
             "validation_cell",
             "state",

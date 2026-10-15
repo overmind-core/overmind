@@ -1748,7 +1748,9 @@ class ModalRunner(BaseFinetuningRunner):
     def model_config(model_id: str) -> dict[str, Any]:
         from overbae.modal.model_registry import get_all_models_by_backend  # noqa: PLC0415
 
-        config = get_all_models_by_backend("baseten").get(model_id)
+        config = get_all_models_by_backend("baseten").get(model_id) or get_all_models_by_backend(
+            "decision", include_disabled=False
+        ).get(model_id)
         if not config:
             raise ValueError(f"Model {model_id} is unavailable for Modal training.")
         return config

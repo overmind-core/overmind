@@ -122,7 +122,9 @@ def estimate_for_hyperparams(
     if active_backend() in {"modal", "baseten"}:
         validate_effective_batch(hyperparameters or {})
     stats = dataset_stats(dataset, cell)
-    entry = find_catalog_model(base_model)
+    selected = cell or dataset.active_cell
+    native = selected is not None and dataset_objective(selected) in DECISION_OBJECTIVES
+    entry = find_catalog_model(base_model, decision=native)
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")
     params_b = entry.get("total_params_b")
@@ -150,11 +152,6 @@ def estimate_for_hyperparams(
                 + (f" (need {max_tokens + headroom:,} with headroom)" if headroom else "")
                 + "."
             )
-    selected = cell or dataset.active_cell
-    native = (
-        selected is not None
-        and (selected.intent_report.get("train") or {}).get("format") == "decision"
-    )
     from overbae.services.finetuning_validator import validate_dataset
 
     checked = validate_dataset(
@@ -219,7 +216,9 @@ def recommend_hyperparams_for_model(
 
     dataset = Dataset.objects.get(pk=dataset_id)
     stats = dataset_stats(dataset, cell)
-    entry = find_catalog_model(base_model)
+    selected = cell or dataset.active_cell
+    native = selected is not None and dataset_objective(selected) in DECISION_OBJECTIVES
+    entry = find_catalog_model(base_model, decision=native)
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")
     max_tokens = int(stats.get("max_token_length") or 0)
@@ -239,7 +238,7 @@ def recommend_hyperparams_for_model(
     tier = next(
         (
             t
-            for t, models in tier_models().items()
+            for t, models in tier_models(backend="decision" if native else None).items()
             if any(m.get("id") == base_model for m in models)
         ),
         "small",

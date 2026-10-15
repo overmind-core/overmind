@@ -19,6 +19,7 @@ from .datasets import (
     DatasetHistory,
     DatasetImport,
 )
+from .decision import DecisionJob
 from .feedback import Feedback
 from .finetuning import (
     DecisionPerformanceRequest,
@@ -107,6 +108,7 @@ __all__ = [
     "DataPartitionMember",
     "DataPartitionPlan",
     "DecisionProviderRequest",
+    "DecisionJob",
     "Cell",
     "DatasetContext",
     "Conversation",

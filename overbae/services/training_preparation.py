@@ -22,13 +22,14 @@ from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import TRAIN_DECISION, train_function_name
 from modal_shared.training_data import file_digest
 from overbae.core.errors import InputValidationError
+from overbae.modal.decision_catalog import get as decision_catalog_model
 from overbae.modal.model_registry import (
     get_hf_base,
     get_model_config_any_backend,
     get_unsloth_image,
 )
 from overbae.modal.training_type import training_context_length, training_enabled
-from overbae.models import FinetuningJob, Project, TrainingPreparation
+from overbae.models import DecisionJob, FinetuningJob, Project, TrainingPreparation
 from overbae.services import operational_progress, training_release
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
@@ -61,6 +62,11 @@ def request_preparation(
     model_config = get_model_config_any_backend(model)
     if not model_config:
         raise InputValidationError("Choose a catalog training model.")
+    decision_model = decision_catalog_model(model)
+    if decision_model and not decision_model["training_available"]:
+        raise InputValidationError(
+            "This decision family does not yet have exact preparation and verified deployment."
+        )
     if training_type not in {"lora", "full"} or not training_enabled(model_config, training_type):
         raise InputValidationError("This model does not support the selected training type.")
     maximum = training_context_length(model_config, training_type)
@@ -158,6 +164,9 @@ def begin_preparation(cell, model, context_length, *, user, **kwargs):
             eval_model_before=False,
             eval_model_after=False,
         )
+    if decision_catalog_model(model):
+        for training_job in prep.training_jobs.all():
+            DecisionJob.objects.get_or_create(finetuning_job=training_job)
     sync_setup_jobs(prep)
     return prep
 

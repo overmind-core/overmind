@@ -43,6 +43,7 @@ def launch_finetune(
     eval_model_after: bool = True,
     baseline_model: str | None = None,
     eval_judge_model: str = "",
+    decision_job: bool = False,
 ) -> FinetuningJob:
     payload: dict[str, Any] = {
         "request_key": request_key,
@@ -84,6 +85,7 @@ def launch_finetune(
         context={
             "request": SimpleNamespace(user=user),
             "admit_new_training": admit_new_training,
+            "create_decision_job": decision_job,
         },
     )
     serializer.is_valid(raise_exception=True)

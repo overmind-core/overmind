@@ -240,6 +240,12 @@ export interface FinetuningJobList {
      * @type {string}
      * @memberof FinetuningJobList
      */
+    readonly decisionJobId: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningJobList
+     */
     readonly modelWeightsLocation: string;
     /**
      *
@@ -345,6 +351,7 @@ export function instanceOfFinetuningJobList(value: object): value is FinetuningJ
     if (!('provider' in value) || value['provider'] === undefined) return false;
     if (!('outputModelName' in value) || value['outputModelName'] === undefined) return false;
     if (!('deployedModelId' in value) || value['deployedModelId'] === undefined) return false;
+    if (!('decisionJobId' in value) || value['decisionJobId'] === undefined) return false;
     if (!('modelWeightsLocation' in value) || value['modelWeightsLocation'] === undefined) return false;
     if (!('progress' in value) || value['progress'] === undefined) return false;
     if (!('retryCount' in value) || value['retryCount'] === undefined) return false;
@@ -400,6 +407,7 @@ export function FinetuningJobListFromJSONTyped(json: any, ignoreDiscriminator: b
         'provider': ProviderEnumFromJSON(json['provider']),
         'outputModelName': json['output_model_name'],
         'deployedModelId': json['deployed_model_id'],
+        'decisionJobId': json['decision_job_id'],
         'modelWeightsLocation': json['model_weights_location'],
         'progress': json['progress'],
         'retryCount': json['retry_count'],
@@ -419,7 +427,7 @@ export function FinetuningJobListToJSON(json: any): FinetuningJobList {
     return FinetuningJobListToJSONTyped(json, false);
 }
 
-export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'training_contract'|'native_evaluation'|'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'benchmark_models'|'eval_incumbent_before'|'eval_incumbent_after'|'eval_model_before'|'eval_model_after'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'training_contract'|'native_evaluation'|'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'benchmark_models'|'eval_incumbent_before'|'eval_incumbent_after'|'eval_model_before'|'eval_model_after'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'decision_job_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

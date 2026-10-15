@@ -200,6 +200,7 @@ class FineTuneJobReference(JobReceipt):
 
 class PrepareTrainingOutput(MCPModel):
     training_job: FineTuneJobReference
+    decision_job: JobReceipt | None = None
     monitoring: dict[str, Any] = Field(default_factory=dict)
     job: JobReceipt
     id: str
@@ -265,9 +266,37 @@ class StartFinetuneInput(MCPModel):
 class StartFinetuneOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     finetune: FineTuneJobReference
+    decision_job: JobReceipt | None = None
     job: FineTuneJobReference
     cell: DatasetCellContract | None = None
     resource_links: list[ResourceLinkContract] = Field(max_length=3)
+
+
+class StartDecisionJobOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=240)
+    decision_job: JobReceipt
+    training_run: FineTuneJobReference
+    cell: DatasetCellContract | None = None
+    resource_links: list[ResourceLinkContract] = Field(max_length=3)
+
+
+class DecisionModelsInput(MCPModel):
+    pass
+
+
+class DecisionTrainingModel(MCPModel):
+    id: str
+    name: str
+    family: Literal["clef", "d3", "d1"]
+    training_available: bool
+    unavailable_reason: str | None
+    max_context_length: int
+    limits: dict[str, int]
+    decision_index: float | None
+
+
+class DecisionModelsOutput(MCPModel):
+    models: list[DecisionTrainingModel]
 
 
 class RetryDeploymentInput(MCPModel):
