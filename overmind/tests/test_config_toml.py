@@ -119,6 +119,47 @@ def test_convert_json_to_toml_preserves_card_shape(tmp_path: Path):
     assert loaded.project_name == tmp_path.name
 
 
+def test_convert_json_to_toml_keeps_scan_modes_utilities_and_policy(tmp_path: Path):
+    src = tmp_path / "overmind_capabilities.json"
+    src.write_text(
+        json.dumps({
+            "capabilities": [
+                {
+                    "slug_hint": "writer",
+                    "name": "Writer",
+                    "decision_logic": "Outline first, then draft each section.",
+                    "policy_markdown": "- Cite only retrieved sources.",
+                    "modes": [{"name": "outline", "purpose": "plan sections", "prompt": "Plan {topic}"}],
+                    "capability_card": {"task": "write"},
+                },
+                {"slug_hint": "chat", "name": "Chat", "capability_card": {"task": "chat"}},
+                {"slug_hint": "chat-pro", "name": "Chat", "capability_card": {"task": "chat"}},
+            ],
+            "llm_utilities": [
+                {"name": "choose_agent", "called_by": "writer", "cardinality": "per_run"},
+                {"name": "title_maker", "called_by": "chat-pro"},
+                {"name": "ambiguous_helper", "called_by": "Chat"},
+            ],
+        })
+    )
+    dest = tmp_path / "overmind.toml"
+    convert_json_to_toml(src, dest)
+
+    writer = load(dest).capabilities["writer"]
+    assert writer.decision_logic == "Outline first, then draft each section."
+    assert writer.policy_markdown == "- Cite only retrieved sources."
+    assert writer.capability_card["modes"][0]["prompt"] == "Plan {topic}"
+    assert [u["name"] for u in writer.capability_card["llm_utilities"]] == ["choose_agent"]
+    caps = load(dest).capabilities
+    assert "llm_utilities" not in caps["chat"].capability_card
+    assert [u["name"] for u in caps["chat-pro"].capability_card["llm_utilities"]] == ["title_maker"]
+
+    wire = {c["slug"]: c for c in load(dest).to_snapshot()["capabilities"]}
+    assert wire["writer"]["decision_logic"] == "Outline first, then draft each section."
+    assert wire["writer"]["policy_markdown"] == "- Cite only retrieved sources."
+    assert wire["writer"]["capability_card"]["modes"][0]["name"] == "outline"
+
+
 def test_credentials_only_apply_to_their_project(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     dump(Config(api_key="project-a-key", project_id="project-a"), path)

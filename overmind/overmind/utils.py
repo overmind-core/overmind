@@ -40,11 +40,37 @@ def _metrics_from_matrix(matrix: list) -> list[EvalMetric]:
     return metrics
 
 
+def _utilities_by_parent(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Scan ``llm_utilities`` sit at the top level; ``called_by`` names the parent by slug,
+    else by a name no other capability shares. Unresolvable utilities attach nowhere."""
+    caps = [raw for raw in data.get("capabilities") or [] if isinstance(raw, dict) and _slug_of(raw)]
+    parent: dict[str, str] = {}
+    for raw in caps:
+        for key in (raw.get("slug"), raw.get("slug_hint")):
+            if str(key or "").strip():
+                parent.setdefault(str(key).strip(), _slug_of(raw))
+    names: dict[str, list[str]] = {}
+    for raw in caps:
+        name = str(raw.get("name") or "").strip()
+        if name:
+            names.setdefault(name, []).append(_slug_of(raw))
+    for name, slugs in names.items():
+        if len(slugs) == 1 and name not in parent:
+            parent[name] = slugs[0]
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for util in data.get("llm_utilities") or []:
+        slug = parent.get(str(util.get("called_by") or "").strip()) if isinstance(util, dict) else None
+        if slug:
+            grouped.setdefault(slug, []).append(util)
+    return grouped
+
+
 def analysis_json_to_config(data: dict[str, Any], *, base: Config | None = None) -> Config:
     """Map ``overmind_capabilities.json`` (scan schema) onto an ``overmind.toml`` Config."""
     config = base or Config()
     config.repo_summary = str(data.get("repo_summary") or config.repo_summary or "")
     existing = dict(config.capabilities)
+    utilities = _utilities_by_parent(data)
     caps: dict[str, Capability] = {}
     for raw in data.get("capabilities") or []:
         if not isinstance(raw, dict):
@@ -53,7 +79,11 @@ def analysis_json_to_config(data: dict[str, Any], *, base: Config | None = None)
         if not slug:
             continue
         prior = existing.get(slug)
-        card = raw.get("capability_card") if isinstance(raw.get("capability_card"), dict) else {}
+        card = dict(raw.get("capability_card") if isinstance(raw.get("capability_card"), dict) else {})
+        if isinstance(raw.get("modes"), list) and not card.get("modes"):
+            card["modes"] = raw["modes"]
+        if utilities.get(slug) and not card.get("llm_utilities"):
+            card["llm_utilities"] = utilities[slug]
         matrix = raw.get("eval_matrix") if isinstance(raw.get("eval_matrix"), list) else []
         caps[slug] = Capability(
             slug=slug,
@@ -65,6 +95,8 @@ def analysis_json_to_config(data: dict[str, Any], *, base: Config | None = None)
             source_path=str(raw.get("source_path") or ""),
             system_prompt=str(raw.get("system_prompt") or ""),
             tools_summary=str(raw.get("tools_summary") or ""),
+            decision_logic=str(raw.get("decision_logic") or ""),
+            policy_markdown=str(raw.get("policy_markdown") or ""),
             archived=bool(raw.get("archived") or (prior.archived if prior else False)),
             eval_metrics=_metrics_from_matrix(matrix),
             capability_card=dict(card),

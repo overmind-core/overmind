@@ -6,6 +6,15 @@ entries here cover the SDK surface.
 
 ## Unreleased
 
+### Fixed
+
+- `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
+  capability card, utilities under their `called_by` parent) and its
+  `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips
+  them.
+- The dataset skills cancel a script run with `run`, call a stopped import
+  `stopped`, and poll `get_job(kind=dataset_run)`. Skills version 1.5.1.
+
 ### Changed
 
 - Every span started under a span that carries `overmind.intent` is stamped with the same
@@ -32,6 +41,9 @@ entries here cover the SDK surface.
 
 ### Added
 
+- `overmind dataset attach FILE --json` uploads a table without creating a
+  dataset and prints its `upload_id`, rows and sha256; a dataset script reads it
+  as the frame `attachment` through `try_dataset_script` or `add_dataset_version`.
 - `observe(self_attrs=[...])` (and the decorator variants) records named attributes of
   `self`/`cls` as inputs next to the call's arguments, for methods whose request lives on
   the instance. `verify_instrumentation` now reports an empty captured input as missing.

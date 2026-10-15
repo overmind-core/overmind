@@ -838,25 +838,11 @@ def otlp_traces(request):
             continue
         all_spans.extend(spans)
 
+    rejected = 0
     unscored: list[Span] = []
     if all_spans:
-        kept = evidence.scored_unchanged(all_spans)
-        unscored = [span for span in all_spans if span.span_id not in kept]
-        with transaction.atomic():  # bulk-upsert spans (idempotent on ``span_id``)
-            for batch, fields in (
-                (unscored, _SPAN_UPSERT_FIELDS),
-                (
-                    [span for span in all_spans if span.span_id in kept],
-                    [field for field in _SPAN_UPSERT_FIELDS if field not in _EVAL_FIELDS],
-                ),
-            ):
-                if batch:
-                    Span.objects.bulk_create(
-                        batch,
-                        update_conflicts=True,
-                        unique_fields=["span_id"],
-                        update_fields=fields,
-                    )
+        with transaction.atomic():
+            all_spans, unscored, rejected = _persist_owned_spans(all_spans)
 
     # Spans are already persisted, so one poison span must not 500 the batch:
     # OTel exporters retry a 500 forever, re-ingesting the same payload.
@@ -874,8 +860,52 @@ def otlp_traces(request):
         {
             "spans_ingested": len(all_spans),
             "spans_post_processed": post_processed,
+            "spans_rejected": rejected,
         }
     )
+
+
+def _persist_owned_spans(spans: list[Span]) -> tuple[list[Span], list[Span], int]:
+    """``span_id`` is the primary key across projects. Insert-or-skip, then update only
+    rows this batch's project owns, so a concurrent first writer keeps its span.
+    A stored score whose evidence is unchanged is left in place.
+
+    Returns the owned spans, the ones that still need scoring, and how many were rejected.
+    """
+    batch: dict[str, Span] = {}
+    rejected = 0
+    for span in spans:
+        held = batch.get(span.span_id)
+        if held is not None and held.project_id != span.project_id:
+            rejected += 1
+            continue
+        batch[span.span_id] = span
+    ids = list(batch)
+    existing = set(Span.objects.filter(span_id__in=ids).values_list("span_id", flat=True))
+    Span.objects.bulk_create(list(batch.values()), ignore_conflicts=True)
+    owners = dict(
+        Span.objects.select_for_update()
+        .filter(span_id__in=ids)
+        .values_list("span_id", "project_id")
+    )
+    kept = [span for span in batch.values() if owners.get(span.span_id) == span.project_id]
+    rejected += len(batch) - len(kept)
+    owned_existing = [span for span in kept if span.span_id in existing]
+    unchanged = evidence.scored_unchanged(owned_existing)
+    refresh = [span for span in owned_existing if span.span_id not in unchanged]
+    preserve = [span for span in owned_existing if span.span_id in unchanged]
+    if refresh:
+        Span.objects.bulk_update(refresh, _SPAN_UPSERT_FIELDS, batch_size=500)
+    if preserve:
+        Span.objects.bulk_update(
+            preserve,
+            [field for field in _SPAN_UPSERT_FIELDS if field not in _EVAL_FIELDS],
+            batch_size=500,
+        )
+    if rejected:
+        logger.warning("OTLP ingest rejected %d span(s) owned by another project", rejected)
+    unscored = [span for span in kept if span.span_id not in unchanged]
+    return kept, unscored, rejected
 
 
 def enqueue_scoring(spans: list[Span]) -> None:
