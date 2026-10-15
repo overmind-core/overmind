@@ -1041,7 +1041,7 @@ wheels = [
 
 [[package]]
 name = "docling-slim"
-version = "2.131.0"
+version = "2.132.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1054,9 +1054,9 @@ dependencies = [
     { name = "requests" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/a3/d1c2c59e61ac9b4059637b27009c05aa158788547e52f5b5021bd0405fe2/docling_slim-2.131.0.tar.gz", hash = "sha256:6e8a6e43773f39340aefb362fd23377f859bf6f9748ddf53f2bbae8e60b3aa75", size = 755770, upload-time = "2026-09-29T07:59:12.97Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/bc/c6ddf2589ca55f3fcdd560669027227d09f34a27d3a83e0b041b9e40ae49/docling_slim-2.132.0.tar.gz", hash = "sha256:6970f2d17a3b5bac67cd44ff2705789e6b3cbbdb6366ca1a660dae39f566c27a", size = 772568, upload-time = "2026-10-01T09:45:47.623Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/27/f609cf55eba9d9d80419b25f6f7e044e2d3e5061c668ce0b0d72aef172df/docling_slim-2.131.0-py3-none-any.whl", hash = "sha256:a691267584f414c24d86106efd83f7b8212ace81aa5de78a0d1bc81e4a50c6cd", size = 931920, upload-time = "2026-09-29T07:59:10.759Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/b4/338f066c44dca51fe0c7b39b516c3e39a672e647a548d69067ddf6c89621/docling_slim-2.132.0-py3-none-any.whl", hash = "sha256:a1977f7116bc03872c5b763278fcc8c6b7b070a4bc1e11942b771b509071e835", size = 948896, upload-time = "2026-10-01T09:45:45.428Z" },
 ]
 
 [package.optional-dependencies]
@@ -1461,8 +1461,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "sys_platform != 'emscripten'" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "h11" },
+    { name = "truststore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
