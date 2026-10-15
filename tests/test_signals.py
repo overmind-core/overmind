@@ -1,12 +1,18 @@
 import asyncio
 import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from overbae.innermind.signals import PlanDriftSignal, SignalRunner, projects_with_recent_spans
+from overbae.innermind.signals import (
+    LeakSignal,
+    PlanDriftSignal,
+    SignalRunner,
+    projects_with_recent_spans,
+)
 from overbae.models import (
     APIToken,
     Capability,
@@ -51,6 +57,18 @@ def span(project, *, capability=None, conversation=None):
         name="failed step",
         start_time_ns=1,
         status_code=2,
+    )
+
+
+def test_leak_signal_does_not_treat_timing_decimals_as_card_numbers():
+    signal = LeakSignal("test")
+
+    def output(value):
+        return SimpleNamespace(name="run", attributes={"output": value})
+
+    assert asyncio.run(signal.check([output('"step_interval": 3.8305869102478027')])) is None
+    assert asyncio.run(signal.check([output("card 4242 4242 4242 4242")])) == (
+        "sensitive data in outputs: run (card number)"
     )
 
 

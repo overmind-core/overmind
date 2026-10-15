@@ -461,12 +461,27 @@ class LeakSignal(Signal):
         "card number": re.compile(r"\b(?:\d[ -]?){13,15}\d\b"),
     }
 
+    @staticmethod
+    def valid_card_number(value: str) -> bool:
+        digits = [int(char) for char in value if char.isdigit()]
+        total = 0
+        for offset, digit in enumerate(reversed(digits)):
+            if offset % 2:
+                digit *= 2
+                if digit > 9:
+                    digit -= 9
+            total += digit
+        return total % 10 == 0
+
     async def check(self, spans):
         leaks = [
             f"{span.name} ({kind})"
             for span in spans
             for kind, pattern in self.patterns.items()
-            if pattern.search(evidence.read_output(span))
+            if any(
+                kind != "card number" or self.valid_card_number(match.group())
+                for match in pattern.finditer(evidence.read_output(span))
+            )
         ]
         if leaks:
             return "sensitive data in outputs: " + ", ".join(leaks)

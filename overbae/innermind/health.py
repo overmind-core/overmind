@@ -86,32 +86,40 @@ def failures(project, capability, start, limit: int) -> list[dict]:
         trajectory = attrs.get("trajectory") or {}
         failing_trace = trajectory.get("score") is not None and trajectory["score"] < FAIL_BELOW
         failing_span = attrs.get("score") is not None and attrs["score"] < FAIL_BELOW
-        if not (failing_trace or failing_span):
+        failed_trajectory_metrics = [
+            {
+                "metric": f"trajectory.{name}",
+                "score": metric["score"],
+                "reason": metric.get("reason", ""),
+            }
+            for name, metric in (trajectory.get("metrics") or {}).items()
+            if metric.get("score") is not None and metric["score"] < FAIL_BELOW
+        ]
+        failed_span_metrics = [
+            {"metric": name, "score": metric["score"], "reason": metric.get("reason", "")}
+            for name, metric in (attrs.get("metrics") or {}).items()
+            if metric.get("score") is not None and metric["score"] < FAIL_BELOW
+        ]
+        if not (failing_trace or failing_span or failed_trajectory_metrics or failed_span_metrics):
             continue
         entry = found.setdefault(
             span.trace_id,
             {"trace_id": span.trace_id, "summary": "", "failed": [], "tools": []},
         )
-        if failing_trace:
-            entry["summary"] = f"trajectory score {trajectory['score']:.2f}"
-            entry["failed"] += [
-                {
-                    "metric": f"trajectory.{name}",
-                    "score": m.get("score"),
-                    "reason": m.get("reason", ""),
-                }
-                for name, m in (trajectory.get("metrics") or {}).items()
-                if m.get("score") is not None and m["score"] < FAIL_BELOW
-            ]
-        if failing_span:
+        if failing_trace or failed_trajectory_metrics:
             entry["summary"] = (
-                entry["summary"] or f"{span.name or span.span_type} scored {attrs['score']:.2f}"
+                f"trajectory score {trajectory['score']:.2f}"
+                if failing_trace
+                else "failing trajectory checks"
             )
-            entry["failed"] += [
-                {"metric": name, "score": m.get("score"), "reason": m.get("reason", "")}
-                for name, m in (attrs.get("metrics") or {}).items()
-                if m.get("score") is not None and m["score"] < FAIL_BELOW
-            ]
+            entry["failed"] += failed_trajectory_metrics
+        if failing_span or failed_span_metrics:
+            entry["summary"] = entry["summary"] or (
+                f"{span.name or span.span_type} scored {attrs['score']:.2f}"
+                if failing_span
+                else f"failing checks on {span.name or span.span_type}"
+            )
+            entry["failed"] += failed_span_metrics
         if span.span_type == "tool_call" and span.name and span.name not in entry["tools"]:
             entry["tools"].append(span.name)
         if len(found) > limit:

@@ -106,6 +106,32 @@ def test_invalid_tool_input_is_safe_and_typed():
     assert "ValidationError" not in result.content[0].text
 
 
+def test_query_failures_includes_failed_check_when_span_average_passes():
+    context, capability, _ = _context()
+    Span.objects.create(
+        span_id="failed-check",
+        trace_id="c" * 32,
+        project=context.project,
+        capability=capability,
+        name="answer",
+        start_time_ns=1,
+        eval_attributes={
+            "score": 0.8,
+            "metrics": {
+                "format": {"score": 0.2, "reason": "Expected JSON"},
+                "grounding": {"score": 1.0},
+            },
+        },
+    )
+
+    result = asyncio.run(CATALOG.call("query_failures", {"capability": "support"}, context))
+
+    assert result.isError is False
+    assert result.structuredContent["failures"][0]["failed_scores"] == [
+        {"metric": "format", "score": 0.2, "reason": "Expected JSON"}
+    ]
+
+
 def test_query_traces_exact_session_counts_root_traces():
     context, capability, _ = _context()
     correlation = "instrumentation-smoke-test"
