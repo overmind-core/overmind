@@ -136,31 +136,15 @@ jobs:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.run_id }}-sandbox
-      - name: Deploy isolated document parsing
+      - name: Deploy the isolated script and document sandbox
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: sandbox
         run: python scripts/deploy_ecs.py deploy
 
-  deploy-workshop:
-    runs-on: ubuntu-latest
-    needs: [build-and-push, migrate]
-    timeout-minutes: 80
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Start and verify the dedicated Workshop controller
-        env:
-          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
-          SERVICE: workshop-runner
-        run: python scripts/deploy_ecs.py deploy
-
   deploy-landing:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-sandbox, deploy-workshop]
+    needs: [build-and-push, migrate, deploy-sandbox]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4

@@ -386,8 +386,63 @@ def reap_stuck_runs() -> dict[str, Any]:
     return {"reaped": len(ids)}
 
 
-@shared_task(name="overbae.tasks.datasets.execute_pipeline", soft_time_limit=1500, time_limit=1560)
-def execute_pipeline(run_id):
-    from overbae.services.datasets.workbench import execute
+@shared_task(
+    name="overbae.tasks.datasets.check_pipeline_runtime", soft_time_limit=10, time_limit=15
+)
+def check_pipeline_runtime():
+    from overbae.services.datasets.pipeline_runner import heartbeat
 
-    execute(run_id)
+    return heartbeat()
+
+
+@shared_task(
+    name="overbae.tasks.datasets.refresh_pipeline_bindings", soft_time_limit=540, time_limit=600
+)
+def refresh_pipeline_bindings():
+    from overbae.services.datasets.pipeline_bindings import tick
+
+    tick()
+
+
+@shared_task(
+    bind=True,
+    name="overbae.tasks.datasets.execute_pipeline",
+    soft_time_limit=1500,
+    time_limit=1560,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    max_retries=None,
+)
+def execute_pipeline(self, run_id):
+    import uuid
+    from datetime import timedelta
+
+    from billiard.exceptions import SoftTimeLimitExceeded
+
+    from overbae.models import DatasetPipelineRun
+    from overbae.services.datasets import heartbeat, pipeline_runner, workbench
+
+    run = DatasetPipelineRun.objects.select_related("dataset").filter(pk=run_id).first()
+    # A lost worker can be redelivered, but a claimed script is never replayed.
+    if run is None or run.state != "queued":
+        return
+    if run.created_at < timezone.now() - timedelta(seconds=pipeline_runner.QUEUE_SECONDS):
+        workbench.fail(
+            run.pk,
+            "The run waited 15 minutes for interactive capacity. Submit a new request key to retry.",
+        )
+        return
+    owner = uuid.uuid4().hex
+    if not pipeline_runner.take_slot(run.dataset.project_id, owner):
+        raise self.retry(countdown=2)
+    beat = heartbeat.start(pipeline_runner.heartbeat, owner=f"pipeline {run.pk}")
+    try:
+        workbench.execute(run_id, script_executor=pipeline_runner.execute_script)
+    except SoftTimeLimitExceeded:
+        workbench.fail(
+            run_id, "The interactive task exceeded its 25 minute deadline. No script was replayed."
+        )
+        raise
+    finally:
+        beat.set()
+        pipeline_runner.release_slot(run.dataset.project_id, owner)

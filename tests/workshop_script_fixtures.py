@@ -2,8 +2,6 @@ import io
 import json
 import zipfile
 
-from django.test import override_settings
-
 from overbae.services.datasets import pipeline_packages, store
 
 
@@ -78,7 +76,7 @@ def identity_script(**graph):
 
 def retained_package(project, user, steps):
     stream = io.BytesIO()
-    manifest = {"version": 1, "runtime": "sha256:" + "b" * 64, "steps": []}
+    manifest = {"version": 1, "runtime": pipeline_packages.runtime_id(), "steps": []}
     with zipfile.ZipFile(stream, "w") as archive:
         for index, definition in enumerate(steps):
             step = dict(definition)
@@ -95,8 +93,7 @@ def retained_package(project, user, steps):
             manifest["steps"].append(step)
         archive.writestr(zipfile.ZipInfo("manifest.json"), json.dumps(manifest))
     stream.seek(0)
-    with override_settings(WORKSHOP_RUNTIME_IMAGES=[manifest["runtime"]]):
-        return str(pipeline_packages.save(project, user, stream).pk)
+    return str(pipeline_packages.save(project, user, stream).pk)
 
 
 def execute_fixture(run, index, input_path, directory, step, files, progress):

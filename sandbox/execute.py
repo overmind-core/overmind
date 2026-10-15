@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from sandbox import packages
+
 GIB = 1024**3
 EXTRACT_CPU_SECONDS = 1200
 EXTRACT_WALL_SECONDS = 1260
@@ -53,6 +55,8 @@ class Outcome:
     seconds: float = 0.0
     output: BinaryIO | None = None
     extraction: dict | None = None
+    exit_code: int | None = None
+    runtime: dict | None = None
 
 
 def gib(value: float) -> str:
@@ -86,10 +90,19 @@ def memory_budget() -> int:
 
 
 def need_for(header: dict) -> int:
+    if header["mode"] == "package":
+        # Keep main's measured dataframe expansion allowance when admitting JSONL packages.
+        return max(GIB, int(header["input_bytes"] * 5.5) + 256 * 1024**2 + header["package_bytes"])
     return max(2 * GIB, 4 * int(header["input_bytes"]))
 
 
 def refusal(header: dict, need: int, budget: int) -> str:
+    if header["mode"] == "package":
+        memory = header.get("limits", {}).get("memory_mb")
+        if memory and memory * 1024**2 < need:
+            return f"The input needs about {gib(need)} GiB; increase memory_mb or use batch_rows."
+        if need > budget:
+            return f"The input needs about {gib(need)} GiB; this sandbox has {gib(budget)} GiB. Use batch_rows for independent rows."
     if need <= budget:
         return ""
     return (
@@ -321,8 +334,8 @@ def _files_bytes(scratch: Path, uid: int | None, pids: list[int], held: list[Bin
 def hand_over(scratch: Path, uid: int | None) -> None:
     if uid is None:
         return
-    for path in [scratch, *scratch.iterdir()]:
-        os.chown(path, uid, uid)
+    for path in [scratch, *scratch.rglob("*")]:
+        os.chown(path, uid, uid, follow_symlinks=False)
 
 
 def _take_back(scratch: Path, uid: int | None) -> None:
@@ -383,6 +396,7 @@ class Child:
     cpu_seconds: int
     wall_seconds: int
     env: dict[str, str] | None = None
+    scratch_bytes: int | None = None
 
 
 def spawn(
@@ -392,7 +406,7 @@ def spawn(
     hand_over(scratch, uid)
     rlimits = [
         child.cpu_seconds,
-        FILE_SIZE_BYTES,
+        min(FILE_SIZE_BYTES, child.scratch_bytes or FILE_SIZE_BYTES),
         0 if uid is None else PROCESSES,
         FILE_DESCRIPTORS,
     ]
@@ -428,6 +442,7 @@ def spawn(
         files = 0
         tick = 0
         progress_offset = 0
+        peak_rss = peak_files = None
         try:
             while True:
                 try:
@@ -452,6 +467,7 @@ def spawn(
                         break
                 tick += 1
                 rss = sum(rss for _, rss in members)
+                peak_rss, peak_files = max(peak_rss or 0, rss), max(peak_files or 0, files)
                 if time.monotonic() > deadline:
                     stopped = (
                         f"The {child.noun} ran longer than {child.wall_seconds}s and was stopped."
@@ -466,6 +482,8 @@ def spawn(
                         f"The {child.noun} used more than {gib(slot.limit)} GiB of memory and "
                         "scratch files and was stopped."
                     )
+                elif child.scratch_bytes is not None and files > child.scratch_bytes:
+                    stopped = f"The {child.noun} exceeded its scratch_mb limit."
                 if stopped:
                     break
         finally:
@@ -477,8 +495,16 @@ def spawn(
         stdout = _tail(out, STDOUT_CHARS)
         stderr = _tail(err, 2 * ERROR_CHARS)
     seconds = round(time.monotonic() - started, 3)
+    facts = {
+        "memory_limit_bytes": slot.limit,
+        "observed_peak_rss_bytes": peak_rss,
+        "observed_peak_scratch_bytes": peak_files,
+        "sample_interval_seconds": _WATCH_SECONDS,
+    }
     if stopped:
-        return Outcome(error=stopped, stdout=stdout, seconds=seconds)
+        return Outcome(
+            error=stopped, stdout=stdout, seconds=seconds, exit_code=proc.returncode, runtime=facts
+        )
     if proc.returncode != 0:
         failure = (stderr or stdout).strip()[-ERROR_CHARS:]
         if proc.returncode in _KILLED:
@@ -487,8 +513,10 @@ def spawn(
             error=failure or f"The {child.noun} exited with code {proc.returncode}.",
             stdout=stdout,
             seconds=seconds,
+            exit_code=proc.returncode,
+            runtime=facts,
         )
-    return Outcome(ok=True, stdout=stdout, seconds=seconds)
+    return Outcome(ok=True, stdout=stdout, seconds=seconds, exit_code=0, runtime=facts)
 
 
 def run(
@@ -499,6 +527,24 @@ def run(
     stop: threading.Event | None,
     on_progress=None,
 ) -> Outcome:
+    if header["mode"] == "package":
+        limits = header.get("limits", {})
+        if "memory_mb" in limits:
+            slot.limit = min(slot.limit, limits["memory_mb"] * 1024**2)
+        child = Child(
+            argv=[str(Path(__file__).with_name("package_child.py"))],
+            noun="package",
+            cpu_seconds=limits.get("seconds", 300) * limits.get("cpus", 2),
+            wall_seconds=limits.get("seconds", 300),
+            scratch_bytes=limits.get("scratch_mb", 2048) * 1024**2,
+        )
+        outcome = spawn(child, scratch, slot, stop)
+        if outcome.ok:
+            outcome.output = claim(scratch / "output.jsonl", packages.MAX_OUTPUT_BYTES)
+            if outcome.output is None:
+                outcome.ok = False
+                outcome.error = "The package did not produce a readable regular output.jsonl."
+        return outcome
     child = Child(
         argv=[
             str(Path(__file__).with_name("documents") / "child.py"),

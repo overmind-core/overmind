@@ -20,12 +20,7 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-WORKSHOP_RUNTIME_IMAGES = [
-    value.strip()
-    for value in os.environ.get("WORKSHOP_RUNTIME_IMAGES", "").split(",")
-    if value.strip()
-]
-WORKSHOP_DOCKER_SOCKET = os.environ.get("WORKSHOP_DOCKER_SOCKET", "/var/run/docker.sock")
+WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "4"))
 DATASET_QUERY_TIMEOUT_SECONDS = 10
 
 # Deployments set their own path so the admin is not at a guessable URL.
@@ -415,6 +410,8 @@ EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
 EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
 DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "3600"))
 CELERY_TASK_ROUTES = {
+    "overbae.tasks.datasets.check_pipeline_runtime": {"queue": "interactive"},
+    "overbae.tasks.datasets.refresh_pipeline_bindings": {"queue": "batch"},
     "overbae.tasks.training_experiments.prepare_experiment": {"queue": "batch"},
     "overbae.tasks.data_exploration.run": {"queue": "batch"},
     "overbae.tasks.data_partitions.build_plan": {"queue": "batch"},
@@ -427,7 +424,7 @@ CELERY_TASK_ROUTES = {
     # Model warm-up blocks for minutes; control stays free for reconcilers and metrics.
     "overbae.tasks.innermind.run_eval_run": {"queue": "io"},
     "overbae.tasks.datasets.land": {"queue": "landing"},
-    "overbae.tasks.datasets.execute_pipeline": {"queue": "batch"},
+    "overbae.tasks.datasets.execute_pipeline": {"queue": "interactive"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},
     "overbae.tasks.inference_requests.inspect_inference_request": {"queue": "io"},
@@ -442,6 +439,16 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    "workshop-bindings": {
+        "task": "overbae.tasks.datasets.refresh_pipeline_bindings",
+        "schedule": 30.0,
+        "options": {"expires": 25.0},
+    },
+    "workshop-runtime-health": {
+        "task": "overbae.tasks.datasets.check_pipeline_runtime",
+        "schedule": 15.0,
+        "options": {"expires": 14.0},
+    },
     "reconcile-dataset-imports": {
         "task": "overbae.tasks.datasets.reconcile_imports",
         "schedule": 30.0,
@@ -702,7 +709,12 @@ INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")
 # Must match INFERENCE_API_KEY in the Modal overmind-inference secret.
 INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
+SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
+SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
+
 _REQUIRED_KEYS = {
+    "SANDBOX_URL": "the isolated Workshop sandbox",
+    "SANDBOX_TOKEN": "the isolated Workshop sandbox",
     "OPENROUTER_API_KEY": "judges, evals, trace scoring and the Data Workshop",
     "MODAL_TOKEN_ID": "Modal training and serving workers",
     "MODAL_TOKEN_SECRET": "Modal training and serving workers",
@@ -724,7 +736,3 @@ if _missing_keys:
         + "; ".join(_missing_keys)
         + ". .env.example describes each one."
     )
-
-# Documents cross the same credential-free boundary in local and hosted deployments.
-SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
-SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")

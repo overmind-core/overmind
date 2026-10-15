@@ -94,7 +94,7 @@ def test_native_agent_prepares_data_without_a_platform_agent():
 
     with patch("overbae.tasks.datasets.execute_pipeline.delay") as dispatch:
         receipt = call(context, "run_dataset_pipeline", arguments)
-    dispatch.assert_not_called()
+    dispatch.assert_called_once_with(receipt["run"]["id"])
     execute(receipt["run"]["id"], script_executor=execute_fixture)
     repeated = call(context, "run_dataset_pipeline", arguments)
     assert repeated["run"]["id"] == receipt["run"]["id"]

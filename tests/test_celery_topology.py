@@ -83,6 +83,16 @@ def test_docker_compose_drains_every_routed_queue():
     )
 
 
+def test_packages_use_independently_scalable_interactive_capacity():
+    from overbae.tasks.datasets import execute_pipeline
+
+    assert settings.CELERY_TASK_ROUTES[execute_pipeline.name]["queue"] == "interactive"
+    assert execute_pipeline.acks_late and execute_pipeline.reject_on_worker_lost
+    services = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())["services"]
+    assert "sandbox_net" in services["celery-interactive-worker"]["networks"]
+    assert "workshop-runner" not in services
+
+
 def test_fresh_worker_registers_every_routed_and_scheduled_task():
     # Test collection imports task modules that a fresh worker may never discover.
     result = subprocess.run(

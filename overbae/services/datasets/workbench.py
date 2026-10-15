@@ -7,7 +7,6 @@ import uuid
 from datetime import timedelta
 from itertools import islice
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -287,9 +286,9 @@ def submit(
             created_by=user,
             mode=mode,
             binding=binding,
-            lease_until=timezone.now() + timedelta(hours=24),
+            lease_until=timezone.now() + timedelta(minutes=15),
             result={
-                "stage": "waiting_for_runner" if recipe else "queued",
+                "stage": "queued",
                 "source_rows": source.rows,
                 "source_columns": source.columns,
                 "revision_fingerprint": recipe.fingerprint if recipe else None,
@@ -304,8 +303,7 @@ def submit(
         # Importing the worker here breaks the service/task dependency cycle.
         from overbae.tasks.datasets import execute_pipeline
 
-        if not recipe:
-            transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
+        transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
     run.refresh_from_db()
     return run
 
@@ -332,13 +330,9 @@ def execute(run_id, *, script_executor=None):
             return
         if script_executor is None:
             return
-    seconds = 1800
-    if candidate.pipeline_id and candidate.pipeline.package_id:
-        seconds = (
-            len(candidate.pipeline.steps)
-            * (candidate.pipeline.package.manifest.get("limits", {}).get("seconds", 300) + 120)
-            + 600
-        )
+    from overbae.services.datasets.pipeline_runner import TASK_SECONDS
+
+    seconds = TASK_SECONDS + 60
     claimed = DatasetPipelineRun.objects.filter(pk=run_id, state="queued").update(
         state="running",
         updated_at=timezone.now(),
@@ -351,6 +345,7 @@ def execute(run_id, *, script_executor=None):
     ).get(pk=run_id)
     started = checkpoint = time.monotonic()
     started_at = timezone.now().isoformat()
+    queue_seconds = round(max(0, (timezone.now() - run.created_at).total_seconds()), 3)
     stage_started_at = started_at
     stage = None
     stage_seconds = {}
@@ -368,6 +363,7 @@ def execute(run_id, *, script_executor=None):
             "stage": stage,
             "source_rows": run.source.rows,
             "started_at": started_at,
+            "queue_seconds": queue_seconds,
             "stage_started_at": stage_started_at,
             "stage_seconds": dict(stage_seconds),
             "seconds": round(now - started, 3),
@@ -842,7 +838,13 @@ def fail(run_id, error, *, expired_before=None):
                 run.attempt,
                 stage="failed",
                 status="failed",
-                facts={"retry_safe": not bool(run.container_id)},
+                facts={
+                    "retry_safe": not run.container_id
+                    and not any(
+                        step.get("submission_started_at") and step.get("exit_code") is None
+                        for step in result.get("steps", [])
+                    )
+                },
             )
             Dataset.objects.filter(pk=run.dataset_id).update(
                 state=Dataset.State.IDLE, error="", updated_at=timezone.now()
@@ -935,7 +937,7 @@ def run_record(run):
         "poll_after_seconds": None if terminal else 1,
         "queue_seconds": round(max(0, (timezone.now() - run.created_at).total_seconds()), 3)
         if run.state == "queued"
-        else None,
+        else run.result.get("queue_seconds"),
     }
 
 
@@ -1012,15 +1014,15 @@ def describe(
 
 
 def runner_status():
-    worker = DatasetPipelineRunner.objects.order_by("-heartbeat_at").first()
+    worker = DatasetPipelineRunner.objects.filter(pk="sandbox").first()
     recent = bool(worker and worker.heartbeat_at > timezone.now() - timedelta(seconds=45))
     return {
         "status": worker.status if recent else "unavailable",
-        "images": settings.WORKSHOP_RUNTIME_IMAGES,
+        "images": [pipeline_packages.runtime_id()],
         "last_heartbeat_at": worker.heartbeat_at.isoformat() if worker else None,
         "network": "disabled",
         "package_max_bytes": pipeline_packages.MAX_BYTES,
-        "action": "Run the dedicated workshop_runner with an approved immutable image."
+        "action": "Check the sandbox service and interactive Celery consumer; their runtime releases must match."
         if not recent
         else None,
     }

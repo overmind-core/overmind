@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import sys
 import time
 import uuid
 import zipfile
@@ -460,7 +461,6 @@ def test_project_recipe_reuse_derivation_preview_and_atomic_cells():
 
 def test_preview_defers_population_bounds_but_publish_enforces_them(settings):
     project, client, context = workspace()
-    settings.WORKSHOP_RUNTIME_IMAGES = ["sha256:" + "1" * 64]
     dataset = source(client, project, "Bounded recipe", [{"value": n} for n in range(4)])
     original = dataset.active_cell
     stream = io.BytesIO()
@@ -471,7 +471,7 @@ def test_preview_defers_population_bounds_but_publish_enforces_them(settings):
             json.dumps(
                 {
                     "version": 1,
-                    "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+                    "runtime": pipeline_packages.runtime_id(),
                     "steps": [
                         {
                             "name": "Retain",
@@ -608,7 +608,6 @@ def test_empty_result_later_step_failure_and_exact_cancel():
 )
 def test_empty_script_output_has_one_queryable_identity_column(settings, output_schema):
     project, client, context = workspace()
-    settings.WORKSHOP_RUNTIME_IMAGES = ["sha256:" + "a" * 64]
     dataset = source(client, project, "Empty script output", [{"value": 1}])
     original = dataset.active_cell
     stream = io.BytesIO()
@@ -619,7 +618,7 @@ def test_empty_script_output_has_one_queryable_identity_column(settings, output_
             json.dumps(
                 {
                     "version": 1,
-                    "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+                    "runtime": pipeline_packages.runtime_id(),
                     "steps": [
                         {
                             "name": "Empty output",
@@ -663,10 +662,9 @@ def test_empty_script_output_has_one_queryable_identity_column(settings, output_
 
 def test_package_registration_never_executes_and_rejects_unsafe_archives(settings):
     project, client, context = workspace()
-    settings.WORKSHOP_RUNTIME_IMAGES = ["sha256:" + "a" * 64]
     manifest = {
         "version": 1,
-        "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+        "runtime": pipeline_packages.runtime_id(),
         "steps": [
             {
                 "name": "Preserve",
@@ -1030,16 +1028,8 @@ def test_large_nested_data_repeated_runs_and_failed_binding_keep_exact_inputs():
     assert destination.cells.count() == 1
 
 
-@pytest.mark.skipif(
-    not os.environ.get("WORKSHOP_TEST_IMAGE"),
-    reason="Requires a running local Docker daemon and a built Workshop runtime image",
-)
 def test_script_branch_declarations_have_code_evidence_and_measured_outputs(settings):
     project, client, context = workspace()
-    settings.WORKSHOP_RUNTIME_IMAGES = [os.environ["WORKSHOP_TEST_IMAGE"]]
-    settings.WORKSHOP_DOCKER_SOCKET = os.environ.get(
-        "WORKSHOP_DOCKER_SOCKET", "/var/run/docker.sock"
-    )
     dataset = source(client, project, "Split input", [{"value": n} for n in range(10000)])
     original = dataset.active_cell
     code = """import json,sys
@@ -1051,7 +1041,7 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
 """
     manifest = {
         "version": 1,
-        "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+        "runtime": pipeline_packages.runtime_id(),
         "steps": [
             {
                 "id": name,
@@ -1106,8 +1096,9 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
             assert runtime["stage"] == "completed"
             assert runtime["stage_seconds"]["script_execution"] > 0
             assert runtime["stage_seconds"]["input_transfer"] > 0
-            assert runtime["stage_seconds"]["artifact_transfer"] > 0
-            assert runtime["stage_seconds"]["cleanup"] >= 0
+            assert runtime["stage_seconds"]["output_reading"] > 0
+            assert runtime["backend"] == "sandbox"
+            assert runtime["memory_limit_bytes"] >= 1024**3
         assert [step["output_rows"] for step in job["details"]["result"]["steps"]] == (
             [50, 50] if mode == "preview" else [5000, 5000]
         )
@@ -1124,22 +1115,18 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
     )
 
 
-@pytest.mark.skipif(
-    not os.environ.get("WORKSHOP_TEST_IMAGE"),
-    reason="Requires a running local Docker daemon and a built Workshop runtime image",
-)
 @pytest.mark.parametrize("row_count", [10000, 100000])
+@pytest.mark.skipif(
+    sys.platform != "darwin" and os.environ.get("SANDBOX_CONTAINER_TESTS") != "1",
+    reason="Requires the isolated sandbox container",
+)
 def test_real_isolated_script_execution_reproduction_and_timeout(settings, row_count):
     project, client, context = workspace()
-    settings.WORKSHOP_RUNTIME_IMAGES = [os.environ["WORKSHOP_TEST_IMAGE"]]
-    settings.WORKSHOP_DOCKER_SOCKET = os.environ.get(
-        "WORKSHOP_DOCKER_SOCKET", "/var/run/docker.sock"
-    )
     dataset = source(
         client, project, "Container input", [{"value": index} for index in range(row_count)]
     )
     script = """import json, os, pathlib, socket, sys
-assert not pathlib.Path('/code').exists()
+assert not pathlib.Path('/data/media').exists()
 assert not pathlib.Path('/var/run/docker.sock').exists()
 assert not any(key in os.environ for key in ['AWS_SECRET_ACCESS_KEY', 'OPENROUTER_API_KEY', 'DATABASE_URL'])
 probe = socket.socket()
@@ -1161,7 +1148,7 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
                 json.dumps(
                     {
                         "version": 1,
-                        "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+                        "runtime": pipeline_packages.runtime_id(),
                         "limits": {"seconds": seconds},
                         "steps": [
                             {
@@ -1221,6 +1208,6 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
     job = call(context, "get_job", kind="dataset_pipeline", id=run["id"])
     assert job["status"] == "failed", job
     runtime = job["details"]["result"]["steps"][0]["runtime"]
-    assert runtime["stage"] == "stopped"
-    assert runtime["cleanup_confirmed"] is True
+    assert runtime["backend"] == "sandbox"
+    assert job["details"]["result"]["steps"][0]["exit_code"] != 0
     assert dataset.cells.count() == 3

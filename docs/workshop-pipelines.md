@@ -45,34 +45,29 @@ their own producer attribution and do not establish reproducible script executio
 
 ## Isolated runtime setup
 
-The script runtime is opt-in and separate from API/Celery execution. Build the
-provided image on the Docker daemon used by the controller:
+Packages execute in main's isolated sandbox service through the interactive Celery
+workers. The sandbox has no provider credentials, shared media or outbound network.
+Each execution has its own unprivileged UID and private scratch directory; process
+groups and detached descendants are stopped before output is read. The API and
+Celery workers never execute uploaded Python in their own interpreters.
 
-```sh
-docker build -t overmind-workshop-runtime docker/workshop
-docker image inspect --format '{{.Id}}' overmind-workshop-runtime
-```
+Deploy the same application release to the sandbox and workers. Dependencies are
+locked in the application image, including main's data-science libraries and
+offline tokenizer cache. The sandbox authenticates streamed requests with
+SANDBOX_TOKEN. There is no Docker socket, separate EC2 controller or image pull.
 
-Set `WORKSHOP_RUNTIME_IMAGES` in the deployment environment to that exact
-`sha256:…` image ID (comma-separated for multiple approved images). Restart the
-API with this configuration, apply database migrations, and enable the controller:
+Inspect runtime availability with inspect_dataset_workbench. The existing
+runtime.images field advertises the sandbox source-and-lockfile SHA-256 identity.
+Packages pin that identity. Old Docker-pinned packages and their completed
+receipts remain readable; save a new revision with the advertised sandbox identity
+to execute them. Existing immutable revisions are never silently rebound.
 
-```sh
-docker compose --profile workshop up -d workshop-runner
-```
-
-The controller uses `WORKSHOP_DOCKER_SOCKET`, default `/var/run/docker.sock`.
-It needs trusted access to that daemon; uploaded jobs do not receive the socket,
-host directories, account/provider credentials or network access. Jobs run as a
-non-root user with a read-only root filesystem and bounded scratch, memory, CPU,
-processes and time. Dependencies belong in the operator-approved image, not an
-installation command in a manifest. Containers share the host kernel; this is
-not a claim of VM-level isolation against hostile kernel exploits.
-
-The API only stores and statically inspects uploaded code. It never executes it.
-No image is pulled and no host execution fallback occurs when a runtime is missing.
-`inspect_dataset_workbench` reports recorded controller observations and configured
-images. A missing heartbeat is not confirmation that a previously started job stopped.
+Interactive consumers retain four local processes by default and a shared Redis
+limit of four simultaneous runs per project (WORKSHOP_PROJECT_CONCURRENCY).
+Different projects can use additional worker capacity independently. Pipeline
+demand feeds interactive autoscaling; evaluation demand stays on batch.
+Runtime availability is sampled by interactive consumers independently of run progress; it does not certify
+execution progress or replace the interactive consumer's health check.
 
 ## Package contract
 
@@ -83,9 +78,9 @@ Traversal paths, symlinks, duplicates and invalid Python syntax are rejected.
 ```json
 {
   "version": 1,
-  "runtime": "sha256:<exact approved 64-character image digest>",
+  "runtime": "sha256:<advertised 64-character sandbox runtime digest>",
   "parameters": {"prefix": "string"},
-  "limits": {"seconds": 300, "memory_mb": 512, "scratch_mb": 512, "cpus": 1},
+  "limits": {"seconds": 300},
   "steps": [{
     "name": "Normalize questions",
     "entrypoint": "normalize.py",
@@ -108,10 +103,20 @@ Column types are `string`, `integer`, `number`, `boolean`, `object`, `array`, `n
 and `any`; these are required-field type contracts, not arbitrary JSON Schema.
 Parameters must exactly match the declared names/types. Row checks support
 `min_rows`, `max_rows`, `preserve_rows`. Limits are per step: 1–1,200 seconds,
-64–4,096 MiB memory, 16–4,096 MiB scratch and 1–4 CPUs. Input JSONL must fit half
-the scratch limit; each output/log file is limited to half scratch. Output lines
-are bounded to 4 MiB and 200 columns. Excess is an explicit failure, not truncation.
-Diagnostic log retention is separately capped at the first 64 KiB per channel.
+64–4,096 MiB memory, 16–4,096 MiB scratch and 1–4 CPUs. Omitted limits
+use 300 seconds, dynamic memory admission, 2 GiB scratch and two CPU cores.
+The input-size estimate retains main's 5.5 expansion factor plus 256 MiB baseline,
+including package bytes and at least 1 GiB reserved before upload. The worker admits
+against 60% of its cgroup memory; its watchdog includes RSS, scratch, unlinked
+files and memfd allocations. An explicit memory limit below the estimate is
+rejected. Use batch_rows only for independent row transformations.
+
+A complete pipeline has a 25-minute interactive-task deadline, with a 26-minute
+hard limit; queued runs expire after 15 minutes. Scripts and partial pipelines
+are never automatically replayed after an ambiguous result or lost worker.
+Output lines are bounded to 4 MiB and 200 columns, total output to 2 GiB.
+Retained stdout contains its final 4,000 characters and failures up to 1,200.
+Resource receipts distinguish configured limits from sampled peak usage.
 
 Absolute `min_rows` and `max_rows` apply to full publication, not a bounded preview.
 Preview receipts list these under `check_results.deferred`. Row preservation,
@@ -158,7 +163,7 @@ Workbench results include `project_id` and scoped `next_actions`. While a pipeli
 is active, dataset inspection points to that exact run, not the source-landing job.
 
 The run records step hashes, counts, checks, elapsed time, source identity,
-runtime and Docker execution identities. `overmind://dataset-pipelines/{id}`,
+runtime identity and observed process exit status. `overmind://dataset-pipelines/{id}`,
 `overmind://dataset-pipeline-packages/{id}` and
 `overmind://pipeline-diagnostics/{id}?step=0&channel=stderr&offset=0&limit=8000`
 allow deeper inspection; include `project_id` in resource queries. Code/logs are
@@ -169,9 +174,9 @@ to the exact original revision. Parameters vary execution without changing code.
 Preview samples retain at most five rows and 16,000 encoded bytes per step.
 
 Preview and publication receipts include total elapsed seconds. Script runtime
-phases separately measure container setup, input transfer, script execution,
-artifact transfer, output reading and cleanup. `cleanup_confirmed` is not proof
-of publication; failed or interrupted output reports a stopped runtime.
+phases separately measure input transfer, script execution and output reading.
+The sandbox reports actual exit status and sampled resource usage. A completed
+script is not proof of publication; validation and atomic publication follow.
 Manifest `parameters` map names to types (`{"seed": "integer"}`); runs provide
 the values (`{"seed": 42}`). Invalid declarations return `pipeline_parameters`.
 
@@ -183,9 +188,8 @@ source SHA-256 returned by MCP. Downloads verify the checksum and never overwrit
 an existing file or follow a redirect with credentials.
 
 `cancel_dataset_pipeline_run` prevents publication of an exact run. The receipt
-does not assert process termination until the controller observes cleanup.
-Expired runs fail without replay; unknown Docker acknowledgements are not
-resubmitted. Repeating an identical run key recovers its original receipt.
+does not assert process termination. Closing a connected sandbox request stops its
+child; expired runs fail without replay, and unknown outcomes are not resubmitted. Repeating an identical run key recovers its original receipt.
 Use a new key only after inspecting the previous outcome and authorizing a retry.
 
 ## Repeated sources
@@ -195,7 +199,7 @@ destination dataset, revision, parameters, trigger, interval and run/row limits.
 It starts paused. Enable with `set_dataset_pipeline_binding_state` and the
 inspected version. A manual binding run does not enable automatic execution.
 
-Scheduled and ingestion triggers are polled by the dedicated controller. Both
+Scheduled and ingestion triggers are polled by a bounded batch task. Both
 rebuild full snapshots; arbitrary scripts are not assumed to be incremental.
 Late trace changes and removed matches change the snapshot. Selections exceeding
 10,000 traces are rejected without dropping rows. Checkpoints advance only with
@@ -205,9 +209,8 @@ Failures pause automatic processing on its next inspection. Inspect the exact
 run before explicitly re-enabling or adopting a corrected revision. Revision
 adoption pauses the binding and resets its checkpoint for an explicit rebuild.
 Pause stops new work, not an already running batch. Run limits remain cumulative.
-Current implementation uses one script run per controller process, not a
-distributed parallel streaming engine. Existing training/evaluation consumers
-remain pinned to their original cells.
+Project admission is shared across independently scalable interactive workers.
+Existing training/evaluation consumers remain pinned to their original cells.
 
 Run the retained-package and publication regressions without provider calls:
 

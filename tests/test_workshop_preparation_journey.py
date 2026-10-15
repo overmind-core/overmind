@@ -1,5 +1,4 @@
 import asyncio
-import time
 
 import pytest
 
@@ -8,7 +7,6 @@ from overbae.services import operational_progress
 from overbae.services.datasets import (
     attachments,
     exploration,
-    heartbeat,
     land,
     partition_plans,
     paths,
@@ -164,7 +162,7 @@ def test_explicit_row_batches_publish_atomically_and_preserve_order(fail_last):
         assert run.result["steps"][0]["batches"]["completed"] == 3
 
 
-def test_controller_restart_fails_interrupted_work_without_replaying_or_publishing():
+def test_worker_redelivery_never_replays_claimed_work_and_expiry_preserves_source():
     project, client, context = workspace()
     dataset = source(client, project, "Interrupted source", [{"value": 1}])
     original = dataset.active_cell
@@ -185,25 +183,25 @@ def test_controller_restart_fails_interrupted_work_without_replaying_or_publishi
         request_key="interrupted-run",
     )
     run = DatasetPipelineRun.objects.get(pk=receipt["run"]["id"])
-    with pipeline_runner.controller():
-        run.refresh_from_db()
-        assert run.state == "queued"
-        DatasetPipelineRun.objects.filter(pk=run.pk).update(state="running")
-        with (
-            pytest.raises(pipeline_runner.RuntimeUnavailableError, match="already running"),
-            pipeline_runner.controller(),
-        ):
-            pytest.fail("A second controller acquired the running controller's lock")
-        run.refresh_from_db()
-        assert run.state == "running"
-    with pipeline_runner.controller():
-        run.refresh_from_db()
-        assert run.state == "failed"
-        assert "controller stopped" in run.error
-        assert run.output_id is None
-        dataset.refresh_from_db()
-        assert dataset.active_cell.pk == original.pk
-        assert dataset.cells.count() == 1
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from overbae.tasks.datasets import execute_pipeline
+
+    DatasetPipelineRun.objects.filter(pk=run.pk).update(
+        state="running", lease_until=timezone.now() - timedelta(seconds=1)
+    )
+    execute_pipeline(str(run.pk))
+    run.refresh_from_db()
+    assert run.state == "running"
+    workbench.expire_runs()
+    run.refresh_from_db()
+    assert run.state == "failed"
+    assert run.output_id is None
+    dataset.refresh_from_db()
+    assert dataset.active_cell.pk == original.pk
+    assert dataset.cells.count() == 1
     repeated = call(
         context,
         "run_dataset_pipeline",
@@ -243,14 +241,10 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
     def slow_measurement(before, after):
         previous = workbench.runner_status()["last_heartbeat_at"]
         progress = operational_progress.latest(project.pk, "dataset_pipeline", run_id)
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            status = workbench.runner_status()
-            if status["last_heartbeat_at"] != previous:
-                break
-            time.sleep(0.01)
+        pipeline_runner.heartbeat()
+        status = workbench.runner_status()
         observed.append(status)
-        assert status["status"] == "executing"
+        assert status["status"] == "ready"
         assert status["last_heartbeat_at"] > previous
         assert (
             operational_progress.latest(project.pk, "dataset_pipeline", run_id)["last_progress_at"]
@@ -258,11 +252,12 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
         )
         return measure(before, after)
 
-    monkeypatch.setattr(heartbeat, "INTERVAL_SECONDS", 0.02)
-    monkeypatch.setattr(pipeline_runner.DockerEngine, "request", lambda *args, **kwargs: {})
+    pipeline_runner.heartbeat()
     monkeypatch.setattr(pipeline_runner, "execute_script", execute_fixture)
     monkeypatch.setattr(review, "impact_files", slow_measurement)
-    pipeline_runner.tick()
+    from overbae.tasks.datasets import execute_pipeline
+
+    execute_pipeline(str(run_id))
     run = DatasetPipelineRun.objects.get(pk=run_id)
     assert run.state == "completed", run.error
     assert len(observed) == 1

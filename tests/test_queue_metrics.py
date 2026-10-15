@@ -47,6 +47,28 @@ def test_zero_worker_capacity_is_observable_without_division_by_zero():
 
 
 @pytest.mark.django_db
+def test_pipeline_demand_scales_its_interactive_consumer():
+    from overbae.models import Cell, Dataset, DatasetPipelineRun, Project
+
+    project = Project.objects.create(name="Pipeline queues", slug="pipeline-queues")
+    dataset = Dataset.objects.create(project=project, name="Source")
+    cell = Cell.objects.create(dataset=dataset, position=0)
+    for state in ("queued", "running", "completed", "failed"):
+        DatasetPipelineRun.objects.create(
+            dataset=dataset,
+            source=cell,
+            state=state,
+            request_key=state,
+            fingerprint=state,
+            lease_until=timezone.now() + timedelta(minutes=10),
+        )
+    workloads = read_workloads()
+    assert workloads["interactive"]["waiting"] == 1
+    assert workloads["interactive"]["running"] == 1
+    assert workloads["batch"]["waiting"] == workloads["batch"]["running"] == 0
+
+
+@pytest.mark.django_db
 def test_only_open_imports_request_capacity_and_only_new_system_blocks_alarm():
     from overbae.models import Dataset, DatasetImport, Project
 

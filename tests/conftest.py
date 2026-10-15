@@ -405,10 +405,11 @@ def sandbox_server():
     }
     command = [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)]
     container = None
-    if sys.platform == "darwin":
+    proxy = None
+    if sys.platform == "darwin" or os.environ.get("SANDBOX_CONTAINER_TESTS") == "1":
         container = "overmind-parser-test-" + secrets.token_hex(6)
         subprocess.run(
-            ["docker", "network", "create", container],
+            ["docker", "network", "create", "--internal", container],
             check=True,
             capture_output=True,
         )
@@ -423,8 +424,6 @@ def sandbox_server():
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--init",
-            "-p",
-            f"127.0.0.1:{port}:8080",
             "--tmpfs",
             "/tmp:size=4g",
             "-v",
@@ -444,13 +443,54 @@ def sandbox_server():
             "SYS_PTRACE",
         ):
             command += ["--cap-add", capability]
-        command += ["overmind-dev", "-m", "sandbox"]
+        command += [os.environ.get("SANDBOX_TEST_IMAGE", "overmind-dev"), "-m", "sandbox"]
     proc = subprocess.Popen(
         command,
         cwd=Path(__file__).resolve().parents[1],
         env=env,
     )
     try:
+        if container:
+            # Docker Desktop cannot publish an internal-only container to macOS.
+            # This fixed-destination proxy gives the test client ingress without giving scripts egress.
+            proxy = container + "-ingress"
+            forwarding = """import select,socket,socketserver,sys
+class Relay(socketserver.BaseRequestHandler):
+    def handle(self):
+        with socket.create_connection((sys.argv[1],8080)) as upstream:
+            peers={self.request:upstream,upstream:self.request}
+            while True:
+                for source in select.select(list(peers),[],[])[0]:
+                    data=source.recv(65536)
+                    if not data: return
+                    peers[source].sendall(data)
+socketserver.ThreadingTCPServer(('0.0.0.0',8080),Relay).serve_forever()
+"""
+            subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-d",
+                    "--name",
+                    proxy,
+                    "--network",
+                    "bridge",
+                    "-p",
+                    f"127.0.0.1:{port}:8080",
+                    "--entrypoint",
+                    "python",
+                    os.environ.get("SANDBOX_TEST_IMAGE", "overmind-dev"),
+                    "-c",
+                    forwarding,
+                    container,
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["docker", "network", "connect", container, proxy], check=True, capture_output=True
+            )
         deadline = time.monotonic() + 30
         while True:
             try:
@@ -464,6 +504,8 @@ def sandbox_server():
         yield url, token
     finally:
         if container:
+            if proxy:
+                subprocess.run(["docker", "rm", "-f", proxy], check=False, capture_output=True)
             subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
             subprocess.run(["docker", "network", "rm", container], check=False, capture_output=True)
         elif proc.poll() is None:

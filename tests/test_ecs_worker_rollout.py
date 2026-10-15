@@ -170,6 +170,7 @@ def test_a_release_builds_on_the_latest_revision_of_the_family(monkeypatch, defi
     assert release["containerDefinitions"][0]["environment"] == [
         {"name": "FROM", "value": "terraform"},
         {"name": "RUN_DB_BOOTSTRAP", "value": "0"},
+        {"name": "WORKSHOP_EXECUTION_BACKEND", "value": "sandbox-package-v1"},
     ]
     assert release["containerDefinitions"][0]["image"] == "repo:new"
 
@@ -187,38 +188,12 @@ def test_document_parser_keeps_main_isolation_command_and_health(definition):
     assert "/health" in container["healthCheck"]["command"][-1]
 
 
-def test_workshop_refuses_fargate_or_unprepared_hosts(definition):
-    container = definition["containerDefinitions"][0]
-    container["name"] = "workshop-runner"
-    with pytest.raises(ValueError, match="EC2"):
+def test_dedicated_workshop_controller_has_no_deployable_command(definition):
+    definition["containerDefinitions"][0]["name"] = "workshop-runner"
+    with pytest.raises(ValueError, match="No reviewed command"):
         render_task_definition(
             definition, service="workshop-runner", image="repo:new", cluster="test"
         )
-    definition["requiresCompatibilities"] = ["EC2"]
-    with pytest.raises(ValueError, match="Docker socket"):
-        render_task_definition(
-            definition, service="workshop-runner", image="repo:new", cluster="test"
-        )
-    definition["volumes"].append({"name": "docker", "host": {"sourcePath": "/var/run/docker.sock"}})
-    container["mountPoints"].append(
-        {"sourceVolume": "docker", "containerPath": "/var/run/docker.sock"}
-    )
-    with pytest.raises(ValueError, match="runtime images"):
-        render_task_definition(
-            definition, service="workshop-runner", image="repo:new", cluster="test"
-        )
-    container["environment"].append(
-        {"name": "WORKSHOP_RUNTIME_IMAGES", "value": "sha256:" + "a" * 64}
-    )
-    result = render_task_definition(
-        definition, service="workshop-runner", image="repo:new", cluster="test"
-    )
-    runner = result["containerDefinitions"][0]
-    assert runner["command"] == ["python", "manage.py", "workshop_runner"]
-    assert runner["healthCheck"]["command"][-1] == "overbae.workshop_health"
-    assert {item["name"]: item["value"] for item in runner["environment"]}[
-        "RUN_DB_BOOTSTRAP"
-    ] == "0"
 
 
 @pytest.mark.parametrize("counter", ["desiredCount", "runningCount", "pendingCount"])
@@ -249,6 +224,7 @@ def test_first_cutover_checks_every_consumer(monkeypatch):
         "celery-landing-worker",
         "celery-interactive-worker",
         "celery-beat",
+        "sandbox",
     }
 
 
@@ -258,3 +234,29 @@ def test_cutover_does_not_guess_service_capacity(monkeypatch):
     monkeypatch.setattr(deploy_ecs, "describe_service", lambda cluster, name: {"desiredCount": 0})
     with pytest.raises(ValueError, match="recorded service capacity"):
         deploy_ecs.deploy("test", "api", "repo:new")
+
+
+@pytest.mark.parametrize("migrated", [False, True])
+@pytest.mark.parametrize("desired", [0, 1])
+def test_cutover_checks_deployed_release_and_not_desired_count(monkeypatch, migrated, desired):
+    def service(cluster, name):
+        return {"taskDefinition": name + ":1", "desiredCount": desired, "runningCount": 1}
+
+    def aws(*args, **kwargs):
+        name = args[-1].split(":")[0]
+        environment = (
+            [{"name": "WORKSHOP_EXECUTION_BACKEND", "value": "sandbox-package-v1"}]
+            if migrated
+            else []
+        )
+        return {
+            "taskDefinition": {"containerDefinitions": [{"name": name, "environment": environment}]}
+        }
+
+    monkeypatch.setattr(deploy_ecs, "describe_service", service)
+    monkeypatch.setattr(deploy_ecs, "aws", aws)
+    if migrated:
+        deploy_ecs.preflight("test")
+    else:
+        with pytest.raises(RuntimeError, match="drained, stopped"):
+            deploy_ecs.preflight("test")

@@ -21,7 +21,13 @@ def execute_rows(run, index, source, directory, step, files, progress, executor)
     manifest = store.read_manifest(source)
     for offset in range(0, total, batch_rows):
         facts["current"] = facts["completed"] + 1
-        for field in ("runtime", "exit_code", "provider_execution", "container"):
+        for field in (
+            "runtime",
+            "exit_code",
+            "provider_execution",
+            "container",
+            "submission_started_at",
+        ):
             receipt.pop(field, None)
         if not progress():
             raise ValueError("Publication was cancelled before the next batch.")

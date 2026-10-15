@@ -1,0 +1,66 @@
+{
+  "0013_dataset_preparation_plans.py": [
+    "6019d6e16884e56b6d960ddabc6fe5e59d9f30fc38f8dfb4766fa01527334583"
+  ],
+  "0013_eval_generation_admission.py": [
+    "7693c4c5da5200ba2f7bb30d70a0136ea80898f2779faa75791bd355880cb4fc"
+  ],
+  "0014_dataset_imports.py": [
+    "05e10a8711515efa586af726e26ab0a7a99e46560c89db19a8a52c50e655c05b"
+  ],
+  "0014_training_launch_identity.py": [
+    "fc0f4e44085b9388daf03c51e50da712a276aaef5833330c7fec9f936a4f511d"
+  ],
+  "0015_dataset_operation.py": [
+    "c42590b381ca5c8867a442c7af1fb20ef56aa325d53e4165a9ff5df573093017"
+  ],
+  "0015_workshop_execution_clock.py": [
+    "ae9fd4fb4f0208795a33a3880350c364c1c0727ea411ed47004537b51138cd24"
+  ],
+  "0016_innermind.py": [
+    "7fb04b66af112de7b15caa0d263afd38149df89679fd3fe2bf9ba19ba6bd48dd",
+    "f1894e34078feb5a70263472cf665de4b628f24f01ec5cf419a47d52ef1eea15"
+  ],
+  "0016_native_evaluation_plan.py": [
+    "129179e4a987ad5724d081933ea48c7a747526cf2efcd1c0d18bbc44c9e64868"
+  ],
+  "0016_workshop_without_agent.py": [
+    "d1af2ff8b4a45cef52ddf26974f7c123f48df75d03ccdea1b7632f70b73b7291"
+  ],
+  "0017_decision_job.py": [
+    "1336c4d983cc97768aef8fb845336101139b0e5c6b73151fc834f9b2c34213fa"
+  ],
+  "0017_training_provider_receipts.py": [
+    "4f592070e146fb089f62f67c5f5cb96db3e06e7eacaeaaf6f141bda44a09fa48"
+  ],
+  "0018_alter_billingtelemetry_service.py": [
+    "2ec8bd1917de7caa0a1a0cb48fa3a4ef3f161f3e023dd2328d1560993d8cf554"
+  ],
+  "0018_workshop_sources_and_funding.py": [
+    "6617a36548d1e9e0d61c0ef05e850c62a8921b28b2b0a8d1faf4347c4742cabe"
+  ],
+  "0019_data_first_workflows.py": [
+    "b82f05453222d9fe0020cce5758f360efc3a7a4700582a6d08d0c485f432b8a7"
+  ],
+  "0019_remove_cursor_agent_billing_service.py": [
+    "3f901bbd3585afb420477ab4673fad2bc55bef4d3c1924f687df0999a7d44ad3"
+  ],
+  "0020_decision_performance.py": [
+    "2804e503c6657a814fe95d79399c4024b6e9e7bac6decde057807916934f0878"
+  ],
+  "0020_workshop_sources_attachments_cancel.py": [
+    "9b94153d8ad562fa9785888c89df4c0e80fe2d03b09805ebf8f80f8961e6c12f"
+  ],
+  "0021_data_exploration.py": [
+    "09ace37a3b869f2ed4ff975bde63156e154bb5e508adf8a9bf6aafd0d3b14839"
+  ],
+  "0021_dataset_state_stopped.py": [
+    "7c13c4187f4a588b3863f9dc10cbe6be5c09118cd613de7bd46267b57363b456"
+  ],
+  "0022_mcp_request_keys.py": [
+    "bc64a3530eb582f437de7a4faf526d2d854bfefd516256250342fad871f3837d"
+  ],
+  "0022_workshop_execution.py": [
+    "78fb999a075956bc3f8d29cab3d0090a2ef163455a4b41617c7d4e88f6b6befe"
+  ]
+}

@@ -25,9 +25,9 @@ Five workers, six queues. Workers are resource profiles; queues are fairness cla
 | ------------- | ------- | ---- | ---------------- | ------------------------------------------------------------------ |
 | `control`     | threads | 8    | `control`        | orchestration, chord callbacks, FSM advances, beat                 |
 | `io`          | threads | 24   | `io`,`io_traces` | eval launch, live scoring, signals, connector polling              |
-| `batch`       | prefork | 6    | `batch`          | dataset pipelines, evaluation generation/scoring, connector chunks |
+| `batch`       | prefork | 6    | `batch`          | pipeline bindings, evaluation generation/scoring, connector chunks |
 | `landing`     | prefork | 1    | `landing`        | source imports                                                     |
-| `interactive` | prefork | 4    | `interactive`    | bounded interactive compute                                        |
+| `interactive` | prefork | 4    | `interactive`    | retained-package pipelines and runtime health                      |
 
 Three constraints set the worker split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch`, `landing` or `interactive`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run. `run_eval_run` routes to `io` because Modal warm-up blocks for minutes; the import and workshop reconcilers and queue metrics run on `control` with short expiries and are dropped when it is full.
 
@@ -129,7 +129,7 @@ API: `api/eval_views.py`, `api/signal_views.py`.
 
 ## Data Workshop
 
-Source → cells → derived versions. Native coding agents author reusable project revisions or attributed variants. Shared services validate lineage, execute declarative steps or retained packages in a dedicated restricted container runtime, and atomically publish step cells. Preview never publishes; explicitly enabled bindings rebuild changing source snapshots without agent authoring. Platform chat/agent tasks are retired. The dataset table opens existing cells with run inspection; historical records remain readable. Contracts and lifecycle: data-workshop skill.
+Source → cells → derived versions. Native coding agents author reusable project revisions or attributed variants. Shared services validate lineage, execute retained packages through interactive workers in the isolated sandbox, and atomically publish step cells. Preview never publishes; explicitly enabled bindings rebuild changing source snapshots without agent authoring. Platform chat/agent tasks are retired. The dataset table opens existing cells with run inspection; historical records remain readable. Contracts and lifecycle: data-workshop skill.
 
 ## Auth and tenancy
 

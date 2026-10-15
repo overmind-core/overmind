@@ -4,5 +4,6 @@
   "celery-batch-worker": ["celery", "-A", "overbae", "worker", "-l", "info", "--pool=prefork", "--concurrency=6", "--prefetch-multiplier=1", "--disable-prefetch", "-Q", "batch"],
   "celery-landing-worker": ["celery", "-A", "overbae", "worker", "-l", "info", "--pool=prefork", "--concurrency=1", "--prefetch-multiplier=1", "--disable-prefetch", "--hostname=landing@%h", "-Q", "landing"],
   "celery-interactive-worker": ["celery", "-A", "overbae", "worker", "-l", "info", "--pool=prefork", "--concurrency=4", "--prefetch-multiplier=1", "--disable-prefetch", "--hostname=interactive@%h", "-Q", "interactive"],
+  "sandbox": ["python", "-m", "sandbox"],
   "celery-beat": ["celery", "-A", "overbae", "beat", "-l", "info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
 }

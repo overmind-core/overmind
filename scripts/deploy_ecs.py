@@ -52,20 +52,6 @@ def render_task_definition(document, *, service, image, cluster):
     if service in topology:
         app["command"] = topology[service]
         app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
-    elif service == "workshop-runner":
-        validate_workshop_definition(result)
-        app["command"] = ["python", "manage.py", "workshop_runner"]
-        app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
-        app["healthCheck"] = {
-            "command": ["CMD", "python", "-m", "overbae.workshop_health"],
-            "interval": 30,
-            "timeout": 15,
-            "retries": 3,
-            "startPeriod": 90,
-        }
-    elif service == "sandbox":
-        app["command"] = ["python", "-m", "sandbox"]
-        app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
     elif service != "api":
         raise ValueError(f"No reviewed command for service {service!r}")
     if service == "sandbox":
@@ -98,7 +84,7 @@ def render_task_definition(document, *, service, image, cluster):
         }
         app["stopTimeout"] = 120
     if service != "sandbox":
-        _environment(app, RUN_DB_BOOTSTRAP="0")
+        _environment(app, RUN_DB_BOOTSTRAP="0", WORKSHOP_EXECUTION_BACKEND="sandbox-package-v1")
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
     if service in HEALTH_CHECKED_QUEUES:
@@ -121,35 +107,22 @@ def render_task_definition(document, *, service, image, cluster):
     return result
 
 
-def validate_workshop_definition(definition):
-    app = next(c for c in definition["containerDefinitions"] if c["name"] == "workshop-runner")
-    if "EC2" not in definition.get("requiresCompatibilities", []):
-        raise ValueError("Workshop requires dedicated EC2 Docker capacity, not Fargate.")
-    volumes = {v["name"]: v for v in definition.get("volumes", [])}
-    if not any(
-        mount.get("containerPath") == "/var/run/docker.sock"
-        and volumes.get(mount["sourceVolume"], {}).get("host", {}).get("sourcePath")
-        == "/var/run/docker.sock"
-        for mount in app.get("mountPoints", [])
-    ):
-        raise ValueError("Workshop requires its dedicated host's Docker socket.")
-    environment = {item["name"]: item["value"] for item in app.get("environment", [])}
-    if not environment.get("WORKSHOP_RUNTIME_IMAGES"):
-        raise ValueError("Approve and preload immutable Workshop runtime images before rollout.")
-
-
 def preflight(cluster):
-    first_cutover = False
-    for name in ("sandbox", "workshop-runner", "celery-landing-worker"):
+    for name in ("sandbox", "celery-landing-worker", "celery-interactive-worker"):
         service = describe_service(cluster, name)
         family = service["taskDefinition"].rsplit("/", 1)[-1].rsplit(":", 1)[0]
         definition = aws("ecs", "describe-task-definition", "--task-definition", family)[
             "taskDefinition"
         ]
-        if name == "workshop-runner":
-            validate_workshop_definition(definition)
-            first_cutover = service.get("desiredCount", 0) == 0
-    if first_cutover:
+        if not any(c["name"] == name for c in definition["containerDefinitions"]):
+            raise ValueError(f"Missing {name} container in its task definition")
+    api = describe_service(cluster, "api")
+    definition = aws("ecs", "describe-task-definition", "--task-definition", api["taskDefinition"])[
+        "taskDefinition"
+    ]
+    app = next(c for c in definition["containerDefinitions"] if c["name"] == "api")
+    environment = {item["name"]: item["value"] for item in app.get("environment", [])}
+    if environment.get("WORKSHOP_EXECUTION_BACKEND") != "sandbox-package-v1":
         require_drained_consumers(cluster)
     print("Required consumer infrastructure is configured; no services or schema were changed.")
 
@@ -160,7 +133,7 @@ def require_drained_consumers(cluster):
         service = describe_service(cluster, name)
         if any(service.get(key, 0) for key in ("desiredCount", "runningCount", "pendingCount")):
             raise RuntimeError(
-                f"First Workshop cutover requires drained, stopped consumers; {name} is active. "
+                f"The schema cutover requires drained, stopped consumers; {name} is active. "
                 "Follow scripts/workshop-rollout.md before migrating."
             )
 
@@ -284,17 +257,13 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
     if desired_count is not None and desired_count < 1:
         raise ValueError("Deployment requires a positive desired count.")
     current = describe_service(cluster, service_name)
-    if (
-        service_name != "workshop-runner"
-        and not current.get("desiredCount")
-        and desired_count is None
-    ):
+    if not current.get("desiredCount") and desired_count is None:
         raise ValueError(
             "Restore the recorded service capacity with --desired-count after cutover."
         )
     _, definition = register(cluster, service_name, image)
     arn = definition["taskDefinitionArn"]
-    count = 1 if service_name == "workshop-runner" else desired_count
+    count = desired_count
     options = ["--desired-count", str(count)] if count is not None else []
     aws(
         "ecs",
@@ -344,8 +313,7 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
             service,
             tasks,
             task_definition=arn,
-            require_health=service_name in HEALTH_CHECKED_QUEUES
-            or service_name in {"sandbox", "workshop-runner"},
+            require_health=service_name in HEALTH_CHECKED_QUEUES or service_name == "sandbox",
         ):
             print(f"Ready: {service_name} {arn}")
             return

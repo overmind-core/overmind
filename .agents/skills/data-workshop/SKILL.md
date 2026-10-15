@@ -34,11 +34,12 @@ bindings reject them with pipeline_package_required. REST and MCP reject inline
 operation definitions; the in-process declarative executor is removed. Project-owned families have immutable numbered
 revisions; `derived_from` creates a separate attributed family. Reuse the exact
 revision across compatible sources in the same project. Packages execute only in
-the dedicated Docker controller: approved immutable image IDs, no network, host
-mounts, credentials or socket inside the job, bounded resources and retained logs.
-Registration and static validation never execute code. Docker records process exit
+the isolated sandbox service through interactive workers: pinned source/lockfile
+identities, separate UIDs, no network egress, app credentials, media mounts or Docker
+socket, measured resource admission and retained logs.
+Registration and static validation never execute code. The sandbox records process exit
 status; script-authored status files do not establish completion. Dependencies are
-baked into the approved runtime. Setup and package protocol: `docs/workshop-pipelines.md`.
+locked in the shared application image. Setup and package protocol: `docs/workshop-pipelines.md`.
 External semantic/provider work remains native-agent-owned and imported with lineage.
 
 A run request key is unique per dataset; revision keys are project-scoped. Identical retries recover the same record;
@@ -58,7 +59,7 @@ Bindings start paused, pin a revision and
 parameters, and rebuild full source snapshots, including late trace changes and
 removed matches. Checkpoint and cells commit together. Failed attempts pause on
 the next inspection; re-enable or revise explicitly to authorize another attempt.
-Scheduled/ingestion bindings are checked by the dedicated controller, not an agent;
+Scheduled/ingestion bindings are checked by a bounded batch task;
 trace snapshots are capped at 10,000 selected traces and reject overflow.
 
 Trace landing pins `preferred_capability_id` in the source recipe. A source capability
@@ -87,7 +88,7 @@ control reconciler recovers lost broker acknowledgements and records expired
 attempts. `resume_dataset_import` and REST `resume-import` explicitly retry a
 blocked import within its attempt budget. Cancellation fences both split members.
 Landing retains evidence and returns to idle; it does not start preparation.
-Pipeline queue demand contributes to batch capacity through `DatasetPipelineRun`.
+Pipeline queue demand contributes to interactive capacity through `DatasetPipelineRun`.
 
 ## Sources, identities and versions
 

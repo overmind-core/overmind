@@ -23,7 +23,7 @@ def healthy(queue):
     expected = {
         task for task, route in settings.CELERY_TASK_ROUTES.items() if route.get("queue") == queue
     }
-    return bool(registered) and expected.issubset(registered)
+    return bool(expected) and expected.issubset(registered)
 
 
 if __name__ == "__main__":

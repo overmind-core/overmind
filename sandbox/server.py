@@ -20,10 +20,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from sandbox import execute
+from sandbox import execute, packages
 from sandbox.protocol import FramingError, HeaderReader, frame, header_bytes
 
-MODES = ("extract",)
+MODES = ("extract", "package")
 MAX_INPUT_BYTES = 100 * 1024**2
 BODY_IDLE_SECONDS = 60
 
@@ -42,13 +42,20 @@ def _check(header: dict[str, Any]) -> None:
     if (
         not isinstance(declared, int)
         or isinstance(declared, bool)
-        or not 0 <= declared <= MAX_INPUT_BYTES
+        or not 0
+        <= declared
+        <= (packages.MAX_OUTPUT_BYTES if mode == "package" else MAX_INPUT_BYTES)
     ):
         raise FramingError("input_bytes is required.")
     if mode == "extract":
         filename = header.get("filename")
         if not isinstance(filename, str) or not filename.strip() or "\0" in filename:
             raise FramingError("A filename is required.")
+    else:
+        try:
+            packages.validate(header)
+        except ValueError as exc:
+            raise FramingError(str(exc)) from exc
 
 
 async def _body(request: Request) -> AsyncIterator[bytes]:
@@ -110,6 +117,8 @@ def _reply(outcome: execute.Outcome) -> dict[str, Any]:
         "error": outcome.error,
         "stdout": outcome.stdout,
         "seconds": outcome.seconds,
+        "exit_code": outcome.exit_code,
+        "runtime": outcome.runtime,
     }
     if outcome.extraction is not None:
         reply["extraction"] = outcome.extraction
@@ -149,12 +158,17 @@ async def run(request: Request) -> Response:
         shutil.rmtree(scratch, ignore_errors=True)
         execute.release(slot)
 
-    source = scratch / "document"
+    source = scratch / ("input.jsonl" if header["mode"] == "package" else "document")
     try:
-        await _store(chunks, first, [(source, header["input_bytes"])])
+        parts = [(source, header["input_bytes"])]
+        if header["mode"] == "package":
+            parts.insert(0, (scratch / "package.json", header["package_bytes"]))
+        await _store(chunks, first, parts)
         if not execute.input_matches(header, source):
             raise FramingError("The body does not match input_bytes.")
-    except FramingError as exc:
+        if header["mode"] == "package":
+            packages.unpack(header, scratch)
+    except (ValueError, OSError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400, background=BackgroundTask(finish))
     except BaseException:
         await run_in_threadpool(finish)
@@ -169,9 +183,11 @@ async def run(request: Request) -> Response:
         outcome = None
         try:
             while not task.done():
+                if header["mode"] == "package":
+                    yield header_bytes({"progress": {"heartbeat": True}})
                 while not progress.empty():
                     yield header_bytes({"progress": progress.get_nowait()})
-                await asyncio.wait({task}, timeout=0.2)
+                await asyncio.wait({task}, timeout=1 if header["mode"] == "package" else 0.2)
             outcome = task.result()
             while not progress.empty():
                 yield header_bytes({"progress": progress.get_nowait()})
@@ -191,7 +207,7 @@ async def run(request: Request) -> Response:
 
 
 async def health(_request: Request) -> Response:
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "runtime": packages.runtime_id()})
 
 
 @contextlib.asynccontextmanager

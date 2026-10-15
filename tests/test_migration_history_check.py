@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -9,7 +11,10 @@ CHECKER = Path(__file__).resolve().parents[1] / "scripts/check_migrations.py"
 
 
 @pytest.mark.parametrize("merged,modified", [(False, False), (True, False), (True, True)])
-def test_migration_numbers_preserve_independent_committed_histories(tmp_path, merged, modified):
+@pytest.mark.parametrize("approved", [False, True])
+def test_only_checksum_pinned_applied_histories_exempt_duplicate_numbers(
+    tmp_path, merged, modified, approved
+):
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "Migration test",
@@ -50,13 +55,22 @@ def test_migration_numbers_preserve_independent_committed_histories(tmp_path, me
     else:
         (migrations / "0002_imports.py").write_text("imports = True\n")
         commit("Duplicate number without combined history")
+    checker = tmp_path / "check_migrations.py"
+    checker.write_text(CHECKER.read_text())
+    (tmp_path / "applied-migration-history.json").write_text(
+        json.dumps(
+            {"0002_native.py": [hashlib.sha256(native.read_bytes()).hexdigest()]}
+            if approved
+            else {}
+        )
+    )
     if modified:
         native.write_text("native = False\n")
     result = subprocess.run(
-        [sys.executable, str(CHECKER), "main"],
+        [sys.executable, str(checker), "main"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
     )
-    assert (result.returncode == 0) is (merged and not modified), result.stdout + result.stderr
+    assert (result.returncode == 0) is (approved and not modified), result.stdout + result.stderr

@@ -48,16 +48,10 @@ def read_workloads():
         blocked=Count("pk", filter=Q(state="running", lease_until__isnull=True)),
         oldest=Min("created_at", filter=Q(state="queued")),
     )
-    for key in ("waiting", "running", "blocked"):
-        evaluation[key] += workshop[key]
-    evaluation["oldest"] = min(
-        (stamp for stamp in (evaluation["oldest"], workshop["oldest"]) if stamp is not None),
-        default=None,
-    )
     return {
         "landing": imports,
         "batch": evaluation,
-        "interactive": {"waiting": 0, "running": 0, "blocked": 0, "oldest": None},
+        "interactive": workshop,
     }
 
 

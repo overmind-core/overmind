@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 import overmind
 from overbae.models import APIToken, DatasetPipelinePackage, Project, ProjectMembership, User
+from overbae.services.datasets import pipeline_packages
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
@@ -26,14 +27,13 @@ def test_cli_package_roundtrip_through_rest_services(tmp_path, monkeypatch, sett
     ProjectMembership.objects.create(user=user, project=project)
     client = APIClient()
     client.force_authenticate(user)
-    settings.WORKSHOP_RUNTIME_IMAGES = ["sha256:" + "b" * 64]
     package = tmp_path / "package"
     package.mkdir()
     (package / "manifest.json").write_text(
         json.dumps(
             {
                 "version": 1,
-                "runtime": settings.WORKSHOP_RUNTIME_IMAGES[0],
+                "runtime": pipeline_packages.runtime_id(),
                 "steps": [{"name": "Preserve", "entrypoint": "preserve.py"}],
             }
         )

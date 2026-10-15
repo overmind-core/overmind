@@ -7,13 +7,13 @@ import stat
 import zipfile
 from pathlib import PurePosixPath
 
-from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 
 from overbae.models import DatasetPipelinePackage, Project
 from overbae.services.datasets import pipeline_graph
 from overbae.services.datasets.lifecycle import DatasetError
+from sandbox.packages import runtime_id
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_FILES = 100
@@ -75,8 +75,8 @@ def validate_manifest(manifest, files, *, require_runtime=True):
         raise error("The package manifest version must be 1.")
     runtime = manifest.get("runtime", "")
     if not isinstance(runtime, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", runtime):
-        raise error("Pin the runtime to an immutable Docker image ID (sha256).")
-    if require_runtime and runtime not in settings.WORKSHOP_RUNTIME_IMAGES:
+        raise error("Pin the advertised immutable sandbox runtime identity (sha256).")
+    if require_runtime and runtime != runtime_id():
         raise error(
             "The runtime is not approved on this deployment. Inspect Workshop runtime availability."
         )

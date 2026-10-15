@@ -4,24 +4,19 @@ import pytest
 from django.utils import timezone
 
 from overbae.models import DatasetPipelineRunner
-from overbae.services.datasets.pipeline_runner import DockerEngine
-from overbae.workshop_health import healthy
+from overbae.services.datasets import pipeline_runner, workbench
+from sandbox.packages import runtime_id
 
 
 @pytest.mark.django_db
-def test_controller_health_needs_fresh_receipt_and_local_images(settings, monkeypatch):
-    image = "sha256:" + "a" * 64
-    settings.WORKSHOP_RUNTIME_IMAGES = [image]
-    monkeypatch.setattr(DockerEngine, "request", lambda *args, **kwargs: {"Id": image})
-    assert not healthy()
-    runner = DatasetPipelineRunner.objects.create(
-        id="local", images=[image], status="ready", heartbeat_at=timezone.now()
+def test_runtime_health_checks_identity_and_expires(settings):
+    assert workbench.runner_status()["status"] == "unavailable"
+    assert pipeline_runner.heartbeat() == "ready"
+    assert workbench.runner_status()["images"] == [runtime_id()]
+    DatasetPipelineRunner.objects.filter(pk="sandbox").update(
+        heartbeat_at=timezone.now() - timedelta(seconds=46)
     )
-    assert healthy()
-    runner.heartbeat_at = timezone.now() - timedelta(seconds=31)
-    runner.save()
-    assert not healthy()
-    runner.heartbeat_at = timezone.now()
-    runner.save()
-    monkeypatch.setattr(DockerEngine, "request", lambda *args, **kwargs: None)
-    assert not healthy()
+    assert workbench.runner_status()["status"] == "unavailable"
+    settings.SANDBOX_URL = "http://127.0.0.1:1"
+    assert pipeline_runner.heartbeat() == "unavailable"
+    assert workbench.runner_status()["status"] == "unavailable"

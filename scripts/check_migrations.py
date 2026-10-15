@@ -3,11 +3,13 @@
 Usage: python scripts/check_migrations.py [BASE_REF]   (default: origin/main)
 
 Django checks the migration graph. New migrations must have fresh numbers;
-independent committed histories keep their identities when branches are merged.
+only the checksum-pinned applied histories retain their original identities.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -27,39 +29,9 @@ def number(name: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def merged_histories(base: str) -> dict[str, set[bytes]]:
-    parents = [
-        line.split()[1:]
-        for line in git("rev-list", "--parents", "--min-parents=2", f"{base}..HEAD")
-    ]
-    pending = subprocess.run(
-        ["git", "rev-parse", "--verify", "MERGE_HEAD"], capture_output=True, text=True
-    )
-    if pending.returncode == 0:
-        parents.append(["HEAD", pending.stdout.strip()])
-    established: dict[str, set[bytes]] = {}
-    for group in parents:
-        trees = {
-            parent: {
-                Path(path).name for path in git("ls-tree", "--name-only", parent, f"{MIGRATIONS}/")
-            }
-            for parent in group
-        }
-        for parent, names in trees.items():
-            for other, other_names in trees.items():
-                if parent == other:
-                    continue
-                for name in names - other_names:
-                    n = number(name)
-                    if n is None or not any(number(twin) == n for twin in other_names - names):
-                        continue
-                    raw = subprocess.run(
-                        ["git", "show", f"{parent}:{MIGRATIONS}/{name}"],
-                        check=True,
-                        capture_output=True,
-                    ).stdout
-                    established.setdefault(name, set()).add(raw)
-    return established
+def applied_histories():
+    # These exact histories were applied before integration; renumbering would replay them.
+    return json.loads(Path(__file__).with_name("applied-migration-history.json").read_text())
 
 
 def main(base: str) -> int:
@@ -77,16 +49,16 @@ def main(base: str) -> int:
     base_names = [Path(p).name for p in git("ls-tree", "--name-only", base, f"{MIGRATIONS}/")]
     base_max = max((number(n) or 0 for n in base_names), default=0)
     on_disk = [p.name for p in MIGRATIONS.glob("*.py")]
-    historical = merged_histories(base)
+    historical = applied_histories()
 
     errors: list[str] = []
     for name in sorted(added):
         n = number(name)
         assert n is not None
         if name in historical:
-            if (MIGRATIONS / name).read_bytes() not in historical[name]:
+            if hashlib.sha256((MIGRATIONS / name).read_bytes()).hexdigest() not in historical[name]:
                 errors.append(
-                    f"{name}: independently committed migration was modified during the merge"
+                    f"{name}: applied migration differs from its pinned historical checksum"
                 )
             continue
         if "_merge_" in name:
@@ -101,7 +73,7 @@ def main(base: str) -> int:
         print("\n".join(errors))
         return 1
     print(
-        f"Checked {len(added)} migrations; retained {len(set(added) & historical.keys())} independently committed identities."
+        f"Checked {len(added)} migrations; retained {len(set(added) & historical.keys())} checksum-pinned applied identities."
     )
     return 0
 

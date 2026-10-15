@@ -90,6 +90,10 @@ RUN python -m ensurepip --upgrade \
     && python -m pip install truss --quiet \
     && python -m pip install "watchfiles>=0.21" --quiet
 
+RUN TIKTOKEN_CACHE_DIR=/opt/sandbox/tiktoken python -c \
+        "import tiktoken; [tiktoken.get_encoding(n) for n in ('cl100k_base', 'o200k_base')]" \
+    && chmod -R a+rX,go-w /opt/sandbox
+
 RUN python manage.py collectstatic --noinput 2>/dev/null || true
 
 EXPOSE 8000

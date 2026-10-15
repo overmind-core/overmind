@@ -8,34 +8,20 @@ or decision jobs. This is a maintenance cutover, not a rolling schema change.
 
 ## Infrastructure prerequisite
 
-[cloud-platform PR #11](https://github.com/overmind-core/cloud-platform/pull/11)
-contains the companion infrastructure against
-`7b801e1c007e98f5d3e79be34fe7c3e84f88b985`. It passed Terraform formatting and
-`init -backend=false` / `validate`. It has not been planned or applied to AWS.
-Review and apply it in the infrastructure repository; keep state and environment
-secrets there.
+Retain main's Fargate services, isolated sandbox, five Celery worker profiles,
+per-project interactive admission, queue autoscaling and scale-in drain policy.
+The dedicated EC2/Docker controller proposed in cloud-platform PR #11 is not a
+dependency of this application release and must not be applied for this rollout.
 
-The patch provisions a dedicated EC2 Docker host, singleton controller service,
-EFS access, database/Redis connectivity and the release role's task-role access.
-Only the controller receives the Docker socket. Recipe containers have no network
-or host mounts. The controller uses a direct PostgreSQL connection because its
-session advisory lock cannot use transaction pooling. No provider credentials
-are passed to this service.
+Landing and interactive workers need SANDBOX_URL and SANDBOX_TOKEN and network
+access to the sandbox. The sandbox gets no app credentials or media mounts and
+has no outbound route. Deploy the same immutable application image to all three.
+Its pinned libraries and offline tokenizer cache support retained packages and
+branch document/OCR fixes. There is no in-process parsing or script fallback.
 
-Build the approved Workshop runtime for the production host's linux/amd64
-architecture and publish it to ECR. Set `workshop_runtime_images` to the Docker
-config image ID mapped to its immutable ECR manifest URI. These are different
-hashes; verify both after pulling the image on the host. Retain images referenced
-by existing recipes. An empty map deliberately provisions no host capacity.
-New runtime images require replacement or explicit preparation of the existing
-host; a launch-template change alone does not refresh it. Verify the ECS host is
-registered with `workshop=true` and all approved images are locally available.
-The service initially has desired count zero until the schema cutover.
-
-Keep main's isolated `sandbox` service: it has no app-data mount or application
-credentials and no outbound network. Landing workers use `SANDBOX_URL` and
-`SANDBOX_TOKEN`; there is no in-process document-parsing fallback. The parser
-retains branch OCR, native-text recovery, provenance and streamed progress.
+Existing Docker-pinned package revisions remain historical records. Register new
+revisions with the sandbox identity advertised by inspect_dataset_workbench; do
+not rewrite old manifests. Current recipes do not install dependencies at runtime.
 
 ## First cutover
 
@@ -44,7 +30,7 @@ retains branch OCR, native-text recovery, provenance and streamed progress.
 1. Put the public API in maintenance mode. Stop new submissions and the scheduler,
    drain queued and active work, and reconcile all outstanding provider calls.
    Record each ECS service's desired count and autoscaling settings. Suspend
-   autoscaling and stop API, all five workers and beat; wait for running and
+   autoscaling and stop API, all five workers, beat and sandbox; wait for running and
    pending counts to reach zero. Do not discard broker messages or treat a remote
    cancellation request as proof that work ended.
 1. Confirm a restorable PostgreSQL backup and retained media snapshot. Rehearse
@@ -55,18 +41,20 @@ retains branch OCR, native-text recovery, provenance and streamed progress.
    application's database.
 1. Run `scripts/deploy_ecs.py preflight --cluster CLUSTER`, then
    `scripts/deploy_ecs.py migrate --cluster CLUSTER --image IMMUTABLE_IMAGE`.
-   Preflight refuses the first cutover while old consumers are active. Migration
+   Preflight checks the currently deployed API release marker and refuses the
+   first schema cutover while old consumers are active; it never infers cutover
+   from a desired count of zero. Migration
    archives legacy rows under transactional table locks before dropping fields.
    No application container performs implicit database bootstrap.
 1. Deploy using `scripts/deploy_ecs.py deploy --cluster CLUSTER --image IMAGE --service SERVICE --desired-count RECORDED_COUNT`. Start sandbox, then
-   workshop-runner (always exactly one), landing, the remaining workers, beat,
+   landing, the remaining workers (including interactive), beat,
    and finally API. Restore recorded capacity explicitly; the script refuses to
    guess counts for stopped services. Each deployment waits for readiness before
    continuing. Keep maintenance mode until the checks below pass. Later automated
    releases preserve desired counts and follow the same consumer-first ordering.
 1. Verify source upload/export, OCR, pipeline preview/publication/cancellation,
    preparation, bounded training, held-out evaluation and inference through the
-   intended project-scoped MCP endpoint. Check runner heartbeat and image health,
+   intended project-scoped MCP endpoint. Check sandbox runtime identity and interactive consumer health,
    exact output cells and fingerprints, and source retention. Restore autoscaling
    and traffic only after successful checks.
 
