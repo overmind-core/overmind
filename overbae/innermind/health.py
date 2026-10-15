@@ -70,7 +70,7 @@ def summarize(project, capability, start, end) -> dict:
 
 
 def failures(project, capability, start, limit: int) -> list[dict]:
-    """The newest failing traces: a failing trajectory, else a failing span in the trace."""
+    """Newest traces with a failing trajectory, span or individual check."""
     spans = Span.objects.filter(project=project, received_at__gte=start)
     if capability is not None:
         spans = spans.filter(capability=capability)
