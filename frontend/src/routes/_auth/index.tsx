@@ -80,13 +80,17 @@ function CapabilitiesSection({
 
   if (!projectId) return null;
 
+  if (capabilities.length === 0) {
+    return (
+      <div className="grid min-w-0 flex-1 place-items-center">
+        <QuickstartEmbed projectId={projectId} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0 space-y-4">
-      {capabilities.length === 0 ? (
-        <QuickstartEmbed projectId={projectId} />
-      ) : (
-        <CapabilityBrowser capabilities={capabilities} projectId={projectId} />
-      )}
+      <CapabilityBrowser capabilities={capabilities} projectId={projectId} />
     </div>
   );
 }
@@ -191,7 +195,11 @@ function AgentPage() {
   }
 
   return (
-    <PageShell header={<AgentHeader graph={graphQuery.data} />} variant="scroll">
+    <PageShell
+      className="flex min-h-full flex-col gap-6 space-y-0"
+      header={<AgentHeader graph={graphQuery.data} />}
+      variant="scroll"
+    >
       <CapabilitiesSection
         error={graphQuery.error}
         graph={graphQuery.data}
