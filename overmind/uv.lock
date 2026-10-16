@@ -895,6 +895,7 @@ name = "overmind"
 version = "0.1.94"
 source = { editable = "." }
 dependencies = [
+    { name = "packaging" },
     { name = "posthog" },
     { name = "requests" },
     { name = "rich" },
@@ -951,6 +952,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.35.0" },
     { name = "opentelemetry-semantic-conventions", marker = "extra == 'tracing'", specifier = ">=0.60b1" },
     { name = "opentelemetry-semantic-conventions-ai", marker = "extra == 'tracing'", specifier = ">=0.4.13" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "posthog", specifier = ">=7.53.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=14.0.0" },

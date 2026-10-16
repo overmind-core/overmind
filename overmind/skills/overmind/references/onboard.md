@@ -28,7 +28,7 @@ with `uv run python`, `poetry run python`, or the project's virtual-environment
 Python in **every** command, including conversion and later syncs.
 
 ```bash
-python -c "import sys, overmind; from importlib.metadata import version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__)"
+python -c "import sys, overmind; from importlib.metadata import version; from packaging.version import Version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__); assert Version(version('overmind')) >= Version('0.1.94'), 'Overmind onboarding requires overmind>=0.1.94'"
 python -m overmind --help
 ```
 

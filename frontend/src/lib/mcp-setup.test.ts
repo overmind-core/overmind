@@ -39,6 +39,7 @@ describe("mcp setup snippets", () => {
         prompt.indexOf(`${KEY} python -m overmind init`)
       );
       expect(prompt).toContain("from overmind.__main__ import app");
+      expect(prompt).toContain("assert Version(version('overmind')) >= Version('0.1.94')");
       expect(prompt).toContain("from overmind.utils import convert_json_to_toml");
       expect(prompt).toContain("uv run python");
       expect(prompt).toContain("poetry run python");

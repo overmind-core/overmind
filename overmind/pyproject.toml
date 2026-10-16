@@ -21,6 +21,7 @@ dependencies = [
     "tomli>=2.0.0; python_version < '3.11'",
     "requests>=2.31.0",
     "posthog>=7.53.0",
+    "packaging>=24.0",
 ]
 description = "Overmind — autonomous agent optimisation through structured experimentation"
 keywords = ["overmind", "ai", "api", "client", "policy", "enforcement"]

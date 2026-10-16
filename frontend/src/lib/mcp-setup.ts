@@ -11,7 +11,7 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
 export const MIN_ONBOARDING_SDK_VERSION = "0.1.94";
-export const SDK_PREFLIGHT_COMMAND = `python -c "import sys, overmind; from importlib.metadata import version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__)"`;
+export const SDK_PREFLIGHT_COMMAND = `python -c "import sys, overmind; from importlib.metadata import version; from packaging.version import Version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__); assert Version(version('overmind')) >= Version('${MIN_ONBOARDING_SDK_VERSION}'), 'Overmind onboarding requires overmind>=${MIN_ONBOARDING_SDK_VERSION}'"`;
 
 export function mcpClientMeta(client: McpClient) {
   return MCP_CLIENTS.find((c) => c.id === client) ?? MCP_CLIENTS[0];
