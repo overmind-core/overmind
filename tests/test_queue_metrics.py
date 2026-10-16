@@ -180,7 +180,7 @@ def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, m
     settings.QUEUE_METRICS_CLUSTER = "test-cluster"
     settings.AWS_REGION = "eu-west-1"
     try:
-        assert publish() == {"metrics": 24}
+        assert publish() == {"metrics": 32}
         assert len(credential_reads) >= 2
         assert len(requests) == 2
         for _, headers in requests:
@@ -205,3 +205,23 @@ def test_enabled_monitor_refuses_archive_credentials_without_an_ecs_role(setting
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
     with pytest.raises(RuntimeError, match="ECS task role"):
         publish()
+
+
+@pytest.mark.django_db
+def test_trace_flood_does_not_scale_beyond_usable_project_admission(settings):
+    from overbae.innermind import admission
+    from overbae.models import Project
+
+    settings.LIVE_SCORING_MAX_IN_FLIGHT = 16
+    settings.LIVE_SCORING_MAX_PER_PROJECT = 2
+    noisy = Project.objects.create(name="noisy", slug="noisy-scaling")
+    quiet = Project.objects.create(name="quiet", slug="quiet-scaling")
+    admission.enqueue(noisy.pk, "span", [str(index) for index in range(10000)])
+    admission.enqueue(quiet.pk, "span", ["small"])
+    workload = read_workloads()["io_traces"]
+    assert workload["waiting"] == 10001
+    assert workload["scaling_demand"] == 3
+    points = metric_data({"io_traces": workload}, {"io_traces": 1}, cluster="test")
+    assert (
+        next(point["Value"] for point in points if point["MetricName"] == "BacklogPerWorker") == 3
+    )

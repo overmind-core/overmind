@@ -395,9 +395,8 @@ CELERY_TIMEZONE = "UTC"
 
 # Workers are resource profiles, queues are fairness classes. Only prefork
 # enforces time_limit and revoke(terminate=True), so every time-limited task
-# routes to a prefork lane; test_celery_topology asserts it. io_traces is a
-# second queue on the io worker, not a second worker: round-robin keeps an
-# unbounded trace burst from queueing ahead of user-started eval scoring. Landing
+# routes to a prefork lane; test_celery_topology asserts it. io_traces has its own
+# worker so trace scoring cannot occupy preparation and serving slots. Landing
 # has its own process pool: fair scheduling cannot preempt six occupied bulk slots.
 CELERY_TASK_DEFAULT_QUEUE = "control"
 
@@ -407,8 +406,12 @@ QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
 
 # Admission is a provider-spend/concurrency budget, independent of sample count.
 EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
+EVAL_MAX_IN_FLIGHT_PER_PROJECT = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_PROJECT", "4"))
 EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
 DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "3600"))
+LIVE_SCORING_MAX_IN_FLIGHT = int(os.environ.get("LIVE_SCORING_MAX_IN_FLIGHT", "16"))
+LIVE_SCORING_MAX_PER_PROJECT = int(os.environ.get("LIVE_SCORING_MAX_PER_PROJECT", "2"))
+
 CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.check_pipeline_runtime": {"queue": "interactive"},
     "overbae.tasks.datasets.refresh_pipeline_bindings": {"queue": "batch"},
@@ -432,6 +435,8 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
+    "overbae.tasks.innermind.dispatch_live_scoring": {"queue": "control"},
+    "overbae.tasks.innermind.execute_live_scoring": {"queue": "io_traces"},
     "overbae.tasks.innermind.score_spans": {"queue": "io_traces"},
     "overbae.tasks.innermind.sweep_unscored_spans": {"queue": "io_traces"},
     "overbae.tasks.innermind.score_trajectories": {"queue": "io_traces"},
@@ -538,6 +543,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 15.0,
     },
     # Re-drives spans still waiting for an ancestor, stale claims and lost enqueues.
+    "admit-live-scoring": {
+        "task": "overbae.tasks.innermind.dispatch_live_scoring",
+        "schedule": 15.0,
+        "options": {"expires": 14.0},
+    },
     "sweep-unscored-spans": {
         "task": "overbae.tasks.innermind.sweep_unscored_spans",
         "schedule": 120.0,

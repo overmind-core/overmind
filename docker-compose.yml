@@ -154,7 +154,19 @@ services:
 
   celery-io-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 -Q io,io_traces
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 --prefetch-multiplier=1 --disable-prefetch --hostname=io@%h -Q io
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-traces-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 --disable-prefetch --hostname=io_traces@%h -Q io_traces
     restart: unless-stopped
     environment:
       <<: *env-common

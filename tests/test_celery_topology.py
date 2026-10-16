@@ -177,6 +177,34 @@ def test_landing_has_dedicated_prefork_capacity():
     assert any(bulk_queue in queues for queues in _compose_worker_queues().values())
 
 
+def test_training_preparation_does_not_wait_for_live_trace_scoring():
+    from overbae.celery import app
+    from overbae.tasks.innermind import score_spans
+    from overbae.tasks.training_preparation import inspect_preparation
+
+    preparation_queue = app.amqp.router.route({}, inspect_preparation.name)["queue"].name
+    scoring_queue = app.amqp.router.route({}, score_spans.name)["queue"].name
+    assert preparation_queue != scoring_queue
+    assert preparation_queue in _makefile_worker_queues()
+    for commands in (
+        {name: service["command"] for name, service in _compose_services().items()},
+        _deployed_commands(),
+    ):
+        io_workers = [
+            command
+            for command in commands.values()
+            if preparation_queue in (_worker_queues(command) or set())
+        ]
+        trace_workers = [
+            command
+            for command in commands.values()
+            if scoring_queue in (_worker_queues(command) or set())
+        ]
+        assert io_workers and trace_workers
+        assert not set(io_workers) & set(trace_workers)
+        assert all("--disable-prefetch" in command for command in [*io_workers, *trace_workers])
+
+
 def test_new_producers_wait_for_healthy_landing_capacity():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]

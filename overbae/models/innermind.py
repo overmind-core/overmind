@@ -489,3 +489,37 @@ class SignalEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.signal_type}: {self.message[:60]}"
+
+
+class LiveScoringScheduler(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    last_tick_at = models.DateTimeField(null=True)
+
+
+class LiveScoringProject(models.Model):
+    last_kind = models.CharField(max_length=16, blank=True, default="")
+    project = models.OneToOneField("overbae.Project", primary_key=True, on_delete=models.CASCADE)
+    last_admitted_at = models.DateTimeField(null=True)
+
+
+class LiveScoringWork(models.Model):
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=16)
+    key = models.CharField(max_length=64)
+    state = models.CharField(max_length=16, default="waiting")
+    task_id = models.CharField(max_length=36, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    queued_at = models.DateTimeField(null=True)
+    started_at = models.DateTimeField(null=True)
+    expires_at = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True)
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["project", "kind", "key"], name="live_scoring_identity")
+        ]
+        indexes = [
+            models.Index(fields=["state", "expires_at"], name="live_scoring_expiry"),
+            models.Index(fields=["project", "state", "id"], name="live_scoring_project_wait"),
+        ]

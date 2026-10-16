@@ -18,6 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEALTH_CHECKED_QUEUES = {
+    "celery-io-worker": "io",
+    "celery-traces-worker": "io_traces",
     "celery-landing-worker": "landing",
     "celery-interactive-worker": "interactive",
 }
@@ -115,7 +117,12 @@ def render_task_definition(document, *, service, image, cluster):
 
 
 def preflight(cluster):
-    for name in ("sandbox", "celery-landing-worker", "celery-interactive-worker"):
+    for name in (
+        "sandbox",
+        "celery-landing-worker",
+        "celery-interactive-worker",
+        "celery-traces-worker",
+    ):
         service = describe_service(cluster, name)
         family = service["taskDefinition"].rsplit("/", 1)[-1].rsplit(":", 1)[0]
         definition = aws("ecs", "describe-task-definition", "--task-definition", family)[
@@ -260,9 +267,40 @@ def migrate(cluster, image):
     print(f"Migration completed: {arn}")
 
 
+def drain_io(cluster, image, timeout=4200):
+    service, definition = register(cluster, "api", image)
+    request = migration_request(
+        definition, service, task_definition=definition["taskDefinitionArn"], cluster=cluster
+    )
+    request["overrides"]["containerOverrides"][0]["command"] = [
+        "python",
+        "-m",
+        "overbae.worker_drain",
+        "--timeout",
+        str(timeout),
+    ]
+    result = aws("ecs", "run-task", payload=request)
+    if result.get("failures") or len(result.get("tasks", [])) != 1:
+        raise RuntimeError("IO drain task was not accepted; worker deployment stopped")
+    arn = result["tasks"][0]["taskArn"]
+    deadline = time.monotonic() + timeout + 180
+    while time.monotonic() < deadline:
+        task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
+        if task["lastStatus"] == "STOPPED":
+            app = next(c for c in task["containers"] if c["name"] == "api")
+            if app.get("exitCode") != 0:
+                raise RuntimeError(f"IO drain failed in {arn}; worker deployment stopped")
+            print(f"Mixed IO consumers drained: {arn}", flush=True)
+            return
+        time.sleep(10)
+    raise TimeoutError(f"IO drain did not complete: {arn}; worker deployment stopped")
+
+
 def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
     if desired_count is not None and desired_count < 1:
         raise ValueError("Deployment requires a positive desired count.")
+    if service_name == "celery-io-worker":
+        drain_io(cluster, image, timeout)
     current = describe_service(cluster, service_name)
     if not current.get("desiredCount") and desired_count is None:
         raise ValueError(

@@ -73,9 +73,9 @@ def service():
     }
 
 
-@pytest.mark.parametrize("queue", ["landing", "interactive"])
+@pytest.mark.parametrize("queue", ["landing", "interactive", "io", "io_traces"])
 def test_every_release_overrides_stale_worker_command(definition, queue):
-    service = f"celery-{queue}-worker"
+    service = "celery-traces-worker" if queue == "io_traces" else f"celery-{queue}-worker"
     definition["family"] = service
     definition["containerDefinitions"][0]["name"] = service
     rendered = render_task_definition(
@@ -239,6 +239,7 @@ def test_first_cutover_checks_every_consumer(monkeypatch):
         "api",
         "celery-control-worker",
         "celery-io-worker",
+        "celery-traces-worker",
         "celery-batch-worker",
         "celery-landing-worker",
         "celery-interactive-worker",

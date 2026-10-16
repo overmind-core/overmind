@@ -161,14 +161,46 @@ jobs:
           SERVICE: celery-landing-worker
         run: python scripts/deploy_ecs.py deploy
 
-  deploy-workers:
+  deploy-control:
     runs-on: ubuntu-latest
     needs: [build-and-push, deploy-landing]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Register fair dispatch before new trace consumers
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: celery-control-worker
+        run: python scripts/deploy_ecs.py deploy
+
+  deploy-traces:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-control]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Verify dedicated trace capacity before isolating IO
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: celery-traces-worker
+        run: python scripts/deploy_ecs.py deploy
+
+  deploy-workers:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-traces]
     timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
-        service: [celery-control-worker, celery-io-worker, celery-batch-worker, celery-interactive-worker]
+        service: [celery-io-worker, celery-batch-worker, celery-interactive-worker]
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4

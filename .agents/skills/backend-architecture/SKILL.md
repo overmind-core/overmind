@@ -19,23 +19,24 @@ Single Django app `overbae`, project-scoped tenancy.
 
 ## Celery topology
 
-Five workers, six queues. Workers are resource profiles; queues are fairness classes.
+Six workers, six queues. Workers are resource profiles; queues are fairness classes.
 
-| Worker        | Pool    | Conc | Queues           | Holds                                                              |
-| ------------- | ------- | ---- | ---------------- | ------------------------------------------------------------------ |
-| `control`     | threads | 8    | `control`        | orchestration, chord callbacks, FSM advances, beat                 |
-| `io`          | threads | 24   | `io`,`io_traces` | eval launch, live scoring, signals, connector polling              |
-| `batch`       | prefork | 6    | `batch`          | pipeline bindings, evaluation generation/scoring, connector chunks |
-| `landing`     | prefork | 1    | `landing`        | source imports                                                     |
-| `interactive` | prefork | 4    | `interactive`    | retained-package pipelines and runtime health                      |
+| Worker        | Pool    | Conc | Queues        | Holds                                                              |
+| ------------- | ------- | ---- | ------------- | ------------------------------------------------------------------ |
+| `control`     | threads | 8    | `control`     | orchestration, chord callbacks, FSM advances, beat                 |
+| `io`          | threads | 24   | `io`          | preparation, eval launch, serving, connector polling               |
+| `io_traces`   | prefork | 4    | `io_traces`   | live span/trajectory scoring and signals                           |
+| `batch`       | prefork | 6    | `batch`       | pipeline bindings, evaluation generation/scoring, connector chunks |
+| `landing`     | prefork | 1    | `landing`     | source imports                                                     |
+| `interactive` | prefork | 4    | `interactive` | retained-package pipelines and runtime health                      |
 
-Three constraints set the worker split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch`, `landing` or `interactive`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run. `run_eval_run` routes to `io` because Modal warm-up blocks for minutes; the import and workshop reconcilers and queue metrics run on `control` with short expiries and are dropped when it is full.
+Three constraints set the worker split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch`, `landing`, `interactive` or `io_traces`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run. `run_eval_run` routes to `io` because Modal warm-up blocks for minutes; the import and workshop reconcilers and queue metrics run on `control` with short expiries and are dropped when it is full.
 
-`io_traces` is a second queue on the io worker, not a second worker: one worker over both round-robins (kombu's redis default), so an unbounded span-scoring burst cannot queue ahead of eval launches.
+`io` and `io_traces` have exclusive worker pools. Round-robin delivery cannot protect IO once long-running trace tasks occupy every thread. Both pools disable prefetch. LiveScoringWork retains waiting span, trajectory and signal work in PostgreSQL; a row-locked dispatcher admits at most 16 items globally and two per project, ordered by least recent project admission. Each prefork attempt has a five-minute hard limit and a six-minute fenced running lease. Duplicate broker deliveries cannot claim a running or superseded token. Existing span claim grace and three-attempt rules govern recovery, never fabricated scores. Queue metrics include durable live-scoring backlog and oldest waiting age. Deploy and verify the trace-only worker before removing trace consumption from IO. Drain old mixed consumers before stopping them; do not discard reserved tasks or revoke acknowledged provider work.
 
-Every prefork lane (`batch`, `landing`, `interactive`) sets `--prefetch-multiplier=1 --disable-prefetch`, so a busy process never reserves waiting work. A reserved late-ack message stays unacknowledged, and Redis redelivers it after the broker `visibility_timeout` (2 h, above every late-ack time limit; `tests/test_celery_topology.py` holds both). Landing workers consume only `landing`; raising bulk concurrency cannot protect import latency when every bulk slot is occupied.
+Every prefork lane (`batch`, `landing`, `interactive`, `io_traces`) sets `--prefetch-multiplier=1 --disable-prefetch`, so a busy process never reserves waiting work. A reserved late-ack message stays unacknowledged, and Redis redelivers it after the broker `visibility_timeout` (2 h, above every late-ack time limit; `tests/test_celery_topology.py` holds both). Landing workers consume only `landing`; raising bulk concurrency cannot protect import latency when every bulk slot is occupied.
 
-Evaluation generation (`innermind/generation.py`) admits `EvalRunRow`s under a global `EvalGenerationScheduler` row lock. `EVAL_MAX_IN_FLIGHT` bounds admitted provider work (default 12), with `EVAL_MAX_IN_FLIGHT_PER_RUN` (default 2) and least-recently-admitted project/run fairness. Waiting rows remain in Postgres; completion and a 30-second control tick replenish available slots. Completion wakeups coalesce through a cache key, so at most one dispatcher waits on the lock. Failed/cancelled parents cannot claim or continue generation. Lost started attempts become explicit unknown outcomes and are not automatically repeated.
+Evaluation generation (`innermind/generation.py`) admits `EvalRunRow`s under a global `EvalGenerationScheduler` row lock. `EVAL_MAX_IN_FLIGHT` bounds admitted provider work (default 12), with `EVAL_MAX_IN_FLIGHT_PER_PROJECT` (default 4 across all runs), `EVAL_MAX_IN_FLIGHT_PER_RUN` (default 2) and least-recently-admitted project/run fairness. Waiting rows remain in Postgres; completion and a 30-second control tick replenish available slots. Completion wakeups coalesce through a cache key, so at most one dispatcher waits on the lock. Failed/cancelled parents cannot claim or continue generation. Lost started attempts become explicit unknown outcomes and are not automatically repeated.
 
 Chat HTTP clients enforce one cancellable elapsed deadline across request bodies, SSE heartbeats and retry waits. They close their connections on expiration; a socket read timeout alone is not a total time bound.
 

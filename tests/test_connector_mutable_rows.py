@@ -3,19 +3,15 @@ from __future__ import annotations
 import pytest
 from factories import make_connector
 
-from overbae.models import ConnectorCredential, Span
+from overbae.models import ConnectorCredential, LiveScoringWork, Span
 from overbae.tasks import connector_sync
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def scored(monkeypatch) -> list[str]:
-    queued: list[str] = []
-    monkeypatch.setattr(
-        "overbae.tasks.innermind.score_spans.delay", lambda **kw: queued.extend(kw["span_ids"])
-    )
-    return queued
+def scored():
+    return LiveScoringWork.objects.filter(kind="span").values_list("key", flat=True)
 
 
 def _live(connector_type: str, source: str = "", **fields) -> ConnectorCredential:
@@ -68,7 +64,7 @@ def test_a_newer_row_version_overwrites_the_stored_span_without_rescoring(braint
     assert span.name == "handler-reviewed"
     assert span.attributes["braintrust.scores"] == {"quality": 0.9}
     assert span.attributes["connector.version"] == "2000"
-    assert scored == [span.span_id]
+    assert list(scored) == [span.span_id]
 
 
 def test_a_same_or_older_row_version_leaves_the_span_alone(braintrust, scored):

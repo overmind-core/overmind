@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
-from overbae.models import DatasetImport, DatasetPipelineRun, EvalRunRow
+from overbae.models import DatasetImport, DatasetPipelineRun, EvalRunRow, LiveScoringWork
 
 NAMESPACE = "Overmind/Queues"
 WORKER_SERVICES = {
+    "io_traces": "celery-traces-worker",
     "landing": "celery-landing-worker",
     "batch": "celery-batch-worker",
     "interactive": "celery-interactive-worker",
@@ -48,7 +50,32 @@ def read_workloads():
         blocked=Count("pk", filter=Q(state="running", lease_until__isnull=True)),
         oldest=Min("created_at", filter=Q(state="queued")),
     )
+    scoring = LiveScoringWork.objects.aggregate(
+        waiting=Count("pk", filter=Q(state__in=["waiting", "queued"])),
+        running=Count("pk", filter=Q(state="running")),
+        blocked=Count(
+            "pk",
+            filter=Q(
+                error="worker admission expired",
+                finished_at__gte=timezone.now() - timedelta(seconds=NEWLY_BLOCKED_SECONDS),
+            ),
+        ),
+        oldest=Min("created_at", filter=Q(state__in=["waiting", "queued"])),
+    )
+    project_demand = (
+        LiveScoringWork.objects.filter(state__in=["waiting", "queued", "running"])
+        .values("project_id")
+        .annotate(total=Count("pk"))
+    )
+    scoring["scaling_demand"] = min(
+        max(1, settings.LIVE_SCORING_MAX_IN_FLIGHT),
+        sum(
+            min(row["total"], max(1, settings.LIVE_SCORING_MAX_PER_PROJECT))
+            for row in project_demand
+        ),
+    )
     return {
+        "io_traces": scoring,
         "landing": imports,
         "batch": evaluation,
         "interactive": workshop,
@@ -66,7 +93,10 @@ def metric_data(workloads, running_workers, *, cluster, now=None):
             "RunningWork": workload["running"],
             "RunningWorkers": workers,
             "MissingWorkers": int(workers == 0),
-            "BacklogPerWorker": (workload["waiting"] + workload["running"]) / max(workers, 1),
+            "BacklogPerWorker": workload.get(
+                "scaling_demand", workload["waiting"] + workload["running"]
+            )
+            / max(workers, 1),
             "OldestQueuedAgeSeconds": age,
             "MetricHeartbeat": 1,
             "NewlyBlockedImports" if queue == "landing" else "UnknownWork": workload["blocked"],

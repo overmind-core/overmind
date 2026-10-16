@@ -84,10 +84,17 @@ def dispatch(publish, publish_scoring) -> dict[str, int]:
 
     cap = max(1, int(getattr(settings, "EVAL_MAX_IN_FLIGHT", 12)))
     per_run = max(1, int(getattr(settings, "EVAL_MAX_IN_FLIGHT_PER_RUN", 2)))
+    per_project = max(1, int(getattr(settings, "EVAL_MAX_IN_FLIGHT_PER_PROJECT", 4)))
     available = max(0, cap - rows.filter(state__in=IN_FLIGHT).count())
     own = rows.filter(run_id=OuterRef("pk"))
     own_active = (
         own.filter(state__in=IN_FLIGHT).values("run_id").annotate(total=Count("pk")).values("total")
+    )
+    project_active = (
+        rows.filter(run__project_id=OuterRef("project_id"), state__in=IN_FLIGHT)
+        .values("run__project_id")
+        .annotate(total=Count("pk"))
+        .values("total")
     )
     project_last = (
         running.filter(project_id=OuterRef("project_id"))
@@ -102,8 +109,9 @@ def dispatch(publish, publish_scoring) -> dict[str, int]:
                 has_waiting=Exists(own.filter(state=EvalRunRow.State.WAITING)),
                 active=Coalesce(Subquery(own_active, output_field=IntegerField()), 0),
                 project_last=Subquery(project_last),
+                project_active=Coalesce(Subquery(project_active, output_field=IntegerField()), 0),
             )
-            .filter(has_waiting=True, active__lt=per_run)
+            .filter(has_waiting=True, active__lt=per_run, project_active__lt=per_project)
             .order_by(
                 F("project_last").asc(nulls_first=True),
                 F("last_admitted_at").asc(nulls_first=True),
