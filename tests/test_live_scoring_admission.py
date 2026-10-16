@@ -120,3 +120,39 @@ def test_project_rotates_work_kinds_despite_large_span_backlog(settings):
         kinds.append(item.kind)
         admission.finish(pk, token)
     assert kinds == ["span", "trajectory", "signals"]
+
+
+def test_slow_dispatch_does_not_occupy_other_control_threads():
+    import threading
+    import time
+
+    from overbae.models import LiveScoringScheduler
+
+    tenant = project()
+    admission.enqueue(tenant.pk, "span", ["one"])
+    LiveScoringScheduler.objects.get_or_create(pk=1)
+    publishing = threading.Event()
+    release = threading.Event()
+
+    def publish(*_):
+        publishing.set()
+        assert release.wait(5)
+
+    def owner():
+        close_old_connections()
+        try:
+            return admission.dispatch(publish)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(owner)
+        try:
+            assert publishing.wait(5)
+            started = time.monotonic()
+            result = admission.dispatch(lambda *_: pytest.fail("overlapping publication"))
+            assert time.monotonic() - started < 0.5
+            assert result == {"admitted": 0, "expired": 0, "busy": True}
+        finally:
+            release.set()
+        assert pending.result(timeout=5)["admitted"] == 1

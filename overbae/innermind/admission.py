@@ -30,7 +30,11 @@ def enqueue(project_id, kind: str, keys: list[str]) -> None:
 @transaction.atomic
 def dispatch(publish) -> dict:
     LiveScoringScheduler.objects.get_or_create(pk=1)
-    scheduler = LiveScoringScheduler.objects.select_for_update().get(pk=1)
+    scheduler = (
+        LiveScoringScheduler.objects.select_for_update(skip_locked=True).filter(pk=1).first()
+    )
+    if scheduler is None:
+        return {"admitted": 0, "expired": 0, "busy": True}
     now = timezone.now()
     scheduler.last_tick_at = now
     scheduler.save(update_fields=["last_tick_at"])
