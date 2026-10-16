@@ -417,3 +417,65 @@ def test_decision_deployment_shows_its_typed_inference_endpoint(console, worksho
     )
     console.healthy()
     console.save_evidence("decision-inference-snippet")
+
+
+def test_data_onboarding_uploads_once_and_hands_off_sft_preparation(console, tmp_path):
+    console.goto("/projects")
+    console.press("New project")
+    console._browser.call(
+        lambda: console._page.get_by_label("Project name", exact=True).fill(
+            "SFT onboarding fixture"
+        )
+    )
+    console.upload('input[type="file"]', tickets(tmp_path))
+    console.sees("3 rows")
+    console.wait_until(
+        "() => document.querySelector('[role=dialog]').getAnimations().every(a => a.playState !== 'running')"
+    )
+    console.save_evidence("data-onboarding-upload")
+    console.press("Create dataset")
+    console.sees("Prepare your SFT dataset")
+    dataset = Dataset.objects.get(name="SFT onboarding fixture")
+    assert dataset.intent == "train"
+    assert dataset.capability_id is None
+    console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
+    console._browser.call(
+        lambda: console._page.evaluate("""() => {
+        window.copiedOnboardingPrompt = '';
+        navigator.clipboard.write = async items => {
+            window.copiedOnboardingPrompt = await (await items[0].getType('text/plain')).text();
+        };
+        navigator.clipboard.writeText = async text => { window.copiedOnboardingPrompt = text; };
+    }""")
+    )
+    console.press("Copy onboarding prompt for Cursor")
+    console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
+    prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
+    assert f"Dataset ID: {dataset.id}" in prompt
+    assert f"Project ID: {dataset.project_id}" in prompt
+    assert "chat_train" in prompt
+    assert "overmind init" not in prompt
+    assert "overmind sync" not in prompt
+    console.save_evidence("data-onboarding-handoff")
+    console._browser.call(lambda: console._page.set_viewport_size({"width": 390, "height": 844}))
+    console.wait_until(
+        "() => document.querySelector('[role=dialog]').getAnimations().every(a => a.playState !== 'running')"
+    )
+    bounds = console._browser.call(
+        lambda: console._page.evaluate("""() => {
+        const d = document.querySelector('[role=dialog]'); const r = d.getBoundingClientRect();
+        return {left:r.left, right:r.right, viewport:innerWidth, width:getComputedStyle(d).width, maxWidth:getComputedStyle(d).maxWidth, translate:getComputedStyle(d).translate, transform:getComputedStyle(d).transform};
+    }""")
+    )
+    assert bounds["left"] >= 0 and bounds["right"] <= bounds["viewport"], bounds
+    console.save_evidence("data-onboarding-handoff-mobile")
+    console._browser.call(
+        lambda: (
+            console._page.get_by_role("dialog")
+            .get_by_role("button", name="Close", exact=True)
+            .last.click()
+        )
+    )
+    console.wait_until("() => !location.search.includes('prepare=')")
+    console.sees("SFT onboarding fixture")
+    console.healthy()

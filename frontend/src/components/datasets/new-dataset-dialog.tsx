@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 
-import { Attachment } from "@/components/datasets/attachment";
+import { DatasetFileUpload } from "@/components/datasets/dataset-file-upload";
 import { evaluationRows } from "@/components/datasets/dataset-split";
 import {
   TraceBulkSourcePicker,
@@ -103,8 +103,6 @@ export function NewDatasetDialog({
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
   const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const upload = useDatasetUploads();
   const create = useCreateDatasetMutation();
   const createSplit = useCreateDatasetSplitMutation();
@@ -131,23 +129,12 @@ export function NewDatasetDialog({
     setPosition("tail");
     setPicked({ status: "counting" });
     setError(null);
-    setDragging(false);
     if (initialFiles && initialFiles.length > 100) {
       setError("Choose up to 100 files.");
     } else if (initialFiles?.length) {
       upload.add(initialFiles);
     }
   }, [open]);
-
-  const addFiles = (files: File[]) => {
-    if (busy) return;
-    if (upload.files.length + files.length > 100) {
-      setError("Choose up to 100 files.");
-      return;
-    }
-    setError(null);
-    upload.add(files);
-  };
 
   const readiness = useMemo((): Readiness => {
     if (sourceType === "file") {
@@ -279,75 +266,7 @@ export function NewDatasetDialog({
           </div>
 
           {sourceType === "file" ? (
-            <section
-              aria-label="Upload files"
-              className={cn(
-                "flex flex-col gap-3 rounded-md border border-dashed p-3 transition-colors",
-                dragging ? "border-primary bg-accent" : "border-border"
-              )}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!busy) setDragging(true);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragging(false);
-                addFiles(Array.from(e.dataTransfer.files));
-              }}
-            >
-              {upload.files.length > 0 && (
-                <ul aria-label="Selected files" className="flex flex-wrap gap-2">
-                  {upload.files.map((entry) => (
-                    <Attachment
-                      detailed
-                      disabled={busy}
-                      entry={entry}
-                      key={entry.id}
-                      onRemove={() => upload.remove(entry.id)}
-                      onRetry={() => upload.retry(entry)}
-                    />
-                  ))}
-                </ul>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <p className="text-sm">
-                    {upload.files.length ? "Drop more files here" : "Drop files here"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Tables, documents, PNG, JPEG or WebP images
-                  </p>
-                </div>
-                <input
-                  accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
-                  aria-label="Choose dataset files"
-                  className="hidden"
-                  disabled={busy}
-                  multiple
-                  onChange={(e) => {
-                    addFiles(Array.from(e.target.files ?? []));
-                    e.target.value = "";
-                  }}
-                  ref={fileInputRef}
-                  type="file"
-                />
-                <Button
-                  disabled={busy}
-                  onClick={() => fileInputRef.current?.click()}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Icon.add />
-                  {upload.files.length ? "Add files" : "Choose files"}
-                </Button>
-              </div>
-            </section>
+            <DatasetFileUpload busy={busy} onError={setError} upload={upload} />
           ) : !fromTraces ? (
             <TraceBulkSourcePicker onChange={setPicked} projectId={projectId} />
           ) : null}

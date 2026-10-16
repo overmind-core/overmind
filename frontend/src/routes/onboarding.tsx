@@ -5,7 +5,10 @@ import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 
 import overmindEye from "@/assets/overmind-eye-copper.svg";
 import apiClient from "@/client";
-import { DataProjectForm } from "@/components/onboarding/data-project-form";
+import {
+  type DataProjectCreated,
+  DataProjectForm,
+} from "@/components/onboarding/data-project-form";
 import { clearDraft } from "@/components/onboarding/draft";
 import { OnboardingShell } from "@/components/onboarding/shell";
 import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
@@ -77,7 +80,8 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [source, setSource] = useState("data");
-  const [dataProject, setDataProject] = useState<string>();
+  const [dataProject, setDataProject] = useState<DataProjectCreated>();
+  const [dataBusy, setDataBusy] = useState(false);
 
   useEffect(() => {
     if (hasCompleted) return;
@@ -108,7 +112,11 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
     if (!done) return;
     const t = setTimeout(() => {
       if (dataProject)
-        void navigate({ search: { create: true, projectId: dataProject }, to: "/datasets" });
+        void navigate({
+          params: { datasetId: dataProject.datasetId },
+          search: { prepare: "sft", projectId: dataProject.projectId },
+          to: "/datasets/$datasetId",
+        });
       else void navigate({ search: { projectId: undefined }, to: "/" });
     }, DONE_DWELL_MS);
     return () => clearTimeout(t);
@@ -144,12 +152,17 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
 
         <Tabs onValueChange={setSource} value={source}>
           <TabsList>
-            <TabsTrigger value="data">From data</TabsTrigger>
-            <TabsTrigger value="repository">From repository</TabsTrigger>
+            <TabsTrigger disabled={dataBusy || pending} value="data">
+              From data
+            </TabsTrigger>
+            <TabsTrigger disabled={dataBusy || pending} value="repository">
+              From repository
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         {source === "data" ? (
           <DataProjectForm
+            onBusyChange={setDataBusy}
             onCreated={(id) => {
               setDataProject(id);
               finishMutation.mutate();
@@ -163,7 +176,7 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
       <div className="flex shrink-0 items-center justify-end border-t border-auth-border px-7 py-4">
         <Button
           className="gap-2"
-          disabled={pending}
+          disabled={pending || dataBusy}
           onClick={() => finishMutation.mutate()}
           type="button"
         >

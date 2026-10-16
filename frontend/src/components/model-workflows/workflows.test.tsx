@@ -1,15 +1,11 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { seriesColor } from "@/lib/colors";
 import { type Comparison, ComparisonMetrics } from "./comparison-metrics";
 
-const create = vi.hoisted(() => vi.fn());
-vi.mock("@/client", () => ({ default: { projects: { projectsCreate: create } } }));
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -23,20 +19,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-});
-it("creates a data project without a repository or capability", async () => {
-  create.mockResolvedValue({ id: "data-project" });
-  const done = vi.fn();
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <DataProjectForm onCreated={done} />
-    </QueryClientProvider>
-  );
-  fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Rating research" } });
-  fireEvent.click(screen.getByRole("button", { name: "Continue with data" }));
-  await waitFor(() => expect(done).toHaveBeenCalledWith("data-project"));
-  expect(create.mock.calls[0][0].projectRequest.name).toBe("Rating research");
-  expect(create.mock.calls[0][0].projectRequest).not.toHaveProperty("repository");
 });
 it("keeps soft-target metrics and coverage visible without inventing accuracy", async () => {
   const metric = { decisions: 7, groups: 5, interval_95: [1.2, 2.6], mean: 1.8 };

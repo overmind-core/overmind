@@ -21,8 +21,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 function CreateProjectForm({
   onCancel,
   onSuccess,
+  onBusyChange,
+  busy,
 }: {
   onSuccess?: () => void;
+  onBusyChange: (busy: boolean) => void;
+  busy: boolean;
   onCancel?: () => void;
 }) {
   const [source, setSource] = useState("data");
@@ -32,16 +36,26 @@ function CreateProjectForm({
       <DialogBody>
         <Tabs onValueChange={setSource} value={source}>
           <TabsList>
-            <TabsTrigger value="data">From data</TabsTrigger>
-            <TabsTrigger value="repository">From repository</TabsTrigger>
+            <TabsTrigger disabled={busy} value="data">
+              From data
+            </TabsTrigger>
+            <TabsTrigger disabled={busy} value="repository">
+              From repository
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="mt-4">
           {source === "data" ? (
             <DataProjectForm
-              onCreated={(projectId) => {
+              onBusyChange={onBusyChange}
+              onCreated={({ projectId, datasetId }) => {
+                onBusyChange(false);
                 onSuccess?.();
-                void navigate({ search: { create: true, projectId }, to: "/datasets" });
+                void navigate({
+                  params: { datasetId },
+                  search: { prepare: "sft", projectId },
+                  to: "/datasets/$datasetId",
+                });
               }}
             />
           ) : (
@@ -54,7 +68,7 @@ function CreateProjectForm({
         </div>
       </DialogBody>
       <DialogFooter>
-        <Button onClick={onCancel} type="button" variant="secondary">
+        <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">
           <Icon.close />
           Close
         </Button>
@@ -74,6 +88,7 @@ export function CreateProjectDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: CreateProjectDialogProps) {
+  const [busy, setBusy] = useState(false);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -81,7 +96,12 @@ export function CreateProjectDialog({
   const showTrigger = trigger != null || controlledOpen === undefined;
 
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
+    <Dialog
+      onOpenChange={(next) => {
+        if (!busy) setOpen(next);
+      }}
+      open={open}
+    >
       {showTrigger ? (
         <DialogTrigger asChild>
           {trigger ?? (
@@ -103,7 +123,12 @@ export function CreateProjectDialog({
           </DialogDescription>
         </DialogHeader>
         {open ? (
-          <CreateProjectForm onCancel={() => setOpen(false)} onSuccess={() => setOpen(false)} />
+          <CreateProjectForm
+            busy={busy}
+            onBusyChange={setBusy}
+            onCancel={() => setOpen(false)}
+            onSuccess={() => setOpen(false)}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

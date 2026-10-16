@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { config } from "@/config";
 import { useValidatedAccountApiKey } from "@/hooks/use-validated-cached-api-key";
 import { writeClipboardText } from "@/lib/clipboard";
+import { dataOnboardingPrompt } from "@/lib/data-onboarding-prompt";
 import {
   type McpClient,
   manualSetupCommand,
@@ -25,12 +26,14 @@ import { ScopeEnum } from "@/openapi";
 
 export function OnboardWithAiPanel({
   className,
+  datasetId,
   onPromptCopied,
   projectId,
   showManualSetup = true,
   waitingHint,
 }: {
   className?: string;
+  datasetId?: string;
   onPromptCopied?: () => void;
   projectId?: string;
   showManualSetup?: boolean;
@@ -75,7 +78,9 @@ export function OnboardWithAiPanel({
   const copyOnboardingPrompt = () => {
     const prompt = mintKey().then((key) => {
       if (!key) throw new Error("API key creation failed");
-      return onboardWithAiBootstrapPrompt(client, key, apiUrl);
+      return datasetId && projectId
+        ? dataOnboardingPrompt(client, key, apiUrl, projectId, datasetId)
+        : onboardWithAiBootstrapPrompt(client, key, apiUrl);
     });
 
     void writeClipboardText(prompt).then(
@@ -96,9 +101,10 @@ export function OnboardWithAiPanel({
       <div className="space-y-3">
         <McpClientPicker onChange={setClient} value={client} />
         <p className="text-xs text-muted-foreground">
-          Open your repository in {meta.label} with the repo root as the workspace folder, then
-          paste the prompt. It contains a temporary account key — paste only into your local coding
-          agent.
+          {datasetId
+            ? `Open a workspace in ${meta.label} and paste the prompt. Your agent will prepare the uploaded data here; no repository is needed.`
+            : `Open your repository in ${meta.label} with the repo root as the workspace folder, then paste the prompt.`}{" "}
+          The prompt includes an account key. Paste it only into your trusted coding agent.
         </p>
         <Button
           className="w-full gap-2"
@@ -127,7 +133,7 @@ export function OnboardWithAiPanel({
         {waitingHint ? <p className="text-xs text-muted-foreground">{waitingHint}</p> : null}
       </div>
 
-      {showManualSetup ? (
+      {showManualSetup && !datasetId ? (
         <details className="overflow-hidden rounded-md border border-border">
           <summary className="cursor-pointer border-b border-border/70 bg-muted px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
             Manual setup
