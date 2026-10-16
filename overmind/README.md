@@ -71,11 +71,28 @@ the mapped capabilities, outstanding verification, and one recommended next
 action. Instrumentation, application runs, and server-side eval set preparation
 remain separate work.
 
-Use the project's runner for these commands (`uv run overmind` or
-`poetry run overmind`) so an older global installation cannot supply the
-skills. An editable SDK install does not refresh skill copies already installed
+Onboarding requires Python 3.10+ and `overmind>=0.1.94`. Add that requirement
+through the project's package manager, for example `uv add "overmind>=0.1.94"`.
+Before creating a project, check the CLI with `uv run python -m overmind --help`
+and the converter with `uv run python -c "from overmind.utils import convert_json_to_toml"`.
+Repeat those checks after the coding-agent reload, before scanning.
+Keep the endpoint explicit on later syncs: `python -m overmind sync --api-url <saved-base-url>`
+with the selected runner. A saved credential cannot be used against a different
+endpoint; sync rejects that combination before sending a request.
+Use `uv run python -m overmind`, `poetry run python -m overmind`, or the project's
+virtual-environment Python for every CLI command. `uv run overmind` can still
+find a global executable when the project package has no CLI.
+If application dependencies conflict, use
+`uv tool run --isolated --python 3.11 --from "overmind==0.1.94" python`
+in place of the project Python for both checks, scanning, conversion and sync.
+Keep the repository root as the working directory and reuse this runner after
+reload. Preserve the existing connection; do not recreate the project. This tool
+environment is explicitly allowed and does not change application dependencies.
+Verify tracing separately in the application environment before adding decorators;
+if incompatible, complete capability sync and report instrumentation as pending.
+An editable SDK install does not refresh skill copies already installed
 in a repository. Refresh them with
-`uv run overmind skills sync overmind --ide <cursor|claude|opencode|codex>`
+`uv run python -m overmind skills sync overmind --ide <cursor|claude|opencode|codex>`
 (or the equivalent project runner), then start a new conversation so the agent
 reads the updated instructions.
 

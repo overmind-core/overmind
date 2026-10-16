@@ -4,7 +4,7 @@ Use this fallback for the local work behind the native
 `instrument-repository` and `investigate-capability` prompts. The MCP server
 cannot scan or edit a repository.
 
-**Prerequisite:** project connection in [onboard.md](onboard.md) finished (`overmind init` then `overmind sync`, followed by the coding-agent reload). Do not start this scan before the Console project exists.
+**Prerequisite:** project connection in [onboard.md](onboard.md) finished (`python -m overmind init` then `python -m overmind sync`, followed by the coding-agent reload). Do not start this scan before the Console project exists.
 
 ## Workflow
 
@@ -14,20 +14,28 @@ full roadmap and data disclosure, then follow stages 3–10 with its numbered
 conversation updates. Keep installation and connection marked complete only
 when verified. Do not invent an MCP scan-status tool or resource.
 
-Use the project environment for every command below: `uv run overmind` and
-`uv run python` for uv, `poetry run overmind` and `poetry run python` for Poetry,
-or the project's virtual-environment executables. A bare global `overmind` can
-load a different SDK and install stale skills even after an editable install.
+Before scanning, repeat [the project runtime checks](onboard.md#verify-the-project-runtime),
+including on a post-reload continuation. Use its isolated tooling recovery if the
+application cannot install compatible tooling;
+preserve any existing project and credentials instead of repeating bootstrap.
+For every CLI command below, use `uv run python -m overmind` for uv,
+`poetry run python -m overmind` for Poetry, or the virtual environment's
+`python -m overmind`, or the verified isolated tooling runner from onboarding.
+Run Python conversion with that same runner. Keep the repository root as the working
+directory. An isolated CLI is explicitly allowed; do not resolve an unrelated global executable.
+Verify tracing separately in the application environment before adding imports or
+decorators. A tracing dependency conflict leaves instrumentation pending, but must
+not prevent scanning, conversion or capability sync.
 
-Run `overmind chassis` **before** the prompt. It records the repository, branch, commit and working-tree fingerprint in `.overmind/scan.json`. Keep source files unchanged until conversion; if conversion reports a changed checkout, restart the scan. Generated `overmind.toml`, `overmind_capabilities.json` and `.overmind/` files are excluded from the fingerprint. Follow the **system prompt below in full**. When the JSON is complete and valid, convert it to `overmind.toml` (see **Persist**), delete `overmind_capabilities.json` after a successful toml conversion, run `overmind sync`, then instrument the repository and sync again (see **Instrument**). Do not hand-author the toml. Judge expectations are not written to the toml: they are declared in code on the decorators. Only deterministic checks go in the toml's `eval_matrix`. `convert_json_to_toml` fills prompt spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified`.
+Run `python -m overmind chassis` **before** the prompt. It records the repository, branch, commit and working-tree fingerprint in `.overmind/scan.json`. Keep source files unchanged until conversion; if conversion reports a changed checkout, restart the scan. Generated `overmind.toml`, `overmind_capabilities.json` and `.overmind/` files are excluded from the fingerprint. Follow the **system prompt below in full**. When the JSON is complete and valid, convert it to `overmind.toml` (see **Persist**), delete `overmind_capabilities.json` after a successful toml conversion, run `python -m overmind sync`, then instrument the repository and sync again (see **Instrument**). Do not hand-author the toml. Judge expectations are not written to the toml: they are declared in code on the decorators. Only deterministic checks go in the toml's `eval_matrix`. `convert_json_to_toml` fills prompt spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified`.
 
-Before the prompt: if `overmind.toml` exists, read it. Preserve `base-url`, `project-id`, `project-name`, and any capability `id` already assigned by a prior sync. Those rows are bind targets (`known_capabilities`): reuse exact `name` / `slug` / `id` when the purpose matches. Capabilities with `archived = true` are leftovers — reuse their `id` only when this scan still finds that purpose (that remounts them). Do not copy unmatched archived tables into the new current set. If the file is missing, seed a skeleton or tell the user to run `overmind init`.
+Before the prompt: if `overmind.toml` exists, read it. Preserve `base-url`, `project-id`, `project-name`, and any capability `id` already assigned by a prior sync. Those rows are bind targets (`known_capabilities`): reuse exact `name` / `slug` / `id` when the purpose matches. Capabilities with `archived = true` are leftovers — reuse their `id` only when this scan still finds that purpose (that remounts them). Do not copy unmatched archived tables into the new current set. If the file is missing, seed a skeleton or tell the user to run `python -m overmind init`.
 
-After the prompt: map the analysis schema onto toml (see **Persist**), run `overmind sync`, then apply the decorators (see **Instrument**):
+After the prompt: map the analysis schema onto toml (see **Persist**), run `python -m overmind sync`, then apply the decorators (see **Instrument**):
 
 - **Project credential missing** — leave the toml on disk and stop. Ask the user to repeat the Console onboarding paste so sync receives a temporary account key.
-- **`project-id` present** — run `overmind sync` as usual (typical after onboarding bootstrap already synced once post-init).
-- **`project-id` missing + account-scoped API key** — `overmind sync` creates a project via `POST /api/projects/` (name from `project-name` in `overmind.toml`, seeded at init from the repo directory), writes `project-id` into `overmind.toml`, then pushes. Do not invent a UUID yourself. To recreate: delete the console project and clear `project-id` in the toml; keep `project-name` as the repo directory name — never `repo_summary`.
+- **`project-id` present** — run `python -m overmind sync` as usual (typical after onboarding bootstrap already synced once post-init).
+- **`project-id` missing + account-scoped API key** — `python -m overmind sync` creates a project via `POST /api/projects/` (name from `project-name` in `overmind.toml`, seeded at init from the repo directory), writes `project-id` into `overmind.toml`, then pushes. Do not invent a UUID yourself. To recreate: delete the console project and clear `project-id` in the toml; keep `project-name` as the repo directory name — never `repo_summary`.
 - **`project-id` missing + project-scoped API key** — stop. Project-scoped keys are pinned and cannot mint projects. Tell the user to paste their console `project-id` into `overmind.toml`, or switch to an account-scoped key.
 
 Never invent project or capability UUIDs by hand.
@@ -176,7 +184,7 @@ Rules:
 - Verify the file contains a valid `capabilities` array (each with a `capability_card`) before finishing.
 - After writing the file, continue through **Persist** before giving the final summary.
 
-**GROUND-TRUTH CHASSIS (deterministic AST facts — pre-extracted, verified).** You already ran `overmind chassis`. The printed digest is GROUND TRUTH: transform it, together with your own reading of the source, into the capability cards and trajectory map — do not re-derive or contradict it. Copy every `anchors` qualname VERBATIM from this inventory (same spelling, same dotted path). After you write the JSON, `convert_json_to_toml` deterministically re-checks every trajectory entry against this chassis: an entry whose anchors are not call-graph reachable from its entry anchor is stamped unverified, and anchor names absent from the inventory are dropped. Symbols elided from the digest still exist in the source — read the file to recover their exact qualnames.
+**GROUND-TRUTH CHASSIS (deterministic AST facts — pre-extracted, verified).** You already ran `python -m overmind chassis`. The printed digest is GROUND TRUTH: transform it, together with your own reading of the source, into the capability cards and trajectory map — do not re-derive or contradict it. Copy every `anchors` qualname VERBATIM from this inventory (same spelling, same dotted path). After you write the JSON, `convert_json_to_toml` deterministically re-checks every trajectory entry against this chassis: an entry whose anchors are not call-graph reachable from its entry anchor is stamped unverified, and anchor names absent from the inventory are dropped. Symbols elided from the digest still exist in the source — read the file to recover their exact qualnames.
 
 ## Persist
 
@@ -189,16 +197,16 @@ python -c "from overmind.utils import convert_json_to_toml; convert_json_to_toml
 Delete `overmind_capabilities.json` after a successful toml conversion.
 
 ```bash
-overmind sync
+python -m overmind sync
 ```
 
-`convert_json_to_toml` preserves existing `base-url` / `project-id` / capability `id` values from any prior `overmind.toml`, fills `system_prompt` from cited spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified` against the AST chassis of the JSON's parent directory. Conversion attaches the verified scan provenance to `overmind.toml`. Sync preserves that original revision and scan time, even if the checkout changes afterward; the server records sync time separately. The Console Agent header and `overmind://project/current` expose the snapshot. `overmind sync` reads the local project credential, POSTs the snapshot to `/api/v1/sync`, and writes assigned ids back. If `project-id` was empty and the temporary key is account-scoped, sync creates the project first and persists the new id.
+`convert_json_to_toml` preserves existing `base-url` / `project-id` / capability `id` values from any prior `overmind.toml`, fills `system_prompt` from cited spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified` against the AST chassis of the JSON's parent directory. Conversion attaches the verified scan provenance to `overmind.toml`. Sync preserves that original revision and scan time, even if the checkout changes afterward; the server records sync time separately. The Console Agent header and `overmind://project/current` expose the snapshot. `python -m overmind sync` reads the local project credential, POSTs the snapshot to `/api/v1/sync`, and writes assigned ids back. If `project-id` was empty and the temporary key is account-scoped, sync creates the project first and persists the new id.
 
-Sync upserts each capability's **Default** eval set from the toml's deterministic `eval_matrix` entries (one parameterised row each, scoped by `span_name` and `span_type`) plus the seeded checks that apply to its span types. Sync rejects the whole snapshot with a 400 that names an entry whose `check` is not in the catalog or whose `params` name a constant the check lacks; fix that entry and run `overmind sync` again. The toml carries no judge expectations: they are declared in code (see **Instrument**), and the sync after instrumenting reads them from the decorators into the same Default set. Read `eval_preload` on `overmind://capabilities/{capability}`: `counts.checks` and `counts.expectations` report what the set holds, and `status: empty` means nothing applied. An older toml whose `eval_matrix` has llm or managed entries keeps working, but new scans do not write them. A rule the catalog cannot express can be added later as a custom row in the Console or with `create_eval_matrix_row` (rows are created and deleted, never edited); see [evals.md](evals.md#configure).
+Sync upserts each capability's **Default** eval set from the toml's deterministic `eval_matrix` entries (one parameterised row each, scoped by `span_name` and `span_type`) plus the seeded checks that apply to its span types. Sync rejects the whole snapshot with a 400 that names an entry whose `check` is not in the catalog or whose `params` name a constant the check lacks; fix that entry and run `python -m overmind sync` again. The toml carries no judge expectations: they are declared in code (see **Instrument**), and the sync after instrumenting reads them from the decorators into the same Default set. Read `eval_preload` on `overmind://capabilities/{capability}`: `counts.checks` and `counts.expectations` report what the set holds, and `status: empty` means nothing applied. An older toml whose `eval_matrix` has llm or managed entries keeps working, but new scans do not write them. A rule the catalog cannot express can be added later as a custom row in the Console or with `create_eval_matrix_row` (rows are created and deleted, never edited); see [evals.md](evals.md#configure).
 
 ## Instrument
 
-Run this after `overmind sync` succeeds: the entry-point decorator carries the capability id, and only sync assigns it. The scan described the checkout as it was when you ran `overmind chassis`; the edits below come afterwards, so spans cited in the toml refer to that revision. Everything the scan extracted is declared in code: each function, tool, retrieval step and model call the card names gets a decorator, and each decorator carries the intent and expectations the card implies for it.
+Run this after `python -m overmind sync` succeeds: the entry-point decorator carries the capability id, and only sync assigns it. The scan described the checkout as it was when you ran `python -m overmind chassis`; the edits below come afterwards, so spans cited in the toml refer to that revision. Everything the scan extracted is declared in code: each function, tool, retrieval step and model call the card names gets a decorator, and each decorator carries the intent and expectations the card implies for it.
 
 1. Install the tracing extra: the decorators import OpenTelemetry, which plain `overmind` does not ship. Add `overmind[tracing]>=0.1.87` through the project's package manager (`uv add "overmind[tracing]>=0.1.87"`, `poetry add "overmind[tracing]>=0.1.87"`, or the requirements.txt line; an editable install keeps its path, `uv add --editable "<path>[tracing]"`). Older versions reject the `expectations` and `self_attrs` arguments at import. Then confirm with the project runner: `python -c "import overmind; overmind.observe"`. If the resolver reports a conflict, report it and stop before editing source.
 1. Call `get_instrumentation_plan` with no capability. If it returns `human_action` or no placements, report the instruction and stop; do not guess targets.
@@ -220,7 +228,7 @@ Run this after `overmind sync` succeeds: the entry-point decorator carries the c
    - **`llm_utilities` helper:** one expectation from the output side of `io_contract` when `structured_output` is true.
    - **`reference_trajectory=[...]`:** only on an entry point whose `code_path` trajectory entry names an ordered tool sequence; copy the tool names from that entry.
    - `output_schema`, `constraints` and `tool_protocol` are not expectations: the checkable ones already went to the toml's deterministic `eval_matrix`. Skip what the seeded checks cover (valid JSON, tool selection).
-1. Run `overmind sync` again. It reads the `expectations` on the entry-point, workflow and `observe` decorators and adds them to each capability's Default eval set, so eval runs, `overmind backtest`, the optimizer and training judge what live scoring judges. Read `eval_preload.counts.expectations` on `overmind://capabilities/{capability}`; zero after decorating means the entry point's `capability_id` is missing or not the synced id.
+1. Run `python -m overmind sync` again. It reads the `expectations` on the entry-point, workflow and `observe` decorators and adds them to each capability's Default eval set, so eval runs, `overmind backtest`, the optimizer and training judge what live scoring judges. Read `eval_preload.counts.expectations` on `overmind://capabilities/{capability}`; zero after decorating means the entry point's `capability_id` is missing or not the synced id.
 1. Do not run the application. Verification needs the approved run described in [instrumentation.md](instrumentation.md#verify).
 
 Never upload the repository. Never invent project or capability UUIDs.

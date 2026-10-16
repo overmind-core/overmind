@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import ipaddress
-from dataclasses import dataclass
-from typing import Any
+from io import BytesIO
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.core.handlers.asgi import ASGIRequest
 from rest_framework import exceptions
-from starlette.datastructures import URL, Headers
+from starlette.datastructures import URL
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
@@ -22,19 +22,8 @@ from overbae.services.mcp.oauth import authenticate_access
 MCP_PATH = "/api/mcp/"
 
 
-@dataclass(frozen=True)
-class _HeaderRequest:
-    headers: Headers
-    method: str
-    META: dict[str, Any]
-
-
-def _request_for_scope(scope: Scope) -> _HeaderRequest:
-    return _HeaderRequest(
-        headers=Headers(scope=scope),
-        method=scope.get("method", "GET"),
-        META={"REMOTE_ADDR": (scope.get("client") or (None, None))[0]},
-    )
+def _request_for_scope(scope: Scope) -> ASGIRequest:
+    return ASGIRequest(scope, BytesIO())
 
 
 def _auth_error(detail: str) -> MCPError:
@@ -87,10 +76,12 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
             token=token,
             project=None,
             client_ip=(scope.get("client") or (None, None))[0],
-            inference_base_url=str(URL(scope=scope).replace(path="/api/v1", query="")),
+            inference_base_url=str(
+                URL(scope=scope).replace(scheme=request.scheme, path="/api/v1", query="")
+            ),
         )
     try:
-        result = APITokenBackend().authenticate(_request_for_scope(scope))
+        result = APITokenBackend().authenticate(request)
     except exceptions.AuthenticationFailed as exc:
         raise _auth_error(str(exc.detail)) from None
 
@@ -145,7 +136,9 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
         token=token,
         project=project,
         client_ip=client_ip,
-        inference_base_url=str(URL(scope=scope).replace(path="/api/v1", query="")),
+        inference_base_url=str(
+            URL(scope=scope).replace(scheme=request.scheme, path="/api/v1", query="")
+        ),
     )
 
 

@@ -17,6 +17,7 @@ from overmind.sync import (
     ensure_mcp_project_key,
     ensure_project_id,
     resolve_api_key,
+    run_down,
     run_up,
 )
 
@@ -169,6 +170,27 @@ def test_saved_project_key_wins_over_stale_bootstrap_environment(tmp_path: Path,
     assert resolve_api_key("replacement", load(path)) == "replacement"
 
 
+@pytest.mark.parametrize("sync", [run_up, run_down])
+@pytest.mark.parametrize("explicit_key", ["", "saved-project-key"])
+def test_sync_rejects_saved_key_on_another_endpoint(tmp_path, monkeypatch, sync, explicit_key):
+    path = tmp_path / "overmind.toml"
+    dump(Config(api_key="saved-project-key", project_id="project", base_url="https://staging.example"), path)
+    monkeypatch.setenv("OVERMIND_API_URL", "http://localhost:8000")
+    with patch("overmind.sync._session") as session:
+        with pytest.raises(SyncError, match="No request was sent"):
+            sync(path, explicit_key, "")
+        session.assert_not_called()
+
+
+def test_explicit_saved_endpoint_overrides_inherited_url(tmp_path, monkeypatch):
+    path = tmp_path / "overmind.toml"
+    dump(Config(api_key="saved-project-key", project_id="project", base_url="https://staging.example"), path)
+    monkeypatch.setenv("OVERMIND_API_URL", "http://localhost:8000")
+    with patch("overmind.sync.get_snapshot", return_value={"capabilities": []}) as fetch:
+        run_down(path, "", "https://staging.example")
+    fetch.assert_called_once_with("https://staging.example", "saved-project-key", "project")
+
+
 def test_setup_sync_reuses_saved_project_key_without_minting_another(tmp_path: Path, monkeypatch):
     path = tmp_path / "overmind.toml"
     project_id = "11111111-1111-1111-1111-111111111111"
@@ -183,6 +205,7 @@ def test_setup_sync_reuses_saved_project_key_without_minting_another(tmp_path: P
         run_up(path, "bootstrap", "https://api.example")
 
         config = load(path)
+        assert config.base_url == "https://api.example"
         config.repo_summary = "Discovered during setup"
         dump(config, path)
         result = run_up(path, "", "https://api.example")

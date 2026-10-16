@@ -57,10 +57,25 @@ def _rpc(method: str, params: dict | None = None) -> dict:
     return payload
 
 
-def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog():
+@pytest.mark.parametrize(
+    ("base_url", "forwarded_proto", "trust_proxy", "expected_scheme"),
+    [
+        ("http://testserver", None, True, "http"),
+        ("https://testserver", None, True, "https"),
+        ("http://testserver", "https", True, "https"),
+        ("http://testserver", "https, http", True, "https"),
+        ("http://testserver", "https", False, "http"),
+    ],
+)
+def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog(
+    settings, base_url, forwarded_proto, trust_proxy, expected_scheme
+):
+    settings.SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if trust_proxy else None
     project, key = _project()
     headers = {"X-Api-Key": key, "Accept": "application/json"}
-    with TestClient(create_mcp_application()) as client:
+    if forwarded_proto:
+        headers["X-Forwarded-Proto"] = forwarded_proto
+    with TestClient(create_mcp_application(), base_url=base_url) as client:
         tools = client.post("/api/mcp/", json=_rpc("tools/list"), headers=headers).json()["result"][
             "tools"
         ]
@@ -75,7 +90,7 @@ def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog(
             headers=headers,
         ).json()["result"]
     identity = json.loads(interface["contents"][0]["text"])
-    assert identity["connection"]["mcp_url"] == "http://testserver/api/mcp/"
+    assert identity["connection"]["mcp_url"] == f"{expected_scheme}://testserver/api/mcp/"
     assert identity["tool_count"] == len(tools)
     assert projects["connection"] == identity["connection"]
     assert projects["catalog_sha256"] == identity["catalog_sha256"]

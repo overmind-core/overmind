@@ -10,6 +10,8 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 ];
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
+export const MIN_ONBOARDING_SDK_VERSION = "0.1.94";
+export const SDK_PREFLIGHT_COMMAND = `python -c "import sys, overmind; from importlib.metadata import version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__)"`;
 
 export function mcpClientMeta(client: McpClient) {
   return MCP_CLIENTS.find((c) => c.id === client) ?? MCP_CLIENTS[0];
@@ -56,10 +58,10 @@ export function sdkPipInstall(apiUrl = config.apiUrl, extra?: "tracing"): string
   const channel = sdkInstallChannel(apiUrl);
   if (channel === "editable") {
     const suffix = extra === "tracing" ? "[tracing]" : "";
-    return `pip install -e "${config.sdkEditablePath}${suffix}"`;
+    return `python -m pip install -e "${config.sdkEditablePath}${suffix}"`;
   }
   const spec = extra === "tracing" ? "overmind[tracing]" : "overmind";
-  return extra === "tracing" ? `pip install "${spec}"` : `pip install ${spec}`;
+  return `python -m pip install "${spec}>=${MIN_ONBOARDING_SDK_VERSION}"`;
 }
 
 /** Maps Console API host onto `overmind init --env` (local / staging / production). */
@@ -106,9 +108,9 @@ function dependencyCommands(channel: SdkInstallChannel): {
     };
   }
   return {
-    poetryAdd: "poetry add overmind",
-    requirementsLine: "overmind",
-    uvAdd: "uv add overmind",
+    poetryAdd: `poetry add "overmind>=${MIN_ONBOARDING_SDK_VERSION}"`,
+    requirementsLine: `overmind>=${MIN_ONBOARDING_SDK_VERSION}`,
+    uvAdd: `uv add "overmind>=${MIN_ONBOARDING_SDK_VERSION}"`,
   };
 }
 
@@ -121,11 +123,21 @@ export function projectDependencyInstallGuidance(apiUrl = config.apiUrl): string
   return [
     `Install overmind (${packageSource}). ${sdkInstallChannelRule(channel)}`,
     "Record it in the project dependency manifest using this repo's package manager — detect uv.lock, poetry.lock, pyproject.toml, or requirements.txt before choosing; do not assume pip.",
-    "Do not use venv-only installs that leave the manifest unchanged (e.g. uv pip install, bare pip install into an active venv).",
+    "For application SDK installs, do not use venv-only installs that leave the manifest unchanged (e.g. uv pip install, bare pip install into an active venv). Dedicated isolated onboarding tooling is exempt.",
     `When uv is the toolchain: ${uvAdd}, not uv pip install.`,
     `When poetry is the toolchain: ${poetryAdd}.`,
     `For requirements.txt-only repos: add ${requirementsLine}, then install from that file.`,
+    `Onboarding tooling requires Python 3.10+ and overmind>=${MIN_ONBOARDING_SDK_VERSION}. If a lockfile, Python requirement, or dependency conflict prevents that install, report the exact conflict and use the isolated tooling recovery below; do not silently accept an older SDK or change the project's supported Python range. The manifest requirement applies to the application SDK; isolated onboarding tooling is explicitly allowed without adding it to application dependencies.`,
   ].join(" ");
+}
+
+function isolatedToolingGuidance(apiUrl: string): string {
+  const source =
+    sdkInstallChannel(apiUrl) === "editable"
+      ? `--with-editable "${config.sdkEditablePath}" --from overmind`
+      : `--from "overmind==${MIN_ONBOARDING_SDK_VERSION}"`;
+  const runner = `uv tool run --isolated --python 3.11 ${source} python`;
+  return `Isolated tooling recovery: if the project SDK cannot provide the CLI/converter, continue using \`${runner}\` in place of python for BOTH preflight commands, init, chassis, conversion, skills sync and capability sync. Keep the repository root as the working directory and use this same runner throughout, including after reload. This verified tool environment is permitted; do not stop merely because it is outside the application environment, and do not accidentally resolve an unrelated global executable. Record the runner and version in the progress handoff without credentials. If uv is unavailable, create a dedicated tooling virtual environment with Python 3.10+ and install the same named source there, then run both preflight commands with its explicit Python path. Keep the existing project ID, capability IDs, endpoint and saved credentials; when bootstrap already succeeded, resume scanning and capability sync without init or project creation. Tool isolation does not install tracing into the application: verify the tracing SDK separately in the application environment before adding imports or decorators. If that dependency is incompatible, finish capability sync and report instrumentation as pending with the exact conflict; do not claim full onboarding is complete.`;
 }
 
 /** Env exports, `overmind init`, and optional first sync to mint the console project. */
@@ -138,13 +150,15 @@ export function projectInitShellBlock(
 ): string {
   const url = apiUrl.replace(/\/$/, "");
   const lines = [
+    SDK_PREFLIGHT_COMMAND,
+    "python -m overmind --help",
     `export OVERMIND_API_URL=${url}`,
     ...(projectId ? [`export OVERMIND_PROJECT_ID=${projectId}`] : []),
     `export OVERMIND_API_KEY=${apiKey}`,
-    `overmind init ${initCliFlags(client, url)}`,
-    ...(initialSync ? ["overmind sync"] : []),
+    `python -m overmind init ${initCliFlags(client, url)}`,
+    ...(initialSync ? ["python -m overmind sync"] : []),
   ];
-  return lines.join("\n");
+  return lines.join(" &&\n");
 }
 
 export function mcpInitCommand(
@@ -156,11 +170,14 @@ export function mcpInitCommand(
 ): string {
   return [
     sdkPipInstall(apiUrl, extra),
+    SDK_PREFLIGHT_COMMAND,
+    "python -m overmind --help",
+    `export OVERMIND_API_URL=${apiUrl.replace(/\/$/, "")}`,
     ...(projectId ? [`export OVERMIND_PROJECT_ID=${projectId}`] : []),
     `export OVERMIND_API_KEY=${apiKey}`,
-    `overmind init ${initCliFlags(client, apiUrl)}`,
-    "overmind sync",
-  ].join("\n");
+    `python -m overmind init ${initCliFlags(client, apiUrl)}`,
+    "python -m overmind sync",
+  ].join(" &&\n");
 }
 
 /** Manual terminal block: example install line plus init exports. */
@@ -170,7 +187,7 @@ export function manualSetupCommand(
   apiUrl = config.apiUrl,
   projectId?: string
 ): string {
-  return `${sdkPipInstall(apiUrl)}
+  return `${sdkPipInstall(apiUrl)} &&
 ${projectInitShellBlock(client, apiKey, apiUrl, projectId, true)}`;
 }
 
@@ -190,12 +207,15 @@ export function onboardWithAiBootstrapPrompt(
       : "Reload the IDE once after sync.";
   return [
     projectDependencyInstallGuidance(url),
-    "Run all Overmind and Python commands in this project's environment: use uv run for uv, poetry run for Poetry, or the project's virtual-environment executables. Do not use a globally installed overmind.",
+    "In every command below, replace python with uv run python for uv, poetry run python for Poetry, or the project's virtual-environment Python executable, unless using the isolated tooling recovery below. Invoke the CLI as python -m overmind, never uv run overmind or a bare overmind executable: those can resolve to a global CLI when the project package has none. This is Overmind's version-consistency requirement, not a user-imposed restriction.",
+    isolatedToolingGuidance(url),
+    `Before init or the first sync, run \`${SDK_PREFLIGHT_COMMAND}\` and \`python -m overmind --help\` using the selected Python runner. Require both commands to succeed, the reported version to be at least ${MIN_ONBOARDING_SDK_VERSION}, and the interpreter/package paths to match the selected project or isolated tool environment (or the specified editable source). Missing CLI/converter or a mismatched path means installation is incomplete: use isolated tooling recovery and rerun these checks before creating a project.`,
     "The account-scoped API key below is a temporary bootstrap credential. Shell exports may not persist between commands, so prefix each command with it as shown; do not write it into project files.",
-    `${env} overmind init ${initCliFlags(client, url)}`,
+    `${env} python -m overmind init ${initCliFlags(client, url)}`,
+    `Keep the destination explicit on every sync, including after reload: \`python -m overmind sync --api-url ${url}\`. After bootstrap, use the saved project credential without the bootstrap key. An inherited OVERMIND_API_URL must not redirect this connection to another environment.`,
     `Before the first sync, open ${OVERMIND_SKILL_ONBOARD} and references/onboarding-progress.md from the installed overmind skill. Show the full onboarding roadmap and data disclosure, then use its numbered progress updates throughout.`,
-    `Run \`${env} overmind sync\`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. ${reload} Do not pass the bootstrap key again or run init again.`,
-    `After reload, reopen ${OVERMIND_SKILL_ONBOARD} from the installed overmind skill and continue the remaining workflow without repeating bootstrap sync.`,
+    `Run \`${env} python -m overmind sync\`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. ${reload} Do not pass the bootstrap key again or run init again.`,
+    `After reload, repeat both preflight commands with the selected Python runner before scanning or capability sync. Preserve any existing project-id, capability IDs, endpoint and saved credentials while repairing a dependency. Refresh installed guidance with \`python -m overmind skills sync overmind --ide ${client}\` after an SDK upgrade, then reopen ${OVERMIND_SKILL_ONBOARD} and continue without repeating bootstrap sync. The isolated tooling recovery in this request also applies if an older installed skill requires project-local tooling only.`,
   ].join("\n\n");
 }
 
