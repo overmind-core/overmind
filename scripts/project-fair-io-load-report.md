@@ -32,7 +32,17 @@ Rounded milliseconds, baseline -> 10,000 competing records:
 | Slow provider                |          35 -> 28 |         112 -> 29 | 14 -> 12 | 109 -> 109 |
 | Database and scratch storage |          23 -> 24 |          25 -> 29 | 14 -> 12 |  105 -> 95 |
 
-Both workloads passed. The earlier starvation test also leaves 9,998 records
+Both workloads passed.
+
+A separate authenticated REST read ramp uses eight competing projects and 40
+quiet-project requests per phase. Quiet-project p95 was 19 ms alone, 24 ms with
+eight competing sessions (257 competing requests), and 138 ms with 32 sessions
+(1,307 competing requests). The maximum quiet sample at 32 sessions was 167 ms.
+This passed the 500 ms absolute budget but shows about sevenfold relative
+slowdown: the shared API is not independent of arbitrary concurrent read load.
+It must not be presented as a zero-slowdown result or production capacity figure.
+
+The earlier starvation test also leaves 9,998 records
 waiting while the quiet project and an independent IO worker complete their work.
 Admission tests cover 20 late-arriving projects, concurrent dispatchers, duplicate
 delivery, lease expiry and broker failure.
