@@ -80,10 +80,26 @@ requires the user's approval before applying it.
 
 ## Live-test environment
 
-The user explicitly approved isolated production load tests, Console setup of
-`capacity-noisy-20261016` and `capacity-quiet-20261016`, and a production account
-connection. Staging remains the default connection. Existing production MCP
-access was checked and is limited to `financial-services`; it has no project
-creation tool. Console onboarding completed, but the browser clipboard API
-returned no prompt content, so the new connection has not been captured.
-The user subsequently required MCP-only platform interaction. Console work has stopped. A separately configured production account MCP connection with isolated project access is required to continue live verification. No synthetic production workload or resource expansion has been applied.
+Production account MCP access is connected. Following the user's instruction to
+reuse existing projects, synthetic probe datasets were created in `empty`
+(52d7ef2e-c092-4970-ad78-8cccfb6054d7) and `financial-services`
+(bb512bfa-5c3b-4f2d-9865-601e0b1d0f04). Existing customer datasets were not changed.
+Twelve unloaded quiet-project count queries measured median 276 ms and maximum
+365 ms. These are baseline measurements, not concurrent capacity verification.
+
+Both initial 65-byte uploads acknowledged every byte but failed publication with
+`transfer_incomplete`. Repeating the identical request keys later succeeded
+without duplication. The production transfer implementation used ordinary
+`Path.stat` in two places despite the existing EFS-aware `stored_stat` helper.
+Both calls now use that helper. A REST regression simulates stale filesystem
+attribute metadata while leaving real open/fstat reads intact: it fails before
+the fix and passes afterward, including exact two-row landing and publication
+idempotency. All 18 transfer tests and the full backend suite pass (3,269 passed,
+seven skipped). Production deployment and fresh-upload verification remain pending.
+
+The retained two-row pipeline probes were rejected before execution because their
+128 MiB limit was below the sandbox's 1 GiB admission minimum. This is a probe
+configuration error, not a measured saturation event. Correct the retained recipe
+before load testing. No significant concurrent production workload or resource
+expansion has been applied. AWS deployment access expired during verification;
+a refreshed production login is required to deploy the metadata fix.

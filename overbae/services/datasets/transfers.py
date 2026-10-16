@@ -85,7 +85,7 @@ def append(transfer, offset, content):
     if transfer.state != "uploading":
         raise DatasetError("This transfer is already published.", code="transfer_published")
     path = staged_path(transfer)
-    size = path.stat().st_size
+    size = files.stored_stat(path).st_size
     if (
         offset < 0
         or not content
@@ -136,7 +136,7 @@ def complete(transfer):
         return transfer
     spec = transfer.specification
     path = staged_path(transfer)
-    if path.stat().st_size != spec["size"]:
+    if files.stored_stat(path).st_size != spec["size"]:
         raise DatasetError("The file transfer is incomplete.", code="transfer_incomplete")
     digest = hashlib.sha256()
     with path.open("rb") as stream:

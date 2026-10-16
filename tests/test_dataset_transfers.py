@@ -1,6 +1,8 @@
 import hashlib
 import json
+import os
 import uuid
+from pathlib import Path
 
 import pytest
 from rest_framework.test import APIClient
@@ -73,6 +75,32 @@ def test_interrupted_upload_and_lost_publication_ack_recover_exact_source(transf
     assert after_cleanup["received"] == len(data)
     assert Dataset.objects.filter(project=project).count() == 1
     assert chunk(client, receipt, b"changed").status_code == 409
+
+
+def test_completion_refreshes_metadata_after_another_api_task_uploaded_bytes(
+    transfer_client, monkeypatch
+):
+    client, project = transfer_client
+    receipt, data = reserve(client, project)
+    assert chunk(client, receipt, data).status_code == 200
+    uploaded = files.upload_data_path(receipt["upload_id"])
+    stat = Path.stat
+
+    def cached_stat(path, *args, **kwargs):
+        result = stat(path, *args, **kwargs)
+        if path == uploaded:
+            cached = list(result)
+            cached[6] = 0
+            return os.stat_result(cached)
+        return result
+
+    monkeypatch.setattr(Path, "stat", cached_stat)
+    result = complete(client, receipt)
+    assert result.status_code == 200, result.data
+    dataset = Dataset.objects.get(pk=result.data["result"]["id"])
+    assert dataset.state == "idle", dataset.error
+    assert dataset.source.rows == 2
+    assert complete(client, receipt).data["result"] == result.data["result"]
 
 
 @pytest.mark.parametrize(
