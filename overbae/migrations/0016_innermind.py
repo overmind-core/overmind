@@ -1,4 +1,7 @@
 import uuid
+from collections import defaultdict
+from itertools import batched
+from statistics import mean
 
 import django.db.models.deletion
 from django.conf import settings
@@ -140,14 +143,74 @@ def migrated_summary(summary, slice_):
     }
 
 
+def legacy_sample_values(sample):
+    trajectory = sample.trajectory if isinstance(sample.trajectory, dict) else {}
+    metadata = trajectory.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return {
+        "row_index": sample.row_index,
+        "source_trace_id": sample.source_trace_id,
+        "output": trajectory.get("final_output"),
+        "metadata": {
+            **metadata,
+            "legacy_sample": {
+                "id": str(sample.pk),
+                "variant_id": str(sample.variant_id),
+                "row_index": sample.row_index,
+                "trajectory": sample.trajectory,
+                "structured": sample.structured,
+                "expected": sample.expected,
+                "context_coverage": sample.context_coverage,
+            },
+        },
+        "error": sample.error,
+        "degraded": sample.degraded,
+        "degraded_reason": sample.degraded_reason,
+        "state": "cancelled" if sample.error == "cancelled" else "done",
+        "task_id": sample.celery_task_id,
+    }
+
+
+def legacy_score_values(scores):
+    metrics = {}
+    for score in scores:
+        scored = score.outcome == "scored"
+        metrics[score.name] = {
+            "type": "legacy",
+            "expectation": score.name,
+            "score": score.value if scored else None,
+            "verdict": (
+                "abstain"
+                if score.outcome in {"abstained", "not_applicable", "skipped"}
+                else "yes"
+                if score.passed is True
+                else "no"
+                if score.passed is False
+                else ""
+            ),
+            "reason": score.reasoning if score.outcome != "error" else "",
+            "error": score.reasoning if score.outcome == "error" else "",
+            "legacy_outcome": score.outcome,
+            "legacy_scope": score.scope,
+            "sub_scores": score.sub_scores,
+        }
+    values = [metric["score"] for metric in metrics.values() if metric["score"] is not None]
+    return (mean(values) if values else None), metrics
+
+
 def forward(apps, schema_editor):
     Evaluator = apps.get_model("overbae", "Evaluator")
     EvalMatrix = apps.get_model("overbae", "EvalMatrix")
     EvalSet = apps.get_model("overbae", "EvalSet")
     EvalSetMember = apps.get_model("overbae", "EvalSetMember")
     EvalRun = apps.get_model("overbae", "EvalRun")
+    EvalRunRow = apps.get_model("overbae", "EvalRunRow")
+    EvalSample = apps.get_model("overbae", "EvalSample")
+    EvalScore = apps.get_model("overbae", "EvalScore")
     EvalVariant = apps.get_model("overbae", "EvalVariant")
     RunEvaluator = apps.get_model("overbae", "RunEvaluator")
+    Score = apps.get_model("overbae", "Score")
 
     # The latest live version of each project evaluator becomes a matrix row.
     latest = {}
@@ -170,6 +233,7 @@ def forward(apps, schema_editor):
         ]
         eval_set.rows.add(*rows)
 
+    variant_runs = {}
     for run in EvalRun.objects.all().iterator():
         run_evaluators = RunEvaluator.objects.filter(run=run, enabled=True).select_related(
             "evaluator"
@@ -217,6 +281,7 @@ def forward(apps, schema_editor):
             if index == 0:
                 # The first variant keeps the row, so finetuning and optimizer links survive.
                 EvalRun.objects.filter(pk=run.pk).update(**fields)
+                variant_runs[variant.pk] = (run.pk, run.project_id, run.cell_id)
                 continue
             sibling = EvalRun.objects.create(
                 project_id=run.project_id,
@@ -235,6 +300,53 @@ def forward(apps, schema_editor):
                 **fields,
             )
             EvalRun.objects.filter(pk=sibling.pk).update(created_at=run.created_at)
+            variant_runs[variant.pk] = (sibling.pk, run.project_id, run.cell_id)
+
+    row_counts = defaultdict(int)
+    next_indices = {
+        item["variant_id"]: (item["last_index"] or 0) + 1
+        for item in EvalSample.objects.values("variant_id").annotate(
+            last_index=models.Max("row_index")
+        )
+    }
+    used_indices = defaultdict(set)
+    for samples in batched(EvalSample.objects.all().iterator(chunk_size=500), 500, strict=False):
+        sample_ids = [sample.pk for sample in samples]
+        scores_by_sample = defaultdict(list)
+        for score in Score.objects.filter(sample_id__in=sample_ids).order_by("created_at", "pk"):
+            scores_by_sample[score.sample_id].append(score)
+        rows = []
+        scores = []
+        for sample in samples:
+            run_id, project_id, cell_id = variant_runs[sample.variant_id]
+            values = legacy_sample_values(sample)
+            index = sample.row_index
+            # Keep every sample; metadata retains its original dataset position.
+            if index is None or index in used_indices[run_id]:
+                index = next_indices[sample.variant_id]
+                next_indices[sample.variant_id] += 1
+            used_indices[run_id].add(index)
+            values["row_index"] = index
+            rows.append(EvalRunRow(run_id=run_id, **values))
+            row_counts[run_id] += 1
+            if old_scores := scores_by_sample[sample.pk]:
+                value, metrics = legacy_score_values(old_scores)
+                scores.append(
+                    EvalScore(
+                        project_id=project_id,
+                        source_type="dataset_row",
+                        source_id=f"{cell_id}:{index}",
+                        run_id=run_id,
+                        score=value,
+                        metrics=metrics,
+                    )
+                )
+        EvalRunRow.objects.bulk_create(rows, batch_size=500)
+        EvalScore.objects.bulk_create(scores, batch_size=500)
+
+    for run_id, count in row_counts.items():
+        run = EvalRun.objects.get(pk=run_id)
+        EvalRun.objects.filter(pk=run_id).update(summary={**run.summary, "rows": count})
 
 
 class Migration(migrations.Migration):

@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useModelCatalogQuery,
@@ -348,12 +349,7 @@ function BacktestModelPicker({
   }, [allModels, providerFilter, search]);
 
   if (catalogQuery.isLoading) {
-    return (
-      <div className="flex h-16 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Spinner />
-        Loading OpenRouter models…
-      </div>
-    );
+    return <LoadingState label="Loading OpenRouter models" />;
   }
 
   if (catalogQuery.error) {
@@ -569,9 +565,9 @@ function EntitySelect({
 }) {
   if (isLoading) {
     return (
-      <div className="flex h-8 items-center gap-2 text-sm text-muted-foreground">
-        <Spinner />
-        {loadingLabel}
+      <div aria-busy="true" aria-label={loadingLabel} role="status">
+        <span className="sr-only">{loadingLabel}</span>
+        <Skeleton aria-hidden="true" className="h-8 w-full" />
       </div>
     );
   }

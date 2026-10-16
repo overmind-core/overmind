@@ -1,15 +1,29 @@
 import type React from "react";
 import { Fragment, useMemo, useState } from "react";
 
-import { MetricList } from "@/components/evaluations/metric-list";
+import { EvaluationMethodBadge } from "@/components/evaluations/evaluation-method-badge";
+import { metricResults } from "@/components/evaluations/metric-list";
 import { ScoreChip } from "@/components/evaluations/run-comparison";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { useTraceData } from "@/components/traces/contexts/TraceDataContext";
+import { Badge } from "@/components/ui/badge";
 import { BlockActions } from "@/components/ui/block-actions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SpanEvent, SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
-import { PROSE, TITLE } from "@/lib/typography";
+import { formatCost, formatDuration, formatNumber } from "@/lib/formatters";
+import { PROSE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { ToolCallItem, TranscriptMessage } from "@/types/chat";
 
@@ -46,7 +60,7 @@ function Section({
   label: string;
 }) {
   return (
-    <section className="px-5 py-4" id={id}>
+    <section className="px-4 py-3" id={id}>
       <div className="mb-2 flex min-h-5 items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">{label}</span>
@@ -62,7 +76,7 @@ function Section({
 function KeyValueRows({ entries }: { entries: Array<[string, unknown]> }) {
   if (entries.length === 0) return null;
   return (
-    <dl className="grid grid-cols-[minmax(8rem,max-content)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
+    <dl className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-4 gap-y-1.5 text-xs">
       {entries.map(([key, value]) => (
         <Fragment key={key}>
           <dt className="max-w-[20rem] break-all font-mono text-muted-foreground">
@@ -244,13 +258,13 @@ function ToolParamRow({
         {required ? (
           <span className="text-warning font-medium">required</span>
         ) : (
-          <span className="text-muted-foreground/60">optional</span>
+          <span className="text-muted-foreground">optional</span>
         )}
       </span>
       <span className={cn(PROSE, "text-muted-foreground leading-relaxed")}>
         {schema.description ?? ""}
         {schema.enum && schema.enum.length > 0 && (
-          <span className="ml-1 text-muted-foreground/70">
+          <span className="ml-1 text-muted-foreground">
             ({schema.enum.map((v) => JSON.stringify(v)).join(" | ")})
           </span>
         )}
@@ -286,21 +300,23 @@ function AvailableToolCard({ tool }: { tool: ToolDefinition }) {
         </p>
       )}
       {paramEntries.length > 0 && (
-        <div className="px-3 py-2">
-          <div className="pixel-label grid grid-cols-[140px_80px_60px_1fr] gap-x-3 mb-1 text-xs text-muted-foreground/60">
-            <span>Parameter</span>
-            <span>Type</span>
-            <span>Required</span>
-            <span>Description</span>
+        <div className="overflow-x-auto px-3 py-2">
+          <div className="min-w-[440px]">
+            <div className="pixel-label grid grid-cols-[140px_80px_60px_1fr] gap-x-3 mb-1 text-xs text-muted-foreground">
+              <span>Parameter</span>
+              <span>Type</span>
+              <span>Required</span>
+              <span>Description</span>
+            </div>
+            {paramEntries.map(([pName, pSchema]) => (
+              <ToolParamRow
+                key={pName}
+                name={pName}
+                required={required.has(pName)}
+                schema={pSchema}
+              />
+            ))}
           </div>
-          {paramEntries.map(([pName, pSchema]) => (
-            <ToolParamRow
-              key={pName}
-              name={pName}
-              required={required.has(pName)}
-              schema={pSchema}
-            />
-          ))}
         </div>
       )}
     </div>
@@ -405,7 +421,7 @@ function isPlainScalar(value: unknown): boolean {
 
 function FormattedValue({ value }: { value: unknown }) {
   if (typeof value === "string") {
-    if (value.length === 0) return <span className="text-muted-foreground/70">""</span>;
+    if (value.length === 0) return <span className="text-muted-foreground">""</span>;
     return <div className={cn(PROSE, "whitespace-pre-wrap break-words")}>{value}</div>;
   }
   if (value === null || typeof value === "number" || typeof value === "boolean") {
@@ -423,12 +439,12 @@ function FormattedValue({ value }: { value: unknown }) {
     );
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-muted-foreground/70">[]</span>;
+    if (value.length === 0) return <span className="text-muted-foreground">[]</span>;
     return (
       <div className="space-y-1.5">
         {value.map((item, idx) => (
           <div className="flex gap-2" key={idx}>
-            <span className="select-none font-mono text-muted-foreground/60">{idx}</span>
+            <span className="select-none font-mono text-muted-foreground">{idx}</span>
             <div className="min-w-0 flex-1">
               <FormattedValue value={item} />
             </div>
@@ -438,7 +454,7 @@ function FormattedValue({ value }: { value: unknown }) {
     );
   }
   const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return <span className="text-muted-foreground/70">{"{}"}</span>;
+  if (entries.length === 0) return <span className="text-muted-foreground">{"{}"}</span>;
   return (
     <div className="space-y-2">
       {entries.map(([key, val]) => {
@@ -451,7 +467,7 @@ function FormattedValue({ value }: { value: unknown }) {
               <span className="font-mono text-muted-foreground">{key}</span>
               <span className="min-w-0 break-all font-mono">
                 {val === "" ? (
-                  <span className="text-muted-foreground/70">""</span>
+                  <span className="text-muted-foreground">""</span>
                 ) : val === null ? (
                   "null"
                 ) : (
@@ -459,6 +475,22 @@ function FormattedValue({ value }: { value: unknown }) {
                 )}
               </span>
             </div>
+          );
+        }
+        if (val !== null && typeof val === "object") {
+          const count = Array.isArray(val) ? val.length : Object.keys(val).length;
+          return (
+            <details className="border-b border-border/60 py-1 last:border-0" key={key}>
+              <summary className="cursor-pointer break-all font-mono text-muted-foreground hover:text-foreground">
+                {key}{" "}
+                <span className="ml-2 text-xs">
+                  {count} {Array.isArray(val) ? "items" : "fields"}
+                </span>
+              </summary>
+              <div className="mt-2 pl-3">
+                <FormattedValue value={val} />
+              </div>
+            </details>
           );
         }
         return (
@@ -536,15 +568,15 @@ function JsonBlock({
   );
   const [view, setView] = useState<JsonView>("formatted");
 
-  if (isStringValue) {
-    if (parsedValue.length === 0) return null;
-  } else if (Array.isArray(parsedValue)) {
-    if (parsedValue.length === 0) return null;
-  } else if (parsedValue === null || typeof parsedValue !== "object") {
-    return null;
+  if (value === null || value === undefined) {
+    return (
+      <Section label={title}>
+        <p className="text-xs text-muted-foreground">Not captured</p>
+      </Section>
+    );
   }
 
-  const surface = "rounded-md border border-border/60 bg-wash-subtle";
+  const surface = "bg-wash-subtle";
   const jsonPre = `whitespace-pre-wrap break-words p-3 font-mono text-xs ${surface}`;
 
   let content: React.ReactNode;
@@ -572,7 +604,7 @@ function JsonBlock({
         <MarkdownContent compact>{parsedValue}</MarkdownContent>
       </div>
     ) : (
-      <pre className={jsonPre}>{parsedValue}</pre>
+      <pre className={jsonPre}>{parsedValue || '""'}</pre>
     );
   } else {
     content = (
@@ -605,40 +637,66 @@ function JsonBlock({
 }
 
 function TraceScoresSection({ span }: { span: SpanRow }) {
-  const count = Object.keys(span.traceScores).length;
-  if (count === 0 && span.trajectoryScore == null) return null;
+  const entries = metricResults(span.evalMetrics);
   return (
-    <Section
-      badge={
-        <span className="chip-label inline-flex items-center rounded-sm border border-border/60 bg-wash-raised px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-          {count}
-        </span>
-      }
-      label="Eval scores"
+    <Table
+      aria-label="Evaluation scores"
+      className="min-w-0 table-fixed text-xs"
+      containerClassName="min-h-0 flex-1"
     >
-      <div className="space-y-2">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Eval name</TableHead>
+          <TableHead className="w-32">Type</TableHead>
+          <TableHead className="w-24 text-right">Score</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {span.trajectoryScore != null && (
-          <div className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-wash-subtle px-3 py-2">
-            <span className="text-xs font-medium">Trajectory</span>
-            <ScoreChip value={span.trajectoryScore} />
-          </div>
+          <TableRow>
+            <TableCell>Trajectory</TableCell>
+            <TableCell className="text-muted-foreground">Aggregate</TableCell>
+            <TableCell className="text-right">
+              <ScoreChip value={span.trajectoryScore} />
+            </TableCell>
+          </TableRow>
         )}
-        <MetricList metrics={span.evalMetrics} />
-      </div>
-    </Section>
+        {entries.map(([name, metric]) => (
+          <TableRow key={name}>
+            <TableCell className="whitespace-normal break-words">{name}</TableCell>
+            <TableCell>
+              {metric.type === "llm" || metric.type === "deterministic" ? (
+                <EvaluationMethodBadge type={metric.type} />
+              ) : (
+                <span className="text-muted-foreground">{metric.type || "Not recorded"}</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right">
+              {metric.verdict === "abstain" ? (
+                <Badge size="chip" variant="neutral">
+                  Abstained
+                </Badge>
+              ) : metric.error ? (
+                <Badge size="chip" variant="error">
+                  Error
+                </Badge>
+              ) : metric.score == null ? (
+                <Badge size="chip" variant="neutral">
+                  Not scored
+                </Badge>
+              ) : (
+                <ScoreChip value={metric.score} />
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
 interface SpanDetailViewProps {
   span: SpanRow;
-}
-
-function hasValue(value: unknown): boolean {
-  return value !== null && value !== undefined && value !== "";
-}
-
-function handleJump(targetId: string) {
-  document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function ExceptionEventsSection({ events }: { events: SpanEvent[] }) {
@@ -700,78 +758,88 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
     ["Status", spanStatusLabel(span.statusCode)],
   ];
 
-  const jumpTargets = [
-    hasValue(span.inputs) && { id: "span-input", label: "Input" },
-    hasValue(span.outputs) && { id: "span-output", label: "Output" },
-    { id: "span-metadata", label: "Metadata" },
-  ].filter(Boolean) as Array<{ id: string; label: string }>;
+  const scoreCount = Object.keys(span.traceScores).length + (span.trajectoryScore != null ? 1 : 0);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card text-card-foreground">
-      <div className="shrink-0 border-b border-border/70 px-5 py-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className={TITLE.card}>Span details</h2>
-            <p className="font-mono text-xs text-muted-foreground">
-              {span.name || span.scopeName || "—"} · {span.spanId.slice(0, 8)}…
-            </p>
-          </div>
-          {span.model && (
-            <FinetuningModelChip
-              className="shrink-0"
-              compact
-              model={span.model}
-              projectId={projectId}
-            />
-          )}
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-card text-card-foreground">
+      <div className="shrink-0 px-4 pt-3 pb-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h3 className="min-w-0 break-words text-sm font-medium">
+            {span.name || span.scopeName || "Unnamed span"}
+          </h3>
+          {span.model && <FinetuningModelChip compact model={span.model} projectId={projectId} />}
         </div>
-        {jumpTargets.length > 1 && (
-          <nav
-            aria-label="Jump to section"
-            className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
-          >
-            <span>Jump to</span>
-            {jumpTargets.map((target, idx) => (
-              <Fragment key={target.id}>
-                {idx > 0 && <span aria-hidden="true">·</span>}
-                <button
-                  className="rounded-sm px-0.5 transition-colors hover:text-foreground"
-                  onClick={() => handleJump(target.id)}
-                  type="button"
-                >
-                  {target.label}
-                </button>
-              </Fragment>
-            ))}
-          </nav>
-        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs tabular-nums text-muted-foreground">
+          <span className={isError ? "text-destructive" : undefined}>
+            {spanStatusLabel(span.statusCode)}
+          </span>
+          {span.startTimeUnixNano > 0 && (
+            <time dateTime={new Date(span.startTimeUnixNano / 1_000_000).toISOString()}>
+              {new Date(span.startTimeUnixNano / 1_000_000).toLocaleString()}
+            </time>
+          )}
+          <span>
+            {span.durationNano > 0
+              ? formatDuration(span.durationNano / 1_000_000)
+              : "Duration unavailable"}
+          </span>
+          {span.totalTokens != null && <span>{formatNumber(span.totalTokens)} tokens</span>}
+          {span.totalCost != null && <span>{formatCost(span.totalCost)}</span>}
+        </div>
       </div>
-
       {isError && span.statusMessage && (
-        <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-5 py-2.5">
-          <p className="font-mono text-xs text-destructive">{span.statusMessage}</p>
+        <div className="shrink-0 border-y border-destructive/40 bg-destructive/5 px-4 py-2">
+          <p className="break-words text-xs text-destructive">{span.statusMessage}</p>
         </div>
       )}
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="divide-y divide-border/70">
-          {span.events.length > 0 && <ExceptionEventsSection events={span.events} />}
-          <TraceScoresSection span={span} />
-          <JsonBlock id="span-input" title="Input" value={span.inputs} />
+      <Tabs className="flex min-h-0 flex-1 flex-col" defaultValue="preview">
+        <TabsList
+          aria-label="Span details"
+          className="h-10 w-full shrink-0 justify-start gap-3 overflow-x-auto rounded-none border-b border-border/70 bg-transparent px-4 py-0"
+        >
+          {[
+            ["preview", "Preview"],
+            ["attributes", "Attributes"],
+            ["scores", `Scores (${scoreCount})`],
+            ["events", `Events (${span.events.length})`],
+          ].map(([value, label]) => (
+            <TabsTrigger
+              className="h-10 rounded-none border-b-2 border-transparent px-0 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:hover:text-foreground"
+              key={value}
+              value={value}
+            >
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent className="mt-0 min-h-0 flex-1 overflow-auto" value="preview">
+          <JsonBlock title="Input" value={span.inputs} />
           <JsonBlock
             badge={
               span.spanAttributes?.response_type === "tool_calls" ? <ToolCallBadge /> : undefined
             }
-            id="span-output"
             title="Output"
             value={span.outputs}
           />
           {Array.isArray(span.spanAttributes?.available_tools) &&
-            (span.spanAttributes.available_tools as ToolDefinition[]).length > 0 && (
-              <AvailableToolsBlock
-                tools={span.spanAttributes.available_tools as ToolDefinition[]}
-              />
+            span.spanAttributes.available_tools.length > 0 && (
+              <details className="mx-4 mb-3 border-t border-border/70 pt-3">
+                <summary className="cursor-pointer text-xs text-muted-foreground">
+                  Available tools ({span.spanAttributes.available_tools.length})
+                </summary>
+                <AvailableToolsBlock
+                  tools={span.spanAttributes.available_tools as ToolDefinition[]}
+                />
+              </details>
             )}
+        </TabsContent>
+        <TabsContent
+          className="mt-0 min-h-0 flex-1 divide-y divide-border/70 overflow-auto"
+          value="attributes"
+        >
+          <Section label="Span">
+            <KeyValueRows entries={spanInfoEntries} />
+          </Section>
           {modelUsageEntries.length > 0 && (
             <Section label="Model / usage">
               <KeyValueRows entries={modelUsageEntries} />
@@ -782,21 +850,63 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
               <KeyValueRows entries={retrievalEntries} />
             </Section>
           )}
-          <Section id="span-metadata" label="Span info">
-            <KeyValueRows entries={spanInfoEntries} />
-          </Section>
           {overmindGroups.map((group) => (
             <Section key={group.title} label={group.title}>
               <KeyValueRows entries={group.entries} />
             </Section>
           ))}
           {spanAttributeEntries.length > 0 && (
-            <Section label="Span attributes">
+            <Section label="Attributes">
               <KeyValueRows entries={spanAttributeEntries} />
             </Section>
           )}
-        </div>
-      </div>
+        </TabsContent>
+        <TabsContent className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden" value="scores">
+          {scoreCount > 0 ? (
+            <TraceScoresSection span={span} />
+          ) : (
+            <EmptyState
+              description="Evaluation results for this span will appear here."
+              icon={Icon.listBox}
+              size="compact"
+              title="No recorded scores"
+            />
+          )}
+        </TabsContent>
+        <TabsContent className="mt-0 min-h-0 flex-1 overflow-auto" value="events">
+          {span.events.length === 0 ? (
+            <EmptyState
+              description="This span has no captured events."
+              icon={Icon.list}
+              size="compact"
+              title="No recorded events"
+            />
+          ) : (
+            <>
+              <ExceptionEventsSection events={span.events} />
+              {span.events
+                .filter((event) => event.name !== "exception")
+                .map((event, index) => (
+                  <Section key={index} label={event.name}>
+                    <KeyValueRows
+                      entries={[
+                        ...(event.timeUnixNano
+                          ? [
+                              ["Time", new Date(event.timeUnixNano / 1_000_000).toISOString()] as [
+                                string,
+                                unknown,
+                              ],
+                            ]
+                          : []),
+                        ...Object.entries(event.attributes ?? {}),
+                      ]}
+                    />
+                  </Section>
+                ))}
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

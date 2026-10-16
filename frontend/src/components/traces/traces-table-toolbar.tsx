@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import type { Table } from "@tanstack/react-table";
@@ -13,7 +13,6 @@ import {
 import { DataTableViewOptions } from "@/components/traces/table-column-toggle";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { DateTime } from "@/components/ui/datetime";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { ListToolbar } from "@/components/ui/list-toolbar";
@@ -137,6 +136,7 @@ const ALL_CAPABILITIES = "__all__";
 
 interface TracesTableToolbarProps<TData> {
   table: Table<TData>;
+  viewTabs?: ReactNode;
   searchValue: string;
   onSearchChange: (value: string) => void;
 
@@ -157,15 +157,11 @@ interface TracesTableToolbarProps<TData> {
   onResetAll: () => void;
   onRefresh: () => void;
   isRefetching: boolean;
-  isFetching: boolean;
-  /** Epoch ms of the last successful fetch — undefined before the first one lands. */
-  lastUpdatedAt?: number;
-  /** Epoch ms this view's poll is next due; omitted once polling has backed off. */
-  nextPollAt?: number;
 }
 
 export function TracesTableToolbar<TData>({
   table,
+  viewTabs,
   searchValue,
   onSearchChange,
   timeRange,
@@ -179,23 +175,9 @@ export function TracesTableToolbar<TData>({
   onResetAll,
   onRefresh,
   isRefetching,
-  isFetching,
-  lastUpdatedAt,
-  nextPollAt,
 }: TracesTableToolbarProps<TData>) {
   const [spinning, setSpinning] = useState(false);
   const isSessionsView = view === "sessions";
-
-  // The poll cadence is shorter than a minute, so an absolute clock time reads
-  // as identical to "updated" — count down instead.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (nextPollAt == null) return;
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
-  }, [nextPollAt]);
-  const secondsToNextPoll =
-    nextPollAt == null ? 0 : Math.max(0, Math.round((nextPollAt - now) / 1000));
 
   // Sessions filter by a plain select (the span filter builder doesn't apply to
   // session rows), but reuse the traces `capability` entry so the choice survives a
@@ -265,22 +247,6 @@ export function TracesTableToolbar<TData>({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {lastUpdatedAt != null && (
-          <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-            <span className={cn("size-1.5 rounded-xs bg-success", isFetching && "animate-pulse")} />
-            {isFetching ? (
-              "Fetching…"
-            ) : (
-              <>
-                Updated <DateTime value={lastUpdatedAt} />
-                {secondsToNextPoll > 0 && ` · next in ${secondsToNextPoll}s`}
-              </>
-            )}
-          </span>
-        )}
-      </div>
-
       <ListToolbar
         actions={
           <ToolbarTooltip label="Refresh traces">
@@ -339,13 +305,16 @@ export function TracesTableToolbar<TData>({
         hasActiveFilters={hasAnyState}
         onClearFilters={onResetAll}
         primary={
-          !isSessionsView && (
-            <TimeRangeButton
-              customTimeRange={customTimeRange}
-              onChange={onTimeRangeChange}
-              value={timeRange}
-            />
-          )
+          <>
+            {viewTabs}
+            {!isSessionsView && (
+              <TimeRangeButton
+                customTimeRange={customTimeRange}
+                onChange={onTimeRangeChange}
+                value={timeRange}
+              />
+            )}
+          </>
         }
         search={
           <SearchInput

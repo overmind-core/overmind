@@ -41,7 +41,7 @@ import {
   SelectableCardGroup,
   selectableCardVariants,
 } from "@/components/ui/selectable-card";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1718,11 +1718,7 @@ function CapabilitiesBody({
         </p>
       )}
 
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner size="sm" /> Discovering…
-        </div>
-      )}
+      {loading && <LoadingState label="Discovering capabilities" />}
       {!loading && !error && needsKey && (
         <p className="text-sm text-muted-foreground">
           Choose a metadata key to list the values it takes.

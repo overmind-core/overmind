@@ -2,7 +2,7 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 import { GuestRepoPicker } from "@/components/guest/repo-picker";
 import { SplashBackground } from "@/components/splash-background";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import { useAuthContext } from "@/contexts/auth-context";
 
 export const Route = createFileRoute("/demo")({
@@ -15,7 +15,7 @@ function DemoPage() {
   if (!isLoaded) {
     return (
       <SplashBackground>
-        <Spinner size="lg" />
+        <LoadingState className="max-w-sm" label="Loading demo" />
       </SplashBackground>
     );
   }

@@ -27,7 +27,6 @@ const collectPromptSections = (flow: Flow): PromptSection[] => {
     sections.push({ id, label, text });
   };
 
-  push("system", "System prompt", flow.systemPrompt || flow.systemPromptExcerpt);
   (flow.modes ?? []).forEach((mode, index) => {
     const label = mode.name?.trim() ? `${mode.name} task` : `Task ${index + 1}`;
     push(`mode-${index}`, label, mode.prompt || mode.promptExcerpt);

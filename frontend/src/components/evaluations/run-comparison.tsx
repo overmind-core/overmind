@@ -31,6 +31,7 @@ export interface RunSummary {
   scored?: number;
   errored?: number;
   degraded?: number;
+  migrated?: boolean;
   trust?: { trusted?: boolean; errored?: number; degraded?: number };
   class_metrics?: Record<string, unknown>;
 }

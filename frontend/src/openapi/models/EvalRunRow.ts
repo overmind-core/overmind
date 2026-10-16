@@ -56,7 +56,19 @@ export interface EvalRunRow {
      * @type {any}
      * @memberof EvalRunRow
      */
+    readonly input: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof EvalRunRow
+     */
     readonly output: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof EvalRunRow
+     */
+    readonly reference: any | null;
     /**
      *
      * @type {any}
@@ -117,7 +129,9 @@ export function instanceOfEvalRunRow(value: object): value is EvalRunRow {
     if (!('run' in value) || value['run'] === undefined) return false;
     if (!('rowIndex' in value) || value['rowIndex'] === undefined) return false;
     if (!('sourceTraceId' in value) || value['sourceTraceId'] === undefined) return false;
+    if (!('input' in value) || value['input'] === undefined) return false;
     if (!('output' in value) || value['output'] === undefined) return false;
+    if (!('reference' in value) || value['reference'] === undefined) return false;
     if (!('metadata' in value) || value['metadata'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('degraded' in value) || value['degraded'] === undefined) return false;
@@ -143,7 +157,9 @@ export function EvalRunRowFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'run': json['run'],
         'rowIndex': json['row_index'],
         'sourceTraceId': json['source_trace_id'],
+        'input': json['input'],
         'output': json['output'],
+        'reference': json['reference'],
         'metadata': json['metadata'],
         'error': json['error'],
         'degraded': json['degraded'],
@@ -159,7 +175,7 @@ export function EvalRunRowToJSON(json: any): EvalRunRow {
     return EvalRunRowToJSONTyped(json, false);
 }
 
-export function EvalRunRowToJSONTyped(value?: Omit<EvalRunRow, 'id'|'run'|'row_index'|'source_trace_id'|'output'|'metadata'|'error'|'degraded'|'degraded_reason'|'state'|'score'|'metrics'|'finished_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalRunRowToJSONTyped(value?: Omit<EvalRunRow, 'id'|'run'|'row_index'|'source_trace_id'|'input'|'output'|'reference'|'metadata'|'error'|'degraded'|'degraded_reason'|'state'|'score'|'metrics'|'finished_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

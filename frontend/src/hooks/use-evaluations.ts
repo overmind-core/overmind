@@ -7,6 +7,7 @@ import type {
   EvalMatrix,
   EvalMatrixRequest,
   EvalRun,
+  EvalRunRow,
   EvalRunsActivityListOrderingEnum,
   EvalRunsActivityListStatusEnum,
   EvaluationActivity,
@@ -236,11 +237,24 @@ export const useEvalRunComparisonQuery = (
     retry: false,
   });
 
+export async function fetchEvalRunRows(runId: string) {
+  const results: EvalRunRow[] = [];
+  for (let page = 1; ; page++) {
+    const data = await apiClient.evalRunRows.evalRunRowsList({
+      ordering: "row_index",
+      page,
+      pageSize: 1000,
+      run: runId,
+    });
+    results.push(...data.results);
+    if (!data.next) return { ...data, next: null, previous: null, results };
+  }
+}
+
 export const useEvalRunRowsQuery = (runId: string | undefined, active = false) =>
   useQuery({
     enabled: !!runId,
-    queryFn: () =>
-      apiClient.evalRunRows.evalRunRowsList({ ordering: "row_index", pageSize: 1000, run: runId }),
+    queryFn: () => fetchEvalRunRows(runId!),
     queryKey: ["eval-run-rows", runId],
     refetchInterval: (q) => backoffPolling(q, active ? 4_000 : false),
   });
@@ -295,13 +309,20 @@ export const useDeleteEvalRunMutation = (projectId: string | undefined) => {
 export const useEvalRunGroupQuery = (projectId: string | undefined, group: string | undefined) =>
   useQuery({
     enabled: !!projectId && !!group,
-    queryFn: () =>
-      apiClient.evalRuns.evalRunsList({
-        group,
-        ordering: "created_at",
-        pageSize: 50,
-        project: projectId,
-      }),
+    queryFn: async () => {
+      const results: EvalRun[] = [];
+      for (let page = 1; ; page++) {
+        const data = await apiClient.evalRuns.evalRunsList({
+          group,
+          ordering: "created_at",
+          page,
+          pageSize: 50,
+          project: projectId,
+        });
+        results.push(...data.results);
+        if (!data.next) return { ...data, next: null, previous: null, results };
+      }
+    },
     queryKey: ["eval-runs", "group", projectId, group],
     refetchInterval: (q) => backoffPolling(q, () => runsPolling(q.state.data?.results)),
   });

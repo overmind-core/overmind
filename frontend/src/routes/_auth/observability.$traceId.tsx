@@ -4,11 +4,12 @@ import { DetailErrorState } from "@/components/route-error";
 import { TraceDataProvider } from "@/components/traces/contexts/TraceDataContext";
 import { TraceSelectionProvider } from "@/components/traces/contexts/TraceSelectionContext";
 import { TraceLayoutDesktop } from "@/components/traces/TraceLayoutDesktop";
+import { TraceLoadingState } from "@/components/traces/TraceLoadingState";
 import { TracePanelDetail } from "@/components/traces/TracePanelDetail";
 import { TracePanelNavigation } from "@/components/traces/TracePanelNavigation";
 import { TracePanelNavigationHeader } from "@/components/traces/TracePanelNavigationHeader";
 import { Button } from "@/components/ui/button";
-import { LoadingState } from "@/components/ui/spinner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useProjectsList } from "@/hooks/use-projects";
 import type { SpanRow } from "@/hooks/use-traces";
 import { useTraceDetail } from "@/hooks/use-traces";
@@ -64,7 +65,7 @@ function TraceDetailPage() {
           {/* Rendered while loading too: the panel's only close affordance. */}
           <TracePanelNavigationHeader />
           <div className="min-h-0 flex-1">
-            {isLoading ? <LoadingState /> : <TraceLayoutContent />}
+            {isLoading ? <TraceLoadingState /> : <TraceLayoutContent />}
           </div>
         </div>
       </TraceSelectionProvider>
@@ -73,6 +74,18 @@ function TraceDetailPage() {
 }
 
 function TraceLayoutContent() {
+  const isMobile = useIsMobile();
+  if (isMobile)
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="h-[30%] min-h-36 shrink-0 border-b border-border">
+          <TracePanelNavigation />
+        </div>
+        <div className="min-h-0 flex-1">
+          <TracePanelDetail />
+        </div>
+      </div>
+    );
   return (
     <TraceLayoutDesktop>
       <TraceLayoutDesktop.NavigationPanel>

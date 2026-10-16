@@ -465,6 +465,11 @@ Responsive behaviour is modest by design: content padding scales `p-4` to `p-6`
 at `md`, card grids collapse to one column, and the sidebar becomes an 18rem
 sheet. This is a desktop-first instrument.
 
+Trace detail places a compact trace summary above a resizable desktop split:
+35% span navigator and 65% inspector by default. The navigator and inspector
+scroll independently. Mobile stacks the navigator above the inspector, reserving
+30% of the body (at least 9rem) for navigation and the remainder for span detail.
+
 ### Named rules
 
 **The Matched Line Box rule.** Mixed icon/badge/text rows align by giving the
@@ -587,6 +592,45 @@ the token can't reach it.
 - **Padding:** `p-7` header, `px-7 pb-7 pt-0` content. Internal separation uses
   `divide-y divide-border/40` rather than padded blocks.
 - **Title:** Always `TITLE.card` (18px Geist Pixel).
+
+### Inspector sheets
+
+`SheetContent` offers an opt-in `size="inspector"` for dense detail work. Side
+sheets fill the mobile width and use `min(960px, 90vw)` from `sm` upward.
+`size="viewport"` fills the viewport for an actual full-screen inspection mode.
+Top and bottom inspector sheets use 90vh; their viewport variant uses 100dvh.
+The existing `sm`, `md`, `lg` and `full` sizes retain their dimensions and caps.
+
+### Trace detail
+
+The trace summary keeps the root name, shortened ID, span count and recorded
+usage together, with close and full-screen controls. Tree and Timeline share
+the navigator. Tree branches cascade on 20px indents with the shared sidebar
+pixel-elbow mask and continuous ancestor rails. Rails stop at the last visible
+sibling, including during search. Tree rows use two lines: a categorical span glyph and name first,
+then quiet duration, recorded token/cost totals and any span score. Selection
+uses a neutral wash; errors retain a separate status glyph. Search reveals
+matching spans and their ancestry without changing the saved collapsed state;
+clearing it restores that state.
+
+Open dialogs, confirmations, popovers, dropdowns, selects and modal sheets use
+a shared 2px background blur with a 200ms fade. Popup surfaces stay sharp above
+the focus layer; nested popups do not accumulate blur. Tooltips do not activate
+it. Reduced-motion preferences disable the fade. The trace inspector retains
+its hover-only blur when no popup is open.
+
+The inspector is a flat continuation of the panel, separated by thin rules.
+Its compact span heading precedes Preview, Attributes, Scores and Events tabs.
+Preview leads with input and output; evaluation results stay in Scores.
+Scores use the shared Table primitives and evaluation method badges, with Eval
+name, Type and Score columns. Use the standard header, cell spacing and full-width
+row rules, never inset floating dividers. Types reflect the recorded method
+(Model judge or Code check); missing types stay explicit. Scores use the shared
+right-aligned score chips, with status chips for abstention, error and unscored states. Rows are read-only: no
+expandable explanations, chevrons or repeated section heading/count.
+Absent payloads, duration, scores and events remain explicitly unavailable or
+uncaptured, and missing usage is omitted rather than rendered as zero. Preserve
+recorded zero values and distinguish an unset status from a successful span.
 
 ### Badges / chips
 

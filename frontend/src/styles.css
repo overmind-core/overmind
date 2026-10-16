@@ -692,3 +692,46 @@ button:active *,
 .react-flow .react-flow__edges svg {
   overflow: visible !important;
 }
+
+@media (hover: hover) and (pointer: fine) {
+  .sheet-hover-backdrop:has(+ [data-blur-background-on-hover="true"]:hover) {
+    opacity: 1;
+  }
+}
+
+/* One focus layer keeps nested popup surfaces sharp without accumulating blur. */
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+  content: "";
+  opacity: 0;
+  backdrop-filter: blur(2px);
+  transition: opacity 200ms ease-out;
+}
+
+body:has(
+  :is(
+      [data-slot="dialog-content"],
+      [data-slot="alert-dialog-content"],
+      [data-slot="popover-content"],
+      [data-slot="dropdown-menu-content"],
+      [data-slot="select-content"],
+      [data-slot="sheet-content"]:not([data-blur-background-on-hover="true"])
+    )[data-state="open"]
+) {
+  &::after {
+    opacity: 1;
+  }
+
+  .sheet-hover-backdrop {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    transition: none;
+  }
+}

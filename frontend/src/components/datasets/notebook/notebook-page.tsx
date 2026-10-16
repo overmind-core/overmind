@@ -15,7 +15,7 @@ import {
 } from "@/components/datasets/notebook/source";
 import { TracePreparation } from "@/components/datasets/notebook/trace-preparation";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import {
   activeCellOf,
   type DatasetEvent,
@@ -137,7 +137,7 @@ export function DatasetNotebook({
   if (datasetQuery.isPending) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Spinner />
+        <LoadingState fullPage label="Loading dataset" />
       </div>
     );
   }
@@ -262,7 +262,7 @@ export function DatasetNotebook({
           showMinimap={showMinimap}
         />
         {preparationQuery.isPending ? (
-          <Spinner />
+          <LoadingState fullPage label="Loading preparation" />
         ) : cells.length === 0 ? (
           <div className="overflow-y-auto pr-10">
             <SourceLanding

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CreditsAmount } from "@/components/ui/credits";
 import { Icon } from "@/components/ui/icons";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   useBuyPlan,
   useCancelSubscription,
@@ -256,14 +256,26 @@ export function AccountBand({
   if (query.isLoading || buy.isPending || !ready) {
     return (
       <div className={cn("rounded-md border border-border bg-card px-4 py-3", className)}>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner size="sm" />
-          {buy.isPending
-            ? "Redirecting to Stripe…"
-            : commercial
-              ? "Loading plan…"
-              : "Loading usage…"}
-        </div>
+        {buy.isPending ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Redirecting to Stripe…
+          </p>
+        ) : (
+          <div
+            aria-busy="true"
+            aria-label={commercial ? "Loading plan" : "Loading usage"}
+            role="status"
+          >
+            <span className="sr-only">{commercial ? "Loading plan" : "Loading usage"}</span>
+            <div aria-hidden="true" className="flex items-center justify-between gap-4">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-8 w-24" />
+            </div>
+          </div>
+        )}
       </div>
     );
   }

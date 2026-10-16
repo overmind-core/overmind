@@ -39,7 +39,7 @@ function SheetOverlay({
 }
 
 // A sheet keeps the full extent along its anchored edge and takes its size on the other
-// axis, stopping at the same 75% canvas ceiling every modal obeys.
+// axis. Inspectors can opt into a wider workspace or the full viewport.
 const sheetContentVariants = cva(
   "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col overflow-hidden transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
@@ -48,10 +48,18 @@ const sheetContentVariants = cva(
       { class: "w-[32rem]", side: ["left", "right"], size: "md" },
       { class: "w-[48rem]", side: ["left", "right"], size: "lg" },
       { class: "w-[75vw]", side: ["left", "right"], size: "full" },
+      {
+        class: "w-screen max-w-none sm:w-[min(960px,90vw)]",
+        side: ["left", "right"],
+        size: "inspector",
+      },
+      { class: "w-screen max-w-none", side: ["left", "right"], size: "viewport" },
       { class: "h-[24rem]", side: ["top", "bottom"], size: "sm" },
       { class: "h-[32rem]", side: ["top", "bottom"], size: "md" },
       { class: "h-[48rem]", side: ["top", "bottom"], size: "lg" },
       { class: "h-[75vh]", side: ["top", "bottom"], size: "full" },
+      { class: "h-[90vh] max-h-none", side: ["top", "bottom"], size: "inspector" },
+      { class: "h-dvh max-h-none", side: ["top", "bottom"], size: "viewport" },
     ],
     defaultVariants: { side: "right", size: "md" },
     variants: {
@@ -63,7 +71,7 @@ const sheetContentVariants = cva(
           "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full max-w-[75vw] border-l",
         top: "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 max-h-[75vh] w-full border-b",
       },
-      size: { full: "", lg: "", md: "", sm: "" },
+      size: { full: "", inspector: "", lg: "", md: "", sm: "", viewport: "" },
     },
   }
 );
@@ -77,6 +85,7 @@ function SheetContent({
   showCloseButton = true,
   floatingClose = false,
   showOverlay = true,
+  blurBackgroundOnHover = false,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> &
   VariantProps<typeof sheetContentVariants> & {
@@ -87,12 +96,24 @@ function SheetContent({
     /** For a sheet with no `SheetHeader` to hold the close button. */
     floatingClose?: boolean;
     showOverlay?: boolean;
+    blurBackgroundOnHover?: boolean;
   }) {
   return (
     <SheetPortal>
       {showOverlay && <SheetOverlay />}
+      {blurBackgroundOnHover && (
+        <div
+          aria-hidden
+          className="sheet-hover-backdrop pointer-events-none fixed inset-0 z-50 opacity-0 backdrop-blur-[2px] transition-opacity duration-200 ease-out motion-reduce:transition-none"
+        />
+      )}
       <SheetPrimitive.Content
-        className={cn(sheetContentVariants({ className, side, size }))}
+        className={cn(
+          sheetContentVariants({ side, size }),
+          !blurBackgroundOnHover && "z-60",
+          className
+        )}
+        data-blur-background-on-hover={blurBackgroundOnHover || undefined}
         data-slot="sheet-content"
         {...props}
       >

@@ -24,13 +24,14 @@ function PopoverContent({
       <PopoverPrimitive.Content
         align={align}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 rounded-md border outline-none",
+          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-60 rounded-md border outline-none",
           className
         )}
         // Popover content portals to `<body>`, outside the subtree a modal Dialog's
         // scroll lock allows, so wheel events over a scroll area inside it are cancelled.
         // Radix's `Select` and `DropdownMenu` lock scroll themselves and need no
         // equivalent.
+        data-slot="popover-content"
         ref={escapeScrollLock}
         sideOffset={sideOffset}
         {...props}

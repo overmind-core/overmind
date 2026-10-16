@@ -53,7 +53,6 @@ function renderToolbar(onFiltersChange = vi.fn(), filters: FilterEntry[] = []) {
       <TracesTableToolbar
         customTimeRange={{}}
         filters={filters}
-        isFetching={false}
         isRefetching={false}
         onFiltersChange={onFiltersChange}
         onRefresh={vi.fn()}

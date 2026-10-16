@@ -19,8 +19,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { useNudgeDismissalCount } from "@/hooks/use-nudge-dismissal";
@@ -341,9 +342,7 @@ function CredentialItem({
             {showRuns && (
               <div className="overflow-hidden rounded-md border border-border/70">
                 {runsQuery.isLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                    <Spinner size="sm" /> Loading runs…
-                  </div>
+                  <LoadingState label="Loading sync runs" />
                 ) : runs.length === 0 ? (
                   <p className="px-3 py-2 text-xs text-muted-foreground">No sync runs yet.</p>
                 ) : (
@@ -615,7 +614,11 @@ function IntegrationsPage() {
     <PageShell
       header={
         <PageHeader
-          actions={credentialsQuery.isLoading ? <Spinner /> : undefined}
+          actions={
+            credentialsQuery.isLoading ? (
+              <Skeleton aria-label="Loading integrations" className="h-8 w-24" />
+            ) : undefined
+          }
           description="Connect third-party observability platforms to pull traces into Overmind automatically."
           icon={<Icon.integrations aria-hidden className="size-6 shrink-0" />}
           title="Integrations"

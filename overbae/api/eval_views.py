@@ -40,7 +40,7 @@ from overbae.api.scoping import project_ids_for
 from overbae.api.serializers import ModelCatalogResponseSerializer
 from overbae.api.views import _user_project_ids
 from overbae.core.model_registry import model_defaults
-from overbae.innermind import comparison, runs
+from overbae.innermind import comparison, generation, runs
 from overbae.models import (
     EvalMatrix,
     EvalRun,
@@ -50,6 +50,7 @@ from overbae.models import (
     FinetuningJobEval,
     OptimizerCandidate,
 )
+from overbae.services.datasets import rows as row_store
 from overbae.services.evaluation_activity import (
     activity_datasets,
     activity_records,
@@ -380,8 +381,19 @@ class EvalRunRowViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             raise ValidationError({"run": "Required."})
         return super().list(request, *args, **kwargs)
 
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        self.dataset_rows = {}
+        if page and page[0].run.cell_id:
+            indices = [EvalRunRowSerializer.source_index(item) for item in page]
+            source_rows = row_store.rows(page[0].run.cell, [i for i in indices if i is not None])
+            self.dataset_rows = {item.index: generation.prepared(item) for item in source_rows}
+        return page
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
+        if hasattr(self, "dataset_rows"):
+            ctx["dataset_rows"] = self.dataset_rows
         if getattr(self, "swagger_fake_view", False):
             return ctx
         run_id = self.request.query_params.get("run")

@@ -466,6 +466,8 @@ class EvalRunRowSerializer(serializers.ModelSerializer):
 
     score = serializers.SerializerMethodField()
     metrics = serializers.SerializerMethodField()
+    input = serializers.SerializerMethodField()
+    reference = serializers.SerializerMethodField()
 
     class Meta:
         model = EvalRunRow
@@ -474,7 +476,9 @@ class EvalRunRowSerializer(serializers.ModelSerializer):
             "run",
             "row_index",
             "source_trace_id",
+            "input",
             "output",
+            "reference",
             "metadata",
             "error",
             "degraded",
@@ -498,20 +502,23 @@ class EvalRunRowSerializer(serializers.ModelSerializer):
         found = self.latest(obj)
         return found.metrics if found else {}
 
-
-class EvalRunRowDetailSerializer(EvalRunRowSerializer):
-    input = serializers.SerializerMethodField()
-    reference = serializers.SerializerMethodField()
-
-    class Meta(EvalRunRowSerializer.Meta):
-        fields = [*EvalRunRowSerializer.Meta.fields, "input", "reference"]
-        read_only_fields = fields
+    @staticmethod
+    def source_index(obj):
+        legacy = obj.metadata.get("legacy_sample", {})
+        return legacy.get("row_index", obj.row_index)
 
     def dataset_row(self, obj):
-        if "dataset_row" not in self.context:
-            found = row_store.row(obj.run.cell, obj.row_index)
-            self.context["dataset_row"] = generation.prepared(found) if found else None
-        return self.context["dataset_row"]
+        index = self.source_index(obj)
+        if not obj.run.cell_id or index is None:
+            return None
+        if "dataset_rows" in self.context:
+            return self.context["dataset_rows"].get(index)
+        cache = self.context.setdefault("dataset_row_cache", {})
+        key = (obj.run.cell_id, index)
+        if key not in cache:
+            found = row_store.row(obj.run.cell, index)
+            cache[key] = generation.prepared(found) if found else None
+        return cache[key]
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_input(self, obj):
@@ -522,6 +529,10 @@ class EvalRunRowDetailSerializer(EvalRunRowSerializer):
     def get_reference(self, obj):
         row = self.dataset_row(obj)
         return generation.reference_of(row, obj.run.mode) if row else None
+
+
+class EvalRunRowDetailSerializer(EvalRunRowSerializer):
+    """Keep the detail response type distinct for existing API clients."""
 
 
 class MetricComparisonSerializer(serializers.Serializer):

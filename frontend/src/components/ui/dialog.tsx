@@ -43,7 +43,7 @@ function DialogOverlay({
 // The canvas is fixed: no modal is ever wider than 75vw or taller than 75vh. A size
 // picks only the natural width inside that ceiling.
 const dialogContentVariants = cva(
-  "bg-background text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex max-h-[75vh] w-full max-w-[75vw] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-md border border-border duration-200",
+  "bg-background text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-60 flex max-h-[75vh] w-full max-w-[75vw] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-md border border-border duration-200",
   {
     defaultVariants: { size: "md" },
     variants: {

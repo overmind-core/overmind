@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { count } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
@@ -197,10 +196,10 @@ export function SetupPanel({
             {datasetShown && (
               <>
                 {validating && (
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Spinner size="sm" />
-                    Validating
-                  </p>
+                  <div aria-busy="true" aria-label="Validating dataset" role="status">
+                    <span className="sr-only">Validating dataset</span>
+                    <Skeleton aria-hidden="true" className="h-3 w-28" />
+                  </div>
                 )}
 
                 {invalid && dataset && (

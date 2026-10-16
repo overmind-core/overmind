@@ -243,16 +243,15 @@ function TracesPage() {
 
   const tracesOrdering = ordering ?? DEFAULT_TRACES_ORDERING;
 
-  const { data, isFetched, isFetching, isRefetching, error, refetch, dataUpdatedAt } =
-    useTracesList({
-      enabled: !isSessionsView && !isSignalsView,
-      filters: apiFilters,
-      ordering: tracesOrdering,
-      page,
-      pageSize,
-      project_id: projectId!,
-      search: searchTerm || undefined,
-    });
+  const { data, isFetched, isRefetching, error, refetch } = useTracesList({
+    enabled: !isSessionsView && !isSignalsView,
+    filters: apiFilters,
+    ordering: tracesOrdering,
+    page,
+    pageSize,
+    project_id: projectId!,
+    search: searchTerm || undefined,
+  });
 
   const sessionOrdering = useMemo(() => {
     const raw = ordering ?? DEFAULT_SESSIONS_ORDERING;
@@ -262,11 +261,9 @@ function TracesPage() {
   const {
     data: sessionsData,
     isFetched: sessionsFetched,
-    isFetching: sessionsFetching,
     isRefetching: sessionsRefetching,
     error: sessionsError,
     refetch: refetchSessions,
-    dataUpdatedAt: sessionsDataUpdatedAt,
   } = useSessionsList({
     capability: capabilityUuidFilter,
     enabled: isSessionsView,
@@ -423,25 +420,10 @@ function TracesPage() {
     );
   }
 
-  // Gate on a poll/refetch, not the initial load — that one is already
-  // covered by the table's own skeleton.
-  const isPolling = isSessionsView ? sessionsFetching && sessionsFetched : isFetching && isFetched;
-
-  // `useSessionsList` polls at a fixed cadence; `useTracesList` backs off to
-  // 5s while the list is empty (faster first-trace feedback) and 10s once it
-  // isn't — mirror that here so "next" doesn't drift from the real interval.
-  const lastUpdatedAt = isSessionsView ? sessionsDataUpdatedAt : dataUpdatedAt;
-  const listCount = data?.count;
-  const pollIntervalMs = isSessionsView ? 10_000 : (listCount ?? 0) > 0 ? 10_000 : 5_000;
-  const nextPollAt = lastUpdatedAt ? lastUpdatedAt + pollIntervalMs : undefined;
-
   const toolbarProps = {
     customTimeRange,
     filters: advancedFilters,
-    isFetching: isPolling,
     isRefetching: isSessionsView ? sessionsRefetching : isRefetching,
-    lastUpdatedAt: lastUpdatedAt || undefined,
-    nextPollAt,
     onFiltersChange: handleFiltersChange,
     onRefresh: () => (isSessionsView ? refetchSessions() : refetch()),
     onResetAll: handleResetAll,
@@ -455,26 +437,30 @@ function TracesPage() {
     view: tracesView,
   };
 
+  const viewTabs = (
+    <Tabs
+      className="w-fit shrink-0"
+      onValueChange={(next) => {
+        navigate({
+          search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
+          to: "/observability",
+        });
+        setSearchInput("");
+        handleClearSelection();
+      }}
+      value={traceId || (view === "signals" && !featureFlags.signals) ? "roots" : view}
+    >
+      <TabsList aria-label="Observability views">
+        <TabsTrigger value="sessions">Sessions</TabsTrigger>
+        {featureFlags.signals && <TabsTrigger value="signals">Signals</TabsTrigger>}
+        <TabsTrigger value="roots">Traces</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
   return (
     <PageShell header={header} variant="full">
-      <Tabs
-        className="w-fit pb-3"
-        onValueChange={(next) => {
-          navigate({
-            search: { page: 1, projectId, timeRange: "all", view: next as typeof view },
-            to: "/observability",
-          });
-          setSearchInput("");
-          handleClearSelection();
-        }}
-        value={traceId || (view === "signals" && !featureFlags.signals) ? "roots" : view}
-      >
-        <TabsList aria-label="Observability views">
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          {featureFlags.signals && <TabsTrigger value="signals">Signals</TabsTrigger>}
-          <TabsTrigger value="roots">Traces</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {isSignalsView && <div className="pb-3">{viewTabs}</div>}
       {isSignalsView ? (
         <SignalEvents
           onChange={setSearch}
@@ -532,7 +518,7 @@ function TracesPage() {
           page={page}
           pageSize={pageSize}
           storageKey="traces:sessions-cols"
-          toolbar={(t) => <TracesTableToolbar {...toolbarProps} table={t} />}
+          toolbar={(t) => <TracesTableToolbar {...toolbarProps} table={t} viewTabs={viewTabs} />}
         />
       ) : (
         <DataTable<TraceRow>
@@ -600,7 +586,7 @@ function TracesPage() {
           pageSize={pageSize}
           rowSelection={rowSelection}
           storageKey="traces:table-cols"
-          toolbar={(t) => <TracesTableToolbar {...toolbarProps} table={t} />}
+          toolbar={(t) => <TracesTableToolbar {...toolbarProps} table={t} viewTabs={viewTabs} />}
         />
       )}
 
@@ -643,22 +629,19 @@ function TracesPage() {
         open={!!traceId}
       >
         <SheetContent
-          // Lines the close button up with `TracePanelNavigationHeader`'s own
-          // button row (SheetBody py-4 + its py-1.5), and right-aligns it with
-          // the Span Details card (SheetBody px-5 + the card's p-4 = right-9).
-          closeButtonClassName="top-[22px] right-9"
-          floatingClose
+          blurBackgroundOnHover
           onEscapeKeyDown={handleCloseTrace}
           onInteractOutside={(e) => e.preventDefault()}
+          showCloseButton={false}
           showOverlay={false}
           side="right"
-          size={detailExpanded ? "full" : "lg"}
+          size={detailExpanded ? "viewport" : "inspector"}
         >
           <SheetTitle className="sr-only">Trace detail</SheetTitle>
           <SheetDescription className="sr-only">
             Spans, timings and payloads for the selected trace.
           </SheetDescription>
-          <SheetBody className="flex flex-col">
+          <SheetBody className="flex flex-col overflow-hidden p-0">
             <Outlet />
           </SheetBody>
         </SheetContent>

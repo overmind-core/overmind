@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { LocalLoginForm } from "@/components/local-login-form";
 import { SplashBackground } from "@/components/splash-background";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import { config } from "@/config";
 import { useAuthContext } from "@/contexts/auth-context";
 import { hasGuestSession } from "@/lib/guest";
@@ -46,7 +46,7 @@ function RouteComponent() {
   if (wasGuest && !isLoaded) {
     return (
       <SplashBackground>
-        <Spinner size="lg" />
+        <LoadingState className="max-w-sm" label="Loading sign in" />
       </SplashBackground>
     );
   }

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import apiClient from "@/client";
+import { DatapointInspector } from "@/components/evaluations/datapoint-inspector";
 import { LabelPerformance } from "@/components/evaluations/label-performance";
 import { MetricBars } from "@/components/evaluations/metric-bars";
 import { ModelOptionLabel } from "@/components/model-option-label";
@@ -619,61 +620,32 @@ function SampleInspector({
       <DialogHeader>
         <DialogTitle>Datapoint {sample.index}</DialogTitle>
       </DialogHeader>
-      <DialogBody className="flex min-h-0 flex-1 flex-col p-0">
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-5 lg:overflow-hidden">
-          <section
-            aria-label="Decision input"
-            className="flex min-w-0 flex-col border-b border-border lg:col-span-2 lg:min-h-0 lg:border-r lg:border-b-0"
-          >
-            <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border px-5">
-              <Icon.dataset className="size-3.5 text-muted-foreground" />
-              <h3 className="text-xs font-medium text-muted-foreground">Input</h3>
+      <DatapointInspector
+        input={
+          <>
+            <div className="space-y-1.5 px-4 py-3">
+              <h4 className="text-xs font-semibold text-muted-foreground">State</h4>
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+                {text(sample.input?.state)}
+              </pre>
             </div>
-            <div className="divide-y divide-border/70 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <div className="space-y-1.5 px-4 py-3">
-                <h4 className="text-xs font-semibold text-muted-foreground">State</h4>
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
-                  {text(sample.input?.state)}
-                </pre>
-              </div>
-              <div className="space-y-1.5 px-4 py-3">
-                <h4 className="text-xs font-semibold text-muted-foreground">Question</h4>
-                <p className="whitespace-pre-wrap break-words text-xs">
-                  {text(sample.input?.question)}
-                </p>
-              </div>
-              <div className="break-words px-4 py-3 text-xs text-muted-foreground">
-                {sample.benchmark} · {sample.input?.kind ?? "Incompatible input"}
-              </div>
-              {sample.error && <p className="px-4 py-3 text-xs text-warning">{sample.error}</p>}
+            <div className="space-y-1.5 px-4 py-3">
+              <h4 className="text-xs font-semibold text-muted-foreground">Question</h4>
+              <p className="whitespace-pre-wrap break-words text-xs">
+                {text(sample.input?.question)}
+              </p>
             </div>
-          </section>
-          <section
-            aria-label="Decision output and evaluation"
-            className="flex min-w-0 flex-col lg:col-span-3 lg:min-h-0"
-          >
-            <div className="flex h-10 shrink-0 items-center border-b border-border px-5">
-              <h3 className="text-xs font-medium text-muted-foreground">Output and evaluation</h3>
+            <div className="break-words px-4 py-3 text-xs text-muted-foreground">
+              {sample.benchmark} · {sample.input?.kind ?? "Incompatible input"}
             </div>
-            <div
-              aria-label="Model outputs"
-              className="divide-y divide-border outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
-              role="region"
-              // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the model outputs independently of the input pane.
-              tabIndex={0}
-            >
-              {calls.map((model) => (
-                <SampleModelOutput
-                  key={model.key}
-                  model={model}
-                  sample={sample}
-                  stopped={stopped}
-                />
-              ))}
-            </div>
-          </section>
-        </div>
-      </DialogBody>
+            {sample.error && <p className="px-4 py-3 text-xs text-warning">{sample.error}</p>}
+          </>
+        }
+      >
+        {calls.map((model) => (
+          <SampleModelOutput key={model.key} model={model} sample={sample} stopped={stopped} />
+        ))}
+      </DatapointInspector>
     </>
   );
 }
@@ -955,21 +927,6 @@ export function ProbabilityEvaluationMonitor({ plan }: { plan: NativeEvaluation 
                   {data?.count.toLocaleString() ?? ""}
                 </span>
               </h3>
-              <div
-                aria-label="Prediction key"
-                className="ml-auto flex flex-wrap items-center gap-2"
-              >
-                <Badge className="gap-1" variant="success">
-                  <Icon.success aria-hidden className="size-3" /> Correct
-                </Badge>
-                <Badge className="gap-1" variant="error">
-                  <Icon.failed aria-hidden className="size-3" /> Incorrect
-                </Badge>
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span aria-hidden className="h-1 w-5 rounded-sm bg-muted-foreground" />
-                  Probability
-                </span>
-              </div>
               <ListToolbar
                 filters={
                   <>

@@ -3,6 +3,7 @@ import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
+import { EvaluationMethodBadge } from "@/components/evaluations/evaluation-method-badge";
 import { MATRIX_TYPE_LABEL } from "@/components/evaluations/matrix-row-label";
 import {
   PYTHON_CHECK_EXAMPLES,
@@ -118,22 +119,6 @@ function ScopeIcon({ kind, className }: { kind: ScopeKind; className?: string })
   if (kind === "step") return <Icon.listBox className={className} />;
   if (kind === "whole") return <Icon.capability className={className} />;
   return <Icon.info className={className} />;
-}
-
-function MethodBadge({ type }: { type: EvalMatrixTypeEnum }) {
-  const isJudge = type === "llm";
-  return (
-    <span
-      className={`chip-label inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs ${
-        isJudge
-          ? "border-cat-4/40 bg-cat-4/10 text-cat-4"
-          : "border-cat-1/40 bg-cat-1/10 text-cat-1"
-      }`}
-    >
-      {isJudge ? <Icon.eval className="size-3" /> : <Icon.code className="size-3" />}
-      {isJudge ? "Model judge" : "Code check"}
-    </span>
-  );
 }
 
 function CodeSnippet({ source }: { source?: string }) {
@@ -372,7 +357,7 @@ export function EvalMatrixTable({
                         </Tooltip>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <MethodBadge type={row.type} />
+                        <EvaluationMethodBadge type={row.type} />
                       </TableCell>
                       <TableCell className="py-2.5">
                         <div className="flex items-center justify-end gap-1">
@@ -445,7 +430,7 @@ export function MatrixRowDetail({
         <DialogHeader className="items-start">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              {row && <MethodBadge type={row.type} />}
+              {row && <EvaluationMethodBadge type={row.type} />}
               <Badge size="chip" variant={row?.enabled === false ? "neutral" : "success"}>
                 {row?.enabled === false ? "Disabled" : "Enabled"}
               </Badge>

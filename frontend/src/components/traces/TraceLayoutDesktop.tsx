@@ -11,8 +11,8 @@ const HANDLE_ID = "trace-layout-handle";
 const NAV_PANEL_ID = "trace-layout-nav";
 const DETAIL_PANEL_ID = "trace-layout-detail";
 
-const NAV_DEFAULT_PCT = 25;
-const NAV_MIN_PCT = 20;
+const NAV_DEFAULT_PCT = 35;
+const NAV_MIN_PCT = 25;
 const NAV_COLLAPSED_PCT = 5;
 
 interface TraceLayoutDesktopContextValue {

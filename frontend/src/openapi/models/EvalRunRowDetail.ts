@@ -22,7 +22,7 @@ import {
 } from './EvalRunRowStateEnum';
 
 /**
- * ``score`` and ``metrics`` are the row's newest score, passed in by the view.
+ * Keep the detail response type distinct for existing API clients.
  * @export
  * @interface EvalRunRowDetail
  */
@@ -56,7 +56,19 @@ export interface EvalRunRowDetail {
      * @type {any}
      * @memberof EvalRunRowDetail
      */
+    readonly input: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof EvalRunRowDetail
+     */
     readonly output: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof EvalRunRowDetail
+     */
+    readonly reference: any | null;
     /**
      *
      * @type {any}
@@ -105,18 +117,6 @@ export interface EvalRunRowDetail {
      * @memberof EvalRunRowDetail
      */
     readonly finishedAt: Date | null;
-    /**
-     *
-     * @type {any}
-     * @memberof EvalRunRowDetail
-     */
-    readonly input: any | null;
-    /**
-     *
-     * @type {any}
-     * @memberof EvalRunRowDetail
-     */
-    readonly reference: any | null;
 }
 
 
@@ -129,7 +129,9 @@ export function instanceOfEvalRunRowDetail(value: object): value is EvalRunRowDe
     if (!('run' in value) || value['run'] === undefined) return false;
     if (!('rowIndex' in value) || value['rowIndex'] === undefined) return false;
     if (!('sourceTraceId' in value) || value['sourceTraceId'] === undefined) return false;
+    if (!('input' in value) || value['input'] === undefined) return false;
     if (!('output' in value) || value['output'] === undefined) return false;
+    if (!('reference' in value) || value['reference'] === undefined) return false;
     if (!('metadata' in value) || value['metadata'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('degraded' in value) || value['degraded'] === undefined) return false;
@@ -138,8 +140,6 @@ export function instanceOfEvalRunRowDetail(value: object): value is EvalRunRowDe
     if (!('score' in value) || value['score'] === undefined) return false;
     if (!('metrics' in value) || value['metrics'] === undefined) return false;
     if (!('finishedAt' in value) || value['finishedAt'] === undefined) return false;
-    if (!('input' in value) || value['input'] === undefined) return false;
-    if (!('reference' in value) || value['reference'] === undefined) return false;
     return true;
 }
 
@@ -157,7 +157,9 @@ export function EvalRunRowDetailFromJSONTyped(json: any, ignoreDiscriminator: bo
         'run': json['run'],
         'rowIndex': json['row_index'],
         'sourceTraceId': json['source_trace_id'],
+        'input': json['input'],
         'output': json['output'],
+        'reference': json['reference'],
         'metadata': json['metadata'],
         'error': json['error'],
         'degraded': json['degraded'],
@@ -166,8 +168,6 @@ export function EvalRunRowDetailFromJSONTyped(json: any, ignoreDiscriminator: bo
         'score': json['score'],
         'metrics': json['metrics'],
         'finishedAt': (json['finished_at'] == null ? null : new Date(json['finished_at'])),
-        'input': json['input'],
-        'reference': json['reference'],
     };
 }
 
@@ -175,7 +175,7 @@ export function EvalRunRowDetailToJSON(json: any): EvalRunRowDetail {
     return EvalRunRowDetailToJSONTyped(json, false);
 }
 
-export function EvalRunRowDetailToJSONTyped(value?: Omit<EvalRunRowDetail, 'id'|'run'|'row_index'|'source_trace_id'|'output'|'metadata'|'error'|'degraded'|'degraded_reason'|'state'|'score'|'metrics'|'finished_at'|'input'|'reference'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalRunRowDetailToJSONTyped(value?: Omit<EvalRunRowDetail, 'id'|'run'|'row_index'|'source_trace_id'|'input'|'output'|'reference'|'metadata'|'error'|'degraded'|'degraded_reason'|'state'|'score'|'metrics'|'finished_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
