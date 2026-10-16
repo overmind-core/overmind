@@ -31,7 +31,7 @@ Anything below `/60` is invisible. Never lower a border opacity without running 
 
 - A page title is `<PageHeader title description count actions icon leading/>`. Never a raw `<h1>`.
 - A page scaffold is `<PageShell variant="scroll|full" header/>`.
-- Loading is `<Spinner size/>` inline (buttons) or `<LoadingState label fullPage/>` for a region; `Skeleton` when the layout is known on first paint. Never a raw `animate-spin` or a "Loading…" text block.
+- Content loading uses skeletons: `<LoadingState label fullPage/>` for a generic region, or layout-matched `Skeleton` placeholders when the shape is known. Pages, panels, popups and initial selectors never use spinners. Keep loading announcements accessible and respect reduced motion. `<Spinner size/>` is reserved for pending action controls and live job status; never a raw `animate-spin` or a "Loading…" text block.
 - An empty state is `<EmptyState icon title description action size/>`.
 - A titled card is `<SectionCard title …>`; plain `<Card>` otherwise. Don't hand-roll `rounded-lg border` surfaces.
 - A destructive confirm is `<ConfirmDialog destructive onConfirm/>`. Never `window.confirm`. Dialog Cancel is always `variant="secondary"` (what `AlertDialogCancel` renders).

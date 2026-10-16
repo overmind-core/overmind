@@ -12,7 +12,7 @@ import { HeaderCredits } from "@/components/header-credits";
 import { ProjectSelector } from "@/components/project-selector";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthContext } from "@/contexts/auth-context";
 import { WorkshopSidebarContext } from "@/contexts/workshop-sidebar-context";
@@ -433,7 +433,7 @@ function RouteComponent() {
   if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Spinner size="lg" />
+        <LoadingState className="max-w-5xl" fullPage label="Loading workspace" />
       </div>
     );
   }
@@ -453,7 +453,7 @@ function RouteComponent() {
   if (onboardingQuery.isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Spinner size="lg" />
+        <LoadingState className="max-w-5xl" fullPage label="Loading workspace" />
       </div>
     );
   }

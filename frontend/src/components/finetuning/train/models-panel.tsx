@@ -27,7 +27,6 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { ModelCatalog } from "@/hooks/use-finetuning";
 import { count } from "@/lib/formatters";
@@ -582,7 +581,6 @@ export function ModelsPanel({ wizard }: { wizard: TrainWizard }) {
       ) : recommendQuery.isLoading && drafts.length === 0 ? (
         <>
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Spinner size="sm" />
             Reading the dataset and the capability&apos;s context
           </p>
           <Skeleton className="h-20 w-full shrink-0" />

@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { TraceSelectionSpec } from "@/hooks/use-datasets";
 import { useTracesList } from "@/hooks/use-traces";
@@ -162,9 +162,10 @@ export function TraceBulkSourcePicker({ projectId, onChange }: Props) {
         {rangeIncomplete ? (
           <span className="text-muted-foreground">Pick a from or to time</span>
         ) : previewQuery.isFetching ? (
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <Spinner className="size-3" /> Counting matching traces
-          </span>
+          <div aria-busy="true" aria-label="Counting matching traces" role="status">
+            <span className="sr-only">Counting matching traces</span>
+            <Skeleton aria-hidden="true" className="h-3 w-40" />
+          </div>
         ) : previewQuery.isError ? (
           <span className="text-destructive">Couldn't count matching traces</span>
         ) : (

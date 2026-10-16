@@ -11,7 +11,7 @@ import { OnboardingShell } from "@/components/onboarding/shell";
 import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useOnboardingStatus } from "@/hooks/use-query";
@@ -36,10 +36,10 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
-function CenteredSpinner() {
+function OnboardingLoadingState() {
   return (
     <div className="flex h-full items-center justify-center">
-      <Spinner size="lg" />
+      <LoadingState className="max-w-md" label="Loading setup" />
     </div>
   );
 }
@@ -52,7 +52,7 @@ function OnboardingPage() {
   if (!isLoaded) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-auth-splash">
-        <Spinner size="lg" />
+        <LoadingState className="max-w-md" label="Loading setup" />
       </div>
     );
   }
@@ -63,7 +63,7 @@ function OnboardingPage() {
   return (
     <OnboardingShell>
       {meQuery.isLoading || !meId ? (
-        <CenteredSpinner />
+        <OnboardingLoadingState />
       ) : (
         <SetupForm hasCompleted={!!meQuery.data?.hasCompletedOnboarding} key={meId} meId={meId} />
       )}

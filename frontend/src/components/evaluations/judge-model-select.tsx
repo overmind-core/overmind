@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { EvaluationContextReport } from "@/openapi";
 
@@ -133,10 +133,10 @@ export function JudgeModelSelect({
     <Field className={className} htmlFor={id} label="Judge model">
       {select}
       {checking ? (
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Spinner size="sm" />
-          Checking context
-        </span>
+        <div aria-busy="true" aria-label="Checking context" role="status">
+          <span className="sr-only">Checking context</span>
+          <Skeleton aria-hidden="true" className="h-3 w-32" />
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">
           {!checks.length

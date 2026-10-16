@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icons";
 import { SearchInput } from "@/components/ui/search-input";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkshopSidebar } from "@/contexts/workshop-sidebar-context";
 import { datasetDisplayName, isBusy, useDeleteDatasetMutation } from "@/hooks/use-datasets";
@@ -154,11 +154,7 @@ function DatasetNavigation({ projectId, enabled }: { projectId?: string; enabled
             );
           })}
         </ul>
-        {enabled && query.isPending && (
-          <div className="flex justify-center py-3">
-            <Spinner className="size-4" />
-          </div>
-        )}
+        {enabled && query.isPending && <LoadingState className="p-2" label="Loading datasets" />}
         {query.isError && (
           <div className="space-y-2 px-2 py-2 text-xs text-destructive">
             <p>Couldn't load datasets.</p>

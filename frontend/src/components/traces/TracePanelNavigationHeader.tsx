@@ -5,6 +5,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCost, formatNumber } from "@/lib/formatters";
 import { useTraceData } from "./contexts/TraceDataContext";
@@ -13,7 +14,7 @@ import { buildSpanTree } from "./lib/tree-building";
 const traceRouteApi = getRouteApi("/_auth/observability/$traceId");
 
 export function TracePanelNavigationHeader() {
-  const { spans, traceStatus, usage } = useTraceData();
+  const { spans, traceStatus, usage, isLoading } = useTraceData();
   const navigate = traceRouteApi.useNavigate();
   const { traceId } = traceRouteApi.useParams();
   const { detailExpanded } = traceRouteApi.useSearch();
@@ -33,9 +34,13 @@ export function TracePanelNavigationHeader() {
       </Tooltip>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h2 className="truncate text-sm font-medium" title={rootName}>
-            {rootName}
-          </h2>
+          {isLoading ? (
+            <Skeleton aria-label="Loading trace name" className="h-4 w-48 max-w-full" />
+          ) : (
+            <h2 className="truncate text-sm font-medium" title={rootName}>
+              {rootName}
+            </h2>
+          )}
           {traceStatus === "live" && <Badge variant="info">Live</Badge>}
           {traceStatus === "interrupted" && <Badge variant="warning">Interrupted</Badge>}
         </div>
@@ -43,7 +48,11 @@ export function TracePanelNavigationHeader() {
           <span className="font-mono" title={traceId}>
             {traceId.slice(0, 8)}…
           </span>
-          <span>{spans.length} spans</span>
+          {isLoading ? (
+            <Skeleton aria-label="Loading span count" className="h-3 w-16" />
+          ) : (
+            <span>{spans.length} spans</span>
+          )}
           {usage?.totalTokens != null && <span>{formatNumber(usage.totalTokens)} tokens</span>}
           {usage?.totalCost != null && <span>{formatCost(usage.totalCost)}</span>}
         </div>
