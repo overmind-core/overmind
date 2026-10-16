@@ -50,16 +50,16 @@ def read_workloads():
         blocked=Count("pk", filter=Q(state="running", lease_until__isnull=True)),
         oldest=Min("created_at", filter=Q(state="queued")),
     )
-    scoring = LiveScoringWork.objects.aggregate(
+    recent_expiry = Q(
+        error="worker admission expired",
+        finished_at__gte=timezone.now() - timedelta(seconds=NEWLY_BLOCKED_SECONDS),
+    )
+    scoring = LiveScoringWork.objects.filter(
+        Q(state__in=["waiting", "queued", "running"]) | recent_expiry
+    ).aggregate(
         waiting=Count("pk", filter=Q(state__in=["waiting", "queued"])),
         running=Count("pk", filter=Q(state="running")),
-        blocked=Count(
-            "pk",
-            filter=Q(
-                error="worker admission expired",
-                finished_at__gte=timezone.now() - timedelta(seconds=NEWLY_BLOCKED_SECONDS),
-            ),
-        ),
+        blocked=Count("pk", filter=recent_expiry),
         oldest=Min("created_at", filter=Q(state__in=["waiting", "queued"])),
     )
     project_demand = (

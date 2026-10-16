@@ -66,6 +66,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 "indexes": [
+                    models.Index(fields=["finished_at"], name="live_scoring_finished"),
                     models.Index(fields=["state", "expires_at"], name="live_scoring_expiry"),
                     models.Index(
                         fields=["project", "state", "id"], name="live_scoring_project_wait"
