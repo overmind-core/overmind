@@ -14,7 +14,12 @@ describe("data onboarding handoff", () => {
     expect(prompt).toContain("Project ID: project-1");
     expect(prompt).toContain("Dataset ID: dataset-1");
     expect(prompt).toContain(`connection check --project-id project-1 --api-url ${url} --json`);
+    expect(prompt).toContain("Start with the standard data exploration workflow");
+    expect(prompt).toContain("Do not assume conversational SFT");
     expect(prompt).toContain("chat_train");
+    expect(prompt).toContain("decision_train");
+    expect(prompt).toContain("Never turn soft targets into argmax text");
+    expect(prompt).toContain("chosen training representation and its evidence");
     expect(prompt).toContain("Do not create another project or re-upload the original files");
     expect(prompt).toContain("Do not launch training, evaluation or inference");
     expect(prompt).not.toContain("overmind init");

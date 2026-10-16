@@ -63,7 +63,7 @@ export function DataProjectForm({
       );
       void client.invalidateQueries({ queryKey: ["projects"] });
       const created = await dataset.mutateAsync({
-        brief: "Prepare the uploaded data as a supervised fine-tuning (SFT) dataset.",
+        brief: "Explore the uploaded data and determine how best to prepare it for training.",
         capabilityId: null,
         intent: "train",
         name: project.name,
@@ -90,8 +90,8 @@ export function DataProjectForm({
       }}
     >
       <p className="text-sm text-muted-foreground">
-        Upload your source files. Then use your coding agent to prepare an SFT dataset in the
-        Workshop.
+        Upload your source files. Then use your coding agent to explore and prepare the data for
+        training in the Workshop.
       </p>
       <label className="flex flex-col gap-2 text-sm">
         Project name

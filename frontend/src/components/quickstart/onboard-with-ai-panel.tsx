@@ -102,7 +102,7 @@ export function OnboardWithAiPanel({
         <McpClientPicker onChange={setClient} value={client} />
         <p className="text-xs text-muted-foreground">
           {datasetId
-            ? `Open a workspace in ${meta.label} and paste the prompt. Your agent will prepare the uploaded data here; no repository is needed.`
+            ? `Open a workspace in ${meta.label} and paste the prompt. Your agent will explore and prepare the uploaded data here; no repository is needed.`
             : `Open your repository in ${meta.label} with the repo root as the workspace folder, then paste the prompt.`}{" "}
           The prompt includes an account key. Paste it only into your trusted coding agent.
         </p>

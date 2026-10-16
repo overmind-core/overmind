@@ -53,7 +53,7 @@ function CreateProjectForm({
                 onSuccess?.();
                 void navigate({
                   params: { datasetId },
-                  search: { prepare: "sft", projectId },
+                  search: { prepare: "training", projectId },
                   to: "/datasets/$datasetId",
                 });
               }}

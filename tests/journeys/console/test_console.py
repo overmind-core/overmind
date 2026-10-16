@@ -420,12 +420,12 @@ def test_decision_deployment_without_training_data_never_invents_an_example(cons
     console.save_evidence("decision-inference-snippet")
 
 
-def test_data_onboarding_uploads_once_and_hands_off_sft_preparation(console, tmp_path):
+def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console, tmp_path):
     console.goto("/projects")
     console.press("New project")
     console._browser.call(
         lambda: console._page.get_by_label("Project name", exact=True).fill(
-            "SFT onboarding fixture"
+            "Training onboarding fixture"
         )
     )
     console.upload('input[type="file"]', tickets(tmp_path))
@@ -435,9 +435,12 @@ def test_data_onboarding_uploads_once_and_hands_off_sft_preparation(console, tmp
     )
     console.save_evidence("data-onboarding-upload")
     console.press("Create dataset")
-    console.sees("Prepare your SFT dataset")
-    dataset = Dataset.objects.get(name="SFT onboarding fixture")
+    console.sees("Prepare your training data")
+    dataset = Dataset.objects.get(name="Training onboarding fixture")
     assert dataset.intent == "train"
+    assert dataset.brief == (
+        "Explore the uploaded data and determine how best to prepare it for training."
+    )
     assert dataset.capability_id is None
     console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
     console._browser.call(
@@ -454,7 +457,10 @@ def test_data_onboarding_uploads_once_and_hands_off_sft_preparation(console, tmp
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
     assert f"Dataset ID: {dataset.id}" in prompt
     assert f"Project ID: {dataset.project_id}" in prompt
+    assert "Start with the standard data exploration workflow" in prompt
+    assert "Do not assume conversational SFT" in prompt
     assert "chat_train" in prompt
+    assert "decision_train" in prompt
     assert "overmind init" not in prompt
     assert "overmind sync" not in prompt
     console.save_evidence("data-onboarding-handoff")
@@ -478,5 +484,5 @@ def test_data_onboarding_uploads_once_and_hands_off_sft_preparation(console, tmp
         )
     )
     console.wait_until("() => !location.search.includes('prepare=')")
-    console.sees("SFT onboarding fixture")
+    console.sees("Training onboarding fixture")
     console.healthy()

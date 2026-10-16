@@ -51,7 +51,7 @@ function setup() {
   return done;
 }
 
-it("creates the project and uploaded SFT source together without extra questions", async () => {
+it("creates the project and uploaded training source together without extra questions", async () => {
   const done = setup();
   expect(screen.queryByLabelText("Capability")).toBeNull();
   expect(screen.queryByLabelText("Purpose")).toBeNull();
@@ -62,6 +62,7 @@ it("creates the project and uploaded SFT source together without extra questions
   );
   expect(mocks.dataset).toHaveBeenCalledWith({
     datasetCreateRequest: expect.objectContaining({
+      brief: "Explore the uploaded data and determine how best to prepare it for training.",
       capability: null,
       intent: "train",
       project: "project-1",

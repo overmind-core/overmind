@@ -114,7 +114,7 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
       if (dataProject)
         void navigate({
           params: { datasetId: dataProject.datasetId },
-          search: { prepare: "sft", projectId: dataProject.projectId },
+          search: { prepare: "training", projectId: dataProject.projectId },
           to: "/datasets/$datasetId",
         });
       else void navigate({ search: { projectId: undefined }, to: "/" });

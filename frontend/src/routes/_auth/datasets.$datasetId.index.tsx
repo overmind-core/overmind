@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_auth/datasets/$datasetId/")({
   validateSearch: projectIdSearchSchema.extend({
     /** Exact cell focus carried by run back-links. */
     cell: z.string().optional(),
-    prepare: z.literal("sft").optional(),
+    prepare: z.literal("training").optional(),
   }),
 });
 
@@ -48,11 +48,11 @@ function DatasetNotebookPage() {
         onOpenChange={(open) => {
           if (!open) closePreparation();
         }}
-        open={prepare === "sft"}
+        open={prepare === "training"}
       >
         <DialogContent size="md">
           <DialogHeader>
-            <DialogTitle>Prepare your SFT dataset</DialogTitle>
+            <DialogTitle>Prepare your training data</DialogTitle>
             <DialogDescription>
               Copy the prompt into your coding agent. The prepared data and scripts will appear in
               this Workshop.
