@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from overmind.config import load
 from overmind.utils import convert_json_to_toml
 
@@ -76,3 +78,132 @@ def test_convert_enriches_then_stamps_verified(tmp_path: Path):
     assert paths["handle-turn"]["verified"] is True
 
     assert card["tool_spec"][0]["branches"][0]["provenance"] == ["app/agent.py#L2-L3"]
+
+
+@pytest.fixture
+def decision_scan(tmp_path):
+    source = tmp_path / "agent.py"
+    source.write_text(
+        "def run():\n    observe(); decide(); dispatch(); record()\n"
+        "def observe():\n    return 'state'\n"
+        "def decide():\n    return 'action'\n"
+        "def dispatch():\n    return 'result'\n"
+        "def record():\n    return 'history'\n"
+    )
+    anchors = [
+        {"qualname": f"agent.{name}", "kind": "function", "file": f"agent.py#L{line}-L{line + 1}"}
+        for name, line in [("run", 1), ("observe", 3), ("decide", 5), ("dispatch", 7), ("record", 9)]
+    ]
+    steps = [
+        {
+            "step": name,
+            "kind": "model_invocation" if name == "decide" else "agent_step",
+            "anchors": [f"agent.{name}"],
+            "input": "state and prior results",
+            "action": "choose a registered action",
+            "output": "action or completion",
+            "transitions": [{"target": f"agent.{target}", "condition": "continue"}],
+        }
+        for name, target in [
+            ("observe", "decide"),
+            ("decide", "dispatch"),
+            ("dispatch", "record"),
+            ("record", "observe"),
+        ]
+    ]
+    return {
+        "capabilities": [
+            {
+                "slug_hint": "browser",
+                "name": "Browser",
+                "capability_card": {
+                    "anchors": anchors,
+                    "tool_spec": [
+                        {
+                            "name": name,
+                            "branches": [
+                                {
+                                    "condition": "action is selected",
+                                    "basis": "code",
+                                    "action": "execute action",
+                                    "outcome": "action result",
+                                    "provenance": ["agent.py#L7-L8"],
+                                    "transitions": [{"target": "agent.record", "condition": "action returns"}],
+                                }
+                            ],
+                        }
+                        for name in ["navigate", "done"]
+                    ],
+                    "trajectory_map": [
+                        {
+                            "id": "browser-loop",
+                            "claim": "decision_surface",
+                            "anchors": [anchor["qualname"] for anchor in anchors],
+                            "sequence": steps,
+                        }
+                    ],
+                },
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "empty_branches",
+        "missing_outcome",
+        "invalid_provenance",
+        "unknown_target",
+        "missing_model_io",
+        "missing_step_anchor",
+        "summary_only",
+    ],
+)
+def test_incomplete_scan_preserves_previous_snapshot(tmp_path, decision_scan, defect):
+    card = decision_scan["capabilities"][0]["capability_card"]
+    steps = card["trajectory_map"][0]["sequence"]
+    branch = card["tool_spec"][0]["branches"][0]
+    if defect == "empty_branches":
+        card["tool_spec"][0]["branches"] = []
+    elif defect == "missing_outcome":
+        branch["outcome"] = ""
+    elif defect == "invalid_provenance":
+        branch["provenance"] = ["missing.py#L1-L2"]
+    elif defect == "unknown_target":
+        branch["transitions"][0]["target"] = "model-decision"
+    elif defect == "missing_model_io":
+        steps[1]["output"] = ""
+    elif defect == "missing_step_anchor":
+        steps[2]["anchors"] = ["agent.invented_dispatch"]
+    else:
+        card["trajectory_map"][0]["sequence"] = ["observe", "decide", "act"]
+    src = tmp_path / "overmind_capabilities.json"
+    src.write_text(json.dumps(decision_scan))
+    dest = tmp_path / "overmind.toml"
+    dest.write_text('project-name = "preserved"\n')
+    with pytest.raises(ValueError, match="Incomplete capability scan"):
+        convert_json_to_toml(src, dest)
+    assert dest.read_text() == 'project-name = "preserved"\n'
+
+
+def test_detailed_scan_preserves_branches_and_loop_transitions(tmp_path, decision_scan):
+    decision_scan["capabilities"][0]["capability_card"]["trajectory_map"].append({
+        "id": "declared-task",
+        "claim": "declared_task",
+        "prompt_quote": "Find the requested page",
+        "sequence": [{"step": "Find the page", "anchors": []}],
+    })
+    src = tmp_path / "overmind_capabilities.json"
+    src.write_text(json.dumps(decision_scan))
+    dest = tmp_path / "overmind.toml"
+    dest.write_text('[capabilities.browser]\nname = "Browser"\nid = "existing-capability"\n')
+    convert_json_to_toml(src, dest)
+    capability = load(dest).capabilities["browser"]
+    assert capability.id == "existing-capability"
+    card = capability.capability_card
+    assert [len(tool["branches"]) for tool in card["tool_spec"]] == [1, 1]
+    path = card["trajectory_map"][0]
+    assert path["verified"] is True
+    assert len(path["sequence"]) == 4
+    assert path["sequence"][-1]["transitions"][0]["target"] == "agent.observe"

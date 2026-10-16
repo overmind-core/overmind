@@ -15,10 +15,10 @@ or `poetry run python -m overmind`, or the isolated tooling runner below.
 
 ## Verify the project runtime
 
-Onboarding requires **Python 3.10+ and overmind>=0.1.94**. Install or upgrade
+Onboarding requires **Python 3.10+ and overmind>=0.1.95**. Install or upgrade
 through the repository's dependency manifest using the source named in the
-Console paste. For PyPI, use `uv add "overmind>=0.1.94"`,
-`poetry add "overmind>=0.1.94"`, or `overmind>=0.1.94` in requirements.txt.
+Console paste. For PyPI, use `uv add "overmind>=0.1.95"`,
+`poetry add "overmind>=0.1.95"`, or `overmind>=0.1.95` in requirements.txt.
 Keep an explicitly supplied editable source. Do not change the project's supported
 Python range just to make resolution succeed; report the exact conflict and use
 isolated tooling recovery below instead of blocking capability onboarding.
@@ -28,11 +28,11 @@ with `uv run python`, `poetry run python`, or the project's virtual-environment
 Python in **every** command, including conversion and later syncs.
 
 ```bash
-python -c "import sys, overmind; from importlib.metadata import version; from packaging.version import Version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__); assert Version(version('overmind')) >= Version('0.1.94'), 'Overmind onboarding requires overmind>=0.1.94'"
+python -c "import sys, overmind; from importlib.metadata import version; from packaging.version import Version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__); assert Version(version('overmind')) >= Version('0.1.95'), 'Overmind onboarding requires overmind>=0.1.95'"
 python -m overmind --help
 ```
 
-Both must succeed. Verify the reported version is at least 0.1.94 and the
+Both must succeed. Verify the reported version is at least 0.1.95 and the
 interpreter/package paths belong to the selected project or isolated environment, or specified editable
 source. A missing CLI/converter, older version or mismatched path means installation
 is incomplete. Use isolated tooling recovery and rerun these checks **before creating a
@@ -59,10 +59,10 @@ conversion and capability sync with a dedicated tool environment. For PyPI, repl
 `python` in **both** checks and all tooling commands with:
 
 ```bash
-uv tool run --isolated --python 3.11 --from "overmind==0.1.94" python
+uv tool run --isolated --python 3.11 --from "overmind==0.1.95" python
 ```
 
-For an explicitly supplied editable source, replace `--from "overmind==0.1.94"`
+For an explicitly supplied editable source, replace `--from "overmind==0.1.95"`
 with `--with-editable "<supplied-sdk-path>" --from overmind`. Do not change the named
 source. If uv is unavailable, create a dedicated Python 3.10+ tooling virtual
 environment, install the same source there, and use its explicit Python path.

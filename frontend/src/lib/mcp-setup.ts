@@ -10,7 +10,7 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 ];
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
-export const MIN_ONBOARDING_SDK_VERSION = "0.1.94";
+export const MIN_ONBOARDING_SDK_VERSION = "0.1.95";
 export const SDK_PREFLIGHT_COMMAND = `python -c "import sys, overmind; from importlib.metadata import version; from packaging.version import Version; from overmind.__main__ import app; from overmind.utils import convert_json_to_toml; assert sys.version_info >= (3, 10), 'Overmind onboarding requires Python 3.10+'; print('Python:', sys.executable); print('Overmind:', version('overmind')); print('Package:', overmind.__file__); assert Version(version('overmind')) >= Version('${MIN_ONBOARDING_SDK_VERSION}'), 'Overmind onboarding requires overmind>=${MIN_ONBOARDING_SDK_VERSION}'"`;
 
 export function mcpClientMeta(client: McpClient) {
@@ -216,6 +216,7 @@ export function onboardWithAiBootstrapPrompt(
     `Before the first sync, open ${OVERMIND_SKILL_ONBOARD} and references/onboarding-progress.md from the installed overmind skill. Show the full onboarding roadmap and data disclosure, then use its numbered progress updates throughout.`,
     `Run \`${env} python -m overmind sync\`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. ${reload} Do not pass the bootstrap key again or run init again.`,
     `After reload, repeat both preflight commands with the selected Python runner before scanning or capability sync. Preserve any existing project-id, capability IDs, endpoint and saved credentials while repairing a dependency. Refresh installed guidance with \`python -m overmind skills sync overmind --ide ${client}\` after an SDK upgrade, then reopen ${OVERMIND_SKILL_ONBOARD} and continue without repeating bootstrap sync. The isolated tooling recovery in this request also applies if an older installed skill requires project-local tooling only.`,
+    "During capability discovery, follow references/setup.md's scan coverage audit: inspect every registered tool's source-backed branches and caller outcomes, keep distinct execution stages, and resolve transitions to actual step anchors. A tool list and a generic observe/decide/act summary are not a finished scan. If conversion reports incomplete detail, repair the analysis JSON from the source and retry conversion; preserve the previous snapshot and continue without repeating init. Do not fabricate branches or remove tools to satisfy validation.",
   ].join("\n\n");
 }
 

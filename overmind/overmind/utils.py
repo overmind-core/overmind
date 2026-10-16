@@ -121,6 +121,7 @@ def convert_json_to_toml(
     data = json.loads(json_path.read_text(encoding="utf-8"))
     root = repo_root if repo_root is not None else json_path.resolve().parent
     enrich_analysis(data, str(root))
+    validate_scan_detail(data)
     stamp_capability_cards(data, root)
     toml_path = Path(toml_path)
     base = None
@@ -131,3 +132,61 @@ def convert_json_to_toml(
     ensure_project_name(config, toml_path)
     dump(config, toml_path)
     return config
+
+
+def validate_scan_detail(data: dict[str, Any]) -> None:
+    """Reject incomplete decision maps before replacing the saved snapshot.
+
+    This checks supplied evidence and graph references, not semantic completeness
+    against every possible execution of the source.
+    """
+    issues: list[str] = []
+    for raw in data.get("capabilities") or []:
+        card = raw.get("capability_card") or {}
+        paths = card.get("trajectory_map") or []
+        if not any(path.get("claim") == "decision_surface" for path in paths):
+            continue
+        label = _slug_of(raw) or str(raw.get("name") or "capability")
+        known = {anchor.get("qualname") for anchor in card.get("anchors") or []}
+        destinations = {"terminal"}
+        owners: list[tuple[str, dict[str, Any]]] = []
+        for path in paths:
+            path_label = f"{label}/{path.get('id') or path.get('name') or 'trajectory'}"
+            decision_surface = path.get("claim") == "decision_surface"
+            steps = path.get("steps") or path.get("sequence") or []
+            steps = [step for step in steps if isinstance(step, dict)]
+            if decision_surface and not any(step.get("kind") == "model_invocation" for step in steps):
+                issues.append(f"{path_label}: describe the model invocation with structured steps")
+            for step in steps:
+                owner = f"{path_label}/{step.get('step') or 'step'}"
+                anchors = step.get("anchors") or []
+                if decision_surface and (not anchors or any(anchor not in known for anchor in anchors)):
+                    issues.append(f"{owner}: supply source-verified step anchors")
+                destinations.update(anchor for anchor in anchors if anchor in known)
+                if decision_surface and step.get("kind") == "model_invocation":
+                    for field in ("input", "action", "output"):
+                        if not str(step.get(field) or "").strip():
+                            issues.append(f"{owner}: describe the model's {field}")
+                owners.append((owner, step))
+        for tool in card.get("tool_spec") or []:
+            owner = f"{label}/tool {tool.get('name') or '(unnamed)'}"
+            branches = tool.get("branches") or []
+            if not branches:
+                issues.append(f"{owner}: inspect the implementation and describe its outcomes in branches")
+            for index, branch in enumerate(branches, 1):
+                branch_owner = f"{owner}/branch {index}"
+                for field in ("condition", "action", "outcome", "provenance"):
+                    if not branch.get(field):
+                        issues.append(f"{branch_owner}: missing {field}")
+                owners.append((branch_owner, branch))
+        for owner, item in owners:
+            for transition in item.get("transitions") or []:
+                target = transition.get("target")
+                if target not in destinations:
+                    issues.append(f"{owner}: transition target {target!r} is not a destination step anchor or terminal")
+    if issues:
+        raise ValueError(
+            "Incomplete capability scan; existing TOML was not changed. "
+            "Read the cited source, repair the analysis JSON and rerun conversion; do not repeat init.\n- "
+            + "\n- ".join(issues)
+        )

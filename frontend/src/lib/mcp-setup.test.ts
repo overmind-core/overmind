@@ -39,7 +39,7 @@ describe("mcp setup snippets", () => {
         prompt.indexOf(`${KEY} python -m overmind init`)
       );
       expect(prompt).toContain("from overmind.__main__ import app");
-      expect(prompt).toContain("assert Version(version('overmind')) >= Version('0.1.94')");
+      expect(prompt).toContain("assert Version(version('overmind')) >= Version('0.1.95')");
       expect(prompt).toContain("from overmind.utils import convert_json_to_toml");
       expect(prompt).toContain("uv run python");
       expect(prompt).toContain("poetry run python");
@@ -59,8 +59,8 @@ describe("mcp setup snippets", () => {
 
   it("requires a compatible dependency without silently changing project Python support", () => {
     const guidance = projectDependencyInstallGuidance(PROD);
-    expect(guidance).toContain('uv add "overmind>=0.1.94"');
-    expect(guidance).toContain('poetry add "overmind>=0.1.94"');
+    expect(guidance).toContain('uv add "overmind>=0.1.95"');
+    expect(guidance).toContain('poetry add "overmind>=0.1.95"');
     expect(guidance).toContain("Python 3.10+");
     expect(guidance).toContain("report the exact conflict");
     expect(guidance).toContain(
@@ -72,7 +72,7 @@ describe("mcp setup snippets", () => {
     for (const { id } of MCP_CLIENTS) {
       const prompt = onboardWithAiBootstrapPrompt(id, KEY, PROD);
       expect(prompt).toContain(
-        'uv tool run --isolated --python 3.11 --from "overmind==0.1.94" python'
+        'uv tool run --isolated --python 3.11 --from "overmind==0.1.95" python'
       );
       expect(prompt).toContain(
         "BOTH preflight commands, init, chassis, conversion, skills sync and capability sync"
@@ -87,9 +87,9 @@ describe("mcp setup snippets", () => {
 
   it("installs from PyPI on all hosts", () => {
     for (const host of [STAGING, LOCAL, PROD]) {
-      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.94"');
+      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.95"');
       expect(sdkPipInstall(host, "tracing")).toBe(
-        'python -m pip install "overmind[tracing]>=0.1.94"'
+        'python -m pip install "overmind[tracing]>=0.1.95"'
       );
     }
   });
@@ -217,7 +217,7 @@ python -m overmind sync`
   it("guides manifest-aware install on production hosts", () => {
     const guidance = projectDependencyInstallGuidance(PROD);
     expect(guidance).toContain("from PyPI");
-    expect(guidance).toContain('uv add "overmind>=0.1.94"');
+    expect(guidance).toContain('uv add "overmind>=0.1.95"');
     expect(guidance).toContain("do not install from git");
     expect(guidance).toContain("do not assume pip");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, PROD);
@@ -239,21 +239,21 @@ python -m overmind sync`
   it("guides PyPI dependency via uv/poetry on staging", () => {
     const guidance = projectDependencyInstallGuidance(STAGING);
     expect(guidance).toContain("from PyPI");
-    expect(guidance).toContain('uv add "overmind>=0.1.94"');
+    expect(guidance).toContain('uv add "overmind>=0.1.95"');
     expect(guidance).toContain("do not install from git");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, STAGING);
     expect(prompt).toContain("overmind init --ide cursor --env staging");
-    expect(prompt).toContain('uv add "overmind>=0.1.94"');
+    expect(prompt).toContain('uv add "overmind>=0.1.95"');
   });
 
   it("guides PyPI dependency via uv/poetry on localhost without editable path", () => {
     const guidance = projectDependencyInstallGuidance(LOCAL);
     expect(guidance).toContain("from PyPI");
-    expect(guidance).toContain('uv add "overmind>=0.1.94"');
+    expect(guidance).toContain('uv add "overmind>=0.1.95"');
     expect(guidance).toContain("do not install from git");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, LOCAL);
     expect(prompt).toContain("do not assume pip");
-    expect(prompt).toContain('uv add "overmind>=0.1.94"');
+    expect(prompt).toContain('uv add "overmind>=0.1.95"');
     expect(prompt).toContain("overmind init --ide cursor --env local");
     expect(prompt).not.toContain("--editable");
   });
@@ -284,7 +284,7 @@ python -m overmind sync`
     expect(prompt).toContain(
       '--with-editable "/Users/dom/git/overmind/overmind/overmind" --from overmind python'
     );
-    expect(prompt).not.toContain('--from "overmind==0.1.94"');
+    expect(prompt).not.toContain('--from "overmind==0.1.95"');
     expect(prompt).not.toMatch(/\bpip install -e\b/);
     vi.unstubAllEnvs();
     vi.resetModules();

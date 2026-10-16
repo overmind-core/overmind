@@ -71,8 +71,8 @@ the mapped capabilities, outstanding verification, and one recommended next
 action. Instrumentation, application runs, and server-side eval set preparation
 remain separate work.
 
-Onboarding requires Python 3.10+ and `overmind>=0.1.94`. Add that requirement
-through the project's package manager, for example `uv add "overmind>=0.1.94"`.
+Onboarding requires Python 3.10+ and `overmind>=0.1.95`. Add that requirement
+through the project's package manager, for example `uv add "overmind>=0.1.95"`.
 Before creating a project, check the CLI with `uv run python -m overmind --help`
 and the converter with `uv run python -c "from overmind.utils import convert_json_to_toml"`.
 Repeat those checks after the coding-agent reload, before scanning.
@@ -83,7 +83,7 @@ Use `uv run python -m overmind`, `poetry run python -m overmind`, or the project
 virtual-environment Python for every CLI command. `uv run overmind` can still
 find a global executable when the project package has no CLI.
 If application dependencies conflict, use
-`uv tool run --isolated --python 3.11 --from "overmind==0.1.94" python`
+`uv tool run --isolated --python 3.11 --from "overmind==0.1.95" python`
 in place of the project Python for both checks, scanning, conversion and sync.
 Keep the repository root as the working directory and reuse this runner after
 reload. Preserve the existing connection; do not recreate the project. This tool
@@ -291,7 +291,13 @@ repositories.
 
 ## Anonymous usage analytics
 
-The SDK and CLI send anonymous product-analytics events to PostHog so we can
+PostHog is optional: plain `overmind` and `overmind[tracing]` installations do
+not require it. Install `pip install "overmind[analytics]"` to include it, or
+`pip install "overmind[tracing,analytics]"` for both extras. Without PostHog,
+usage analytics is disabled; the CLI, tracing and API client still work.
+
+When PostHog is available (including from the host application's dependencies),
+the SDK and CLI send product-analytics events so we can
 see how the package is adopted. Each CLI process emits one `cli.invoked` event
 on exit (`command` = full redacted argv like `overmind skills list`,
 `command_path` = nested path like `skills list`, exit code, duration), via

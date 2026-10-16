@@ -892,11 +892,10 @@ wheels = [
 
 [[package]]
 name = "overmind"
-version = "0.1.94"
+version = "0.1.95"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
-    { name = "posthog" },
     { name = "requests" },
     { name = "rich" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
@@ -905,6 +904,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+analytics = [
+    { name = "posthog" },
+]
 tracing = [
     { name = "openinference-instrumentation-langchain" },
     { name = "opentelemetry-api" },
@@ -953,14 +955,14 @@ requires-dist = [
     { name = "opentelemetry-semantic-conventions", marker = "extra == 'tracing'", specifier = ">=0.60b1" },
     { name = "opentelemetry-semantic-conventions-ai", marker = "extra == 'tracing'", specifier = ">=0.4.13" },
     { name = "packaging", specifier = ">=24.0" },
-    { name = "posthog", specifier = ">=7.53.0" },
+    { name = "posthog", marker = "extra == 'analytics'", specifier = ">=7.53.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=14.0.0" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.0" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.25.0" },
 ]
-provides-extras = ["tracing"]
+provides-extras = ["analytics", "tracing"]
 
 [package.metadata.requires-dev]
 dev = [

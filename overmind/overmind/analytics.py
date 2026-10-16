@@ -28,7 +28,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import requests
-from posthog import Posthog
+
+try:
+    from posthog import Posthog
+except ImportError:
+    Posthog = None
 
 from overmind import __version__ as sdk_version
 from overmind import config
@@ -73,6 +77,8 @@ _identified_distinct_id: str | None = None
 
 
 def enabled() -> bool:
+    if Posthog is None:
+        return False
     if os.environ.get("CI"):
         return False
     if os.environ.get("DO_NOT_TRACK", "").strip().lower() in ("1", "true", "yes"):

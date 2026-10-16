@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,6 +23,7 @@ def _reset_analytics(tmp_path, monkeypatch):
     monkeypatch.setattr(analytics, "_identify_attempted", False)
     monkeypatch.setattr(analytics, "_identified_distinct_id", None)
     monkeypatch.setattr(analytics, "_client", None)
+    monkeypatch.setattr(analytics, "Posthog", MagicMock())
     yield
 
 
@@ -36,6 +40,47 @@ def test_enabled_defaults_on(monkeypatch):
     monkeypatch.delenv("DO_NOT_TRACK", raising=False)
     monkeypatch.delenv("CI", raising=False)
     assert analytics.enabled() is True
+
+
+def test_cli_and_client_work_without_posthog(tmp_path):
+    script = """
+import sys
+from importlib.abc import MetaPathFinder
+
+class WithoutPosthog(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "posthog" or fullname.startswith("posthog."):
+            raise ModuleNotFoundError("PostHog is not installed", name=fullname)
+
+sys.meta_path.insert(0, WithoutPosthog())
+import requests
+requests_made = []
+def unexpected_request(*args, **kwargs):
+    requests_made.append((args, kwargs))
+    raise AssertionError("Analytics must not make requests without PostHog")
+requests.Session.request = unexpected_request
+
+from overmind import analytics, Client
+assert not analytics.enabled()
+assert not analytics.ensure_identified(api_key="test", base_url="https://example.invalid")
+analytics.capture("sdk_init")
+analytics.track_cli_invocation(command="skills list")
+analytics.flush()
+Client(api_key="test", base_url="https://example.invalid")
+assert not analytics._ANALYTICS_ID_PATH.exists()
+assert not analytics._IDENTITY_CACHE_PATH.exists()
+
+from typer.testing import CliRunner
+from overmind.__main__ import app
+result = CliRunner().invoke(app, ["skills", "list"])
+assert result.exit_code == 0, result.output
+assert not requests_made
+"""
+    env = {**os.environ, "HOME": str(tmp_path), "OVERMIND_ANALYTICS_ENABLED": "true"}
+    env.pop("CI", None)
+    env.pop("DO_NOT_TRACK", None)
+    result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize(
