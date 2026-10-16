@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import uuid
 from collections import Counter, defaultdict
+from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def assign(cell, recipe, destination, *, progress=None):
             index = parents[index]
         return index
 
-    with sqlite3.connect(destination / "groups.sqlite") as db:
+    with closing(sqlite3.connect(destination / "groups.sqlite")) as db, db:
         db.execute(
             "CREATE TABLE identities (kind TEXT, value TEXT, owner INTEGER, PRIMARY KEY(kind,value))"
         )

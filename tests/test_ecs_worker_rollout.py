@@ -106,6 +106,25 @@ def test_migration_cannot_start_http_server(definition, service):
     )
 
 
+@pytest.mark.parametrize(
+    ("cluster", "url"),
+    [
+        ("overmind-prod-cluster", "https://api.overmindlab.ai/api/mcp/"),
+        ("overmind-staging-cluster", "https://api-staging.overmindlab.ai/api/mcp/"),
+    ],
+)
+def test_api_release_restores_environment_bound_mcp_url(definition, cluster, url):
+    app = definition["containerDefinitions"][0]
+    app["name"] = "api"
+    app["environment"].append({"name": "MCP_SERVER_URL", "value": "http://localhost:8000/api/mcp/"})
+    rendered = render_task_definition(definition, service="api", image="repo:new", cluster=cluster)
+    environment = {
+        item["name"]: item["value"] for item in rendered["containerDefinitions"][0]["environment"]
+    }
+    assert environment["MCP_SERVER_URL"] == url
+    assert environment["KEEP"] == "yes"
+
+
 def test_running_container_without_health_or_current_revision_is_not_ready():
     service = {
         "desiredCount": 1,

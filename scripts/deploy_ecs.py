@@ -85,6 +85,13 @@ def render_task_definition(document, *, service, image, cluster):
         app["stopTimeout"] = 120
     if service != "sandbox":
         _environment(app, RUN_DB_BOOTSTRAP="0", WORKSHOP_EXECUTION_BACKEND="sandbox-package-v1")
+    if service == "api" and cluster in {"overmind-prod-cluster", "overmind-staging-cluster"}:
+        host = (
+            "api.overmindlab.ai"
+            if cluster == "overmind-prod-cluster"
+            else "api-staging.overmindlab.ai"
+        )
+        _environment(app, MCP_SERVER_URL=f"https://{host}/api/mcp/")
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
     if service in HEALTH_CHECKED_QUEUES:

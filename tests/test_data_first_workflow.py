@@ -1,5 +1,6 @@
 import json
 import math
+import sqlite3
 from unittest.mock import patch
 
 import pytest
@@ -61,7 +62,20 @@ def workspace():
     return project, client, dataset
 
 
-def test_data_first_partition_api_preserves_duplicates_lineage_and_explicit_holdouts(settings):
+def test_data_first_partition_api_preserves_duplicates_lineage_and_explicit_holdouts(
+    settings, monkeypatch
+):
+
+    connections = []
+    connect = sqlite3.connect
+
+    def retain_connection(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        if str(args[0]).endswith("groups.sqlite"):
+            connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", retain_connection)
 
     settings.STRIPE_SECRET_KEY = ""
     project, client, dataset = workspace()
@@ -92,6 +106,10 @@ def test_data_first_partition_api_preserves_duplicates_lineage_and_explicit_hold
     build(plan.pk)
     plan.refresh_from_db()
     assert plan.state == "completed", plan.error
+    assert connections
+    for connection in connections:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            connection.execute("SELECT 1")
     assert sum(plan.report["counts"].values()) == 80
     assigned = {}
     for member in plan.members.select_related("cell__dataset"):
