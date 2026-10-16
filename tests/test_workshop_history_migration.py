@@ -1,13 +1,16 @@
 from django.db import connections
-from django.db.backends.sqlite3.base import DatabaseWrapper
+from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.executor import MigrationExecutor
 from django.test import override_settings
+from test_workshop_training_migration import scratch_database as scratch_database
 
 
-def test_cutover_preserves_published_cells_and_provider_receipts(tmp_path, django_db_blocker):
+def test_cutover_preserves_published_cells_and_provider_receipts(
+    scratch_database, django_db_blocker
+):
     original = connections["default"]
     database = DatabaseWrapper(
-        {**original.settings_dict, "NAME": str(tmp_path / "workshop-cutover.sqlite3")},
+        {**original.settings_dict, "NAME": scratch_database},
         alias="default",
     )
     with django_db_blocker.unblock(), override_settings(MIGRATION_MODULES={}):
@@ -37,6 +40,13 @@ def test_cutover_preserves_published_cells_and_provider_receipts(tmp_path, djang
                 state="ok",
                 fingerprint="a" * 64,
             )
+            dataset.active = cell
+            dataset.source_spec = {
+                "_migration_workshop_archive": {
+                    "cells": [{"id": str(cell.pk), "state": "ok", "review": {"retained": True}}]
+                }
+            }
+            dataset.save(update_fields=["active", "source_spec"])
             run = old.get_model("overbae", "WorkshopRun").objects.create(
                 dataset=dataset, source=cell
             )
@@ -56,6 +66,12 @@ def test_cutover_preserves_published_cells_and_provider_receipts(tmp_path, djang
             assert (
                 current.get_model("overbae", "Dataset").objects.get(pk=dataset.pk).state == "idle"
             )
+            retained = current.get_model("overbae", "Dataset").objects.get(pk=dataset.pk)
+            assert retained.active_id == cell.pk
+            assert "_migration_workshop_archive" not in retained.source_spec
+            assert current.get_model("overbae", "Cell").objects.get(pk=cell.pk).review == {
+                "retained": True
+            }
             history = current.get_model("overbae", "DatasetHistory")
             assert (
                 history.objects.get(dataset_id=dataset.pk, kind="conversation").payload["chat"][0][

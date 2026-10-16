@@ -74,6 +74,10 @@ def archive_workshop(apps, schema_editor):
             state="failed", error="No published output."
         )
 
+    # PostgreSQL cannot alter these tables while archival FK checks remain deferred.
+    if schema_editor.connection.vendor == "postgresql":
+        schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
 
 class Migration(migrations.Migration):
     dependencies = [
