@@ -36,6 +36,7 @@ def console_url(live_api, tmp_path_factory):
         "VITE_SELF_HOSTED": "true",
         "VITE_CLERK_PUBLISHABLE_KEY": "",
         "VITE_PUBLIC_POSTHOG_KEY": "",
+        "VITE_FEATURE_SIGNALS": "true",
     }
     subprocess.run(
         ["bun", "run", "build", "--outDir", str(dist), "--emptyOutDir"],
@@ -103,6 +104,12 @@ class Console:
 
     def click(self, text: str) -> None:
         self._browser.call(lambda: self._page.get_by_text(text, exact=True).first.click())
+
+    def command(self, name: str) -> None:
+        self.press("Search")
+        dialog = self._page.get_by_role("dialog", name="Search", exact=True)
+        self._browser.call(lambda: dialog.get_by_role("combobox").fill(name))
+        self._browser.call(lambda: dialog.get_by_role("option", name=name, exact=True).click())
 
     def choose(self, trigger: str, option: str) -> None:
         self._browser.call(self._page.click, trigger)

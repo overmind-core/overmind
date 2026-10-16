@@ -179,7 +179,7 @@ def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
     project = mcp.project()["id"]
 
     console.goto(f"/datasets?projectId={project}")
-    console.press("New dataset")
+    console.command("New dataset")
     console.fill("#dataset-name", "Console upload")
     console.upload('input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")
@@ -204,7 +204,7 @@ def test_a_console_brief_survives_its_first_cli_attachment(
     project = workshop.project()["id"]
     brief = "Classify refund requests; retain uncertain labels for review."
     console.goto(f"/datasets?projectId={project}")
-    console.press("New dataset")
+    console.command("New dataset")
     console.fill("#dataset-name", "Brief before data")
     console.fill("#dataset-brief", brief)
     console.press("Create dataset")
@@ -376,7 +376,7 @@ def test_native_monitoring_evidence_remains_readable_after_cancellation(console,
 def test_project_surfaces_render_without_browser_or_server_errors(console, workshop):
     project = workshop.project()["id"]
     for route, text in [
-        ("datasets", "New dataset"),
+        ("datasets", "Datasets"),
         ("training", "Train model"),
         ("evaluations", "Evaluations"),
         ("inference", "Inference"),
