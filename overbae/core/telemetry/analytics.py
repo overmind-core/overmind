@@ -66,8 +66,8 @@ def capture(event: Event, project_id, *, user=None, **properties) -> None:
     }
     if not all(isinstance(value, SCALARS) for value in properties.values()):
         if settings.TESTING:
-            raise TypeError(f"{event} properties must be scalars: {properties}")
-        logger.warning("dropped %s: non-scalar properties", event)
+            raise TypeError("Analytics properties must be scalars.")
+        logger.warning("Dropped analytics event: non-scalar properties")
         return
     client = get_client()
     if client is None:
