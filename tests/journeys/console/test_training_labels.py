@@ -1,8 +1,12 @@
+import json
+import os
+import subprocess
+import sys
 import uuid
 
 from factories import make_project
 
-from overbae.models import Cell, Dataset, FinetuningJob
+from overbae.models import Cell, Dataset, DeployedModel, FinetuningJob
 from overbae.services.datasets import land, paths, store, use
 
 from ..conftest import RUNS
@@ -16,7 +20,7 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     project = make_project("Prediction labels", member=user)
     dataset = Dataset.objects.create(project=project, name="Titanic training", intent="train")
     decision = {
-        "state": "Passenger",
+        "state": 'Passenger\nName: O\'Brien; $(echo unsafe); `echo unsafe`; "quoted"',
         "question": "Did this Titanic passenger survive?",
         "kind": "choice",
         "options": ["didn't survive", "survived"],
@@ -63,6 +67,7 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
                 "kind": "choice",
                 "options": decision["options"],
                 "option_values": None,
+                "example_state": decision["state"],
             }
         ],
     }
@@ -112,6 +117,93 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     console.save_evidence("training-prediction-labels-single-mobile")
     FinetuningJob.objects.filter(pk=jobs[0].pk).update(group_id=group)
 
+    deployed = DeployedModel.objects.create(
+        project=project,
+        finetuning_job=jobs[0],
+        model_id="ft-titanic-example",
+        inference_contract="decision",
+        status="ready",
+    )
+    console._browser.call(console._page.set_viewport_size, {"width": 1440, "height": 1100})
+    console.goto(f"/inference/{deployed.pk}?projectId={project.pk}")
+    console.press("View API snippet")
+    console.sees("Uses an example from this model’s training version.", exact=False)
+
+    def inspect_snippets():
+        page = console._page
+        page.evaluate("""() => {
+            navigator.clipboard.writeText = async text => { window.copiedSnippet = text; };
+        }""")
+        snippets = {}
+        for language in ("cURL", "Python (requests)"):
+            region = page.get_by_role("region", name=f"{language} API example")
+            code = region.locator("code")
+            source = code.inner_text()
+            assert decision["question"] in source
+            assert "New yes" not in source
+            assert "target_probabilities" not in source
+            assert "monospace" in code.evaluate("el => getComputedStyle(el).fontFamily")
+            assert code.evaluate("""el => {
+                const ctx = document.createElement('canvas').getContext('2d');
+                ctx.font = `12px ${getComputedStyle(el).fontFamily}`;
+                return ctx.measureText('iiii').width === ctx.measureText('WWWW').width;
+            }""")
+            assert code.locator("span").count() > 0
+            page.get_by_role("button", name=f"Copy {language}", exact=True).click()
+            page.wait_for_function("expected => window.copiedSnippet === expected", arg=source)
+            snippets[language] = source
+        return snippets
+
+    snippets = console._browser.call(inspect_snippets)
+    console.save_evidence("model-api-examples-desktop")
+    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
+    console.wait_until("() => document.documentElement.scrollWidth <= innerWidth")
+    console.wait_until("""() => {
+        const rect = document.querySelector('[role=dialog]').getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth;
+    }""")
+    console.save_evidence("model-api-examples-mobile")
+    subprocess.run(["sh", "-n"], input=snippets["cURL"], text=True, check=True)
+    # Run the copied Python with a fake transport, including one asynchronous poll.
+    (tmp_path / "requests.py").write_text("""
+import json
+import os
+class Response:
+    def __init__(self, body): self.body = body
+    def raise_for_status(self): pass
+    def json(self): return self.body
+
+def post(url, *, headers, json, timeout):
+    assert url.endswith(os.environ["EXPECTED_ENDPOINT"])
+    assert headers == {"Authorization": "Bearer example-key"}
+    assert json["decisions"] == __import__("json").loads(os.environ["EXPECTED_DECISIONS"])
+    assert json["request_key"]
+    return Response({"id": "receipt-1", "status": "running"})
+
+def get(url, *, headers, timeout):
+    assert url.endswith("/api/inference-requests/receipt-1/")
+    return Response({"id": "receipt-1", "status": "succeeded", "result": {
+        "predictions": [{"options": ["didn't survive", "survived"], "probabilities": [0.2, 0.8]}]
+    }})
+""")
+    sample = tmp_path / "example.py"
+    sample.write_text(snippets["Python (requests)"])
+    executed = subprocess.run(
+        [sys.executable, str(sample)],
+        text=True,
+        capture_output=True,
+        check=True,
+        env={
+            **os.environ,
+            "OVERMIND_API_KEY": "example-key",
+            "EXPECTED_ENDPOINT": f"/api/deployed-models/{deployed.pk}/inference/",
+            "EXPECTED_DECISIONS": json.dumps(
+                [{k: decision[k] for k in ("state", "question", "kind", "options")}]
+            ),
+        },
+    )
+    assert "'label': 'survived'" in executed.stdout
+
     varied = Dataset.objects.create(project=project, name="Ordinal labels", intent="train")
     long_label = "A" * 150
     land.land_rows(
@@ -121,6 +213,7 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
                 "decision": {
                     **decision,
                     "question": f"Score question {index}",
+                    "state": "X" * 2500 if index == 0 else decision["state"],
                     "kind": "score",
                     "options": [long_label, "High"],
                     "target_probabilities": [0.3, 0.7],
@@ -150,6 +243,36 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     assert ordinal["total_sets"] == 10
     assert len(ordinal["label_sets"]) == 8
     assert ordinal["label_sets"][0]["option_values"] == [0, 10]
+    assert ordinal["label_sets"][1]["example_state"] is None
+    assert ordinal["label_sets"][1]["options"] == [long_label, "High"]
+    varied_model = DeployedModel.objects.create(
+        project=project,
+        finetuning_job=jobs[1],
+        model_id="ft-varied-example",
+        inference_contract="decision",
+        status="ready",
+    )
+    console.goto(f"/inference/{varied_model.pk}?projectId={project.pk}")
+    console.press("View API snippet")
+    console.sees("Showing 8 of 10 decision examples.", exact=False)
+    console._browser.call(
+        lambda: console._page.get_by_role("combobox", name="Decision example").click()
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("option", name="Score question 0", exact=True).click()
+    )
+    console.sees(
+        "A complete example input is unavailable for this model’s pinned training version."
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("combobox", name="Decision example").click()
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("option", name="Score question 1", exact=True).click()
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("region", name="Python (requests) API example").wait_for()
+    )
     console.goto(route)
     console._browser.call(
         lambda: (

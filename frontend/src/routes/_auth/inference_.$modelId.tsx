@@ -194,6 +194,7 @@ function ModelDetailPage() {
             onOpenChange={setSnippetOpen}
             open={snippetOpen}
             projectId={projectId}
+            trainingJobId={model.finetuningJobId}
           />
         </div>
       )}

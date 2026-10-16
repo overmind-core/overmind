@@ -388,7 +388,7 @@ def test_project_surfaces_render_without_browser_or_server_errors(console, works
         console.save_evidence(f"project-surface-{route}")
 
 
-def test_decision_deployment_shows_its_typed_inference_endpoint(console, workshop):
+def test_decision_deployment_without_training_data_never_invents_an_example(console, workshop):
     project = workshop.project()["id"]
     deployed = DeployedModel.objects.create(
         project_id=project,
@@ -404,8 +404,9 @@ def test_decision_deployment_shows_its_typed_inference_endpoint(console, worksho
     console.sees(deployed.model_id)
     console.press("View API snippet")
     console.sees("Typed decision probabilities.")
-    console.sees(f"/api/deployed-models/{deployed.pk}/inference/", exact=False)
-    console.sees("/api/inference-requests/REQUEST_ID/", exact=False)
+    console.sees(
+        "A complete example input is unavailable for this model’s pinned training version."
+    )
     console.wait_until(
         "() => !document.querySelector('[role=dialog]').innerText.includes('/chat/completions')"
     )

@@ -1,45 +1,81 @@
 import { config } from "@/config";
+import type { DecisionInputRequest } from "@/openapi";
 
 export function inferenceBaseUrl(apiUrl = config.apiUrl): string {
   return `${apiUrl.replace(/\/$/, "")}/api/v1`;
 }
 
-export function buildDecisionSnippets(deploymentId: string, apiUrl = config.apiUrl) {
+export function buildDecisionSnippets(
+  deploymentId: string,
+  decision: DecisionInputRequest,
+  apiUrl = config.apiUrl
+) {
   const base = `${apiUrl.replace(/\/$/, "")}/api`;
   const endpoint = `${base}/deployed-models/${deploymentId}/inference/`;
-  const decision = {
-    kind: "choice",
-    options: ["No", "Yes"],
-    question: "Select an option.",
-    state: "Input text",
-  };
+  const shellQuote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+  const decisions = JSON.stringify([decision], null, 2);
   return {
     curl: [
-      `curl ${endpoint} \\`,
-      `  -H "Authorization: Bearer $OVERMIND_API_KEY" \\`,
-      `  -H "Content-Type: application/json" \\`,
-      `  -d '${JSON.stringify({ decisions: [decision], request_key: "my-decision-001" })}'`,
+      "# Requires curl, jq and uuidgen. Keep request_key when retrying this request.",
+      'request_key="$(uuidgen)"',
+      `decisions=${shellQuote(decisions)}`,
+      'payload=$(jq -n --arg key "$request_key" --argjson decisions "$decisions" \\',
+      "  '{request_key: $key, decisions: $decisions}')",
       "",
-      `curl ${base}/inference-requests/REQUEST_ID/ \\`,
-      `  -H "Authorization: Bearer $OVERMIND_API_KEY"`,
+      `job=$(curl --fail-with-body --silent --show-error --max-time 30 ${shellQuote(endpoint)} \\`,
+      '  -H "Authorization: Bearer $OVERMIND_API_KEY" \\',
+      '  -H "Content-Type: application/json" \\',
+      '  --data "$payload") || exit 1',
+      `request_url=${shellQuote(`${base}/inference-requests/`)}$(printf '%s' "$job" | jq -er '.id')/`,
+      "",
+      "for attempt in $(seq 1 150); do",
+      `  request_status=$(printf '%s' "$job" | jq -er '.status') || exit 1`,
+      '  case "$request_status" in',
+      "    succeeded) break ;;",
+      `    failed|unresolved) printf '%s\\n' "$job" >&2; exit 1 ;;`,
+      "  esac",
+      "  sleep 2",
+      '  job=$(curl --fail-with-body --silent --show-error --max-time 30 "$request_url" \\',
+      '    -H "Authorization: Bearer $OVERMIND_API_KEY") || exit 1',
+      "done",
+      `printf '%s' "$job" | jq -e '.status == "succeeded"' >/dev/null || {`,
+      '  echo "Still pending: poll $request_url; do not resubmit." >&2; exit 1;',
+      "}",
+      `printf '%s' "$job" | jq '.result.predictions[] | . as $p |`,
+      "  (.probabilities | index(max)) as $i |",
+      "  {label: $p.options[$i], probabilities: $p.probabilities}'",
     ].join("\n"),
     python: [
-      "import os, time, uuid",
+      "import os",
+      "import time",
+      "import uuid",
       "import requests",
       "",
+      "# Example input from this model's pinned training version. Replace state for your input.",
+      `decisions = ${decisions}`,
       'headers = {"Authorization": "Bearer " + os.environ["OVERMIND_API_KEY"]}',
-      `response = requests.post("${endpoint}", headers=headers, json={`,
-      '    "request_key": str(uuid.uuid4()),',
-      `    "decisions": [${JSON.stringify(decision)}],`,
+      "request_key = str(uuid.uuid4())  # Keep this key if retrying this request.",
+      `response = requests.post(${JSON.stringify(endpoint)}, headers=headers, json={`,
+      '    "request_key": request_key,',
+      '    "decisions": decisions,',
       "}, timeout=30)",
       "response.raise_for_status()",
       "job = response.json()",
+      `request_url = ${JSON.stringify(`${base}/inference-requests/`)} + job["id"] + "/"`,
+      "deadline = time.monotonic() + 300",
       'while job["status"] not in {"succeeded", "failed", "unresolved"}:',
+      "    if time.monotonic() >= deadline:",
+      '        raise TimeoutError(f"Still pending: poll {request_url}; do not resubmit.")',
       "    time.sleep(2)",
-      `    response = requests.get(f"${base}/inference-requests/{job['id']}/", headers=headers, timeout=30)`,
+      "    response = requests.get(request_url, headers=headers, timeout=30)",
       "    response.raise_for_status()",
       "    job = response.json()",
-      'print(job["result"] if job["status"] == "succeeded" else job)',
+      'if job["status"] != "succeeded":',
+      "    raise RuntimeError(job)",
+      'for prediction in job["result"]["predictions"]:',
+      '    probabilities = prediction["probabilities"]',
+      "    index = max(range(len(probabilities)), key=probabilities.__getitem__)",
+      '    print({"label": prediction["options"][index], "probabilities": probabilities})',
     ].join("\n"),
   };
 }

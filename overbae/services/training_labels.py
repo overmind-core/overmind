@@ -32,27 +32,32 @@ def prediction_labels(job):
     try:
         path = rows.frame_path(cell)
         stat = path.stat()
-        key = f"training-labels:1:{cell.pk}:{cell.fingerprint}:{stat.st_mtime_ns}:{stat.st_size}"
+        key = f"training-labels:2:{cell.pk}:{cell.fingerprint}:{stat.st_mtime_ns}:{stat.st_size}"
         cached = cache.get(key)
         if cached is not None:
             return cached
         rows.verify(cell)
-        # Query every row, but bound the returned label sets and bytes, not the labels themselves.
+        # Keep examples whole and bounded so long inputs cannot crowd out prediction labels.
         result = store.query(
             """
             WITH label_sets AS (
-                SELECT DISTINCT
+                SELECT
                     json_extract_string(decision, '$.question') AS question,
                     json_extract_string(decision, '$.kind') AS kind,
                     json_extract(decision, '$.options') AS options,
-                    json_extract(decision, '$.option_values') AS option_values
+                    json_extract(decision, '$.option_values') AS option_values,
+                    arg_min(json_extract_string(decision, '$.state'), source_row) AS example_state
                 FROM t
+                GROUP BY 1, 2, 3, 4
             )
-            SELECT *, count(*) OVER () AS total_sets FROM label_sets
+            SELECT * EXCLUDE (example_state),
+                CASE WHEN octet_length(encode(example_state)) <= 2048
+                    THEN example_state ELSE NULL END AS example_state,
+                count(*) OVER () AS total_sets FROM label_sets
             ORDER BY question, kind, CAST(options AS VARCHAR), CAST(option_values AS VARCHAR)
             """,
             limit=LABEL_SET_LIMIT,
-            max_bytes=12_000,
+            max_bytes=32_000,
             t=path,
         )["rows"]
         for group in result:
