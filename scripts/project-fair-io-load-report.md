@@ -5,7 +5,9 @@ production capacity certification or a zero-interference guarantee.
 
 ## Workload and acceptance
 
-`tests/journeys/test_scoring_load.py` runs two Celery worker instances with two
+`tests/journeys/test_scoring_load.py` runs the benchmark in an isolated subprocess
+and test database, then verifies that the main journey worker still processes a
+control task. `tests/load/scoring.py` runs two Celery worker instances with two
 threads each, real PostgreSQL/Redis admission, and authenticated HTTP REST and MCP
 reads against the journey ASGI server. A competing project holds both of its
 allowed slots while its durable backlog grows from 100 to 10,000 records. A quiet
@@ -65,6 +67,7 @@ TEST_REDIS_URL=redis://127.0.0.1:6379/15 uv run pytest \
 
 Use the existing compose PostgreSQL and Redis services. Each phase writes a JSON
 report under pytest's temporary directory and emits `LATENCY_REPORT` to the log.
+The journey also retains the complete child output in its `.runs` artifacts.
 Do not run alongside another journey process that flushes Redis DB 15.
 
 ## Limits
