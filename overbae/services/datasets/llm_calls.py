@@ -50,7 +50,9 @@ TRAIN_MANIFEST = [
 
 
 class SelectionError(ValueError):
-    pass
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(detail)
 
 
 def _aware(value: datetime) -> datetime:

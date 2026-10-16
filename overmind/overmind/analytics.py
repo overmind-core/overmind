@@ -15,7 +15,7 @@ process does not drop its one event.
 from __future__ import annotations
 
 import contextlib
-import hashlib
+import hmac
 import json
 import logging
 import os
@@ -200,7 +200,11 @@ def ensure_identified(*, api_key: str | None = None, base_url: str | None = None
         if creds is None:
             return False
         key, url = creds
-        fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+        fingerprint = hmac.new(
+            _anon_id().encode("utf-8"),
+            f"{url}\0{key}".encode(),
+            "sha256",
+        ).hexdigest()
 
         with _identify_lock:
             if _identify_attempted:

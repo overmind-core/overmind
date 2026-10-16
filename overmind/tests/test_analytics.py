@@ -228,3 +228,24 @@ def test_ensure_identified_caches_per_key(monkeypatch, tmp_path, posthog_client)
     assert call.kwargs["distinct_id"] == "user_clerk_1"
     assert call.kwargs["properties"]["$anon_distinct_id"]
     assert call.kwargs["properties"]["$set"]["plan"] == "free"
+
+
+@pytest.mark.parametrize("changed", ["key", "endpoint", "installation"])
+def test_identity_cache_is_bound_to_credentials_and_installation(monkeypatch, posthog_client, changed):
+    credentials = ["ovr_test_key", "https://api.example.test"]
+    monkeypatch.setattr(analytics, "_resolve_api_credentials", lambda *_: tuple(credentials))
+    fetch = MagicMock(return_value={"id": "user-1"})
+    monkeypatch.setattr(analytics, "_fetch_me", fetch)
+    assert analytics.ensure_identified()
+    first = analytics._IDENTITY_CACHE_PATH.read_text()
+    assert credentials[0] not in first
+    if changed == "key":
+        credentials[0] = "ovr_other_key"
+    elif changed == "endpoint":
+        credentials[1] = "https://other.example.test"
+    else:
+        analytics._ANALYTICS_ID_PATH.write_text("another-installation")
+    monkeypatch.setattr(analytics, "_identify_attempted", False)
+    assert analytics.ensure_identified()
+    assert fetch.call_count == 2
+    assert analytics._IDENTITY_CACHE_PATH.read_text() != first

@@ -202,7 +202,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 picked = Selection.parse(payload["llm_calls"])
                 matched = picked.count(project.id)
             except SelectionError as exc:
-                raise ValidationError({"source": str(exc)}) from exc
+                raise ValidationError({"source": exc.detail}) from exc
             if matched == 0:
                 raise ValidationError({"source": "No LLM calls match the selection."})
             payload["llm_calls"] = picked.spec()

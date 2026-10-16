@@ -369,3 +369,26 @@ def test_another_project_reads_and_writes_nothing():
     res = outsider.get("/api/datasets/", {"project": str(project.id)})
     assert res.status_code == 200 and res.data["results"] == []
     assert Dataset.objects.filter(pk=dataset.pk, name="ds").exists()
+
+
+def test_llm_call_selection_error_returns_only_validation_detail():
+    project = _project()
+    response = _client(project).post(
+        "/api/datasets/",
+        {
+            "name": "Invalid call selection",
+            "intent": "eval",
+            "project": str(project.id),
+            "source": {
+                "llm_calls": {
+                    "capability_id": str(uuid.uuid4()),
+                    "since": "private-invalid-timestamp",
+                }
+            },
+        },
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "source" in response.data, response.data
+    assert str(response.data["source"]) == "since must be an ISO timestamp."
+    assert "private-invalid-timestamp" not in response.content.decode()
