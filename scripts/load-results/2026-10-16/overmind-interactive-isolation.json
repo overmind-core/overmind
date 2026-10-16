@@ -1,0 +1,6 @@
+{
+  "noisy_running": 2,
+  "quiet_pipeline_seconds": 0.7711543749901466,
+  "interactive_workers": 4,
+  "noisy_burst": 12
+}

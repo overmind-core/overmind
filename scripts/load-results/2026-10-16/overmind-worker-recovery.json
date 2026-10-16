@@ -1,0 +1,7 @@
+{
+  "quiet_after_worker_loss_seconds": 0.8431359159876592,
+  "lost_attempt": "2a5c3e8e-8ecc-4568-ad23-03668a26341a",
+  "lost_attempt_state": "failed",
+  "same_key_replayed": false,
+  "source_cells": 1
+}

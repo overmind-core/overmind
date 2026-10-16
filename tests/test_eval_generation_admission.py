@@ -1,13 +1,48 @@
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
+from django.db import close_old_connections, connection, transaction
 from django.utils import timezone
 
 from overbae.innermind import generation
-from overbae.models import EvalRun, EvalRunRow, Project
+from overbae.models import EvalGenerationScheduler, EvalRun, EvalRunRow, Project
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.mark.django_db(transaction=True)
+def test_overlapping_dispatch_does_not_block_control_capacity():
+    EvalGenerationScheduler.objects.get_or_create(pk=1)
+    held, release = threading.Event(), threading.Event()
+
+    def owner():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                EvalGenerationScheduler.objects.select_for_update().get(pk=1)
+                held.set()
+                assert release.wait(5)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(owner)
+        try:
+            assert held.wait(5)
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL lock_timeout = '500ms'")
+                started = time.monotonic()
+                result = Published().tick()
+                assert time.monotonic() - started < 0.5
+                assert result == {"admitted": 0, "scoring": 0, "expired": 0, "busy": True}
+        finally:
+            release.set()
+        pending.result(timeout=5)
 
 
 def make_run(count=8, project=None):

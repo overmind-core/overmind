@@ -1,10 +1,34 @@
 import os
+import socket
 import uuid
 
 import pytest
 import redis
+from celery.exceptions import Retry
+from factories import make_project
 
+from overbae.models import Cell, Dataset, DatasetPipelineRun
 from overbae.services.datasets import pipeline_runner
+from overbae.tasks.datasets import execute_pipeline
+
+
+@pytest.mark.django_db
+def test_admission_connection_loss_retries_without_claiming_a_script(settings):
+    dataset = Dataset.objects.create(project=make_project(), name="admission outage")
+    cell = Cell.objects.create(dataset=dataset, position=0)
+    run = DatasetPipelineRun.objects.create(dataset=dataset, source=cell, request_key="outage")
+    with socket.socket() as unavailable:
+        unavailable.bind(("127.0.0.1", 0))
+        settings.CELERY_BROKER_URL = f"redis://127.0.0.1:{unavailable.getsockname()[1]}/15"
+        execute_pipeline.push_request(id=uuid.uuid4().hex, called_directly=False, is_eager=True)
+        try:
+            with pytest.raises(Retry):
+                execute_pipeline.run(str(run.pk))
+        finally:
+            execute_pipeline.pop_request()
+    run.refresh_from_db()
+    assert run.state == "queued" and not run.output_id
+    assert dataset.cells.count() == 1
 
 
 def test_project_limits_are_shared_without_serializing_other_projects(settings):

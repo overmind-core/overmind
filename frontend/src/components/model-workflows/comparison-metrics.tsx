@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { CellContext, ColumnDef } from "@tanstack/react-table";
 
 import {
   type ConfidenceEvidence,
@@ -176,7 +176,7 @@ function MetricValue({ row, metric }: { row: ModelRow; metric: string }) {
   );
 }
 
-function CoverageValue({ row }: { row: ModelRow }) {
+function CoverageCell({ row: { original: row } }: CellContext<ComparisonRow, unknown>) {
   const { scored, expected, missing_predictions, invalid_predictions, incompatible_inputs } =
     row.card;
   const count = (
@@ -202,6 +202,15 @@ function CoverageValue({ row }: { row: ModelRow }) {
         incompatible
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function MetricCell({ row, column }: CellContext<ComparisonRow, unknown>) {
+  const metric = column.id.slice(7);
+  return row.original.metrics.includes(metric) ? (
+    <MetricValue metric={metric} row={row.original} />
+  ) : (
+    <span className="text-xs text-muted-foreground">—</span>
   );
 }
 
@@ -305,19 +314,23 @@ export function ComparisonMetrics({
               : undefined
     )
   );
+  const modelCell = useCallback(
+    ({ row }: CellContext<ComparisonRow, unknown>) => (
+      <div className="flex min-w-0 items-center gap-2">
+        <ModelProviderChip compact model={row.original.name} />
+        {row.original.key === baselineKey && (
+          <Badge className="shrink-0" size="chip" variant="neutral">
+            Baseline
+          </Badge>
+        )}
+      </div>
+    ),
+    [baselineKey]
+  );
   const columns = useMemo<ColumnDef<ComparisonRow>[]>(
     () => [
       {
-        cell: ({ row }) => (
-          <div className="flex min-w-0 items-center gap-2">
-            <ModelProviderChip compact model={row.original.name} />
-            {row.original.key === baselineKey && (
-              <Badge className="shrink-0" size="chip" variant="neutral">
-                Baseline
-              </Badge>
-            )}
-          </div>
-        ),
+        cell: modelCell,
         header: "Model",
         id: "model",
         meta: { label: "Model", orderingField: "model" },
@@ -325,12 +338,7 @@ export function ComparisonMetrics({
       },
       ...metrics.map(
         (metric): ColumnDef<ComparisonRow> => ({
-          cell: ({ row }) =>
-            row.original.metrics.includes(metric) ? (
-              <MetricValue metric={metric} row={row.original} />
-            ) : (
-              <span className="text-xs text-muted-foreground">—</span>
-            ),
+          cell: MetricCell,
           header: () => <span title={descriptions[metric]}>{label(metric)}</span>,
           id: `metric:${metric}`,
           meta: { label: label(metric), orderingField: `metric:${metric}` },
@@ -338,14 +346,14 @@ export function ComparisonMetrics({
         })
       ),
       {
-        cell: ({ row }) => <CoverageValue row={row.original} />,
+        cell: CoverageCell,
         header: "Scored",
         id: "scored",
         meta: { label: "Scored", orderingField: "scored" },
         size: 128,
       },
     ],
-    [metrics, baselineKey]
+    [metrics, modelCell]
   );
   if (!groups.length) return null;
   return (

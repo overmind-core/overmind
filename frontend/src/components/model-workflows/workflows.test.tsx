@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { seriesColor } from "@/lib/colors";
@@ -31,7 +31,7 @@ it("keeps soft-target metrics and coverage visible without inventing accuracy", 
     scored: 7,
   };
   const delta = { candidate_minus_baseline: -0.1, decisions: 7, groups: 5, interval_95: [-0.2, 0] };
-  render(
+  const view = render(
     <ComparisonMetrics
       colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
       comparisons={{
@@ -52,8 +52,27 @@ it("keeps soft-target metrics and coverage visible without inventing accuracy", 
   expect(screen.queryByText("180.0%")).toBeNull();
   expect(screen.queryByText("Accuracy")).toBeNull();
   expect(screen.getAllByText("7 / 10")).toHaveLength(2);
-  fireEvent.focus(screen.getByRole("button", { name: "Trained: 7 / 10 scored" }));
+  const trigger = screen.getByRole("button", { name: "Trained: 7 / 10 scored" });
+  act(() => trigger.focus());
   expect(await screen.findAllByText("1 missing · 1 invalid · 1 incompatible")).not.toHaveLength(0);
+  view.rerender(
+    <ComparisonMetrics
+      colorIndices={{ base: 2, first: 0, second: 1, trained: 0 }}
+      comparisons={{
+        trained: {
+          raw: {
+            baseline: { benchmarks: { soft: structuredClone(card) } },
+            benchmarks: { soft: { metrics: { cross_entropy: structuredClone(delta) } } },
+            candidate: { benchmarks: { soft: structuredClone(card) } },
+          },
+        },
+      }}
+      names={{ trained: "Trained" }}
+    />
+  );
+  expect(screen.getByRole("button", { name: "Trained: 7 / 10 scored" })).toBe(trigger);
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getAllByText("1 missing · 1 invalid · 1 incompatible")).not.toHaveLength(0);
 });
 
 it("compares all models once and omits hard-label aliases", () => {

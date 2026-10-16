@@ -1,0 +1,112 @@
+{
+  "observed_at": "2026-10-16T23:07:15.081592+00:00",
+  "account": "318651457362",
+  "region": "eu-west-1",
+  "services": [
+    {
+      "name": "api",
+      "desired": 2,
+      "running": 2,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/api:220",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-interactive-worker",
+      "desired": 6,
+      "running": 6,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-interactive-worker:15",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-landing-worker",
+      "desired": 1,
+      "running": 1,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-landing-worker:9",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-io-worker",
+      "desired": 1,
+      "running": 1,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-io-worker:18",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-traces-worker",
+      "desired": 4,
+      "running": 4,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-traces-worker:2",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-control-worker",
+      "desired": 2,
+      "running": 2,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-control-worker:18",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "celery-batch-worker",
+      "desired": 1,
+      "running": 1,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/celery-batch-worker:16",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    },
+    {
+      "name": "sandbox",
+      "desired": 2,
+      "running": 2,
+      "pending": 0,
+      "definition": "arn:aws:ecs:eu-west-1:318651457362:task-definition/sandbox:5",
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "rollout": "COMPLETED"
+        }
+      ]
+    }
+  ],
+  "scope": "Health observation only; no deployment or capacity certification."
+}

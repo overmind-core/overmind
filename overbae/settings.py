@@ -20,7 +20,7 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "4"))
+WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "2"))
 DATASET_QUERY_TIMEOUT_SECONDS = 10
 
 # Deployments set their own path so the admin is not at a guessable URL.

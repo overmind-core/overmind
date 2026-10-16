@@ -170,6 +170,7 @@ class FakeModal:
     log: list[tuple[str, str, tuple, dict]] = field(default_factory=list)
     cancelled: list[tuple[str, dict]] = field(default_factory=list)
     files: dict[str, bytes] = field(default_factory=dict)
+    dictionaries: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     worker_stats: dict[str, Any] | BaseException | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -217,6 +218,28 @@ class FakeModal:
             def from_name(app: str, name: str, **_) -> FakeFunction:
                 return FakeFunction(cloud, app, name)
 
+        class Dict:
+            @staticmethod
+            def from_name(name, *, environment_name="", **_):
+                values = cloud.dictionaries.setdefault((environment_name, name), {})
+                return SimpleNamespace(get=_Method(values.get), put=_Method(values.__setitem__))
+
+        class Workspace:
+            @staticmethod
+            def from_context():
+                return SimpleNamespace(
+                    billing=SimpleNamespace(
+                        rates=_Method(
+                            lambda: {
+                                "gpu_hour_cost_h100": 3.95,
+                                "gpu_hour_cost_h200": 4.54,
+                                "cpu_hour_cost": 0.0473,
+                                "mem_gib_hour_cost": 0.008,
+                            }
+                        )
+                    )
+                )
+
         class FunctionCall:
             @staticmethod
             def from_id(call_id: str) -> FakeCall:
@@ -254,6 +277,8 @@ class FakeModal:
         monkeypatch.setattr(modal, "Function", Function)
         monkeypatch.setattr(modal, "Cls", Cls)
         monkeypatch.setattr(modal, "FunctionCall", FunctionCall)
+        monkeypatch.setattr(modal, "Dict", Dict)
+        monkeypatch.setattr(modal, "Workspace", Workspace)
         return self
 
 

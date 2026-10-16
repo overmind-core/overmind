@@ -48,7 +48,11 @@ def dispatch(publish, publish_scoring) -> dict[str, int]:
     """One admission tick. ``publish(row_id, task_id)`` starts a generation and
     ``publish_scoring(run_id, task_id)`` hands a fully generated run to scoring."""
     EvalGenerationScheduler.objects.get_or_create(pk=1)
-    scheduler = EvalGenerationScheduler.objects.select_for_update().get(pk=1)
+    scheduler = (
+        EvalGenerationScheduler.objects.select_for_update(skip_locked=True).filter(pk=1).first()
+    )
+    if scheduler is None:
+        return {"admitted": 0, "scoring": 0, "expired": 0, "busy": True}
     now = timezone.now()
     scheduler.last_tick_at = now
     scheduler.save(update_fields=["last_tick_at"])

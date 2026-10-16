@@ -1,84 +1,89 @@
-# Project fairness load verification
+# Project fairness and mixed workload verification
 
-Measured on 2026-10-16. This is a bounded local integration benchmark, not a
-production capacity certification or a zero-interference guarantee.
+Measured on 2026-10-16. These are local regression measurements, not production
+capacity certification or a guarantee of unchanged latency at arbitrary load.
 
-## Workload and acceptance
+## Current measured capacity
 
-`tests/journeys/test_scoring_load.py` runs the benchmark in an isolated subprocess
-and test database, then verifies that the main journey worker still processes a
-control task. `tests/load/scoring.py` runs two Celery worker instances with two
-threads each, real PostgreSQL/Redis admission, and authenticated HTTP REST and MCP
-reads against the journey ASGI server. A competing project holds both of its
-allowed slots while its durable backlog grows from 100 to 10,000 records. A quiet
-project submits 30 sequential requests in each phase, including the unloaded
-baseline. This measures latency isolation, not maximum quiet-project throughput.
+The mixed workload uses real HTTP, MCP, PostgreSQL, Redis, Celery, dataset landing,
+retained-package sandbox execution, evaluation and trace scoring, CPU training
+preparation and durable inference collection. Only external model/Modal boundaries
+are faked. GPU cold start is excluded. Interactive execution runs in a separate
+Linux prefork worker limited to four CPUs and eight GiB; other worker profiles use
+threads. Local storage does not represent production EFS/RDS.
 
-Two competing workloads are measured: slow-provider waits and sustained local
-scratch-file writes, fsync/read verification and database reads. The latter run
-wrote 519 MiB and performed 519 database reads. Provider scoring is substituted to
-control its duration; this does not exercise real judge/provider throttling.
+| Profile                                 | Quiet read p50 |    p95 |      p99 | Competing requests | Outcome               |
+| --------------------------------------- | -------------: | -----: | -------: | -----------------: | --------------------- |
+| 32 clients, 300 seconds, 64 MiB uploads |         137 ms | 372 ms |   620 ms |             46,286 | Passed                |
+| 64 clients, 90 seconds, 64 MiB uploads  |         293 ms | 615 ms | 1,410 ms |             14,985 | Failed latency budget |
 
-The gate is quiet scoring p95 below max(500 ms, twice baseline), scoring empirical
-p99 below one second, and REST/MCP p95 below max(500 ms, twice their own baseline).
-Timeouts and non-successful API/MCP responses fail the run. These are regression
-budgets for this local harness, not public latency commitments. With 30 samples,
-the reported empirical p99 is the maximum observed sample.
+Both profiles completed their submitted jobs without recorded request/job errors.
+The acceptance budget is quiet read p95 below max(500 ms, twice baseline), p99 below
+one second, quiet small pipelines below ten seconds and no request/job failures.
+The largest passing tested profile is 32 clients; this is not the maximum possible
+throughput or a production limit. The five-minute run uploaded 482,910,470 bytes
+across seven imports. Large transformations took 23.8–32.8 seconds.
 
-## Results
+A snapshot of 57 quiet imports during the 32-client run measured a maximum queue
+wait of 8.243 seconds and elapsed time of 8.431 seconds. Production inspection
+confirmed one landing worker with one execution slot, four CPUs and eight GiB.
+Landing therefore remains a shared bottleneck requiring separate admission and
+capacity verification; this result does not establish import isolation.
 
-Rounded milliseconds, baseline -> 10,000 competing records:
+## Faults reproduced and fixes under verification
 
-| Competing workload           | Quiet scoring p95 | Quiet scoring p99 | REST p95 |    MCP p95 |
-| ---------------------------- | ----------------: | ----------------: | -------: | ---------: |
-| Slow provider                |          35 -> 28 |         112 -> 29 | 14 -> 12 | 109 -> 109 |
-| Database and scratch storage |          23 -> 24 |          25 -> 29 | 14 -> 12 |  105 -> 95 |
+- Duplicate evaluation admission ticks waited on a scheduler row lock. They now
+  skip a locked scheduler. A real PostgreSQL lock regression passes.
+- One project occupied all four interactive slots. Reducing its default cap from
+  four to two allowed a quiet pipeline to finish in 474 ms instead of 23.1 seconds
+  in the original isolation experiment. The separate Linux prefork rerun passed: 771 ms with twelve noisy jobs.
+- Redis connection failure during interactive admission escaped without retry.
+  It now retries before claiming execution; the unavailable-port regression passes.
+- A real prefork subprocess kill left its attempt fenced. Another project finished
+  in 939 ms; lease expiry failed the lost attempt without output publication or
+  same-key replay. The shared harness rerun passed: quiet work completed in 843 ms.
 
-Both workloads passed.
+The interrupted upload test resends an acknowledged chunk offset and checks the
+retained bytes by SHA-256. It exercises application-level resumption, not an actual
+TCP failure. All eight targeted scoring/load journeys passed in 129 seconds, including four child mixed/isolation/recovery/transfer checks. The full backend suite passed: 3,268 passed and seven skipped in 170 seconds. The broader journey run passed 74 non-Console cases. After installing missing frontend dependencies, 16 Console cases passed and one exposed focus loss during evaluation refresh. A deterministic component regression reproduced cell remounting; stable renderers fix it. All 908 frontend tests, type checking, lint and design/contrast/control checks pass. All 17 Console journeys pass after the fix. Together with the 74 non-Console journeys, all 91 journey cases passed across the scoped runs.
 
-A separate authenticated REST read ramp uses eight competing projects and 40
-quiet-project requests per phase. Quiet-project p95 was 19 ms alone, 24 ms with
-eight competing sessions (257 competing requests), and 138 ms with 32 sessions
-(1,307 competing requests). The maximum quiet sample at 32 sessions was 167 ms.
-This passed the 500 ms absolute budget but shows about sevenfold relative
-slowdown: the shared API is not independent of arbitrary concurrent read load.
-It must not be presented as a zero-slowdown result or production capacity figure.
+## Reproduce and artifacts
 
-The earlier starvation test also leaves 9,998 records
-waiting while the quiet project and an independent IO worker complete their work.
-Admission tests cover 20 late-arriving projects, concurrent dispatchers, duplicate
-delivery, lease expiry and broker failure.
+See `tests/load/README.md` for exact short and extended workload commands and worker
+profiles. The journey wrapper `tests/journeys/test_scoring_load.py` runs read-load
+and mixed/recovery experiments in isolated subprocesses and databases. Dedicated
+load tests use broker database 12, separate from the parent journey worker on 15.
+Do not run competing consumers or tests that flush those databases simultaneously.
 
-A production observation during rollout found 16 admitted records across four
-trace workers, with no project above two, independent IO consumers, and 8,401
-completed records. It also exposed overlapping scheduler ticks occupying control
-threads while waiting for the scheduler lock. Duplicate ticks now skip a locked
-scheduler instead of waiting; a regression test holds a publication open and checks
-that another tick immediately returns without publishing duplicate work.
+Retained raw reports in `scripts/load-results/2026-10-16/`:
 
-## Reproduce
+- `mixed-soak-32-prefork.json`
+- `mixed-soak-64-prefork.json`
+- `quiet-landing-32-snapshot.json`
 
-```sh
-TEST_REDIS_URL=redis://127.0.0.1:6379/15 uv run pytest \
-  tests/test_live_scoring_load.py \
-  tests/test_live_scoring_admission.py \
-  tests/journeys/test_scoring_load.py -q -s
-```
+The previous synthetic scoring workload patched owned scoring functions and has
+been replaced by real scoring journeys and mixed workloads. Its historical latency
+figures are not evidence for the current implementation.
 
-Use the existing compose PostgreSQL and Redis services. Each phase writes a JSON
-report under pytest's temporary directory and emits `LATENCY_REPORT` to the log.
-The journey also retains the complete child output in its `.runs` artifacts.
-Do not run alongside another journey process that flushes Redis DB 15.
+## Remaining limits
 
-## Limits
+Production service health was checked after AWS authentication: API, control, IO,
+trace, batch, interactive, landing and sandbox services matched desired counts,
+with completed deployments. This alone does not certify production throughput.
+No resource expansion or new deployment was made during this verification pass.
 
-This does not establish the limit of production EFS, RDS, Redis or external provider
-quotas. Local scratch-file IO is not an EFS benchmark. It does not certify landing,
-Workshop execution, GPU dispatch or inference isolation. Those need separate
-workload-specific tests and production-equivalent capacity measurements.
+Per-project admission prevents one project monopolising a tested pool; finite
+shared CPU, database and storage still produce contention. Very large broker
+backlogs, landing reservation, production-equivalent storage load and multi-project
+saturation remain unverified. AWS CPU, memory, worker count or database expansion
+requires the user's approval before applying it.
 
-A flood from one project cannot occupy every scoring admission slot. Enough
-independent projects can still fill the shared pool; new scoring work must then
-wait for capacity. Per-project fairness prevents monopolisation, but cannot make
-finite shared resources unlimited or guarantee unchanged latency at arbitrary
-load. API/control responsiveness and admitted-job latency require separate budgets.
+## Live-test environment
+
+The user explicitly approved isolated production load tests, Console setup of
+`capacity-noisy-20261016` and `capacity-quiet-20261016`, and a production account
+connection. Staging remains the default connection. Existing production MCP
+access was checked and is limited to `financial-services`; it has no project
+creation tool. Console onboarding completed, but the browser clipboard API
+returned no prompt content, so the new connection has not been captured.
+The user subsequently required MCP-only platform interaction. Console work has stopped. A separately configured production account MCP connection with isolated project access is required to continue live verification. No synthetic production workload or resource expansion has been applied.

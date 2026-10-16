@@ -4,6 +4,7 @@ import logging
 from dataclasses import replace
 from typing import Any
 
+import redis
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
@@ -433,7 +434,11 @@ def execute_pipeline(self, run_id):
         )
         return
     owner = uuid.uuid4().hex
-    if not pipeline_runner.take_slot(run.dataset.project_id, owner):
+    try:
+        admitted = pipeline_runner.take_slot(run.dataset.project_id, owner)
+    except (redis.ConnectionError, redis.TimeoutError) as exc:
+        raise self.retry(exc=exc, countdown=2) from exc
+    if not admitted:
         raise self.retry(countdown=2)
     beat = heartbeat.start(pipeline_runner.heartbeat, owner=f"pipeline {run.pk}")
     try:

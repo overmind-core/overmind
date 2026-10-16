@@ -89,6 +89,9 @@ attempts. `resume_dataset_import` and REST `resume-import` explicitly retry a
 blocked import within its attempt budget. Cancellation fences both split members.
 Landing retains evidence and returns to idle; it does not start preparation.
 Pipeline queue demand contributes to interactive capacity through `DatasetPipelineRun`.
+The default project limit is two concurrent pipelines, below the minimum four-slot
+interactive worker so one project's burst cannot occupy the entire worker. Raising
+this limit requires testing it against the minimum deployed worker capacity.
 
 ## Sources, identities and versions
 
