@@ -138,9 +138,10 @@ def _card_span_lists(card: Any) -> list[tuple[dict[str, Any], str]]:
     prov = card.get("provenance")
     if isinstance(prov, dict):
         out.append((prov, "paths"))
-    output_schema = card.get("output_schema")
-    if isinstance(output_schema, dict):
-        out.append((output_schema, "provenance"))
+    for key in ("output_schema", "model_resolution", "prompt_resolution"):
+        artifact = card.get(key)
+        if isinstance(artifact, dict):
+            out.append((artifact, "provenance"))
     for entries in (
         card.get("tool_spec"),
         card.get("constraints"),
@@ -258,28 +259,24 @@ def _prompt_text_from_source(source: str) -> str:
     return max(nested, key=len) if nested else ""
 
 
+def read_prompt_span(repo_root: str, span: Any) -> str:
+    return _prompt_text_from_source(_read_span_text(repo_root, span))
+
+
 def resolve_prompt_spans(analysis: dict[str, Any], repo_root: str) -> None:
     """Fill empty system_prompt / mode prompt from a cited source span. Model text wins."""
-
-    def resolve(span: Any) -> str:
-        if not str(span or "").strip():
-            return ""
-        raw = _read_span_text(repo_root, span)
-        if not raw:
-            return ""
-        return _prompt_text_from_source(raw)
 
     for item in analysis.get("capabilities") or []:
         if not isinstance(item, dict):
             continue
         if not str(item.get("system_prompt") or "").strip():
-            text = resolve(item.get("system_prompt_span"))
+            text = read_prompt_span(repo_root, item.get("system_prompt_span"))
             if text:
                 item["system_prompt"] = text
         for mode in item.get("modes") or []:
             if not isinstance(mode, dict) or str(mode.get("prompt") or "").strip():
                 continue
-            text = resolve(mode.get("prompt_span"))
+            text = read_prompt_span(repo_root, mode.get("prompt_span"))
             if text:
                 mode["prompt"] = text
 

@@ -148,6 +148,44 @@
             "cluster": "",
             "provenance": [
               "support_desk/agent.py#L40-L42"
+            ],
+            "branches": [
+              {
+                "condition": "order_id is in ORDERS",
+                "basis": "code",
+                "action": "Read the matching in-memory order",
+                "outcome": "Return its status and total.",
+                "next": "Append the result as a tool message, process any remaining calls, then request the final answer.",
+                "transitions": [
+                  {
+                    "target": "support_desk.agent.answer",
+                    "condition": "The tool returns to the model-call handler."
+                  }
+                ],
+                "provenance": [
+                  "support_desk/agent.py#L32-L32",
+                  "support_desk/agent.py#L40-L42",
+                  "support_desk/agent.py#L65-L72"
+                ]
+              },
+              {
+                "condition": "order_id is absent from ORDERS",
+                "basis": "code",
+                "action": "Use the dictionary default",
+                "outcome": "Return status unknown without inventing a total.",
+                "next": "Append the result as a tool message, process any remaining calls, then request the final answer.",
+                "transitions": [
+                  {
+                    "target": "support_desk.agent.answer",
+                    "condition": "The tool returns to the model-call handler."
+                  }
+                ],
+                "provenance": [
+                  "support_desk/agent.py#L32-L32",
+                  "support_desk/agent.py#L40-L42",
+                  "support_desk/agent.py#L65-L72"
+                ]
+              }
             ]
           }
         ],
@@ -213,6 +251,21 @@
         ],
         "provenance": {
           "paths": [
+            "support_desk/agent.py#L57-L72"
+          ]
+        },
+        "model_resolution": {
+          "selection": "Both model calls use the module constant MODEL; no per-call override or fallback exists.",
+          "default_model": "openai/gpt-4.1-mini",
+          "provenance": [
+            "support_desk/agent.py#L7-L7",
+            "support_desk/agent.py#L57-L72"
+          ]
+        },
+        "prompt_resolution": {
+          "selection": "The first message always uses ANSWER_PROMPT; the same messages with appended tool results are reused for the second call.",
+          "default_span": "support_desk/agent.py#L13-L16",
+          "provenance": [
             "support_desk/agent.py#L57-L72"
           ]
         }

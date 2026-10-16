@@ -8,7 +8,7 @@ from typing import Any
 
 from overmind.chassis import stamp_capability_cards
 from overmind.config import Capability, Config, EvalMetric, dump, ensure_project_name, load
-from overmind.enrich import enrich_analysis
+from overmind.enrich import enrich_analysis, read_prompt_span
 from overmind.repository_snapshot import finish_repository_scan
 
 
@@ -121,7 +121,7 @@ def convert_json_to_toml(
     data = json.loads(json_path.read_text(encoding="utf-8"))
     root = repo_root if repo_root is not None else json_path.resolve().parent
     enrich_analysis(data, str(root))
-    validate_scan_detail(data)
+    validate_scan_detail(data, repo_root=str(root))
     stamp_capability_cards(data, root)
     toml_path = Path(toml_path)
     base = None
@@ -134,20 +134,64 @@ def convert_json_to_toml(
     return config
 
 
-def validate_scan_detail(data: dict[str, Any]) -> None:
+def validate_scan_detail(data: dict[str, Any], *, repo_root: str) -> None:
     """Reject incomplete decision maps before replacing the saved snapshot.
 
     This checks supplied evidence and graph references, not semantic completeness
     against every possible execution of the source.
     """
     issues: list[str] = []
+    utilities = _utilities_by_parent(data)
     for raw in data.get("capabilities") or []:
         card = raw.get("capability_card") or {}
         paths = card.get("trajectory_map") or []
         if not any(path.get("claim") == "decision_surface" for path in paths):
             continue
         label = _slug_of(raw) or str(raw.get("name") or "capability")
-        known = {anchor.get("qualname") for anchor in card.get("anchors") or []}
+        known = {anchor.get("qualname"): anchor for anchor in card.get("anchors") or []}
+        for key, default_key in (("model_resolution", "default_model"), ("prompt_resolution", "default_span")):
+            resolution = card.get(key) or {}
+            for field in ("selection", "provenance"):
+                if not resolution.get(field):
+                    issues.append(f"{label}/{key}: supply source-backed {field}")
+            if not resolution.get(default_key) and not resolution.get("unresolved"):
+                issues.append(f"{label}/{key}: supply {default_key} or explain what cannot be resolved statically")
+        prompt = card.get("prompt_resolution") or {}
+        if prompt.get("default_span"):
+            text = read_prompt_span(repo_root, prompt["default_span"])
+            if not text:
+                issues.append(f"{label}/prompt_resolution: default_span must identify readable prompt text")
+            else:
+                try:
+                    # Only the declared template is rendered; repository code is never executed.
+                    if "bindings" in prompt:
+                        text = text.format_map(prompt["bindings"])
+                    supplied = str(raw.get("system_prompt") or "").strip()
+                    if supplied and supplied != text.strip():
+                        issues.append(
+                            f"{label}/prompt_resolution: system_prompt differs from the declared default template"
+                        )
+                    else:
+                        raw["system_prompt"] = text.strip()
+                except (KeyError, ValueError, TypeError, AttributeError, IndexError) as exc:
+                    issues.append(f"{label}/prompt_resolution: invalid template bindings ({type(exc).__name__})")
+        for utility in utilities.get(_slug_of(raw), []) + (card.get("llm_utilities") or []):
+            anchors = utility.get("anchors") or []
+            implementation = str(utility.get("entrypoint_fn") or "")
+            matches_source = any(
+                known.get(anchor, {}).get("file", "").split("#", 1)[0] == utility.get("source_path")
+                and implementation
+                and (anchor == implementation or anchor.endswith("." + implementation))
+                for anchor in anchors
+            )
+            if (
+                any(anchor not in known for anchor in anchors)
+                or (anchors and not matches_source)
+                or (not anchors and not utility.get("unresolved"))
+            ):
+                issues.append(
+                    f"{label}/utility {utility.get('name')}: anchor the implementation or explain unavailable source"
+                )
         destinations = {"terminal"}
         owners: list[tuple[str, dict[str, Any]]] = []
         for path in paths:
