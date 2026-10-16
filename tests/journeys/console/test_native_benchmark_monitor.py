@@ -345,7 +345,7 @@ def test_native_benchmark_progress_samples_and_completed_backfill(
             .includes("Waiting for this model's prediction.")""")
     if participant_count == 6:
         input_top = console._browser.call(
-            lambda: console._page.get_by_role("region", name="Decision input").bounding_box()["y"]
+            lambda: console._page.get_by_role("region", name="Evaluation input").bounding_box()["y"]
         )
         console._browser.call(
             lambda: console._page.get_by_role("region", name="Model outputs", exact=True).press(
@@ -357,7 +357,7 @@ def test_native_benchmark_progress_samples_and_completed_backfill(
             return outputs.scrollTop > 0 && outputs.lastElementChild.getBoundingClientRect().bottom
                 <= outputs.getBoundingClientRect().bottom + 1;
         }""")
-        console.wait_until(f"""() => Math.abs(document.querySelector('[aria-label="Decision input"]')
+        console.wait_until(f"""() => Math.abs(document.querySelector('[aria-label="Evaluation input"]')
             .getBoundingClientRect().top - {input_top}) < 1""")
         console.save_evidence("native-benchmark-6-sample-desktop-last-model")
         console._browser.call(
@@ -374,8 +374,8 @@ def test_native_benchmark_progress_samples_and_completed_backfill(
         return rect.left >= 0 && rect.right <= innerWidth && rect.width <= innerWidth * .76;
     }""")
     console.wait_until("""() => {
-        const input = document.querySelector('[aria-label="Decision input"]').getBoundingClientRect();
-        const output = document.querySelector('[aria-label="Decision output and evaluation"]').getBoundingClientRect();
+        const input = document.querySelector('[aria-label="Evaluation input"]').getBoundingClientRect();
+        const output = document.querySelector('[aria-label="Output and evaluation"]').getBoundingClientRect();
         return output.top >= input.bottom;
     }""")
     console.wait_until("""() => {
