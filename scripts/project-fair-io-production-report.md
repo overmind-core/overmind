@@ -80,6 +80,9 @@ Separate real production workflow checks completed:
 - Exact source commit `fec55182fc5ea3e42120071484fd5701820a1e9e`: all CI checks
   passed, including backend, journeys, frontend, lint, migration checks and SDK
   compatibility matrix. Required pre-commit checks pass.
+- Exact deployed diagnostic source `43ac80774e4f879b90df8ec43d78a726ccf7de83`: all
+  37 reported CI checks completed successfully or were intentionally skipped.
+  Its targeted MCP query/capacity suite passed all 21 tests.
 - Backend images were checked against all **479** source files, with no missing,
   changed or extra backend source files.
 
@@ -96,31 +99,39 @@ The landing-worker/API rollout completed, preserving two desired tasks for each
 service. API revision 227 additionally runs source-verified slow-query stage
 diagnostics (`43ac8077`) without recording SQL text or row values. All other service sizes and database/storage settings are
 unchanged. Matching native training, decision-serving and decision-evaluation
-Modal runtimes were deployed for the current data-format identity.
+Modal runtimes were deployed for the current data-format identity. Final checks
+found all eight application services stable at their desired counts, no pending
+tasks, and both API load-balancer targets healthy.
 
 The retained 859,750,067-byte, 2.5-million-row production source read all rows but
 failed publication on the old heartbeat lock. Its first MCP recovery attempt then
 exposed the missing draft receipt. The old legacy failure path had also deleted
 that temporary upload, so the original attempt could not be resumed. Both the
 heartbeat and fresh-draft recovery defects are fixed and tested. An unchanged
-local copy was uploaded again with a new stable transfer request; its production
-landing is running. Exact data checks and the final simultaneous workload barrier
-are still pending; they are **not** counted as passing yet.
+local copy was uploaded again with a new stable transfer request. It completed on
+its first attempt: queue waiting 0.118 seconds and server landing 894.782 seconds.
+The retained original SHA-256 and all 859,750,067 bytes match; the published cell
+has 2,500,000 rows, with exact first/last comparisons across 14 fields. This
+verifies those edge samples and retained original identity, not a full comparison
+of every published value. The simultaneous workload barrier also passed.
 
 A later final mixed run stopped after 11 protected reads: p95/p99 was 2.850
 seconds. Server query logs and ALB metrics confirm a real latency tail (maximum
 recorded MCP query 3.126 seconds), rather than establishing a client-only cause.
 Three slow successful queries finished together on one API task; the cause is
 not yet identified. Stage diagnostics were deployed to distinguish lookup,
-admission, SQL, release and response work. This failed run prevents claiming the
-final mixed workload is verified.
+admission, SQL, release and response work. The subsequent final-release mixed 64-client, 128-client and expensive-query
+profiles all passed their unchanged thresholds. The earlier spike remains
+unexplained and was not reproduced; the diagnostics are retained. Passing repeats
+do not prove that the earlier latency issue was fixed or that no request can ever
+be delayed.
 
 Additional verified receipts: a 200-step native training run succeeded; all 25
 durable inference requests completed with valid normalized probability vectors;
 all eight narrowly scoped model-backed trace checks returned scores of 1.0. The
 third large pipeline preserved 81,928 rows, and the protected pipeline completed
-in 1.680 seconds overall. These facts alone do not establish that every requested
-workload overlapped during measured optimisation.
+in 1.680 seconds overall. These earlier facts alone did not establish overlap; the subsequent recorded
+v4 barrier and receipts above supply that evidence.
 
 ## Capacity scope and persistence
 

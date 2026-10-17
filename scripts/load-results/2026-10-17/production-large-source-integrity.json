@@ -1,0 +1,11 @@
+{
+  "verified_at": 1792223618.259549,
+  "source_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+  "original_bytes": 859750067,
+  "rows": 2500000,
+  "sample_columns": 14,
+  "first_and_last_rows_exact": true,
+  "published_cell": "53065c64-c82f-4ca2-afa5-62784076cbfd",
+  "published_fingerprint": "fd5c244cd60619cd223e9104fde65d97d220a000b9e13039341bb0bb1be9da5e",
+  "first_attempt_completed": true
+}
