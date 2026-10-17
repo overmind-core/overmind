@@ -14,7 +14,7 @@ from overbae.innermind import evidence
 from overbae.innermind.span_processor import span_processor_factory
 from overbae.models import Capability, EvalMatrix, Span
 from overbae.services.capabilities import identity
-from overbae.services.codebase.anchors import module_dotted_path
+from overbae.services.codebase.anchors import is_script_file, module_dotted_path
 
 DECORATORS = {
     "entry_point": '@overmind.entry_point(capability_id="{capability_id}")',
@@ -23,6 +23,15 @@ DECORATORS = {
     "retrieval": "@overmind.retrieval()",
     "function": "@overmind.observe()",
 }
+# JavaScript/TypeScript wrap the function: `<function>` stands for the original function literal.
+SCRIPT_WRAPPERS = {
+    "entry_point": 'observe(<function>, {{ name: "{name}", capabilityId: "{capability_id}" }})',
+    "workflow": 'observe(<function>, {{ name: "{name}", asType: "chain" }})',
+    "tool": 'observe(<function>, {{ name: "{name}", asType: "tool" }})',
+    "retrieval": 'observe(<function>, {{ name: "{name}", asType: "retriever" }})',
+    "function": 'observe(<function>, {{ name: "{name}" }})',
+}
+SCRIPT_IMPORT = 'import { observe } from "overmind";'
 SPAN_FIELDS = (
     "span_id",
     "trace_id",
@@ -58,12 +67,23 @@ def target(qualname: str, file_ref: str) -> dict[str, str]:
         qualname[len(module) + 1 :] if module and qualname.startswith(module + ".") else qualname
     )
     symbol = local.split(".")[0] if local else ""
+    if is_script_file(file):
+        import_line = SCRIPT_IMPORT
+    else:
+        import_line = f"from {module} import {symbol}" if module and symbol else ""
     return {
         "file": file,
         "qualname": qualname,
         "module": module,
-        "import_line": f"from {module} import {symbol}" if module and symbol else "",
+        "import_line": import_line,
     }
+
+
+def required_decorator(kind: str, qualname: str, file: str, capability_id: str) -> str:
+    if is_script_file(file):
+        name = qualname.rsplit(".", 1)[-1]
+        return SCRIPT_WRAPPERS[kind].format(name=name, capability_id=capability_id)
+    return DECORATORS[kind].format(capability_id=capability_id)
 
 
 def placements(capability: Capability) -> list[dict[str, Any]]:
@@ -74,13 +94,18 @@ def placements(capability: Capability) -> list[dict[str, Any]]:
         if not isinstance(anchor, dict) or not anchor.get("qualname"):
             continue
         kind = anchor.get("kind") if anchor.get("kind") in DECORATORS else "function"
+        qualname = str(anchor["qualname"])
+        file_ref = str(anchor.get("file") or "")
+        placement = target(qualname, file_ref)
         rows.append(
             {
                 "capability": capability.name,
                 "capability_id": capability_id,
                 "kind": kind,
-                "target": target(str(anchor["qualname"]), str(anchor.get("file") or "")),
-                "required_decorator": DECORATORS[kind].format(capability_id=capability_id),
+                "target": placement,
+                "required_decorator": required_decorator(
+                    kind, qualname, placement["file"], capability_id
+                ),
             }
         )
     return sorted(rows, key=lambda row: (row["kind"] != "entry_point", row["target"]["file"]))
