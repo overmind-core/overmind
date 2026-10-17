@@ -241,3 +241,31 @@ def test_signal_batch_rechecks_bytes_before_materializing_payloads(context):
     finally:
         post_init.disconnect(observe, sender=Span)
     assert loaded == []
+
+
+def test_signal_scan_continues_after_concurrent_payload_growth(context):
+    from overbae.innermind.signals import SignalInputTooLargeError
+
+    ctx, _ = context
+    items = [span(ctx.project) for _ in range(3)]
+    for index, item in enumerate(items):
+        Span.objects.filter(pk=item.pk).update(
+            start_time_ns=3 - index, attributes={"padding": "x" * (5 * 1024 * 1024)}
+        )
+
+    class ConcurrentGrowthRunner(SignalRunner):
+        async def batches(self):
+            first = True
+            async for ids in super().batches():
+                if first:
+                    await Span.objects.filter(pk=items[0].pk).aupdate(
+                        eval_attributes={"padding": "y" * (4 * 1024 * 1024)}
+                    )
+                    first = False
+                yield ids
+
+    with pytest.raises(SignalInputTooLargeError, match="1 signal groups changed"):
+        asyncio.run(ConcurrentGrowthRunner(ctx.project.id).run())
+    assert set(
+        SignalEvent.objects.filter(signal_type="errors").values_list("trace_id", flat=True)
+    ) == {item.trace_id for item in items[1:]}

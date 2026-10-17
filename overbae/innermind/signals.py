@@ -714,8 +714,20 @@ class SignalRunner:
         subscriptions = effective_subscriptions(self.project_id, configured)
         day = timezone.now().date().isoformat()
         count = 0
-        async for ids in self.batches():
-            count += await self.run_batch(ids, configured, subscriptions, day)
+        rejected = 0
+        errors = []
+        try:
+            async for ids in self.batches():
+                try:
+                    count += await self.run_batch(ids, configured, subscriptions, day)
+                except SignalInputTooLargeError:
+                    rejected += len(set(ids.values()))
+        except SignalInputTooLargeError as exc:
+            errors.append(str(exc))
+        if rejected:
+            errors.append(f"{rejected} signal groups changed or exceeded the batch byte limit")
+        if errors:
+            raise SignalInputTooLargeError("; ".join(errors))
         return count
 
     async def run_batch(self, ids, configured, subscriptions, day):
