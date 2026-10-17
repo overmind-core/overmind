@@ -36,6 +36,8 @@ ErrorCode = Literal[
     "source_conflict",
     "cell_not_found",
     "query_invalid",
+    "query_capacity_busy",
+    "query_capacity_unavailable",
     "dataset_build_not_found",
     "dataset_build_invalid",
     "dataset_build_conflict",

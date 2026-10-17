@@ -96,6 +96,10 @@ Inspect with `inspect_dataset`, `query_dataset` and `explore_dataset`.
 `query_result_too_large`, select smaller columns, aggregate, or export the exact
 cell; values are not clipped. Mixed scalars and precision-sensitive integers
 are retained as JSON rather than coerced to strings or lossy floats.
+On `query_capacity_busy` or `query_capacity_unavailable`, wait at least the returned
+`retry_after_seconds` before retrying the same exact cell and SQL. Do not fan out
+retries; use a retained pipeline for bulk analysis. The interface resource reports
+global and per-project query budgets.
 On `query_timeout`, narrow the query or export the cell; reads have a configured
 deadline (default ten seconds). Download retained original bytes with
 `overmind dataset export DATASET --source SHA256 --output FILE --json`, using

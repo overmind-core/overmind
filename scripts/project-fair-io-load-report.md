@@ -260,3 +260,26 @@ retained in `ci-shared-interpreter-latency-control.json`; passing artifacts are
 
 The updated affected journey suite passed all 30 cases in 255.49 seconds before
 this harness correction. No application code changed in the correction.
+
+Production read-only SQL capacity check found API compute pressure before disk
+pressure. At 32/64/128 clients, protected-read p95 was 298/572/910 ms; API CPU
+peaked at 92.2%, while database CPU peaked at 29.4%. These are measured limits,
+not proof of thousands of simultaneous executions. No AWS resources were added.
+
+MCP SQL now reserves global and project capacity atomically in Redis before
+creating DuckDB engines (defaults eight global, two per project). Busy and
+unavailable admission return retryable errors containing the exact cell and a
+minimum retry delay. Shared expiring leases recover dead workers; active leases
+renew, query timeouts release capacity, and failed admission does not execute SQL.
+The MCP interface declares deployed budgets. Essential guidance and bundled skills
+require backoff and direct bulk analysis to retained pipelines.
+
+The real two-process API test occupied both noisy-project slots with expensive
+SQL, then completed another project's read in 80 ms. A third heavy query filled
+the deliberately configured global ceiling of three; another project received
+explicit backpressure. All three expensive queries timed out, subsequent reads
+succeeded, and every source retained exactly one cell. The previous three-second
+test deadline was too short to complete all connection handshakes before filling
+the global ceiling; the passing test uses production's ten-second deadline.
+The 56 affected MCP contracts also passed. Full backend and journey gates are
+being rerun before deploying these additional SQL safeguards.

@@ -69,6 +69,7 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
             "tests/load/transfers.py",
             "tests/load/landing.py",
             "tests/load/landing_burst.py",
+            "tests/load/query_capacity.py",
             "--ds=tests.load.settings",
             "-q",
             "-s",

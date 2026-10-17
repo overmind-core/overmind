@@ -1,0 +1,1022 @@
+[
+  {
+    "namespace": "AWS/ECS",
+    "metric": "CPUUtilization",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 0.8481126092374325,
+        "Maximum": 1.1792374551296234,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 0.8430818182726701,
+        "Maximum": 1.205640085041523,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 24.425290348629154,
+        "Maximum": 34.58658346533775,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 0.7811708835264046,
+        "Maximum": 1.085238017141819,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 0.8609466751416525,
+        "Maximum": 1.159857027232647,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 0.8221142428616682,
+        "Maximum": 1.161234200000763,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 11.30478698015213,
+        "Maximum": 35.752713322639465,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 0.7764293290674686,
+        "Maximum": 1.1050226390361786,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 0.7788662513097128,
+        "Maximum": 1.0927285477519035,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 0.8978163587550323,
+        "Maximum": 1.1593370214104652,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 0.7636975062390168,
+        "Maximum": 1.0726383477449417,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 0.827991568793853,
+        "Maximum": 1.1587930172681808,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 0.8909943935771782,
+        "Maximum": 1.4735445752739906,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 40.18761140604814,
+        "Maximum": 92.20199859142303,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 0.8097105349103609,
+        "Maximum": 1.1200439780950546,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 0.8457270736495655,
+        "Maximum": 1.1861046478152275,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 28.518438984950386,
+        "Maximum": 71.96236664056778,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 0.817714052895705,
+        "Maximum": 1.15914798527956,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 0.7970772025485833,
+        "Maximum": 1.1553634330630302,
+        "Unit": "Percent"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/ECS",
+    "metric": "MemoryUtilization",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 15.496826171875,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 15.496826171875,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 15.165201822916666,
+        "Maximum": 15.95458984375,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 15.643310546875,
+        "Maximum": 15.83251953125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 15.496826171875,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 15.241495768229168,
+        "Maximum": 15.570068359375,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 15.235392252604168,
+        "Maximum": 15.6005859375,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 15.631103515625,
+        "Maximum": 15.7958984375,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 15.497843424479166,
+        "Maximum": 16.326904296875,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 15.439860026041668,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 15.631103515625,
+        "Maximum": 15.7958984375,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 15.5029296875,
+        "Maximum": 16.3330078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 15.7196044921875,
+        "Maximum": 15.72265625,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 15.727742513020834,
+        "Maximum": 16.00341796875,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 15.5029296875,
+        "Maximum": 16.3330078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 15.496826171875,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 15.6585693359375,
+        "Maximum": 15.72265625,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 15.496826171875,
+        "Maximum": 16.32080078125,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 15.717569986979168,
+        "Maximum": 15.73486328125,
+        "Unit": "Percent"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "CPUUtilization",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 6.380143261702482,
+        "Maximum": 6.380143261702482,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 5.341666666666666,
+        "Maximum": 5.341666666666666,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 15.09012388908342,
+        "Maximum": 15.09012388908342,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 6.916551390810153,
+        "Maximum": 6.916551390810153,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 11.2745016403817,
+        "Maximum": 11.2745016403817,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 6.597470969461706,
+        "Maximum": 6.597470969461706,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 15.858069032182797,
+        "Maximum": 15.858069032182797,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 6.599533954727031,
+        "Maximum": 6.599533954727031,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 10.441666666666666,
+        "Maximum": 10.441666666666666,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 6.388181863552428,
+        "Maximum": 6.388181863552428,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 11.273552629383,
+        "Maximum": 11.273552629383,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 8.175,
+        "Maximum": 8.175,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 7.453354009304187,
+        "Maximum": 7.453354009304187,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 27.244204869745165,
+        "Maximum": 27.244204869745165,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 5.8,
+        "Maximum": 5.8,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 5.996463837736856,
+        "Maximum": 5.996463837736856,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 29.360693236271352,
+        "Maximum": 29.360693236271352,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 5.6944189691684315,
+        "Maximum": 5.6944189691684315,
+        "Unit": "Percent"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 6.064286427311749,
+        "Maximum": 6.064286427311749,
+        "Unit": "Percent"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "DatabaseConnections",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 76.0,
+        "Maximum": 76.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 76.0,
+        "Maximum": 76.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:32:00-07:00",
+        "Average": 76.0,
+        "Maximum": 76.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 53.0,
+        "Maximum": 53.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 53.0,
+        "Maximum": 53.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 53.0,
+        "Maximum": 53.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 76.0,
+        "Maximum": 76.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 44.0,
+        "Maximum": 44.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 76.0,
+        "Maximum": 76.0,
+        "Unit": "Count"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "DiskQueueDepth",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 0.008133875591706113,
+        "Maximum": 0.008133875591706113,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 0.37703904265276106,
+        "Maximum": 0.37703904265276106,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 0.008163537310697565,
+        "Maximum": 0.008163537310697565,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 0.09207655279244466,
+        "Maximum": 0.09207655279244466,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 0.008723011103527493,
+        "Maximum": 0.008723011103527493,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 0.4495891461239729,
+        "Maximum": 0.4495891461239729,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 0.03785857238158773,
+        "Maximum": 0.03785857238158773,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:32:00-07:00",
+        "Average": 0.04650075943451338,
+        "Maximum": 0.04650075943451338,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 0.22130382615651248,
+        "Maximum": 0.22130382615651248,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 0.5268380394246137,
+        "Maximum": 0.5268380394246137,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 0.007619714552487662,
+        "Maximum": 0.007619714552487662,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 0.39155310169972146,
+        "Maximum": 0.39155310169972146,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 0.03499825008749562,
+        "Maximum": 0.03499825008749562,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 0.010635815023505484,
+        "Maximum": 0.010635815023505484,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 0.10028658069245892,
+        "Maximum": 0.10028658069245892,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 0.06370466623352825,
+        "Maximum": 0.06370466623352825,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 0.43093655790402907,
+        "Maximum": 0.43093655790402907,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 0.07606666666666667,
+        "Maximum": 0.07606666666666667,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 0.2075937541705592,
+        "Maximum": 0.2075937541705592,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 0.45690586612144485,
+        "Maximum": 0.45690586612144485,
+        "Unit": "Count"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "ReadIOPS",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 467.8934157815123,
+        "Maximum": 467.8934157815123,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 189.87721873748833,
+        "Maximum": 189.87721873748833,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 3.3002200146676444,
+        "Maximum": 3.3002200146676444,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 371.15590319561437,
+        "Maximum": 371.15590319561437,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 7.996401619271328,
+        "Maximum": 7.996401619271328,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 144.72324969175915,
+        "Maximum": 144.72324969175915,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 2.95,
+        "Maximum": 2.95,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 482.7695331367944,
+        "Maximum": 482.7695331367944,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 3.568093904228358,
+        "Maximum": 3.568093904228358,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 300.09507764674487,
+        "Maximum": 300.09507764674487,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 484.8827916888652,
+        "Maximum": 484.8827916888652,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 3.3664983417495793,
+        "Maximum": 3.3664983417495793,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 2.050478444970493,
+        "Maximum": 2.050478444970493,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 11.659476656062095,
+        "Maximum": 11.659476656062095,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 3.1462769056616335,
+        "Maximum": 3.1462769056616335,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 1.7493585685248743,
+        "Maximum": 1.7493585685248743,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 196.173843487535,
+        "Maximum": 196.173843487535,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:32:00-07:00",
+        "Average": 3.922419548671385,
+        "Maximum": 3.922419548671385,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 527.000900030001,
+        "Maximum": 527.000900030001,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 9.472981987991995,
+        "Maximum": 9.472981987991995,
+        "Unit": "Count/Second"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "WriteIOPS",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 21.060855399857047,
+        "Maximum": 21.060855399857047,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 11.577472307486987,
+        "Maximum": 11.577472307486987,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 5.81705447029802,
+        "Maximum": 5.81705447029802,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 11.582430806257522,
+        "Maximum": 11.582430806257522,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 18.141836173721824,
+        "Maximum": 18.141836173721824,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 12.163017761338265,
+        "Maximum": 12.163017761338265,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 95.95,
+        "Maximum": 95.95,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 19.354086510434882,
+        "Maximum": 19.354086510434882,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 5.435507536347872,
+        "Maximum": 5.435507536347872,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 78.04707177528314,
+        "Maximum": 78.04707177528314,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 22.44272775705914,
+        "Maximum": 22.44272775705914,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 11.149442527873607,
+        "Maximum": 11.149442527873607,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 9.552228853399127,
+        "Maximum": 9.552228853399127,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 65.0265669503806,
+        "Maximum": 65.0265669503806,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 8.290189941902083,
+        "Maximum": 8.290189941902083,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 11.27919762753657,
+        "Maximum": 11.27919762753657,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 16.697773630182642,
+        "Maximum": 16.697773630182642,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:32:00-07:00",
+        "Average": 14.537989050607559,
+        "Maximum": 14.537989050607559,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 20.60068668955632,
+        "Maximum": 20.60068668955632,
+        "Unit": "Count/Second"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 33.905937291527685,
+        "Maximum": 33.905937291527685,
+        "Unit": "Count/Second"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "FreeableMemory",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:19:00-07:00",
+        "Average": 778248192.0,
+        "Maximum": 778248192.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:28:00-07:00",
+        "Average": 593612800.0,
+        "Maximum": 593612800.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 785375232.0,
+        "Maximum": 785375232.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:18:00-07:00",
+        "Average": 786108416.0,
+        "Maximum": 786108416.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:27:00-07:00",
+        "Average": 705851392.0,
+        "Maximum": 705851392.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:13:00-07:00",
+        "Average": 780750848.0,
+        "Maximum": 780750848.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:22:00-07:00",
+        "Average": 771411968.0,
+        "Maximum": 771411968.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:31:00-07:00",
+        "Average": 550977536.0,
+        "Maximum": 550977536.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:29:00-07:00",
+        "Average": 566218752.0,
+        "Maximum": 566218752.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:21:00-07:00",
+        "Average": 786116608.0,
+        "Maximum": 786116608.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 556060672.0,
+        "Maximum": 556060672.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 786227200.0,
+        "Maximum": 786227200.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:24:00-07:00",
+        "Average": 751095808.0,
+        "Maximum": 751095808.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:14:00-07:00",
+        "Average": 774418432.0,
+        "Maximum": 774418432.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:23:00-07:00",
+        "Average": 777089024.0,
+        "Maximum": 777089024.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:32:00-07:00",
+        "Average": 531353600.0,
+        "Maximum": 531353600.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:17:00-07:00",
+        "Average": 786571264.0,
+        "Maximum": 786571264.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:26:00-07:00",
+        "Average": 718921728.0,
+        "Maximum": 718921728.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:16:00-07:00",
+        "Average": 785272832.0,
+        "Maximum": 785272832.0,
+        "Unit": "Bytes"
+      },
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 719982592.0,
+        "Maximum": 719982592.0,
+        "Unit": "Bytes"
+      }
+    ]
+  },
+  {
+    "namespace": "AWS/RDS",
+    "metric": "CPUCreditBalance",
+    "data": [
+      {
+        "Timestamp": "2026-10-16T19:25:00-07:00",
+        "Average": 575.93082915,
+        "Maximum": 575.93082915,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:30:00-07:00",
+        "Average": 576.0,
+        "Maximum": 576.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:15:00-07:00",
+        "Average": 576.0,
+        "Maximum": 576.0,
+        "Unit": "Count"
+      },
+      {
+        "Timestamp": "2026-10-16T19:20:00-07:00",
+        "Average": 576.0,
+        "Maximum": 576.0,
+        "Unit": "Count"
+      }
+    ]
+  }
+]

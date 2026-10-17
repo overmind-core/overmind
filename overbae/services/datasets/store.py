@@ -559,6 +559,7 @@ def query(
     limit: int | None = 200,
     max_bytes: int | None = None,
     max_columns: int | None = None,
+    execution_check=None,
     **tables: Path,
 ) -> dict[str, Any]:
     """Read-only SQL over registered tables. Returns decoded rows and columns."""
@@ -575,6 +576,8 @@ def query(
     timer.daemon = True
     timer.start()
     try:
+        if execution_check is not None:
+            execution_check()
         statements = con.extract_statements(sql)
         if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
             raise StoreError("Only one read-only SELECT query is allowed.")
@@ -604,7 +607,15 @@ def query(
                         "The query exceeds its byte budget. Select fewer columns, aggregate or export the cell."
                     )
                 rows.append(row)
+        if execution_check is not None:
+            execution_check()
+        if expired.is_set():
+            raise QueryTimeoutError(
+                f"The query exceeded {timeout:g} seconds. Narrow the query or export the cell."
+            )
     except duckdb.InterruptException as exc:
+        if execution_check is not None:
+            execution_check()
         raise QueryTimeoutError(
             f"The query exceeded {timeout:g} seconds. Narrow the query or export the cell."
         ) from exc

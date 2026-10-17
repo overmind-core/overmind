@@ -1,0 +1,31 @@
+{
+  "actual_cpu_heavy_queries": 3,
+  "expected_timeouts": 3,
+  "extra_noisy_query": {
+    "code": "query_capacity_busy",
+    "message": "SQL inspection capacity is busy. Retry the same SQL against the returned cell after one second; use a retained pipeline for bulk analysis.",
+    "retryable": true,
+    "fields": {
+      "dataset": "7317e1f6-738b-4fde-ab44-60f2ae29da83",
+      "cell": "c14d5de9-0dfb-4787-ad1d-623317452c74",
+      "retry_after_seconds": "1",
+      "project_concurrency": "2",
+      "global_concurrency": "3"
+    }
+  },
+  "extra_project_at_global_capacity": {
+    "code": "query_capacity_busy",
+    "message": "SQL inspection capacity is busy. Retry the same SQL against the returned cell after one second; use a retained pipeline for bulk analysis.",
+    "retryable": true,
+    "fields": {
+      "dataset": "b1ac4f48-890e-4500-adfe-63f70af736da",
+      "cell": "41d34dca-20ff-447c-ae62-8ae40e1a6284",
+      "retry_after_seconds": "1",
+      "project_concurrency": "2",
+      "global_concurrency": "3"
+    }
+  },
+  "protected_query_seconds": 0.07998412504093722,
+  "capacity_released_after_timeout": true,
+  "source_cells_unchanged": true
+}

@@ -1430,6 +1430,14 @@ def interface_resource():
             "recovery": "The training collector renews a short lease while alive. Reconciliation closes missed terminal operational events from local receipts without another provider call; worker heartbeat timestamps are preserved.",
         },
         "dataset_transformations": {
+            "query_capacity": {
+                "global_concurrency": settings.DATASET_QUERY_MAX_IN_FLIGHT,
+                "project_concurrency": settings.DATASET_QUERY_PROJECT_CONCURRENCY,
+                "timeout_seconds": settings.DATASET_QUERY_TIMEOUT_SECONDS,
+                "busy_code": "query_capacity_busy",
+                "unavailable_code": "query_capacity_unavailable",
+                "retry": "Use the returned cell, identical SQL and retry_after_seconds. Bulk analysis belongs in a retained pipeline. No private SQL engine is created before admission.",
+            },
             "source_admission": "Source imports wait durably before bounded broker publication. Dataset-run progress.admission and dataset operation.landing_admission expose queue, execution and terminal states with timestamps. One import per project runs at a time; waiting does not consume an execution attempt or expire unless explicitly configured. Lost started imports retain their source and require resume_dataset_import; unknown started work is not replayed.",
             "progress": "Preview and publication expose aggregate seconds plus per-step runtime stage_seconds for container setup, input transfer, script execution, artifact transfer, output reading and cleanup. A stopped script never reports completed runtime; cleanup_confirmed is separate from publication success.",
             "parameters": "Package manifest parameters declare types, for example {seed: integer}; run parameters supply values, for example {seed: 42}.",

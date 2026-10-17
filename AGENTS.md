@@ -193,7 +193,9 @@ Each line is the invariant; the named skill section carries the mechanics.
 - Dataset storage bounds Parquet staging and DataFrame chunks by bytes and reads small row batches. It preserves mixed scalars and precision-sensitive integers as JSON;
   shared pandas readers must not coerce them again. MCP queries cap JSON output at
   32 KiB and return `query_result_too_large` without clipping values; a configurable
-  ten-second default execution deadline returns `query_timeout`. The CLI exports
+  ten-second default execution deadline returns `query_timeout`. Shared Redis admission
+  bounds MCP SQL to eight concurrent queries globally and two per project by default;
+  retryable capacity errors retain the exact cell and retry delay. The CLI exports
   retained original sources via `dataset export --source SHA256`, verifying bytes
   without overwrite or credential-forwarding redirects. Local uploads
   accept one file per transfer; serial attachments combine rows in new versions.

@@ -119,7 +119,6 @@ class CliSurface:
 
     def scan(self, agent: SampleAgent, *, without: tuple[str, ...] = ()) -> None:
         from overmind.config import dump, load
-
         from overmind.utils import convert_json_to_toml
 
         self.run("chassis", "--root", str(agent.repo))
@@ -185,11 +184,14 @@ class McpSurface:
 
         return asyncio.run(self._session(action))
 
-    def call(self, tool: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    def call_result(self, tool: str, arguments: dict[str, Any] | None = None):
         async def action(session: ClientSession, _initialized):
             return await session.call_tool(tool, arguments or {})
 
-        result = asyncio.run(self._session(action))
+        return asyncio.run(self._session(action))
+
+    def call(self, tool: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self.call_result(tool, arguments)
         if result.isError:
             raise AssertionError(f"MCP {tool} failed: {result.content}")
         return result.structuredContent or json.loads(result.content[0].text)

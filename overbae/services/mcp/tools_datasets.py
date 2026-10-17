@@ -5,6 +5,7 @@ import re
 
 import duckdb
 from asgiref.sync import sync_to_async
+from django.conf import settings
 
 from overbae.models import Capability, Dataset
 from overbae.services.datasets import (
@@ -106,6 +107,8 @@ def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> 
 
 
 def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> QueryDatasetOutput:
+    from overbae.services.datasets import query_capacity
+
     dataset = mcp_dataset(context, payload.dataset)
     sql = payload.sql.strip()
     if not _READ_ONLY_SQL.match(sql):
@@ -118,13 +121,36 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
         raise MCPError("cell_not_found", "The cell was not found in this dataset.")
     limit = min(payload.limit, 100)
     try:
-        result = store.query(
-            sql,
-            limit=limit + 1,
-            max_bytes=32768,
-            max_columns=200,
-            t=paths.cell_path(dataset.id, cell.id),
-        )
+        with query_capacity.admitted(dataset.project_id) as check:
+            result = store.query(
+                sql,
+                limit=limit + 1,
+                max_bytes=32768,
+                max_columns=200,
+                execution_check=check,
+                t=paths.cell_path(dataset.id, cell.id),
+            )
+    except (
+        query_capacity.QueryCapacityBusyError,
+        query_capacity.QueryCapacityUnavailableError,
+    ) as exc:
+        busy = isinstance(exc, query_capacity.QueryCapacityBusyError)
+        raise MCPError(
+            "query_capacity_busy" if busy else "query_capacity_unavailable",
+            "SQL inspection capacity is busy. Retry the same SQL against the returned cell "
+            "after one second; use a retained pipeline for bulk analysis."
+            if busy
+            else "SQL inspection admission is unavailable. Retry the same SQL against the "
+            "returned cell after one second.",
+            retryable=True,
+            fields={
+                "dataset": str(dataset.pk),
+                "cell": str(cell.pk),
+                "retry_after_seconds": "1",
+                "project_concurrency": str(settings.DATASET_QUERY_PROJECT_CONCURRENCY),
+                "global_concurrency": str(settings.DATASET_QUERY_MAX_IN_FLIGHT),
+            },
+        ) from None
     except store.QueryTimeoutError as exc:
         raise MCPError("query_timeout", str(exc), retryable=False) from exc
     except store.QuerySizeError as exc:
@@ -381,7 +407,10 @@ def register_dataset_tools(catalog) -> None:
             "Read-only SELECT over table t on one ran cell (active unless cell is an id or version). "
             "At most 100 rows; truncated when more matched. Results over 200 columns or 32 KiB of JSON fail "
             "with query_result_too_large; project smaller columns, aggregate, or use the "
-            "dataset-export resource for complete data. Values are never clipped.",
+            "dataset-export resource for complete data. Values are never clipped. "
+            "SQL execution has bounded global and per-project capacity. Retryable "
+            "query_capacity_busy/query_capacity_unavailable returns the exact cell and retry delay; "
+            "retry the same SQL on that cell. Use a retained pipeline for bulk analysis.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,

@@ -170,7 +170,11 @@ not agent-authored normalization; old immutable cells are not rewritten.
 responses return `query_result_too_large` without clipping values; project or
 aggregate in SQL, or export the exact cell. A separate configurable execution
 deadline defaults to ten seconds and returns `query_timeout`; source cells and
-later queries remain usable. The byte/column budget is enforced while reading
+later queries remain usable. Redis admission bounds MCP SQL across API workers
+(default eight global, two per project). Busy or unavailable admission returns
+retryable errors with exact cell and retry delay before creating a query engine.
+Expired leases recover crashed workers; capacity does not authorize source writes.
+The byte/column budget is enforced while reading
 results, before building an unbounded Python result.
 Results above 200 columns also fail rather than omitting column metadata.
 MCP Workshop run summaries omit bulky row examples and preview samples from

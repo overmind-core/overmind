@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import sys
 from datetime import timedelta
@@ -22,7 +23,16 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
 WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "2"))
 DATASET_LANDING_MAX_IN_FLIGHT = int(os.environ.get("DATASET_LANDING_MAX_IN_FLIGHT", "8"))
-DATASET_QUERY_TIMEOUT_SECONDS = 10
+DATASET_QUERY_TIMEOUT_SECONDS = float(os.environ.get("DATASET_QUERY_TIMEOUT_SECONDS", "10"))
+DATASET_QUERY_MAX_IN_FLIGHT = int(os.environ.get("DATASET_QUERY_MAX_IN_FLIGHT", "8"))
+DATASET_QUERY_PROJECT_CONCURRENCY = int(os.environ.get("DATASET_QUERY_PROJECT_CONCURRENCY", "2"))
+if (
+    DATASET_QUERY_TIMEOUT_SECONDS <= 0
+    or not math.isfinite(DATASET_QUERY_TIMEOUT_SECONDS)
+    or DATASET_QUERY_PROJECT_CONCURRENCY < 1
+    or DATASET_QUERY_MAX_IN_FLIGHT < DATASET_QUERY_PROJECT_CONCURRENCY
+):
+    raise ImproperlyConfigured("Dataset query timeout and concurrency budgets must be positive.")
 
 # Deployments set their own path so the admin is not at a guessable URL.
 ADMIN_URL_PATH = os.environ.get("DJANGO_ADMIN_PATH", "admin").strip("/") + "/"

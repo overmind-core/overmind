@@ -32,6 +32,9 @@ class ProcessAPI:
             "OVERMIND_LOAD_MEDIA_ROOT": str(settings.MEDIA_ROOT),
             "SANDBOX_URL": settings.SANDBOX_URL,
             "SANDBOX_TOKEN": settings.SANDBOX_TOKEN,
+            "DATASET_QUERY_TIMEOUT_SECONDS": str(settings.DATASET_QUERY_TIMEOUT_SECONDS),
+            "DATASET_QUERY_MAX_IN_FLIGHT": str(settings.DATASET_QUERY_MAX_IN_FLIGHT),
+            "DATASET_QUERY_PROJECT_CONCURRENCY": str(settings.DATASET_QUERY_PROJECT_CONCURRENCY),
         }
 
     def __enter__(self):

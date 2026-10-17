@@ -5,6 +5,11 @@ description: End-to-end workflow for adding or changing Overmind MCP tools, reso
 
 # Adding or changing MCP
 
+Contract 7.8.2 makes SQL query capacity MCP-ready: the interface resource reports
+global/per-project concurrency and deadlines. Busy or unavailable admission returns
+retryable errors with the exact cell and minimum retry delay. Retry with backoff,
+never fan out retries; bulk analysis belongs in retained pipelines.
+
 Contract 7.8.0 makes automatic signal defaults and evidence inspection MCP-ready.
 `list_signals` returns `default_enabled` and effective `enabled` values; explicit
 capability settings override project settings. `plan_drift` remains opt-in.
