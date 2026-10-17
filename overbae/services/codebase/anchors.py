@@ -12,12 +12,21 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+SCRIPT_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
+
+
+def is_script_file(rel_path: str) -> bool:
+    return rel_path.lower().endswith(SCRIPT_SUFFIXES)
+
+
 def module_dotted_path(rel_path: str) -> str:
     parts = [p for p in rel_path.split("/") if p]
     if parts and parts[-1].endswith(".py"):
         parts[-1] = parts[-1][:-3]
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+    elif parts and is_script_file(parts[-1]):
+        parts[-1] = parts[-1].rsplit(".", 1)[0]
     return ".".join(parts)
 
 

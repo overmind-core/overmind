@@ -15,6 +15,10 @@ or `poetry run python -m overmind`, or the isolated tooling runner below.
 
 ## Verify the project runtime
 
+A JavaScript/TypeScript repository has no Python environment to verify: use the
+isolated tooling runner below for every command and read
+[javascript.md](javascript.md) before the scan.
+
 Onboarding requires **Python 3.10+ and overmind>=0.1.95**. Install or upgrade
 through the repository's dependency manifest using the source named in the
 Console paste. For PyPI, use `uv add "overmind>=0.1.95"`,

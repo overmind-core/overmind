@@ -1,6 +1,6 @@
 # Overmind Platform
 
-Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference. The platform is AGPL-3.0; `overmind/` is MIT.
+Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference. The platform is AGPL-3.0; `overmind/` is MIT. `overmind-js/` is the private, observability-only TypeScript SDK (Langfuse tracing re-exported, spans rewritten to the `overmind.*` contract and sent to `/api/v1/traces`); `overmind chassis` scans TypeScript/JavaScript checkouts with tree-sitter as well as Python.
 
 This file is the single playbook. Claude Code, Codex and Cursor all read it natively. It holds what every task needs; procedures and subsystem maps live in `.agents/skills/`, which every tool loads on demand.
 

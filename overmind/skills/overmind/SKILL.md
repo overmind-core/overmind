@@ -134,7 +134,9 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    `required_decorator` verbatim at `target.qualname` in `target.file`, keeping
    `capability_id` exact. When coding subagents are available and permitted,
    group placements by file so one worker owns each file. See
-   [references/instrumentation.md](references/instrumentation.md).
+   [references/instrumentation.md](references/instrumentation.md). For a
+   JavaScript/TypeScript target the placement is an `observe` wrapper:
+   apply it as [references/javascript.md](references/javascript.md) describes.
 1. **Explicit run approval.** After applying the placements, report
    the changed files and local checks, generate a unique verification
    correlation, then ask the user to choose a real run or bounded smoke run.
@@ -153,6 +155,10 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 
 ## Use-case references
 
+- JavaScript/TypeScript repositories (isolated tooling runner, TypeScript chassis
+  qualnames, `observe` wrappers instead of decorators, `init`/`flush`): read
+  [references/javascript.md](references/javascript.md) before local setup or
+  instrumentation, and apply it on top of the Python-worded references below.
 - Local setup (`overmind chassis` → scan repo → capability cards / trajectory
   maps → `overmind.toml` → `overmind sync` → decorators with span expectations):
   [references/setup.md](references/setup.md)
