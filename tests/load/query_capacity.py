@@ -38,10 +38,25 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
         expensive = {**args, "sql": "SELECT sum(sin(i)) FROM range(20000000000) AS r(i)"}
         inspection = {**args, "sql": "SELECT count(*) AS count FROM t"}
         noisy.call("query_dataset", inspection)
+
+        def run_expensive(surface, arguments):
+            deadline = time.monotonic() + 8
+            while True:
+                result = surface.call_result("query_dataset", arguments)
+                if (
+                    not result.isError
+                    or result.structuredContent["error"]["code"] != "query_capacity_busy"
+                ):
+                    return result
+                error = result.structuredContent["error"]
+                assert error["retryable"] and error["fields"]["cell"] == arguments["cell"]
+                assert time.monotonic() < deadline, (
+                    "A heavy query could not acquire its available slot"
+                )
+                time.sleep(float(error["fields"]["retry_after_seconds"]))
+
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [
-                executor.submit(noisy.call_result, "query_dataset", expensive) for _ in range(2)
-            ]
+            futures = [executor.submit(run_expensive, noisy, expensive) for _ in range(2)]
             deadline = time.monotonic() + 2
             while time.monotonic() < deadline:
                 result = noisy.call_result("query_dataset", inspection)
@@ -71,8 +86,8 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
             assert not any(future.done() for future in futures)
             futures.append(
                 executor.submit(
-                    quiet.call_result,
-                    "query_dataset",
+                    run_expensive,
+                    quiet,
                     {
                         "dataset": str(protected.pk),
                         "cell": str(protected.active_cell.pk),
@@ -81,7 +96,7 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
                 )
             )
             third = identities[2][0]
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + 4
             while time.monotonic() < deadline:
                 result = overflow.call_result(
                     "query_dataset",
@@ -94,7 +109,7 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
                 if result.isError:
                     global_busy = result.structuredContent["error"]
                     break
-                time.sleep(0.02)
+                time.sleep(0.1)
             else:
                 raise AssertionError("The declared global query budget was not enforced")
             assert global_busy["code"] == "query_capacity_busy" and global_busy["retryable"]

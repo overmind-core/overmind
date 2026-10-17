@@ -278,8 +278,12 @@ The real two-process API test occupied both noisy-project slots with expensive
 SQL, then completed another project's read in 80 ms. A third heavy query filled
 the deliberately configured global ceiling of three; another project received
 explicit backpressure. All three expensive queries timed out, subsequent reads
-succeeded, and every source retained exactly one cell. The previous three-second
-test deadline was too short to complete all connection handshakes before filling
-the global ceiling; the passing test uses production's ten-second deadline.
+succeeded, and every source retained exactly one cell. The global-capacity probe initially raced its own inspection request for the
+last free slot. Heavy-query clients now obey the declared retry delay on busy
+admission; the test uses production's ten-second execution deadline.
 The 56 affected MCP contracts also passed. Full backend and journey gates are
 being rerun before deploying these additional SQL safeguards.
+
+The unchanged application tree passed 3,298 backend tests (seven skipped) in
+165.76 seconds. A preceding run overlapped an exception rename and is not release
+evidence. Formatting and pre-commit checks passed.
