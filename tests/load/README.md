@@ -33,8 +33,10 @@ inference collection. The quiet project reads and runs small pipelines. Reports
 retain baseline and loaded latency, completed work, bytes, errors, process memory
 and sampled database connections. The default landing profile has one slot, as
 in the checked-in production configuration. Interactive execution uses a separate
-prefork worker, limited to 4 vCPU and 8 GiB in the macOS Linux container. Other
-profiles use threads, so this does not certify their prefork memory or hard limits.
+prefork worker, limited to 4 vCPU and 8 GiB in the macOS Linux container. Landing
+also runs in a separate prefork worker so CPU-heavy parsing does not share the
+API interpreter. Other profiles use threads, so this does not certify their
+prefork memory or hard limits.
 
 Acceptance is quiet REST p95 below max(500 ms, twice baseline), empirical p99 below
 one second, small pipelines below ten seconds, and no request/job failures. These
@@ -55,3 +57,33 @@ sizes, provider quotas, connection limits and production backlog require separat
 measurements. Per-project admission prevents monopolising a pool; it does not
 make CPU, storage or database resources independent at arbitrary load. AWS CPU,
 memory, worker count or database expansion requires the user's prior approval.
+
+### Retained local data
+
+The landing isolation test can use an existing local Parquet file rather than
+synthetic CSV rows. It streams upload chunks and checks the published row count
+against the retained Parquet metadata. The original file is read-only; all imports
+use temporary test projects and media storage.
+
+```sh
+OVERMIND_LANDING_SOURCE=/private/tmp/overmind-capacity-real-decisions.parquet \
+OVERMIND_LANDING_DEADLINE=3600 \
+OVERMIND_LOAD_TEST_DATABASE=test_landing_real \
+TEST_REDIS_URL=redis://localhost:6379/12 \
+SANDBOX_TEST_IMAGE=YOUR_COMPATIBLE_IMAGE \
+uv run pytest tests/load/landing.py --ds=tests.load.settings -q
+```
+
+This submits four full imports to one project and a tiny import to another. It
+requires the quiet import to start before the noisy project's second import and
+requires each project's own imports to run serially. This is an isolation check,
+not a production throughput or maximum-concurrent-request certification. Do not
+commit retained customer rows or copy them to production as part of this test.
+
+The mixed workload also launches training and records explicit provider-training
+windows that must overlap imports/pipelines, trace scoring, inference and quiet
+reads. GPU execution is the external Modal fake; preparation, dispatch, progress
+collection and training completion are real platform services. Serving startup
+is excluded. Its synthetic training user has an active Pro subscription so the
+soak measures concurrency rather than the Free plan monthly training quota.
+Training reconcilers run at the production 15-second cadence.

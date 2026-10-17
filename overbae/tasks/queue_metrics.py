@@ -8,6 +8,7 @@ from botocore.config import Config
 from botocore.credentials import ContainerProvider, CredentialResolver
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 
 from overbae.services.queue_capacity import (
     NAMESPACE,
@@ -46,6 +47,7 @@ def publish():
         for service in services.get("services", [])
     }
     running = {queue: counts.get(service, 0) for queue, service in WORKER_SERVICES.items()}
+    cache.set("queue-capacity:landing:workers", running.get("landing", 0), timeout=90)
     points = metric_data(read_workloads(), running, cluster=cluster)
     cloudwatch = session.client("cloudwatch", region_name=settings.AWS_REGION, config=config)
     cloudwatch.put_metric_data(Namespace=NAMESPACE, MetricData=points)

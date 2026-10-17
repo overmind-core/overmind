@@ -66,6 +66,8 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
             "tests/load/isolation.py",
             "tests/load/recovery.py",
             "tests/load/transfers.py",
+            "tests/load/landing.py",
+            "tests/load/landing_burst.py",
             "--ds=tests.load.settings",
             "-q",
             "-s",
@@ -74,7 +76,7 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
         env=env,
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=420,
     )
     (RUNS / "mixed-capacity.log").write_text(result.stdout + result.stderr)
     assert result.returncode == 0, failure_output(result)

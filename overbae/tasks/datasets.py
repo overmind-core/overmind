@@ -5,7 +5,7 @@ from dataclasses import replace
 from typing import Any
 
 import redis
-from celery import shared_task
+from celery import Task, shared_task
 from django.db import transaction
 from django.utils import timezone
 
@@ -99,18 +99,46 @@ def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
     events.publish(dataset_id, {"dataset_id": str(dataset_id), **event})
 
 
-def _fail(dataset_id: Any, error: str) -> None:
+def _fail(dataset_id: Any, error: str, *, task_id=None) -> None:
     from overbae.models import Dataset
 
-    Dataset.objects.filter(pk=dataset_id).update(
-        state=Dataset.State.ERROR, error=error[:2000], updated_at=timezone.now()
-    )
-    _emit(dataset_id, {"type": "land_failed", "error": error[:2000]})
+    targets = Dataset.objects.filter(pk=dataset_id)
+    if task_id:
+        targets = targets.filter(operation__task_id=task_id)
+    if targets.update(state=Dataset.State.ERROR, error=error[:2000], updated_at=timezone.now()):
+        _emit(dataset_id, {"type": "land_failed", "error": error[:2000]})
+
+
+class LandingTask(Task):
+    def apply_async(self, args=None, kwargs=None, task_id=None, **options):
+        import uuid
+
+        from overbae.services.datasets import admission
+
+        if args:
+            raise ValueError("Landing submissions require named arguments")
+        task_id = str(task_id or uuid.uuid4())
+        admission.enqueue(kwargs or {}, task_id)
+        return self.AsyncResult(task_id)
+
+    def publish_admitted(self, *, kwargs, task_id, headers):
+        return super().apply_async(kwargs=kwargs, task_id=task_id, headers=headers, retry=False)
+
+
+@shared_task(name="overbae.tasks.datasets.dispatch_landings")
+def dispatch_landings():
+    from django.core.cache import cache
+
+    from overbae.services.datasets import admission
+
+    cache.delete(admission.WAKE_KEY)
+    return admission.reconcile(land.publish_admitted)
 
 
 @shared_task(
     bind=True,
     name="overbae.tasks.datasets.land",
+    base=LandingTask,
     soft_time_limit=LAND_SOFT_LIMIT,
     time_limit=LAND_HARD_LIMIT,
     acks_late=True,
@@ -130,6 +158,45 @@ def land(
     ``{"traces": {trace_ids | filters}}`` or ``{"llm_calls": {...}}``. With ``split``
     (``eval_dataset_id``, ``eval_percent``, ``position``) the source is read once and cut
     in two. Landing records evidence and returns to idle without scheduling an agent."""
+    from overbae.services.datasets import admission, heartbeat
+
+    inputs = dict(
+        dataset_id=dataset_id,
+        source=source,
+        user_id=user_id,
+        split=split,
+        infer_capability=infer_capability,
+        attachment_request=attachment_request,
+    )
+    owner = (self.request.headers or {}).get(admission.HEADER)
+    task_id = self.request.id
+    if owner:
+        if not admission.claim(self.request.id, owner):
+            admission.wake()
+            return {"status": "not_claimed"}
+    elif not self.request.is_eager and not self.request.called_directly:
+        admission.enqueue(inputs, self.request.id)
+        return {"status": "queued_for_admission"}
+    beat = (
+        heartbeat.start(lambda: admission.renew(task_id, owner), owner=f"landing {self.request.id}")
+        if owner
+        else None
+    )
+    outcome = None
+    try:
+        outcome = _execute_landing(self, **inputs)
+        return outcome
+    finally:
+        if beat:
+            beat.set()
+        if owner:
+            admission.finish(self.request.id, owner, outcome)
+
+
+def _execute_landing(
+    task, *, dataset_id, source, user_id, split, infer_capability, attachment_request
+):
+
     from overbae.models import Dataset, User
     from overbae.services.datasets import attachments, files, imports, operations
 
@@ -142,7 +209,7 @@ def land(
         }
         if split is not None:
             inputs["split"] = split
-        return imports.execute(self.request.id, inputs)
+        return imports.execute(task.request.id, inputs)
     from overbae.services.datasets import land as landing
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
@@ -183,9 +250,9 @@ def land(
                         )
             return {"status": "landed"}
         # An unacknowledged worker kill must not trigger an unbounded import retry loop.
-        if (self.request.delivery_info or {}).get("redelivered"):
+        if (task.request.delivery_info or {}).get("redelivered"):
             if any(
-                target.operation.get("task_id") not in (None, "", self.request.id)
+                target.operation.get("task_id") not in (None, "", task.request.id)
                 for target in targets
             ):
                 return {"status": "not_claimed"}
@@ -196,7 +263,7 @@ def land(
         for target in targets:
             if (
                 operations.started(
-                    target.id, self.request.id or "", attachment_request=attachment_request
+                    target.id, task.request.id or "", attachment_request=attachment_request
                 )
                 is None
             ):
@@ -307,16 +374,20 @@ def land(
             )
     except landing.LandError as exc:
         for target in targets:
-            _fail(target.id, str(exc))
+            _fail(target.id, str(exc), task_id=task.request.id)
         return {"status": "failed", "error": str(exc)}
     except Exception as exc:  # noqa: BLE001 — the dataset must reach a terminal state
         logger.exception("landing failed for dataset %s", dataset_id)
         for target in targets:
-            _fail(target.id, "Landing failed on the server. The file was not the cause.")
+            _fail(
+                target.id,
+                "Landing failed on the server. The file was not the cause.",
+                task_id=task.request.id,
+            )
         return {"status": "failed", "error": str(exc)}
     finally:
         for target in targets:
-            operations.finished(target.id, task_id=self.request.id or "")
+            operations.finished(target.id, task_id=task.request.id or "")
         if upload_id:
             files.discard_upload(upload_id)
         for uploaded_id in upload_ids:
@@ -332,7 +403,9 @@ def land(
         rows += landed
         _emit(target.id, {"type": "land_done", "rows": landed})
         if target.operation.get("state") != "cancelled":
-            Dataset.objects.filter(pk=target.pk).update(state=Dataset.State.IDLE)
+            Dataset.objects.filter(pk=target.pk, operation__task_id=task.request.id).update(
+                state=Dataset.State.IDLE
+            )
     return {"status": "ok", "rows": rows}
 
 
@@ -340,7 +413,11 @@ def land(
 def reconcile_imports():
     from overbae.services.datasets import imports
 
-    return imports.reconcile()
+    result = imports.reconcile()
+    from overbae.services.datasets import admission
+
+    result["landing_admission"] = admission.reconcile(land.publish_admitted)
+    return result
 
 
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")

@@ -561,6 +561,13 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
         state=Dataset.State.LANDING,
     )
     Cell.objects.create(dataset=dataset, position=0, title="Source", state=Cell.State.QUEUED)
+    from overbae.models import DatasetLandingWork
+
+    admission = DatasetLandingWork.objects.create(
+        project=project, dataset=dataset, owner=uuid.uuid4()
+    )
+    dataset.operation = {"task_id": str(admission.pk)}
+    dataset.save(update_fields=["operation"])
     context = _tool_context(project)
     uri = f"overmind://jobs/dataset_run/{dataset.id}"
 
@@ -582,6 +589,10 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
         assert body["kind"] == "dataset_run"
         assert body["id"] == str(dataset.id)
         assert body["status"] == state
+        assert body["progress"]["admission"]["id"] == str(admission.pk)
+        assert body["progress"]["admission"]["state"] == "waiting"
+        assert body["progress"]["admission"]["per_project_limit"] == 1
+        assert str(admission.owner) not in json.dumps(body)
         assert body["resource"]["uri"] == uri
         assert body["details"]["next_action"]["tool"]
         links = [str(item.uri) for item in result.content if isinstance(item, types.ResourceLink)]

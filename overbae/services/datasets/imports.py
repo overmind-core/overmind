@@ -236,8 +236,8 @@ def claim(run_id):
     if run.state != DatasetImport.State.QUEUED:
         return None
     now = timezone.now()
-    queue_seconds = getattr(settings, "DATASET_IMPORT_MAX_QUEUE_SECONDS", 15 * 60)
-    if run.queued_at < now - timedelta(seconds=queue_seconds):
+    queue_seconds = settings.DATASET_IMPORT_MAX_QUEUE_SECONDS or None
+    if queue_seconds is not None and run.queued_at < now - timedelta(seconds=queue_seconds):
         _block(
             run,
             "queue_timeout",
@@ -430,12 +430,16 @@ def _release_sources(run):
 
 def reconcile():
     now = timezone.now()
-    queue_seconds = getattr(settings, "DATASET_IMPORT_MAX_QUEUE_SECONDS", 15 * 60)
+    queue_seconds = settings.DATASET_IMPORT_MAX_QUEUE_SECONDS or None
     candidates = (
         DatasetImport.objects.filter(
-            Q(
-                state=DatasetImport.State.QUEUED,
-                queued_at__lt=now - timedelta(seconds=queue_seconds),
+            (
+                Q(
+                    state=DatasetImport.State.QUEUED,
+                    queued_at__lt=now - timedelta(seconds=queue_seconds),
+                )
+                if queue_seconds is not None
+                else Q(pk__in=[])
             )
             | Q(
                 state=DatasetImport.State.QUEUED,
@@ -460,7 +464,12 @@ def reconcile():
                 and run.lease_until
                 and run.lease_until < now
             ):
-                if run.attempts >= MAX_ATTEMPTS:
+                from overbae.models import DatasetLandingWork
+
+                if (
+                    run.attempts >= MAX_ATTEMPTS
+                    or DatasetLandingWork.objects.filter(pk=run.pk).exists()
+                ):
                     _block(
                         run,
                         "worker_timeout",
@@ -471,8 +480,10 @@ def reconcile():
                         _requeue(run)
                     except DatasetError as exc:
                         _block(run, exc.code, exc.detail)
-            elif run.state == DatasetImport.State.QUEUED and run.queued_at < now - timedelta(
-                seconds=queue_seconds
+            elif (
+                run.state == DatasetImport.State.QUEUED
+                and queue_seconds is not None
+                and run.queued_at < now - timedelta(seconds=queue_seconds)
             ):
                 _block(
                     run,
@@ -631,6 +642,7 @@ def execute(task_id, inputs):
                     "task_id": str(run.pk),
                     "state": "running",
                     "started_at": run.started_at.isoformat(),
+                    "queued_at": run.queued_at.isoformat(),
                 }
             )
             events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})

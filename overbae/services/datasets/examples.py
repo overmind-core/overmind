@@ -6,6 +6,8 @@ import math
 
 import pandas as pd
 
+_JSON_START = frozenset('{["-0123456789tfnNI')
+
 
 def missing(value) -> bool:
     return (
@@ -17,7 +19,7 @@ def missing(value) -> bool:
 
 
 def decode(value):
-    if isinstance(value, str):
+    if isinstance(value, str) and value.lstrip()[:1] in _JSON_START:
         try:
             return json.loads(value)
         except ValueError:

@@ -29,11 +29,14 @@ from overbae.models import (
     Dataset,
     DeployedModel,
     EvalRun,
+    FinetuningJob,
     InferenceRequest,
     Span,
+    Subscription,
     TrainingPreparation,
 )
 from overbae.services.datasets import pipeline_runner
+from overbae.tasks.finetuning_reconciler import reconcile_finetuning_jobs
 from overbae.tasks.inference_requests import reconcile_inference_requests
 from overbae.tasks.training_preparation import reconcile as reconcile_preparation
 from tests.load.processes import ProcessWorker, drain_process_results
@@ -71,7 +74,11 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
         "clients": clients,
         "rows_per_large_upload": rows,
         "host": {"platform": platform.platform(), "cpus": os.cpu_count()},
-        "worker_pool": {"interactive": "separate prefork", "other_profiles": "threads"},
+        "worker_pool": {
+            "interactive": "separate prefork",
+            "landing": "separate prefork",
+            "other_profiles": "threads",
+        },
         "worker_slots": {
             "control": 2,
             "io": 4,
@@ -96,6 +103,8 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
     capabilities = []
     for index in range(9):
         user = make_user()
+        if index == 0:
+            Subscription.objects.create(user=user, status="active")
         project = make_project(name=f"mixed-{index}", member=user)
         key, _ = APIToken.create_for_user(user, project=project)
         identities.append((project, user, key))
@@ -187,6 +196,8 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
         [],
     )
     preparation_times = []
+    training_times = []
+    overlap = {name: [] for name in ("training", "imports", "traces", "inference", "quiet_reads")}
     oversized_queries = []
 
     def reader(index):
@@ -205,9 +216,11 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
     def writer():
         try:
             while not stop.is_set():
+                began = time.monotonic()
                 dataset, size = upload(1, rows, 1024)
                 large_bytes.append(size)
                 pipeline_times.append(pipeline(1, dataset, recipes[1]))
+                overlap["imports"].append((began, time.monotonic()))
                 started = time.monotonic()
                 with pytest.raises(AssertionError, match="query_result_too_large"):
                     McpSurface(live_api.url, identities[1][2]).call(
@@ -295,6 +308,7 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                     assert time.monotonic() < deadline, "live scoring stalled"
                     time.sleep(0.1)
                 trace_times.append(time.monotonic() - started)
+                overlap["traces"].append((started, time.monotonic()))
         except Exception as exc:
             errors.append(repr(exc))
         finally:
@@ -331,6 +345,7 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                     time.sleep(1)
                 assert InferenceRequest.objects.get(pk=job["id"]).state == "succeeded"
                 inference_times.append(time.monotonic() - started)
+                overlap["inference"].append((started, time.monotonic()))
         except Exception as exc:
             errors.append(repr(exc))
         finally:
@@ -386,6 +401,45 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 saved = TrainingPreparation.objects.get(pk=prep["id"])
                 assert saved.state == "ready", saved.error
                 preparation_times.append(time.monotonic() - started)
+                job = mcp.call(
+                    "start_finetune",
+                    {
+                        "dataset": dataset["id"],
+                        "base_model": "Qwen/Qwen3-1.7B",
+                        "validation_enabled": False,
+                        "eval_model_before": False,
+                        "eval_model_after": False,
+                        "eval_incumbent_before": False,
+                        "eval_incumbent_after": False,
+                        "request_key": "mixed-training-" + dataset["id"],
+                    },
+                )["finetune"]["id"]
+                active = provider_finished = None
+                next_tick = 0
+                deadline = time.monotonic() + 120
+                while FinetuningJob.objects.get(pk=job).status not in (
+                    "succeeded",
+                    "deploying",
+                    "failed",
+                    "cancelled",
+                ):
+                    assert time.monotonic() < deadline, "training lifecycle stalled"
+                    fake_modal.release("prepare_")
+                    if fake_modal.pending("sft_"):
+                        active = active or time.monotonic()
+                        if time.monotonic() - active >= 10:
+                            fake_modal.release("sft_")
+                            provider_finished = time.monotonic()
+                    if time.monotonic() >= next_tick:
+                        reconcile_preparation.delay()
+                        reconcile_finetuning_jobs.delay()
+                        next_tick = time.monotonic() + 15
+                    time.sleep(0.2)
+                result = FinetuningJob.objects.get(pk=job)
+                assert result.status in ("deploying", "succeeded"), result.error_message
+                assert active is not None and provider_finished is not None
+                training_times.append(time.monotonic() - active)
+                overlap["training"].append((active, provider_finished))
         except Exception as exc:
             errors.append(repr(exc))
         finally:
@@ -398,12 +452,16 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
         stack.callback(before_task_publish.disconnect, ledger.on_publish)
         stack.callback(task_postrun.disconnect, ledger.on_finish)
         interactive = stack.enter_context(ProcessWorker(settings, settings.MEDIA_ROOT.parent))
+        stack.enter_context(
+            ProcessWorker(
+                settings, settings.MEDIA_ROOT.parent, queue="landing", concurrency=landing_slots
+            )
+        )
         for queue, concurrency in (
             ("control", 2),
             ("io", 4),
             ("io_traces", 4),
             ("batch", 2),
-            ("landing", landing_slots),
         ):
             stack.enter_context(
                 start_worker(
@@ -447,7 +505,9 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                     while time.monotonic() - started < seconds:
                         if errors:
                             break
+                        began = time.monotonic()
                         samples.append(read(0))
+                        overlap["quiet_reads"].append((began, time.monotonic()))
                         if len(samples) % 100 == 0:
                             with connection.cursor() as cursor:
                                 cursor.execute(
@@ -486,6 +546,12 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 inference_seconds=inference_times,
                 resource_samples=resource_samples,
                 training_preparation_seconds=preparation_times,
+                training_lifecycle_seconds=training_times,
+                concurrent_windows={
+                    name: [[a - started, b - started] for a, b in windows]
+                    for name, windows in overlap.items()
+                },
+                external_training="simulated Modal GPU; real platform preparation, dispatch, monitoring and provider completion; subsequent serving startup excluded",
                 oversized_query_rejection_seconds=oversized_queries,
             )
             assert not errors, errors
@@ -497,10 +563,15 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 and trace_times
                 and inference_times
                 and preparation_times
+                and training_times
             ), report
             assert report["quiet_reads"]["p95"] <= max(0.5, 2 * report["baseline_reads"]["p95"])
             assert report["quiet_reads"]["p99"] < 1
             assert max(quiet_jobs) < 10, report
+            for name in ("imports", "traces", "inference", "quiet_reads"):
+                assert any(
+                    max(a, c) < min(b, d) for a, b in overlap["training"] for c, d in overlap[name]
+                ), (name, report)
         finally:
             path = Path(os.environ.get("OVERMIND_SOAK_REPORT", "/tmp/overmind-mixed-soak.json"))
             path.write_text(json.dumps(report, indent=2))

@@ -180,7 +180,7 @@ def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, m
     settings.QUEUE_METRICS_CLUSTER = "test-cluster"
     settings.AWS_REGION = "eu-west-1"
     try:
-        assert publish() == {"metrics": 32}
+        assert publish() == {"metrics": 33}
         assert len(credential_reads) >= 2
         assert len(requests) == 2
         for _, headers in requests:
@@ -225,3 +225,49 @@ def test_trace_flood_does_not_scale_beyond_usable_project_admission(settings):
     assert (
         next(point["Value"] for point in points if point["MetricName"] == "BacklogPerWorker") == 3
     )
+
+
+@pytest.mark.django_db
+def test_landing_demand_counts_receipts_once_and_does_not_scale_for_one_project_burst():
+    from factories import make_project
+
+    from overbae.models import Dataset, DatasetImport, DatasetLandingWork
+
+    project = make_project()
+    now = timezone.now()
+    for index in range(20):
+        dataset = Dataset.objects.create(project=project, name=f"waiting-{index}", state="landing")
+        work = DatasetLandingWork.objects.create(project=project, dataset=dataset, state="waiting")
+        DatasetImport.objects.create(pk=work.pk, dataset=dataset, queued_at=now, state="queued")
+    snapshot = read_workloads()["landing"]
+    assert snapshot["waiting"] == 20 and snapshot["scaling_demand"] == 1
+    data = metric_data({"landing": snapshot}, {"landing": 2}, cluster="test")
+    values = {x["MetricName"]: x["Value"] for x in data}
+    assert values["BacklogPerWorker"] == 0.5
+    assert values["ScalingQueuedAgeSeconds"] == 0
+    assert values["WaitingWork"] == 20
+
+
+@pytest.mark.django_db
+def test_landing_metrics_distinguish_user_data_failures_and_current_retry_age():
+    from factories import make_project
+
+    from overbae.models import Dataset, DatasetLandingWork
+
+    project = make_project()
+    now = timezone.now()
+    dataset = Dataset.objects.create(project=project, name="source")
+    DatasetLandingWork.objects.create(
+        project=project,
+        dataset=dataset,
+        state="failed",
+        failure_code="import_failed",
+        finished_at=now,
+    )
+    work = DatasetLandingWork.objects.create(
+        project=project, dataset=dataset, state="waiting", queued_at=now
+    )
+    DatasetLandingWork.objects.filter(pk=work.pk).update(created_at=now - timedelta(days=30))
+    measured = read_workloads()["landing"]
+    assert measured["blocked"] == 0
+    assert measured["oldest"] == now

@@ -190,3 +190,31 @@ def test_workshop_context_uses_profile_measured_for_the_frozen_frame(monkeypatch
     profile = context.workshop_context(dataset)["profiles"]["source"]
     assert profile["rows_scanned"] == 2 and len(profile["families"]) == 2
     assert profile["fingerprint"] == dataset.source.fingerprint
+
+
+@pytest.mark.parametrize(
+    "value,kind",
+    [
+        ("Ordinary text", "str"),
+        ("", "str"),
+        ("   ", "str"),
+        ("  true  ", "bool"),
+        ("false", "bool"),
+        ("null", "NoneType"),
+        ("-2", "int"),
+        ("1.25", "float"),
+        ("NaN", "float"),
+        ("Infinity", "float"),
+        ('"quoted"', "str"),
+        ('{"nested": 1}', "dict"),
+        ("[1, 2]", "list"),
+        ("not JSON", "str"),
+        ("[invalid", "str"),
+    ],
+)
+def test_profile_preserves_encoded_scalars_and_plain_text(value, kind):
+    report = profile_records([{"value": value}] * 3)
+    column = report["columns"]["value"]
+    assert column["present_rows"] == 3
+    assert column["types"] == {kind: 3}
+    assert len(column["examples"]) == 1

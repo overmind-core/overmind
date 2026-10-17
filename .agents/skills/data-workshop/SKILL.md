@@ -82,8 +82,17 @@ For deployment, stop old Workshop agent workers before the API cutover. A 3.0
 deployment does not acknowledge cancellation of a model request submitted by an
 older worker. Preserve historical receipts and reconcile unknown provider outcomes.
 
-Initial source imports use a durable `DatasetImport` receipt on the dedicated
-`landing` queue. Publication and execution have separate fenced ownership; the
+Initial source imports retain `DatasetImport` receipts; all landing submissions
+also enter `DatasetLandingWork` before broker publication. A nonblocking control
+dispatcher admits one import per project with least-recent-project fairness and
+bounds global work by observed landing worker slots, capped at eight. Waiting
+imports remain in PostgreSQL, not the broker. Queue waiting has no default expiry;
+`DATASET_IMPORT_MAX_QUEUE_SECONDS` explicitly sets one when nonzero. Worker leases
+and execution limits remain bounded. Unacknowledged, unstarted deliveries can be
+fenced and admitted again; lost started imports require explicit recovery.
+REST operation and MCP dataset/run inspection expose the same admission state and
+measured timestamps without exposing ownership tokens. The dedicated `landing`
+queue consumes only admitted deliveries. Publication and execution have separate fenced ownership; the
 control reconciler recovers lost broker acknowledgements and records expired
 attempts. `resume_dataset_import` and REST `resume-import` explicitly retry a
 blocked import within its attempt budget. Cancellation fences both split members.

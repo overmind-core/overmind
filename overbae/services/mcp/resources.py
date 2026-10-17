@@ -56,6 +56,7 @@ from overbae.services import (
 )
 from overbae.services.codebase.flow import build_capability_flow
 from overbae.services.datasets import paths, pipeline_bindings, pipeline_packages, workbench
+from overbae.services.datasets.admission import status as landing_admission_status
 from overbae.services.datasets.imports import status as import_status
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
@@ -817,6 +818,7 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
             "rows_scope": "active_version",
             "landing": dataset.source_spec.get("landing_progress"),
             "import": import_status(dataset),
+            "admission": landing_admission_status(dataset),
         },
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
@@ -1428,6 +1430,7 @@ def interface_resource():
             "recovery": "The training collector renews a short lease while alive. Reconciliation closes missed terminal operational events from local receipts without another provider call; worker heartbeat timestamps are preserved.",
         },
         "dataset_transformations": {
+            "source_admission": "Source imports wait durably before bounded broker publication. Dataset-run progress.admission and dataset operation.landing_admission expose queue, execution and terminal states with timestamps. One import per project runs at a time; waiting does not consume an execution attempt or expire unless explicitly configured. Lost started imports retain their source and require resume_dataset_import; unknown started work is not replayed.",
             "progress": "Preview and publication expose aggregate seconds plus per-step runtime stage_seconds for container setup, input transfer, script execution, artifact transfer, output reading and cleanup. A stopped script never reports completed runtime; cleanup_confirmed is separate from publication success.",
             "parameters": "Package manifest parameters declare types, for example {seed: integer}; run parameters supply values, for example {seed: 42}.",
             "queries": "Read-only queries have a deployment-configured deadline (default 10 seconds); query_timeout leaves the cell unchanged. Oversized results are rejected during materialization, not clipped.",

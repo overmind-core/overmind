@@ -14,6 +14,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
 from overbae.services.datasets import analytics, imports, review, transformation
+from overbae.services.datasets.admission import status as landing_admission_status
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -807,7 +808,13 @@ def serialize_dataset_detail(
     result = DatasetDetail.model_validate(
         {
             **fields,
-            "operation": _jsonable({**dataset.operation, "source_import": imports.status(dataset)}),
+            "operation": _jsonable(
+                {
+                    **dataset.operation,
+                    "source_import": imports.status(dataset),
+                    "landing_admission": landing_admission_status(dataset),
+                }
+            ),
             "landing_progress": dataset.source_spec.get("landing_progress"),
             "brief": _clip(dataset.brief, 8000),
             "sources": [

@@ -5,8 +5,10 @@ import subprocess
 import sys
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
+from celery.contrib.testing.worker import start_worker
 from django.db import connection
 
 from overbae.celery import app
@@ -155,3 +157,23 @@ class ProcessWorker:
             self.process.kill()
             self.process.wait(timeout=5)
         self.log.close()
+
+
+@contextmanager
+def landing_workers(settings, directory):
+    from overbae.tasks.datasets import dispatch_landings
+
+    with (
+        start_worker(
+            app,
+            pool="threads",
+            concurrency=1,
+            queues=["control"],
+            hostname=f"landing-control-{uuid.uuid4().hex}",
+            perform_ping_check=False,
+            shutdown_timeout=30,
+        ),
+        ProcessWorker(settings, directory, queue="landing", concurrency=2),
+    ):
+        dispatch_landings.delay()
+        yield

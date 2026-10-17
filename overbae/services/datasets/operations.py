@@ -22,6 +22,7 @@ def started(dataset_id, task_id, *, attachment_request=""):
         "task_id": task_id,
         "state": "running",
         "started_at": timezone.now().isoformat(),
+        **({"queued_at": old["queued_at"]} if old.get("queued_at") else {}),
     }
     Dataset.objects.filter(pk=dataset_id).update(operation=operation)
     return operation
@@ -32,6 +33,9 @@ def cancellation_requested(dataset_id):
 
 
 def check_cancelled(dataset_id):
+    from overbae.services.datasets import admission
+
+    admission.check_current()
     if cancellation_requested(dataset_id):
         raise DatasetError("Source import was cancelled.", code="cancelled")
 
@@ -83,7 +87,11 @@ def finished(dataset_id, *, task_id=None):
     cancelled = dataset.operation.get("state") == "cancelled"
     operation = {
         **dataset.operation,
-        "state": "cancelled" if cancelled else "completed",
+        "state": "cancelled"
+        if cancelled
+        else "failed"
+        if dataset.state == Dataset.State.ERROR
+        else "completed",
         "finished_at": timezone.now().isoformat(),
     }
     fields = {"operation": operation}

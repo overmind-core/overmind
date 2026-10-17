@@ -240,7 +240,13 @@ class DatasetSerializer(serializers.ModelSerializer):
     def get_operation(self, obj):
         if self.context.get("summary"):
             return obj.operation
-        return {**obj.operation, "source_import": imports.status(obj)}
+        from overbae.services.datasets import admission
+
+        return {
+            **obj.operation,
+            "source_import": imports.status(obj),
+            "landing_admission": admission.status(obj),
+        }
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_preparation_plan(self, obj):

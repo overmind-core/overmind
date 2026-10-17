@@ -21,6 +21,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
 WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "2"))
+DATASET_LANDING_MAX_IN_FLIGHT = int(os.environ.get("DATASET_LANDING_MAX_IN_FLIGHT", "8"))
 DATASET_QUERY_TIMEOUT_SECONDS = 10
 
 # Deployments set their own path so the admin is not at a guessable URL.
@@ -408,7 +409,7 @@ QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
 EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
 EVAL_MAX_IN_FLIGHT_PER_PROJECT = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_PROJECT", "4"))
 EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
-DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "3600"))
+DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "0"))
 LIVE_SCORING_MAX_IN_FLIGHT = int(os.environ.get("LIVE_SCORING_MAX_IN_FLIGHT", "16"))
 LIVE_SCORING_MAX_PER_PROJECT = int(os.environ.get("LIVE_SCORING_MAX_PER_PROJECT", "2"))
 

@@ -9,7 +9,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from overbae.models import Dataset, DatasetImport, Project
+from overbae.models import Dataset, DatasetImport, DatasetLandingWork, Project
 from overbae.services.datasets import imports
 from overbae.services.queue_capacity import read_workloads
 
@@ -36,6 +36,20 @@ def receipt_history():
         ],
         batch_size=500,
     )
+    DatasetLandingWork.objects.bulk_create(
+        [
+            DatasetLandingWork(
+                project=project,
+                dataset=dataset,
+                state=state,
+                failure_code="worker_timeout" if state == "failed" else "",
+                finished_at=now - timedelta(days=30),
+            )
+            for dataset in history
+            for state in ("finished", "failed")
+        ],
+        batch_size=500,
+    )
     for state in ("queued", "running", "blocked"):
         dataset = Dataset.objects.create(project=project, name=state)
         DatasetImport.objects.create(
@@ -49,18 +63,19 @@ def receipt_history():
         )
     with connection.cursor() as cursor:
         cursor.execute("ANALYZE overbae_datasetimport")
+        cursor.execute("ANALYZE overbae_datasetlandingwork")
     return now
 
 
-def examined_import_rows(node):
+def examined_import_rows(node, relation="overbae_datasetimport"):
     examined = 0
-    if node.get("Relation Name") == "overbae_datasetimport":
+    if node.get("Relation Name") == relation:
         examined = (
             node.get("Actual Rows", 0)
             + node.get("Rows Removed by Filter", 0)
             + node.get("Rows Removed by Index Recheck", 0)
         ) * node.get("Actual Loops", 1)
-    return examined + sum(examined_import_rows(child) for child in node.get("Plans", []))
+    return examined + sum(examined_import_rows(child, relation) for child in node.get("Plans", []))
 
 
 @pytest.mark.parametrize("operation", ["reconcile", "metrics"])
@@ -94,3 +109,19 @@ def test_control_queries_do_not_walk_completed_import_history(receipt_history, o
     assert examined < 100, (
         f"{operation} examined {examined} import rows for only3 live receipts; plan: {explained}"
     )
+
+
+def test_landing_metrics_do_not_walk_old_failed_or_finished_work(receipt_history):
+    with CaptureQueriesContext(connection) as captured:
+        read_workloads()
+    queries = [
+        item["sql"]
+        for item in captured
+        if "overbae_datasetlandingwork" in item["sql"] and item["sql"].lstrip().startswith("SELECT")
+    ]
+    assert queries
+    for query in queries:
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + query)
+            plan = cursor.fetchone()[0][0]["Plan"]
+        assert examined_import_rows(plan, "overbae_datasetlandingwork") < 100, plan

@@ -446,3 +446,87 @@ def test_late_broker_ack_cannot_acknowledge_a_resumed_import(imported_source, mo
     assert len(deliveries) == 2
     assert run.state == "queued" and run.published_at is None
     assert run.failure_code == "dispatch_failed"
+
+
+def test_fair_queue_wait_is_not_a_worker_failure_without_an_explicit_wait_budget(imported_source):
+    from overbae.models import DatasetLandingWork
+    from overbae.services.datasets import admission, imports
+
+    dataset, run = create_import(imported_source)
+    work = admission.enqueue(run.inputs, run.pk)
+    old = timezone.now() - timedelta(hours=4)
+    DatasetImport.objects.filter(pk=run.pk).update(queued_at=old)
+    DatasetLandingWork.objects.filter(pk=work.pk).update(queued_at=old)
+    assert imports.reconcile() == {"processed": 0}
+    messages = []
+    admission.reconcile(lambda **message: messages.append(message))
+    result = dataset_tasks.land.apply(
+        kwargs=messages[0]["kwargs"], task_id=messages[0]["task_id"], headers=messages[0]["headers"]
+    ).get()
+    assert result == {"status": "ok", "rows": 2}
+    dataset.refresh_from_db()
+    work.refresh_from_db()
+    assert dataset.state == "idle" and dataset.source.rows == 2
+    assert work.state == "finished"
+    assert admission.status(dataset)["queue_seconds"] >= 4 * 60 * 60
+
+
+def test_failed_fair_import_retains_source_and_never_reports_finished(imported_source):
+    from overbae.services.datasets import admission
+
+    dataset, run = create_import(imported_source)
+    work = admission.enqueue(run.inputs, run.pk)
+    messages = []
+    admission.dispatch(lambda **message: messages.append(message))
+    files.upload_data_path(imported_source[1]).write_bytes(b"source changed")
+    result = dataset_tasks.land.apply(
+        kwargs=messages[0]["kwargs"], task_id=messages[0]["task_id"], headers=messages[0]["headers"]
+    ).get()
+    work.refresh_from_db()
+    dataset.refresh_from_db()
+    assert result["status"] == "failed"
+    assert work.state == "failed" and work.error
+    assert dataset.operation["state"] == "failed"
+    assert dataset.state == "error" and not dataset.cells.exists()
+    assert files.upload_data_path(imported_source[1]).exists()
+
+
+def test_cancelled_fair_import_is_cancelled_in_its_execution_receipt(imported_source):
+    from overbae.services.datasets import admission, operations
+
+    dataset, run = create_import(imported_source)
+    work = admission.enqueue(run.inputs, run.pk)
+    admission.dispatch(lambda **message: None)
+    work.refresh_from_db()
+    assert admission.claim(work.pk, work.owner)
+    operations.cancel(dataset.pk)
+    admission.finish(
+        work.pk, work.owner, {"status": "failed", "error": "Source import was cancelled."}
+    )
+    work.refresh_from_db()
+    dataset.refresh_from_db()
+    assert work.state == "cancelled" and not work.error
+    assert dataset.operation["state"] == "cancelled"
+    assert not dataset.cells.exists()
+
+
+def test_recovery_repairs_a_missing_execution_finish_after_actual_publication(imported_source):
+    from overbae.models import DatasetLandingWork
+    from overbae.services.datasets import admission
+
+    dataset, run = create_import(imported_source)
+    work = admission.enqueue(run.inputs, run.pk)
+    messages = []
+    admission.dispatch(lambda **message: messages.append(message))
+    dataset_tasks.land.apply(
+        kwargs=messages[0]["kwargs"], task_id=messages[0]["task_id"], headers=messages[0]["headers"]
+    ).get()
+    DatasetLandingWork.objects.filter(pk=work.pk).update(
+        state="running", lease_until=timezone.now() - timedelta(seconds=1), finished_at=None
+    )
+    admission.reconcile(lambda **message: pytest.fail("Replayed a published source"))
+    work.refresh_from_db()
+    dataset.refresh_from_db()
+    assert work.state == "finished" and not work.error
+    assert dataset.state == "idle" and dataset.operation["state"] == "completed"
+    assert dataset.cells.count() == 1 and dataset.source.rows == 2

@@ -94,9 +94,10 @@ def profile_records(records) -> dict:
                 column["max_length"] = (
                     length if column["max_length"] is None else max(length, column["max_length"])
                 )
-            sample = _clip(_dump(value), 200)
-            if len(column["examples"]) < 2 and sample not in column["examples"]:
-                column["examples"].append(sample)
+            if len(column["examples"]) < 2:
+                sample = _clip(_dump(value), 200)
+                if sample not in column["examples"]:
+                    column["examples"].append(sample)
         transcript = messages(record.get("messages")) or messages(record.get("input"))
         prompt = instructions(record)
         objects = input_objects(record)
