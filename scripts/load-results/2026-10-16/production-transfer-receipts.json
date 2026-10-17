@@ -1,0 +1,162 @@
+[
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 5.460817458981182,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "423bd1ff-07da-4376-8b90-c2c42aac3c2c",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-postfix-895c12cd-0",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:17.908844Z"
+    }
+  },
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 5.286537791020237,
+    "returncode": 0,
+    "dataset": "68a88a57-48b3-4e2c-85f7-add7255bdcf8",
+    "transfer": {
+      "id": "852c1f5f-e8fa-4e47-a968-cc35ac679aff",
+      "project_id": "bb512bfa-5c3b-4f2d-9865-601e0b1d0f04",
+      "request_key": "capacity-postfix-895c12cd-1",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:23.166426Z"
+    }
+  },
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 5.52673408400733,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "d47255a5-59a3-4fbb-8064-2d49cd8f58ad",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-postfix-895c12cd-2",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:28.585294Z"
+    }
+  },
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 6.058733750018291,
+    "returncode": 0,
+    "dataset": "68a88a57-48b3-4e2c-85f7-add7255bdcf8",
+    "transfer": {
+      "id": "65a231ab-2781-4386-a732-63d20358f674",
+      "project_id": "bb512bfa-5c3b-4f2d-9865-601e0b1d0f04",
+      "request_key": "capacity-postfix-895c12cd-3",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:34.483661Z"
+    }
+  },
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 5.190843624994159,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "ea94cbac-3b38-40fe-8383-8eec5f4ede96",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-postfix-895c12cd-4",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:40.045639Z"
+    }
+  },
+  {
+    "source": "capacity-postfix-uploads.json",
+    "seconds": 5.6248781670001335,
+    "returncode": 0,
+    "dataset": "68a88a57-48b3-4e2c-85f7-add7255bdcf8",
+    "transfer": {
+      "id": "a67de59a-0159-4ad4-9e31-62da108c1408",
+      "project_id": "bb512bfa-5c3b-4f2d-9865-601e0b1d0f04",
+      "request_key": "capacity-postfix-895c12cd-5",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:05:45.474969Z"
+    }
+  },
+  {
+    "source": "capacity-large-895c12cd-8m.json",
+    "seconds": 28.74279683298664,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "4a65903e-7c8d-479a-b16a-29b81d2d49d9",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-large-895c12cd-8m",
+      "size": 8919989,
+      "received": 8919989,
+      "sha256": "d0781d978ab4fe893f4d24683fa8c608540831c92934803561c49fc3f05b2fcc",
+      "state": "published",
+      "published_at": "2026-10-17T00:10:56.876832Z"
+    }
+  },
+  {
+    "source": "capacity-large-895c12cd-64m.json",
+    "seconds": 82.72207441698993,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "7b95602b-50c1-4942-9e9e-d0b1285f624c",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-large-895c12cd-64m",
+      "size": 71423141,
+      "received": 71423141,
+      "sha256": "83cde40514a37bfd094cd518d81707db64ad22b86d17310162a119f821fa43dc",
+      "state": "published",
+      "published_at": "2026-10-17T00:12:25.271897Z"
+    }
+  },
+  {
+    "source": "capacity-landing-contention-noisy.json",
+    "seconds": 29.083837291051168,
+    "returncode": 0,
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "transfer": {
+      "id": "8249c21d-6b22-4919-8552-86214c996bf8",
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "request_key": "capacity-landing-contention-noisy",
+      "size": 8919989,
+      "received": 8919989,
+      "sha256": "d0781d978ab4fe893f4d24683fa8c608540831c92934803561c49fc3f05b2fcc",
+      "state": "published",
+      "published_at": "2026-10-17T00:14:13.620819Z"
+    }
+  },
+  {
+    "source": "capacity-landing-contention-quiet.json",
+    "seconds": 9.34314470802201,
+    "returncode": 0,
+    "dataset": "68a88a57-48b3-4e2c-85f7-add7255bdcf8",
+    "transfer": {
+      "id": "934fa830-a12f-40c7-a482-9435c6067e13",
+      "project_id": "bb512bfa-5c3b-4f2d-9865-601e0b1d0f04",
+      "request_key": "capacity-landing-contention-quiet",
+      "size": 65,
+      "received": 65,
+      "sha256": "b27488f2c6ce3e885f4561023ff1806c8b7d2fd9575a4d64799660e275eb7280",
+      "state": "published",
+      "published_at": "2026-10-17T00:14:24.087295Z"
+    }
+  }
+]

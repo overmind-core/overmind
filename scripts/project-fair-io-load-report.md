@@ -70,7 +70,7 @@ figures are not evidence for the current implementation.
 Production service health was checked after AWS authentication: API, control, IO,
 trace, batch, interactive, landing and sandbox services matched desired counts,
 with completed deployments. This alone does not certify production throughput.
-No resource expansion or new deployment was made during this verification pass.
+The API upload metadata fix and interactive admission fixes were deployed in this pass; task counts and resource sizing were preserved.
 
 Per-project admission prevents one project monopolising a tested pool; finite
 shared CPU, database and storage still produce contention. Very large broker
@@ -78,28 +78,77 @@ backlogs, landing reservation, production-equivalent storage load and multi-proj
 saturation remain unverified. AWS CPU, memory, worker count or database expansion
 requires the user's approval before applying it.
 
-## Live-test environment
+## Production verification
 
-Production account MCP access is connected. Following the user's instruction to
-reuse existing projects, synthetic probe datasets were created in `empty`
-(52d7ef2e-c092-4970-ad78-8cccfb6054d7) and `financial-services`
+Production account access is confirmed as account 318651457362 with Tyler's
+existing SSO role. The separate `overmind-prod-sso` profile selects this account
+explicitly; the older browser-login profile had selected the wrong account.
+Following the user's instruction to reuse projects, all synthetic tests use
+`empty` (52d7ef2e-c092-4970-ad78-8cccfb6054d7) and `financial-services`
 (bb512bfa-5c3b-4f2d-9865-601e0b1d0f04). Existing customer datasets were not changed.
-Twelve unloaded quiet-project count queries measured median 276 ms and maximum
-365 ms. These are baseline measurements, not concurrent capacity verification.
 
-Both initial 65-byte uploads acknowledged every byte but failed publication with
-`transfer_incomplete`. Repeating the identical request keys later succeeded
-without duplication. The production transfer implementation used ordinary
-`Path.stat` in two places despite the existing EFS-aware `stored_stat` helper.
-Both calls now use that helper. A REST regression simulates stale filesystem
-attribute metadata while leaving real open/fstat reads intact: it fails before
-the fix and passes afterward, including exact two-row landing and publication
-idempotency. All 18 transfer tests and the full backend suite pass (3,269 passed,
-seven skipped). Production deployment and fresh-upload verification remain pending.
+### Deployed and verified
 
-The retained two-row pipeline probes were rejected before execution because their
-128 MiB limit was below the sandbox's 1 GiB admission minimum. This is a probe
-configuration error, not a measured saturation event. Correct the retained recipe
-before load testing. No significant concurrent production workload or resource
-expansion has been applied. AWS deployment access expired during verification;
-a refreshed production login is required to deploy the metadata fix.
+- API revision `api:221`, digest
+  `sha256:8d958a824ca8ba396472c1e0cc2f6515d07d51c2319b99c813913baf03afe4b7`.
+  Two desired/running tasks, each four CPUs/eight GiB. Rollout completed and
+  `/health` returned healthy.
+- Interactive revision `celery-interactive-worker:17`, digest
+  `sha256:2850920f10bd1d88e4546b121d92566354e51fe02399c3de2d20b3256f272909`.
+  Six desired/running tasks, each four CPUs/eight GiB. Rollout completed. The
+  image retains the Redis admission retry and per-project concurrency of two.
+- Both initial 65-byte uploads acknowledged all bytes but publication failed with
+  `transfer_incomplete`; identical retries later succeeded without duplication.
+  Two missed `Path.stat` calls now use the existing EFS-aware `stored_stat` helper.
+  A REST regression simulates stale filesystem attribute metadata without changing
+  real open/fstat reads. It fails before the fix and passes afterward, including
+  exact two-row landing and publication idempotency. All 18 transfer tests pass;
+  full backend: 3,269 passed, seven skipped. All 24 targeted Workshop, stream and
+  scoring/load journeys pass, including isolated mixed/recovery child workloads.
+- Six fresh production 65-byte transfers succeeded on their first attempt across
+  both projects. Additional 8,919,989-byte and 71,423,141-byte uploads succeeded
+  in 28.74 and 82.72 seconds respectively, with exact retained SHA-256 and row
+  counts. The combined synthetic source held 73,736 rows afterward.
+- Four noisy-project pipelines were submitted before a quiet-project pipeline.
+  The noisy jobs ran in pairs; the second pair waited 8.28/8.24 seconds. The quiet
+  job waited 105 ms and executed in 1.777 seconds while the first noisy pair was
+  still executing. All five completed with retained output cells.
+- Cancelling a running synthetic pipeline prevented publication. Repeating its
+  exact request returned the same cancelled receipt and no output; this is not
+  evidence of remote subprocess termination or production worker-loss recovery.
+
+### Read latency and scope
+
+Twelve initial unloaded MCP count queries measured median 276 ms and maximum
+365 ms. A 30-second test with four noisy clients and one quiet client made 182
+queries without errors. Quiet p50/p95/max were 295/828/921 ms. A subsequent
+unloaded 20-query sample had a 2,846 ms outlier, so the earlier difference cannot
+be attributed confidently to cross-project interference. The end-to-end native
+MCP measurements include client/transport overhead, not only server execution.
+
+During the 8.9 MB upload, 20 quiet queries had median 263 ms and maximum 1,344 ms.
+During the 71.4 MB upload, 40 quiet queries had median 279 ms and p95/max 398 ms,
+with no errors. API CPU samples during these probes were low; this was not a
+production saturation test. These results do not certify the local 32-client
+profile as a production limit or establish zero slowdown at arbitrary load.
+
+### Remaining shared landing bottleneck
+
+Production has one landing task with one execution slot. A further 8.9 MB import
+into the larger noisy dataset executed from 00:14:13.682 to 00:14:26.315 UTC.
+The quiet project's tiny import was published at 00:14:24.087 but did not start
+until 00:14:26.465, after the noisy import finished: 2.378 seconds of queue wait
+for 0.368 seconds of actual work. Its complete transfer/landing took 9.343 seconds.
+The noisy source now holds 81,928 rows; the synthetic quiet source holds four.
+
+This confirms landing is not isolated across projects. One non-preemptible slot
+cannot reserve capacity for a second project. The next change needs per-project
+landing admission and at least two execution slots, followed by repeated mixed
+imports and a sustained production soak. Increasing AWS worker resources requires
+user approval first. No resource expansion was made. Production fault injection,
+large broker backlogs and saturation limits remain unverified; GPU cold start
+remains excluded. The retained 128 MiB probe configuration was corrected to the
+existing sandbox's 1 GiB minimum without adding AWS resources.
+
+Raw production evidence lives beside the local reports in
+`scripts/load-results/2026-10-16/production-*.json`.

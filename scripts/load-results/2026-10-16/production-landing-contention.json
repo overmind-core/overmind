@@ -1,0 +1,46 @@
+[
+  {
+    "dataset": "c7364e56-59f9-457d-9b11-d03337ca1008",
+    "state": "idle",
+    "operation": {
+      "state": "completed",
+      "task_id": "8249c21d-6b22-4919-8552-86214c996bf8",
+      "started_at": "2026-10-17T00:14:13.682394+00:00",
+      "finished_at": "2026-10-17T00:14:26.314788+00:00",
+      "source_import": null
+    },
+    "active": {
+      "id": "83990a3f-b15a-41fa-960d-655596060d63",
+      "version": "1.6",
+      "title": "Added files",
+      "rows": 81928,
+      "fingerprint": "5cc4507d9bf1d8f4d306f95eaf7e2dea0f31311ed101e448f76b2027cf0b1e8e",
+      "fits": {
+        "ok": false,
+        "reason": "Data exploration has no training or evaluation format."
+      }
+    }
+  },
+  {
+    "dataset": "68a88a57-48b3-4e2c-85f7-add7255bdcf8",
+    "state": "idle",
+    "operation": {
+      "state": "completed",
+      "task_id": "934fa830-a12f-40c7-a482-9435c6067e13",
+      "started_at": "2026-10-17T00:14:26.465477+00:00",
+      "finished_at": "2026-10-17T00:14:26.833126+00:00",
+      "source_import": null
+    },
+    "active": {
+      "id": "f15e6091-7d61-4606-a3d4-2c3b03ce52e9",
+      "version": "1.5",
+      "title": "Added files",
+      "rows": 4,
+      "fingerprint": "0edf24a5647af7ee13101ca2eb37c25d3e4a80a78242d271df08111829db357a",
+      "fits": {
+        "ok": false,
+        "reason": "Data exploration has no training or evaluation format."
+      }
+    }
+  }
+]

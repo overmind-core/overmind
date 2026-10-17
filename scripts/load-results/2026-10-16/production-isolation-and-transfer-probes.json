@@ -1,0 +1,413 @@
+{
+  "api": {
+    "task_definition": "api:221",
+    "image": "sha256:8d958a824ca8ba396472c1e0cc2f6515d07d51c2319b99c813913baf03afe4b7",
+    "desired_tasks": 2,
+    "cpu_per_task": 4096,
+    "memory_mib_per_task": 8192
+  },
+  "interactive": {
+    "task_definition": "celery-interactive-worker:17",
+    "image": "sha256:2850920f10bd1d88e4546b121d92566354e51fe02399c3de2d20b3256f272909",
+    "desired_tasks": 6,
+    "project_concurrency": 2
+  },
+  "isolation": [
+    {
+      "id": "b1613734-7df3-4e44-b42a-207598993ac1",
+      "quiet": false,
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "status": "completed",
+      "queue_seconds": 0.416,
+      "execution_seconds": 7.688,
+      "started_at": "2026-10-17T00:10:02.724803+00:00",
+      "completed_at": "2026-10-17T00:10:10.413296Z",
+      "output_cell": "8b346fcc-ba8f-4750-8098-95093735547c"
+    },
+    {
+      "id": "95103742-6109-4992-bc54-30a80dd4780d",
+      "quiet": false,
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "status": "completed",
+      "queue_seconds": 0.19,
+      "execution_seconds": 7.087,
+      "started_at": "2026-10-17T00:10:03.126960+00:00",
+      "completed_at": "2026-10-17T00:10:10.214251Z",
+      "output_cell": "a694f8f1-1e69-48cd-8eec-d1f97f0c6936"
+    },
+    {
+      "id": "055e1a41-d0e4-459c-9364-a8379aeae881",
+      "quiet": false,
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "status": "completed",
+      "queue_seconds": 8.282,
+      "execution_seconds": 6.761,
+      "started_at": "2026-10-17T00:10:11.539623+00:00",
+      "completed_at": "2026-10-17T00:10:18.300843Z",
+      "output_cell": "bcb52a80-7181-4ae4-b67a-58857f45cf85"
+    },
+    {
+      "id": "0ff545e9-5f92-4145-a4bc-014514be51b2",
+      "quiet": false,
+      "project_id": "52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+      "status": "completed",
+      "queue_seconds": 8.237,
+      "execution_seconds": 6.759,
+      "started_at": "2026-10-17T00:10:11.792636+00:00",
+      "completed_at": "2026-10-17T00:10:18.551237Z",
+      "output_cell": "0fede26a-6ddd-4d7e-b961-5179c0f38784"
+    },
+    {
+      "id": "434bde08-d216-4436-bbcb-9554ae2d16d9",
+      "quiet": true,
+      "project_id": "bb512bfa-5c3b-4f2d-9865-601e0b1d0f04",
+      "status": "completed",
+      "queue_seconds": 0.105,
+      "execution_seconds": 1.777,
+      "started_at": "2026-10-17T00:10:04.036081+00:00",
+      "completed_at": "2026-10-17T00:10:05.812598Z",
+      "output_cell": "f5bb87dc-48f1-4491-88c1-6d76d9ca7dbb"
+    }
+  ],
+  "cancellation": {
+    "run": "9692c829-fb9b-4af3-ab3b-ff72e7e0a01c",
+    "state": "cancelled",
+    "output_cell": null,
+    "same_key_retry": {
+      "kind": "dataset_pipeline",
+      "id": "9692c829-fb9b-4af3-ab3b-ff72e7e0a01c",
+      "status": "cancelled",
+      "resource": {
+        "uri": "overmind://jobs/dataset_pipeline/9692c829-fb9b-4af3-ab3b-ff72e7e0a01c?project_id=52d7ef2e-c092-4970-ad78-8cccfb6054d7",
+        "title": "Dataset transformation",
+        "mimeType": "application/json"
+      }
+    }
+  },
+  "unloaded_read_ms": [
+    500,
+    402,
+    239,
+    286,
+    242,
+    316,
+    1377,
+    276,
+    255,
+    306,
+    274,
+    1377,
+    2846,
+    464,
+    423,
+    562,
+    258,
+    249,
+    239,
+    241
+  ],
+  "quiet_reads_during_8m": [
+    {
+      "at": "2026-10-17T00:10:38.775Z",
+      "ms": 249,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:39.526Z",
+      "ms": 253,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:40.281Z",
+      "ms": 236,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:41.019Z",
+      "ms": 263,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:41.784Z",
+      "ms": 257,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:42.542Z",
+      "ms": 499,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:43.544Z",
+      "ms": 355,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:44.402Z",
+      "ms": 658,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:45.561Z",
+      "ms": 246,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:46.308Z",
+      "ms": 257,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:47.066Z",
+      "ms": 238,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:47.806Z",
+      "ms": 241,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:48.549Z",
+      "ms": 293,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:49.344Z",
+      "ms": 348,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:50.194Z",
+      "ms": 283,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:50.979Z",
+      "ms": 1344,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:52.825Z",
+      "ms": 317,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:53.644Z",
+      "ms": 242,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:54.388Z",
+      "ms": 249,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:10:55.139Z",
+      "ms": 266,
+      "error": null
+    }
+  ],
+  "quiet_reads_during_64m": [
+    {
+      "at": "2026-10-17T00:11:44.472Z",
+      "ms": 253,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:45.227Z",
+      "ms": 357,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:46.086Z",
+      "ms": 238,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:46.826Z",
+      "ms": 235,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:47.563Z",
+      "ms": 290,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:48.355Z",
+      "ms": 266,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:49.123Z",
+      "ms": 372,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:49.997Z",
+      "ms": 231,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:50.730Z",
+      "ms": 242,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:51.473Z",
+      "ms": 299,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:52.274Z",
+      "ms": 310,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:53.086Z",
+      "ms": 246,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:53.834Z",
+      "ms": 232,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:54.568Z",
+      "ms": 234,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:55.305Z",
+      "ms": 254,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:56.061Z",
+      "ms": 252,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:56.815Z",
+      "ms": 283,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:57.599Z",
+      "ms": 328,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:58.428Z",
+      "ms": 248,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:59.178Z",
+      "ms": 283,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:11:59.963Z",
+      "ms": 321,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:00.786Z",
+      "ms": 230,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:01.518Z",
+      "ms": 309,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:02.329Z",
+      "ms": 279,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:03.109Z",
+      "ms": 293,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:03.903Z",
+      "ms": 295,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:04.699Z",
+      "ms": 240,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:05.441Z",
+      "ms": 295,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:06.237Z",
+      "ms": 236,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:06.975Z",
+      "ms": 302,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:07.778Z",
+      "ms": 240,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:08.520Z",
+      "ms": 398,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:09.420Z",
+      "ms": 252,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:10.174Z",
+      "ms": 299,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:10.974Z",
+      "ms": 228,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:11.705Z",
+      "ms": 251,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:12.459Z",
+      "ms": 307,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:13.267Z",
+      "ms": 398,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:14.167Z",
+      "ms": 241,
+      "error": null
+    },
+    {
+      "at": "2026-10-17T00:12:14.910Z",
+      "ms": 285,
+      "error": null
+    }
+  ]
+}
