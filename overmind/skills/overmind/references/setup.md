@@ -8,6 +8,11 @@ cannot scan or edit a repository.
 
 ## Workflow
 
+**Language first.** Before anything else, detect whether the repository is Python or
+JavaScript/TypeScript. For JavaScript/TypeScript, read [javascript.md](javascript.md)
+now: it replaces the runner, the qualname and prompt rules and the whole **Instrument**
+section (`observe` wrappers, not decorators), and everything else here still applies.
+
 Read [onboarding-progress.md](onboarding-progress.md) from the installed skill's
 `references/` directory before scanning. Show its
 full roadmap and data disclosure, then follow stages 3–10 with its numbered
@@ -63,6 +68,7 @@ The intermediate output is a single JSON file named `overmind_capabilities.json`
 
 ```json
 {
+  "language": "python | typescript — the language this scan covers (typescript includes JavaScript); omit for a Python repository",
   "repo_summary": "One paragraph technical overview of the codebase and its AI components",
   "capabilities": [
     {
@@ -214,6 +220,9 @@ python -m overmind sync
 Sync upserts each capability's **Default** eval set from the toml's deterministic `eval_matrix` entries (one parameterised row each, scoped by `span_name` and `span_type`) plus the seeded checks that apply to its span types. Sync rejects the whole snapshot with a 400 that names an entry whose `check` is not in the catalog or whose `params` name a constant the check lacks; fix that entry and run `python -m overmind sync` again. The toml carries no judge expectations: they are declared in code (see **Instrument**), and the sync after instrumenting reads them from the decorators into the same Default set. Read `eval_preload` on `overmind://capabilities/{capability}`: `counts.checks` and `counts.expectations` report what the set holds, and `status: empty` means nothing applied. An older toml whose `eval_matrix` has llm or managed entries keeps working, but new scans do not write them. A rule the catalog cannot express can be added later as a custom row in the Console or with `create_eval_matrix_row` (rows are created and deleted, never edited); see [evals.md](evals.md#configure).
 
 ## Instrument
+
+JavaScript/TypeScript repositories skip this section and follow
+[javascript.md](javascript.md#instrument-with-observe-not-decorators).
 
 Run this after `python -m overmind sync` succeeds: the entry-point decorator carries the capability id, and only sync assigns it. The scan described the checkout as it was when you ran `python -m overmind chassis`; the edits below come afterwards, so spans cited in the toml refer to that revision. Everything the scan extracted is declared in code: each function, tool, retrieval step and model call the card names gets a decorator, and each decorator carries the intent and expectations the card implies for it.
 

@@ -9,7 +9,9 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
+from overmind import typescript_ast
 from overmind.chassis import module_dotted_path
+from overmind.languages import PYTHON, language_of_path
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,9 @@ _CODE_LINE_RE = re.compile(
 _MIN_NESTED_PROMPT_CHARS = 40
 
 
-def source_qualnames(source: str) -> set[str]:
+def source_qualnames(source: str, rel_path: str = "") -> set[str]:
+    if language_of_path(rel_path) not in (None, PYTHON):
+        return typescript_ast.source_qualnames(source, rel_path)
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -48,10 +52,10 @@ def source_qualnames(source: str) -> set[str]:
 
 def _acceptable_names(rel_path: str, repo_root: str) -> set[str]:
     file = Path(repo_root, rel_path)
-    if not file.is_file() or file.suffix != ".py":
+    if not file.is_file() or language_of_path(rel_path) is None:
         return set()
     try:
-        qualnames = source_qualnames(file.read_text(encoding="utf-8", errors="ignore"))
+        qualnames = source_qualnames(file.read_text(encoding="utf-8", errors="ignore"), rel_path)
     except OSError:
         return set()
     module_parts = module_dotted_path(rel_path).split(".")
@@ -234,7 +238,9 @@ def _literal_prompt_text(node: ast.expr) -> str | None:
     return None
 
 
-def _prompt_text_from_source(source: str) -> str:
+def _prompt_text_from_source(source: str, rel_path: str = "") -> str:
+    if language_of_path(rel_path) not in (None, PYTHON):
+        return typescript_ast.prompt_text_from_source(source, rel_path)
     text = textwrap.dedent(source).strip()
     if not text:
         return ""
@@ -260,7 +266,8 @@ def _prompt_text_from_source(source: str) -> str:
 
 
 def read_prompt_span(repo_root: str, span: Any) -> str:
-    return _prompt_text_from_source(_read_span_text(repo_root, span))
+    match = _PROVENANCE_SPAN_RE.match(str(span or "").strip())
+    return _prompt_text_from_source(_read_span_text(repo_root, span), match.group("path") if match else "")
 
 
 def resolve_prompt_spans(analysis: dict[str, Any], repo_root: str) -> None:

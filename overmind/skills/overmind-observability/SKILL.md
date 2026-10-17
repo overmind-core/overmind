@@ -38,7 +38,8 @@ creating datasets, changing eval matrix rows or starting provider runs.
 
 For a requested instrumentation change, prefer `instrument-repository` and the
 server's `get_instrumentation_plan`. Apply each placement's
-`required_decorator` verbatim. If the plan returns `human_action` or no
+`required_decorator` verbatim; for a JavaScript/TypeScript target it is an `observe`
+wrapper, see the overmind skill's `references/javascript.md`. If the plan returns `human_action` or no
 placements, follow that handoff; do not invent anchors.
 
 Apply authorized edits locally. Before a verification run, present its exact

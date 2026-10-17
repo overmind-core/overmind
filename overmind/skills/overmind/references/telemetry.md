@@ -33,6 +33,9 @@ the server's summary/page fields; do not sum a partial page as a project total.
 
 ## Get and apply a plan
 
+For a JavaScript/TypeScript application the SDK is the `overmind` npm package and the
+wrappers are `observe(fn, {...})`, not decorators: see [javascript.md](javascript.md).
+
 Call `get_instrumentation_plan` with no capability for project-wide work, or
 with a capability for a scoped change. Each placement names a `target`
 (`file`, `qualname`), its `kind` and the exact `required_decorator`; see
@@ -66,7 +69,8 @@ live scoring. Do not guess anchors or identity.
 
 ## Local SDK configuration
 
-For a greenfield Python app, install the existing SDK extra locally:
+For a greenfield Python app (JavaScript/TypeScript: [javascript.md](javascript.md)),
+install the existing SDK extra locally:
 
 ```bash
 uv add "overmind[tracing]"

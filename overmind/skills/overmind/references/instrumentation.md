@@ -6,6 +6,9 @@ identity, input and output, tool names, and optional `intent`,
 
 ## Use the instrumentation plan
 
+For a JavaScript/TypeScript target the plan's `required_decorator` is an `observe(<function>, {...})`
+wrapper, not a decorator: apply it as [javascript.md](javascript.md#instrument-with-observe-not-decorators) describes.
+
 Call `get_instrumentation_plan`, optionally with a capability. Each placement
 names a `target` (`file`, `qualname`, `module`, `import_line`), its `kind`
 (`entry_point`, `workflow`, `tool`, `retrieval` or `function`) and the exact
