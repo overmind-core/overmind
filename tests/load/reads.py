@@ -13,7 +13,7 @@ from overbae.models import APIToken
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def test_concurrent_read_sessions_preserve_quiet_project_response(live_api, tmp_path):
+def test_concurrent_read_sessions_preserve_quiet_project_response(process_api, tmp_path):
     sessions = []
     for index in range(9):
         user = make_user()
@@ -29,7 +29,7 @@ def test_concurrent_read_sessions_preserve_quiet_project_response(live_api, tmp_
         project_id, key = identity
         started = time.monotonic()
         response = requests.get(
-            f"{live_api.url}/api/projects/",
+            f"{process_api.url}/api/projects/",
             headers={"X-Api-Key": key},
             timeout=5,
         )
@@ -57,6 +57,7 @@ def test_concurrent_read_sessions_preserve_quiet_project_response(live_api, tmp_
         ordered = sorted(samples)
         return {
             "samples": len(ordered),
+            "api_processes": process_api.workers,
             "p50_seconds": ordered[19],
             "p95_seconds": ordered[math.ceil(len(ordered) * 0.95) - 1],
             "p99_seconds": ordered[-1],

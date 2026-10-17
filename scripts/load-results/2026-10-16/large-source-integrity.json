@@ -1,0 +1,31 @@
+{
+  "source_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+  "source_bytes": 859750067,
+  "source_rows": 2500000,
+  "verified": {
+    "9a9bd1b5-c54c-488b-b6e1-1736d089dd56": {
+      "rows": 2500000,
+      "retained_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+      "first_last_values_preserved": true,
+      "cell_id": "3895eaa2-877e-475d-8516-2f434f17236a"
+    },
+    "fafc43d4-70d4-42f5-b4bd-5e272556ff14": {
+      "rows": 2500000,
+      "retained_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+      "first_last_values_preserved": true,
+      "cell_id": "4674cd46-c077-4c57-a5cf-d91c2f6f8642"
+    },
+    "d860319e-c1fc-4f21-b7a7-f394f80f3b4b": {
+      "rows": 2500000,
+      "retained_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+      "first_last_values_preserved": true,
+      "cell_id": "908722a2-fb78-453a-b8c4-71a39ad02303"
+    },
+    "c3f07ab6-f621-4304-8624-4c9742329f4f": {
+      "rows": 2500000,
+      "retained_sha256": "a04f26d906c6d64f3f0e2f262e351c0a98e34b890eab030b7b6a73a53829310a",
+      "first_last_values_preserved": true,
+      "cell_id": "6e6be52f-cc21-485f-a7a4-69bac9892029"
+    }
+  }
+}

@@ -14,6 +14,7 @@ def test_read_load_in_isolated_process(worker):
     env = {
         **os.environ,
         "OVERMIND_LOAD_TEST_DATABASE": f"test_overmind_load_{uuid.uuid4().hex[:8]}",
+        "TEST_REDIS_URL": os.environ["TEST_REDIS_URL"].rsplit("/", 1)[0] + "/12",
     }
     # Celery's test-worker teardown sets process-wide stop flags.
     result = subprocess.run(

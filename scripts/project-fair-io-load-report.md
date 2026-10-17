@@ -218,19 +218,45 @@ a one-hour full-size budget and retains read timings even on failure.
 
 The fourth import's database and media were preserved before teardown. Its first
 explicit recovery coincided with other local suites; Docker recorded an OOM kill
-in the shared 7.65 GiB Linux VM. A standalone final recovery with protected-project
-read/import checks is in progress. No production claim is based on this failed
-local recovery attempt.
+in the shared 7.65 GiB Linux VM. The standalone final recovery passed on its third attempt. All four published
+imports contain 2,500,000 rows, and independent checks verified retained-file
+SHA-256 and first/last data values. During the final recovery, a protected-project
+import finished in 1.650 seconds; 603 protected reads measured 22.8 ms p95 and
+106.3 ms maximum, with no request failures. The local VM OOM is retained as a
+failed control, not used as a production capacity measurement.
 
 ### Deployment status
 
 The admission implementation and tests are committed on the feature branch. The
 new images are built and uploaded; production deployment is held pending the
-remaining standalone recovery and journey checks. The current production landing
+remaining journey checks. The current production landing
 service still has one task. No additional AWS resources have yet been applied.
 
-Artifacts: `mixed-training-32-simultaneous.json` and
+Artifacts: `large-source-recovery.json`, `large-source-integrity.json`,
+`mixed-training-32-simultaneous.json` and
 `mixed-training-overlapping-test-suites-control.json` in the adjacent results
 folder. These measurements do not certify 1,000 simultaneously executing jobs or
 unchanged latency at arbitrary request rates. Durable intake, active execution
 capacity and HTTP request concurrency are distinct limits.
+
+### CI topology correction
+
+The first full CI journey run passed 89 cases and failed two latency gates:
+32-client reads at 527 ms p95 and burst-intake protected reads at 593 ms p95.
+Both used an ASGI thread inside the load generator's interpreter, sharing its
+Python execution lock. Read and intake benchmarks now use two separate API
+processes, matching the hosted Dockerfile worker count, with the same 32 clients
+and unchanged 500 ms p95 / one-second p99 budgets. Test database cache prefixes
+are distinct, and child sessions clear only dedicated local brokers 12 or 13;
+parent journey broker 15 and cache 14 are reserved.
+
+The corrected read/intake cases both passed in 45.51 seconds. The parent wrappers
+then passed in 178.88 seconds, including all six mixed, isolation, recovery,
+transfer, landing and burst cases and a live check that the parent worker still
+responded. The 32-client read rerun measured 46 ms p95. Current full CI is being
+rerun; deployment remains on hold until that gate passes. Failed CI evidence is
+retained in `ci-shared-interpreter-latency-control.json`; passing artifacts are
+`read-load-separated-api.json` and `landing-burst-separated-api.json`.
+
+The updated affected journey suite passed all 30 cases in 255.49 seconds before
+this harness correction. No application code changed in the correction.

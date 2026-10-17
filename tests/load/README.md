@@ -3,7 +3,17 @@
 Run these serially against the local compose PostgreSQL and Redis services.
 The tests use a separate database, broker database 12, real ASGI HTTP, Celery and
 sandbox execution. Only external model providers and Modal SDK calls are faked.
-The broker must not have another test consumer. GPU startup is excluded.
+The broker must not have another test consumer. Load sessions clear only their
+dedicated local broker (12, or 13 for a separate experiment); cache 14 and parent
+journey broker 15 are reserved. GPU startup is excluded.
+
+The read-only and 1,001-request intake tests serve ASGI in two separate processes,
+matching the hosted API worker count. The load generator has its own interpreter;
+its client-side JSON work must not occupy the API's Python execution lock. Load
+databases also have separate cache prefixes, including API and worker processes.
+The provider-faked mixed test retains its in-process API so its external network
+fakes remain effective. Reports identify the process topology; latency budgets
+are unchanged.
 
 ```sh
 TEST_REDIS_URL=redis://localhost:6379/12 \

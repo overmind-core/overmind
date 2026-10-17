@@ -1,0 +1,16 @@
+{
+  "outcome": "Two latency failures; 89 other journeys passed",
+  "api_topology": "One API thread in the load generator interpreter",
+  "read_32_clients": {
+    "p95_seconds": 0.5267790710000781,
+    "p99_seconds": 0.6496421650000457
+  },
+  "landing_1001_requests_32_submitters": {
+    "protected_read_p95_seconds": 0.5931938400000263
+  },
+  "budgets": {
+    "p95_seconds": 0.5,
+    "p99_seconds": 1
+  },
+  "correction": "API is served in two separate processes, matching the hosted worker count; thresholds and client count unchanged"
+}

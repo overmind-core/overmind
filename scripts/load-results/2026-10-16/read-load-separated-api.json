@@ -1,0 +1,25 @@
+{
+  "0": {
+    "samples": 40,
+    "api_processes": 2,
+    "p50_seconds": 0.013300874968990684,
+    "p95_seconds": 0.021508083038497716,
+    "p99_seconds": 0.0483601670130156
+  },
+  "8": {
+    "samples": 40,
+    "api_processes": 2,
+    "p50_seconds": 0.011186791001819074,
+    "p95_seconds": 0.027312375023029745,
+    "p99_seconds": 0.1339802499860525,
+    "competing_requests": 281
+  },
+  "32": {
+    "samples": 40,
+    "api_processes": 2,
+    "p50_seconds": 0.036460583040025085,
+    "p95_seconds": 0.046192542009521276,
+    "p99_seconds": 0.05989500001305714,
+    "competing_requests": 1120
+  }
+}

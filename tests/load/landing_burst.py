@@ -17,7 +17,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_project(
-    live_api, settings, tmp_path
+    process_api, settings, tmp_path
 ):
     user = make_user()
     noisy = make_project(member=user)
@@ -28,7 +28,7 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
     def submit(project, index):
         t = time.monotonic()
         r = requests.post(
-            live_api.url + "/api/datasets/",
+            process_api.url + "/api/datasets/",
             headers=headers,
             json={
                 "project": str(project.pk),
@@ -47,7 +47,7 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
         while not stopped.is_set():
             started = time.monotonic()
             response = requests.get(
-                live_api.url + "/api/datasets/",
+                process_api.url + "/api/datasets/",
                 params={"project": str(quiet.pk), "page_size": 25},
                 headers=headers,
                 timeout=10,
@@ -66,8 +66,6 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
     assert not observer.is_alive()
     assert reads and all(x["status"] == 200 for x in reads), reads
     latencies = sorted(x["seconds"] for x in reads)
-    assert latencies[int(len(latencies) * 0.95)] < 0.5, reads
-    assert latencies[-1] < 1, reads
     assert DatasetLandingWork.objects.filter(project=noisy).count() == 1000
     target = submit(quiet, 0)
     broker = redis.from_url(settings.CELERY_BROKER_URL)
@@ -75,11 +73,14 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
     report = {
         "requests": 1001,
         "concurrent_submitters": 32,
+        "api_processes": process_api.workers,
         "queued_landing_messages": queued,
         "submissions": submissions,
         "quiet_page_reads_during_intake": reads,
     }
     Path("/tmp/overmind-landing-burst.json").write_text(json.dumps(report, indent=2))
+    assert latencies[int(len(latencies) * 0.95)] < 0.5, report
+    assert latencies[-1] < 1, report
     assert queued <= 2, report
     with landing_workers(settings, tmp_path):
         started = time.monotonic()

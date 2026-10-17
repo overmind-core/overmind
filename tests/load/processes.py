@@ -1,6 +1,7 @@
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -8,10 +9,72 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+import requests
 from celery.contrib.testing.worker import start_worker
 from django.db import connection
 
 from overbae.celery import app
+
+
+class ProcessAPI:
+    def __init__(self, settings, directory, workers=2):
+        # Match the hosted API's two workers without sharing the load generator's interpreter.
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            self.port = listener.getsockname()[1]
+        self.url = f"http://127.0.0.1:{self.port}"
+        self.workers = workers
+        self.log_path = Path(directory) / "api-processes.log"
+        self.env = {
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "tests.load.settings",
+            "OVERMIND_LOAD_WORKER_DATABASE": connection.settings_dict["NAME"],
+            "OVERMIND_LOAD_MEDIA_ROOT": str(settings.MEDIA_ROOT),
+            "SANDBOX_URL": settings.SANDBOX_URL,
+            "SANDBOX_TOKEN": settings.SANDBOX_TOKEN,
+        }
+
+    def __enter__(self):
+        self.log = self.log_path.open("w")
+        self.process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "overbae.asgi:application",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(self.port),
+                "--workers",
+                str(self.workers),
+                "--log-level",
+                "warning",
+                "--no-access-log",
+            ],
+            env=self.env,
+            stdout=self.log,
+            stderr=subprocess.STDOUT,
+        )
+        deadline = time.monotonic() + 30
+        while self.process.poll() is None and time.monotonic() < deadline:
+            try:
+                if requests.get(self.url + "/health", timeout=1).status_code == 200:
+                    return self
+            except requests.RequestException:
+                pass
+            time.sleep(0.1)
+        self.__exit__(None, None, None)
+        raise AssertionError(f"Separate API did not start: {self.log_path.read_text()[-4000:]}")
+
+    def __exit__(self, *_):
+        self.process.terminate()
+        try:
+            self.process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=5)
+        self.log.close()
 
 
 def drain_process_results(ledger, timeout=120):
