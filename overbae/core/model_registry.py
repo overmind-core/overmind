@@ -66,6 +66,13 @@ CATALOG: tuple[Model, ...] = (
         "Typed decisions over supplied evidence; not a chat or training model.",
     ),
     Model(
+        "jev-1.14",
+        Vendor.TYPESAFE,
+        "typesafe/jev-1.14",
+        Tier.DECISION,
+        "Typed decisions over supplied evidence; not a chat or training model.",
+    ),
+    Model(
         "gpt-5.6-sol",
         Vendor.OPENAI,
         "openai/gpt-5.6-sol",
@@ -380,8 +387,12 @@ def default_judge_model() -> str:
     return model_chain(TaskType.JUDGE_SCORING)[0]
 
 
+def decision_models() -> tuple[Model, ...]:
+    return tuple(model for model in CATALOG if model.tier is Tier.DECISION)
+
+
 def decision_model() -> Model:
-    return next(model for model in CATALOG if model.tier is Tier.DECISION)
+    return decision_models()[0]
 
 
 def is_decision_model(name: str) -> bool:

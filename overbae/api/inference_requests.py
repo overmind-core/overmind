@@ -8,7 +8,7 @@ from overbae.api.credit_gate import require_credits
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.models import APIToken, DeployedModel, InferenceRequest
-from overbae.services import inference_requests
+from overbae.services import inference_requests, systemone
 
 
 class DecisionInputSerializer(serializers.Serializer):
@@ -80,6 +80,44 @@ class DeploymentInferenceView(APIView):
         return Response(
             InferenceReceiptSerializer(inference_requests.describe(receipt)).data, status=202
         )
+
+
+class SystemOneView(APIView):
+    @extend_schema(request=None, responses={200: None})
+    def post(self, request):
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            model, _state, names, decisions = systemone.parse(body)
+            deployment = systemone.resolve(model, project_ids_for(request.user, request.auth))
+        except InputValidationError as exc:
+            return Response(
+                {"error": {"message": exc.detail, "type": "invalid_request"}},
+                status=400,
+            )
+        if deployment is None and not systemone.catalog_model(model):
+            return Response(
+                {
+                    "error": {
+                        "message": "No decision deployment matches this model.",
+                        "type": "invalid_request",
+                    }
+                },
+                status=404,
+            )
+        require_credits(request.user)
+        try:
+            if deployment is not None:
+                status_code, payload = systemone.call_deployment(
+                    deployment, request.user, request.auth, names, decisions
+                )
+            else:
+                status_code, payload = systemone.call_openrouter(request.user, body)
+        except InputValidationError as exc:
+            return Response(
+                {"error": {"message": exc.detail, "type": "invalid_request"}},
+                status=400,
+            )
+        return Response(payload, status=status_code)
 
 
 class InferenceRequestView(APIView):

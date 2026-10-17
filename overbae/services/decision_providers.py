@@ -13,7 +13,7 @@ from modal_shared.serving.artifacts import atomic_json
 from modal_shared.stacks import TRAIN_U2026_8_18
 from overbae.core import decisions
 from overbae.core.errors import InputValidationError
-from overbae.core.model_registry import decision_model
+from overbae.core.model_registry import decision_models
 from overbae.modal.model_registry import (
     get_all_models_by_backend,
     get_hf_base,
@@ -60,13 +60,14 @@ def catalog(project):
         for model, config in get_all_models_by_backend("baseten", include_disabled=False).items()
         if get_unsloth_image(model) == TRAIN_U2026_8_18
     ]
-    options.append(
+    options.extend(
         {
-            "id": decision_model().slug,
-            "name": decision_model().name,
+            "id": model.slug,
+            "name": model.name,
             "kind": "external",
             "qualification": "catalog_eligible",
         }
+        for model in decision_models()
     )
     for job in FinetuningJob.objects.filter(project=project, status="succeeded").order_by(
         "-created_at"
@@ -119,9 +120,10 @@ def qualify_participants(project, selected):
         if kind == "external":
             model = participant.get("model")
             served = participant.get("served_model", "")
+            known = {item.slug for item in decision_models()}
             if (
                 participant.get("job")
-                or model != decision_model().slug
+                or model not in known
                 or not isinstance(served, str)
                 or (served and served != model and not served.startswith(model + "-"))
             ):

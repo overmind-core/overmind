@@ -5,77 +5,132 @@ export function inferenceBaseUrl(apiUrl = config.apiUrl): string {
   return `${apiUrl.replace(/\/$/, "")}/api/v1`;
 }
 
+function sdkBaseUrl(apiUrl = config.apiUrl): string {
+  return inferenceBaseUrl(apiUrl).replace(/\/v1$/, "");
+}
+
+function choiceCriteria(decision: DecisionInputRequest): Record<string, string | null> {
+  const described = new Map<string, string>();
+  for (const line of decision.question.split("\n").slice(1)) {
+    const split = line.indexOf(": ");
+    if (split <= 0) continue;
+    const name = line.slice(0, split);
+    const description = line.slice(split + 2).trim();
+    if (decision.options.includes(name) && description) described.set(name, description);
+  }
+  return Object.fromEntries(
+    decision.options.map((option) => [option, described.get(option) ?? null])
+  );
+}
+
+function decisionQuestion(decision: DecisionInputRequest): string {
+  const instructions = JSON.stringify(decision.question);
+  if (decision.kind === "noul") {
+    return [
+      '    "decision": Noul(',
+      `        instructions=${instructions},`,
+      `        criteria={"false": ${JSON.stringify(decision.options[0] ?? "false")}, "true": ${JSON.stringify(decision.options[1] ?? "true")}},`,
+      "    ),",
+    ].join("\n");
+  }
+  if (decision.kind === "score") {
+    const levels = decision.options
+      .map((option) => `        ${JSON.stringify(option)},`)
+      .join("\n");
+    return [
+      '    "decision": Score(',
+      `        instructions=${instructions},`,
+      "        criteria=[",
+      levels,
+      "        ],",
+      "    ),",
+    ].join("\n");
+  }
+  const criteria = Object.entries(choiceCriteria(decision))
+    .map(
+      ([option, description]) =>
+        `        ${JSON.stringify(option)}: ${description == null ? "None" : JSON.stringify(description)},`
+    )
+    .join("\n");
+  return [
+    '    "decision": Choice(',
+    `        instructions=${instructions},`,
+    "        criteria={",
+    criteria,
+    "        },",
+    "    ),",
+  ].join("\n");
+}
+
+function decisionClass(kind: string): string {
+  if (kind === "noul") return "Noul";
+  if (kind === "score") return "Score";
+  return "Choice";
+}
+
 export function buildDecisionSnippets(
-  deploymentId: string,
+  modelId: string,
   decision: DecisionInputRequest,
   apiUrl = config.apiUrl
 ) {
-  const base = `${apiUrl.replace(/\/$/, "")}/api`;
-  const endpoint = `${base}/deployed-models/${deploymentId}/inference/`;
+  const endpoint = `${inferenceBaseUrl(apiUrl)}/systemone`;
+  const criteria =
+    decision.kind === "noul"
+      ? {
+          false: decision.options[0] ?? "false",
+          true: decision.options[1] ?? "true",
+        }
+      : decision.kind === "score"
+        ? decision.options
+        : choiceCriteria(decision);
+  const body = JSON.stringify(
+    {
+      model: modelId,
+      questions: {
+        decision: {
+          criteria,
+          instructions: decision.question,
+          type: decision.kind,
+        },
+      },
+      state: decision.state,
+    },
+    null,
+    2
+  );
   const shellQuote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
-  const decisions = JSON.stringify([decision], null, 2);
   return {
     curl: [
-      "# Requires curl, jq and uuidgen. Keep request_key when retrying this request.",
-      'request_key="$(uuidgen)"',
-      `decisions=${shellQuote(decisions)}`,
-      'payload=$(jq -n --arg key "$request_key" --argjson decisions "$decisions" \\',
-      "  '{request_key: $key, decisions: $decisions}')",
-      "",
-      `job=$(curl --fail-with-body --silent --show-error --max-time 30 ${shellQuote(endpoint)} \\`,
+      "# pip install typesafe-sdk  —  or send the same body with curl.",
+      "# A cold start can take a few minutes. The call waits for the answer.",
+      `curl --fail-with-body --silent --show-error --max-time 200 ${shellQuote(endpoint)} \\`,
       '  -H "Authorization: Bearer $OVERMIND_API_KEY" \\',
       '  -H "Content-Type: application/json" \\',
-      '  --data "$payload") || exit 1',
-      `request_url=${shellQuote(`${base}/inference-requests/`)}$(printf '%s' "$job" | jq -er '.id')/`,
-      "",
-      "for attempt in $(seq 1 150); do",
-      `  request_status=$(printf '%s' "$job" | jq -er '.status') || exit 1`,
-      '  case "$request_status" in',
-      "    succeeded) break ;;",
-      `    failed|unresolved) printf '%s\\n' "$job" >&2; exit 1 ;;`,
-      "  esac",
-      "  sleep 2",
-      '  job=$(curl --fail-with-body --silent --show-error --max-time 30 "$request_url" \\',
-      '    -H "Authorization: Bearer $OVERMIND_API_KEY") || exit 1',
-      "done",
-      `printf '%s' "$job" | jq -e '.status == "succeeded"' >/dev/null || {`,
-      '  echo "Still pending: poll $request_url; do not resubmit." >&2; exit 1;',
-      "}",
-      `printf '%s' "$job" | jq '.result.predictions[] | . as $p |`,
-      "  (.probabilities | index(max)) as $i |",
-      "  {label: $p.options[$i], probabilities: $p.probabilities}'",
+      `  --data ${shellQuote(body)}`,
     ].join("\n"),
     python: [
       "import os",
-      "import time",
-      "import uuid",
-      "import requests",
+      `from typesafe_sdk import ${decisionClass(decision.kind)}, TypeSafeClient`,
       "",
-      "# Example input from this model's pinned training version. Replace state for your input.",
-      `decisions = ${decisions}`,
-      'headers = {"Authorization": "Bearer " + os.environ["OVERMIND_API_KEY"]}',
-      "request_key = str(uuid.uuid4())  # Keep this key if retrying this request.",
-      `response = requests.post(${JSON.stringify(endpoint)}, headers=headers, json={`,
-      '    "request_key": request_key,',
-      '    "decisions": decisions,',
-      "}, timeout=30)",
-      "response.raise_for_status()",
-      "job = response.json()",
-      `request_url = ${JSON.stringify(`${base}/inference-requests/`)} + job["id"] + "/"`,
-      "deadline = time.monotonic() + 300",
-      'while job["status"] not in {"succeeded", "failed", "unresolved"}:',
-      "    if time.monotonic() >= deadline:",
-      '        raise TimeoutError(f"Still pending: poll {request_url}; do not resubmit.")',
-      "    time.sleep(2)",
-      "    response = requests.get(request_url, headers=headers, timeout=30)",
-      "    response.raise_for_status()",
-      "    job = response.json()",
-      'if job["status"] != "succeeded":',
-      "    raise RuntimeError(job)",
-      'for prediction in job["result"]["predictions"]:',
-      '    probabilities = prediction["probabilities"]',
-      "    index = max(range(len(probabilities)), key=probabilities.__getitem__)",
-      '    print({"label": prediction["options"][index], "probabilities": probabilities})',
+      "# Example from this model's training version. Replace state with your input.",
+      "with TypeSafeClient(",
+      '    api_key=os.environ["OVERMIND_API_KEY"],',
+      `    base_url=${JSON.stringify(sdkBaseUrl(apiUrl))},`,
+      `    model=${JSON.stringify(modelId)},`,
+      "    timeout=200,",
+      "    compression=False,",
+      ") as client:",
+      "    response = client.system_one(",
+      `        state=${JSON.stringify(decision.state)},`,
+      "        questions={",
+      decisionQuestion(decision),
+      "        },",
+      "    )",
+      decision.kind === "noul"
+        ? 'print(response.nouls["decision"].noul)'
+        : decision.kind === "score"
+          ? 'print(response.scores["decision"].score)\nprint(response.scores["decision"].probabilities)'
+          : 'print(response.choices["decision"].choice)\nprint(response.choices["decision"].probabilities)',
     ].join("\n"),
   };
 }

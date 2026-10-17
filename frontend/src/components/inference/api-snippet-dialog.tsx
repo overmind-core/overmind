@@ -105,7 +105,7 @@ export function ApiSnippetDialog({
   const baseUrl = inferenceBaseUrl();
   const decision =
     decisionDeploymentId && example && typeof example.example_state === "string"
-      ? buildDecisionSnippets(decisionDeploymentId, {
+      ? buildDecisionSnippets(modelId, {
           kind: example.kind,
           options: example.options,
           question: example.question,
@@ -132,7 +132,7 @@ export function ApiSnippetDialog({
             <DialogTitle>Call this model</DialogTitle>
             <DialogDescription>
               {decisionDeploymentId
-                ? "Typed decision probabilities."
+                ? "TypeSafe systemone. Point the SDK base URL at this API."
                 : "OpenAI-compatible chat completions at the project API base URL."}
             </DialogDescription>
           </DialogHeader>
@@ -204,7 +204,7 @@ export function ApiSnippetDialog({
                     <SnippetBlock kind="shell" label="cURL" text={curl} />
                     <SnippetBlock
                       kind="python"
-                      label={decisionDeploymentId ? "Python (requests)" : "Python (OpenAI SDK)"}
+                      label={decisionDeploymentId ? "Python (TypeSafe SDK)" : "Python (OpenAI SDK)"}
                       text={python}
                     />
                   </>
