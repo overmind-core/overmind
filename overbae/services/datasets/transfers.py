@@ -205,7 +205,7 @@ def complete(transfer):
         "attachment_request": attachment_request,
         "split": split,
     }
-    if not attachment_request:
+    if not attachment_request or not dataset.cells.exists():
         imports.queue_landing_receipt(dataset, transfer.pk, transfer.task)
     transfer.state = "published"
     transfer.received = spec["size"]

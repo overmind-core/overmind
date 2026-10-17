@@ -114,6 +114,40 @@ class TransferServer:
     def close(self):
         pass
 
+    def get(self, url, **kwargs):
+        assert url.endswith("/api/datasets/dataset-1/")
+        return Response({"state": "error", "error": "Source landing stopped; retained bytes are available."})
+
+
+def test_landing_failure_retains_published_transfer_for_explicit_recovery(tmp_path, monkeypatch):
+    path = tmp_path / "rows.json"
+    path.write_text('[{"input":"one"}]')
+    server = TransferServer()
+    monkeypatch.setattr(requests, "Session", lambda: server)
+    result = CliRunner().invoke(
+        app,
+        [
+            "dataset",
+            "upload",
+            str(path),
+            "--project-id",
+            "project-1",
+            "--api-key",
+            "secret-key",
+            "--api-url",
+            "http://localhost:8000",
+            "--wait",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 1, result.output
+    error = json.loads(result.output)["error"]
+    assert error["stage"] == "landing" and error["next_action"] == "inspect_dataset_import"
+    assert error["transfer"]["id"] == "transfer-1"
+    assert error["transfer"]["result"]["id"] == "dataset-1"
+    assert error["transfer"]["state"] == "published" and server.publications == 1
+    assert "secret-key" not in result.output
+
 
 def test_command_restart_recovers_published_transfer_without_duplicate(tmp_path):
     path = tmp_path / "rows.json"

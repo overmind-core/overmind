@@ -657,7 +657,13 @@ def upload(
         if wait:
             for id_key, state_key in (("id", "state"), ("eval_id", "eval_state")):
                 if id_key in result:
-                    ready = wait_until_ready(result[id_key], api_key=key, api_url=url)
+                    try:
+                        ready = wait_until_ready(result[id_key], api_key=key, api_url=url)
+                    except TransferError as exc:
+                        exc.receipt = result["transfer"]
+                        exc.stage = "landing"
+                        exc.next_action = "inspect_dataset_import"
+                        raise
                     result[state_key] = str(ready.get("state") or "")
             result["state_scope"] = "observed_after_landing"
     except (TransferError, OSError, ValueError) as exc:

@@ -133,6 +133,19 @@ def attach_source(dataset, user, source: dict) -> Dataset:
         request_id = stage_attachment(dataset, source)
         from overbae.tasks.datasets import land
 
+        if not dataset.cells.exists():
+            imports.enqueue(
+                dataset,
+                {
+                    "dataset_id": str(dataset.pk),
+                    "source": source,
+                    "user_id": _user_id(user),
+                    "infer_capability": False,
+                    "attachment_request": request_id,
+                },
+            )
+            dataset.refresh_from_db()
+            return dataset
         transaction.on_commit(
             lambda: land.apply_async(
                 kwargs={

@@ -7,12 +7,53 @@ import pytest
 from django.utils import timezone
 from mcp_fixtures import mcp_context
 
-from overbae.models import Dataset, DatasetImport
-from overbae.services.datasets import imports
+from overbae.models import Dataset, DatasetImport, DatasetLandingWork
+from overbae.services.datasets import files, imports
 from overbae.services.mcp.catalog import CATALOG
 from overbae.tasks import datasets as dataset_tasks
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def test_retained_first_upload_into_an_existing_draft_recovers_through_mcp():
+    context = mcp_context(("read", "write"))
+    upload_id, filename = files.begin_upload("draft.csv")
+    original = b"value\n1\n2\n"
+    files.append_chunk(upload_id, 0, original)
+    files.inspect_upload(upload_id, size=len(original))
+    task_id, attachment_request = uuid.uuid4(), str(uuid.uuid4())
+    dataset = Dataset.objects.create(
+        project=context.project,
+        name="Stopped draft",
+        brief="Retain my original task brief",
+        state="error",
+        source_spec={"attachment_request": attachment_request},
+        operation={"task_id": str(task_id), "state": "failed"},
+    )
+    DatasetLandingWork.objects.create(
+        pk=task_id,
+        project=context.project,
+        dataset=dataset,
+        state="failed",
+        inputs={
+            "dataset_id": str(dataset.pk),
+            "source": {"upload_id": upload_id, "filename": filename},
+            "user_id": str(context.user.pk),
+            "infer_capability": False,
+            "split": None,
+            "attachment_request": attachment_request,
+        },
+    )
+    inspected = asyncio.run(CATALOG.call("inspect_dataset", {"dataset": str(dataset.pk)}, context))
+    assert not inspected.isError
+    action = inspected.structuredContent["next_actions"][0]
+    assert action["tool"] == "resume_dataset_import"
+    recovered = asyncio.run(CATALOG.call(action["tool"], action["arguments"], context))
+    assert not recovered.isError, recovered.structuredContent
+    dataset.refresh_from_db()
+    assert dataset.state == "idle" and dataset.source.rows == 2
+    assert dataset.cells.count() == 1 and dataset.brief == "Retain my original task brief"
+    assert DatasetImport.objects.get(pk=task_id).state == "complete"
 
 
 @pytest.mark.parametrize("recover_split", [False, True])

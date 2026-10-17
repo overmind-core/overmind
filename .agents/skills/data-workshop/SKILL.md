@@ -99,6 +99,9 @@ control reconciler recovers lost broker acknowledgements and records expired
 attempts. `resume_dataset_import` and REST `resume-import` explicitly retry a
 blocked import within its attempt budget. Cancellation fences both split members.
 Landing retains evidence and returns to idle; it does not start preparation.
+First-source uploads into an existing empty draft use the same durable import
+receipt. MCP also offers explicit recovery for retained failed draft uploads that
+predate that receipt, preserving the draft and its task brief.
 Pipeline queue demand contributes to interactive capacity through `DatasetPipelineRun`.
 The default project limit is two concurrent pipelines, below the minimum four-slot
 interactive worker so one project's burst cannot occupy the entire worker. Raising

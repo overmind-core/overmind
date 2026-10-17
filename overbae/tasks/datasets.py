@@ -197,10 +197,13 @@ def _execute_landing(
     task, *, dataset_id, source, user_id, split, infer_capability, attachment_request
 ):
 
-    from overbae.models import Dataset, User
+    from overbae.models import Dataset, DatasetImport, User
     from overbae.services.datasets import attachments, files, imports, operations
 
-    if not attachment_request:
+    if (
+        not attachment_request
+        or DatasetImport.objects.filter(pk=task.request.id, dataset_id=dataset_id).exists()
+    ):
         inputs = {
             "dataset_id": dataset_id,
             "source": source,

@@ -703,6 +703,14 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
     scoped = {"project_id": str(dataset.project_id)}
     if dataset.state == Dataset.State.ERROR and not chain:
         receipt = imports.status(dataset)
+        if receipt is None and imports.stopped_draft(dataset) is not None:
+            return [
+                NextAction(
+                    tool="resume_dataset_import",
+                    reason="Resume the retained first source for this draft.",
+                    arguments={**scoped, "dataset": ds_id},
+                )
+            ]
         if receipt and receipt["state"] == "blocked":
             return (
                 [

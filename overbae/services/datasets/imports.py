@@ -335,10 +335,28 @@ def resume(run_id):
     return _requeue(run)
 
 
+def stopped_draft(dataset):
+    from overbae.models import DatasetLandingWork
+
+    if (
+        dataset.state != Dataset.State.ERROR
+        or dataset.cells.exists()
+        or DatasetImport.objects.filter(dataset=dataset).exists()
+    ):
+        return None
+    work = DatasetLandingWork.objects.filter(
+        pk=dataset.operation.get("task_id"), dataset=dataset, state="failed"
+    ).first()
+    return work if work and _uploads(work.inputs["source"]) else None
+
+
+@transaction.atomic
 def resume_dataset(dataset):
     run = DatasetImport.objects.filter(
         Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
     ).first()
+    if run is None and (work := stopped_draft(dataset)) is not None:
+        run = queue_landing_receipt(dataset, work.pk, work.inputs, preserve_error=True)
     if run is None:
         raise DatasetError("No stopped source import is available.", code="import_not_found")
     resume(run.pk)

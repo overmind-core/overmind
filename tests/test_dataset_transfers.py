@@ -179,6 +179,7 @@ def test_repeated_attachment_does_not_append_another_cell(transfer_client):
     assert draft.brief == "Keep this brief"
     assert draft.cells.count() == 1
     assert Dataset.objects.count() == 1
+    assert DatasetImport.objects.get(pk=receipt["id"]).state == "complete"
 
 
 def test_split_publication_returns_same_pair(transfer_client):
