@@ -1,0 +1,33 @@
+{
+  "clients": 128,
+  "duration_seconds": 60,
+  "protocol": "MCP SDK over production HTTPS",
+  "started_at": 1792218833.4587379,
+  "load_started_at": 1792218861.6371121,
+  "finished_at": 1792218911.410563,
+  "noisy_requests": 1261,
+  "baseline_reads": {
+    "count": 20,
+    "p50": 0.3001592919463292,
+    "p95": 0.395430792006664,
+    "p99": 1.349847084027715
+  },
+  "quiet_reads": {
+    "count": 91,
+    "p50": 0.392411999986507,
+    "p95": 0.6579767089569941,
+    "p99": 1.9719791659736075
+  },
+  "backpressure": {
+    "noisy": 3503,
+    "quiet": 0
+  },
+  "heavy_query_timeouts": 0,
+  "errors": [
+    {
+      "client": 87,
+      "type": "ExceptionGroup",
+      "message": "unhandled errors in a TaskGroup (1 sub-exception)"
+    }
+  ]
+}

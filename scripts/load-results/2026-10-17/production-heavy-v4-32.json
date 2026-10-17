@@ -1,0 +1,37 @@
+{
+  "clients": 32,
+  "duration_seconds": 60,
+  "protocol": "MCP SDK over production HTTPS",
+  "started_at": 1792223116.306297,
+  "errors": [],
+  "noisy_requests": 83,
+  "backpressure": {
+    "noisy": 1220,
+    "quiet": 0
+  },
+  "heavy_query_timeouts": 12,
+  "server_version": "7.8.2",
+  "load_started_at": 1792223132.261308,
+  "client_event_loop_lag": {
+    "count": 749,
+    "max": 0.21277645798400044,
+    "p50": 0.0010570839862339143,
+    "p95": 0.0014110000105574672,
+    "p99": 0.011350334016606206
+  },
+  "finished_at": 1792223196.793545,
+  "baseline_reads": {
+    "count": 20,
+    "max": 0.7378773330128752,
+    "p50": 0.2766207919921726,
+    "p95": 0.46506412501912564,
+    "p99": 0.7378773330128752
+  },
+  "quiet_reads": {
+    "count": 147,
+    "max": 1.4153383339871652,
+    "p50": 0.2878442910150625,
+    "p95": 0.419450165994931,
+    "p99": 0.555755625013262
+  }
+}

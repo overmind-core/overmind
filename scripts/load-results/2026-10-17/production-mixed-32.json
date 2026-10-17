@@ -1,0 +1,29 @@
+{
+  "clients": 32,
+  "duration_seconds": 60,
+  "protocol": "MCP SDK over production HTTPS",
+  "started_at": 1792216267.6284401,
+  "load_started_at": 1792216282.175811,
+  "finished_at": 1792216328.344578,
+  "noisy_requests": 989,
+  "baseline_reads": {
+    "count": 20,
+    "p50": 0.3073338329559192,
+    "p95": 0.5300286249839701,
+    "p99": 0.6131153330206871
+  },
+  "quiet_reads": {
+    "count": 83,
+    "p50": 0.28451716603012756,
+    "p95": 1.0158605420147069,
+    "p99": 2.4506485000019893
+  },
+  "backpressure": {
+    "noisy": 400,
+    "quiet": 0
+  },
+  "heavy_query_timeouts": 0,
+  "errors": [
+    "quiet read exceeded two-second stop threshold"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "projects": [
+    {
+      "role": "noisy",
+      "expected": 124,
+      "found": 124,
+      "scored": 124,
+      "model_backed_scored": 4,
+      "all_scored": true
+    },
+    {
+      "role": "quiet",
+      "expected": 16,
+      "found": 16,
+      "scored": 16,
+      "model_backed_scored": 4,
+      "all_scored": true
+    }
+  ],
+  "all_scored": true
+}

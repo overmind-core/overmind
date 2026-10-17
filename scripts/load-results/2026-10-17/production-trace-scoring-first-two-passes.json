@@ -1,0 +1,14 @@
+[
+  {
+    "role": "noisy",
+    "spans": 240,
+    "scored": 240,
+    "perfect_scores": 240
+  },
+  {
+    "role": "quiet",
+    "spans": 24,
+    "scored": 24,
+    "perfect_scores": 24
+  }
+]
