@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 
 import duckdb
 from asgiref.sync import sync_to_async
@@ -107,85 +109,106 @@ def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> 
 
 
 def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> QueryDatasetOutput:
-    from overbae.services.datasets import query_capacity
+    phases = [("lookup", time.monotonic())]
+    try:
+        from overbae.services.datasets import query_capacity
 
-    dataset = mcp_dataset(context, payload.dataset)
-    sql = payload.sql.strip()
-    if not _READ_ONLY_SQL.match(sql):
-        raise MCPError("query_invalid", "Only read-only SELECT queries are supported.")
-    try:
-        cell = resolve_cell(dataset, payload.cell, ran_only=True)
-    except DatasetError as exc:
-        raise MCPError("cell_not_found", "The cell was not found in this dataset.") from exc
-    if cell.dataset_id != dataset.id:
-        raise MCPError("cell_not_found", "The cell was not found in this dataset.")
-    limit = min(payload.limit, 100)
-    try:
-        with query_capacity.admitted(dataset.project_id) as check:
-            result = store.query(
-                sql,
-                limit=limit + 1,
-                max_bytes=32768,
-                max_columns=200,
-                execution_check=check,
-                t=paths.cell_path(dataset.id, cell.id),
+        dataset = mcp_dataset(context, payload.dataset)
+        sql = payload.sql.strip()
+        if not _READ_ONLY_SQL.match(sql):
+            raise MCPError("query_invalid", "Only read-only SELECT queries are supported.")
+        try:
+            cell = resolve_cell(dataset, payload.cell, ran_only=True)
+        except DatasetError as exc:
+            raise MCPError("cell_not_found", "The cell was not found in this dataset.") from exc
+        if cell.dataset_id != dataset.id:
+            raise MCPError("cell_not_found", "The cell was not found in this dataset.")
+        limit = min(payload.limit, 100)
+        phases.append(("admission", time.monotonic()))
+        try:
+            with query_capacity.admitted(dataset.project_id) as check:
+                phases.append(("sql", time.monotonic()))
+                result = store.query(
+                    sql,
+                    limit=limit + 1,
+                    max_bytes=32768,
+                    max_columns=200,
+                    execution_check=check,
+                    t=paths.cell_path(dataset.id, cell.id),
+                )
+                phases.append(("release", time.monotonic()))
+            phases.append(("response", time.monotonic()))
+        except (
+            query_capacity.QueryCapacityBusyError,
+            query_capacity.QueryCapacityUnavailableError,
+        ) as exc:
+            busy = isinstance(exc, query_capacity.QueryCapacityBusyError)
+            raise MCPError(
+                "query_capacity_busy" if busy else "query_capacity_unavailable",
+                "SQL inspection capacity is busy. Retry the same SQL against the returned cell "
+                "after one second; use a retained pipeline for bulk analysis."
+                if busy
+                else "SQL inspection admission is unavailable. Retry the same SQL against the "
+                "returned cell after one second.",
+                retryable=True,
+                fields={
+                    "dataset": str(dataset.pk),
+                    "cell": str(cell.pk),
+                    "retry_after_seconds": "1",
+                    "project_concurrency": str(settings.DATASET_QUERY_PROJECT_CONCURRENCY),
+                    "global_concurrency": str(settings.DATASET_QUERY_MAX_IN_FLIGHT),
+                },
+            ) from None
+        except store.QueryTimeoutError as exc:
+            raise MCPError("query_timeout", str(exc), retryable=False) from exc
+        except store.QuerySizeError as exc:
+            raise MCPError("query_result_too_large", str(exc), retryable=False) from exc
+        except (duckdb.Error, store.StoreError) as exc:
+            reason = sanitize_error(str(exc).splitlines()[0], 300)
+            raise MCPError("query_invalid", f"The query failed: {reason}") from exc
+        rows = list(result["rows"])[:limit]
+        columns = [str(column) for column in (result.get("columns") or [])]
+        if len(columns) > 200:
+            raise MCPError(
+                "query_result_too_large",
+                "The query result exceeds 200 columns. Select fewer columns or export the "
+                "full cell through overmind://dataset-export. No column metadata was omitted.",
             )
-    except (
-        query_capacity.QueryCapacityBusyError,
-        query_capacity.QueryCapacityUnavailableError,
-    ) as exc:
-        busy = isinstance(exc, query_capacity.QueryCapacityBusyError)
-        raise MCPError(
-            "query_capacity_busy" if busy else "query_capacity_unavailable",
-            "SQL inspection capacity is busy. Retry the same SQL against the returned cell "
-            "after one second; use a retained pipeline for bulk analysis."
-            if busy
-            else "SQL inspection admission is unavailable. Retry the same SQL against the "
-            "returned cell after one second.",
-            retryable=True,
-            fields={
-                "dataset": str(dataset.pk),
-                "cell": str(cell.pk),
-                "retry_after_seconds": "1",
-                "project_concurrency": str(settings.DATASET_QUERY_PROJECT_CONCURRENCY),
-                "global_concurrency": str(settings.DATASET_QUERY_MAX_IN_FLIGHT),
-            },
-        ) from None
-    except store.QueryTimeoutError as exc:
-        raise MCPError("query_timeout", str(exc), retryable=False) from exc
-    except store.QuerySizeError as exc:
-        raise MCPError("query_result_too_large", str(exc), retryable=False) from exc
-    except (duckdb.Error, store.StoreError) as exc:
-        reason = sanitize_error(str(exc).splitlines()[0], 300)
-        raise MCPError("query_invalid", f"The query failed: {reason}") from exc
-    rows = list(result["rows"])[:limit]
-    columns = [str(column) for column in (result.get("columns") or [])]
-    if len(columns) > 200:
-        raise MCPError(
-            "query_result_too_large",
-            "The query result exceeds 200 columns. Select fewer columns or export the "
-            "full cell through overmind://dataset-export. No column metadata was omitted.",
+        link = dataset_resource_link(dataset)
+        output = QueryDatasetOutput(
+            summary=f"{len(rows)} rows.",
+            dataset=str(dataset.id),
+            cell_id=str(cell.id),
+            version=dataset.versions().get(cell.id),
+            columns=columns,
+            rows=rows,
+            n=len(rows),
+            truncated=len(result["rows"]) > limit,
+            resource_links=[link],
         )
-    link = dataset_resource_link(dataset)
-    output = QueryDatasetOutput(
-        summary=f"{len(rows)} rows.",
-        dataset=str(dataset.id),
-        cell_id=str(cell.id),
-        version=dataset.versions().get(cell.id),
-        columns=columns,
-        rows=rows,
-        n=len(rows),
-        truncated=len(result["rows"]) > limit,
-        resource_links=[link],
-    )
-    if len(json.dumps(output.model_dump(mode="json")).encode()) > QUERY_RESULT_BYTES:
-        raise MCPError(
-            "query_result_too_large",
-            "The query result exceeds 32 KiB. Select fewer rows or smaller columns, "
-            "use SQL aggregates, or export the full cell through overmind://dataset-export. "
-            "No values were clipped.",
-        )
-    return output
+        if len(json.dumps(output.model_dump(mode="json")).encode()) > QUERY_RESULT_BYTES:
+            raise MCPError(
+                "query_result_too_large",
+                "The query result exceeds 32 KiB. Select fewer rows or smaller columns, "
+                "use SQL aggregates, or export the full cell through overmind://dataset-export. "
+                "No values were clipped.",
+            )
+        return output
+    finally:
+        finished = time.monotonic()
+        elapsed = finished - phases[0][1]
+        if elapsed >= 0.25:
+            boundaries = [*phases, ("finished", finished)]
+            stages = {
+                name: round((end - start) * 1000, 1)
+                for (name, start), (_, end) in zip(boundaries, boundaries[1:], strict=False)
+            }
+            logging.getLogger(__name__).info(
+                "MCP SQL timing project_id=%s elapsed_ms=%.1f stages_ms=%s",
+                context.project.pk if context.project is not None else None,
+                elapsed * 1000,
+                stages,
+            )
 
 
 def _create_dataset_from_traces_sync(
