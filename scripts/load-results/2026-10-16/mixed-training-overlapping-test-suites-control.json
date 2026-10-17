@@ -1,0 +1,19 @@
+{
+  "clients": 32,
+  "seconds": 300,
+  "quiet_reads": {
+    "count": 819,
+    "p50": 0.18068654200760648,
+    "p95": 0.4853820419521071,
+    "p99": 0.9553104999940842
+  },
+  "competing_requests": 35896,
+  "errors": [],
+  "worker_pool": {
+    "interactive": "separate prefork",
+    "landing": "separate prefork",
+    "other_profiles": "threads"
+  },
+  "small_pipeline_max_seconds": 11.835172541963402,
+  "outcome": "Failed 10-second small-pipeline budget while unrelated local suites and large import recovery also ran; repeated in isolation without changing acceptance thresholds."
+}

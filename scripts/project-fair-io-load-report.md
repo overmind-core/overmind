@@ -152,3 +152,85 @@ existing sandbox's 1 GiB minimum without adding AWS resources.
 
 Raw production evidence lives beside the local reports in
 `scripts/load-results/2026-10-16/production-*.json`.
+
+## Simultaneous training and durable landing verification
+
+Latest local verification on 2026-10-17 UTC (2026-10-16 Pacific). The preceding
+production observations remain the pre-rollout baseline.
+
+Source landing now admits durable database receipts before publishing bounded
+broker work. It admits one import per project, chooses the least recently served
+eligible project, and uses observed worker counts up to the existing ceiling of
+eight. A burst of 1,001 jobs does not become 1,001 landing broker messages. Queue
+waiting does not consume an execution attempt or expire unless explicitly
+configured. Started worker loss fences publication and requires an explicit retry
+from retained source bytes. Dataset-run MCP progress and REST dataset operations
+expose queue, execution and terminal admission timestamps.
+
+Scaling demand counts distinct projects that can use another worker; waiting
+behind the same project's active import does not trigger wasteful scale-out. The
+raw queue age remains available, alongside the new useful scaling-age signal.
+The cloud change raises only the approved landing warm floor from one to two;
+the ceiling remains eight and automatic scale-in remains suspended.
+
+Profiling no longer serialises every column value after retaining its two example
+values. Ordinary text avoids exception-driven JSON decoding. A 10,000-row sample
+profile decreased from 482 ms to 338 ms with identical output except measurement
+time. This is a microbenchmark, not a measured platform-wide speed-up.
+
+### Passing local mixed profile
+
+The five-minute profile uses 32 competing clients, 65,536-row uploads, two landing
+slots and four interactive prefork slots. Landing and interactive execution run
+in separate Linux prefork processes. Other worker profiles use threads. Only the
+external GPU/model boundaries are faked; HTTP/MCP, PostgreSQL, Redis, preparation,
+training dispatch/monitoring/provider completion, trace and evaluation scoring,
+imports, retained-package pipelines and inference receipts are real.
+
+- 52,036 competing requests; no recorded request or job errors.
+- 11 training executions reached their provider-completion boundary; subsequent
+  model-serving startup is excluded.
+- 10 large imports, 689,872,100 uploaded bytes.
+- 1,203 quiet reads: p50 128 ms, p95 304 ms, p99 398 ms.
+- Slowest small pipeline: 2.233 seconds.
+- 233 recorded instants had training, imports, pipelines, trace scoring, inference
+  and quiet reads active together. Pairwise overlap alone no longer passes.
+- The test passed in 349.20 seconds with the original 500 ms p95, one-second p99
+  and ten-second small-pipeline budgets unchanged.
+
+A preceding run shared the local Docker VM with unrelated regression suites and
+large-file recovery. It failed the small-pipeline budget at 11.835 seconds. The
+isolated repeat above passes; both results are retained rather than discarding
+the failure. An earlier harness incorrectly ran CPU-heavy landing in the API's
+interpreter; landing now matches production's separate prefork process.
+
+The final backend CI profile passed: 3,297 tests, seven skipped, 193.02 seconds.
+The full migration chain, including 0047_landing_admission, applied successfully to
+a fresh local PostgreSQL database. Required pre-commit checks passed.
+
+### Full-size source and recovery
+
+A read-only local Parquet source contains 2,500,000 rows and 859,750,067 bytes.
+Three of four serial noisy-project imports published before the original
+30-minute test budget expired. Independent checks verified their row counts,
+retained original SHA-256 hashes and first/last data values. The harness now uses
+a one-hour full-size budget and retains read timings even on failure.
+
+The fourth import's database and media were preserved before teardown. Its first
+explicit recovery coincided with other local suites; Docker recorded an OOM kill
+in the shared 7.65 GiB Linux VM. A standalone final recovery with protected-project
+read/import checks is in progress. No production claim is based on this failed
+local recovery attempt.
+
+### Deployment status
+
+The admission implementation and tests are committed on the feature branch. The
+new images are built and uploaded; production deployment is held pending the
+remaining standalone recovery and journey checks. The current production landing
+service still has one task. No additional AWS resources have yet been applied.
+
+Artifacts: `mixed-training-32-simultaneous.json` and
+`mixed-training-overlapping-test-suites-control.json` in the adjacent results
+folder. These measurements do not certify 1,000 simultaneously executing jobs or
+unchanged latency at arbitrary request rates. Durable intake, active execution
+capacity and HTTP request concurrency are distinct limits.
