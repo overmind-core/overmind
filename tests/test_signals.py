@@ -164,3 +164,108 @@ def test_project_and_capability_mutes_override_defaults(context):
     assert not next(s for s in effective["signals"] if s["signal_type"] == "errors")["enabled"]
     Span.objects.filter(project=ctx.project).update(received_at=timezone.now() - timedelta(days=2))
     assert ctx.project.id not in projects_with_recent_spans()
+
+
+def test_signal_scan_releases_payloads_between_complete_groups(context):
+    import weakref
+
+    from django.db.models.signals import post_init
+
+    ctx, _ = context
+    expected_last_trace = {}
+    for index in range(4):
+        session = Conversation.objects.create(project=ctx.project, external_id=f"bounded-{index}")
+        for timestamp in (2, 1):
+            item = span(ctx.project, conversation=session)
+            if timestamp == 2:
+                expected_last_trace[session.id] = item.trace_id
+            Span.objects.filter(pk=item.pk).update(
+                start_time_ns=timestamp, attributes={"padding": "x" * (2 * 1024 * 1024)}
+            )
+    alive = []
+    peak = 0
+
+    def observe(sender, instance, **kwargs):
+        nonlocal peak
+        alive.append(weakref.ref(instance))
+        peak = max(peak, sum(ref() is not None for ref in alive))
+
+    post_init.connect(observe, sender=Span)
+    try:
+        asyncio.run(SignalRunner(ctx.project.id).run())
+    finally:
+        post_init.disconnect(observe, sender=Span)
+    assert peak <= 2
+    events = SignalEvent.objects.filter(project=ctx.project, signal_type="errors")
+    assert events.count() == 4
+    assert all(event.details["spans"] == 2 for event in events)
+    assert all(event.trace_id == expected_last_trace[event.conversation_id] for event in events)
+
+
+def test_signal_scan_reports_oversized_group_without_dropping_other_groups(context):
+    from overbae.innermind.signals import SignalInputTooLargeError
+
+    ctx, _ = context
+    session = Conversation.objects.create(project=ctx.project, external_id="oversized")
+    for _ in range(2):
+        item = span(ctx.project, conversation=session)
+        Span.objects.filter(pk=item.pk).update(attributes={"padding": "x" * (5 * 1024 * 1024)})
+    small = span(ctx.project)
+    with pytest.raises(SignalInputTooLargeError, match="1 signal groups exceed"):
+        asyncio.run(SignalRunner(ctx.project.id).run())
+    assert not SignalEvent.objects.filter(conversation=session).exists()
+    assert SignalEvent.objects.filter(trace_id=small.trace_id, signal_type="errors").exists()
+
+
+def test_signal_batch_rechecks_bytes_before_materializing_payloads(context):
+    from django.db.models.signals import post_init
+
+    from overbae.innermind.signals import SignalInputTooLargeError
+
+    ctx, _ = context
+    item = span(ctx.project)
+    Span.objects.filter(pk=item.pk).update(attributes={"padding": "x" * (9 * 1024 * 1024)})
+    loaded = []
+
+    def observe(sender, instance, **kwargs):
+        loaded.append(instance.pk)
+
+    post_init.connect(observe, sender=Span)
+    try:
+        with pytest.raises(SignalInputTooLargeError, match="changed or exceeded"):
+            asyncio.run(
+                SignalRunner(ctx.project.id).run_batch(
+                    {item.pk: f"trace:{item.trace_id}"}, [], [], "2026-10-17"
+                )
+            )
+    finally:
+        post_init.disconnect(observe, sender=Span)
+    assert loaded == []
+
+
+def test_signal_scan_continues_after_concurrent_payload_growth(context):
+    from overbae.innermind.signals import SignalInputTooLargeError
+
+    ctx, _ = context
+    items = [span(ctx.project) for _ in range(3)]
+    for index, item in enumerate(items):
+        Span.objects.filter(pk=item.pk).update(
+            start_time_ns=3 - index, attributes={"padding": "x" * (5 * 1024 * 1024)}
+        )
+
+    class ConcurrentGrowthRunner(SignalRunner):
+        async def batches(self):
+            first = True
+            async for ids in super().batches():
+                if first:
+                    await Span.objects.filter(pk=items[0].pk).aupdate(
+                        eval_attributes={"padding": "y" * (4 * 1024 * 1024)}
+                    )
+                    first = False
+                yield ids
+
+    with pytest.raises(SignalInputTooLargeError, match="1 signal groups changed"):
+        asyncio.run(ConcurrentGrowthRunner(ctx.project.id).run())
+    assert set(
+        SignalEvent.objects.filter(signal_type="errors").values_list("trace_id", flat=True)
+    ) == {item.trace_id for item in items[1:]}

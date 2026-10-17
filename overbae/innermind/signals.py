@@ -12,6 +12,8 @@ from datetime import UTC, datetime, timedelta
 from statistics import mean, median
 from typing import ClassVar
 
+from django.db.models import Func, IntegerField, Sum, TextField, Window
+from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 
 from overbae.innermind import evidence
@@ -33,6 +35,36 @@ logger = logging.getLogger(__name__)
 
 WINDOW = timedelta(days=1)
 PROJECT_SPAN_CAP = 20_000
+SIGNAL_BATCH_BYTES = 8 * 1024 * 1024
+SIGNAL_BATCH_ROWS = 256
+
+
+class SignalInputTooLargeError(ValueError):
+    pass
+
+
+def span_payload_bytes():
+    fields = (
+        "attributes",
+        "eval_attributes",
+        "events",
+        "links",
+        "resource_attrs",
+        "usage",
+        "feedback_score",
+        "status_message",
+        "name",
+        "operation",
+        "service_name",
+        "scope_name",
+        "scope_version",
+    )
+    return sum(
+        Coalesce(
+            Func(Cast(field, TextField()), function="OCTET_LENGTH", output_field=IntegerField()), 0
+        )
+        for field in fields
+    )
 
 
 def started_at(span: Span) -> datetime:
@@ -639,20 +671,76 @@ class SignalRunner:
     def __init__(self, project_id):
         self.project_id = project_id
 
-    async def spans(self) -> list[Span]:
-        since = timezone.now() - WINDOW
-        recent = Span.objects.filter(project_id=self.project_id, received_at__gte=since).order_by(
-            "-start_time_ns"
-        )[:PROJECT_SPAN_CAP]
-        return sorted([span async for span in recent], key=lambda span: span.start_time_ns)
+    async def batches(self):
+        recent = (
+            Span.objects.filter(
+                project_id=self.project_id, received_at__gte=timezone.now() - WINDOW
+            )
+            .order_by("-start_time_ns", "span_id")
+            .annotate(signal_bytes=span_payload_bytes())
+            .values_list("span_id", "conversation_id", "trace_id", "signal_bytes")[
+                :PROJECT_SPAN_CAP
+            ]
+        )
+        groups = defaultdict(list)
+        async for span_id, conversation_id, trace_id, size in recent:
+            key = f"conversation:{conversation_id}" if conversation_id else f"trace:{trace_id}"
+            groups[key].append((span_id, size))
+        ids, size, oversized = {}, 0, 0
+        for key, group in groups.items():
+            group_size = sum(item[1] for item in group)
+            if group_size > SIGNAL_BATCH_BYTES:
+                oversized += 1
+                continue
+            if ids and (
+                size + group_size > SIGNAL_BATCH_BYTES or len(ids) + len(group) > SIGNAL_BATCH_ROWS
+            ):
+                yield ids
+                ids, size = {}, 0
+            ids.update((item[0], key) for item in group)
+            size += group_size
+        if ids:
+            yield ids
+        if oversized:
+            raise SignalInputTooLargeError(
+                f"{oversized} signal groups exceed the {SIGNAL_BATCH_BYTES}-byte input limit; "
+                "those groups were not checked or truncated"
+            )
 
     async def run(self) -> int:
         configured = [
             s async for s in SignalSubscription.objects.filter(project_id=self.project_id)
         ]
         subscriptions = effective_subscriptions(self.project_id, configured)
-        spans = await self.spans()
         day = timezone.now().date().isoformat()
+        count = 0
+        rejected = 0
+        errors = []
+        try:
+            async for ids in self.batches():
+                try:
+                    count += await self.run_batch(ids, configured, subscriptions, day)
+                except SignalInputTooLargeError:
+                    rejected += len(set(ids.values()))
+        except SignalInputTooLargeError as exc:
+            errors.append(str(exc))
+        if rejected:
+            errors.append(f"{rejected} signal groups changed or exceeded the batch byte limit")
+        if errors:
+            raise SignalInputTooLargeError("; ".join(errors))
+        return count
+
+    async def run_batch(self, ids, configured, subscriptions, day):
+        # Recheck the complete batch in SQL so concurrent payload growth cannot bypass admission.
+        selected = (
+            Span.objects.filter(project_id=self.project_id, span_id__in=ids)
+            .annotate(signal_total_bytes=Window(Sum(span_payload_bytes())))
+            .filter(signal_total_bytes__lte=SIGNAL_BATCH_BYTES)
+            .order_by("start_time_ns", "span_id")
+        )
+        spans = [span async for span in selected.aiterator(chunk_size=16)]
+        if len(spans) != len(ids) or any(group_key(span) != ids[span.pk] for span in spans):
+            raise SignalInputTooLargeError("Signal inputs changed or exceeded the batch byte limit")
         events = []
         for subscription in subscriptions:
             if not subscription.enabled:
