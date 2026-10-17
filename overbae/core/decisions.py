@@ -17,7 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from overbae.core.model_registry import PROVIDERS, decision_model
+from overbae.core.model_registry import PROVIDERS, decision_model, decision_models
 
 logger = logging.getLogger(__name__)
 
@@ -309,8 +309,9 @@ def decide(
     use_cache: bool = True,
 ) -> DecisionResult:
     started = time.monotonic()
+    allowed = {item.slug for item in decision_models()}
     model = model or decision_model().slug
-    if model != decision_model().slug:
+    if model not in allowed:
         raise DecisionError("unsupported_model")
     if not project_id:
         raise DecisionError("project_required")

@@ -40,7 +40,11 @@ from overbae.api.eval_views import (
 )
 from overbae.api.guest import GuestClaimView, GuestStartView
 from overbae.api.health import health_check
-from overbae.api.inference_requests import DeploymentInferenceView, InferenceRequestView
+from overbae.api.inference_requests import (
+    DeploymentInferenceView,
+    InferenceRequestView,
+    SystemOneView,
+)
 from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
@@ -146,6 +150,7 @@ urlpatterns = [
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
     path("v1/traces", otlp_traces, name="otlp-traces-compat"),
     # OpenAI-compatible inference API
+    path("api/v1/systemone", SystemOneView.as_view(), name="v1-systemone"),
     path("api/v1/chat/completions", chat_completions, name="v1-chat-completions"),
     path("api/v1/models", models_list, name="v1-models"),
     path("api/v1/models/<path:model_id>", model_detail, name="v1-model-detail"),
