@@ -90,6 +90,8 @@ imports remain in PostgreSQL, not the broker. Queue waiting has no default expir
 `DATASET_IMPORT_MAX_QUEUE_SECONDS` explicitly sets one when nonzero. Worker leases
 and execution limits remain bounded. Unacknowledged, unstarted deliveries can be
 fenced and admitted again; lost started imports require explicit recovery.
+Publication fences recovery through dataset locks; admission checks must leave
+the work row unlocked so its independent heartbeat can renew throughout publication.
 REST operation and MCP dataset/run inspection expose the same admission state and
 measured timestamps without exposing ownership tokens. The dedicated `landing`
 queue consumes only admitted deliveries. Publication and execution have separate fenced ownership; the
@@ -338,3 +340,8 @@ preparation graph by dataset revision; event reconnection also refreshes it.
 Creating a dataset from selected traces asks for its name and optional capability
 only. It lands with pending purpose; preparation and consumer intent follow in
 Workshop. Trace selections omit the table-only `all_spans` display parameter.
+
+The upload client retries at most five transient chunk-transport failures with
+smaller chunks and bounded backoff against the same transfer and offset. Confirmed
+permission denial stops immediately. Exhausted retries retain the receipt for the
+identical command to resume; publication is not blindly replayed.

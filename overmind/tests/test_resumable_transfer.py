@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 
 import pytest
 import requests
@@ -20,7 +21,9 @@ class Response:
 
 
 class TransferServer:
-    def __init__(self):
+    def __init__(self, *, chunk_bytes=8, put_failures=()):
+        self.chunk_bytes = chunk_bytes
+        self.put_failures = list(put_failures)
         self.headers = {}
         self.content = bytearray()
         self.receipt = None
@@ -76,17 +79,28 @@ class TransferServer:
                     "size": spec["size"],
                     "sha256": spec["sha256"],
                     "request_key": spec["request_key"],
-                    "chunk_bytes": 8,
-                    "max_bytes": 1000,
+                    "chunk_bytes": self.chunk_bytes,
+                    "max_bytes": 2 * 1024**3,
                     "result": {},
                 }
             elif spec["sha256"] != self.receipt["sha256"]:
                 return Response({"code": "request_key_conflict", "detail": "Different file"}, 409)
             return Response(dict(self.receipt), 201)
         if method == "PUT":
-            assert kwargs["params"]["offset"] == len(self.content)
-            self.content.extend(kwargs["data"])
+            failure = self.put_failures.pop(0) if self.put_failures else None
+            if failure == "denied":
+                raise requests.ConnectionError("private secret-key") from PermissionError(13, "denied")
+            if failure == "before":
+                raise requests.ConnectionError("private secret-key")
+            offset, data = kwargs["params"]["offset"], kwargs["data"]
+            if offset < len(self.content):
+                assert bytes(self.content[offset : offset + len(data)]) == data
+            else:
+                assert offset == len(self.content)
+                self.content.extend(data)
             self.receipt["received"] = len(self.content)
+            if failure == "after":
+                raise requests.ConnectionError("private secret-key")
         if url.endswith("/complete/"):
             if self.receipt["state"] != "published":
                 assert hashlib.sha256(self.content).hexdigest() == self.receipt["sha256"]
@@ -293,3 +307,49 @@ def test_changed_bytes_under_an_explicit_key_report_the_conflict(tmp_path):
     assert failure.value.code == "request_key_conflict"
     assert failure.value.next_action == "use_original_inputs_or_new_request_key"
     assert server.publications == 1
+
+
+@pytest.mark.parametrize("failure", ["before", "after"])
+def test_upload_recovers_interrupted_chunk_without_duplicate_bytes(tmp_path, monkeypatch, failure):
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+    path = tmp_path / "rows.csv"
+    path.write_bytes(b"retained-row\n" * (1024 * 1024))
+    server = TransferServer(chunk_bytes=4 * 1024 * 1024, put_failures=[failure])
+    result = upload_file(
+        path, project_id="project-1", api_key="secret-key", api_url="http://localhost:8000", session=server
+    )
+    chunks = [call for call in server.calls if call[0] == "PUT"]
+    assert chunks[0][2]["params"]["offset"] == chunks[1][2]["params"]["offset"] == 0
+    assert len(chunks[0][2]["data"]) == 4 * 1024 * 1024
+    assert len(chunks[1][2]["data"]) == 2 * 1024 * 1024
+    assert bytes(server.content) == path.read_bytes()
+    assert server.publications == 1 and result["transfer"]["id"] == "transfer-1"
+    assert result["transfer"]["received"] == path.stat().st_size
+    assert sleeps == [1]
+
+
+@pytest.mark.parametrize(
+    "failure,expected_code,attempts",
+    [
+        ("before", "connection_unavailable", 6),
+        ("denied", "network_permission_denied", 1),
+    ],
+)
+def test_chunk_recovery_is_bounded_and_never_retries_confirmed_denial(
+    tmp_path, monkeypatch, failure, expected_code, attempts
+):
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+    path = tmp_path / "rows.csv"
+    path.write_bytes(b"retained-row\n" * (1024 * 1024))
+    server = TransferServer(chunk_bytes=4 * 1024 * 1024, put_failures=[failure] * 6)
+    with pytest.raises(Exception) as failed:
+        upload_file(path, project_id="project-1", api_key="secret-key", api_url="http://localhost:8000", session=server)
+    record = failed.value.record()
+    assert record["code"] == expected_code and record["transfer"]["id"] == "transfer-1"
+    assert record["transport_error"] == "ConnectionError"
+    assert "secret-key" not in json.dumps(record) and "private" not in json.dumps(record)
+    assert len([call for call in server.calls if call[0] == "PUT"]) == attempts
+    assert len(sleeps) == attempts - 1
+    assert server.publications == 0 and not server.content

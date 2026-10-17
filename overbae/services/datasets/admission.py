@@ -236,8 +236,8 @@ def check_current():
     work = DatasetLandingWork.objects.filter(
         pk=request.id, owner=owner, state="running", lease_until__gt=timezone.now()
     )
-    if connection.in_atomic_block:
-        work = work.select_for_update()
+    # Publication holds the dataset lock, which also fences recovery. Locking this
+    # row would block the heartbeat throughout file publication and expire its lease.
     if work.first() is None:
         raise DatasetError(
             "Landing ownership expired; no output was published.", code="ownership_lost"
@@ -315,7 +315,7 @@ def reconcile(publish):
             target_ids = {dataset_id}
             if evaluation_id:
                 target_ids.add(uuid.UUID(evaluation_id))
-            # Publication locks the source receipt, datasets, then admission; recovery uses that order.
+            # Lock source receipts and datasets before admission so publication fences recovery.
             targets = list(
                 Dataset.objects.select_for_update(skip_locked=True)
                 .filter(pk__in=target_ids)

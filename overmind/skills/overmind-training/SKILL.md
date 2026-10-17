@@ -71,6 +71,11 @@ eligible models, not a chat-benchmark ranking or an unmeasured price promise.
 
 ## Launch and verify
 
+For native decision families, discover `list_decision_training_models` and launch
+with `start_decision_job`. Use `start_finetune` for chat models. Native decisions
+keep the four chat evaluation flags false and preserve the declared probability
+objective; both tools share the same durable training lifecycle.
+
 Freeze `hyperparameters.monitoring` with the rest of the recipe. Modal and Baseten
 support loss monitoring with adaptive/steps/epoch/off schedules; discover current
 provider capabilities from the model catalogue. Modal also accepts explicit

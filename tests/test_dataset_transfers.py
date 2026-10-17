@@ -134,6 +134,8 @@ def test_retransmission_rejects_different_bytes_and_completion_verifies_hash(tra
     client, project = transfer_client
     receipt, data = reserve(client, project)
     assert chunk(client, receipt, data[:10]).status_code == 200
+    prefix_retry = chunk(client, receipt, data[:5])
+    assert prefix_retry.status_code == 200 and prefix_retry.data["received"] == 10
     assert chunk(client, receipt, data[:10]).status_code == 200
     assert chunk(client, receipt, b"x" * 10).status_code == 409
     assert complete(client, receipt).status_code == 409

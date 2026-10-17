@@ -293,3 +293,8 @@ packages omit Python bytecode caches; other unsupported files remain errors.
 ### Automatic script retention
 
 Retain the transformation with `save_dataset_pipeline(dataset=..., package=...)`; the dataset keeps its current script automatically. Never ask the user whether to keep or make it reusable. Submit corrected code against the same preparation; the canvas displays the current process. Retain scoped uncertainties and supporting evidence in the script and output. Keep unknown meaning unknown; successful execution and valid formatting do not establish semantic correctness.
+
+File transfer retries up to five transient chunk-transport interruptions with
+smaller chunks and bounded backoff, retaining the same transfer and byte offset.
+Confirmed network permission denial is never retried. If retries are exhausted,
+repeat the identical upload command; do not create another transfer key.

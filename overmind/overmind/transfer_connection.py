@@ -22,13 +22,16 @@ class TransferError(Exception):
         self.receipt = None
 
     def record(self):
-        return {
+        record = {
             "code": self.code,
             "message": str(self),
             "stage": self.stage,
             "next_action": self.next_action,
             "transfer": self.receipt,
         }
+        if isinstance(self.__context__, requests.RequestException):
+            record["transport_error"] = type(self.__context__).__name__
+        return record
 
 
 def request_json(client, method, url, *, stage, **kwargs):

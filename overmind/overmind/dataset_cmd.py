@@ -25,6 +25,8 @@ from overmind.transfer_connection import TransferError, check_connection, reques
 TRANSFER_PATH = "/api/dataset-transfers/"
 EXPORT_PATH = "/api/datasets/{dataset_id}/export/"
 CHUNK_TIMEOUT = 120
+UPLOAD_TRANSPORT_RETRIES = 5
+MIN_UPLOAD_CHUNK_BYTES = 1024 * 1024
 EXPORT_CHUNK_SIZE = 8_192
 ALLOWED_INTENTS = {"train", "eval", "explore"}
 SPLIT_POSITIONS = ("head", "tail", "random")
@@ -372,6 +374,8 @@ def upload_file(
         if isinstance(sent, bool) or not isinstance(sent, int) or not 0 <= sent <= total:
             raise DatasetUploadError("The transfer returned an invalid byte offset.")
         chunk_bytes = _required_int(receipt, "chunk_bytes", "reserve")
+        minimum_chunk_bytes = min(chunk_bytes, MIN_UPLOAD_CHUNK_BYTES)
+        recoveries = 0
         if receipt["state"] == "uploading":
             with path.open("rb") as source:
                 source.seek(sent)
@@ -379,15 +383,24 @@ def upload_file(
                     chunk = source.read(min(chunk_bytes, total - sent))
                     if not chunk:
                         raise DatasetUploadError("The local file changed during transfer.", code="local_file_changed")
-                    receipt = request_json(
-                        client,
-                        "PUT",
-                        transfer_url + "chunk/",
-                        stage="upload",
-                        params={"offset": sent},
-                        data=chunk,
-                        headers={"Content-Type": "application/octet-stream"},
-                    )
+                    try:
+                        receipt = request_json(
+                            client,
+                            "PUT",
+                            transfer_url + "chunk/",
+                            stage="upload",
+                            params={"offset": sent},
+                            data=chunk,
+                            headers={"Content-Type": "application/octet-stream"},
+                        )
+                    except TransferError as exc:
+                        if exc.code != "connection_unavailable" or recoveries >= UPLOAD_TRANSPORT_RETRIES:
+                            raise
+                        recoveries += 1
+                        chunk_bytes = max(minimum_chunk_bytes, chunk_bytes // 2)
+                        source.seek(sent)
+                        time.sleep(min(2 ** (recoveries - 1), 8))
+                        continue
                     received = receipt.get("received")
                     if isinstance(received, bool) or not isinstance(received, int) or not sent < received <= total:
                         raise DatasetUploadError("The transfer returned an invalid byte offset.")

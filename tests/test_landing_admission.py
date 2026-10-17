@@ -174,3 +174,45 @@ def test_split_recovery_skips_publishing_rows_then_stops_both_members_without_re
     assert primary.operation["state"] == evaluation.operation["state"] == "failed"
     assert len(messages) == 1
     assert not primary.cells.exists() and not evaluation.cells.exists()
+
+
+def test_publication_allows_its_independent_heartbeat_and_still_rejects_expired_ownership():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from celery import shared_task
+    from django.db import close_old_connections, connection, transaction
+
+    work = queue(make_project())
+    admission.dispatch(lambda **message: None)
+    work.refresh_from_db()
+    assert admission.claim(work.pk, work.owner)
+    deadline = timezone.now() + timedelta(seconds=60)
+    DatasetLandingWork.objects.filter(pk=work.pk).update(lease_until=deadline)
+
+    def heartbeat():
+        close_old_connections()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SET lock_timeout = '500ms'")
+            admission.renew(work.pk, work.owner)
+        finally:
+            connection.close()
+
+    @shared_task
+    def publication():
+        with ThreadPoolExecutor(max_workers=1) as pool, transaction.atomic():
+            Dataset.objects.select_for_update().get(pk=work.dataset_id)
+            admission.check_current()
+            pool.submit(heartbeat).result(timeout=5)
+            work.refresh_from_db()
+            assert work.lease_until > deadline
+            admission.check_current()
+            DatasetLandingWork.objects.filter(pk=work.pk).update(
+                lease_until=timezone.now() - timedelta(seconds=1)
+            )
+            with pytest.raises(DatasetError, match="ownership expired"):
+                admission.check_current()
+
+    publication.apply(task_id=str(work.pk), headers={admission.HEADER: str(work.owner)}).get(
+        propagate=True
+    )
