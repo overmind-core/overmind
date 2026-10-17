@@ -299,8 +299,6 @@ def drain_io(cluster, image, timeout=4200):
 def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
     if desired_count is not None and desired_count < 1:
         raise ValueError("Deployment requires a positive desired count.")
-    if service_name == "celery-io-worker":
-        drain_io(cluster, image, timeout)
     current = describe_service(cluster, service_name)
     if not current.get("desiredCount") and desired_count is None:
         raise ValueError(
@@ -308,6 +306,8 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
         )
     _, definition = register(cluster, service_name, image)
     arn = definition["taskDefinitionArn"]
+    if service_name == "celery-io-worker":
+        drain_io(cluster, image, timeout)
     count = desired_count
     options = ["--desired-count", str(count)] if count is not None else []
     aws(

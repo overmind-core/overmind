@@ -156,3 +156,50 @@ def test_slow_dispatch_does_not_occupy_other_control_threads():
         finally:
             release.set()
         assert pending.result(timeout=5)["admitted"] == 1
+
+
+def test_selecting_next_kind_does_not_scan_the_project_backlog(settings):
+    from django.db import connection
+
+    from overbae.models import LiveScoringProject
+
+    settings.LIVE_SCORING_MAX_IN_FLIGHT = 1
+    tenant = project()
+    admission.enqueue(tenant.pk, "span", [str(i) for i in range(10000)])
+    admission.enqueue(tenant.pk, "signals", ["signals"])
+    LiveScoringProject.objects.filter(project=tenant).update(last_kind="span")
+    with connection.cursor() as cursor:
+        cursor.execute("ANALYZE overbae_livescoringwork")
+    selections = []
+
+    def capture(execute, sql, params, many, context):
+        if (
+            sql.startswith('SELECT "overbae_livescoringwork"."id"')
+            and "ORDER BY" in sql
+            and "LIMIT 1" in sql
+        ):
+            selections.append((sql, params))
+        return execute(sql, params, many, context)
+
+    published = []
+    with connection.execute_wrapper(capture):
+        admission.dispatch(lambda pk, token: published.append((pk, token)))
+    assert LiveScoringWork.objects.get(pk=published[0][0]).kind == "signals"
+    assert selections
+    # Restore the selected row so the measured plan sees the same waiting backlog.
+    LiveScoringWork.objects.filter(pk=published[0][0]).update(state="waiting")
+
+    def nodes(plan):
+        yield plan
+        for child in plan.get("Plans", []):
+            yield from nodes(child)
+
+    with connection.cursor() as cursor:
+        for sql, params in selections:
+            cursor.execute("EXPLAIN (ANALYZE, FORMAT JSON) " + sql, params)
+            plan = cursor.fetchone()[0][0]["Plan"]
+            assert all(node["Node Type"] != "Sort" for node in nodes(plan))
+            assert all(
+                node.get("Actual Rows", 0) + node.get("Rows Removed by Filter", 0) <= 1
+                for node in nodes(plan)
+            )

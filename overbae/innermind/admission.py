@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Case, Count, F, IntegerField, Value, When
+from django.db.models import Count, F
 from django.utils import timezone
 
 from overbae.models import LiveScoringProject, LiveScoringScheduler, LiveScoringWork
@@ -67,16 +67,17 @@ def dispatch(publish) -> dict:
         if project.last_kind in kinds:
             offset = kinds.index(project.last_kind) + 1
             kinds = kinds[offset:] + kinds[:offset]
-        priority = Case(
-            *(When(kind=kind, then=Value(index)) for index, kind in enumerate(kinds)),
-            default=Value(len(kinds)),
-            output_field=IntegerField(),
-        )
-        item = (
-            work.filter(project_id=project.project_id, state="waiting")
-            .order_by(priority, "id")
-            .first()
-        )
+        item = None
+        for kind in kinds:
+            item = (
+                work.filter(project_id=project.project_id, state="waiting", kind=kind)
+                .order_by("id")
+                .first()
+            )
+            if item is not None:
+                break
+        if item is None:
+            break
         token = str(uuid.uuid4())
         work.filter(pk=item.pk).update(
             state="queued", task_id=token, queued_at=now, expires_at=now + QUEUED_LEASE

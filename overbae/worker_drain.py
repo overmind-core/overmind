@@ -48,10 +48,14 @@ def drain_mixed_io(timeout: int = 4200) -> None:
             time.sleep(5)
         raise TimeoutError("Mixed IO work did not drain; producer rollout must stop")
     finally:
-        if not completed:
-            for worker, consumed in mixed.items():
-                for queue in consumed:
-                    app.control.add_consumer(queue, destination=[worker], reply=True, timeout=5)
+        for worker, consumed in mixed.items():
+            # Keep IO available if replacement fails; the dedicated worker owns traces.
+            for queue in consumed - ({"io_traces"} if completed else set()):
+                reply = app.control.add_consumer(queue, destination=[worker], reply=True, timeout=5)
+                if not reply or any(
+                    "error" in response for item in reply for response in item.values()
+                ):
+                    raise RuntimeError(f"Consumer restoration was not acknowledged by {worker}")
 
 
 def main():

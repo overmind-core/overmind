@@ -522,5 +522,5 @@ class LiveScoringWork(models.Model):
         indexes = [
             models.Index(fields=["state", "expires_at"], name="live_scoring_expiry"),
             models.Index(fields=["finished_at"], name="live_scoring_finished"),
-            models.Index(fields=["project", "state", "id"], name="live_scoring_project_wait"),
+            models.Index(fields=["project", "state", "kind", "id"], name="live_scoring_kind_wait"),
         ]
