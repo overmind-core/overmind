@@ -326,7 +326,7 @@ def _resolve_alias(request: Request, model_id: str) -> tuple[DeployedModel | Non
         return Response(
             {
                 "error": {
-                    "message": "This model returns decision probabilities. Use its deployed-model inference endpoint.",
+                    "message": "This model returns decision probabilities. Call POST /api/v1/systemone.",
                     "type": "invalid_request_error",
                 }
             },

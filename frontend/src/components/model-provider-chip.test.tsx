@@ -140,6 +140,13 @@ describe("ModelOptionLabel", () => {
 });
 
 describe("ModelProviderChip", () => {
+  it("renders the TypeSafe cube for Jev", () => {
+    render(<ModelProviderChip model="typesafe/jev-1.13" />);
+    expect(screen.getByTestId("logo-typesafe")).toBeTruthy();
+    expect(screen.getByText("TypeSafe")).toBeTruthy();
+    expect(screen.getByText("Jev 1.13")).toBeTruthy();
+  });
+
   it("renders the vendor logo, provider label and model name", () => {
     render(<ModelProviderChip model="Qwen/Qwen3.5-0.8B" />);
     expect(screen.getByTestId("logo-qwen")).toBeTruthy();

@@ -28,6 +28,7 @@ export type ProviderId =
   | "qwen"
   | "stepfun"
   | "tencent"
+  | "typesafe"
   | "upstage"
   | "xai"
   | "xiaomi"
@@ -110,6 +111,7 @@ const PROVIDER_BY_SLUG: Record<Exclude<ProviderId, "unknown">, ProviderBundle> =
   qwen: { id: "qwen", providerLabel: "Qwen", providerSlug: "qwen" },
   stepfun: { id: "stepfun", providerLabel: "StepFun", providerSlug: "stepfun" },
   tencent: { id: "tencent", providerLabel: "Tencent", providerSlug: "tencent" },
+  typesafe: { id: "typesafe", providerLabel: "TypeSafe", providerSlug: "typesafe" },
   upstage: { id: "upstage", providerLabel: "Upstage", providerSlug: "upstage" },
   xai: { id: "xai", providerLabel: "xAI", providerSlug: "xai" },
   xiaomi: { id: "xiaomi", providerLabel: "Xiaomi", providerSlug: "xiaomi" },
@@ -202,6 +204,10 @@ function inferProviderFromModelId(modelId: string): ProviderBundle | null {
 
   if (normalized.startsWith("qwen") || normalized.startsWith("qwq")) {
     return PROVIDER_BY_SLUG.qwen;
+  }
+
+  if (normalized === "jev" || normalized.startsWith("jev-")) {
+    return PROVIDER_BY_SLUG.typesafe;
   }
 
   if (normalized.startsWith("grok-")) {
