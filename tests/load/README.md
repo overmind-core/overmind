@@ -81,8 +81,9 @@ not a production throughput or maximum-concurrent-request certification. Do not
 commit retained customer rows or copy them to production as part of this test.
 
 The mixed workload also launches training and records explicit provider-training
-windows that must overlap imports/pipelines, trace scoring, inference and quiet
-reads. GPU execution is the external Modal fake; preparation, dispatch, progress
+windows. It requires a shared instant with training, imports, pipelines, trace
+scoring, inference and quiet reads all active. Reports retain individual pipeline
+queue and execution times. GPU execution is the external Modal fake; preparation, dispatch, progress
 collection and training completion are real platform services. Serving startup
 is excluded. Its synthetic training user has an active Pro subscription so the
 soak measures concurrency rather than the Free plan monthly training quota.

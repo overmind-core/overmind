@@ -165,6 +165,8 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
             time.sleep(0.1)
         raise AssertionError(f"landing did not complete: {dataset.operation}")
 
+    pipeline_receipts = []
+
     def pipeline(index, dataset, recipe):
         mcp = McpSurface(live_api.url, identities[index][2])
         started = time.monotonic()
@@ -181,6 +183,19 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
             job = mcp.call("get_job", {"kind": "dataset_pipeline", "id": receipt["id"]})
             if job["status"] in ("completed", "failed", "cancelled"):
                 assert job["status"] == "completed", job
+                progress = job.get("progress", {})
+                pipeline_receipts.append(
+                    {
+                        "quiet": index == 0,
+                        "id": job["id"],
+                        "elapsed_seconds": time.monotonic() - started,
+                        "queue_seconds": progress.get("queue_seconds"),
+                        "execution_seconds": progress.get("seconds"),
+                        "stage_seconds": progress.get("stage_seconds"),
+                    }
+                )
+                if index == 1:
+                    overlap["pipelines"].append((started, time.monotonic()))
                 return time.monotonic() - started
             time.sleep(0.1)
         raise AssertionError(f"pipeline did not finish: {job}")
@@ -197,7 +212,10 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
     )
     preparation_times = []
     training_times = []
-    overlap = {name: [] for name in ("training", "imports", "traces", "inference", "quiet_reads")}
+    overlap = {
+        name: []
+        for name in ("training", "imports", "pipelines", "traces", "inference", "quiet_reads")
+    }
     oversized_queries = []
 
     def reader(index):
@@ -537,6 +555,7 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 quiet_reads=percentiles(samples),
                 competing_requests=sum(counts),
                 quiet_pipeline_seconds=quiet_jobs,
+                pipeline_receipts=pipeline_receipts,
                 large_pipeline_seconds=pipeline_times,
                 uploaded_bytes=sum(large_bytes),
                 completed_large_uploads=len(large_bytes),
@@ -565,13 +584,22 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 and preparation_times
                 and training_times
             ), report
+            simultaneous = []
+            neighbours = ("imports", "pipelines", "traces", "inference", "quiet_reads")
+            for a, b in overlap["training"]:
+                candidates = {a} | {
+                    c for name in neighbours for c, _ in overlap[name] if a <= c < b
+                }
+                simultaneous.extend(
+                    point - started
+                    for point in sorted(candidates)
+                    if all(any(c <= point < d for c, d in overlap[name]) for name in neighbours)
+                )
+            report["all_workloads_overlap_at_seconds"] = simultaneous
+            assert simultaneous, "No shared window with training and every competing workload"
             assert report["quiet_reads"]["p95"] <= max(0.5, 2 * report["baseline_reads"]["p95"])
             assert report["quiet_reads"]["p99"] < 1
             assert max(quiet_jobs) < 10, report
-            for name in ("imports", "traces", "inference", "quiet_reads"):
-                assert any(
-                    max(a, c) < min(b, d) for a, b in overlap["training"] for c, d in overlap[name]
-                ), (name, report)
         finally:
             path = Path(os.environ.get("OVERMIND_SOAK_REPORT", "/tmp/overmind-mixed-soak.json"))
             path.write_text(json.dumps(report, indent=2))
