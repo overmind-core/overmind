@@ -1,6 +1,6 @@
 ---
 name: overmind-observability
-description: Investigate Overmind traces, sessions, live scores, quality regressions, errors, latency and instrumentation gaps. Use for diagnosing observed agent behaviour rather than creating training or evaluation runs.
+description: Investigate Overmind traces, sessions, live scores, quality regressions, errors, latency and instrumentation gaps. Use for diagnosing observed agent behaviour rather than creating training or evaluation runs. Tracing is set up for Python codebases only.
 ---
 
 # Overmind Observability
@@ -73,9 +73,14 @@ its evidence before deciding whether the agent or the expectation should change.
 
 ## Instrumentation
 
-Instrumentation is Python-only. For a JavaScript/TypeScript or any other non-Python
-repository, set up no telemetry or instrumentation and apply no edits: report it as
-not applicable, even when a plan returns anchors for it. For a requested change in a
+Instrumentation is allowed only for a Python codebase. Before `get_instrumentation_plan`,
+any edit or any `overmind[tracing]` install, check the repository's application code:
+Python manifests (`pyproject.toml`, `requirements*.txt`, `setup.py`) and `.py`
+sources, with no JavaScript, TypeScript or other-language application code. If it is
+anything else, including a mixed codebase, do not allow tracing: set up no telemetry
+or instrumentation, add no OTLP exporter, apply no edits, and report it as not
+applicable with the language you found. A plan that returns anchors for such a
+repository does not override this. For a requested change in a
 Python repository, prefer `instrument-repository` and the server's
 `get_instrumentation_plan`. Live scoring reads what the SDK decorators write on each
 span: the capability identity, input and output, tool names, and optional `intent`,

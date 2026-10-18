@@ -10,8 +10,9 @@ cannot scan or edit a repository.
 
 **Language first.** Before anything else, detect whether the repository is Python or
 JavaScript/TypeScript. For JavaScript/TypeScript, read [javascript.md](javascript.md)
-now: it replaces the runner, the qualname and prompt rules and the whole **Instrument**
-section (OpenTelemetry export, not decorators), and everything else here still applies.
+now: it replaces the runner and the qualname and prompt rules, and the whole **Instrument**
+section does not apply (tracing is allowed only for a Python codebase). Everything else
+here still applies.
 
 Read [onboarding-progress.md](onboarding-progress.md) from the installed skill's
 `references/` directory before scanning. Show its
@@ -221,8 +222,10 @@ Sync upserts each capability's **Default** eval set from the toml's deterministi
 
 ## Instrument
 
-JavaScript/TypeScript repositories skip this section and follow
-[javascript.md](javascript.md#instrument-with-opentelemetry-not-an-sdk).
+Tracing is allowed only for a Python codebase. A JavaScript/TypeScript, other-language or
+mixed repository skips this section entirely: no edits, no OTLP exporter, no install. Report
+the stage as not applicable with the language found
+([javascript.md](javascript.md#no-instrumentation)).
 
 Run this after `python -m overmind sync` succeeds: the entry-point decorator carries the capability id, and only sync assigns it. The scan described the checkout as it was when you ran `python -m overmind chassis`; the edits below come afterwards, so spans cited in the toml refer to that revision. Everything the scan extracted is declared in code: each function, tool, retrieval step and model call the card names gets a decorator, and each decorator carries the intent and expectations the card implies for it.
 

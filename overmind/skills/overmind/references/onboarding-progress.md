@@ -32,7 +32,7 @@ connection are verified; do not reinstall or resync just to fill the checklist.
 1. **Write snapshot** — save the capability descriptions incrementally.
 1. **Validate configuration** — convert and check the local `overmind.toml`.
 1. **Sync capabilities** — send the snapshot to the configured Overmind project.
-1. **Instrument capabilities** — decorate (JavaScript/TypeScript: add Overmind's OTLP endpoint to the existing OpenTelemetry setup instead) every function, tool, retrieval step and model call the scan found, declare each span's expectations in the code, and sync again so they join each capability's eval set.
+1. **Instrument capabilities** — decorate (Python codebases only; any other or mixed language is reported as not applicable and left untouched) every function, tool, retrieval step and model call the scan found, declare each span's expectations in the code, and sync again so they join each capability's eval set.
 
 The roadmap ends at the applied decorators and that sync. Running the application, the
 verification trace, and server-side scoring of that trace are separate work; do

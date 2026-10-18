@@ -33,8 +33,11 @@ the server's summary/page fields; do not sum a partial page as a project total.
 
 ## Get and apply a plan
 
-A JavaScript/TypeScript application has no SDK and no placements: it adds Overmind's OTLP
-endpoint to its existing OpenTelemetry setup, see [javascript.md](javascript.md).
+Tracing is allowed only for a Python codebase. For a JavaScript, TypeScript, other-language
+or mixed repository, do not allow tracing: skip this section, the local SDK configuration
+and the verification run, add no OTLP exporter, and report it as not applicable with the
+language found, even when the plan returns anchors
+([javascript.md](javascript.md#no-instrumentation)). Reading existing traces stays available.
 
 Call `get_instrumentation_plan` with no capability for project-wide work, or
 with a capability for a scoped change. Each placement names a `target`
@@ -81,7 +84,7 @@ the project API key and, when needed, `OVERMIND_API_URL`,
 `OVERMIND_CAPABILITY_ID`, and `OVERMIND_CAPABILITY_NAME`. Never put secrets in
 decorated arguments; use the SDK redaction controls.
 
-If the app already owns an OpenTelemetry `TracerProvider`, add the Overmind
+If the Python app already owns an OpenTelemetry `TracerProvider`, add the Overmind
 OTLP exporter to that provider and enable the SDK's instrumentation rather than
 replacing the existing provider. Preserve the app's existing exporter.
 

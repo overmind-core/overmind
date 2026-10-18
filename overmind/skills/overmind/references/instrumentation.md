@@ -6,8 +6,13 @@ identity, input and output, tool names, and optional `intent`,
 
 ## Use the instrumentation plan
 
-A JavaScript/TypeScript anchor has no placement: those applications export OTLP from their
-existing OpenTelemetry setup, as [javascript.md](javascript.md#instrument-with-opentelemetry-not-an-sdk) describes.
+Instrumentation is allowed only for a Python codebase. Before calling the plan, installing
+`overmind[tracing]` or editing anything, check the application code: Python manifests
+(`pyproject.toml`, `requirements*.txt`, `setup.py`) and `.py` sources, with no
+JavaScript, TypeScript or other-language application code. For anything else, including a
+mixed codebase, do not allow tracing: apply no edits, add no OTLP exporter and report it as
+not applicable with the language found, even when the plan returns anchors
+([javascript.md](javascript.md#no-instrumentation)).
 
 Call `get_instrumentation_plan`, optionally with a capability. Each placement
 names a `target` (`file`, `qualname`, `module`, `import_line`), its `kind`

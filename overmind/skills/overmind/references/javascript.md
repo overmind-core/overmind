@@ -2,8 +2,9 @@
 
 Read this file when the repository to onboard is JavaScript or TypeScript. The
 workflow in [setup.md](setup.md) is the same: `overmind chassis`, the capability
-snapshot, conversion to `overmind.toml`, `overmind sync`, instrumentation, a second
-sync. This file lists where it differs. Where it is silent, follow setup.md.
+snapshot, conversion to `overmind.toml` and `overmind sync`. Instrumentation does not
+apply: see [No instrumentation](#no-instrumentation). This file lists where it differs.
+Where it is silent, follow setup.md.
 The overmind CLI and converter are Python; only the application code is not.
 
 ## Detect the language
@@ -88,82 +89,21 @@ The chassis digest is ground truth, as in Python. What changes:
   `server.tool(...)`, a `switch` on the tool-call name). The dispatcher is an anchor,
   not a tool.
 
-## Instrument with OpenTelemetry, not an SDK
+## No instrumentation
 
-Overmind has no JavaScript or TypeScript SDK and no decorators. A JavaScript
-application sends traces to the OTLP endpoint with OpenTelemetry. The instrumentation
-plan returns no placements for these anchors; `get_instrumentation_plan` answers with an
-`instruction` pointing here. Do not install an Overmind package.
+Tracing is allowed only for a Python codebase. A JavaScript or TypeScript repository
+gets no telemetry: set up no OpenTelemetry exporter, point no OTLP endpoint at Overmind,
+install no Overmind package, stamp no `overmind.*` attributes and apply no edits to
+its code or dependency manifest. `get_instrumentation_plan` returning anchors for these
+capabilities does not override this.
 
-1. **Find the existing OpenTelemetry setup.** Look for `@opentelemetry/sdk-node`,
-   `@opentelemetry/sdk-trace-node`, `@opentelemetry/exporter-trace-otlp-*`, `@vercel/otel`,
-   an `instrumentation.ts` / `instrumentation.js` file, an OpenLLMetry (`@traceloop/*`) or
-   OpenInference (`@arizeai/openinference-*`) instrumentation, or `OTEL_*` variables in the
-   deployment config. With none, leave instrumentation pending and say so in the summary;
-   scanning and sync are still complete.
-
-1. **Add Overmind as one more OTLP exporter on that provider.** Keep the existing
-   exporters, processors and instrumentations. Use the package already in the project
-   (`@opentelemetry/exporter-trace-otlp-proto` is the protobuf exporter; add it only when
-   the project has no OTLP/HTTP protobuf exporter). The endpoint takes OTLP/HTTP
-   **protobuf**; JSON and gRPC are rejected.
-
-   ```ts
-   import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
-   import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-
-   const overmind = new BatchSpanProcessor(
-     new OTLPTraceExporter({
-       url: `${process.env.OVERMIND_API_URL ?? "https://api.overmindlab.ai"}/api/v1/traces`,
-       headers: { "x-api-key": process.env.OVERMIND_API_KEY ?? "" },
-     }),
-   );
-   // Add `overmind` to the existing spanProcessors list; never replace it.
-   ```
-
-   A project that configures export only through `OTEL_EXPORTER_OTLP_*` already points
-   those variables at another backend: add the processor above in code instead of
-   repointing them. Never write the key into source or a committed file; read
-   `OVERMIND_API_KEY` from the environment and skip the processor when it is unset.
-
-1. **Stamp the capability.** Set `overmind.capability.id` on the provider's resource to the
-   id or slug synced into `overmind.toml` (`resourceFromAttributes({ "overmind.capability.id": "<id>" })`
-   merged into the existing resource). With several capabilities in one process, stamp
-   `overmind.capability.id` as a span attribute on each capability's root span instead.
-
-1. **Mark the run.** Scoring needs a unit and a terminal: the root span of one execution
-   carries `overmind.span.type = "entry_point"` and `overmind.unit_kind = "run"`, and the
-   span holding the answer `overmind.delivery = "true"`. Set them where the application
-   already starts that span; add a span only when none exists. The attributes Overmind
-   reads, including the OTel GenAI and OpenLLMetry conventions that provider
-   instrumentations already emit, are in the attribute table on the Overmind docs'
-   observability page.
-
-1. **Model calls and tools** need nothing extra when a provider instrumentation emits
-   them. Do not wrap provider clients.
-
-Rules that keep the chassis, the sync and live scoring consistent:
-
-- **Change no behaviour.** The edit is limited to the telemetry bootstrap file, the run's
-  root span attributes and the dependency manifest, with the repository's own package
-  manager.
-- **Expectations have no code home.** There are no decorators to carry them, so declare
-  none; the seeded checks and the toml's `eval_matrix` entries still apply. Say so in the
-  summary.
-- **Short-lived scripts and serverless handlers** call `forceFlush()` or `shutdown()` on the
-  provider before exiting so the batch processor sends the spans.
-- **Sessions.** Put `conversation.id` on every span of a multi-turn exchange to group them.
-
-## Verification
-
-Same approval gate and server-side check as [telemetry.md](telemetry.md). Differences:
-stamp the correlation as the `conversation.id` span attribute on the run's spans, run
-through the project's own runtime and package manager, and flush or shut down the
-provider before the process exits so the spans are sent. A typecheck (`tsc --noEmit`, or
-the repository's own script) is the local check to report beside the changed files.
-
-## Progress wording
-
-The stage "Instrument capabilities" is complete when the Overmind exporter and capability
-resource are in place and the run boundary is marked. With no existing OpenTelemetry it is
-reported as pending, not as complete. Name the changed files as setup.md does.
+- Skip setup.md's **Instrument** stage and the verification run in
+  [telemetry.md](telemetry.md). Scanning, conversion and both syncs still apply, so the
+  capabilities and the toml's `eval_matrix` checks exist; there are no decorator
+  expectations.
+- Report "Instrument capabilities" as not applicable, naming the language found. Do not
+  report it as pending or complete.
+- A repository that holds Python and JavaScript/TypeScript application code is not a
+  Python codebase: it gets no tracing either.
+- Datasets, evaluation, training and inference do not depend on tracing and stay
+  available.

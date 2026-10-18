@@ -1,6 +1,6 @@
 ---
 name: overmind-training
-description: Select models, prepare exact training inputs, estimate costs, launch and inspect Overmind fine-tuning jobs. Use for the Training surface, including held-out evaluation and benchmark selection; live model activation belongs to Inference.
+description: Select models, prepare exact training inputs, estimate costs, launch and inspect Overmind fine-tuning jobs. Use for the Training surface, including held-out evaluation and benchmark selection; live model activation belongs to Inference. A job needs a dataset and confirmed eval metrics before any paid step.
 ---
 
 # Overmind Training
@@ -32,13 +32,27 @@ prepare and freeze partitions, save comparison/training drafts, prepare, then la
 the authorized configuration. Poll the saved receipts rather than recreating work.
 Wait for Workshop idle and use exact cell UUIDs for consumer handoffs.
 
+### Prerequisites
+
+A fine-tuning job needs both of these before any paid preparation, estimate or
+`start_finetune`; if either is missing, stop and resolve it first:
+
+1. **A dataset.** A project dataset with a readable **train** cell, resolved with
+   `list_datasets`. Without one, send the user to the
+   [Datasets skill](../overmind-datasets/SKILL.md) or
+   `overmind finetune` (stored LLM calls) to create it.
+1. **Configured eval metrics.** An eval set whose rows cover what the job trains
+   for, confirmed by the user ([Confirm the metrics](#confirm-the-metrics)). Native
+   decision training is exempt from the metrics: it uses its own frozen native suite
+   plan, but still needs its dataset.
+
 Prefer the native `finetune-capability` prompt with the selected dataset and
 optional capability. Resolve datasets with `list_datasets`; inspect and query
 the exact train and held-out eval cells. Inspect whole-frame task families and
 workshop findings rather than assuming a sample describes the whole corpus.
 
 Use `get_model_catalog` for initial model discovery, then
-`check_finetune_readiness` for the selected dataset. A capability is optional. Ordinary held-out evaluation data and an applicable eval set are required only when those chat evaluations are selected. Native decision training has a separate native suite plan. Use the
+`check_finetune_readiness` for the selected dataset. A capability is optional. A chat job always needs its confirmed eval set; held-out evaluation data is required for the before/after evaluations the user selects. Native decision training has a separate native suite plan. Use the
 returned requirements to identify technical blockers. Quality findings,
 overlap and incomplete semantic reviews remain visible advisory warnings. Report
 Workshop findings for task alignment, input evidence, answer support, output
@@ -125,7 +139,7 @@ changed rows only.
      create the replacement.
 
 Held-out eval data is still required for the chat evaluations the user selects;
-confirming metrics does not replace it.
+confirming metrics does not replace it, and held-out data does not replace metrics.
 
 ## Size and price the run
 
@@ -251,7 +265,8 @@ their selection. Without a capability, evaluation uses the untouched base model 
 its baseline, and eval sets without a capability can be used by any training job in
 the project.
 
-All chat checks can be disabled; no chat eval dataset or eval set is then required.
+Chat before/after checks can be disabled; no held-out eval dataset is then required,
+but the confirmed eval set still is.
 Baseline evaluations launch concurrently with training and do not gate training
 submission. The fine-tune resource exposes the saved `evaluation_plan`. Before/after
 runs share a pinned dataset version, a prompt snapshot and one frozen eval matrix

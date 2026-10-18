@@ -20,6 +20,20 @@ For ordinary conversational fine-tuning use the `finetune-capability` prompt.
 Paid preparation and launches require user authorization; existing authorization
 persists across the stages it covers.
 
+## Prerequisites
+
+A fine-tuning job needs both of these before any paid preparation, estimate or
+`start_finetune`. If either is missing, stop and resolve it first:
+
+1. **A dataset.** A project dataset with a readable **train** cell, resolved with
+   `list_datasets`. Without one, create it with the [Datasets skill](../../overmind-datasets/SKILL.md)
+   or `overmind finetune` (stored LLM calls, below).
+1. **Configured eval metrics.** An eval set whose rows cover what the job trains for,
+   confirmed by the user (the confirm-metrics step of Prepare and start). Held-out eval data does not
+   replace metrics and metrics do not replace held-out data. Native decision training is
+   exempt from the metrics: it uses its own frozen native suite plan, but still needs
+   its dataset.
+
 ## From stored LLM calls
 
 `overmind finetune` builds a train dataset and an eval dataset from `llm_call`
@@ -46,9 +60,9 @@ eval set, and the same train and eval cells. A model that is not in
    continue with remaining work. Send requested repairs back to the workshop;
    training never converts worker targets into orchestrator targets.
 1. Call `check_finetune_readiness` after selecting the training dataset/cell.
-   Capability is optional; omit it or pass null for no association. An eval
-   dataset and eval set are required only for selected chat evaluations; native
-   decisions use their own frozen suite plan.
+   Capability is optional; omit it or pass null for no association. A chat job
+   always needs its confirmed eval set; an eval dataset is required only for
+   selected chat evaluations. Native decisions use their own frozen suite plan.
    It may narrow or recommend candidates;
    use its `catalog` and `recommendations` for `base_model` values and fix
    every reported missing prerequisite.
@@ -111,7 +125,8 @@ this as **Benchmark model** in training setup. The choice is saved on the job an
 does not change live routing or capability defaults. If omitted, the capability's
 `benchmark_model` supplies the default, falling back to its codebase incumbent;
 `set_benchmark_model` changes that API default only. Existing jobs retain their selection.
-All chat checks can be disabled; no chat eval dataset or eval set is then required. Baseline evaluations launch concurrently with training and do not gate
+Chat before/after checks can be disabled; no held-out eval dataset is then required,
+but the confirmed eval set still is. Baseline evaluations launch concurrently with training and do not gate
 training submission. The fine-tune resource exposes the saved `evaluation_plan`.
 Before/after runs share a pinned dataset version, a prompt snapshot and one
 frozen eval matrix snapshot, in one run group. Every selected evaluation runs every row of that version, without

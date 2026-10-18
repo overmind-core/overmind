@@ -42,7 +42,8 @@ mapping gap; low scoring coverage means spans arrive without evidence the
 matrix can judge. Missing scores do not demonstrate success.
 
 Choose the next action from the evidence: refresh the repository map, instrument
-an uncovered entry point, prepare data, repair evaluation coverage or investigate
+an uncovered entry point (Python codebases only; report any other language as not
+applicable), prepare data, repair evaluation coverage or investigate
 a measured failure. Do not automatically start those mutations during a map review.
 
 ## Read capability state

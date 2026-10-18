@@ -127,12 +127,14 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    derive a separate dataset or create role-specific partitions instead of retagging a used chain.
    Read the contracts section below.
 1. **Follow structured errors and durable receipts.** Read the error code, fields and retryability. Creation and paid launch are separate where the schema specifies a draft. Authorization already granted for an unchanged saved scope persists through routine continuation. Unresolved provider submissions require receipt recovery; never blindly repeat them.
-1. **Planned instrumentation.** Call `get_instrumentation_plan` with no
+1. **Planned instrumentation.** Tracing is allowed only for a Python codebase:
+   check the application code first, and for anything else (JavaScript,
+   TypeScript, another language or a mixed codebase) call no plan, apply no
+   edits, add no OTLP exporter and report it as not applicable with the
+   language found. For a Python codebase, call `get_instrumentation_plan` with no
    capability for project-wide work, or with a capability for scoped work, and
    treat each placement as one edit. If the result has `human_action` or
-   no placements, report its instruction and stop this attempt, except for a
-   JavaScript/TypeScript capability, whose instruction is the OTLP export in
-   [references/javascript.md](references/javascript.md). Apply each
+   no placements, report its instruction and stop this attempt. Apply each
    `required_decorator` verbatim at `target.qualname` in `target.file`, keeping
    `capability_id` exact. When coding subagents are available and permitted,
    group placements by file so one worker owns each file. See
@@ -156,9 +158,9 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 ## Use-case references
 
 - JavaScript/TypeScript repositories (isolated tooling runner, TypeScript chassis
-  qualnames, OpenTelemetry export to the OTLP endpoint instead of an SDK): read
-  [references/javascript.md](references/javascript.md) before local setup or
-  instrumentation, and apply it on top of the Python-worded references below.
+  qualnames; no tracing is allowed): read
+  [references/javascript.md](references/javascript.md) before local setup, and apply it
+  on top of the Python-worded references below.
 - Local setup (`overmind chassis` → scan repo → capability cards / trajectory
   maps → `overmind.toml` → `overmind sync` → decorators with span expectations):
   [references/setup.md](references/setup.md)
@@ -291,8 +293,10 @@ What each workflow accepts:
 
 - **Eval runs** (`run_evaluation`) and **optimizer experiments**
   (`start_optimizer`) use the active version of an **eval** dataset.
-- **Fine-tuning** (`start_finetune`) uses a **train** version, plus a
-  separate **eval** dataset only when chat judge evaluations are requested. Native decision comparisons use their frozen calibration/final plan.
+- **Fine-tuning** (`start_finetune`) needs a **train** version and, for a chat model,
+  a user-confirmed eval set; a separate **eval** dataset is needed only when chat judge
+  evaluations are requested. Native decision comparisons use their frozen
+  calibration/final plan in place of the eval set, and still need the train version.
 
 A use freezes the version and everything before it, and starts a new major
 (2.0). A contract is measured, never declared. The native coding agent authors
@@ -314,9 +318,10 @@ Typical loop (local setup once, then MCP):
    (`overmind://capabilities/{capability}`, `inspect_capability_health`,
    `set_active_model`). If none
    exist, run [setup.md](references/setup.md) (`overmind chassis` →
-   `overmind.toml` → `overmind sync`). If nothing is landing, add tracing in the same file —
-   stamp the capability's `id` and use the placement workflow in
-   [references/telemetry.md](references/telemetry.md).
+   `overmind.toml` → `overmind sync`). If nothing is landing and the codebase is Python, add tracing
+   in the same file — stamp the capability's `id` and use the placement workflow in
+   [references/telemetry.md](references/telemetry.md). Any other language gets no
+   tracing: report it as not applicable.
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
    (`create_dataset_from_traces`, or CLI upload).
 1. **Shape it** — author a saved pipeline or an external transformation; publish
