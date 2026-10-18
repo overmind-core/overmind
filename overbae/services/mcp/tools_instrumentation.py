@@ -24,6 +24,11 @@ _REGISTRY_MESSAGE = "No instrumentation registry is available for this project."
 _REGISTRY_INSTRUCTION = (
     "Run `/overmind setup` in the coding agent, then `overmind sync`, and request the plan again."
 )
+_OTLP_INSTRUCTION = (
+    "There is no JavaScript/TypeScript SDK. Add Overmind's OTLP endpoint to the application's "
+    "existing OpenTelemetry exporters and stamp overmind.capability.id on the resource; "
+    "follow references/javascript.md."
+)
 
 
 def _resolve_capability(context: MCPContext, reference: str | None):
@@ -45,6 +50,13 @@ def _plan_sync(
         if capability is not None
         else None
     )
+    if not placements and instrumentation.has_script_anchors(context.project, capability):
+        return GetInstrumentationPlanOutput(
+            summary="JavaScript/TypeScript has no decorator placements.",
+            capability=summary,
+            placements=[],
+            instruction=_OTLP_INSTRUCTION,
+        )
     if not placements:
         return GetInstrumentationPlanOutput(
             summary="Instrumentation plan is unavailable.",
@@ -103,7 +115,8 @@ def register_instrumentation_tools(catalog) -> None:
         (
             "get_instrumentation_plan",
             "Get instrumentation plan",
-            "Return where to place each SDK decorator for a capability, from its scanned anchors.",
+            "Return where to place each Python SDK decorator for a capability, from its scanned anchors. "
+            "JavaScript/TypeScript anchors get no placement; those apps export OTLP.",
             GetInstrumentationPlanInput,
             GetInstrumentationPlanOutput,
             _plan_sync,

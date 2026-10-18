@@ -5,32 +5,29 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from overmind.__main__ import app
-from overmind.chassis import declared_expectations, extract_chassis, reachable_names
+from overmind.chassis import extract_chassis, reachable_names
 from overmind.config import load
 from overmind.utils import convert_json_to_toml
 
 AGENT_SRC = textwrap.dedent(
     """
     import OpenAI from "openai";
-    import { observe } from "overmind";
+    import { withRetry } from "./retry";
 
     export const SYSTEM_PROMPT = `You are a support triage agent.
     Answer in two sentences and cite the order id.`;
 
     const client = new OpenAI();
 
-    export const runTurn = observe(
+    export const runTurn = withRetry(
       async (userText: string) => {
         const context = assembleContext(userText);
         return emitAnswer(await callModel(context));
       },
-      { name: "run_turn", capabilityId: "cap-1", expectations: ["Cites the order id"] },
+      { attempts: 2 },
     );
 
-    export const lookup = observe(async (id: string) => id, {
-      asType: "tool",
-      expectations: ["Returns one order"],
-    });
+    export const lookup = withRetry(async (id: string) => id, { attempts: 1 });
 
     async function callModel(messages: string[]) {
       return client.chat.completions.create({ model: "gpt-5-mini", messages: [] });
@@ -130,13 +127,6 @@ def test_call_graph_follows_arrow_functions_class_fields_and_wrapped_functions(t
     } <= set(chassis.functions)
     assert not any("leaked" in name for name in chassis.functions)
     assert reachable_names("src.agent.Router.route", chassis) >= {"pick", "runTurn", "callModel", "emitAnswer"}
-
-
-def test_declared_expectations_are_read_from_observe_options(tmp_path):
-    _repo(tmp_path)
-    assert declared_expectations(tmp_path) == {
-        "cap-1": [{"expectation": "Cites the order id", "span_name": "run_turn"}],
-    }
 
 
 def test_chassis_cli_selects_the_language(tmp_path, monkeypatch):

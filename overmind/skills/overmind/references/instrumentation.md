@@ -6,8 +6,8 @@ identity, input and output, tool names, and optional `intent`,
 
 ## Use the instrumentation plan
 
-For a JavaScript/TypeScript target the plan's `required_decorator` is an `observe(<function>, {...})`
-wrapper, not a decorator: apply it as [javascript.md](javascript.md#instrument-with-observe-not-decorators) describes.
+A JavaScript/TypeScript anchor has no placement: those applications export OTLP from their
+existing OpenTelemetry setup, as [javascript.md](javascript.md#instrument-with-opentelemetry-not-an-sdk) describes.
 
 Call `get_instrumentation_plan`, optionally with a capability. Each placement
 names a `target` (`file`, `qualname`, `module`, `import_line`), its `kind`

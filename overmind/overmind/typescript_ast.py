@@ -2,7 +2,7 @@
 
 Qualnames follow the Python convention so both languages share the chassis checks:
 ``Class.method``, ``outer.<locals>.inner``, and ``object.member`` for functions held by a named object
-literal. A variable initialised by a call that wraps a function (``const run = observe(async () => ...)``)
+literal. A variable initialised by a call that wraps a function (``const run = withRetry(async () => ...)``)
 is one function named by the variable; a class with a constructor is callable under its own name.
 """
 
@@ -303,35 +303,6 @@ def iter_definitions(root: Node) -> Iterator[tuple[str, str, list[Node]]]:
     found: list[tuple[str, str, list[Node]]] = []
     _collect(root, "", lambda qualname, kind, roots: found.append((qualname, kind, roots)))
     return iter(found)
-
-
-def wrapper_options(roots: list[Node]) -> tuple[str, dict[str, str | list[str] | None]] | None:
-    """``(callee, literal options)`` when a definition is ``name = callee(fn, {options})``. A string or
-    string-array option maps to its text; any other value to ``None``, so a declared-but-dynamic key stays visible."""
-    if len(roots) != 1 or roots[0].type != "call_expression":
-        return None
-    call = roots[0]
-    callee = _callee_name(call.child_by_field_name("function"))
-    arguments = call.child_by_field_name("arguments")
-    options = (
-        next((arg for arg in reversed(arguments.named_children) if arg.type == "object"), None) if arguments else None
-    )
-    if not callee or options is None:
-        return None
-    found: dict[str, str | list[str] | None] = {}
-    for member in options.named_children:
-        if member.type != "pair":
-            continue
-        key = _key_name(member.child_by_field_name("key"))
-        value = member.child_by_field_name("value")
-        if not key or value is None:
-            continue
-        value = _unwrap(value)
-        if value.type == "array":
-            found[key] = [text for item in value.named_children if (text := _literal_text(item)) is not None]
-        else:
-            found[key] = _literal_text(value)
-    return callee, found
 
 
 def source_qualnames(source: str, path: str) -> set[str]:

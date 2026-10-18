@@ -1,8 +1,8 @@
 # Overmind tracing — canonical attribute contract
 
 This is the **source-of-truth contract** for every span attribute the Overmind
-Python SDK emits. The server ingest (`overbae/api/otlp.py`), the JS SDK, and the
-public API docs are reconciled against this file.
+Python SDK emits. The server ingest (`overbae/api/otlp.py`) and the public API docs
+are reconciled against this file.
 
 Rules of the road:
 

@@ -51,13 +51,13 @@ The chassis digest is ground truth, as in Python. What changes:
   extension removed, `/` becomes `.` (`src/agent/run.ts` → `src.agent.run`; `index.ts`
   keeps `index`). Copy every `anchors` qualname verbatim from the digest.
 
-  | Source                                                                           | Qualname                       |
-  | -------------------------------------------------------------------------------- | ------------------------------ |
-  | `function f() {}`, `const f = () => {}`, `const f = observe(() => {...}, {...})` | `<module>.f`                   |
-  | `class C { m() {} }`, `class C { m = () => {} }`                                 | `<module>.C.m`                 |
-  | `const o = { m() {}, n: () => {} }`                                              | `<module>.o.m`, `<module>.o.n` |
-  | function inside function `f`                                                     | `<module>.f.<locals>.inner`    |
-  | `export default () => {}` (unnamed)                                              | `<module>.default`             |
+  | Source                                                                             | Qualname                       |
+  | ---------------------------------------------------------------------------------- | ------------------------------ |
+  | `function f() {}`, `const f = () => {}`, `const f = withRetry(() => {...}, {...})` | `<module>.f`                   |
+  | `class C { m() {} }`, `class C { m = () => {} }`                                   | `<module>.C.m`                 |
+  | `const o = { m() {}, n: () => {} }`                                                | `<module>.o.m`, `<module>.o.n` |
+  | function inside function `f`                                                       | `<module>.f.<locals>.inner`    |
+  | `export default () => {}` (unnamed)                                                | `<module>.default`             |
 
   A class with a constructor is callable under its own name.
 
@@ -88,130 +88,82 @@ The chassis digest is ground truth, as in Python. What changes:
   `server.tool(...)`, a `switch` on the tool-call name). The dispatcher is an anchor,
   not a tool.
 
-## Instrument with `observe`, not decorators
+## Instrument with OpenTelemetry, not an SDK
 
-The `overmind` npm package has no decorators. It re-exports Langfuse's tracing API and
-rewrites each span into Overmind's contract. It is private and not on npm: install it
-from the source the user or the paste names (the built `overmind-js` directory), with
-the repository's own package manager (`bun add <path>`, `pnpm add <path>`,
-`yarn add <path>`, `npm install <path>`). With no named source, leave instrumentation
-pending and say why; scanning and sync are still complete. Confirm the import with the
-project's runtime, for example `bun -e 'import { observe } from "overmind"; console.log(typeof observe)'`.
+Overmind has no JavaScript or TypeScript SDK and no decorators. A JavaScript
+application sends traces to the OTLP endpoint with OpenTelemetry. The instrumentation
+plan returns no placements for these anchors; `get_instrumentation_plan` answers with an
+`instruction` pointing here. Do not install an Overmind package.
 
-Every `observe`, `@overmind.*` and "decorator" step in setup.md maps as follows.
-For a `.ts`/`.js` target, `get_instrumentation_plan` returns the same wrapper in
-`required_decorator` (`<function>` stands for the original function literal) and
-`import { observe } from "overmind";` in `target.import_line`. Apply it as the rows below
-show, and add the `intent`, `expectations` and `referenceTrajectory` the card implies.
+1. **Find the existing OpenTelemetry setup.** Look for `@opentelemetry/sdk-node`,
+   `@opentelemetry/sdk-trace-node`, `@opentelemetry/exporter-trace-otlp-*`, `@vercel/otel`,
+   an `instrumentation.ts` / `instrumentation.js` file, an OpenLLMetry (`@traceloop/*`) or
+   OpenInference (`@arizeai/openinference-*`) instrumentation, or `OTEL_*` variables in the
+   deployment config. With none, leave instrumentation pending and say so in the summary;
+   scanning and sync are still complete.
 
-| Plan `kind`                        | Wrapper                                                                                  |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `entry_point`                      | `observe(fn, { name, capabilityId: "<id>", intent, expectations, referenceTrajectory })` |
-| `workflow` (a mode)                | `observe(fn, { name, asType: "chain", expectations })`                                   |
-| `tool`                             | `observe(fn, { name: "<tool name>", asType: "tool", expectations })`                     |
-| `retrieval`                        | `observe(fn, { name, asType: "retriever", expectations })`                               |
-| `function`, `llm_utilities` helper | `observe(fn, { name, expectations })`                                                    |
+1. **Add Overmind as one more OTLP exporter on that provider.** Keep the existing
+   exporters, processors and instrumentations. Use the package already in the project
+   (`@opentelemetry/exporter-trace-otlp-proto` is the protobuf exporter; add it only when
+   the project has no OTLP/HTTP protobuf exporter). The endpoint takes OTLP/HTTP
+   **protobuf**; JSON and gRPC are rejected.
 
-```ts
-import { observe } from "overmind";
+   ```ts
+   import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
+   import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
-export const handleTicket = observe(
-  async (message: string) => {
-    /* original body, unchanged */
-  },
-  {
-    name: "handleTicket",
-    capabilityId: "<capability id from the placement>",
-    intent: "<card task>",
-    expectations: ["Cites the order id"],
-    referenceTrajectory: ["lookup_order", "issue_refund"],
-  },
-);
-```
+   const overmind = new BatchSpanProcessor(
+     new OTLPTraceExporter({
+       url: `${process.env.OVERMIND_API_URL ?? "https://api.overmindlab.ai"}/api/v1/traces`,
+       headers: { "x-api-key": process.env.OVERMIND_API_KEY ?? "" },
+     }),
+   );
+   // Add `overmind` to the existing spanProcessors list; never replace it.
+   ```
+
+   A project that configures export only through `OTEL_EXPORTER_OTLP_*` already points
+   those variables at another backend: add the processor above in code instead of
+   repointing them. Never write the key into source or a committed file; read
+   `OVERMIND_API_KEY` from the environment and skip the processor when it is unset.
+
+1. **Stamp the capability.** Set `overmind.capability.id` on the provider's resource to the
+   id or slug synced into `overmind.toml` (`resourceFromAttributes({ "overmind.capability.id": "<id>" })`
+   merged into the existing resource). With several capabilities in one process, stamp
+   `overmind.capability.id` as a span attribute on each capability's root span instead.
+
+1. **Mark the run.** Scoring needs a unit and a terminal: the root span of one execution
+   carries `overmind.span.type = "entry_point"` and `overmind.unit_kind = "run"`, and the
+   span holding the answer `overmind.delivery = "true"`. Set them where the application
+   already starts that span; add a span only when none exists. The attributes Overmind
+   reads, including the OTel GenAI and OpenLLMetry conventions that provider
+   instrumentations already emit, are in the attribute table on the Overmind docs'
+   observability page.
+
+1. **Model calls and tools** need nothing extra when a provider instrumentation emits
+   them. Do not wrap provider clients.
 
 Rules that keep the chassis, the sync and live scoring consistent:
 
-- **Keep the symbol's name and put the body inline.** Replace the definition with
-  `const <same name> = observe(<the original function literal>, {...})`. Callers, the
-  card's anchors and the qualname stay valid; types and behavior do not change. A
-  wrapper around a function reference (`observe(impl, {...})`) is not in the
-  chassis inventory and sync does not read its options. Define the wrapper before
-  module-level code that calls it at load time (a `const` is not hoisted).
-
-- **Declare at module level or as an object member.** `overmind chassis` and
-  `overmind sync` read `const x = observe(() => {...}, { ... })` and
-  `{ x: observe(() => {...}, { ... }) }` members. A wrapper inside a function, a
-  class field or a method call is not read: move the logic into a module-level
-  wrapped function that the method calls.
-
-- **Options must be literals.** `expectations`, `capabilityId` and `asType` as string
-  or array-of-string literals. A variable or spread is invisible to sync and is reported
-  as dynamic.
-
-- **`name` is the span name.** Set it to the symbol name, and for tools to the exact
-  tool name in `tool_spec`, because trajectory metrics and `referenceTrajectory` match
-  on it. In the toml's `eval_matrix`, `span_name` is that `name`.
-
-- **Entry points only get `capabilityId`.** Descendants inherit it. Do not stack two
-  wrappers on one function; use the most specific kind, entry point first.
-
-- **Expectation wording** follows setup.md: one checkable sentence each, under 1000
-  characters, at most 5 per wrapper, no values or secrets.
-
-- **Input capture.** `observe` records the call's arguments and the return value. For a
-  method whose request lives on the instance, pass it as an argument of the wrapped
-  function instead; never record a secret or a client handle.
-
-- **Model calls.** The package does not patch provider clients. Wrap each call in a
-  small function with `asType: "generation"` and report what the provider returned:
-
-  ```ts
-  import { observe, updateActiveObservation } from "overmind";
-
-  export const callModel = observe(
-    async (messages: ChatMessage[]) => {
-      const reply = await client.chat.completions.create({ model: MODEL, messages });
-      updateActiveObservation(
-        {
-          model: MODEL,
-          usageDetails: { input: reply.usage?.prompt_tokens, output: reply.usage?.completion_tokens },
-        },
-        { asType: "generation" },
-      );
-      return reply;
-    },
-    { name: "callModel", asType: "generation" },
-  );
-  ```
-
-  The Vercel AI SDK's `experimental_telemetry` is not an Overmind integration; use the
-  wrapper.
-
-- **Initialise once**, at the process entry, before the first wrapped call:
-  `import { init } from "overmind"; init();`. It reads `OVERMIND_API_KEY`,
-  `OVERMIND_API_URL`, `OVERMIND_CAPABILITY_ID` and `OVERMIND_PROJECT_ID`; with no key,
-  tracing stays off. Never write the key into source or a committed file. For a library
-  with no process entry, change nothing and report that the host must call `init()`.
-  Short-lived scripts and serverless handlers `await flush()` before exiting.
-
-- **Sessions.** `propagateAttributes({ sessionId }, fn)` groups spans into a
-  conversation (`conversation.id`).
-
-After wrapping, run `python -m overmind sync` through the same runner, as in setup.md,
-and read `eval_preload.counts.expectations`. Zero after wrapping means the entry
-point's `capabilityId` is missing or not the synced id, or its options are not literals.
+- **Change no behaviour.** The edit is limited to the telemetry bootstrap file, the run's
+  root span attributes and the dependency manifest, with the repository's own package
+  manager.
+- **Expectations have no code home.** There are no decorators to carry them, so declare
+  none; the seeded checks and the toml's `eval_matrix` entries still apply. Say so in the
+  summary.
+- **Short-lived scripts and serverless handlers** call `forceFlush()` or `shutdown()` on the
+  provider before exiting so the batch processor sends the spans.
+- **Sessions.** Put `conversation.id` on every span of a multi-turn exchange to group them.
 
 ## Verification
 
 Same approval gate and server-side check as [telemetry.md](telemetry.md). Differences:
-stamp the correlation with `propagateAttributes({ sessionId: <correlation> }, () => run())`,
-run through the project's own runtime and package manager, and `await flush()` or
-`shutdown()` before the process exits so the batch exporter sends the spans. A
-typecheck (`tsc --noEmit`, or the repository's own script) is the local check to report
-beside the changed files.
+stamp the correlation as the `conversation.id` span attribute on the run's spans, run
+through the project's own runtime and package manager, and flush or shut down the
+provider before the process exits so the spans are sent. A typecheck (`tsc --noEmit`, or
+the repository's own script) is the local check to report beside the changed files.
 
 ## Progress wording
 
-The stage "Instrument capabilities" is complete when the `observe` wrappers are applied
-and synced. Name the changed files as setup.md does; say "wrappers" where it says
-"decorators".
+The stage "Instrument capabilities" is complete when the Overmind exporter and capability
+resource are in place and the run boundary is marked. With no existing OpenTelemetry it is
+reported as pending, not as complete. Name the changed files as setup.md does.

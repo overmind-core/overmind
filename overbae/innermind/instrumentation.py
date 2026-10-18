@@ -23,15 +23,6 @@ DECORATORS = {
     "retrieval": "@overmind.retrieval()",
     "function": "@overmind.observe()",
 }
-# JavaScript/TypeScript wrap the function: `<function>` stands for the original function literal.
-SCRIPT_WRAPPERS = {
-    "entry_point": 'observe(<function>, {{ name: "{name}", capabilityId: "{capability_id}" }})',
-    "workflow": 'observe(<function>, {{ name: "{name}", asType: "chain" }})',
-    "tool": 'observe(<function>, {{ name: "{name}", asType: "tool" }})',
-    "retrieval": 'observe(<function>, {{ name: "{name}", asType: "retriever" }})',
-    "function": 'observe(<function>, {{ name: "{name}" }})',
-}
-SCRIPT_IMPORT = 'import { observe } from "overmind";'
 SPAN_FIELDS = (
     "span_id",
     "trace_id",
@@ -67,31 +58,30 @@ def target(qualname: str, file_ref: str) -> dict[str, str]:
         qualname[len(module) + 1 :] if module and qualname.startswith(module + ".") else qualname
     )
     symbol = local.split(".")[0] if local else ""
-    if is_script_file(file):
-        import_line = SCRIPT_IMPORT
-    else:
-        import_line = f"from {module} import {symbol}" if module and symbol else ""
     return {
         "file": file,
         "qualname": qualname,
         "module": module,
-        "import_line": import_line,
+        "import_line": f"from {module} import {symbol}" if module and symbol else "",
     }
 
 
-def required_decorator(kind: str, qualname: str, file: str, capability_id: str) -> str:
-    if is_script_file(file):
-        name = qualname.rsplit(".", 1)[-1]
-        return SCRIPT_WRAPPERS[kind].format(name=name, capability_id=capability_id)
-    return DECORATORS[kind].format(capability_id=capability_id)
+def _anchors(capability: Capability) -> list[dict[str, Any]]:
+    card = (capability.improvement_metadata or {}).get("capability_card") or {}
+    return [a for a in card.get("anchors") or [] if isinstance(a, dict) and a.get("qualname")]
+
+
+def _is_script_anchor(anchor: dict[str, Any]) -> bool:
+    return is_script_file(str(anchor.get("file") or "").split("#", 1)[0])
 
 
 def placements(capability: Capability) -> list[dict[str, Any]]:
-    card = (capability.improvement_metadata or {}).get("capability_card") or {}
+    """Decorator placements for Python anchors. JavaScript/TypeScript has no SDK: its spans
+    arrive over OTLP, so its anchors carry no placement."""
     capability_id = str(capability.id)
     rows = []
-    for anchor in card.get("anchors") or []:
-        if not isinstance(anchor, dict) or not anchor.get("qualname"):
+    for anchor in _anchors(capability):
+        if _is_script_anchor(anchor):
             continue
         kind = anchor.get("kind") if anchor.get("kind") in DECORATORS else "function"
         qualname = str(anchor["qualname"])
@@ -103,21 +93,28 @@ def placements(capability: Capability) -> list[dict[str, Any]]:
                 "capability_id": capability_id,
                 "kind": kind,
                 "target": placement,
-                "required_decorator": required_decorator(
-                    kind, qualname, placement["file"], capability_id
-                ),
+                "required_decorator": DECORATORS[kind].format(capability_id=capability_id),
             }
         )
     return sorted(rows, key=lambda row: (row["kind"] != "entry_point", row["target"]["file"]))
 
 
+def _capabilities(project, capability: Capability | None) -> list[Capability]:
+    if capability is not None:
+        return [capability]
+    return list(Capability.objects.filter(project=project).current().order_by("name"))
+
+
 def plan(project, capability: Capability | None = None) -> list[dict[str, Any]]:
-    capabilities = (
-        [capability]
-        if capability is not None
-        else list(Capability.objects.filter(project=project).current().order_by("name"))
+    return [row for cap in _capabilities(project, capability) for row in placements(cap)]
+
+
+def has_script_anchors(project, capability: Capability | None = None) -> bool:
+    return any(
+        _is_script_anchor(anchor)
+        for cap in _capabilities(project, capability)
+        for anchor in _anchors(cap)
     )
-    return [row for cap in capabilities for row in placements(cap)]
 
 
 def build_spans(project_id, payload: list[dict]) -> tuple[list[Span], list[dict]]:

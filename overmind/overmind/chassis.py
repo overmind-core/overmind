@@ -181,9 +181,7 @@ def stamp_capability_cards(data: dict[str, Any], repo_root: str | Path, language
 
 
 _ANSWER_DECORATORS = {"observe", "entry_point", "workflow"}
-# The TypeScript SDK wraps a function instead of decorating it.
-_ANSWER_WRAPPERS = {"observe", "entryPoint", "workflow"}
-_STEP_TYPES = {"tool", "tool_call", "retrieval", "retriever", "TOOL", "RETRIEVAL"}
+_STEP_TYPES = {"tool", "tool_call", "retrieval", "TOOL", "RETRIEVAL"}
 
 
 @dataclass
@@ -238,46 +236,13 @@ def _declared_on(func: ast.FunctionDef | ast.AsyncFunctionDef, qualname: str) ->
     return None
 
 
-def _declared_in_typescript(source: bytes, rel_path: str, module: str) -> list[_Declared]:
-    declared: list[_Declared] = []
-    for qualname, kind, roots in typescript_ast.iter_definitions(typescript_ast.parse(source, rel_path)):
-        wrapper = typescript_ast.wrapper_options(roots) if kind == "function" else None
-        if wrapper is None or wrapper[0] not in _ANSWER_WRAPPERS:
-            continue
-        options = wrapper[1]
-        if options.get("asType") in _STEP_TYPES or options.get("type") in _STEP_TYPES:
-            continue
-        raw = options.get("expectations")
-        expectations = [text.strip() for text in raw if text.strip()] if isinstance(raw, list) else []
-        capability_id = options.get("capabilityId") or options.get("capability_id") or ""
-        if not expectations and not capability_id:
-            continue
-        declared.append(
-            _Declared(
-                qualname=f"{module}.{qualname}" if module else qualname,
-                span_name=qualname if "name" not in options else options["name"] or "",
-                expectations=expectations,
-                capability_id=capability_id if isinstance(capability_id, str) else "",
-            )
-        )
-    return declared
-
-
-def declared_expectations(repo_root: str | Path, language: str | None = None) -> dict[str, list[dict[str, str]]]:
+def declared_expectations(repo_root: str | Path) -> dict[str, list[dict[str, str]]]:
     """Capability id -> the ``expectations=`` its decorators declare, each with the span it
     is declared on. A decorator without ``capability_id`` belongs to every entry point
     whose call graph reaches it."""
-    language = _scan_language(repo_root, language)
-    chassis = extract_chassis(str(repo_root), language)
+    chassis = extract_chassis(str(repo_root), PYTHON)
     declared: list[_Declared] = []
-    for file, rel_path in source_files(repo_root, language):
-        if language == TYPESCRIPT:
-            try:
-                if not (typescript_ast.is_bundle(rel_path) or file.stat().st_size > typescript_ast.MAX_SOURCE_BYTES):
-                    declared.extend(_declared_in_typescript(file.read_bytes(), rel_path, module_dotted_path(rel_path)))
-            except OSError:
-                pass
-            continue
+    for file, rel_path in source_files(repo_root, PYTHON):
         try:
             tree = ast.parse(file.read_text(encoding="utf-8", errors="ignore"))
         except (OSError, SyntaxError):
