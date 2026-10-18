@@ -45,15 +45,48 @@ Choose the next action from the evidence: refresh the repository map, instrument
 an uncovered entry point, prepare data, repair evaluation coverage or investigate
 a measured failure. Do not automatically start those mutations during a map review.
 
+## Read capability state
+
+A capability is the project-scoped product AI surface; use the word capability in
+MCP calls, with its eval matrix rows and scored traces underneath it.
+`overmind://capabilities/{capability}` returns safe metadata: name, slug, stored
+status, model, active dataset, active eval set, active model, selected benchmark and
+ready trained benchmark candidates. A reference may be a name, slug or id where the
+tool schema accepts it. `get_instrumentation_plan` with no capability returns
+placements for every current capability and `inspect_capability_health` reads one.
+The resource may report `current`, `leftover` or `deleted`; workflow tools resolve
+active current capabilities, and MCP does not reactivate or remove a capability.
+
 ## Changes and handoffs
 
 Repository discovery runs locally through the installed Overmind setup workflow
-and `overmind sync`; MCP cannot inspect an arbitrary Git provider or edit files.
-If local tooling is unavailable, report that handoff and retain the current map.
+([local repository setup](../overmind/SKILL.md#local-repository-setup)) and
+`overmind sync`; MCP cannot inspect an arbitrary Git provider, create capability
+cards or edit files. If the project has no instrumentation plan or capability data,
+run local `/overmind setup`, preserve existing project and capability ids and
+configuration, run `overmind sync`, then re-read the capability resource and request
+`get_instrumentation_plan`. Never invent a capability id. If local tooling is
+unavailable, report that handoff and retain the current map.
 
 `benchmark_model` selects the incumbent for future comparisons; `active_model`
 controls live serving. Preserve both during a map review. Use their respective
 mutation tools only for the user's requested selection.
+
+- `set_active_model` checks a ready deployment, wakes it and verifies inference
+  before switching the capability alias. Poll the returned `model_activation` job
+  with `get_job`; the old selection stays active until the job is `complete`. Read
+  the capability resource for activation progress, previous selection and successful
+  application traffic timestamps. Repeat the selection to retry a failed activation;
+  omitting the deployment clears routing and cancels a pending switch. Fine-tune
+  rollout uses `get_model_swap_prompt` only after a deployed fine-tune is ready, and
+  applying that prompt stays a human action
+  ([Inference](../overmind-inference/SKILL.md)).
+- `set_benchmark_model` selects a ready trained deployment for future incumbent
+  evaluations; read `benchmark_candidates` on the capability resource for the
+  choices, and omit `deployment` to use the codebase incumbent. It is independent of
+  `set_active_model` and does not change serving. The Console exposes the same
+  selection on the capability's Models tab, not in training setup. New training jobs
+  pin the selection; changing it does not retarget existing jobs.
 
 Return the capability identities, observed coverage, provenance limitations and
 the next useful action. For a visual view, open the project's `console_url`;

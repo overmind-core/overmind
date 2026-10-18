@@ -2,7 +2,7 @@
 
 Read this when applying model-training-engineering to Overmind. Discover current
 schemas from the connected catalogue/native prompts; do not copy obsolete API calls.
-Use installed overmind-datasets, overmind-training and their model-workflows reference
+Use installed overmind-datasets, overmind-training (its "Develop models from data" section)
 for detailed contracts. This reference covers cross-stage failure boundaries.
 
 ## Resolve and preserve

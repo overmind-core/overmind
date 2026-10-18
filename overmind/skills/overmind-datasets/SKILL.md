@@ -23,7 +23,7 @@ prediction unit, connected grouping, slices and success metric with
 `save_training_plan`. After Workshop publication and partitioning, save a
 superseding snapshot with exact versions. Keep evidence and uncertainty
 attributable; Training consumes the identities through plan-bound full runs or optional pilot
-experiments. See [model workflows](../overmind/references/model-workflows.md).
+experiments. See [Develop models from data](../overmind-training/SKILL.md#develop-models-from-data).
 
 Before uploading, inspect the local file's record boundaries, fields, value types
 and expected record count. A JSON wrapper is not itself a dataset row: identify
