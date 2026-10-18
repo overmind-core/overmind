@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 import sys
@@ -135,7 +134,7 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
             navigator.clipboard.writeText = async text => { window.copiedSnippet = text; };
         }""")
         snippets = {}
-        for language in ("cURL", "Python (requests)"):
+        for language in ("cURL", "Python (TypeSafe SDK)"):
             region = page.get_by_role("region", name=f"{language} API example")
             code = region.locator("code")
             source = code.inner_text()
@@ -164,30 +163,33 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     }""")
     console.save_evidence("model-api-examples-mobile")
     subprocess.run(["sh", "-n"], input=snippets["cURL"], text=True, check=True)
-    # Run the copied Python with a fake transport, including one asynchronous poll.
-    (tmp_path / "requests.py").write_text("""
-import json
+    (tmp_path / "typesafe_sdk.py").write_text("""
 import os
-class Response:
-    def __init__(self, body): self.body = body
-    def raise_for_status(self): pass
-    def json(self): return self.body
-
-def post(url, *, headers, json, timeout):
-    assert url.endswith(os.environ["EXPECTED_ENDPOINT"])
-    assert headers == {"Authorization": "Bearer example-key"}
-    assert json["decisions"] == __import__("json").loads(os.environ["EXPECTED_DECISIONS"])
-    assert json["request_key"]
-    return Response({"id": "receipt-1", "status": "running"})
-
-def get(url, *, headers, timeout):
-    assert url.endswith("/api/inference-requests/receipt-1/")
-    return Response({"id": "receipt-1", "status": "succeeded", "result": {
-        "predictions": [{"options": ["didn't survive", "survived"], "probabilities": [0.2, 0.8]}]
-    }})
+class Choice:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+class _Answer:
+    choice = "survived"
+    probabilities = {"didn't survive": 0.2, "survived": 0.8}
+class _Response:
+    choices = {"decision": _Answer()}
+class TypeSafeClient:
+    def __init__(self, *, api_key, base_url, model, timeout, compression):
+        assert api_key == "example-key"
+        assert base_url.endswith("/api")
+        assert model == os.environ["EXPECTED_MODEL"]
+        assert compression is False
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+    def system_one(self, *, state, questions):
+        assert state == os.environ["EXPECTED_STATE"]
+        assert questions["decision"].kwargs["instructions"] == os.environ["EXPECTED_QUESTION"]
+        return _Response()
 """)
     sample = tmp_path / "example.py"
-    sample.write_text(snippets["Python (requests)"])
+    sample.write_text(snippets["Python (TypeSafe SDK)"])
     executed = subprocess.run(
         [sys.executable, str(sample)],
         text=True,
@@ -195,14 +197,14 @@ def get(url, *, headers, timeout):
         check=True,
         env={
             **os.environ,
+            "PYTHONPATH": str(tmp_path),
             "OVERMIND_API_KEY": "example-key",
-            "EXPECTED_ENDPOINT": f"/api/deployed-models/{deployed.pk}/inference/",
-            "EXPECTED_DECISIONS": json.dumps(
-                [{k: decision[k] for k in ("state", "question", "kind", "options")}]
-            ),
+            "EXPECTED_MODEL": deployed.model_id,
+            "EXPECTED_STATE": decision["state"],
+            "EXPECTED_QUESTION": decision["question"],
         },
     )
-    assert "'label': 'survived'" in executed.stdout
+    assert "survived" in executed.stdout
 
     varied = Dataset.objects.create(project=project, name="Ordinal labels", intent="train")
     long_label = "A" * 150
@@ -271,7 +273,9 @@ def get(url, *, headers, timeout):
         lambda: console._page.get_by_role("option", name="Score question 1", exact=True).click()
     )
     console._browser.call(
-        lambda: console._page.get_by_role("region", name="Python (requests) API example").wait_for()
+        lambda: console._page.get_by_role(
+            "region", name="Python (TypeSafe SDK) API example"
+        ).wait_for()
     )
     console.goto(route)
     console._browser.call(

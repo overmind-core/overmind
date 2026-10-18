@@ -403,7 +403,7 @@ def test_decision_deployment_without_training_data_never_invents_an_example(cons
     console.goto(f"/inference/{deployed.pk}?projectId={project}")
     console.sees(deployed.model_id)
     console.press("View API snippet")
-    console.sees("Typed decision probabilities.")
+    console.sees("TypeSafe systemone. Point the SDK base URL at this API.")
     console.sees(
         "A complete example input is unavailable for this model’s pinned training version."
     )
