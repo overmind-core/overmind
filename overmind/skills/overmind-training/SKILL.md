@@ -51,7 +51,9 @@ optional capability. Resolve datasets with `list_datasets`; inspect and query
 the exact train and held-out eval cells. Inspect whole-frame task families and
 workshop findings rather than assuming a sample describes the whole corpus.
 
-Use `get_model_catalog` for initial model discovery, then
+Use `get_model_catalog` for initial model discovery (it is dataset-independent and
+reports the active backend, tier, context limits, batch bounds, training methods,
+tool-calling support and disabled rows), then
 `check_finetune_readiness` for the selected dataset. A capability is optional. A chat job always needs its confirmed eval set; held-out evaluation data is required for the before/after evaluations the user selects. Native decision training has a separate native suite plan. Use the
 returned requirements to identify technical blockers. Quality findings,
 overlap and incomplete semantic reviews remain visible advisory warnings. Report

@@ -61,7 +61,7 @@ active current capabilities, and MCP does not reactivate or remove a capability.
 ## Changes and handoffs
 
 Repository discovery runs locally through the installed Overmind setup workflow
-([local repository setup](../overmind/SKILL.md#local-repository-setup)) and
+([local repository setup](../overmind/references/setup.md)) and
 `overmind sync`; MCP cannot inspect an arbitrary Git provider, create capability
 cards or edit files. If the project has no instrumentation plan or capability data,
 run local `/overmind setup`, preserve existing project and capability ids and

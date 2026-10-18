@@ -16,6 +16,44 @@ Resolve the project with `list_projects`; account connections pass `project_id`
 on every operation. Read `overmind://interface/current` for the connected contract.
 Names are not unique: use returned dataset and cell UUIDs.
 
+## Intent and contracts
+
+A dataset is a landed source and a linear chain of cells; every cell that ran is a
+**version** (1.0 is the source, then 1.1, 1.2, …). The dataset has an **intent**
+chosen by the user and a **capability**, and every version carries measured
+contracts (`list_datasets` shows the active version's):
+
+- **`train`**: a `messages` column whose every row is a chat transcript with an
+  assistant turn (`tools` optional), or a native `decision` with preserved
+  probability/ordinal targets.
+- **`eval`**: an `input` on every row plus an `expected_output` column with at least
+  one reference.
+- **`explore`**: data exploration, without automatic train/eval preparation.
+- **`pending`**: no user purpose yet. Obtain their choice of Training, Eval or Data
+  exploration and set it with `update_dataset`; never infer intent from rows. A
+  leftover stored `ft` is **train**; there is no `ft` or `surface` intent.
+
+Set intent at upload (`overmind dataset upload FILE --json --intent train|eval`), at
+create (`create_dataset_from_traces` / `_failures`), or later with
+`update_dataset(intent="train")` if no version has been used. `split` on
+`create_dataset_from_traces`, or `--split PERCENT` on upload, lands one selection as
+a train dataset and an eval dataset with disjoint rows. There is no reingest tool and
+no dual-intent dataset.
+
+Eval runs (`run_evaluation`) and optimizer experiments (`start_optimizer`) use an
+**eval** version; `train` and `pending` are refused. Fine-tuning (`start_finetune`)
+needs a **train** version and, for a chat model, a user-confirmed eval set; a separate
+**eval** dataset is needed only when chat judge evaluations are requested. Native
+decision comparisons use their frozen calibration/final plan in place of the eval set.
+
+A use freezes the version and everything before it, and starts a new major (2.0). A
+used cell freezes intent: derive a separate dataset or create role-specific partitions
+instead of retagging a used chain. A contract is measured, never declared.
+Capability prompt/schema mismatches, incomplete quality reviews and train/eval overlap
+are advisory warnings, not technical-format errors; inspect cell `warnings` and
+`readiness.quality_reason`. A passing format contract is not a claim that the answers
+are supported by the inputs.
+
 ## Sources and inspection
 
 For a training task, retain source-bound input availability, target meaning,
@@ -92,6 +130,9 @@ The CLI marks a saved upload state as `state_scope=at_publication`; it is not
 current landing progress. Use `get_job`, or `--wait` for an observed terminal state.
 
 Inspect with `inspect_dataset`, `query_dataset` and `explore_dataset`.
+`inspect_dataset` pages cells with `cell_offset`/`cell_limit` and reports omitted
+detail; an absent cached profile is unmeasured and can be requested with
+`explore_dataset`.
 `query_dataset` returns at most 100 rows and 32 KiB of JSON. On
 `query_result_too_large`, select smaller columns, aggregate, or export the exact
 cell; values are not clipped. Mixed scalars and precision-sensitive integers
@@ -260,8 +301,15 @@ Never use final evaluation members for development selection.
 
 The Console opens with a project dataset table. Selecting a row opens its
 step-by-step cells; the folder button reveals compact project dataset navigation.
-There is no Workshop chat. Author through MCP. Local exports use
-`overmind://dataset-export`.
+There is no Workshop chat. Author through MCP.
+
+MCP does not carry export bytes. Read `overmind://dataset-export`, then run
+`overmind dataset export DATASET --json` locally, optionally with
+`--format jsonl|csv`, `--cell` or `--output PATH`. Use the dataset id supplied by
+MCP; the CLI does not resolve names, uses the server filename when no output path is
+given, and refuses overwrite. To export traces, call `create_dataset_from_traces`,
+wait for landing, author any requested transformations, then export. There is no
+`export_trace` MCP tool.
 
 ## Preparation execution and corrections
 

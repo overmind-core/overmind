@@ -80,7 +80,9 @@ sources, with no JavaScript, TypeScript or other-language application code. If i
 anything else, including a mixed codebase, do not allow tracing: set up no telemetry
 or instrumentation, add no OTLP exporter, apply no edits, and report it as not
 applicable with the language you found. A plan that returns anchors for such a
-repository does not override this. For a requested change in a
+repository does not override this
+([JavaScript](../overmind/references/javascript.md#no-instrumentation)). Reading
+existing traces stays available. For a requested change in a
 Python repository, prefer `instrument-repository` and the server's
 `get_instrumentation_plan`. Live scoring reads what the SDK decorators write on each
 span: the capability identity, input and output, tool names, and optional `intent`,
@@ -96,7 +98,7 @@ or `function`) and the exact `required_decorator`. Apply each decorator verbatim
 `target.import_line`. If the plan has `human_action` or no placements, report its
 instruction and stop this attempt; do not guess anchors or decorator targets. When
 the registry is unavailable, run local `/overmind setup` followed by `overmind sync`
-([local repository setup](../overmind/SKILL.md#local-repository-setup)), then request
+([local repository setup](../overmind/references/setup.md)), then request
 the plan again in a new attempt.
 
 When subagents are available and repository policy permits coding delegation, group
@@ -112,7 +114,8 @@ def handle(message: str) -> str: ...
 ```
 
 Declare the expectations a span's own contract implies on its decorator;
-`/overmind setup` writes them from the capability card. Judge criteria live only on
+`/overmind setup` writes them from the capability card and decorates every tool,
+retrieval step, mode and helper the card names, not only the plan's anchors. Judge criteria live only on
 decorators, and deterministic checks live in the toml's `eval_matrix`. After changing
 decorator expectations, run `overmind sync`: it copies the expectations on entry
 points, workflows and plain `observe` spans into the capability's Default eval set

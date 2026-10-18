@@ -49,7 +49,7 @@ or plateau checkpoint; do not extend the search budget without authorization.
 Hard rules for every experiment:
 
 1. **Eval intent only.** The chosen dataset cell must fit the **eval** contract (see
-   [dataset contracts](../overmind/SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)).
+   [dataset contracts](../overmind-datasets/SKILL.md#intent-and-contracts)).
    Train and pending datasets are refused.
 1. **The server always holds the dataset.** The experiment uses the chosen cell and
    the loop pulls that version to `.overmind/datasets/<cell_id>.jsonl`. A JSONL path

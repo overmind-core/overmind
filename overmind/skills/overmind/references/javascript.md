@@ -98,7 +98,7 @@ its code or dependency manifest. `get_instrumentation_plan` returning anchors fo
 capabilities does not override this.
 
 - Skip setup.md's **Instrument** stage and the verification run in
-  [telemetry.md](telemetry.md). Scanning, conversion and both syncs still apply, so the
+  [Observability](../../overmind-observability/SKILL.md). Scanning, conversion and both syncs still apply, so the
   capabilities and the toml's `eval_matrix` checks exist; there are no decorator
   expectations.
 - Report "Instrument capabilities" as not applicable, naming the language found. Do not

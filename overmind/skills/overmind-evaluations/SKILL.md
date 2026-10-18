@@ -76,7 +76,7 @@ from three places:
 enabled project checks that fit its spans, and activates it when the capability has
 none. An **eval run** scores one dataset cell with a frozen copy of the rows. The
 first sync that writes the toml checks comes from the local setup workflow in the
-[overmind skill](../overmind/SKILL.md#local-repository-setup), which then decorates
+[overmind skill](../overmind/references/setup.md), which then decorates
 the code with `expectations` and syncs again; that second sync is what puts the
 code's expectations into the Default set.
 
@@ -152,8 +152,7 @@ new run to change either. Pass an approved judge choice to `start_finetune` as
 
 The dataset's intent must be **eval** and the chosen cell must fit: eval runs and
 optimizer experiments refuse `train` and `pending` datasets (see the
-[dataset contracts](../overmind/SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)
-and the [Datasets skill](../overmind-datasets/SKILL.md)). The run uses the version it
+[dataset contracts](../overmind-datasets/SKILL.md#intent-and-contracts)). The run uses the version it
 read, which freezes it.
 
 Call `check_evaluation_readiness` with the dataset UUID, chosen cell UUID, optional
