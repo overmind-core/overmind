@@ -57,6 +57,15 @@ eval set, and the same train and eval cells. A model that is not in
    dataset semantic analysis, dataset heuristics, or an unknown capability task.
    Uncached capability classification may call an LLM. Unknown capability tasks
    leave models ungraded rather than substituting the dataset's task.
+1. For a chat (non-decision) model, confirm the eval metrics with the user before
+   any paid preparation or launch; native decisions are exempt. With a repository
+   scan, page the capability's active eval set to the end, show its rows once and
+   ask for confirmation. With only an uploaded dataset, `query_dataset` at least
+   the first 20 rows of the train cell, draft metrics that fit them, show them
+   with their evidence, and after confirmation create them with
+   `create_eval_matrix_row` and `create_eval_set` (no capability), then pass the
+   set as `eval_set`. Full procedure: the `overmind-training` skill, "Confirm the
+   metrics".
 1. Call `estimate_finetune` for each approved base model when cost or duration
    matters.
 1. For Modal, after selecting the model and context, call `prepare_training_data`

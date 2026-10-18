@@ -49,6 +49,47 @@ Read `benchmark_model` on the capability when comparing with an incumbent.
 existing jobs. Use it only for a requested benchmark change. New jobs pin their
 benchmark selection and readable dataset versions.
 
+## Confirm the metrics
+
+Before any paid preparation or `start_finetune` for a chat (non-decision) model,
+the user must have confirmed the eval metrics the run is judged with. Native
+decision training is exempt: it uses its own frozen native suite plan.
+
+Metrics are the rows of one eval set. Show them once, as a list of each row's name,
+type (`llm` sentence or `deterministic` check) and what it grades, then ask for
+confirmation. One confirmation covers a multi-model sweep of the same data. Do not
+start until the user answers; a change request restarts this section for the
+changed rows only.
+
+- **Repository scan.** The capability's active eval set already holds the metrics.
+  Read `overmind://capabilities/{capability}` for `eval_preload`, then page
+  `overmind://eval-sets/{eval_set}` (`limit` up to 100, follow `next_offset` until
+  null) so the list is complete. Show them as they are and ask for confirmation.
+  Do not recreate the set.
+- **Uploaded dataset only.** There is no active set and the dataset carries no
+  metrics. Do not launch without creating them:
+  1. Inspect at least the first 20 rows with `query_dataset` on the exact train
+     cell, and more when the first rows do not show the task's variety. Report
+     the task, input shape, answer shape and failure modes you observed. Use
+     `inspect_dataset` for whole-frame profile facts rather than assuming the
+     sample describes the corpus.
+  1. Draft metrics that fit what the rows show: one checkable sentence per `llm`
+     row about the answer, and a `deterministic` row only for a rule the rows
+     support (valid JSON, required keys, exact label set). Keep `span_type` blank
+     or `llm_call`: over a dataset only those rows score the answer, and tool,
+     timing and cost checks abstain. Never invent a rule the sampled rows do not
+     support or put row values or secrets in a sentence.
+  1. Show the drafted metrics with the evidence rows that motivated each one and
+     ask for confirmation. Create nothing before the user answers.
+  1. After confirmation, call `create_eval_matrix_row` per metric with no
+     `capability`, then `create_eval_set` with those row ids and no capability.
+     Pass the set as `eval_set` to `check_finetune_readiness`, `estimate_finetune`
+     and `start_finetune`. Rows cannot be edited: `delete_eval_matrix_row`, then
+     create the replacement.
+
+Held-out eval data is still required for the chat evaluations the user selects;
+confirming metrics does not replace it.
+
 ## Size and price the run
 
 For Modal training, call `prepare_training_data` for the chosen model, context
