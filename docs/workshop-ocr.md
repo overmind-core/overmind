@@ -14,7 +14,9 @@ confident words. Script selection requires Tesseract script confidence above 1,
 matching its [script acceptance rule](https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/osdetect.cpp).
 Text-based language selection requires at least 80 recognised characters and a
 detector score of at least 0.9. That score is not a calibrated accuracy probability.
-Short or ambiguous text remains explicitly uncertain. It is not
+Unsupported script guesses remain recorded and use English for the first pass;
+strong text evidence can then select a supported language. A script guess alone
+does not reject the document. Short or ambiguous text remains explicitly uncertain. It is not
 an assurance of OCR quality, and mixed-language pages need review. No provider
 calls or downloaded models run during extraction. Language models ship in the
 runtime image; their checksums and the actual selected languages are retained.

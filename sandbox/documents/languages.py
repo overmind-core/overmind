@@ -32,7 +32,7 @@ SCRIPT_LANGUAGES = {
     "Hangul": ["kor"],
     "Greek": ["ell"],
 }
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 
 
 def validate_languages(value) -> list[str]:

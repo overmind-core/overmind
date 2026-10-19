@@ -169,9 +169,7 @@ def _recognize(path, engine, timeout):
         if confidence is None or confidence <= 1:
             script = None
         if script and script not in SCRIPT_LANGUAGES:
-            raise OcrError(
-                f"Automatic OCR does not support the detected {script} script. Select supported languages explicitly or extract externally."
-            )
+            detection["fallback_reason"] = "unsupported_script"
         selected = [x for x in SCRIPT_LANGUAGES.get(script, ["eng"]) if x in available]
         if not selected:
             raise OcrError("Language data for the detected script is unavailable on this worker.")

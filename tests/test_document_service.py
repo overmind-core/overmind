@@ -227,3 +227,16 @@ def test_old_parser_clients_keep_english_ocr_without_internal_checkpoint_frames(
         progress.append(value["progress"])
     assert any(value.get("stage") == "ocr" for value in progress)
     assert not any("ocr_checkpoint" in value for value in progress)
+
+
+def test_unsupported_script_guess_preserves_evidence_and_extracts():
+    path = Path(__file__).parent / "fixtures/documents/unsupported-script.pdf"
+    rows, metadata = documents.extract(path, filename=path.name)
+    ocr = metadata["ocr"]
+    detection = ocr["language_detection"]["1"]
+    assert detection["script"] == "Fraktur"
+    assert detection["fallback_reason"] == "unsupported_script"
+    assert detection["language"] == "es"
+    assert detection["status"] == "detected"
+    assert "spa" in ocr["languages"]
+    assert "Bono" in " ".join(row["text"] for row in rows)
