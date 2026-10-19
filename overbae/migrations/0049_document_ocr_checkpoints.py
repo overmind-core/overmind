@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="dataset",
             name="ocr_languages",
-            field=models.JSONField(blank=True, default=list),
+            field=models.JSONField(blank=True, db_default=[], default=list),
         ),
         migrations.CreateModel(
             name="DocumentExtractionPage",

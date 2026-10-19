@@ -32,7 +32,7 @@ class Dataset(models.Model):
     project = models.ForeignKey(
         "overbae.Project", on_delete=models.CASCADE, related_name="datasets"
     )
-    ocr_languages = models.JSONField(default=list, blank=True)
+    ocr_languages = models.JSONField(default=list, db_default=[], blank=True)
     name = models.CharField(max_length=255)
     brief = models.TextField(blank=True, default="")
     source_kind = models.CharField(
