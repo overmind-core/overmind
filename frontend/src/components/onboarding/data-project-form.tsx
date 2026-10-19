@@ -83,6 +83,13 @@ export function DataProjectForm({
       onCreated(created);
     },
   });
+  const status = create.isPending
+    ? "Creating your dataset…"
+    : upload.files.some((file) => file.status === "error")
+      ? "Retry or remove files with errors."
+      : upload.files.length && !ready
+        ? "Uploading and checking files…"
+        : null;
   useEffect(() => {
     onBusyChange?.(create.isPending);
   }, [create.isPending, onBusyChange]);
@@ -120,16 +127,13 @@ export function DataProjectForm({
       {fileError && <Alert variant="destructive">{fileError}</Alert>}
       {create.error && <Alert variant="destructive">{errorMessage(create.error)}</Alert>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p aria-live="polite" className="text-xs text-muted-foreground">
-          {create.isPending
-            ? "Creating your dataset…"
-            : upload.files.some((file) => file.status === "error")
-              ? "Retry or remove files with errors."
-              : upload.files.length && !ready
-                ? "Uploading and checking files…"
-                : "Next: prepare with your coding agent"}
-        </p>
+        {status ? (
+          <p aria-live="polite" className="text-xs text-muted-foreground">
+            {status}
+          </p>
+        ) : null}
         <Button
+          className="ml-auto"
           disabled={create.isPending || create.isSuccess || (!project && !name.trim()) || !ready}
           type="submit"
         >
