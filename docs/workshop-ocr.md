@@ -79,8 +79,10 @@ Deploy the migration first, then the sandbox image with the language packs, land
 workers, remaining workers and API through the existing staged rollout. Older
 sandbox images do not implement checkpoints or language selection, so a mixed
 rollout is not sufficient to claim the feature is available. Production rollout
-requires validation of the same runtime image. Staging deployment and candidate
-measurements are deferred; local checks do not establish production throughput.
+requires validation of the same runtime image. The full candidate image and every
+staging service passed rollout at `35164343`. See the
+[staging benchmark](ocr-staging-benchmark.md) for paired timings, output checks and
+limits; these measurements do not establish production throughput.
 
 ## Verification
 
@@ -90,5 +92,11 @@ measurements are deferred; local checks do not establish production throughput.
   actual extraction provenance and reuse through MCP.
 - Existing document tests retain native text, page regions, orientations, original
   byte downloads and atomic publication on failures.
-- A baseline used six screenshot pages from the retained CSIRT source. Candidate
-  staging measurements have not run; deployment is outside the current scope.
+- Paired staging runs cover three 24-page PDFs and one 96-page PDF from the
+  retained CSIRT source, with explicit English, automatic language selection and
+  complete cached reuse. All 68 document/transfer regressions passed, including
+  the retained unsupported-script screenshot; the strengthened MCP/CLI/OCR
+  journey also passed.
+- Cached row values and evidence match exactly. Cached imports currently expose
+  `page` before `text`, so their column order and whole-file fingerprints differ
+  from cold imports. The benchmark records this limitation explicitly.
