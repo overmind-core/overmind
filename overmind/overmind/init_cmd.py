@@ -51,14 +51,14 @@ PRODUCTION_BASE = "https://api.overmindlab.ai"
 # Slash-command file stem → path relative to the installed `overmind` skill.
 # Filenames stay `overmind-*` so `/overmind` prefix-filters the client menu.
 COMMANDS: dict[str, str] = {
-    "overmind": "SKILL.md",
-    "overmind-onboard": "references/onboard.md",
-    "overmind-setup": "references/setup.md",
-    "overmind-ensure-tracing": "../overmind-observability/SKILL.md",
-    "overmind-dataset": "../overmind-datasets/SKILL.md",
-    "overmind-finetune": "../overmind-training/SKILL.md",
-    "overmind-optimise": "../overmind-optimiser/SKILL.md",
-    "overmind-backtest": "../overmind-optimiser/SKILL.md",
+    # "overmind": "SKILL.md",
+    # "overmind-onboard": "references/onboard.md",
+    # "overmind-setup": "references/setup.md",
+    # "overmind-ensure-tracing": "../overmind-observability/SKILL.md",
+    # "overmind-dataset": "../overmind-datasets/SKILL.md",
+    # "overmind-finetune": "../overmind-training/SKILL.md",
+    # "overmind-optimise": "../overmind-optimiser/SKILL.md",
+    # "overmind-backtest": "../overmind-optimiser/SKILL.md",
 }
 
 SLASH_LABELS: dict[str, str] = {
