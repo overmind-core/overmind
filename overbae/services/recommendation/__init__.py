@@ -142,7 +142,7 @@ def estimate_for_hyperparams(
             requested_context, model_max=training_context_length(entry, kind)
         )
     max_tokens = int(stats.get("max_token_length") or 0)
-    if max_tokens and active_backend() != "modal":
+    if max_tokens:
         model_max = training_context_length(entry, kind)
         headroom = context_headroom("baseten")
         if model_max is not None and model_max < max_tokens + headroom:
@@ -222,7 +222,7 @@ def recommend_hyperparams_for_model(
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")
     max_tokens = int(stats.get("max_token_length") or 0)
-    if max_tokens and active_backend() != "modal":
+    if max_tokens:
         from overbae.modal.model_registry import context_headroom
         from overbae.modal.training_type import training_context_length, usable_training_kinds
 

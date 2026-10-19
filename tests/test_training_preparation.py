@@ -743,11 +743,62 @@ def test_preparation_timeout_exposes_committed_counters_without_restarting(cell,
     assert prep.report["progress"]["total_rows"] == cell.rows
 
 
+def test_exact_overflow_raises_a_requested_context_that_matches_the_estimate(retry_job):
+    job, _, _, _ = retry_job
+    job.cell.stats = {**job.cell.stats, "max_token_length": 7145}
+    job.cell.save(update_fields=["stats"])
+    job.hyperparameters = {**job.hyperparameters, "context_length": 8192}
+    job.requested_configuration["configuration"] = {"hyperparameters": {"context_length": 8192}}
+    job.save(update_fields=["hyperparameters", "requested_configuration"])
+    first = preparation.for_job(job)
+    assert first.config["context_length"] == 8192
+    first.state, first.report = "incompatible", {"max_tokens": 9925, "incompatible_rows": 4}
+    first.save()
+    resized = preparation.for_job(job)
+    assert resized.id != first.id and resized.state == "queued"
+    assert resized.config["context_length"] == 16384
+
+
+def test_setup_job_follows_measured_context_when_preparation_used_the_estimate(cell, monkeypatch):
+    cell.stats = {**cell.stats, "max_token_length": 7145}
+    cell.save(update_fields=["stats"])
+    user = User.objects.create_user(email="measured-context@example.test", password="test")
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 8192, user=user)
+    job = prep.training_jobs.get()
+    prep.state = "incompatible"
+    prep.report = {"max_tokens": 9925, "incompatible_rows": 4, "ready": False}
+    prep.save()
+    queue = Mock()
+    monkeypatch.setattr("overbae.tasks.training_preparation.inspect_preparation.delay", queue)
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "preprocessing" and not job.error_message
+    assert job.preparation_id != prep.id
+    assert job.preparation.config["context_length"] == 16384
+    queue.assert_called_once_with(str(job.preparation_id))
+
+
+def test_setup_job_keeps_a_context_the_caller_chose_below_the_estimate(cell):
+    cell.stats = {**cell.stats, "max_token_length": 7145}
+    cell.save(update_fields=["stats"])
+    user = User.objects.create_user(email="fixed-context@example.test", password="test")
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    job = prep.training_jobs.get()
+    prep.state = "incompatible"
+    prep.report = {"max_tokens": 7190, "incompatible_rows": 3, "ready": False}
+    prep.save()
+    preparation.sync_setup_jobs(prep)
+    job.refresh_from_db()
+    assert job.status == "failed" and job.preparation_id == prep.id
+    assert "7,190" in job.error_message and "4,096" in job.error_message
+
+
 def test_exact_preparation_never_expands_an_explicit_frozen_recipe(retry_job):
     job, _, _, _ = retry_job
     job.requested_configuration["configuration"] = {"hyperparameters": {"context_length": 4096}}
     job.save(update_fields=["requested_configuration"])
     job.cell.stats = {**job.cell.stats, "max_token_length": 7145}
+    job.cell.save(update_fields=["stats"])
     first = preparation.for_job(job)
     assert first.config["context_length"] == 4096
     first.state, first.report = "incompatible", {"max_tokens": 7190, "incompatible_rows": 3}

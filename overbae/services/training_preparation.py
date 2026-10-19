@@ -171,7 +171,63 @@ def begin_preparation(cell, model, context_length, *, user, **kwargs):
     return prep
 
 
+def _estimated_tokens(*cells) -> int:
+    return max(
+        (
+            int((cell.stats or {}).get("max_token_length") or 0)
+            for cell in cells
+            if cell is not None
+        ),
+        default=0,
+    )
+
+
+def _matches_estimate(context, estimated_tokens, maximum) -> bool:
+    # The row-length bucket is the first preprocessing pass, not a chosen context.
+    return int(context) == estimated_training_context_length(estimated_tokens, model_max=maximum)
+
+
+def _adopt_measured_context(prep):
+    if prep.state != "incompatible":
+        return prep
+    exact = int((prep.report or {}).get("max_tokens") or 0)
+    context = int(prep.config["context_length"])
+    if exact <= context:
+        return prep
+    maximum = training_context_length(
+        get_model_config_any_backend(prep.config["model"]), prep.config["training_type"]
+    )
+    if maximum is not None and exact > maximum:
+        return prep
+    if not _matches_estimate(context, _estimated_tokens(prep.cell, prep.validation_cell), maximum):
+        return prep
+    raised = baseten_context_length(model_max=maximum, requested=exact)
+    if raised == context:
+        return prep
+    measured = request_preparation(
+        prep.cell,
+        prep.config["model"],
+        raised,
+        validation_cell=prep.validation_cell,
+        training_type=prep.config["training_type"],
+        runtime=prep.config.get("runtime"),
+    )
+    moved = (
+        FinetuningJob.objects.filter(preparation=prep, requested_configuration={})
+        .exclude(status="cancelled")
+        .update(preparation=measured)
+    )
+    if not moved:
+        return prep
+    if measured.state == "queued":
+        from overbae.tasks.training_preparation import inspect_preparation
+
+        inspect_preparation.delay(str(measured.id))
+    return measured
+
+
 def sync_setup_jobs(prep):
+    prep = _adopt_measured_context(prep)
     failed = prep.state in {"failed", "incompatible"}
     status = (
         FinetuningJob.Status.FAILED
@@ -453,24 +509,23 @@ def for_job(job):
     config = get_model_config_any_backend(job.base_model) or {}
     maximum = training_context_length(config, kind)
     validation = job.validation_cell if job.validation_enabled else None
-    estimated_tokens = max(
-        int((cell.stats or {}).get("max_token_length") or 0)
-        for cell in (job.cell, validation)
-        if cell is not None
-    )
+    estimated_tokens = _estimated_tokens(job.cell, validation)
     explicit_context = (
         (getattr(job, "requested_configuration", {}) or {})
         .get("configuration", {})
         .get("hyperparameters", {})
         or {}
     ).get("context_length")
+    pinned = int(explicit_context) if explicit_context else None
+    # Matching the estimate keeps the measured-length raise; any other request stays fixed.
+    frozen = pinned is not None and not _matches_estimate(pinned, estimated_tokens, maximum)
     context = (
-        int(explicit_context)
-        if explicit_context
+        pinned
+        if frozen
         else estimated_training_context_length(
             estimated_tokens,
             model_max=maximum,
-            requested=int(hp.get("context_length") or 0) or None,
+            requested=pinned or (int(hp.get("context_length") or 0) or None),
         )
     )
     prep = request_preparation(
@@ -484,7 +539,7 @@ def for_job(job):
     exact_tokens = int(prep.report.get("max_tokens") or 0)
     if (
         prep.state == "incompatible"
-        and not explicit_context
+        and not frozen
         and exact_tokens > context
         and (maximum is None or exact_tokens <= maximum)
     ):

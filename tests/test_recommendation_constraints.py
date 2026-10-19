@@ -31,9 +31,6 @@ def _entry(model_id: str, **overrides: Any) -> dict[str, Any]:
 def catalog(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, Any]]]:
     tiers: dict[str, list[dict[str, Any]]] = {}
     monkeypatch.setattr(
-        "overbae.services.recommendation.constraints.active_backend", lambda: "baseten"
-    )
-    monkeypatch.setattr(
         "overbae.services.recommendation.constraints.tier_models",
         lambda **_kwargs: tiers,
     )
@@ -84,13 +81,14 @@ def test_exact_context_equality_is_excluded_for_headroom(catalog):
     assert "4,100" in exclusions[0].reason
 
 
-def test_modal_context_eligibility_waits_for_exact_tokenization(catalog):
+def test_modal_context_eligibility_drops_a_model_the_dataset_exceeds(catalog):
     catalog["small"] = [_entry("vendor/short", **_SHORT_CONTEXT)]
     eligible, exclusions = eligible_models(
         has_tool_calling=False, max_row_tokens=4100, backend="modal"
     )
-    assert [entry["id"] for entry in eligible["small"]] == ["vendor/short"]
-    assert exclusions == []
+    assert eligible == {}
+    assert exclusions[0].model == "vendor/short"
+    assert "SFT context 2,048 < longest row 4,100" in exclusions[0].reason
 
 
 def test_a_model_lacking_tools_survives_a_dataset_that_never_calls_one(catalog):
