@@ -90,7 +90,9 @@ def render_task_definition(document, *, service, image, cluster):
     if service in {"celery-interactive-worker", "celery-landing-worker"}:
         volumes = result.setdefault("volumes", [])
         if any(
-            volume["name"] == "workshop-scratch" and volume != {"name": "workshop-scratch"}
+            volume["name"] == "workshop-scratch"
+            and volume
+            not in ({"name": "workshop-scratch"}, {"name": "workshop-scratch", "host": {}})
             for volume in volumes
         ):
             raise ValueError("Workshop scratch must use task-local ephemeral storage.")

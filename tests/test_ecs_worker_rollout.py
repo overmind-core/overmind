@@ -100,6 +100,15 @@ def test_every_release_overrides_stale_worker_command(definition, queue):
         )
         assert repeated["volumes"] == rendered["volumes"]
         assert repeated["containerDefinitions"][0]["mountPoints"] == container["mountPoints"]
+        next(volume for volume in rendered["volumes"] if volume["name"] == "workshop-scratch")[
+            "host"
+        ] = {}
+        assert (
+            render_task_definition(
+                rendered, service=service, image="repo:future", cluster="test-cluster"
+            )["volumes"]
+            == rendered["volumes"]
+        )
 
 
 def test_migration_cannot_start_http_server(definition, service):

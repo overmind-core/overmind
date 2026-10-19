@@ -6,6 +6,29 @@ from .datasets import evaluate, tickets, upload
 from .stack import drain
 
 
+def test_cli_batch_lands_once_and_mcp_retains_all_sources(
+    workshop, cli, sample_agent, worker, tmp_path
+):
+    paths = [tmp_path / "first.jsonl", tmp_path / "second.jsonl"]
+    for index, path in enumerate(paths):
+        path.write_text(json.dumps({"value": index}) + "\n")
+    arguments = ["dataset", "upload", *(str(path) for path in paths), "--json"]
+    uploaded = json.loads(cli.run(*arguments, cwd=sample_agent.repo))
+    drain(worker)
+    replay = json.loads(cli.run(*arguments, cwd=sample_agent.repo))
+    assert replay["id"] == uploaded["id"]
+    assert replay["transfer"]["id"] == uploaded["transfer"]["id"]
+    inspected = workshop.call("inspect_dataset", {"dataset": uploaded["id"]})
+    assert inspected["active"]["rows"] == 2
+    assert inspected["cell_page"]["total"] == 1
+    assert [source["filename"] for source in inspected["sources"]] == [path.name for path in paths]
+    rows = workshop.call(
+        "query_dataset",
+        {"dataset": uploaded["id"], "sql": "SELECT value FROM t ORDER BY source_row"},
+    )["rows"]
+    assert rows == [{"value": 0}, {"value": 1}]
+
+
 def test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version(
     workshop, cli, sample_agent, worker, tmp_path
 ):
