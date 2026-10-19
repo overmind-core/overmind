@@ -328,6 +328,7 @@ export interface RowsGridProps {
   datasetId: string;
   /** The cell whose frame is shown. */
   cellId: string;
+  initialColumns?: { name: string; type: string }[];
   /** Mark rows added and values changed against the cell before. */
   diff?: boolean;
   pageSize?: number;
@@ -341,6 +342,7 @@ export interface RowsGridProps {
 export function RowsGrid({
   datasetId,
   cellId,
+  initialColumns,
   diff = false,
   pageSize = 10,
   className,
@@ -382,13 +384,13 @@ export function RowsGrid({
 
   const data = rowsQuery.data;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new page has new rows
-  useEffect(() => setOpenRow(null), [data]);
+  useEffect(() => setOpenRow(null), [cellId, page, limit, debouncedSearch, filters, sort]);
   const columns = useMemo(
     () =>
-      (data?.columns ?? [])
+      (data?.columns ?? initialColumns ?? [])
         .filter(isVisibleDatasetColumn)
         .map((c) => ({ name: c.name, type: c.type })),
-    [data?.columns]
+    [data?.columns, initialColumns]
   );
   const rows = (data?.rows ?? []) as Row[];
   const marks = data?.marks ?? {};
@@ -479,21 +481,23 @@ export function RowsGrid({
         )}
       </div>
 
+      {rowsQuery.isPending && (
+        <span className="sr-only" role="status">
+          Loading rows
+        </span>
+      )}
       <div className="nowheel min-h-0 flex-1 overflow-auto border-t border-border/70">
-        {rowsQuery.isPending ? (
-          <div className="flex flex-col gap-1.5 p-2">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-2/3" />
-          </div>
-        ) : rowsQuery.isError ? (
+        {rowsQuery.isError && !data ? (
           <p className="p-2 text-xs text-muted-foreground">{errorMessage(rowsQuery.error)}</p>
-        ) : rows.length === 0 ? (
+        ) : !rowsQuery.isPending && rows.length === 0 ? (
           <p className="p-2 text-xs text-muted-foreground">
             {narrowing ? "No rows match." : "No rows."}
           </p>
         ) : (
-          <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
+          <table
+            aria-busy={rowsQuery.isFetching}
+            className="w-max min-w-full border-separate border-spacing-0 text-xs"
+          >
             <thead className="sticky top-0 z-10 bg-wash-raised">
               <tr>
                 <th className="w-9 border-r border-b border-border/70 px-2 py-1.5 text-left font-normal text-muted-foreground">
@@ -518,6 +522,7 @@ export function RowsGrid({
                             "flex min-h-6 flex-1 items-center gap-1 text-left text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             active && "font-semibold"
                           )}
+                          disabled={rowsQuery.isPending}
                           onClick={() => toggleSort(c.name)}
                           type="button"
                         >
@@ -538,7 +543,23 @@ export function RowsGrid({
                 })}
               </tr>
             </thead>
-            <tbody>
+            <tbody aria-hidden={rowsQuery.isPending || undefined}>
+              {rowsQuery.isPending &&
+                Array.from({ length: Math.min(limit, 10) }, (_, index) => (
+                  <tr key={`loading-${index}`}>
+                    <td className="w-9 border-r border-b border-border/60 px-2 py-1">
+                      <Skeleton className="h-4 w-4" />
+                    </td>
+                    {columns.map((column) => (
+                      <td
+                        className="border-r border-b border-border/60 px-2 py-1 last:border-r-0"
+                        key={column.name}
+                      >
+                        <Skeleton className="h-4 w-24 max-w-full" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
               {rows.map((row, rowIndex) => {
                 const sourceRow = row.source_row;
                 const mark =

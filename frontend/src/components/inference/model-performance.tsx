@@ -211,7 +211,7 @@ export function ModelPerformance({
           ) : null}
 
           {loading ? (
-            <Skeleton className="h-56 w-full rounded-md" />
+            <ActivitySkeleton />
           ) : !hasTraffic && !error ? (
             <Card>
               <EmptyState
@@ -233,7 +233,7 @@ export function ModelPerformance({
               />
             </Card>
           ) : activityQuery.isPending ? (
-            <Skeleton className="h-64 w-full rounded-md" />
+            <ActivitySkeleton />
           ) : activityQuery.error && !activityQuery.data ? (
             <DetailErrorState
               action={
@@ -308,6 +308,22 @@ export function ModelPerformance({
         </>
       )}
     </section>
+  );
+}
+
+function ActivitySkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading inference activity" role="status">
+      <span className="sr-only">Loading inference activity</span>
+      <div aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {["Request traffic", "Response time", "Generation speed"].map((title) => (
+          <SectionCard contentClassName="space-y-3" key={title} title={title}>
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-44 w-full" />
+          </SectionCard>
+        ))}
+      </div>
+    </div>
   );
 }
 

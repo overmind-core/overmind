@@ -65,8 +65,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
+import { LoadingState } from "@/components/ui/spinner";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -132,11 +132,7 @@ export function WizardMonitor({
         variant="full"
       >
         {isLoading ? (
-          <div className="flex flex-col gap-4">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-56 w-full" />
-            <Skeleton className="h-56 w-full" />
-          </div>
+          <LoadingState fullPage label="Loading training run" />
         ) : error && jobs.length === 0 ? (
           <Alert variant="destructive">
             {errorMessage(error, "Couldn't load this training run.")}
@@ -263,7 +259,7 @@ export function TrainingMonitorPanel({
       </Alert>
     );
   }
-  if (!job) return <Skeleton className="h-64" />;
+  if (!job) return <LoadingState label="Loading training job" />;
 
   const snapshots = groupJobs.map((j, i) =>
     buildExperimentSnapshot(j, curvesQueries[i]?.data, experimentColor(i))

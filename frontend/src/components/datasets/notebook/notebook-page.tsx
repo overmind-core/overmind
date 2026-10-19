@@ -70,6 +70,13 @@ export function DatasetNotebook({
     cellParam ? { id: cellParam, request: 0 } : null
   );
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+    },
+    []
+  );
 
   const refresh = useCallback(() => {
     if (refreshTimer.current) return;
@@ -80,6 +87,8 @@ export function DatasetNotebook({
   }, [qc, datasetId]);
 
   useDatasetEvents(datasetId, (event: DatasetEvent, meta) => {
+    // Detail polling picks up landing counters; immutable cells do not change per page.
+    if (event.type === "land_progress") return;
     if (meta.live || event.type === "replay.done") refresh();
   });
 
@@ -144,7 +153,12 @@ export function DatasetNotebook({
   if (!dataset) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        This dataset no longer exists.
+        {datasetQuery.isError ? "Dataset could not be loaded." : "This dataset no longer exists."}
+        {datasetQuery.isError && (
+          <Button onClick={() => void datasetQuery.refetch()} size="sm" variant="secondary">
+            Retry
+          </Button>
+        )}
         <Button asChild size="sm" variant="secondary">
           <Link search={{ projectId }} to="/datasets">
             All datasets
@@ -217,45 +231,49 @@ export function DatasetNotebook({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      {busy && (
-        <div className="flex items-center justify-between border-b border-border/70 px-4 py-2 text-xs">
-          <span>Workshop operation running</span>
-          <Button
-            disabled={cancel.isPending}
-            onClick={() => cancel.mutate()}
-            size="sm"
-            variant="secondary"
-          >
-            Stop operation
-          </Button>
+      <div className="pointer-events-none absolute right-12 bottom-3 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
+        <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
+          {busy && (
+            <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
+              <span>Workshop operation running</span>
+              <Button
+                disabled={cancel.isPending}
+                onClick={() => cancel.mutate()}
+                size="sm"
+                variant="secondary"
+              >
+                Stop operation
+              </Button>
+            </div>
+          )}
+          <ContaminationReport spec={dataset.sourceSpec} />
+          {preparationQuery.isError && (
+            <p className="px-4 text-sm text-destructive" role="alert">
+              Preparation could not be loaded.
+              <Button onClick={() => void preparationQuery.refetch()} size="sm" variant="secondary">
+                Retry
+              </Button>
+            </p>
+          )}
+          {dataset.error && (
+            <p className="px-4 text-sm text-destructive" role="alert">
+              {dataset.error}
+            </p>
+          )}
+          {dataset.operation?.source_import?.can_resume === true && (
+            <div className="px-4 py-2">
+              <Button
+                disabled={resumeImport.isPending}
+                onClick={guard(() => resumeImport.mutate())}
+                size="sm"
+                variant="secondary"
+              >
+                Resume import
+              </Button>
+            </div>
+          )}
         </div>
-      )}
-      <ContaminationReport spec={dataset.sourceSpec} />
-      {preparationQuery.isError && (
-        <p className="px-4 text-sm text-destructive" role="alert">
-          Preparation could not be loaded.
-          <Button onClick={() => void preparationQuery.refetch()} size="sm" variant="secondary">
-            Retry
-          </Button>
-        </p>
-      )}
-      {dataset.error && (
-        <p className="px-4 text-sm text-destructive" role="alert">
-          {dataset.error}
-        </p>
-      )}
-      {dataset.operation?.source_import?.can_resume === true && (
-        <div className="px-4 py-2">
-          <Button
-            disabled={resumeImport.isPending}
-            onClick={guard(() => resumeImport.mutate())}
-            size="sm"
-            variant="secondary"
-          >
-            Resume import
-          </Button>
-        </div>
-      )}
+      </div>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <NotebookControls
           onToggleMinimap={cells.length ? () => setShowMinimap(!showMinimap) : undefined}

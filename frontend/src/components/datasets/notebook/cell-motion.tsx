@@ -121,6 +121,8 @@ export function CellMotionFrame({
     <div
       className="workshop-cell-node nopan"
       data-cell-motion={ready ? motion?.kind : undefined}
+      // Focusing a cell control must not trigger React Flow's node-centering behaviour.
+      onFocus={(event) => event.stopPropagation()}
       ref={ref}
       style={{ opacity: motion?.kind === "arrival" && !ready ? 0 : undefined }}
     >

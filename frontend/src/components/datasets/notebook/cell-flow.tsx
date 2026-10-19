@@ -158,6 +158,7 @@ function Canvas({
   useEffect(() => {
     if (!initialized) return;
     let cancelled = false;
+    let animationFrame = 0;
     const current = getNodes();
     const ids = new Set(current.map((node) => node.id));
     if (cells.some((cell) => !ids.has(cell.id)) || current.some((node) => !node.measured?.height))
@@ -183,27 +184,72 @@ function Canvas({
       })
       .then((layout) => {
         if (cancelled) return;
+        const anchor = current.find((node) => node.data.ready);
+        const anchorLayout = layout.children?.find((node) => node.id === anchor?.id);
+        const offset =
+          anchor && anchorLayout && !positions[anchor.id]
+            ? {
+                x: anchor.position.x - (anchorLayout.x ?? 0),
+                y: anchor.position.y - (anchorLayout.y ?? 0),
+              }
+            : { x: 0, y: 0 };
         const placedPosition = (id: string): XYPosition => {
           const saved = positions[id];
           const placed = layout.children?.find((node) => node.id === id);
           const point =
-            saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : placed;
+            saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
+              ? saved
+              : { x: (placed?.x ?? 0) + offset.x, y: (placed?.y ?? 0) + offset.y };
           return {
             x: Math.round((point?.x ?? 0) / 20) * 20,
             y: Math.round((point?.y ?? 0) / 20) * 20,
           };
         };
-        setNodes((latest) =>
-          latest.map((node) => ({
-            ...node,
-            data: { ...node.data, ready: ids.has(node.id) },
-            position: placedPosition(node.id),
-          }))
-        );
         const key = focus ? `${focus.id}:${focus.request}` : "";
         const requested =
           focus && focusRequest.current !== key && current.some((node) => node.id === focus.id);
         const frame = requested ? focus.id : !positioned.current ? current[0]?.id : undefined;
+        const moved = current.some((node) => {
+          const target = placedPosition(node.id);
+          return node.data.ready && (node.position.x !== target.x || node.position.y !== target.y);
+        });
+        const animate =
+          moved &&
+          positioned.current &&
+          !requested &&
+          viewportAnchor.current?.width === width &&
+          document.visibilityState === "visible" &&
+          !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const starts = new Map(
+          getNodes().map((node) => [
+            node.id,
+            node.data.ready ? node.position : placedPosition(node.id),
+          ])
+        );
+        const started = performance.now();
+        const place = (now: number) => {
+          if (cancelled) return;
+          const progress = animate ? Math.min(1, (now - started) / 200) : 1;
+          const eased = 1 - (1 - progress) ** 3;
+          // Move graph coordinates so connectors follow their cells on every frame.
+          setNodes((latest) =>
+            latest.map((node) => {
+              if (!ids.has(node.id) || node.dragging) return node;
+              const target = placedPosition(node.id);
+              const start = starts.get(node.id) ?? target;
+              return {
+                ...node,
+                data: node.data.ready ? node.data : { ...node.data, ready: true },
+                position: {
+                  x: start.x + (target.x - start.x) * eased,
+                  y: start.y + (target.y - start.y) * eased,
+                },
+              };
+            })
+          );
+          if (progress < 1) animationFrame = requestAnimationFrame(place);
+        };
+        place(started);
         if (frame) {
           positioned.current = true;
           if (requested) focusRequest.current = key;
@@ -237,6 +283,7 @@ function Canvas({
       });
     return () => {
       cancelled = true;
+      cancelAnimationFrame(animationFrame);
     };
   }, [
     initialized,

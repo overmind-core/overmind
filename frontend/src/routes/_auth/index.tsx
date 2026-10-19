@@ -16,7 +16,7 @@ import { RepositorySnapshot } from "@/components/repository-snapshot";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { useAuthContext } from "@/contexts/auth-context";
 import { setStoredProjectId } from "@/hooks/use-project-search-sync";
 import { useProjectsList } from "@/hooks/use-projects";
@@ -63,13 +63,7 @@ function CapabilitiesSection({
   const capabilities: CapabilityList[] = graph?.capabilities ?? [];
 
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton className="h-40 rounded-md" key={i} />
-        ))}
-      </div>
-    );
+    return <LoadingState fullPage label="Loading agent" />;
   }
 
   if (error) {
@@ -157,11 +151,7 @@ function AgentPage() {
   if (projectsLoading) {
     return (
       <PageShell header={<AgentHeader />} variant="scroll">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton className="h-40 rounded-md" key={i} />
-          ))}
-        </div>
+        <LoadingState fullPage label="Loading projects" />
       </PageShell>
     );
   }

@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usedVersionOf } from "@/hooks/use-datasets";
 import { useElapsedSeconds } from "@/hooks/use-elapsed-seconds";
@@ -102,12 +102,7 @@ function EvalRunDetailPage() {
   if (isLoading || !run) {
     return (
       <PageShell header={header} variant="full">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton className="h-20" key={i} />
-          ))}
-        </div>
+        <LoadingState fullPage label="Loading evaluation" />
       </PageShell>
     );
   }

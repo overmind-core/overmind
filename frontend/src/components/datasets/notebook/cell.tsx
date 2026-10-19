@@ -683,7 +683,13 @@ export function NotebookCell({
               open={tableOpen}
             />
             {tableOpen && (
-              <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
+              <RowsGrid
+                cellId={cell.id}
+                datasetId={datasetId}
+                diff={!source}
+                initialColumns={columnsOf(cell)}
+                pageSize={10}
+              />
             )}
             {terminal && (
               <div className="border-t border-border/70">

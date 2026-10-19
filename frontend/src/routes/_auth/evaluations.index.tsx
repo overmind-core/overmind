@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -158,13 +158,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
   }, [setsQuery.data, projectId, capabilityNameById, capabilitiesLoaded]);
 
   if (setsQuery.isLoading) {
-    return (
-      <div className="space-y-2">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton className="h-12 w-full" key={i} />
-        ))}
-      </div>
-    );
+    return <LoadingState label="Loading evaluation sets" />;
   }
 
   if (setsQuery.error && groups.length === 0) {

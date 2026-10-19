@@ -226,10 +226,8 @@ export function DataTable<T>({
   const rows = data?.results ?? [];
   const count = data?.count ?? 0;
   const sort = parseDrfOrdering(ordering);
-  // `data === undefined`, not `!isLoading`: a disabled or not-yet-started query reports
-  // `isLoading` false while holding nothing, and the empty state would render over rows
-  // still in flight. Callers synthesizing `data` must pass a truthful `isLoading`.
-  const unsettled = isLoading || (data === undefined && error == null);
+  // Disabled queries may have no data; background refreshes must retain existing rows.
+  const unsettled = (isLoading && rows.length === 0) || (data === undefined && error == null);
   const showError = !unsettled && error != null && rows.length === 0;
   const showEmpty = !unsettled && !showError && rows.length === 0;
 
@@ -377,25 +375,12 @@ export function DataTable<T>({
       ) : null}
       {banner}
 
-      {/* All four states carry the same border, so the outline doesn't appear (and shift
-          the content under it) when a page arrives. */}
-      {unsettled ? (
-        // Bars sized per column (designed `size`, pre-resize), so the skeleton doesn't
-        // reflow once real column widths land.
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md border border-border p-2">
-          {Array.from({ length: Math.min(pageSize, 8) }).map((_, i) => (
-            <div className="flex items-center gap-2 px-2 py-1.5" key={i}>
-              {cappedColumns.map((col, ci) => (
-                <Skeleton
-                  className="h-4 shrink-0"
-                  key={columnIdOf(col) || ci}
-                  style={{ width: col.size ?? DATA_TABLE_MIN_COL_PX }}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      ) : showError ? (
+      {unsettled && (
+        <span className="sr-only" role="status">
+          Loading rows
+        </span>
+      )}
+      {showError ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border p-4">
           <Alert variant="destructive">{errorMessage(error, "Couldn't load this list.")}</Alert>
         </div>
@@ -406,6 +391,7 @@ export function DataTable<T>({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
           <Table
+            aria-busy={unsettled || isLoading}
             className="table-fixed"
             containerClassName="min-h-0 flex-1"
             containerRef={scrollRef}
@@ -450,6 +436,7 @@ export function DataTable<T>({
                           <button
                             aria-label={label ? `Sort by ${label}` : "Sort by this column"}
                             className="group -mx-1 flex w-full max-w-full items-center justify-start gap-1 rounded-sm px-1 text-left align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            disabled={unsettled}
                             onClick={() => onOrderingChange(cycleDrfOrdering(ordering, field))}
                             type="button"
                           >
@@ -491,6 +478,17 @@ export function DataTable<T>({
               ))}
             </TableHeader>
             <TableBody ref={bodyRef}>
+              {unsettled &&
+                Array.from({ length: Math.min(pageSize, 8) }, (_, index) => (
+                  <TableRow aria-hidden="true" key={`loading-${index}`}>
+                    {table.getVisibleLeafColumns().map((column) => (
+                      <TableCell key={column.id}>
+                        <Skeleton className="h-5 w-3/4" />
+                      </TableCell>
+                    ))}
+                    <TableCell />
+                  </TableRow>
+                ))}
               {table.getRowModel().rows.map((row, rowIndex) => {
                 const active = isRowActive?.(row.original) ?? false;
                 const modelRows = table.getRowModel().rows;

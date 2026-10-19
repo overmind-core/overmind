@@ -25,8 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
+import { LoadingState } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -382,7 +382,7 @@ export function NativeEvaluationTable({
           </Alert>
         )}
         {loading && !plans.length ? (
-          <Skeleton className="h-36 w-full" />
+          <LoadingState className="min-h-36" label="Loading evaluations" />
         ) : !rows.length ? (
           !error && (
             <EmptyState

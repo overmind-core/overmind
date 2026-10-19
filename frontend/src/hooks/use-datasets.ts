@@ -12,6 +12,7 @@ import type {
   ColumnStat,
   Dataset,
   DatasetPair,
+  DatasetPreparation,
   IntentEnum,
   PaginatedDatasetList,
   PositionEnum,
@@ -177,7 +178,13 @@ const datasetKeys = {
 };
 
 export function invalidateDataset(qc: ReturnType<typeof useQueryClient>, id?: string) {
-  if (id) void qc.invalidateQueries({ queryKey: ["datasets", id] });
+  if (id)
+    void qc.invalidateQueries({
+      // Published cell rows and column statistics are immutable; unpinned queries follow active.
+      predicate: ({ queryKey }) =>
+        !["rows", "columns"].includes(String(queryKey[2])) || queryKey[3] === undefined,
+      queryKey: ["datasets", id],
+    });
   if (id) void qc.invalidateQueries({ queryKey: datasetKeys.detail(id) });
   void qc.invalidateQueries({ queryKey: ["datasets", "list"] });
   void qc.invalidateQueries({ queryKey: ["capability-detail"] });
@@ -193,10 +200,20 @@ export interface DatasetListFilters {
 }
 
 export function useDatasetPreparationQuery(datasetId: string, cell?: string, revision?: number) {
-  return useQuery({
-    queryFn: () => apiClient.datasets.datasetsPreparationRetrieve({ cell, id: datasetId }),
-    // Dataset polling must refresh the graph even when a completion event was missed.
-    queryKey: ["datasets", datasetId, "preparation", cell, revision],
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (revision === undefined) return;
+    // Polling recovers missed events without replacing the graph's cache entry.
+    void qc.invalidateQueries({
+      exact: true,
+      queryKey: ["datasets", datasetId, "preparation", cell],
+    });
+  }, [qc, datasetId, cell, revision]);
+  return useQuery<DatasetPreparation>({
+    placeholderData: (previous, query) => (query?.queryKey[1] === datasetId ? previous : undefined),
+    queryFn: ({ signal }) =>
+      apiClient.datasets.datasetsPreparationRetrieve({ cell, id: datasetId }, { signal }),
+    queryKey: ["datasets", datasetId, "preparation", cell],
   });
 }
 
@@ -243,7 +260,6 @@ export function useProjectDatasetsQuery(projectId: string | undefined) {
 export function useDatasetQuery(id: string | undefined) {
   return useQuery<Dataset>({
     enabled: !!id,
-    placeholderData: keepPreviousData,
     queryFn: () => apiClient.datasets.datasetsRetrieve({ id: id! }),
     queryKey: datasetKeys.detail(id ?? ""),
     refetchInterval: (query) => (isBusy(query.state.data) ? 3000 : false),
@@ -260,7 +276,8 @@ export function useRowsQuery(
 ) {
   return useQuery<RowsPage>({
     enabled: !!id && enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === id && query?.queryKey[3] === cell ? previous : undefined,
     queryFn: async () => {
       const search = new URLSearchParams({
         limit: String(params.limit),

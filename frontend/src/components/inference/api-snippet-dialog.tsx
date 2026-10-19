@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { useFinetuningJobQuery } from "@/hooks/use-finetuning";
 import { useCapabilityDetailQuery } from "@/hooks/use-query";
 import {
@@ -166,10 +166,7 @@ export function ApiSnippetDialog({
               </div>
             ) : null}
             {decisionDeploymentId && training.isFetching && !training.data ? (
-              <div aria-label="Loading model examples" className="space-y-3" role="status">
-                <Skeleton className="h-40 w-full" />
-                <Skeleton className="h-40 w-full" />
-              </div>
+              <LoadingState className="min-h-40" label="Loading model examples" />
             ) : (
               <>
                 {decisionDeploymentId && examples.length > 1 && (

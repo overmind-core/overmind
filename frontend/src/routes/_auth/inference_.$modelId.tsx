@@ -31,7 +31,7 @@ import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import {
   downloadModelWeightsZip,
@@ -101,7 +101,7 @@ function ModelDetailPage() {
 
   return (
     <PageShell header={header} variant="scroll">
-      {isLoading && <Skeleton className="h-64 w-full rounded-md" />}
+      {isLoading && <LoadingState fullPage label="Loading model" />}
       {error && (
         <DetailErrorState
           action={
@@ -311,7 +311,8 @@ function WeightsContent({
   const [zipping, setZipping] = useState(false);
   const files = checkpoints.data?.files ?? [];
 
-  if (checkpoints.isLoading) return <Skeleton className="h-24 w-full" />;
+  if (checkpoints.isLoading)
+    return <LoadingState className="min-h-24" label="Loading checkpoints" />;
   if (checkpoints.error) {
     return (
       <EmptyState

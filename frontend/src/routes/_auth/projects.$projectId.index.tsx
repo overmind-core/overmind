@@ -19,8 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
+import { LoadingState } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -81,10 +81,7 @@ function ProjectDetailPage() {
   if (isLoading) {
     return (
       <PageShell header={header} variant="scroll">
-        <div className="space-y-4">
-          <Skeleton className="h-40 w-full rounded-md" />
-          <Skeleton className="h-40 w-full rounded-md" />
-        </div>
+        <LoadingState fullPage label="Loading project" />
       </PageShell>
     );
   }
@@ -276,16 +273,7 @@ function ApiKeysList({ projectId }: { projectId: string }) {
   const deleteToken = useDeleteToken();
 
   if (isLoading) {
-    return (
-      <div className="overflow-hidden rounded-md border border-border">
-        {[1, 2, 3].map((i) => (
-          <Skeleton
-            className="h-10 w-full rounded-none border-b border-border/70 last:border-0"
-            key={i}
-          />
-        ))}
-      </div>
-    );
+    return <LoadingState className="min-h-32" label="Loading API keys" />;
   }
 
   if (error) {
@@ -694,14 +682,7 @@ function ProjectMembersCard({ projectId }: { projectId: string }) {
         ) : null}
 
         {isLoading ? (
-          <div className="overflow-hidden rounded-md border border-border">
-            {[1, 2].map((i) => (
-              <Skeleton
-                className="h-10 w-full rounded-none border-b border-border/70 last:border-0"
-                key={i}
-              />
-            ))}
-          </div>
+          <LoadingState className="min-h-24" label="Loading members" />
         ) : error ? (
           <Alert variant="destructive">Failed to load members: {(error as Error).message}</Alert>
         ) : !members || members.length === 0 ? (

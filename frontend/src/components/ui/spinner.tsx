@@ -1,8 +1,5 @@
 import { Icon } from "@/components/ui/icons";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-// Content loads use skeletons; spinners are reserved for pending actions and live jobs.
 
 const sizeMap = {
   default: "size-4",
@@ -20,7 +17,11 @@ function Spinner({
   return (
     <Icon.loader
       aria-hidden="true"
-      className={cn("animate-spin text-muted-foreground", sizeMap[size], className)}
+      className={cn(
+        "animate-spin text-muted-foreground motion-reduce:animate-none",
+        sizeMap[size],
+        className
+      )}
       data-slot="spinner"
     />
   );
@@ -40,31 +41,15 @@ function LoadingState({
       aria-busy="true"
       aria-label={label ?? "Loading content"}
       className={cn(
-        "w-full min-w-0 overflow-hidden p-4",
+        "flex w-full min-w-0 items-center justify-center gap-2 p-4 text-sm text-muted-foreground",
         fullPage && "min-h-[400px] flex-1",
         className
       )}
       data-slot="loading-state"
       role="status"
     >
-      <span className="sr-only">{label ?? "Loading content"}</span>
-      <div aria-hidden="true" className="space-y-5">
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-1/3 max-w-48" />
-          <Skeleton className="h-3 w-1/2 max-w-72" />
-        </div>
-        <div className="space-y-4">
-          {["w-full", "w-5/6", "w-full", "w-2/3"].map((width, index) => (
-            <div className="flex items-center gap-3" key={`${width}-${index}`}>
-              <Skeleton className="size-7 shrink-0" />
-              <div className={cn("min-w-0 space-y-2", width)}>
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-2 w-1/2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <Spinner size={fullPage ? "lg" : "default"} />
+      <span>{label ?? "Loading content"}</span>
     </div>
   );
 }

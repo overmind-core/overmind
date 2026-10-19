@@ -933,6 +933,25 @@ popover surface and full-width header divider.
 Pointer clicks on graphs do not add a focus outline. Keyboard focus retains its
 indicator and chart navigation.
 
+### Loading and live updates
+
+Initial page loads use the shared `LoadingState` spinner inside the page shell;
+keep the page header and navigation visible. Do not use a generic skeleton page.
+Skeletons belong to known component or asset slots: keep the actual table headers,
+column widths and row spacing, chart frames and plot heights, or control dimensions.
+Hide decorative placeholders from assistive technology and announce loading once
+per region. Spinners and skeletons respect reduced motion.
+
+Background requests retain existing content, selections, expanded rows and canvas
+position. Loading indicators only replace content that has not arrived yet.
+Workshop progress updates reuse the preparation query and mounted cells. Publication,
+metadata and operation events do not invalidate rows pinned to immutable cells.
+Operation notices float above the canvas without resizing it. Graph reflow anchors
+an existing cell and moves affected cells and their connectors together over 200ms;
+reduced motion places them immediately. It never refits the camera on a background
+update. Preparation refresh failures keep the last available graph beside a retry
+notice.
+
 ### Motion (system-wide)
 
 150ms for colour and background transitions, 200ms for dialog open/close, `ease`

@@ -33,7 +33,6 @@ import { lazyChart } from "@/components/ui/lazy-chart";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { QueryError } from "@/components/ui/query-error";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { LoadingState } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
@@ -846,11 +845,7 @@ function OptimiserRunPage() {
   if (experimentQuery.isLoading || !experiment) {
     return (
       <PageShell header={header}>
-        <div className="grid gap-4 lg:grid-cols-5">
-          <Skeleton className="h-48 lg:col-span-2" />
-          <Skeleton className="h-48 lg:col-span-3" />
-        </div>
-        <Skeleton className="h-64" />
+        <LoadingState fullPage label="Loading experiment" />
       </PageShell>
     );
   }
