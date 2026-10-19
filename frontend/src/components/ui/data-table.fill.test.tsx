@@ -63,8 +63,9 @@ describe("DataTable column widths", () => {
   });
 
   it("fills the container when rows arrive after a loading pass", () => {
-    const { rerender } = renderTable({ isLoading: true });
-    expect(screen.queryAllByRole("columnheader")).toHaveLength(0);
+    const { rerender } = renderTable({ data: undefined, isLoading: true });
+    expect(screen.getByRole("status").textContent).toBe("Loading rows");
+    expect(screen.queryByText("a")).toBeNull();
 
     rerender(
       <DataTable
