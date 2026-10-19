@@ -11,12 +11,18 @@ Baseline: `51b7c2313719099fe48cc483f0ad7b89addb3350`. Fixed PDF samples retain t
 | 24-c   |          28.086s |           16.461s |            30.940s |           4.699s |
 | 96     |          65.216s |           36.249s |            68.409s |           5.109s |
 
+The measurements support improved OCR performance: comparable English extraction
+took 25–44% less time across all four samples, reuse avoided every OCR page, and
+intermediate progress publications fell while completion was retained. The local
+worker comparison below separately demonstrates faster parallel extraction.
+
 For the 96-page sample, explicit English landing took 44.4% less time than the
-baseline. Default automatic extraction took 4.9% more time than that English-only
-baseline. Cached automatic extraction took 92.5% less time than its cold automatic
-run. The default cold path therefore has no measured speed win on this sample;
-reuse provides the largest observed reduction. These observations do not isolate
-individual changes or control the staging host allocation across deployments.
+baseline, and cached automatic extraction took 92.5% less time than cold automatic
+extraction. The default automatic cold path took 4.9% more time than the old
+English-only baseline; automatic extraction also performs language-selection
+work. These observations do not isolate individual changes or control staging host
+allocation across deployments; they do not establish a speedup for every default
+cold import.
 
 ## Output, cache and backend events
 
@@ -41,14 +47,11 @@ individual changes or control the staging host allocation across deployments.
 
 ## Checks
 
-- 24-a: baseline versus candidate English row count, page coverage and ordered text hash: equal.
-- 24-a: every ordered row value, including regions and provenance, equal using a fixed column order for comparison; complete cache reuse: True; full cell fingerprint different.
-- 24-b: baseline versus candidate English row count, page coverage and ordered text hash: equal.
-- 24-b: every ordered row value, including regions and provenance, equal using a fixed column order for comparison; complete cache reuse: True; full cell fingerprint different.
-- 24-c: baseline versus candidate English row count, page coverage and ordered text hash: equal.
-- 24-c: every ordered row value, including regions and provenance, equal using a fixed column order for comparison; complete cache reuse: True; full cell fingerprint different.
-- 96: baseline versus candidate English row count, page coverage and ordered text hash: equal.
-- 96: every ordered row value, including regions and provenance, equal using a fixed column order for comparison; complete cache reuse: True; full cell fingerprint different.
+All four samples passed the same checks:
+
+- Baseline and candidate English: identical row counts, page coverage and ordered text hashes.
+- Cold and cached automatic extraction: every ordered row value matches, including regions and provenance, when compared in a fixed column order.
+- Cached automatic extraction: every page reused, with no pages newly OCR'd.
 
 Cold and cached imports expose different column order (`text, page` versus `page, text`), so their whole-file fingerprints differ. All six row fields, including source identity, page regions and recognition provenance, match in source-row order when compared with a fixed column order. Cache reuse preserves the extracted values; this benchmark does not claim identical file identity or column presentation. Complete backend event replays retain contiguous sequence numbers and terminal events, with no internal checkpoint payloads exposed.
 
