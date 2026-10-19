@@ -233,6 +233,8 @@ def complete(transfer):
                 "position": spec["split_position"],
                 "deduplicate": False,
             }
+    dataset.refresh_from_db(fields=["ocr_languages"])
+    source = {**source, "ocr_languages": dataset.ocr_languages}
     transfer.result = {"id": str(dataset.pk), "state": "landing"}
     if split:
         transfer.result.update(eval_id=split["eval_dataset_id"], eval_state="landing")

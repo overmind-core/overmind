@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 from rest_framework.test import APIClient
 
-from overbae.models import APIToken, Dataset, DatasetImport, Project, ProjectMembership, User
+from overbae.models import (
+    APIToken,
+    Dataset,
+    DatasetImport,
+    DatasetTransfer,
+    Project,
+    ProjectMembership,
+    User,
+)
 from overbae.services.datasets import files, paths, store
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -483,3 +491,35 @@ def test_missing_explicit_json_field_is_refused_before_dataset_publication(trans
     assert response.status_code == 409
     assert "selected JSON rows field" in str(response.data)
     assert not Dataset.objects.filter(project=project).exists()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("languages", [[], ["fra"]])
+def test_transfer_freezes_ocr_languages_for_initial_and_appended_sources(
+    transfer_client, existing, languages
+):
+    client, project = transfer_client
+    if existing:
+        first, data = reserve(client, project, request_key="initial")
+        assert chunk(client, first, data).status_code == 200
+        dataset = Dataset.objects.get(pk=complete(client, first).data["result"]["id"])
+    else:
+        dataset = Dataset.objects.create(
+            project=project, name="OCR draft", state=Dataset.State.IDLE
+        )
+    dataset.ocr_languages = languages
+    dataset.save(update_fields=["ocr_languages"])
+    receipt, data = reserve(client, project, request_key="with-languages", dataset=str(dataset.pk))
+    assert chunk(client, receipt, data).status_code == 200
+    published = complete(client, receipt)
+    assert published.status_code == 200, published.data
+    transfer = DatasetTransfer.objects.get(pk=receipt["id"])
+    assert transfer.task["source"]["ocr_languages"] == languages
+    if not existing:
+        assert (
+            DatasetImport.objects.get(pk=transfer.pk).inputs["source"]["ocr_languages"] == languages
+        )
+    Dataset.objects.filter(pk=dataset.pk).update(ocr_languages=["deu"])
+    assert complete(client, receipt).status_code == 200
+    transfer.refresh_from_db()
+    assert transfer.task["source"]["ocr_languages"] == languages

@@ -258,6 +258,7 @@ def test_mcp_ocr_language_override_survives_cli_upload_and_reuses_pages(
         assert detail["ocr_languages"] == ["eng"]
         assert detail["sources"][0]["extraction"]["ocr"]["pages_reused"] == number
         assert detail["sources"][0]["extraction"]["ocr"]["languages"] == ["eng"]
+        assert detail["sources"][0]["extraction"]["ocr"]["requested_languages"] == ["eng"]
         datasets.append(draft)
     invalid = workshop.call_result(
         "update_dataset", {"dataset": datasets[0], "ocr_languages": ["not-installed"]}

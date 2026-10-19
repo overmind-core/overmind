@@ -62,5 +62,8 @@
   ],
   "0022_workshop_execution.py": [
     "78fb999a075956bc3f8d29cab3d0090a2ef163455a4b41617c7d4e88f6b6befe"
+  ],
+  "0049_document_ocr_checkpoints.py": [
+    "01cf1a3b25b05f3b6119bf494d1e6ea2e69f89901d925e188f1fde0e3e776012"
   ]
 }
