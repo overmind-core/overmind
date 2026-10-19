@@ -1,25 +1,13 @@
-import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
+import { Navigate } from "@tanstack/react-router";
+
+import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectsList } from "@/hooks/use-projects";
 
 export function NoProjectsEmptyState() {
-  return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
-      <EmptyState
-        description="Paste the onboarding prompt in your coding agent. A project appears here after overmind sync."
-        icon={Icon.folderAdd}
-        title="Set up from your repository"
-      />
-      <div className="overflow-hidden rounded-md border border-border p-4">
-        <OnboardWithAiPanel
-          showManualSetup={false}
-          waitingHint="This page refreshes when init sync creates your first project."
-        />
-      </div>
-    </div>
-  );
+  return <QuickstartEmbed />;
 }
 
 export function ProjectRequiredEmptyState({
@@ -43,7 +31,7 @@ export function ProjectRequiredEmptyState({
   }
 
   if (projects.length === 0) {
-    return <NoProjectsEmptyState />;
+    return <Navigate replace search={{ projectId: undefined }} to="/" />;
   }
 
   return <EmptyState description={description} icon={Icon.folderAdd} title={title} />;

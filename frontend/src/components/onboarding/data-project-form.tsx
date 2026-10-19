@@ -22,23 +22,27 @@ export interface DataProjectCreated {
 export function DataProjectForm({
   onCreated,
   onBusyChange,
+  project,
 }: {
   onCreated: (created: DataProjectCreated) => void;
   onBusyChange?: (busy: boolean) => void;
+  project?: Pick<Project, "id" | "name">;
 }) {
   const [name, setName] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
   const [suffix] = useState(() => crypto.randomUUID().slice(0, 8));
-  const projectRef = useRef<Project | null>(null);
+  const projectRef = useRef<Pick<Project, "id" | "name"> | null>(null);
   const upload = useDatasetUploads();
   const dataset = useCreateDatasetMutation();
   const client = useQueryClient();
   const ready = upload.files.length > 0 && upload.files.every((file) => file.status === "ready");
   const create = useMutation({
     mutationFn: async () => {
-      if (!name.trim() || !ready) throw new Error("Enter a project name and upload your files.");
+      if ((!project && !projectRef.current && !name.trim()) || !ready)
+        throw new Error("Enter a project name and upload your files.");
       // Reuse the project if dataset creation fails and the user retries.
-      const project =
+      const selectedProject =
+        project ??
         projectRef.current ??
         (await apiClient.projects.projectsCreate({
           projectRequest: {
@@ -52,13 +56,15 @@ export function DataProjectForm({
             }-${suffix}`,
           },
         }));
-      projectRef.current = project;
+      projectRef.current = selectedProject;
       client.setQueryData(
         ["projects"],
         (current: { projects: Array<Project & { projectId: string }> } | undefined) => {
           const projects = current?.projects ?? [];
-          if (projects.some((item) => item.projectId === project.id)) return current;
-          return { projects: [...projects, { ...project, projectId: project.id }] };
+          if (projects.some((item) => item.projectId === selectedProject.id)) return current;
+          return {
+            projects: [...projects, { ...selectedProject, projectId: selectedProject.id }],
+          };
         }
       );
       void client.invalidateQueries({ queryKey: ["projects"] });
@@ -66,11 +72,11 @@ export function DataProjectForm({
         brief: "Explore the uploaded data and determine how best to prepare it for training.",
         capabilityId: null,
         intent: "train",
-        name: project.name,
-        projectId: project.id,
+        name: selectedProject.name,
+        projectId: selectedProject.id,
         source: { uploads: upload.files.map((file) => file.uploadId!) },
       });
-      return { datasetId: created.id, projectId: project.id };
+      return { datasetId: created.id, projectId: selectedProject.id };
     },
     onSuccess: (created) => {
       setStoredProjectId(created.projectId);
@@ -93,17 +99,19 @@ export function DataProjectForm({
         Upload your source files. Then use your coding agent to explore and prepare the data for
         training in the Workshop.
       </p>
-      <label className="flex flex-col gap-2 text-sm">
-        Project name
-        <Input
-          autoComplete="off"
-          disabled={create.isPending || !!projectRef.current}
-          maxLength={100}
-          onChange={(e) => setName(e.target.value)}
-          required
-          value={name}
-        />
-      </label>
+      {project ? null : (
+        <label className="flex flex-col gap-2 text-sm">
+          Project name
+          <Input
+            autoComplete="off"
+            disabled={create.isPending || !!projectRef.current}
+            maxLength={100}
+            onChange={(e) => setName(e.target.value)}
+            required
+            value={name}
+          />
+        </label>
+      )}
       <DatasetFileUpload
         busy={create.isPending || create.isSuccess}
         onError={setFileError}
@@ -122,7 +130,7 @@ export function DataProjectForm({
                 : "Next: prepare with your coding agent"}
         </p>
         <Button
-          disabled={create.isPending || create.isSuccess || !name.trim() || !ready}
+          disabled={create.isPending || create.isSuccess || (!project && !name.trim()) || !ready}
           type="submit"
         >
           <Icon.datasetAdd /> Create dataset

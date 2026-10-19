@@ -458,12 +458,6 @@ function RouteComponent() {
     );
   }
 
-  // Gated on `data` so a failed auth-me fetch never traps an existing user in
-  // the onboarding flow.
-  if (onboardingQuery.data !== undefined && !onboardingQuery.data.hasCompletedOnboarding) {
-    return <Navigate to="/onboarding" />;
-  }
-
   return (
     <>
       <RootLayout />

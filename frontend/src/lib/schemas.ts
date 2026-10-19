@@ -13,10 +13,6 @@ export const projectIdSearchSchema = z.object({
   projectId: z.string().optional(),
 });
 
-export const onboardingSearchSchema = z.object({
-  message: z.string().optional(),
-});
-
 /**
  * Named to match django-filter, so values stay strings and pass through to the
  * backend untouched. Every param must be declared even if only the client reads

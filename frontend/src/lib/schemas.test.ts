@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   datasetsSearchSchema,
   evaluationsSearchSchema,
-  onboardingSearchSchema,
   optimiserSearchSchema,
   tracesSearchSchema,
   trainingSearchSchema,
@@ -219,14 +218,6 @@ describe("schemas", () => {
       expect(result.ds_intent).toBe("all");
       expect(result.ds_search).toBe("kept");
       expect(result.projectId).toBe("proj-1");
-    });
-  });
-  describe("onboardingSearchSchema", () => {
-    it("parses an optional message", () => {
-      expect(onboardingSearchSchema.parse({ message: "ok" }).message).toBe("ok");
-    });
-    it("allows empty search", () => {
-      expect(onboardingSearchSchema.parse({}).message).toBeUndefined();
     });
   });
 });

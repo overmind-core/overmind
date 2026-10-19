@@ -177,8 +177,8 @@ const ACTIONS: ActionDef[] = [
     icon: Icon.checkbox,
     id: "action:onboarding",
     keywords: ["onboarding", "setup", "first time", "welcome", "complete setup"],
-    label: "Onboarding",
-    to: "/onboarding",
+    label: "Get started",
+    to: "/",
   },
   {
     icon: Icon.capabilityOff,

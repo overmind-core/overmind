@@ -54,11 +54,13 @@ function CapabilitiesSection({
   isLoading,
   error,
   projectId,
+  projectName,
 }: {
   graph?: AgentGraph;
   isLoading: boolean;
   error: Error | null;
   projectId: string;
+  projectName?: string;
 }) {
   const capabilities: CapabilityList[] = graph?.capabilities ?? [];
 
@@ -83,7 +85,7 @@ function CapabilitiesSection({
   if (capabilities.length === 0) {
     return (
       <div className="grid min-w-0 flex-1 place-items-center">
-        <QuickstartEmbed projectId={projectId} />
+        <QuickstartEmbed projectId={projectId} projectName={projectName} />
       </div>
     );
   }
@@ -178,8 +180,14 @@ function AgentPage() {
 
   if (projects.length === 0) {
     return (
-      <PageShell header={<AgentHeader />} variant="scroll">
-        <NoProjectsEmptyState />
+      <PageShell
+        className="flex min-h-full flex-col gap-6 space-y-0"
+        header={<AgentHeader />}
+        variant="scroll"
+      >
+        <div className="grid min-w-0 flex-1 place-items-center">
+          <NoProjectsEmptyState />
+        </div>
         {createProjectDialog}
       </PageShell>
     );
@@ -205,6 +213,7 @@ function AgentPage() {
         graph={graphQuery.data}
         isLoading={graphQuery.isLoading}
         projectId={search.projectId}
+        projectName={projects.find((project) => project.id === search.projectId)?.name}
       />
       {createProjectDialog}
     </PageShell>
