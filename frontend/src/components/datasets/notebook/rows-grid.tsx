@@ -63,7 +63,7 @@ function ChangedValue({
 }) {
   const ops = diffText(cellText(before), cellText(after));
   return (
-    <span className={wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}>
+    <span className={wrap ? "whitespace-pre-wrap break-words" : "whitespace-nowrap"}>
       {ops.map((op, i) =>
         op.kind === "same" ? (
           op.text
@@ -605,7 +605,7 @@ export function RowsGrid({
                               aria-label={open ? `Row ${row._index}, ${c.name}` : undefined}
                               className={cn(
                                 open
-                                  ? "max-h-48 overflow-auto whitespace-pre-wrap break-words"
+                                  ? "max-h-48 select-text overflow-auto whitespace-pre-wrap break-words"
                                   : "truncate"
                               )}
                               role={open ? "region" : undefined}
