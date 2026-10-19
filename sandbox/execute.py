@@ -93,7 +93,7 @@ def need_for(header: dict) -> int:
     if header["mode"] == "package":
         # Keep main's measured dataframe expansion allowance when admitting JSONL packages.
         return max(GIB, int(header["input_bytes"] * 5.5) + 256 * 1024**2 + header["package_bytes"])
-    return max(2 * GIB, 4 * int(header["input_bytes"]))
+    return max(2 * GIB, 4 * int(header["input_bytes"])) + 3 * header.get("cache_bytes", 0)
 
 
 def refusal(header: dict, need: int, budget: int) -> str:
@@ -556,7 +556,12 @@ def run(
         cpu_seconds=EXTRACT_CPU_SECONDS,
         wall_seconds=EXTRACT_WALL_SECONDS,
         # Any process can read another's command line; only its own uid can read its environment.
-        env={"SANDBOX_FILENAME": header["filename"]},
+        env={
+            "SANDBOX_FILENAME": header["filename"],
+            "SANDBOX_OCR_LANGUAGES": json.dumps(header.get("ocr_languages", [])),
+            "SANDBOX_EXTRACTION_MEMORY": str(slot.limit),
+            "SANDBOX_OCR_WORKERS": os.environ.get("SANDBOX_OCR_WORKERS", "2"),
+        },
     )
     outcome = spawn(child, scratch, slot, stop, on_progress)
     if not outcome.ok:
@@ -577,14 +582,14 @@ def run(
 
 
 def read_progress(scratch: Path, offset: int, callback) -> int:
-    report = claim(scratch / "progress.jsonl", 4 * 1024**2)
+    report = claim(scratch / "progress.jsonl", 256 * 1024**2)
     if report is None:
         return offset
     with report:
         report.seek(offset)
         for _ in range(100):
-            line = report.readline(8193)
-            if not line.endswith(b"\n") or len(line) > 8192:
+            line = report.readline(1024**2 + 1)
+            if not line.endswith(b"\n") or len(line) > 1024**2:
                 break
             offset = report.tell()
             try:

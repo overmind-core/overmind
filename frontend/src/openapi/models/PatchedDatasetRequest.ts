@@ -35,6 +35,12 @@ export interface PatchedDatasetRequest {
     name?: string;
     /**
      *
+     * @type {Array<string>}
+     * @memberof PatchedDatasetRequest
+     */
+    ocrLanguages?: Array<string>;
+    /**
+     *
      * @type {string}
      * @memberof PatchedDatasetRequest
      */
@@ -73,6 +79,7 @@ export function PatchedDatasetRequestFromJSONTyped(json: any, ignoreDiscriminato
     return {
 
         'name': json['name'] == null ? undefined : json['name'],
+        'ocrLanguages': json['ocr_languages'] == null ? undefined : json['ocr_languages'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'intent': json['intent'] == null ? undefined : IntentEnumFromJSON(json['intent']),
         'active': json['active'] == null ? undefined : json['active'],
@@ -91,6 +98,7 @@ export function PatchedDatasetRequestToJSONTyped(value?: PatchedDatasetRequest |
     return {
 
         'name': value['name'],
+        'ocr_languages': value['ocrLanguages'],
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),
         'active': value['active'],

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from functools import lru_cache
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -15,13 +17,21 @@ _REPLAY_TTL_SECONDS = 6 * 3600
 
 
 def _redis_client():
-    import redis as redis_lib
     from django.conf import settings
 
     url = getattr(settings, "CELERY_BROKER_URL", "redis://localhost:6379/0")
     if not url.startswith(("redis://", "rediss://", "unix://")):
         return None
-    return redis_lib.from_url(url, decode_responses=True)
+    return _client(os.getpid(), url)
+
+
+@lru_cache(maxsize=4)
+def _client(pid, url):
+    import redis as redis_lib
+
+    return redis_lib.from_url(
+        url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
+    )
 
 
 def channel(dataset_id: Any) -> str:

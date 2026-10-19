@@ -13,7 +13,7 @@ from datetime import timedelta
 from celery import current_app
 from django.conf import settings
 from django.db import transaction
-from django.db.models import DateTimeField, ExpressionWrapper, F, Q, Value
+from django.db.models import DateTimeField, Exists, ExpressionWrapper, F, Q, Value
 from django.db.models.functions import Least
 from django.utils import timezone
 
@@ -21,6 +21,7 @@ from overbae.models import Dataset, DatasetImport, User
 from overbae.services.datasets import events, files, heartbeat, llm_calls, operations, paths
 from overbae.services.datasets import land as landing
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.datasets.progress import ProgressThrottle
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,8 @@ def queue_landing_receipt(dataset, task_id, inputs, *, published=False, preserve
 
 
 def enqueue(dataset, inputs):
+    if dataset.ocr_languages:
+        inputs = {**inputs, "source": {**inputs["source"], "ocr_languages": dataset.ocr_languages}}
     run = queue_landing_receipt(dataset, uuid.uuid4(), inputs)
     transaction.on_commit(lambda: publish(run.pk))
     return run
@@ -520,16 +523,27 @@ def _read_parts(run, targets):
 
     def progress(detail):
         for target in targets:
-            Dataset.objects.filter(pk=target.pk, state=Dataset.State.LANDING).update(
+            current = DatasetImport.objects.filter(
+                pk=run.pk, owner=run.owner, state=DatasetImport.State.RUNNING
+            )
+            changed = Dataset.objects.filter(
+                Exists(current), pk=target.pk, state=Dataset.State.LANDING
+            ).update(
                 source_spec={**target.source_spec, "landing_progress": detail},
                 updated_at=timezone.now(),
             )
-            events.publish(
-                target.pk, {"type": "land_progress", "dataset_id": str(target.pk), **detail}
-            )
+            if changed:
+                events.publish(
+                    target.pk, {"type": "land_progress", "dataset_id": str(target.pk), **detail}
+                )
 
+    progress = ProgressThrottle(progress)
+    extraction = {
+        "project_id": run.dataset.project_id,
+        "ocr_languages": source.get("ocr_languages", []),
+    }
     if source.get("uploads"):
-        read = landing.read_uploads(source["uploads"], on_progress=progress)
+        read = landing.read_uploads(source["uploads"], on_progress=progress, **extraction)
         if source.get("pasted"):
             read = replace(read, spec={"pasted": True})
     elif source.get("upload_id"):
@@ -538,6 +552,7 @@ def _read_parts(run, targets):
             filename=source.get("filename") or files.upload_filename(source["upload_id"]),
             json_rows_field=source.get("json_rows_field"),
             on_progress=progress,
+            **extraction,
         )
     elif source.get("traces") is not None:
         read = landing.read_traces(

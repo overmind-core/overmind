@@ -280,19 +280,30 @@ def _execute_landing(
     def progress(done: int) -> None:
         _emit(dataset_id, {"type": "land_progress", "traces": done})
 
+    from overbae.services.datasets.progress import ProgressThrottle
+
     def file_progress(detail: dict) -> None:
         for target in targets:
             target.source_spec = {**target.source_spec, "landing_progress": detail}
-            Dataset.objects.filter(pk=target.id, state=Dataset.State.LANDING).update(
-                source_spec=target.source_spec, updated_at=timezone.now()
-            )
-            _emit(target.id, {"type": "land_progress", **detail})
+            changed = Dataset.objects.filter(
+                pk=target.id,
+                state=Dataset.State.LANDING,
+                operation__task_id=task.request.id,
+                source_spec__attachment_request=attachment_request,
+            ).update(source_spec=target.source_spec, updated_at=timezone.now())
+            if changed:
+                _emit(target.id, {"type": "land_progress", **detail})
 
+    file_progress = ProgressThrottle(file_progress)
+    extraction = {
+        "project_id": dataset.project_id,
+        "ocr_languages": source.get("ocr_languages", dataset.ocr_languages),
+    }
     upload_id = source.get("upload_id")
     upload_ids = source.get("uploads") or []
     try:
         if upload_ids:
-            read = landing.read_uploads(upload_ids, on_progress=file_progress)
+            read = landing.read_uploads(upload_ids, on_progress=file_progress, **extraction)
         elif upload_id:
             filename = source.get("filename") or files.upload_filename(upload_id) or "upload"
             path = files.upload_data_path(upload_id)
@@ -303,6 +314,7 @@ def _execute_landing(
                 json_rows_field=source.get("json_rows_field"),
                 filename=filename,
                 on_progress=lambda detail: file_progress({"completed": 0, "total": 1, **detail}),
+                **extraction,
             )
         elif source.get("rows") is not None:
             read = landing.read_rows(list(source["rows"]), spec={"pasted": True})
@@ -414,9 +426,10 @@ def _execute_landing(
 
 @shared_task(name="overbae.tasks.datasets.reconcile_imports")
 def reconcile_imports():
-    from overbae.services.datasets import imports
+    from overbae.services.datasets import imports, ocr_cache
 
     result = imports.reconcile()
+    result["ocr_checkpoints_pruned"] = ocr_cache.prune()
     from overbae.services.datasets import admission
 
     result["landing_admission"] = admission.reconcile(land.publish_admitted)

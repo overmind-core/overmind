@@ -166,7 +166,7 @@ jobs:
         run: touch .env
 
       - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra
 
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.

@@ -21,6 +21,8 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from sandbox import execute, packages
+from sandbox.documents.checkpoints import MAX_CACHE_BYTES
+from sandbox.documents.languages import validate_languages
 from sandbox.protocol import FramingError, HeaderReader, frame, header_bytes
 
 MODES = ("extract", "package")
@@ -48,6 +50,13 @@ def _check(header: dict[str, Any]) -> None:
     ):
         raise FramingError("input_bytes is required.")
     if mode == "extract":
+        cache_bytes = header.get("cache_bytes", 0)
+        if type(cache_bytes) is not int or not 0 <= cache_bytes <= MAX_CACHE_BYTES:
+            raise FramingError("Invalid OCR cache size.")
+        try:
+            validate_languages(header.get("ocr_languages", []))
+        except ValueError as exc:
+            raise FramingError(str(exc)) from exc
         filename = header.get("filename")
         if not isinstance(filename, str) or not filename.strip() or "\0" in filename:
             raise FramingError("A filename is required.")
@@ -161,6 +170,8 @@ async def run(request: Request) -> Response:
     source = scratch / ("input.jsonl" if header["mode"] == "package" else "document")
     try:
         parts = [(source, header["input_bytes"])]
+        if header["mode"] == "extract" and header.get("cache_bytes"):
+            parts.insert(0, (scratch / "ocr-cache.jsonl", header["cache_bytes"]))
         if header["mode"] == "package":
             parts.insert(0, (scratch / "package.json", header["package_bytes"]))
         await _store(chunks, first, parts)
@@ -176,9 +187,18 @@ async def run(request: Request) -> Response:
 
     async def stream():
         stop = threading.Event()
-        progress = queue.SimpleQueue()
+        progress = queue.Queue(maxsize=8)
+
+        def report(value):
+            while not stop.is_set():
+                try:
+                    progress.put(value, timeout=0.2)
+                    return
+                except queue.Full:
+                    pass
+
         task = asyncio.create_task(
-            run_in_threadpool(execute.run, header, scratch, source, slot, stop, progress.put)
+            run_in_threadpool(execute.run, header, scratch, source, slot, stop, report)
         )
         outcome = None
         try:

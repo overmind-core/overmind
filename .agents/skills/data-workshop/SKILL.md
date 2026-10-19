@@ -133,8 +133,17 @@ reads these facts without dispatching. CLI upload states are publication snapsho
 current landing status. `--wait` observes terminal landing; MCP `get_job` reads
 current progress. First-source attachment
 preserves a draft; later attachment appends a new version. Original document/image
-bytes, extraction metadata and row evidence remain retained. Local English Tesseract
-OCR covers scanned PDF regions and PNG/JPEG/WebP images. Image orientation and
+bytes, extraction metadata and row evidence remain retained. Local Tesseract OCR covers scanned PDF regions and PNG/JPEG/WebP images.
+It detects supported languages offline and records actual models, detection evidence
+and uncertainty per page. `update_dataset(ocr_languages=[...])` sets explicit
+Tesseract codes for subsequent imports; `[]` restores automatic detection.
+Set this on a draft before uploading; retries retain the original import settings.
+PDF pages use bounded spawned processes under the sandbox memory reservation.
+Completed OCR pages stream to project-scoped database checkpoints retained for
+30 days, keyed by document, language policy, engine/model hashes and parser settings.
+Import resume and identical sources reuse only matching completed pages.
+Progress counters write at most every two seconds; stage and terminal transitions
+remain immediate. Details and rollout: `docs/workshop-ocr.md`. Image orientation and
 source coordinates survive extraction. OCR does not reconstruct visual tables.
 Document parsing runs in the isolated `sandbox` service (`sandbox/documents/`),
 without application credentials, media mounts or outbound network. The landing

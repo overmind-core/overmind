@@ -21,6 +21,7 @@ from .datasets import (
     DatasetImport,
 )
 from .decision import DecisionJob
+from .document_extraction import DocumentExtractionPage
 from .feedback import Feedback
 from .finetuning import (
     DecisionPerformanceRequest,
@@ -72,6 +73,7 @@ from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
 
 __all__ = [
+    "DocumentExtractionPage",
     "TrainingPlan",
     "TrainingCheckpoint",
     "TrainingValidationRun",

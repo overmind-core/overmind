@@ -17,6 +17,7 @@ def main(argv: list[str]) -> None:
         resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
     # -I keeps the working directory off sys.path; import the code next to this file.
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from sandbox.documents.checkpoints import read
     from sandbox.documents.extract import DocumentError, extract
 
     def progress(value):
@@ -24,7 +25,14 @@ def main(argv: list[str]) -> None:
             report.write(json.dumps(value) + "\n")
 
     try:
-        rows, metadata = extract(Path(document), filename=filename, on_progress=progress)
+        rows, metadata = extract(
+            Path(document),
+            filename=filename,
+            on_progress=progress,
+            languages=json.loads(os.environ.get("SANDBOX_OCR_LANGUAGES", "[]")),
+            cached=read(Path("ocr-cache.jsonl")),
+            memory_bytes=int(os.environ.get("SANDBOX_EXTRACTION_MEMORY", "0")) or None,
+        )
     except DocumentError as exc:
         sys.stderr.write(str(exc))
         raise SystemExit(3) from None

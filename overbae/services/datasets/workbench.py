@@ -918,6 +918,19 @@ def expire_runs():
 @transaction.atomic
 def update_dataset(dataset, **fields):
     dataset = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    if "ocr_languages" in fields:
+        from sandbox.documents.languages import validate_languages
+
+        if dataset.state in (Dataset.State.LANDING, Dataset.State.RUNNING):
+            raise DatasetError(
+                "Wait for the current operation before changing OCR languages.", code="dataset_busy"
+            )
+        try:
+            languages = validate_languages(fields["ocr_languages"])
+        except ValueError as exc:
+            raise DatasetError(str(exc), code="invalid_ocr_languages") from exc
+        dataset.ocr_languages = languages
+        dataset.save(update_fields=["ocr_languages", "updated_at"])
     if "name" in fields:
         lifecycle.rename(dataset, fields["name"])
     if "intent" in fields:

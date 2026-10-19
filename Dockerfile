@@ -54,6 +54,10 @@ RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get install -y --no-install-recommends \
         libpq5 ca-certificates libcurl4 libssl3 zlib1g libexpat1 \
         tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd \
+        tesseract-ocr-fra tesseract-ocr-deu tesseract-ocr-spa tesseract-ocr-ita \
+        tesseract-ocr-por tesseract-ocr-nld tesseract-ocr-pol tesseract-ocr-tur \
+        tesseract-ocr-rus tesseract-ocr-ukr tesseract-ocr-ara tesseract-ocr-hin \
+        tesseract-ocr-chi-sim tesseract-ocr-chi-tra tesseract-ocr-jpn tesseract-ocr-kor tesseract-ocr-ell \
     && apt-get install -y --only-upgrade \
         libssh2-1 perl-base libcurl4 libexpat1 libacl1 libattr1 \
     && apt-get clean \

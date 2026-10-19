@@ -81,6 +81,7 @@ from overbae.services.mcp.references import project_references, uuid_reference
 from overbae.services.model_activation import activation_progress
 from overbae.services.training_preparation import live_progress_for_job
 from overbae.services.training_record import run_record
+from sandbox.documents.languages import LANGUAGES
 
 JSON_MIME = "application/json"
 _MAX_EVENTS = 20
@@ -203,6 +204,14 @@ def _dataset_upload_resource(uri: str) -> dict:
         "max_bytes": files.MAX_UPLOAD_BYTES,
         "document_max_bytes": documents.MAX_BYTES,
         "pdf_max_pages": documents.MAX_PAGES,
+        "ocr": {
+            "language_mode": "automatic",
+            "language_override_tool": "update_dataset",
+            "language_field": "ocr_languages",
+            "supported_languages": sorted(LANGUAGES.values()),
+            "override_guidance": "Set ocr_languages on a draft before uploading; [] restores automatic detection. Actual languages and detection uncertainty are retained per page.",
+            "checkpoint_retention_days": 30,
+        },
         "max_files": 100,
         "json_array_max_bytes": files.JSON_ARRAY_MAX_BYTES,
         "limits": (

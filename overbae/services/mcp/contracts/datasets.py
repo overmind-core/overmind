@@ -244,6 +244,10 @@ class DatasetHumanAction(MCPModel):
 
 
 class DatasetDetail(DatasetListItem):
+    ocr_languages: list[str] = Field(
+        default_factory=list,
+        description="Requested languages for subsequent imports; empty means automatic detection. Actual per-page languages are in extraction provenance.",
+    )
     operation: dict[str, Any] = Field(default_factory=dict)
     landing_progress: dict[str, Any] | None = Field(
         default=None,
@@ -825,6 +829,7 @@ def serialize_dataset_detail(
             ),
             "landing_progress": dataset.source_spec.get("landing_progress"),
             "brief": _clip(dataset.brief, 8000),
+            "ocr_languages": dataset.ocr_languages,
             "sources": [
                 _source_summary(item)
                 for item in sources[source_offset : source_offset + source_limit]

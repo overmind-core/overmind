@@ -5,6 +5,13 @@ description: End-to-end workflow for adding or changing Overmind MCP tools, reso
 
 # Adding or changing MCP
 
+Contract 7.10.0 makes OCR language overrides MCP-ready through `update_dataset`.
+`ocr_languages=[]` selects automatic detection; supported Tesseract codes are
+discoverable at `overmind://dataset-upload`. Set preferences before uploading to
+a draft. Inspection exposes requested settings separately from actual per-page
+languages, uncertainty and cached-page reuse. Existing import resume retains its
+original settings and reuses only matching project-scoped page checkpoints.
+
 Contract 7.8.2 makes SQL query capacity MCP-ready: the interface resource reports
 global/per-project concurrency and deadlines. Busy or unavailable admission returns
 retryable errors with the exact cell and minimum retry delay. Retry with backoff,

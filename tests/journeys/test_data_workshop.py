@@ -228,3 +228,40 @@ def test_a_source_capability_filter_is_preserved_when_the_destination_differs(
         workshop.call("inspect_dataset", {"dataset": dataset_id})["capability"]["id"]
         == answer["id"]
     )
+
+
+def test_mcp_ocr_language_override_survives_cli_upload_and_reuses_pages(
+    workshop, cli, sample_agent, worker
+):
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "fixtures/documents/scanned.pdf"
+    datasets = []
+    for number in range(2):
+        draft = workshop.call(
+            "start_dataset",
+            {
+                "brief": "Keep document evidence for OCR verification.",
+                "name": f"OCR source {number}",
+                "intent": "explore",
+            },
+        )["dataset"]["id"]
+        workshop.call("update_dataset", {"dataset": draft, "ocr_languages": ["eng"]})
+        uploaded = json.loads(
+            cli.run(
+                "dataset", "upload", str(path), "--dataset", draft, "--json", cwd=sample_agent.repo
+            )
+        )
+        assert uploaded["id"] == draft
+        drain(worker)
+        detail = workshop.call("inspect_dataset", {"dataset": draft})
+        assert detail["ocr_languages"] == ["eng"]
+        assert detail["sources"][0]["extraction"]["ocr"]["pages_reused"] == number
+        assert detail["sources"][0]["extraction"]["ocr"]["languages"] == ["eng"]
+        datasets.append(draft)
+    invalid = workshop.call_result(
+        "update_dataset", {"dataset": datasets[0], "ocr_languages": ["not-installed"]}
+    )
+    assert invalid.isError
+    workshop.call("update_dataset", {"dataset": datasets[0], "ocr_languages": []})
+    assert workshop.call("inspect_dataset", {"dataset": datasets[0]})["ocr_languages"] == []

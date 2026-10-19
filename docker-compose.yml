@@ -255,6 +255,7 @@ services:
     environment:
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
       SANDBOX_MEMORY_BYTES: ${SANDBOX_MEMORY_BYTES:-0}
+      SANDBOX_OCR_WORKERS: ${SANDBOX_OCR_WORKERS:-2}
     tmpfs:
       - /tmp:size=8g
     volumes:

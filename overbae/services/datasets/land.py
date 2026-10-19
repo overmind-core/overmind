@@ -209,6 +209,8 @@ def read_file(
     filename: str,
     on_progress: Callable[[dict], None] | None = None,
     json_rows_field: str | None = None,
+    project_id=None,
+    ocr_languages=None,
 ) -> Landing:
     spool = None
 
@@ -221,7 +223,13 @@ def read_file(
     )
     try:
         if filename.lower().endswith(documents.SUFFIXES):
-            extracted, extraction = documents.extract(path, filename=filename, on_progress=progress)
+            extracted, extraction = documents.extract(
+                path,
+                filename=filename,
+                on_progress=progress,
+                project_id=project_id,
+                ocr_languages=ocr_languages,
+            )
             spool = tempfile.TemporaryDirectory(prefix="overmind-document-")
             cached = Path(spool.name) / "extracted.jsonl"
             with cached.open("w") as output:
@@ -236,6 +244,7 @@ def read_file(
                 else {}
             )
     except (files.FileError, documents.DocumentError) as exc:
+        progress({"stage": "failed"})
         raise LandError(str(exc)) from exc
     if not rows:
         raise LandError("The file has no rows.")
@@ -294,7 +303,11 @@ class UploadRows:
 
 
 def read_uploads(
-    upload_ids: list[str], *, on_progress: Callable[[dict], None] | None = None
+    upload_ids: list[str],
+    *,
+    on_progress: Callable[[dict], None] | None = None,
+    project_id=None,
+    ocr_languages=None,
 ) -> Landing:
     parts = []
     sources = []
@@ -312,6 +325,8 @@ def read_uploads(
             path,
             filename=filename,
             on_progress=progress,
+            project_id=project_id,
+            ocr_languages=ocr_languages,
             json_rows_field=(files.inspection(upload_id) or {}).get("json_rows_field"),
         )
         sources.extend(part.spec["sources"])

@@ -119,6 +119,11 @@ class ImportInput(SourceInput):
 
 
 class UpdateInput(DatasetInput):
+    ocr_languages: list[str] | None = Field(
+        default=None,
+        max_length=4,
+        description="Tesseract codes for subsequent document imports (for example [eng, fra]); [] restores automatic detection. Set on a draft before CLI upload. Does not rewrite published cells.",
+    )
     name: str | None = Field(default=None, min_length=1, max_length=255)
     intent: Literal["train", "eval", "explore"] | None = None
     active: UUID | None = None
@@ -130,9 +135,9 @@ class UpdateInput(DatasetInput):
             raise ValueError("Supply a dataset change.")
         if any(
             field in self.model_fields_set and getattr(self, field) is None
-            for field in ("name", "intent")
+            for field in ("name", "intent", "ocr_languages")
         ):
-            raise ValueError("Name and intent cannot be null.")
+            raise ValueError("Name, intent and OCR languages cannot be null.")
         return self
 
 

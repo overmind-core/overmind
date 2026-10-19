@@ -26,6 +26,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def in_process_parser(monkeypatch):
     # Fault injection targets the parser; ordinary landing tests use the real service.
     def parse(*args, **kwargs):
+        kwargs.pop("project_id", None)
+        kwargs["languages"] = kwargs.pop("ocr_languages", None)
+        progress = kwargs.get("on_progress")
+        if progress:
+            kwargs["on_progress"] = lambda value: (
+                progress(value) if "ocr_checkpoint" not in value else None
+            )
         try:
             return parse_document(*args, **kwargs)
         except ParserError as exc:

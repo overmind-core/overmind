@@ -93,6 +93,12 @@ export interface Dataset {
     readonly sourceSpec: any | null;
     /**
      *
+     * @type {Array<string>}
+     * @memberof Dataset
+     */
+    ocrLanguages?: Array<string>;
+    /**
+     *
      * @type {string}
      * @memberof Dataset
      */
@@ -233,6 +239,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'brief': json['brief'],
         'sourceKind': DatasetSourceKindEnumFromJSON(json['source_kind']),
         'sourceSpec': json['source_spec'],
+        'ocrLanguages': json['ocr_languages'] == null ? undefined : json['ocr_languages'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'capabilityName': json['capability_name'],
         'capabilityRank': json['capability_rank'],
@@ -264,6 +271,7 @@ export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'brief'|
     return {
 
         'name': value['name'],
+        'ocr_languages': value['ocrLanguages'],
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),
         'active': value['active'],

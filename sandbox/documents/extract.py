@@ -23,7 +23,13 @@ class DocumentError(ValueError):
 
 
 def extract(
-    path: Path, *, filename: str, on_progress: Callable[[dict], None] | None = None
+    path: Path,
+    *,
+    filename: str,
+    on_progress: Callable[[dict], None] | None = None,
+    languages=None,
+    cached=None,
+    memory_bytes=None,
 ) -> tuple[list[dict], dict]:
     if path.stat().st_size > MAX_BYTES:
         raise DocumentError("Documents are capped at 100 MiB (104857600 bytes).")
@@ -50,13 +56,15 @@ def extract(
             on_progress({"stage": "extracting_native_text", "pages_total": page_count})
     if suffix in ocr.IMAGE_SUFFIXES:
         try:
-            rows, ocr_metadata = ocr.extract_image(path)
+            rows, ocr_metadata = ocr.extract_image(
+                path, languages=languages, cached=cached, on_progress=on_progress
+            )
         except ocr.OcrError as exc:
             raise DocumentError(str(exc)) from exc
         method, parser_version, pages = "tesseract-ocr", ocr_metadata["version"], 1
         limitations.extend(
             [
-                "OCR uses English language data and may misread text.",
+                "OCR may misread text. Automatic language detection is evidence-based but can be uncertain; inspect per-page provenance.",
                 "Reading order and visual table structure are not reconstructed.",
             ]
         )
@@ -145,7 +153,13 @@ def extract(
                         )
             try:
                 ocr_rows, ocr_metadata = ocr.extract_pdf(
-                    path, document, rows, on_progress=on_progress
+                    path,
+                    document,
+                    rows,
+                    on_progress=on_progress,
+                    languages=languages,
+                    cached=cached,
+                    memory_bytes=memory_bytes,
                 )
             except ocr.OcrError as exc:
                 raise DocumentError(str(exc)) from exc
@@ -154,7 +168,9 @@ def extract(
             limitations.append("Reading order and visual table structure are not reconstructed.")
             if ocr_metadata:
                 method += "+tesseract-ocr"
-                limitations.append("OCR uses English language data and may misread text.")
+                limitations.append(
+                    "OCR may misread text. Automatic language detection is evidence-based but can be uncertain; inspect per-page provenance."
+                )
             missing = sorted(set(document.pages) - {row["page"] for row in rows})
             if missing:
                 limitations.append("Pages without extracted text: " + ", ".join(map(str, missing)))

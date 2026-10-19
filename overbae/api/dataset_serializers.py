@@ -194,6 +194,9 @@ class DatasetPreparationSerializer(serializers.Serializer):
 
 
 class DatasetSerializer(serializers.ModelSerializer):
+    ocr_languages = serializers.ListField(
+        child=serializers.CharField(), max_length=4, required=False
+    )
     operation = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
@@ -211,6 +214,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "brief",
             "source_kind",
             "source_spec",
+            "ocr_languages",
             "capability",
             "capability_name",
             "capability_rank",
@@ -229,7 +233,9 @@ class DatasetSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = [
-            f for f in fields if f not in ("name", "capability", "intent", "active")
+            f
+            for f in fields
+            if f not in ("name", "capability", "intent", "active", "ocr_languages")
         ]
 
     def _chain(self, obj) -> list[Cell]:

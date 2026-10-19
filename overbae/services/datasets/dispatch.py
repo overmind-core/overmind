@@ -131,6 +131,9 @@ def attach_source(dataset, user, source: dict) -> Dataset:
     source = _trace_preference(source, dataset.capability_id)
     with transaction.atomic():
         request_id = stage_attachment(dataset, source)
+        dataset.refresh_from_db(fields=["ocr_languages"])
+        if dataset.ocr_languages:
+            source = {**source, "ocr_languages": dataset.ocr_languages}
         from overbae.tasks.datasets import land
 
         if (

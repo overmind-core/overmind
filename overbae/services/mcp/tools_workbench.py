@@ -220,7 +220,7 @@ def register_workbench_tools(catalog):
             "update_dataset",
             UpdateInput,
             False,
-            "Set an explicit dataset name, user-selected intent, capability or active version. Intent and capability cannot change after use. Null clears capability or the default version. Selecting a version does not alter existing consumers.",
+            "Set an explicit dataset name, user-selected intent, capability, active version or OCR languages for subsequent imports. Empty ocr_languages selects automatic detection; a coding agent can set supported Tesseract codes before uploading to a draft. Intent and capability cannot change after use. Null clears capability or the default version. Selecting a version does not alter existing consumers.",
         ),
     ]
     for name, model, read_only, description in definitions:
