@@ -175,9 +175,11 @@ class TrainingMonitorCallback(TrainerCallback):
         cache_key = (split, fingerprint(indices))
         if cache_key not in self.datasets:
             rows = self.development_rows if split == "development" else self.train_rows
+            # Selected rows are scored individually; packing would merge them.
             self.datasets[cache_key] = self.build_dataset(
                 self.tokenizer,
                 [rows[index] for index in indices],
+                pack=False,
                 stage="building_monitoring_sample",
             )
         self.eval_progress = {
