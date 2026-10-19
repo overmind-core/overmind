@@ -13,8 +13,8 @@ import { writeClipboardText } from "@/lib/clipboard";
 import { dataOnboardingPrompt } from "@/lib/data-onboarding-prompt";
 import {
   type McpClient,
-  manualSetupCommand,
   mcpClientMeta,
+  mcpInitCommand,
   mcpInitEnvFlag,
   onboardWithAiBootstrapPrompt,
   sdkPipInstall,
@@ -49,7 +49,7 @@ export function OnboardWithAiPanel({
   const keyValue = apiKey || "YOUR_API_KEY";
   const meta = mcpClientMeta(client);
   const Logo = mcpClientLogo(client);
-  const manualCommands = manualSetupCommand(client, keyValue, apiUrl, projectId);
+  const manualCommands = mcpInitCommand(client, keyValue, apiUrl, undefined, projectId);
   const initEnvFlag = mcpInitEnvFlag(apiUrl);
   const { copied: manualCopied, copy: copyManual } = useCopy(manualCommands);
 
