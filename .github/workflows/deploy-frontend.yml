@@ -1,5 +1,6 @@
 name: Deploy Frontend
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths-ignore:
@@ -43,7 +44,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      # main / pull_request → staging; published release → production.
+      # main / manual → staging; pull requests → staging previews; release → production.
       # Vite loads frontend/.env.<mode> for the build, so the committed env
       # files are the one source of each target's public config.
       - name: Select target
@@ -56,7 +57,11 @@ jobs:
           else
             echo "mode=staging" >> "$GITHUB_OUTPUT"
             echo "pages_project=console-overmind-staging" >> "$GITHUB_OUTPUT"
-            echo "pages_branch=" >> "$GITHUB_OUTPUT"
+            if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+              echo "pages_branch=main" >> "$GITHUB_OUTPUT"
+            else
+              echo "pages_branch=" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - run: bun install --frozen-lockfile
