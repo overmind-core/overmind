@@ -169,7 +169,7 @@ def console(browser, console_url, account, settings, request) -> Console:
     console.press("Continue")
     console.wait_until("() => !!localStorage.getItem('jwt_access')")
     console.goto("/onboarding")
-    console.click("Go to console")
+    console.sees("Agent")
     yield console
     try:
         console.save_evidence(re.sub(r"[^\w.-]+", "_", request.node.nodeid))
