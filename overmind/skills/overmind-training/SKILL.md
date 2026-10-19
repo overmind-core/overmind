@@ -219,9 +219,10 @@ Default monitoring uses initial, fixed-sample periodic and full final developmen
 checks. Samples freeze during Modal transfer before GPU dispatch, not during
 token preparation. Adaptive scheduling changes timing only; the overhead target
 is not a spend cap. Set `selection=development_loss` or `early_stopping` only when
-the user authorises that decision rule. Required checks fail closed. For a bounded
-Modal call, `runtime_limit_seconds` sets a hard provider timeout without changing
-optimizer steps; CPU preparation, storage and other costs remain separate.
+the user authorises that decision rule. Required checks fail closed. Modal training
+attempts keep the 24-hour function timeout. `runtime_limit_seconds` does not shorten
+that call or change optimizer steps; CPU preparation, storage and other costs remain
+separate.
 
 Use `inspect_training_progress(job=..., check=..., offset=..., limit=...)` for
 retained examples or `probe=development|training_reference|generation` for sample

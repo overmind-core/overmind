@@ -25,7 +25,8 @@ def profile_options(hyperparameters):
             raise ValueError("runtime_limit_seconds must be an integer between 60 and 86400")
         if requested is not None:
             raise ValueError("Choose one runtime limit: runtime_limit_seconds or runtime_profile")
-        return {"timeout": limit, "retries": 0}
+        # with_options(timeout=) replaces the 24h function ceiling for that spawn only.
+        return {}
     if requested is None:
         return {}
     profile = RuntimeProfile.model_validate(requested)

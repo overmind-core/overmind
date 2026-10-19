@@ -43,8 +43,8 @@ def test_monitoring_requires_real_provider_and_development_support():
     assert resolve_policy(None, has_development=False, provider="modal")["mode"] == "off"
 
 
-def test_training_time_limit_bounds_full_run_without_changing_optimizer_steps():
-    assert profile_options({"runtime_limit_seconds": 7200}) == {"timeout": 7200, "retries": 0}
+def test_runtime_limit_does_not_shorten_the_function_timeout():
+    assert profile_options({"runtime_limit_seconds": 7200}) == {}
     for value in (0, -1, True, 1.5, 86401, "7200"):
         with pytest.raises(ValueError):
             profile_options({"runtime_limit_seconds": value})

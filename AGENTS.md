@@ -124,8 +124,9 @@ Each line is the invariant; the named skill section carries the mechanics.
   checks require agent-declared labels/exact matching/JSON schema/JSON field pointers; missing metrics
   remain missing. Metered judges, challenge suites and declared-slice sampling are
   not yet supported by this monitoring contract. Full optimizer resume is not
-  implied by adapter reload verification. Modal `runtime_limit_seconds` bounds the
-  provider call without changing steps; it is not an all-in invoice cap. Detail:
+  implied by adapter reload verification. Modal training attempts keep the 24-hour
+  function timeout. `runtime_limit_seconds` does not shorten that call and is not an
+  all-in invoice cap. Detail:
   backend-architecture § Development monitoring.
 
   `json_fields` compares declared JSON Pointers against retained references, with
