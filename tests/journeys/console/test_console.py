@@ -125,7 +125,7 @@ def test_evaluations_share_runs_navigation_and_probability_metrics(console, work
     )
     console.sees("1 missing · 1 invalid · 1 incompatible")
     console.wait_until(f"() => location.pathname.endsWith('/runs/{plan.id}')")
-    console.wait_until("""() => document.querySelectorAll('table').length === 1
+    console.wait_until("""() => document.querySelectorAll('table:not([aria-busy=true])').length === 1
         && document.querySelector('[aria-label="Benchmark datapoints"]')
         && !document.body.innerText.includes('Download all metrics')
         && !document.body.innerText.includes('Frozen inputs, model identities and execution receipts')

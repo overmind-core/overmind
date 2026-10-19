@@ -48,6 +48,9 @@ interface DrfPage<T> {
   results: T[];
 }
 
+// A fresh `[]` per render makes TanStack re-run its row model and reset state, looping while a page loads.
+const NO_ROWS: never[] = [];
+
 /** Floor for resizable columns — TanStack's default (20) is too small for labels. */
 const DATA_TABLE_MIN_COL_PX = 80;
 
@@ -223,7 +226,7 @@ export function DataTable<T>({
   columnVisibility,
   onColumnVisibilityChange,
 }: DataTableProps<T>) {
-  const rows = data?.results ?? [];
+  const rows = data?.results ?? NO_ROWS;
   const count = data?.count ?? 0;
   const sort = parseDrfOrdering(ordering);
   // Disabled queries may have no data; background refreshes must retain existing rows.
