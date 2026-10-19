@@ -166,7 +166,7 @@ jobs:
         run: touch .env
 
       - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
 
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
@@ -234,6 +234,9 @@ jobs:
         run: |
           cd frontend && bun install --frozen-lockfile
           cd .. && uv run playwright install --with-deps chromium-headless-shell
+
+      - name: Install document OCR runtime
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
 
       - name: Run journeys
         run: make test-journeys
