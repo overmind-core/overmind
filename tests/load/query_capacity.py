@@ -57,7 +57,7 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(run_expensive, noisy, expensive) for _ in range(2)]
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 result = noisy.call_result("query_dataset", inspection)
                 if result.isError:

@@ -56,11 +56,17 @@ CELERY_RESULT_BACKEND = JOURNEY_REDIS_URL or "cache+memory://"
 os.environ["CELERY_BROKER_URL"] = CELERY_BROKER_URL
 os.environ["CELERY_RESULT_BACKEND"] = CELERY_RESULT_BACKEND
 
+
+def _journey_cache_url(url: str) -> str:
+    base, db = url.rsplit("/", 1)
+    return f"{base}/{int(db) - 1}"
+
+
 CACHES = {
     "default": (
         {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": JOURNEY_REDIS_URL.rsplit("/", 1)[0] + "/14",
+            "LOCATION": _journey_cache_url(JOURNEY_REDIS_URL),
         }
         if JOURNEY_REDIS_URL
         else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}

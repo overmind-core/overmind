@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -8,6 +9,41 @@ from pathlib import Path
 from overbae.tasks.training_experiments import reconcile
 
 from .conftest import RUNS
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _run(args, env, log_name, timeout):
+    RUNS.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.Popen(
+        args,
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    lines = []
+
+    def read():
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            lines.append(line)
+            print(line, end="", flush=True)
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    try:
+        code = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        reader.join()
+        raise
+    reader.join()
+    text = "".join(lines)
+    (RUNS / log_name).write_text(text)
+    assert code == 0, failure_output(text)
+    return text
 
 
 def test_read_load_in_isolated_process(worker):
@@ -17,26 +53,13 @@ def test_read_load_in_isolated_process(worker):
         "TEST_REDIS_URL": os.environ["TEST_REDIS_URL"].rsplit("/", 1)[0] + "/12",
     }
     # Celery's test-worker teardown sets process-wide stop flags.
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "tests/load/reads.py",
-            "--ds=tests.load.settings",
-            "-q",
-            "-s",
-        ],
-        cwd=Path(__file__).resolve().parents[2],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=240,
+    text = _run(
+        [sys.executable, "-m", "pytest", "tests/load/reads.py", "--ds=tests.load.settings", "-v"],
+        env,
+        "read-load.log",
+        240,
     )
-    RUNS.mkdir(parents=True, exist_ok=True)
-    (RUNS / "read-load.log").write_text(result.stdout + result.stderr)
-    assert result.returncode == 0, failure_output(result)
-    for line in result.stdout.splitlines():
+    for line in text.splitlines():
         line = line.lstrip(".")
         if line.startswith(("LATENCY_REPORT=", "READ_LOAD_REPORT=")):
             print(line)
@@ -48,7 +71,6 @@ def test_read_load_in_isolated_process(worker):
 
 
 def test_mixed_capacity_and_recovery_in_isolated_process(worker):
-    RUNS.mkdir(parents=True, exist_ok=True)
     env = {
         **os.environ,
         "OVERMIND_LOAD_TEST_DATABASE": f"test_overmind_capacity_{uuid.uuid4().hex[:8]}",
@@ -58,7 +80,7 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
         "OVERMIND_SOAK_ROWS": "8192",
         "OVERMIND_SOAK_REPORT": str(RUNS / "mixed-capacity.json"),
     }
-    result = subprocess.run(
+    _run(
         [
             sys.executable,
             "-m",
@@ -71,17 +93,12 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
             "tests/load/landing_burst.py",
             "tests/load/query_capacity.py",
             "--ds=tests.load.settings",
-            "-q",
-            "-s",
+            "-v",
         ],
-        cwd=Path(__file__).resolve().parents[2],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=420,
+        env,
+        "mixed-capacity.log",
+        420,
     )
-    (RUNS / "mixed-capacity.log").write_text(result.stdout + result.stderr)
-    assert result.returncode == 0, failure_output(result)
     task = reconcile.delay()
     deadline = time.monotonic() + 10
     while task.id not in worker.finished and time.monotonic() < deadline:
@@ -89,6 +106,6 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
     assert worker.finished.get(task.id) == "SUCCESS", "capacity test stopped the journey worker"
 
 
-def failure_output(result):
-    lines = (result.stdout + result.stderr).splitlines()
+def failure_output(text):
+    lines = text.splitlines()
     return "\n".join(line for line in lines if not line.startswith('{"levelname":'))[-20000:]

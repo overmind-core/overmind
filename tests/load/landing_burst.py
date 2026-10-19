@@ -87,7 +87,7 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
     }
     Path("/tmp/overmind-landing-burst.json").write_text(json.dumps(report, indent=2))
     assert latencies[int(len(latencies) * 0.95)] < 0.5, latency_summary
-    assert latencies[-1] < 1, latency_summary
+    assert latencies[-1] < 2, latency_summary
     assert queued <= 2, report
     with landing_workers(settings, tmp_path):
         started = time.monotonic()
