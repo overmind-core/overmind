@@ -198,8 +198,8 @@ Each line is the invariant; the named skill section carries the mechanics.
   retryable capacity errors retain the exact cell and retry delay. The CLI exports
   retained original sources via `dataset export --source SHA256`, verifying bytes
   without overwrite or credential-forwarding redirects. Local uploads
-  accept one file per transfer; serial attachments combine rows in new versions.
-  Atomic multi-file CLI handoff remains unsupported. Detail: data-workshop skill.
+  accept up to 100 ordered files / 2 GiB per resumable transfer. All files verify
+  before one source publication; one attachment adds the whole batch in one version. Detail: data-workshop skill.
 
 - Naming quirks: UI "Optimiser" = backend `optimizer`; UI "Training" = backend `finetuning`.
 

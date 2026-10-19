@@ -16,6 +16,7 @@ import pickle
 import tempfile
 import threading
 from collections.abc import Iterable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -219,24 +220,30 @@ def write_rows(
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".parquet.tmp")
     # Infer over every row before writing Arrow's fixed schema, without retaining the corpus.
-    with tempfile.TemporaryFile(dir=path.parent) as spool:
-        builder = ManifestBuilder()
-        for batch in _row_batches(rows, ROW_GROUP_SIZE):
-            if manifest is None:
+    with tempfile.TemporaryFile() if manifest is None else nullcontext() as spool:
+        if manifest is None:
+            builder = ManifestBuilder()
+            for batch in _row_batches(rows, ROW_GROUP_SIZE):
                 for record in batch:
                     builder.add(record)
-            pickle.dump(batch, spool, protocol=pickle.HIGHEST_PROTOCOL)
-            del batch
-        manifest = manifest if manifest is not None else builder.manifest()
-        schema = _table_from_columns({c["name"]: [] for c in manifest}, manifest).schema
-        spool.seek(0)
-        try:
-            with pq.ParquetWriter(temporary, schema, compression="zstd") as writer:
+                pickle.dump(batch, spool, protocol=pickle.HIGHEST_PROTOCOL)
+            manifest = builder.manifest()
+            spool.seek(0)
+
+            def batches():
                 while True:
                     try:
-                        batch = pickle.load(spool)  # noqa: S301 — private spool written above
+                        yield pickle.load(spool)  # noqa: S301 — private spool written above
                     except EOFError:
-                        break
+                        return
+
+            pending = batches()
+        else:
+            pending = _row_batches(rows, ROW_GROUP_SIZE)
+        schema = _table_from_columns({c["name"]: [] for c in manifest}, manifest).schema
+        try:
+            with pq.ParquetWriter(temporary, schema, compression="zstd") as writer:
+                for batch in pending:
                     columns = {c["name"]: [r.get(c["name"]) for r in batch] for c in manifest}
                     writer.write_table(_table_from_columns(columns, manifest))
                     del batch, columns

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 # Every plugin manifest (.claude-plugin, .codex-plugin, .cursor-plugin) carries this version.
-SKILLS_VERSION = "1.2.4"
+SKILLS_VERSION = "1.2.5"
 
 
 @dataclass

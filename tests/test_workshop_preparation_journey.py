@@ -238,7 +238,7 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
     measure = review.impact_files
     observed = []
 
-    def slow_measurement(before, after):
+    def slow_measurement(before, after, **kwargs):
         previous = workbench.runner_status()["last_heartbeat_at"]
         progress = operational_progress.latest(project.pk, "dataset_pipeline", run_id)
         pipeline_runner.heartbeat()
@@ -250,7 +250,7 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
             operational_progress.latest(project.pk, "dataset_pipeline", run_id)["last_progress_at"]
             == progress["last_progress_at"]
         )
-        return measure(before, after)
+        return measure(before, after, **kwargs)
 
     pipeline_runner.heartbeat()
     monkeypatch.setattr(pipeline_runner, "execute_script", execute_fixture)

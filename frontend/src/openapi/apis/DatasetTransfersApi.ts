@@ -31,6 +31,7 @@ import {
 export interface DatasetTransfersChunkUpdateRequest {
     id: string;
     offset: number;
+    fileIndex?: number;
     body?: Blob;
 }
 
@@ -73,6 +74,10 @@ export class DatasetTransfersApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['fileIndex'] != null) {
+            queryParameters['file_index'] = requestParameters['fileIndex'];
+        }
 
         if (requestParameters['offset'] != null) {
             queryParameters['offset'] = requestParameters['offset'];

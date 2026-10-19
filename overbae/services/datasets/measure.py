@@ -29,7 +29,8 @@ def describe_frame(
         else {}
     )
     fingerprint = store.file_sha256(path)
-    profile = profile_records(store.iter_rows(path))
+    statistics = contract.RowStatistics({column["name"] for column in manifest})
+    profile = profile_records(store.iter_rows(path), observe=statistics.observe)
     analytics = {**profile.pop("analytics"), "fingerprint": fingerprint}
     return dict(
         state=Cell.State.OK,
@@ -40,7 +41,7 @@ def describe_frame(
         intent_report={"train": report["train"], "eval": report["eval"]},
         capability_report=capability_report,
         stats={
-            **contract.stats_rows(store.iter_rows(path), {c["name"] for c in manifest}),
+            **statistics.result(),
             "preparation_profile": profile,
             "analytics": analytics,
         },

@@ -60,6 +60,22 @@ def test_values_a_typed_column_cannot_hold_are_kept_as_json(tmp_path):
         assert [row[name] for row in retained] == values
 
 
+def test_interrupted_known_schema_write_preserves_previous_file(tmp_path):
+    path = tmp_path / "stable.parquet"
+    manifest = [{"name": "value", "type": "integer"}]
+    store.write_rows(path, [{"value": 7}], manifest)
+    fingerprint = store.file_sha256(path)
+
+    def interrupted():
+        yield from ({"value": index} for index in range(store.ROW_GROUP_SIZE + 1))
+        raise ValueError("interrupted source")
+
+    with pytest.raises(ValueError, match="interrupted source"):
+        store.write_rows(path, interrupted(), manifest)
+    assert store.file_sha256(path) == fingerprint
+    assert not path.with_suffix(".parquet.tmp").exists()
+
+
 def test_frames_decode_json_columns(table):
     frame = store.read_frame(table)
     assert list(frame["input"]) == [{"q": "hi"}, {"q": "bye"}, "plain"]

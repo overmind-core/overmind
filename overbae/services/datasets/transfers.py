@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import uuid
 
 from django.db import transaction
 from django.utils import timezone
@@ -13,20 +14,46 @@ logger = logging.getLogger(__name__)
 PROTOCOL_VERSION = 1
 
 
+def transfer_files(transfer):
+    return [
+        {
+            **item,
+            "upload_id": str(
+                transfer.upload_id if index == 0 else uuid.uuid5(transfer.upload_id, str(index))
+            ),
+        }
+        for index, item in enumerate(
+            transfer.specification.get("files") or [transfer.specification]
+        )
+    ]
+
+
 def describe(transfer):
     spec = transfer.specification
-    staged = files.upload_data_path(transfer.upload_id).is_file()
+    members = [
+        {
+            **{key: item[key] for key in ("filename", "sha256", "size", "upload_id")},
+            **({"json_rows_field": item["json_rows_field"]} if item.get("json_rows_field") else {}),
+            "index": index,
+            "received": item["size"]
+            if transfer.state == "published"
+            else files.upload_received(item["upload_id"]),
+            "staging_available": files.upload_data_path(item["upload_id"]).is_file(),
+            "max_bytes": files.upload_byte_limit(item["filename"]),
+        }
+        for index, item in enumerate(transfer_files(transfer))
+    ]
+    staged = all(item["staging_available"] for item in members)
     return {
         "id": str(transfer.pk),
         "project_id": str(transfer.project_id),
         "request_key": transfer.request_key,
         "upload_id": str(transfer.upload_id),
-        "filename": spec["filename"],
-        "sha256": spec["sha256"],
-        "size": spec["size"],
-        "received": transfer.received
-        if transfer.state == "published"
-        else files.upload_received(transfer.upload_id),
+        "filename": spec.get("filename", f"{len(members)} files"),
+        "sha256": spec.get("sha256"),
+        "size": sum(item["size"] for item in members),
+        "files": members,
+        "received": sum(item["received"] for item in members),
         "state": transfer.state,
         "staging_available": staged,
         "next_action": "inspect_dataset"
@@ -36,7 +63,7 @@ def describe(transfer):
         else "start_new_transfer_with_new_request_key",
         "result": transfer.result,
         "chunk_bytes": files.CHUNK_BYTES,
-        "max_bytes": files.upload_byte_limit(spec["filename"]),
+        "max_bytes": files.MAX_UPLOAD_BYTES if "files" in spec else members[0]["max_bytes"],
         "dispatch": "acknowledged"
         if transfer.dispatched_at
         else "pending"
@@ -65,12 +92,13 @@ def reserve(project, user, request_key, specification):
             code="request_key_conflict",
         )
     if created:
-        files.begin_upload(specification["filename"], upload_id=transfer.upload_id)
+        for item in transfer_files(transfer):
+            files.begin_upload(item["filename"], upload_id=item["upload_id"], managed=True)
     return transfer
 
 
-def staged_path(transfer):
-    path = files.upload_data_path(transfer.upload_id)
+def staged_path(transfer, upload_id=None):
+    path = files.upload_data_path(upload_id or transfer.upload_id)
     if not path.is_file():
         raise DatasetError(
             "The transfer's staged bytes are unavailable. Start an explicitly new transfer.",
@@ -80,17 +108,21 @@ def staged_path(transfer):
 
 
 @transaction.atomic
-def append(transfer, offset, content):
+def append(transfer, offset, content, *, file_index=0):
     transfer = DatasetTransfer.objects.select_for_update().get(pk=transfer.pk)
     if transfer.state != "uploading":
         raise DatasetError("This transfer is already published.", code="transfer_published")
-    path = staged_path(transfer)
+    members = transfer_files(transfer)
+    if not 0 <= file_index < len(members):
+        raise DatasetError("The file index is outside this transfer.", code="invalid_chunk")
+    item = members[file_index]
+    path = staged_path(transfer, item["upload_id"])
     size = files.stored_stat(path).st_size
     if (
         offset < 0
         or not content
         or len(content) > files.CHUNK_BYTES
-        or offset + len(content) > transfer.specification["size"]
+        or offset + len(content) > item["size"]
     ):
         raise DatasetError("The chunk is outside the declared file bounds.", code="invalid_chunk")
     if offset < size:
@@ -99,7 +131,8 @@ def append(transfer, offset, content):
             matches = stream.read(len(content)) == content
         if not matches:
             raise DatasetError("These bytes differ from the stored chunk.", code="chunk_conflict")
-    transfer.received = files.append_chunk(transfer.upload_id, offset, content)
+    files.append_chunk(item["upload_id"], offset, content)
+    transfer.received = sum(files.upload_received(member["upload_id"]) for member in members)
     transfer.save(update_fields=["received", "updated_at"])
     return transfer
 
@@ -135,23 +168,29 @@ def complete(transfer):
             transaction.on_commit(lambda: dispatch_landing(transfer.pk))
         return transfer
     spec = transfer.specification
-    path = staged_path(transfer)
-    if files.stored_stat(path).st_size != spec["size"]:
-        raise DatasetError("The file transfer is incomplete.", code="transfer_incomplete")
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(files.CHUNK_BYTES), b""):
-            digest.update(block)
-    if digest.hexdigest() != spec["sha256"]:
-        raise DatasetError(
-            "The received file does not match its declared SHA-256.", code="file_hash_mismatch"
+    members = transfer_files(transfer)
+    for item in members:
+        path = staged_path(transfer, item["upload_id"])
+        if files.stored_stat(path).st_size != item["size"]:
+            raise DatasetError("The file transfer is incomplete.", code="transfer_incomplete")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(files.CHUNK_BYTES), b""):
+                digest.update(block)
+        if digest.hexdigest() != item["sha256"]:
+            raise DatasetError(
+                "The received file does not match its declared SHA-256.", code="file_hash_mismatch"
+            )
+        files.inspect_upload(
+            item["upload_id"], size=item["size"], json_rows_field=item.get("json_rows_field")
         )
-    files.inspect_upload(
-        str(transfer.upload_id), size=spec["size"], json_rows_field=spec.get("json_rows_field")
-    )
-    source = {"upload_id": str(transfer.upload_id), "filename": spec["filename"]}
-    if spec.get("json_rows_field"):
-        source["json_rows_field"] = spec["json_rows_field"]
+    if "files" in spec:
+        source = {"uploads": [item["upload_id"] for item in members]}
+    else:
+        source = {"upload_id": str(transfer.upload_id), "filename": spec["filename"]}
+        if spec.get("json_rows_field"):
+            source["json_rows_field"] = spec["json_rows_field"]
+    name = spec.get("filename") or members[0]["filename"] + f" and {len(members) - 1} files"
     capability = None
     if spec.get("capability"):
         capability = Capability.objects.filter(
@@ -172,7 +211,7 @@ def complete(transfer):
         dataset = dispatch.stage_dataset(
             transfer.project,
             transfer.user,
-            spec["filename"] + (" train" if spec.get("split") else ""),
+            name + (" train" if spec.get("split") else ""),
             source,
             "train" if spec.get("split") else spec.get("intent"),
             capability,
@@ -182,7 +221,7 @@ def complete(transfer):
             evaluation = dispatch.stage_dataset(
                 transfer.project,
                 transfer.user,
-                spec["filename"] + " eval",
+                name + " eval",
                 source,
                 "eval",
                 capability,
@@ -210,7 +249,7 @@ def complete(transfer):
     ):
         imports.queue_landing_receipt(dataset, transfer.pk, transfer.task)
     transfer.state = "published"
-    transfer.received = spec["size"]
+    transfer.received = sum(item["size"] for item in members)
     transfer.published_at = timezone.now()
     transfer.save(
         update_fields=["state", "result", "task", "received", "published_at", "updated_at"]

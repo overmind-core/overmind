@@ -308,7 +308,12 @@ def read_uploads(
             if on_progress:
                 on_progress({"completed": index, "total": len(upload_ids), **detail})
 
-        part = read_file(path, filename=filename, on_progress=progress)
+        part = read_file(
+            path,
+            filename=filename,
+            on_progress=progress,
+            json_rows_field=(files.inspection(upload_id) or {}).get("json_rows_field"),
+        )
         sources.extend(part.spec["sources"])
         parts.append(part.rows)
     if on_progress:

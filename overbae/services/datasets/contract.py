@@ -344,51 +344,66 @@ def stats(df: pd.DataFrame) -> dict[str, Any]:
     return stats_rows(df.to_dict(orient="records"), set(df.columns))
 
 
-def stats_rows(records, columns) -> dict[str, Any]:
-    n = 0
-    in_col = "messages" if "messages" in columns else "input" if "input" in columns else None
-    out_col = "expected_output" if "expected_output" in columns else None
-    total_in = total_out = max_tokens = 0
-    tool_calling = multi_turn = False
-    lengths = []
-    rng = random.Random(0)
-    if "decision" in columns:
-        in_col = "decision"
-    for record in records:
-        n += 1
-        inp = _as_obj(record.get(in_col))
-        out = _as_obj(record.get(out_col))
+class RowStatistics:
+    def __init__(self, columns):
+        self.in_col = (
+            "decision"
+            if "decision" in columns
+            else "messages"
+            if "messages" in columns
+            else "input"
+            if "input" in columns
+            else None
+        )
+        self.out_col = "expected_output" if "expected_output" in columns else None
+        self.n = self.total_in = self.total_out = self.max_tokens = 0
+        self.tool_calling = self.multi_turn = False
+        self.lengths = []
+        self.rng = random.Random(0)
+
+    def observe(self, record):
+        self.n += 1
+        inp, out = _as_obj(record.get(self.in_col)), _as_obj(record.get(self.out_col))
         in_str = (
             "" if _missing(inp) else inp if isinstance(inp, str) else json.dumps(inp, default=str)
         )
         out_str = (
             "" if _missing(out) else out if isinstance(out, str) else json.dumps(out, default=str)
         )
-        total_in += len(in_str)
-        total_out += len(out_str)
+        self.total_in += len(in_str)
+        self.total_out += len(out_str)
         length = approx_tokens(in_str + out_str)
-        max_tokens = max(max_tokens, length)
-        if len(lengths) < 10000:
-            lengths.append(length)
+        self.max_tokens = max(self.max_tokens, length)
+        if len(self.lengths) < 10000:
+            self.lengths.append(length)
         else:
-            index = rng.randrange(n)
-            if index < len(lengths):
-                lengths[index] = length
+            index = self.rng.randrange(self.n)
+            if index < len(self.lengths):
+                self.lengths[index] = length
         turns = _tool_call_turns(inp)
-        if turns:
-            tool_calling = True
-        if turns > 1:
-            multi_turn = True
-    return {
-        "num_examples": n,
-        "has_tool_calling": tool_calling,
-        "has_multi_turn_tool_calls": multi_turn,
-        "max_token_length": max_tokens,
-        "p95_token_length": sorted(lengths)[math.ceil(len(lengths) * 0.95) - 1] if lengths else 0,
-        "length_profile_method": "deterministic_reservoir_10000_character_estimate",
-        "avg_input_chars": round(total_in / n) if n else 0,
-        "avg_output_chars": round(total_out / n) if n else 0,
-    }
+        self.tool_calling |= turns > 0
+        self.multi_turn |= turns > 1
+
+    def result(self):
+        return {
+            "num_examples": self.n,
+            "has_tool_calling": self.tool_calling,
+            "has_multi_turn_tool_calls": self.multi_turn,
+            "max_token_length": self.max_tokens,
+            "p95_token_length": sorted(self.lengths)[math.ceil(len(self.lengths) * 0.95) - 1]
+            if self.lengths
+            else 0,
+            "length_profile_method": "deterministic_reservoir_10000_character_estimate",
+            "avg_input_chars": round(self.total_in / self.n) if self.n else 0,
+            "avg_output_chars": round(self.total_out / self.n) if self.n else 0,
+        }
+
+
+def stats_rows(records, columns) -> dict[str, Any]:
+    statistics = RowStatistics(columns)
+    for record in records:
+        statistics.observe(record)
+    return statistics.result()
 
 
 def _tool_call_turns(inp: Any) -> int:

@@ -310,7 +310,12 @@ def inspect_upload(
         raise FileError(message) from exc
     if not rows:
         raise FileError("The file has no rows.")
-    record = {"bytes": size, "mtime_ns": stored_stat(path).st_mtime_ns, "rows": rows}
+    record = {
+        "bytes": size,
+        "mtime_ns": stored_stat(path).st_mtime_ns,
+        "rows": rows,
+        "json_rows_field": json_rows_field,
+    }
     _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
     return {"filename": filename, "bytes": size, "rows": rows}
 
@@ -355,7 +360,7 @@ def safe_filename(name: str) -> str:
     return _SAFE_NAME.sub("_", base)[:200]
 
 
-def begin_upload(filename: str, *, upload_id=None) -> tuple[str, str]:
+def begin_upload(filename: str, *, upload_id=None, managed=False) -> tuple[str, str]:
     safe = safe_filename(filename)
     lowered = safe.lower()
     if lowered.endswith(".parquet.gz"):
@@ -367,9 +372,15 @@ def begin_upload(filename: str, *, upload_id=None) -> tuple[str, str]:
     upload_id = str(upload_id or uuid.uuid4())
     directory = upload_dir(upload_id)
     directory.mkdir(parents=True, exist_ok=True)
+    if managed:
+        (directory / "managed").touch()
     (directory / "name").write_text(safe, encoding="utf-8")
     upload_data_path(upload_id).touch()
     return upload_id, safe
+
+
+def managed_upload(upload_id):
+    return (upload_dir(upload_id) / "managed").exists()
 
 
 def upload_filename(upload_id: Any) -> str:

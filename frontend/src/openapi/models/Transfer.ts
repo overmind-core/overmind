@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TransferFile } from './TransferFile';
+import {
+    TransferFileFromJSON,
+    TransferFileFromJSONTyped,
+    TransferFileToJSON,
+    TransferFileToJSONTyped,
+} from './TransferFile';
+
 /**
  *
  * @export
@@ -54,7 +62,13 @@ export interface Transfer {
      * @type {string}
      * @memberof Transfer
      */
-    sha256: string;
+    sha256: string | null;
+    /**
+     *
+     * @type {Array<TransferFile>}
+     * @memberof Transfer
+     */
+    files: Array<TransferFile>;
     /**
      *
      * @type {number}
@@ -139,6 +153,7 @@ export function instanceOfTransfer(value: object): value is Transfer {
     if (!('uploadId' in value) || value['uploadId'] === undefined) return false;
     if (!('filename' in value) || value['filename'] === undefined) return false;
     if (!('sha256' in value) || value['sha256'] === undefined) return false;
+    if (!('files' in value) || value['files'] === undefined) return false;
     if (!('size' in value) || value['size'] === undefined) return false;
     if (!('received' in value) || value['received'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
@@ -170,6 +185,7 @@ export function TransferFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'uploadId': json['upload_id'],
         'filename': json['filename'],
         'sha256': json['sha256'],
+        'files': ((json['files'] as Array<any>).map(TransferFileFromJSON)),
         'size': json['size'],
         'received': json['received'],
         'state': json['state'],
@@ -202,6 +218,7 @@ export function TransferToJSONTyped(value?: Transfer | null, ignoreDiscriminator
         'upload_id': value['uploadId'],
         'filename': value['filename'],
         'sha256': value['sha256'],
+        'files': ((value['files'] as Array<any>).map(TransferFileToJSON)),
         'size': value['size'],
         'received': value['received'],
         'state': value['state'],

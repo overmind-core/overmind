@@ -15,29 +15,15 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.mcp.auth import ip_allowed
 
 
-class TransferInputSerializer(serializers.Serializer):
-    project = serializers.UUIDField()
-    request_key = serializers.CharField(max_length=128)
+class TransferFileInputSerializer(serializers.Serializer):
     filename = serializers.CharField(max_length=200)
     size = serializers.IntegerField(min_value=1, max_value=files.MAX_UPLOAD_BYTES)
     sha256 = serializers.RegexField(r"^[0-9a-f]{64}$")
     json_rows_field = serializers.CharField(max_length=255, required=False)
-    dataset = serializers.UUIDField(required=False)
-    capability = serializers.UUIDField(required=False)
-    intent = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
-    brief = serializers.CharField(default="", allow_blank=True, max_length=10000)
-    split = serializers.IntegerField(min_value=1, max_value=99, required=False)
-    split_position = serializers.ChoiceField(choices=["head", "tail", "random"], default="tail")
 
     def validate(self, data):
         if data.get("json_rows_field") and not data["filename"].lower().endswith(".json"):
             raise ValidationError("An explicit JSON rows field requires a .json file.")
-        if data.get("dataset") and any(
-            data.get(key) for key in ("capability", "intent", "brief", "split")
-        ):
-            raise ValidationError("An attachment preserves its destination's settings.")
-        if data.get("split") and data.get("intent"):
-            raise ValidationError("A split fixes train and eval intents.")
         if data["size"] > files.upload_byte_limit(data["filename"]):
             raise ValidationError(
                 {
@@ -48,13 +34,57 @@ class TransferInputSerializer(serializers.Serializer):
         return data
 
 
+class TransferInputSerializer(TransferFileInputSerializer):
+    project = serializers.UUIDField()
+    request_key = serializers.CharField(max_length=128)
+    filename = serializers.CharField(max_length=200, required=False)
+    size = serializers.IntegerField(min_value=1, max_value=files.MAX_UPLOAD_BYTES, required=False)
+    sha256 = serializers.RegexField(r"^[0-9a-f]{64}$", required=False)
+    files = TransferFileInputSerializer(many=True, required=False, min_length=1, max_length=100)
+    dataset = serializers.UUIDField(required=False)
+    capability = serializers.UUIDField(required=False)
+    intent = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
+    brief = serializers.CharField(default="", allow_blank=True, max_length=10000)
+    split = serializers.IntegerField(min_value=1, max_value=99, required=False)
+    split_position = serializers.ChoiceField(choices=["head", "tail", "random"], default="tail")
+
+    def validate(self, data):
+        if "files" in data:
+            if sum(item["size"] for item in data["files"]) > files.MAX_UPLOAD_BYTES:
+                raise ValidationError("The combined files exceed the 2 GiB transfer limit.")
+            if any(key in data for key in ("filename", "size", "sha256", "json_rows_field")):
+                raise ValidationError("Choose files or one filename/size/sha256 specification.")
+        else:
+            if not all(key in data for key in ("filename", "size", "sha256")):
+                raise ValidationError(
+                    "Provide filename, size and sha256, or an ordered files list."
+                )
+            super().validate(data)
+        if data.get("dataset") and any(
+            data.get(key) for key in ("capability", "intent", "brief", "split")
+        ):
+            raise ValidationError("An attachment preserves its destination's settings.")
+        if data.get("split") and data.get("intent"):
+            raise ValidationError("A split fixes train and eval intents.")
+        return data
+
+
+class TransferFileSerializer(TransferFileInputSerializer):
+    index = serializers.IntegerField()
+    upload_id = serializers.UUIDField()
+    received = serializers.IntegerField()
+    staging_available = serializers.BooleanField()
+    max_bytes = serializers.IntegerField()
+
+
 class TransferSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     project_id = serializers.UUIDField()
     request_key = serializers.CharField()
     upload_id = serializers.UUIDField()
     filename = serializers.CharField()
-    sha256 = serializers.CharField()
+    sha256 = serializers.CharField(allow_null=True)
+    files = TransferFileSerializer(many=True)
     size = serializers.IntegerField()
     received = serializers.IntegerField()
     state = serializers.CharField()
@@ -81,6 +111,7 @@ class TransferReadinessSerializer(serializers.Serializer):
     can_upload = serializers.BooleanField()
     can_export = serializers.BooleanField()
     mcp_url = serializers.URLField()
+    max_batch_files = serializers.IntegerField()
 
 
 class TransferErrorSerializer(serializers.Serializer):
@@ -148,6 +179,7 @@ class DatasetTransferViewSet(viewsets.ViewSet):
             TransferReadinessSerializer(
                 {
                     "protocol_version": transfers.PROTOCOL_VERSION,
+                    "max_batch_files": 100,
                     "project_id": project.pk,
                     "user_id": str(request.user.pk),
                     "can_upload": "write" in permissions,
@@ -187,7 +219,8 @@ class DatasetTransferViewSet(viewsets.ViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter("offset", OpenApiTypes.INT, OpenApiParameter.QUERY, required=True)
+            OpenApiParameter("offset", OpenApiTypes.INT, OpenApiParameter.QUERY, required=True),
+            OpenApiParameter("file_index", OpenApiTypes.INT, OpenApiParameter.QUERY),
         ],
         request={"application/octet-stream": OpenApiTypes.BINARY},
         responses=TransferSerializer,
@@ -198,8 +231,14 @@ class DatasetTransferViewSet(viewsets.ViewSet):
         offset = serializers.IntegerField(min_value=0).run_validation(
             request.query_params.get("offset")
         )
+        file_index = serializers.IntegerField(min_value=0, max_value=99).run_validation(
+            request.query_params.get("file_index", 0)
+        )
         return self.result(
             lambda: transfers.append(
-                transfer, offset, request.data if isinstance(request.data, bytes) else b""
+                transfer,
+                offset,
+                request.data if isinstance(request.data, bytes) else b"",
+                file_index=file_index,
             )
         )

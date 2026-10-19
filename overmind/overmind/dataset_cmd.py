@@ -301,7 +301,7 @@ def wait_until_ready(
 
 
 def upload_file(
-    path: Path,
+    path: Path | list[Path],
     *,
     project_id: str,
     api_key: str,
@@ -316,7 +316,12 @@ def upload_file(
     json_rows_field: str = "",
     session: requests.Session | None = None,
 ) -> dict[str, Any]:
-    """The same file and recipe recover one durable transfer across CLI restarts."""
+    """The same ordered files and recipe recover one transfer across CLI restarts."""
+    paths = path if isinstance(path, list) else [path]
+    if not 1 <= len(paths) <= 100:
+        raise DatasetUploadError("Provide between one and 100 files.")
+    if len(paths) > 1 and json_rows_field:
+        raise DatasetUploadError("--json-rows-field applies to a single JSON file.")
     intent = _normalize_intent(intent)
     split, split_position = _normalize_split(split, split_position)
     if split is not None and intent:
@@ -343,13 +348,20 @@ def upload_file(
                 stage=error.get("stage", "connection"),
                 next_action=error.get("next_action", "check_connection"),
             )
-        digest = hashlib.sha256()
-        total = 0
-        with path.open("rb") as source:
-            for block in iter(lambda: source.read(8 * 1024 * 1024), b""):
-                digest.update(block)
-                total += len(block)
-        specification = {"project": project_id, "filename": path.name, "size": total, "sha256": digest.hexdigest()}
+        if len(paths) > 1 and readiness.get("transfer", {}).get("max_batch_files", 1) < len(paths):
+            raise DatasetUploadError(
+                "This server does not support this batch size; no files were uploaded.", code="batch_upload_unavailable"
+            )
+        members = []
+        for item in paths:
+            digest = hashlib.sha256()
+            total = 0
+            with item.open("rb") as source:
+                for block in iter(lambda: source.read(8 * 1024 * 1024), b""):
+                    digest.update(block)
+                    total += len(block)
+            members.append({"filename": item.name, "size": total, "sha256": digest.hexdigest()})
+        specification = {"project": project_id, **(members[0] if len(paths) == 1 else {"files": members})}
         for key, value in {
             "intent": intent,
             "capability": capability,
@@ -370,44 +382,50 @@ def upload_file(
         specification["request_key"] = request_key
         receipt = request_json(client, "POST", base_url + TRANSFER_PATH, stage="reserve", json=specification)
         transfer_url = base_url + TRANSFER_PATH + quote(str(receipt["id"]), safe="") + "/"
-        sent = receipt.get("received")
-        if isinstance(sent, bool) or not isinstance(sent, int) or not 0 <= sent <= total:
-            raise DatasetUploadError("The transfer returned an invalid byte offset.")
         chunk_bytes = _required_int(receipt, "chunk_bytes", "reserve")
         minimum_chunk_bytes = min(chunk_bytes, MIN_UPLOAD_CHUNK_BYTES)
-        recoveries = 0
-        if receipt["state"] == "uploading":
-            with path.open("rb") as source:
-                source.seek(sent)
-                while sent < total:
-                    chunk = source.read(min(chunk_bytes, total - sent))
-                    if not chunk:
-                        raise DatasetUploadError("The local file changed during transfer.", code="local_file_changed")
-                    try:
-                        receipt = request_json(
-                            client,
-                            "PUT",
-                            transfer_url + "chunk/",
-                            stage="upload",
-                            params={"offset": sent},
-                            data=chunk,
-                            headers={"Content-Type": "application/octet-stream"},
-                        )
-                    except TransferError as exc:
-                        if exc.code != "connection_unavailable" or recoveries >= UPLOAD_TRANSPORT_RETRIES:
-                            raise
-                        recoveries += 1
-                        chunk_bytes = max(minimum_chunk_bytes, chunk_bytes // 2)
-                        source.seek(sent)
-                        time.sleep(min(2 ** (recoveries - 1), 8))
-                        continue
-                    received = receipt.get("received")
-                    if isinstance(received, bool) or not isinstance(received, int) or not sent < received <= total:
-                        raise DatasetUploadError("The transfer returned an invalid byte offset.")
-                    sent = received
+        for index, (item, spec) in enumerate(zip(paths, members, strict=True)):
+            recoveries = 0
+            total = spec["size"]
+            sent = receipt["files"][index]["received"] if "files" in receipt else receipt.get("received")
+            if isinstance(sent, bool) or not isinstance(sent, int) or not 0 <= sent <= total:
+                raise DatasetUploadError("The transfer returned an invalid byte offset.")
+            if receipt["state"] == "uploading":
+                with item.open("rb") as source:
                     source.seek(sent)
-                if source.read(1):
-                    raise DatasetUploadError("The local file changed during transfer.", code="local_file_changed")
+                    while sent < total:
+                        chunk = source.read(min(chunk_bytes, total - sent))
+                        if not chunk:
+                            raise DatasetUploadError(
+                                "The local file changed during transfer.", code="local_file_changed"
+                            )
+                        try:
+                            receipt = request_json(
+                                client,
+                                "PUT",
+                                transfer_url + "chunk/",
+                                stage="upload",
+                                params={"offset": sent, **({"file_index": index} if len(paths) > 1 else {})},
+                                data=chunk,
+                                headers={"Content-Type": "application/octet-stream"},
+                            )
+                        except TransferError as exc:
+                            if exc.code != "connection_unavailable" or recoveries >= UPLOAD_TRANSPORT_RETRIES:
+                                raise
+                            recoveries += 1
+                            chunk_bytes = max(minimum_chunk_bytes, chunk_bytes // 2)
+                            source.seek(sent)
+                            time.sleep(min(2 ** (recoveries - 1), 8))
+                            continue
+                        received = (
+                            receipt["files"][index]["received"] if "files" in receipt else receipt.get("received")
+                        )
+                        if isinstance(received, bool) or not isinstance(received, int) or not sent < received <= total:
+                            raise DatasetUploadError("The transfer returned an invalid byte offset.")
+                        sent = received
+                        source.seek(sent)
+                    if source.read(1):
+                        raise DatasetUploadError("The local file changed during transfer.", code="local_file_changed")
         receipt = request_json(client, "POST", transfer_url + "complete/", stage="publication", json={})
         result = dict(receipt["result"])
         ids = [result[key] for key in ("id", "eval_id") if result.get(key)]
@@ -588,7 +606,7 @@ def _emit_error(error: str, *, as_json: bool) -> None:
 @dataset_app.command("upload")
 def upload(
     file: Annotated[
-        Path,
+        list[Path],
         typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True),
     ],
     project_id: Annotated[str, typer.Option("--project-id", help="Project UUID")] = "",
@@ -633,7 +651,7 @@ def upload(
     ] = False,
     as_json: Annotated[bool, typer.Option("--json", help="Print machine-readable output")] = False,
 ) -> None:
-    """Upload FILE and land it as a dataset, or with --split as a train and an eval dataset."""
+    """Upload FILE... as one source version, retaining each original file."""
     try:
         config = load(path) if path.exists() else None
         key, url = resolve_transfer_connection(api_key, api_url, config)
@@ -679,7 +697,7 @@ def upload(
     if wait:
         console.print(f"Dataset {result['id']} is {result['state']}.")
     else:
-        console.print(f"Transfer published for {file.name}; dataset {result['id']}.")
+        console.print(f"Transfer published for {len(file)} file(s); dataset {result['id']}.")
     if "eval_id" in result:
         console.print(
             f"Eval dataset {result['eval_id']} is {result['eval_state']}."

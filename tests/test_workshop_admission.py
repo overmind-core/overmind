@@ -1,5 +1,7 @@
 import os
 import socket
+import tempfile
+import time
 import uuid
 
 import pytest
@@ -10,6 +12,27 @@ from factories import make_project
 from overbae.models import Cell, Dataset, DatasetPipelineRun
 from overbae.services.datasets import pipeline_runner
 from overbae.tasks.datasets import execute_pipeline
+
+
+def test_scratch_reclaims_dead_workers_but_preserves_active_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    abandoned = tmp_path / "workshop-abandoned"
+    abandoned.mkdir()
+    (abandoned / "output").write_bytes(b"incomplete")
+    os.utime(abandoned, (time.time() - 120, time.time() - 120))
+    with pipeline_runner.scratch() as active:
+        assert not abandoned.exists()
+        retained = active / "retained"
+        retained.write_bytes(b"active")
+        os.utime(active, (time.time() - 120, time.time() - 120))
+        with pipeline_runner.scratch() as competing:
+            assert retained.read_bytes() == b"active"
+            assert competing != active
+        assert not competing.exists()
+    assert not active.exists()
+    with pytest.raises(ValueError), pipeline_runner.scratch() as failed:
+        raise ValueError("cancelled")
+    assert not failed.exists()
 
 
 @pytest.mark.django_db

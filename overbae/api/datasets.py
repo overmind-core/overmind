@@ -253,7 +253,10 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:
         staged = source.get("uploads") or ([source["upload_id"]] if source.get("upload_id") else [])
-        if staged and DatasetTransfer.objects.filter(upload_id__in=staged).exists():
+        if staged and (
+            any(files.managed_upload(value) for value in staged)
+            or DatasetTransfer.objects.filter(upload_id__in=staged).exists()
+        ):
             raise ValidationError(
                 {"source": "Publish this file through its dataset transfer receipt."}
             )

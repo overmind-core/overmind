@@ -178,13 +178,10 @@ MEDIA_URL = "media/"
 # /data/media on the EFS volume.
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
 
-# The single EFS volume ECS mounts at /data; MEDIA_ROOT lives under it.
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", BASE_DIR / "data"))
-TMPDIR = str(DATA_ROOT / "tmp")
+TMPDIR = os.environ.get("TMPDIR", str(DATA_ROOT / "tmp"))
 
-# The Fargate container root filesystem is read-only, so /data/tmp is the only
-# place mkstemp / NamedTemporaryFile can write. Every process that imports
-# settings needs this wiring.
+# Read-only containers need an explicitly mounted writable scratch directory.
 import tempfile  # noqa: E402 — intentional late import
 
 os.makedirs(TMPDIR, exist_ok=True)

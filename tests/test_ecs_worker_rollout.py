@@ -89,6 +89,17 @@ def test_every_release_overrides_stale_worker_command(definition, queue):
     assert container["healthCheck"]["command"][-2:] == ["overbae.worker_health", queue]
     assert container["stopTimeout"] == 120
     assert rendered["containerDefinitions"][1]["image"] == "otel:stable"
+    if queue in {"landing", "interactive"}:
+        assert {entry["name"]: entry["value"] for entry in container["environment"]}[
+            "TMPDIR"
+        ] == "/scratch/tmp"
+        assert {"name": "workshop-scratch"} in rendered["volumes"]
+        assert rendered["cpu"] == definition["cpu"] and rendered["memory"] == definition["memory"]
+        repeated = render_task_definition(
+            rendered, service=service, image="repo:newer", cluster="test-cluster"
+        )
+        assert repeated["volumes"] == rendered["volumes"]
+        assert repeated["containerDefinitions"][0]["mountPoints"] == container["mountPoints"]
 
 
 def test_migration_cannot_start_http_server(definition, service):

@@ -327,3 +327,26 @@ contract and MCP regressions cover these boundaries:
 ```sh
 uv run pytest tests/test_workshop_retained_code_contract.py tests/test_workshop_mcp_acceptance.py -q
 ```
+
+## Batched local sources and validation performance
+
+`overmind dataset upload first.csv second.csv --project-id PROJECT --json`
+reserves one ordered, resumable transfer (up to 100 files and 2 GiB total, subject
+to each file type's limit). Each file retains its checksum, original bytes and
+row evidence. Publication waits for all files and creates one source cell; with
+`--dataset`, one attachment adds the entire batch to the existing version.
+Retry the same command to recover byte offsets or an acknowledged publication.
+Changing content, order or destination under an existing request key conflicts.
+
+Lineage and impact share one per-step source index. Untrusted review flags are
+removed while writing the validated output. Known-schema writes stream directly;
+statistics and profiles share a decoded scan. Cell measurements complete before
+the short, fenced publication transaction. Cancellation never publishes partial
+steps, and source/consumer versions remain immutable.
+
+Staging landing and interactive workers use the task's existing ephemeral disk
+for temporary files through `TMPDIR=/scratch/tmp`; durable sources and cells stay
+on EFS. Validation receipts include measured row counts. Runs check scratch use
+and available disk during validation; completed runs remove scratch files, and a
+subsequent run reclaims abandoned directories only after acquiring their lease
+lock. No training or inference is needed to benchmark this path.

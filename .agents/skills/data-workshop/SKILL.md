@@ -189,9 +189,12 @@ Preview duration and script runtime phases are measured separately from queue
 time. Runtime cleanup confirmation never implies publication success.
 Original sources can be downloaded through `overmind dataset export DATASET --source SHA256 --output FILE --json`; the CLI verifies bytes, refuses redirects
 and existing destinations, and removes checksum failures.
-The installed upload CLI handles one file per transfer. Serial attachments
-combine new rows with the preceding cell into a new version; wait for landing
-between attachments. Atomic REST batches have no resumable CLI/MCP handoff.
+The upload CLI accepts `FILE1 FILE2 ...`: up to 100 ordered files and 2 GiB
+combined bytes per transfer, with unchanged per-file type limits. Each file has
+its own checksum and resumable offset; publication waits for every file. A new
+batch creates one source cell; an attachment adds the batch in one version.
+Repeat the identical command after interruption. File order is part of identity.
+The single-file `--json-rows-field` flag retains its existing selection semantics.
 Document-limit reservation errors expose `file_too_large`; no receipt is created.
 
 External results use either at most 2,000 inline rows/4 MiB or a project-scoped

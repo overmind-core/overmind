@@ -27,6 +27,13 @@ import {
     TransferInputIntentEnumToJSON,
     TransferInputIntentEnumToJSONTyped,
 } from './TransferInputIntentEnum';
+import type { TransferFileInputRequest } from './TransferFileInputRequest';
+import {
+    TransferFileInputRequestFromJSON,
+    TransferFileInputRequestFromJSONTyped,
+    TransferFileInputRequestToJSON,
+    TransferFileInputRequestToJSONTyped,
+} from './TransferFileInputRequest';
 
 /**
  *
@@ -34,6 +41,30 @@ import {
  * @interface TransferInputRequest
  */
 export interface TransferInputRequest {
+    /**
+     *
+     * @type {string}
+     * @memberof TransferInputRequest
+     */
+    filename?: string;
+    /**
+     *
+     * @type {number}
+     * @memberof TransferInputRequest
+     */
+    size?: number;
+    /**
+     *
+     * @type {string}
+     * @memberof TransferInputRequest
+     */
+    sha256?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof TransferInputRequest
+     */
+    jsonRowsField?: string;
     /**
      *
      * @type {string}
@@ -48,28 +79,10 @@ export interface TransferInputRequest {
     requestKey: string;
     /**
      *
-     * @type {string}
+     * @type {Array<TransferFileInputRequest>}
      * @memberof TransferInputRequest
      */
-    filename: string;
-    /**
-     *
-     * @type {number}
-     * @memberof TransferInputRequest
-     */
-    size: number;
-    /**
-     *
-     * @type {string}
-     * @memberof TransferInputRequest
-     */
-    sha256: string;
-    /**
-     *
-     * @type {string}
-     * @memberof TransferInputRequest
-     */
-    jsonRowsField?: string;
+    files?: Array<TransferFileInputRequest>;
     /**
      *
      * @type {string}
@@ -116,9 +129,6 @@ export interface TransferInputRequest {
 export function instanceOfTransferInputRequest(value: object): value is TransferInputRequest {
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('requestKey' in value) || value['requestKey'] === undefined) return false;
-    if (!('filename' in value) || value['filename'] === undefined) return false;
-    if (!('size' in value) || value['size'] === undefined) return false;
-    if (!('sha256' in value) || value['sha256'] === undefined) return false;
     return true;
 }
 
@@ -132,12 +142,13 @@ export function TransferInputRequestFromJSONTyped(json: any, ignoreDiscriminator
     }
     return {
 
+        'filename': json['filename'] == null ? undefined : json['filename'],
+        'size': json['size'] == null ? undefined : json['size'],
+        'sha256': json['sha256'] == null ? undefined : json['sha256'],
+        'jsonRowsField': json['json_rows_field'] == null ? undefined : json['json_rows_field'],
         'project': json['project'],
         'requestKey': json['request_key'],
-        'filename': json['filename'],
-        'size': json['size'],
-        'sha256': json['sha256'],
-        'jsonRowsField': json['json_rows_field'] == null ? undefined : json['json_rows_field'],
+        'files': json['files'] == null ? undefined : ((json['files'] as Array<any>).map(TransferFileInputRequestFromJSON)),
         'dataset': json['dataset'] == null ? undefined : json['dataset'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'intent': json['intent'] == null ? undefined : TransferInputIntentEnumFromJSON(json['intent']),
@@ -158,12 +169,13 @@ export function TransferInputRequestToJSONTyped(value?: TransferInputRequest | n
 
     return {
 
-        'project': value['project'],
-        'request_key': value['requestKey'],
         'filename': value['filename'],
         'size': value['size'],
         'sha256': value['sha256'],
         'json_rows_field': value['jsonRowsField'],
+        'project': value['project'],
+        'request_key': value['requestKey'],
+        'files': value['files'] == null ? undefined : ((value['files'] as Array<any>).map(TransferFileInputRequestToJSON)),
         'dataset': value['dataset'],
         'capability': value['capability'],
         'intent': TransferInputIntentEnumToJSON(value['intent']),

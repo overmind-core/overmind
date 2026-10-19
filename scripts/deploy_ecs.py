@@ -87,6 +87,27 @@ def render_task_definition(document, *, service, image, cluster):
         app["stopTimeout"] = 120
     if service != "sandbox":
         _environment(app, RUN_DB_BOOTSTRAP="0", WORKSHOP_EXECUTION_BACKEND="sandbox-package-v1")
+    if service in {"celery-interactive-worker", "celery-landing-worker"}:
+        volumes = result.setdefault("volumes", [])
+        if any(
+            volume["name"] == "workshop-scratch" and volume != {"name": "workshop-scratch"}
+            for volume in volumes
+        ):
+            raise ValueError("Workshop scratch must use task-local ephemeral storage.")
+        if not any(volume["name"] == "workshop-scratch" for volume in volumes):
+            volumes.append({"name": "workshop-scratch"})
+        mounts = app.setdefault("mountPoints", [])
+        if any(
+            mount["containerPath"] == "/scratch"
+            and (mount["sourceVolume"] != "workshop-scratch" or mount.get("readOnly"))
+            for mount in mounts
+        ):
+            raise ValueError("The /scratch mount conflicts with Workshop temporary storage.")
+        if not any(mount["containerPath"] == "/scratch" for mount in mounts):
+            mounts.append(
+                {"sourceVolume": "workshop-scratch", "containerPath": "/scratch", "readOnly": False}
+            )
+        _environment(app, TMPDIR="/scratch/tmp")
     if service == "api" and cluster in {"overmind-prod-cluster", "overmind-staging-cluster"}:
         host = (
             "api.overmindlab.ai"

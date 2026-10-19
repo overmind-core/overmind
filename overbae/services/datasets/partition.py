@@ -110,12 +110,12 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
     return keys
 
 
-def preserve_lineage(row: dict, *, group_by=()) -> dict:
+def preserve_lineage(row: dict, *, group_by=(), keys=None) -> dict:
     provenance = row.get("_overmind_provenance")
     if isinstance(provenance, str):
         with suppress(ValueError):
             provenance = json.loads(provenance)
-    keys = contamination_keys(row, group_by)
+    keys = contamination_keys(row, group_by) if keys is None else keys
     return {
         **(provenance if isinstance(provenance, dict) else {}),
         "source_content_keys": sorted(value for kind, value in keys if kind == "content"),

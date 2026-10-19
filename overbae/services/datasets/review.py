@@ -4,7 +4,7 @@ import json
 import sqlite3
 import tempfile
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 import pandas as pd
@@ -157,20 +157,32 @@ def distribution_file(path: Path) -> dict:
     return result
 
 
+def progress_rows(records, progress, phase, total):
+    completed = 0
+    for completed, row in enumerate(records, 1):
+        yield row
+        if progress and completed % 1000 == 0:
+            progress(phase, completed, total)
+    if progress:
+        progress(phase, completed, total)
+
+
 @contextmanager
-def indexed_rows(path, *, parent_paths=None):
-    with tempfile.TemporaryDirectory(prefix="review_") as directory:
+def indexed_rows(path, *, parent_paths=None, progress=None, scratch=None):
+    with tempfile.TemporaryDirectory(prefix="review_", dir=scratch) as directory:
         con = sqlite3.connect(Path(directory) / "rows.sqlite")
         con.execute("PRAGMA cache_size=-16384")
         con.execute(
-            "CREATE TABLE original (identity TEXT PRIMARY KEY, body TEXT, seen INTEGER DEFAULT 0, cell TEXT, fingerprint TEXT)"
+            "CREATE TABLE original (identity TEXT PRIMARY KEY, body TEXT, cell TEXT, fingerprint TEXT)"
         )
         con.execute("CREATE TABLE selected (identity TEXT PRIMARY KEY)")
         tracked = True
         try:
             for parent in parent_paths or [path]:
                 fingerprint = store.file_sha256(parent)
-                for row in store.iter_rows(parent):
+                for row in progress_rows(
+                    store.iter_rows(parent), progress, "indexing_source", store.row_count(parent)
+                ):
                     identity = row.get(store.SOURCE_ROW)
                     if identity is None:
                         tracked = False
@@ -185,14 +197,18 @@ def indexed_rows(path, *, parent_paths=None):
             con.close()
 
 
-def impact_files(before: Path, after: Path) -> dict:
+def impact_files(before: Path, after: Path, *, index=None, progress=None) -> dict:
     columns = {c["name"] for c in store.read_manifest(after)}
     evidence = prompts = added = decision_changes = decision_removed = 0
     evidence_examples, prompt_examples, inputs = [], [], []
     output = store.head(after, 5)
-    with indexed_rows(before) as (con, tracked):
+    with indexed_rows(before) if index is None else nullcontext(index) as (con, tracked):
         tracked = tracked and store.SOURCE_ROW in columns
-        for i, row in enumerate(store.iter_rows(after)):
+        for i, row in enumerate(
+            progress_rows(
+                store.iter_rows(after), progress, "comparing_rows", store.row_count(after)
+            )
+        ):
             identity = json.dumps(row.get(store.SOURCE_ROW))
             unique = con.execute("INSERT OR IGNORE INTO selected VALUES (?)", (identity,)).rowcount
             tracked = tracked and bool(unique) and row.get(store.SOURCE_ROW) is not None
@@ -202,7 +218,6 @@ def impact_files(before: Path, after: Path) -> dict:
             original = json.loads(found[0]) if found else {}
             decision_changes += decision_changed(original, row)
             if found:
-                con.execute("UPDATE original SET seen=1 WHERE identity=?", (identity,))
                 if i < 5:
                     inputs.append(original)
             else:
@@ -217,11 +232,18 @@ def impact_files(before: Path, after: Path) -> dict:
                 evidence += 1
                 if len(evidence_examples) < 20:
                     evidence_examples.append(row.get(store.SOURCE_ROW))
-        removed = con.execute("SELECT count(*) FROM original WHERE seen=0").fetchone()[0]
-        for (body,) in con.execute("SELECT body FROM original WHERE seen=0"):
+        removed = con.execute(
+            "SELECT count(*) FROM original WHERE NOT EXISTS (SELECT 1 FROM selected WHERE selected.identity=original.identity)"
+        ).fetchone()[0]
+        for (body,) in con.execute(
+            "SELECT body FROM original WHERE NOT EXISTS (SELECT 1 FROM selected WHERE selected.identity=original.identity)"
+        ):
             decision_removed += native_decision(json.loads(body)) is not None
         removed_examples = [
-            json.loads(r[0]) for r in con.execute("SELECT body FROM original WHERE seen=0 LIMIT 5")
+            json.loads(r[0])
+            for r in con.execute(
+                "SELECT body FROM original WHERE NOT EXISTS (SELECT 1 FROM selected WHERE selected.identity=original.identity) LIMIT 5"
+            )
         ]
     return {
         "rows_before": store.row_count(before),
@@ -244,7 +266,15 @@ def impact_files(before: Path, after: Path) -> dict:
 
 
 def preserve_file_provenance(
-    before: Path, after: Path, destination: Path, *, group_by=(), parent_paths=None
+    before: Path,
+    after: Path,
+    destination: Path,
+    *,
+    group_by=(),
+    parent_paths=None,
+    index=None,
+    strip_review=False,
+    progress=None,
 ):
     columns = {c["name"] for c in store.read_manifest(before)}
     inherited = {
@@ -256,7 +286,9 @@ def preserve_file_provenance(
     } & columns
     if store.SOURCE_ROW not in columns:
         raise ValueError("The source has no record identities.")
-    with indexed_rows(before, parent_paths=parent_paths) as (con, tracked):
+    with (
+        indexed_rows(before, parent_paths=parent_paths) if index is None else nullcontext(index)
+    ) as (con, tracked):
         if not tracked:
             raise ValueError(
                 "The source has ambiguous row identities. Select an earlier intact version."
@@ -312,7 +344,7 @@ def preserve_file_provenance(
                     *(contamination_keys(original, group_by) for original in originals)
                 )
                 provenance = (
-                    preserve_lineage(originals[0], group_by=group_by)
+                    preserve_lineage(originals[0], group_by=group_by, keys=keys)
                     if len(originals) == 1
                     else {"kind": "transform"}
                 )
@@ -328,7 +360,16 @@ def preserve_file_provenance(
                         row[column] = values[0]
                 yield row
 
-        store.write_rows(destination, records())
+        checked = progress_rows(records(), progress, "preserving_rows", store.row_count(after))
+        store.write_rows(
+            destination,
+            (
+                {key: value for key, value in row.items() if key != "human_reviewed"}
+                for row in checked
+            )
+            if strip_review
+            else checked,
+        )
 
 
 def readiness(dataset, cell, *, context: str | None = None) -> dict:

@@ -1,7 +1,10 @@
+import fcntl
 import functools
 import json
+import shutil
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -30,6 +33,26 @@ return 0
 
 class RuntimeUnavailableError(ValueError):
     pass
+
+
+@contextmanager
+def scratch():
+    root = Path(tempfile.gettempdir())
+    for stale in root.glob("workshop-*"):
+        try:
+            if stale.is_symlink() or not stale.is_dir() or time.time() - stale.stat().st_mtime < 60:
+                continue
+            with (stale / ".lease").open("a") as lease:
+                fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                shutil.rmtree(stale)
+        except (BlockingIOError, FileNotFoundError):
+            continue
+    with (
+        tempfile.TemporaryDirectory(prefix="workshop-") as directory,
+        (Path(directory) / ".lease").open("w") as lease,
+    ):
+        fcntl.flock(lease, fcntl.LOCK_EX)
+        yield Path(directory)
 
 
 @functools.cache

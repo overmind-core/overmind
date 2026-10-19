@@ -61,6 +61,12 @@ export interface TransferReadiness {
      * @memberof TransferReadiness
      */
     mcpUrl: string;
+    /**
+     *
+     * @type {number}
+     * @memberof TransferReadiness
+     */
+    maxBatchFiles: number;
 }
 
 /**
@@ -74,6 +80,7 @@ export function instanceOfTransferReadiness(value: object): value is TransferRea
     if (!('canUpload' in value) || value['canUpload'] === undefined) return false;
     if (!('canExport' in value) || value['canExport'] === undefined) return false;
     if (!('mcpUrl' in value) || value['mcpUrl'] === undefined) return false;
+    if (!('maxBatchFiles' in value) || value['maxBatchFiles'] === undefined) return false;
     return true;
 }
 
@@ -94,6 +101,7 @@ export function TransferReadinessFromJSONTyped(json: any, ignoreDiscriminator: b
         'canUpload': json['can_upload'],
         'canExport': json['can_export'],
         'mcpUrl': json['mcp_url'],
+        'maxBatchFiles': json['max_batch_files'],
     };
 }
 
@@ -115,5 +123,6 @@ export function TransferReadinessToJSONTyped(value?: TransferReadiness | null, i
         'can_upload': value['canUpload'],
         'can_export': value['canExport'],
         'mcp_url': value['mcpUrl'],
+        'max_batch_files': value['maxBatchFiles'],
     };
 }

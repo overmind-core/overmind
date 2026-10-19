@@ -4,6 +4,7 @@ import logging
 import shutil
 import time
 import uuid
+from contextlib import ExitStack
 from datetime import timedelta
 from itertools import islice
 
@@ -330,7 +331,7 @@ def execute(run_id, *, script_executor=None):
             return
         if script_executor is None:
             return
-    from overbae.services.datasets.pipeline_runner import TASK_SECONDS
+    from overbae.services.datasets.pipeline_runner import TASK_SECONDS, scratch
 
     seconds = TASK_SECONDS + 60
     claimed = DatasetPipelineRun.objects.filter(pk=run_id, state="queued").update(
@@ -350,8 +351,9 @@ def execute(run_id, *, script_executor=None):
     stage = None
     stage_seconds = {}
     receipts = []
+    local_files = ExitStack()
 
-    def progress(next_stage, *, heartbeat=False):
+    def progress(next_stage, *, heartbeat=False, measurement=None):
         nonlocal checkpoint, stage, stage_started_at
         now = time.monotonic()
         if stage is not None:
@@ -392,9 +394,15 @@ def execute(run_id, *, script_executor=None):
                 run.attempt,
                 stage=stage,
                 status="complete" if stage == "completed" else "running",
-                completed=len([r for r in receipts if r["state"] == "completed"]),
-                total=len(run.pipeline.steps) if run.pipeline_id else 1,
-                unit="steps",
+                completed=measurement["completed"]
+                if measurement
+                else len([r for r in receipts if r["state"] == "completed"]),
+                total=measurement["total"]
+                if measurement
+                else len(run.pipeline.steps)
+                if run.pipeline_id
+                else 1,
+                unit=measurement["phase"] if measurement else "steps",
                 heartbeat_at=timezone.now() if heartbeat else None,
                 facts={
                     "runtime": run.pipeline.package.manifest["runtime"]
@@ -443,15 +451,18 @@ def execute(run_id, *, script_executor=None):
             if run.artifact.fingerprint != run.artifact_fingerprint:
                 raise ValueError("The artifact fingerprint changed before execution.")
             rows.verify(run.artifact)
-        directory = paths.media_root() / "pipeline-runs" / str(run.pk)
-        directory.mkdir(parents=True, exist_ok=True)
-        input_path = source_path
+        directory = local_files.enter_context(scratch())
+        input_path = directory / f"{run.source_id}.parquet"
+        shutil.copyfile(source_path, input_path)
+        if store.file_sha256(input_path) != run.source_fingerprint:
+            raise ValueError("The copied source does not match its pinned fingerprint.")
         if run.mode == "preview":
+            copied_source = input_path
             input_path = directory / "preview.parquet"
             store.write_rows(
                 input_path,
-                islice(store.iter_rows(source_path), run.specification["preview_rows"]),
-                store.read_manifest(source_path),
+                islice(store.iter_rows(copied_source), run.specification["preview_rows"]),
+                store.read_manifest(copied_source),
             )
         steps = (
             run.pipeline.steps
@@ -596,46 +607,69 @@ def execute(run_id, *, script_executor=None):
                 )
             if not progress(f"step_{index + 1}_preserving_lineage"):
                 return
-            if count:
-                review.preserve_file_provenance(
-                    input_path,
-                    raw,
-                    output,
-                    group_by=review.group_columns(run.dataset, run.source),
-                    parent_paths=parent_paths,
+            last_validation_update = 0.0
+
+            def validation_progress(phase, completed, total, receipt=receipt):
+                nonlocal last_validation_update
+                now = time.monotonic()
+                if now - last_validation_update < 2 and completed != total:
+                    return
+                last_validation_update = now
+                receipt["validation"] = {
+                    "phase": phase,
+                    "completed": completed,
+                    "total": total,
+                    "unit": "rows",
+                    "updated_at": timezone.now().isoformat(),
+                }
+                used = sum(item.stat().st_size for item in directory.rglob("*") if item.is_file())
+                if used > 8 * 1024**3 or shutil.disk_usage(directory).free < 512 * 1024**2:
+                    raise ValueError(
+                        "Workshop scratch capacity reached; source versions remain unchanged."
+                    )
+                if not progress(stage, measurement=receipt["validation"]):
+                    raise ValueError("Publication was cancelled during validation.")
+
+            with review.indexed_rows(
+                input_path,
+                parent_paths=parent_paths,
+                progress=validation_progress,
+                scratch=directory,
+            ) as source_index:
+                if count:
+                    review.preserve_file_provenance(
+                        input_path,
+                        raw,
+                        output,
+                        group_by=review.group_columns(run.dataset, run.source),
+                        parent_paths=parent_paths,
+                        index=source_index,
+                        strip_review=not run.pipeline_id or package_files is not None,
+                        progress=validation_progress,
+                    )
+                else:
+                    empty_manifest = manifest or [
+                        {
+                            "name": name,
+                            "type": kind
+                            if kind in {"string", "integer", "number", "boolean"}
+                            else "json",
+                        }
+                        for name, kind in {
+                            **step.get("output_schema", {}),
+                            store.SOURCE_ROW: "integer",
+                        }.items()
+                    ]
+                    store.write_rows(
+                        output,
+                        [],
+                        [column for column in empty_manifest if column["name"] != "human_reviewed"],
+                    )
+                if not progress("measuring_impact"):
+                    return
+                impact = review.impact_files(
+                    input_path, output, index=source_index, progress=validation_progress
                 )
-            else:
-                empty_manifest = manifest or [
-                    {
-                        "name": name,
-                        "type": kind
-                        if kind in {"string", "integer", "number", "boolean"}
-                        else "json",
-                    }
-                    for name, kind in {
-                        **step.get("output_schema", {}),
-                        store.SOURCE_ROW: "integer",
-                    }.items()
-                ]
-                store.write_rows(output, [], empty_manifest)
-            if not progress("measuring_impact"):
-                return
-            if not run.pipeline_id or package_files is not None:
-                stripped = directory / f"{index}-unreviewed.parquet"
-                store.write_rows(
-                    stripped,
-                    (
-                        {key: value for key, value in row.items() if key != "human_reviewed"}
-                        for row in store.iter_rows(output)
-                    ),
-                    [
-                        column
-                        for column in store.read_manifest(output)
-                        if column["name"] != "human_reviewed"
-                    ],
-                )
-                stripped.replace(output)
-            impact = review.impact_files(input_path, output)
             receipt.update(
                 state="completed",
                 output_rows=count,
@@ -669,6 +703,11 @@ def execute(run_id, *, script_executor=None):
         if outputs:
             if not progress("publishing"):
                 return
+            measured = {}
+            for output, _, _ in outputs:
+                measured[output.stem] = measure.describe_frame(run.dataset, output)
+                if not progress("publishing"):
+                    return
             with transaction.atomic():
                 binding = None
                 if run.binding_id:
@@ -676,6 +715,13 @@ def execute(run_id, *, script_executor=None):
                         pk=run.binding_id
                     )
                 dataset = Dataset.objects.select_for_update().get(pk=run.dataset_id)
+                if (dataset.intent, dataset.capability_id) != (
+                    run.dataset.intent,
+                    run.dataset.capability_id,
+                ):
+                    raise ValueError(
+                        "The dataset settings changed during publication. Run the pinned recipe again."
+                    )
                 current = DatasetPipelineRun.objects.select_for_update().get(pk=run_id)
                 if current.state != "running" or current.attempt != run.attempt:
                     return
@@ -713,7 +759,8 @@ def execute(run_id, *, script_executor=None):
                         **receipt,
                         **receipt["impact"],
                     }
-                    measure.frame(dataset, cell, destination, review=report)
+                    Cell.objects.filter(pk=cell.pk).update(**measured[output.stem], review=report)
+                    cell.refresh_from_db()
                     receipt["output_cell"] = str(cell.pk)
                     input_cells[receipt["step_id"]] = str(cell.pk)
                 progress("completed")
@@ -749,6 +796,8 @@ def execute(run_id, *, script_executor=None):
             run_id,
             "Transformation failed. Inspect the recipe and source columns; no version was published.",
         )
+    finally:
+        local_files.close()
 
 
 def bounded_sample(path):

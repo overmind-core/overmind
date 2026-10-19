@@ -56,13 +56,15 @@ def _example(record: dict, transcript: list) -> str:
     )
 
 
-def profile_records(records) -> dict:
+def profile_records(records, *, observe=None) -> dict:
     analytics = Analytics()
     groups = {}
     columns = {}
     scanned = other = 0
     totals = Counter()
     for index, record in enumerate(records):
+        if observe is not None:
+            observe(record)
         scanned += 1
         for name, raw in record.items():
             if (

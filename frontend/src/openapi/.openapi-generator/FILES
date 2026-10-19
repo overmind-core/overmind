@@ -407,6 +407,8 @@ models/TrainingPreparationRequestRequest.ts
 models/TrainingProfileRequest.ts
 models/TrainingTypeEnum.ts
 models/Transfer.ts
+models/TransferFile.ts
+models/TransferFileInputRequest.ts
 models/TransferInputIntentEnum.ts
 models/TransferInputRequest.ts
 models/TransferReadiness.ts

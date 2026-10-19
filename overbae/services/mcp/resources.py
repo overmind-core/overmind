@@ -272,20 +272,22 @@ def _dataset_upload_resource(uri: str) -> dict:
             "--api-url, or overmind.toml. With no other key, the saved local transfer connection supplies both key and base URL; a different explicitly selected API is rejected."
         ),
         "flow": (
-            "POST /api/dataset-transfers/ with project, request_key, filename, size, sha256 and destination recipe; "
-            "PUT /api/dataset-transfers/{id}/chunk/?offset= streams bounded bytes; "
+            "POST /api/dataset-transfers/ with project, request_key, ordered files [{filename,size,sha256}] (or one filename/size/sha256), and destination recipe; "
+            "PUT /api/dataset-transfers/{id}/chunk/?offset=&file_index= streams bounded per-file bytes; "
             "POST /api/dataset-transfers/{id}/complete/ verifies the hash and publishes once. "
             "Read the receipt or repeat reservation with the identical key to resume. Publication is separate from landing."
         ),
         "multiple_files": (
-            "The installed CLI transfers one file per command. Upload the first file, then "
-            "attach each remaining file with --dataset DATASET, waiting for dataset_run to "
-            "reach idle or error between attachments. Each successful attachment appends an "
-            "import cell combining the preceding cell's rows with the new file's rows. Page retained sources "
-            "with inspect_dataset. Atomic multi-file landing (up to 100 files) is supported "
-            "by REST staging but has no resumable CLI/MCP handoff yet. Managed transfer "
-            "upload IDs cannot be republished through /api/uploads/ or source.uploads."
+            "Use overmind dataset upload FILE1 FILE2 ... --project-id PROJECT --json to publish "
+            "one combined source version. Up to 100 ordered files and 2 GiB combined bytes "
+            "share one durable transfer receipt; per-file type limits still apply. With --dataset, "
+            "one attachment cell combines the whole batch with the preceding version. Original "
+            "bytes and file-row evidence remain retained. Repeat the identical command after "
+            "interruption; changed file order, content or recipe conflicts under the same request key. "
+            "No dataset is published until every file is verified. --json-rows-field requires a single file. "
+            "Managed file IDs cannot be republished through unscoped upload endpoints."
         ),
+        "batch_limits": {"max_files": 100, "max_total_bytes": 2 * 1024**3},
         "next_mcp_calls": [
             "get_job(kind=dataset_run, id=dataset_id)",
         ],

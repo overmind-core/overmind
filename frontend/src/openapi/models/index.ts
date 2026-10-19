@@ -366,6 +366,8 @@ export * from './TrainingPreparationRequestRequest';
 export * from './TrainingProfileRequest';
 export * from './TrainingTypeEnum';
 export * from './Transfer';
+export * from './TransferFile';
+export * from './TransferFileInputRequest';
 export * from './TransferInputIntentEnum';
 export * from './TransferInputRequest';
 export * from './TransferReadiness';

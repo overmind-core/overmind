@@ -59,7 +59,10 @@ class UploadViewSet(viewsets.ViewSet):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if kwargs.get("pk") and DatasetTransfer.objects.filter(upload_id=kwargs["pk"]).exists():
+        if kwargs.get("pk") and (
+            files.managed_upload(kwargs["pk"])
+            or DatasetTransfer.objects.filter(upload_id=kwargs["pk"]).exists()
+        ):
             raise PermissionDenied("Use the project-scoped dataset transfer receipt.")
 
     @extend_schema(

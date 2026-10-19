@@ -16,6 +16,13 @@ Resolve the project with `list_projects`; account connections pass `project_id`
 on every operation. Read `overmind://interface/current` for the connected contract.
 Names are not unique: use returned dataset and cell UUIDs.
 
+For a collection of files, use `overmind dataset upload FILE1 FILE2 ...` with the
+returned project/dataset arguments. One ordered batch (up to 100 files / 2 GiB,
+with per-file type limits) creates one source version and retains every original
+file. Resume the identical command after interruption; do not upload each file
+as a separate attachment unless separate versions are intended. A changed order
+or recipe requires a new request key. `--json-rows-field` applies to a single file.
+
 ## Intent and contracts
 
 A dataset is a landed source and a linear chain of cells; every cell that ran is a
@@ -150,9 +157,9 @@ reading-order, table or diagram correctness.
 Results above 200 columns also fail explicitly. Workshop run summaries keep
 measurements inline; read `evidence_resource` for retained row examples and
 preview samples. Polling does not repeat those examples or discard them.
-Each CLI transfer uploads one file. To add several, attach them sequentially
-with `--dataset`, waiting for landing after each. Each import combines previous
-and added rows in a new cell. Atomic multi-file CLI uploads are not supported.
+Upload related files together in one ordered transfer to avoid cumulative
+source rewrites. With `--dataset`, the whole batch appends one import cell,
+combining its rows with the previous version while retaining each original file.
 `inspect_dataset` pages source files with `source_offset` and `source_limit`
 (default 10, maximum 20), independently of cell paging. Follow
 `source_page.next_cursor` until exhausted; a byte-bounded page may be shorter

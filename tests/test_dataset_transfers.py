@@ -77,6 +77,136 @@ def test_interrupted_upload_and_lost_publication_ack_recover_exact_source(transf
     assert chunk(client, receipt, b"changed").status_code == 409
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_batch_resumes_each_file_and_publishes_one_source_atomically(transfer_client, existing):
+    client, project = transfer_client
+    previous = None
+    if existing:
+        first, data = reserve(client, project, request_key="initial")
+        assert chunk(client, first, data).status_code == 200
+        previous = complete(client, first).data["result"]["id"]
+    contents = [b'[{"input":"one"},{"input":"two"}]', b'{"records":[{"input":"three"}]}']
+    body = {
+        "project": str(project.pk),
+        "request_key": "batch-resume",
+        "files": [
+            {
+                "filename": f"rows-{index}.json",
+                "size": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                **({"json_rows_field": "records"} if index else {}),
+            }
+            for index, data in enumerate(contents)
+        ],
+    }
+    if previous:
+        body["dataset"] = previous
+    receipt = client.post("/api/dataset-transfers/", body, format="json")
+    assert receipt.status_code == 201, receipt.data
+    receipt = receipt.data
+    url = f"/api/dataset-transfers/{receipt['id']}/chunk/"
+    assert (
+        client.put(
+            url + "?file_index=1&offset=0", contents[1][:8], content_type="application/octet-stream"
+        ).status_code
+        == 200
+    )
+    assert complete(client, receipt).status_code == 409
+    assert Dataset.objects.count() == int(existing)
+    if previous:
+        assert Dataset.objects.get(pk=previous).cells.count() == 1
+    resumed = client.post("/api/dataset-transfers/", body, format="json").data
+    assert resumed["id"] == receipt["id"]
+    assert [item["received"] for item in resumed["files"]] == [0, 8]
+    assert (
+        client.put(
+            url + "?file_index=1&offset=8", contents[1][8:], content_type="application/octet-stream"
+        ).status_code
+        == 200
+    )
+    assert chunk(client, receipt, contents[0]).status_code == 200
+    for member in resumed["files"]:
+        assert (
+            client.put(
+                f"/api/uploads/{member['upload_id']}/chunk/?offset=0",
+                b"x",
+                content_type="application/octet-stream",
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                "/api/datasets/",
+                {
+                    "project": str(project.pk),
+                    "source": {"upload_id": member["upload_id"], "filename": member["filename"]},
+                },
+                format="json",
+            ).status_code
+            == 400
+        )
+    reordered = {**body, "files": list(reversed(body["files"]))}
+    assert client.post("/api/dataset-transfers/", reordered, format="json").status_code == 409
+    result = complete(client, receipt)
+    assert result.status_code == 200, result.data
+    assert complete(client, receipt).data["result"] == result.data["result"]
+    dataset = Dataset.objects.get(pk=result.data["result"]["id"])
+    assert dataset.state == "idle", dataset.error
+    assert dataset.cells.count() == 1 + int(existing)
+    assert Dataset.objects.count() == 1
+    rows = list(
+        store.iter_rows(paths.cell_path(dataset.pk, dataset.cells.order_by("position").last().pk))
+    )
+    assert [row["input"] for row in rows] == (["one", "two"] if existing else []) + [
+        "one",
+        "two",
+        "three",
+    ]
+    assert len(dataset.source_spec["sources"]) == 2
+    assert {item["id"] for item in dataset.source_spec["sources"]} == {
+        hashlib.sha256(data).hexdigest() for data in contents
+    }
+
+
+def test_bad_batch_member_preserves_existing_source(transfer_client):
+    client, project = transfer_client
+    first, data = reserve(client, project)
+    assert chunk(client, first, data).status_code == 200
+    dataset = Dataset.objects.get(pk=complete(client, first).data["result"]["id"])
+    response = client.post(
+        "/api/dataset-transfers/",
+        {
+            "project": str(project.pk),
+            "dataset": str(dataset.pk),
+            "request_key": "bad-batch",
+            "files": [
+                {
+                    "filename": f"{i}.json",
+                    "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+                for i in range(2)
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 201
+    receipt = response.data
+    for index, content in enumerate([data, b"x" * len(data)]):
+        assert (
+            client.put(
+                f"/api/dataset-transfers/{receipt['id']}/chunk/?file_index={index}&offset=0",
+                content,
+                content_type="application/octet-stream",
+            ).status_code
+            == 200
+        )
+    assert complete(client, receipt).data["code"] == "file_hash_mismatch"
+    dataset.refresh_from_db()
+    assert dataset.state == "idle" and dataset.cells.count() == 1
+    assert dataset.source.rows == 2
+
+
 def test_completion_refreshes_metadata_after_another_api_task_uploaded_bytes(
     transfer_client, monkeypatch
 ):

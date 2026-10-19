@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from overmind.__main__ import app
 from overmind.dataset_cmd import upload_file
+from overmind.transfer_connection import TransferError
 
 
 class Response:
@@ -117,6 +118,73 @@ class TransferServer:
     def get(self, url, **kwargs):
         assert url.endswith("/api/datasets/dataset-1/")
         return Response({"state": "error", "error": "Source landing stopped; retained bytes are available."})
+
+
+def test_batch_upload_retries_a_lost_chunk_and_completion_without_republishing(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+
+    class BatchServer(TransferServer):
+        def __init__(self):
+            super().__init__()
+            self.parts = [bytearray(), bytearray()]
+            self.lost_chunk = self.lost_complete = False
+
+        def request(self, method, url, **kwargs):
+            if url.endswith("/api/mcp/"):
+                return super().request(method, url, **kwargs)
+            if "/readiness/" in url:
+                result = super().request(method, url, **kwargs)
+                result.data["max_batch_files"] = 100
+                return result
+            if url.endswith("/api/dataset-transfers/"):
+                spec = kwargs["json"]
+                if self.receipt is None:
+                    self.spec = spec
+                    self.receipt = {
+                        "id": "batch-1",
+                        "state": "uploading",
+                        "chunk_bytes": 8,
+                        "files": [{**item, "received": 0} for item in spec["files"]],
+                        "result": {},
+                    }
+                assert spec == self.spec
+            elif method == "PUT":
+                index, offset = kwargs["params"]["file_index"], kwargs["params"]["offset"]
+                content = self.parts[index]
+                chunk = kwargs["data"]
+                if offset < len(content):
+                    assert content[offset : offset + len(chunk)] == chunk
+                else:
+                    assert offset == len(content)
+                    content.extend(chunk)
+                self.receipt["files"][index]["received"] = len(content)
+                if index == 1 and not self.lost_chunk:
+                    self.lost_chunk = True
+                    raise requests.ConnectionError("lost chunk acknowledgement")
+            elif url.endswith("/complete/"):
+                assert all(
+                    hashlib.sha256(part).hexdigest() == item["sha256"]
+                    for part, item in zip(self.parts, self.spec["files"], strict=True)
+                )
+                if self.receipt["state"] != "published":
+                    self.publications += 1
+                    self.receipt.update(state="published", result={"id": "dataset-1", "state": "landing"})
+                if not self.lost_complete:
+                    self.lost_complete = True
+                    raise requests.ConnectionError("lost publication acknowledgement")
+            return Response(json.loads(json.dumps(self.receipt)))
+
+    paths = [tmp_path / "first.csv", tmp_path / "second.csv"]
+    for index, path in enumerate(paths):
+        path.write_text(f"value\n{index}\n{index + 2}\n")
+    server = BatchServer()
+    kwargs = dict(project_id="project-1", api_key="secret-key", api_url="http://localhost:8000", session=server)
+    with pytest.raises(TransferError, match="API connection failed"):
+        upload_file(paths, **kwargs)
+    result = upload_file(paths, **kwargs)
+    assert result["id"] == "dataset-1" and server.publications == 1
+    assert [bytes(part) for part in server.parts] == [path.read_bytes() for path in paths]
+    assert result["transfer"]["state"] == "published"
 
 
 def test_landing_failure_retains_published_transfer_for_explicit_recovery(tmp_path, monkeypatch):
