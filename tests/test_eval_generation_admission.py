@@ -5,10 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
+from conftest import EVAL_ROWS, frozen_dataset
 from django.db import close_old_connections, connection, transaction
 from django.utils import timezone
 
-from overbae.innermind import generation
+from overbae.innermind import generation, runs
 from overbae.models import EvalGenerationScheduler, EvalRun, EvalRunRow, Project
 
 pytestmark = pytest.mark.django_db
@@ -186,3 +187,61 @@ def test_many_runs_cannot_bypass_the_project_budget(settings):
     assert published.tick()["admitted"] == 2
     assert EvalRunRow.objects.filter(run__project=busy, state__in=generation.IN_FLIGHT).count() == 3
     assert EvalRunRow.objects.filter(run=quiet, state__in=generation.IN_FLIGHT).count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("mode", [EvalRun.Mode.RECORDED, EvalRun.Mode.GENERATE])
+def test_dispatch_waits_for_all_source_rows_to_be_seeded(mode):
+    project = Project.objects.create(name="starting", slug=uuid.uuid4().hex)
+    dataset = frozen_dataset(project, EVAL_ROWS, contract="eval")
+    run = EvalRun.objects.create(
+        project=project,
+        dataset=dataset,
+        cell=dataset.active_cell,
+        mode=mode,
+        model_name="openai/gpt-5-mini",
+    )
+    started = threading.Event()
+    backend = []
+
+    def start():
+        close_old_connections()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                backend.append(cursor.fetchone()[0])
+            started.set()
+            return runs.start(run.pk)
+        finally:
+            close_old_connections()
+
+    published = Published()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("LOCK TABLE overbae_evalrunrow IN SHARE MODE")
+            startup = executor.submit(start)
+            assert started.wait(5)
+            deadline = time.monotonic() + 5
+            while True:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_backend_pid() = ANY(pg_blocking_pids(%s))", backend)
+                    if cursor.fetchone()[0]:
+                        break
+                assert time.monotonic() < deadline, "startup never reached row creation"
+                time.sleep(0.01)
+            published.tick()
+            assert not published.rows and not published.scoring, (
+                "dispatcher admitted an incompletely seeded run",
+                published.rows,
+                published.scoring,
+            )
+        assert startup.result(timeout=5) == ("generate" if mode == "generate" else "score")
+    assert run.rows.count() == len(EVAL_ROWS)
+    published.tick()
+    if mode == EvalRun.Mode.GENERATE:
+        assert len(published.rows) == len(EVAL_ROWS)
+        assert not published.scoring
+    else:
+        assert len(published.scoring) == 1
+        assert not published.rows

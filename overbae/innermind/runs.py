@@ -162,15 +162,17 @@ def seed_rows(run: EvalRun) -> int:
 def start(run_id) -> str:
     """Claims a pending run and seeds its rows. Returns ``"generate"`` when rows wait
     for generation, ``"score"`` when the run is ready to score, or ``""`` when skipped."""
-    if not EvalRun.objects.filter(pk=run_id, status=EvalRun.Status.PENDING).update(
-        status=EvalRun.Status.RUNNING, error="", updated_at=timezone.now()
-    ):
-        return ""
-    run = EvalRun.objects.select_related("cell", "model_ref").get(pk=run_id)
     try:
-        row_store.verify(run.cell)
-        if not seed_rows(run):
-            raise RunError("Nothing to score: the dataset version has no rows.")
+        # Admission must never observe a running run with an incomplete row inventory.
+        with transaction.atomic():
+            if not EvalRun.objects.filter(pk=run_id, status=EvalRun.Status.PENDING).update(
+                status=EvalRun.Status.RUNNING, error="", updated_at=timezone.now()
+            ):
+                return ""
+            run = EvalRun.objects.select_related("cell", "model_ref").get(pk=run_id)
+            row_store.verify(run.cell)
+            if not seed_rows(run):
+                raise RunError("Nothing to score: the dataset version has no rows.")
     except (RunError, row_store.RowStoreError, OSError) as exc:
         fail(run_id, str(exc))
         return ""

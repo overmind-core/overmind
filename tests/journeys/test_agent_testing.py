@@ -41,7 +41,9 @@ def test_a_backtest_compares_every_candidate_with_the_recorded_baseline(
         for run in group["runs"]
         if not run["is_baseline"]
     }
-    assert all(c["baseline_label"] == "recorded" and c["paired"] == 3 for c in compared.values())
+    assert all(c["baseline_label"] == "recorded" and c["paired"] == 3 for c in compared.values()), (
+        compared
+    )
     assert compared["candidate"]["overall"]["status"] == "unchanged"
     assert compared["weak"]["overall"]["status"] == "regressed"
     assert compared["weak"]["losses"] == 3

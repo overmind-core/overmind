@@ -70,6 +70,12 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
     target = submit(quiet, 0)
     broker = redis.from_url(settings.CELERY_BROKER_URL)
     queued = broker.llen("landing")
+    latency_summary = {
+        "samples": len(reads),
+        "p95_seconds": latencies[int(len(latencies) * 0.95)],
+        "max_seconds": latencies[-1],
+        "slowest_sample_index": max(range(len(reads)), key=lambda i: reads[i]["seconds"]),
+    }
     report = {
         "requests": 1001,
         "concurrent_submitters": 32,
@@ -77,10 +83,11 @@ def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_projec
         "queued_landing_messages": queued,
         "submissions": submissions,
         "quiet_page_reads_during_intake": reads,
+        "quiet_page_latency": latency_summary,
     }
     Path("/tmp/overmind-landing-burst.json").write_text(json.dumps(report, indent=2))
-    assert latencies[int(len(latencies) * 0.95)] < 0.5, report
-    assert latencies[-1] < 1, report
+    assert latencies[int(len(latencies) * 0.95)] < 0.5, latency_summary
+    assert latencies[-1] < 1, latency_summary
     assert queued <= 2, report
     with landing_workers(settings, tmp_path):
         started = time.monotonic()

@@ -62,6 +62,7 @@ def receipt_history():
             failure_code="worker_timeout" if state == "blocked" else "",
         )
     with connection.cursor() as cursor:
+        cursor.execute("ANALYZE overbae_dataset")
         cursor.execute("ANALYZE overbae_datasetimport")
         cursor.execute("ANALYZE overbae_datasetlandingwork")
     return now
