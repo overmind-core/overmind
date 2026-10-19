@@ -40,16 +40,16 @@ def _init(tmp_path: Path, ide: str, *extra: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("ide", "skill_dir", "command_dir"),
+    ("ide", "skill_dir"),
     [
-        ("cursor", ".agents", ".cursor"),
-        ("claude", ".claude", None),
-        ("opencode", ".opencode", None),
-        ("codex", ".agents", None),
+        ("cursor", ".agents"),
+        ("claude", ".claude"),
+        ("opencode", ".opencode"),
+        ("codex", ".agents"),
     ],
 )
 @pytest.mark.parametrize("existing", [False, True], ids=["fresh", "refresh"])
-def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, skill_dir, command_dir, existing):
+def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, skill_dir, existing):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OVERMIND_API_URL", raising=False)
     monkeypatch.delenv("OVERMIND_BASE_URL", raising=False)
@@ -58,10 +58,6 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
         if existing:
             installed.parent.mkdir(parents=True, exist_ok=True)
             installed.write_text("Outdated workflow\n")
-            if command_dir:
-                command = tmp_path / command_dir / "commands" / f"overmind-{name}.md"
-                command.parent.mkdir(parents=True, exist_ok=True)
-                command.write_text("Outdated workflow\n")
 
     progress = Path("references/onboarding-progress.md")
     if existing:
@@ -80,9 +76,6 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
         source = (SKILL_SOURCE / "references" / f"{name}.md").read_text()
         installed = tmp_path / skill_dir / "skills" / "overmind" / "references" / f"{name}.md"
         assert installed.read_text() == source
-        if command_dir:
-            command = tmp_path / command_dir / "commands" / f"overmind-{name}.md"
-            assert command.read_text().endswith(source)
     assert (tmp_path / skill_dir / "skills" / "overmind" / progress).read_text() == (
         SKILL_SOURCE / progress
     ).read_text()
@@ -133,7 +126,7 @@ def test_codex_local_init_without_url_override(tmp_path, monkeypatch):
     assert 'base-url = "http://localhost:8000"' in (tmp_path / "overmind.toml").read_text()
 
 
-def test_init_seeds_toml_and_slash_commands(tmp_path, monkeypatch):
+def test_init_seeds_toml_and_mcp_without_slash_commands(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_PROJECT_ID", "proj-uuid")
     monkeypatch.setenv("OVERMIND_API_URL", "http://localhost:8000")
@@ -153,15 +146,7 @@ def test_init_seeds_toml_and_slash_commands(tmp_path, monkeypatch):
     assert 'base-url = "http://localhost:8000"' in toml
     assert "[capabilities]" in toml
 
-    setup_cmd = (tmp_path / ".cursor" / "commands" / "overmind-setup.md").read_text()
-    assert setup_cmd.startswith("Scan the repository and sync capabilities\n")
-    assert not setup_cmd.startswith("---")
-    assert "/overmind setup" in setup_cmd
-    assert "Scan the repository" in setup_cmd
-    assert ".cursor/skills/overmind/references/setup.md" not in setup_cmd
-    tracing_cmd = (tmp_path / ".cursor" / "commands" / "overmind-ensure-tracing.md").read_text()
-    assert "/overmind ensure-tracing" in tracing_cmd
-    assert "inspect_capability_health" in tracing_cmd
+    assert not list((tmp_path / ".cursor" / "commands").glob("*.md"))
 
     mcp = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
     assert mcp["mcpServers"]["overmind"]["url"] == "http://localhost:8000/api/mcp/"
