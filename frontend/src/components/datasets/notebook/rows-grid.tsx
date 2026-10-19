@@ -561,7 +561,15 @@ export function RowsGrid({
                         mark?.added && "bg-success/10",
                         open && "bg-accent/40"
                       )}
-                      onClick={() => setOpenRow(open ? null : rowIndex)}
+                      onClick={(event) => {
+                        if (
+                          open &&
+                          event.target instanceof Element &&
+                          event.target.closest('[role="region"]')
+                        )
+                          return;
+                        setOpenRow(open ? null : rowIndex);
+                      }}
                     >
                       <td className="border-r border-b border-border/60 px-2 py-1 font-mono tabular-nums text-muted-foreground">
                         <button
@@ -585,8 +593,6 @@ export function RowsGrid({
                           <td
                             className={cn(
                               "max-w-[26rem] border-r border-b border-border/60 px-2 py-1 align-top last:border-r-0",
-                              // Open: the same cells, wrapped to their full text.
-                              open ? "whitespace-pre-wrap break-words" : "truncate",
                               c.type === "number" || c.type === "integer"
                                 ? "text-right tabular-nums"
                                 : "",
@@ -595,13 +601,24 @@ export function RowsGrid({
                             key={c.name}
                             title={!open && text.length > 80 ? text.slice(0, 400) : undefined}
                           >
-                            {before ? (
-                              <ChangedValue after={value} before={before[c.name]} wrap={open} />
-                            ) : text === "" ? (
-                              "null"
-                            ) : (
-                              text
-                            )}
+                            <div
+                              aria-label={open ? `Row ${row._index}, ${c.name}` : undefined}
+                              className={cn(
+                                open
+                                  ? "max-h-48 overflow-auto whitespace-pre-wrap break-words"
+                                  : "truncate"
+                              )}
+                              role={open ? "region" : undefined}
+                              tabIndex={open ? 0 : undefined}
+                            >
+                              {before ? (
+                                <ChangedValue after={value} before={before[c.name]} wrap={open} />
+                              ) : text === "" ? (
+                                "null"
+                              ) : (
+                                text
+                              )}
+                            </div>
                           </td>
                         );
                       })}
