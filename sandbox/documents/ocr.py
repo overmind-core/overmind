@@ -162,7 +162,12 @@ def _recognize(path, engine, timeout):
             osd = ""
         script = re.search(r"^Script: (.+)$", osd, re.MULTILINE)
         script = script[1].strip() if script else None
-        detection["script"] = script
+        confidence = re.search(r"^Script confidence: ([0-9.]+)$", osd, re.MULTILINE)
+        confidence = float(confidence[1]) if confidence else None
+        detection.update(script=script, script_confidence=confidence)
+        # Tesseract's ScriptDetector accepts script evidence only above this threshold.
+        if confidence is None or confidence <= 1:
+            script = None
         if script and script not in SCRIPT_LANGUAGES:
             raise OcrError(
                 f"Automatic OCR does not support the detected {script} script. Select supported languages explicitly or extract externally."
@@ -188,17 +193,17 @@ def _recognize(path, engine, timeout):
             for word in csv.DictReader(io.StringIO(tsv), delimiter="\t", quoting=csv.QUOTE_NONE)
             if word.get("level") == "5" and float(word["conf"]) >= 40
         )
-        if len(text.strip()) >= 30:
+        if len(text.strip()) >= 80:
             try:
                 DetectorFactory.seed = 0
                 detected = detect_langs(text)[0]
                 detection.update(language=detected.lang, confidence=round(detected.prob, 4))
                 language = LANGUAGES.get(detected.lang)
-                if detected.prob >= 0.8 and language not in available:
+                if detected.prob >= 0.9 and language not in available:
                     detection["status"] = (
                         "unsupported_language" if language is None else "language_data_unavailable"
                     )
-                if detected.prob >= 0.8 and language in available:
+                if detected.prob >= 0.9 and language in available:
                     detection["status"] = "detected"
                     if language not in selected:
                         selected = [language, "eng"] if language != "eng" else [language]

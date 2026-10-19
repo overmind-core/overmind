@@ -123,6 +123,18 @@ def test_automatic_french_ocr_records_language_evidence(tmp_path):
     assert ocr["language_detection"]["status"] == "detected"
     assert "facture" in " ".join(row["text"] for row in rows)
     assert all("fra" in row["_overmind_provenance"]["extraction"]["languages"] for row in rows)
+    with Image.new("RGB", (1200, 150), "white") as image:
+        ImageDraw.Draw(image).text(
+            (25, 25),
+            "Imagen del sitio. Cuenta corriente. Costo $0",
+            fill="black",
+            font=ImageFont.load_default(size=28),
+        )
+        image.save(path)
+    _, short = documents.extract(path, filename=path.name)
+    assert short["ocr"]["language_detection"]["status"] == "uncertain"
+    assert short["ocr"]["language_detection"]["language"] is None
+    assert short["ocr"]["languages"] == ["eng"]
 
 
 def test_ocr_worker_budget_stays_bounded(monkeypatch):
@@ -132,6 +144,33 @@ def test_ocr_worker_budget_stays_bounded(monkeypatch):
     assert worker_count(1024**3) == 1
     assert 1 <= worker_count(2 * 1024**3) <= 2
     assert 1 <= worker_count(16 * 1024**3) <= 4
+
+
+def test_checkpoint_page_limit_round_trips_with_jsonl_delimiter(tmp_path, monkeypatch):
+    import json
+
+    from sandbox.documents import checkpoints
+
+    result = {"rows": [], "engine": {}}
+    value = checkpoints.record("a" * 64, 1, result)
+    monkeypatch.setattr(checkpoints, "MAX_PAGE_BYTES", len(json.dumps(value).encode()))
+    value = checkpoints.record("a" * 64, 1, result)
+    path = tmp_path / "checkpoints.jsonl"
+    path.write_text(json.dumps(value) + "\n")
+    assert checkpoints.read(path) == {1: value}
+    with pytest.raises(ValueError, match="page exceeds"):
+        checkpoints.record("a" * 64, 1, {"rows": [{"text": "larger"}], "engine": {}})
+
+
+def test_progress_backpressure_preserves_checkpoint_and_does_not_block_watchdog(tmp_path):
+    from sandbox.execute import read_progress
+
+    line = '{"ocr_checkpoint": {"page": 1}}\n'
+    (tmp_path / "progress.jsonl").write_text(line)
+    assert read_progress(tmp_path, 0, lambda value: False) == (0, True)
+    received = []
+    assert read_progress(tmp_path, 0, received.append) == (len(line), False)
+    assert received == [{"ocr_checkpoint": {"page": 1}}]
 
 
 @pytest.mark.django_db(transaction=True)

@@ -22,7 +22,7 @@ def read(path: Path | None) -> dict[int, dict]:
     pages = {}
     with path.open() as source:
         for line in source:
-            if len(line.encode()) > MAX_PAGE_BYTES:
+            if len(line.rstrip("\n").encode()) > MAX_PAGE_BYTES:
                 raise ValueError("An OCR checkpoint exceeds the page limit.")
             page = json.loads(line)
             if page.get("result_sha256") == digest(page.get("result")):

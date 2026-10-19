@@ -297,7 +297,7 @@ def _execute_landing(
     file_progress = ProgressThrottle(file_progress)
     extraction = {
         "project_id": dataset.project_id,
-        "ocr_languages": source.get("ocr_languages", dataset.ocr_languages),
+        "ocr_languages": source.get("ocr_languages", []),
     }
     upload_id = source.get("upload_id")
     upload_ids = source.get("uploads") or []

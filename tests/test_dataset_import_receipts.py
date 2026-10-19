@@ -177,6 +177,28 @@ def test_an_import_that_keeps_losing_its_worker_is_blocked_with_its_source(impor
     assert files.upload_data_path(imported_source[1]).exists()
 
 
+def test_stale_import_cannot_write_or_publish_landing_progress(imported_source, monkeypatch):
+    from overbae.services.datasets import imports
+
+    dataset, run = create_import(imported_source)
+    assert imports.claim(run.pk) is not None
+    stale = DatasetImport.objects.get(pk=run.pk)
+    original_spec = dataset.source_spec
+    DatasetImport.objects.filter(pk=run.pk).update(owner=uuid.uuid4())
+    published = []
+    monkeypatch.setattr(imports.events, "publish", lambda *args: published.append(args))
+    imports._read_parts(stale, [dataset])
+    dataset.refresh_from_db()
+    assert dataset.source_spec == original_spec
+    assert published == []
+
+    run.refresh_from_db()
+    imports._read_parts(run, [dataset])
+    dataset.refresh_from_db()
+    assert dataset.source_spec["landing_progress"]["completed"] == 1
+    assert published
+
+
 def test_a_live_import_renews_its_lease_only_up_to_the_execution_limit(imported_source):
     from overbae.services.datasets import imports
 

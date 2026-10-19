@@ -10,7 +10,11 @@ existing import receipt do not change.
 
 The upload guidance resource lists supported Tesseract codes. Automatic selection
 uses offline script detection, initial recognition and language evidence from
-confident words. Short or ambiguous text remains explicitly uncertain. It is not
+confident words. Script selection requires Tesseract script confidence above 1,
+matching its [script acceptance rule](https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/osdetect.cpp).
+Text-based language selection requires at least 80 recognised characters and a
+detector score of at least 0.9. That score is not a calibrated accuracy probability.
+Short or ambiguous text remains explicitly uncertain. It is not
 an assurance of OCR quality, and mixed-language pages need review. No provider
 calls or downloaded models run during extraction. Language models ship in the
 runtime image; their checksums and the actual selected languages are retained.
@@ -70,7 +74,8 @@ Deploy the migration first, then the sandbox image with the language packs, land
 workers, remaining workers and API through the existing staged rollout. Older
 sandbox images do not implement checkpoints or language selection, so a mixed
 rollout is not sufficient to claim the feature is available. Production rollout
-requires the same tested runtime image; this change is validated on staging first.
+requires validation of the same runtime image. Staging deployment and candidate
+measurements are deferred; local checks do not establish production throughput.
 
 ## Verification
 
@@ -80,5 +85,5 @@ requires the same tested runtime image; this change is validated on staging firs
   actual extraction provenance and reuse through MCP.
 - Existing document tests retain native text, page regions, orientations, original
   byte downloads and atomic publication on failures.
-- Staging measurements use six screenshot pages from the retained CSIRT source.
-  Results are recorded separately after the candidate image is deployed.
+- A baseline used six screenshot pages from the retained CSIRT source. Candidate
+  staging measurements have not run; deployment is outside the current scope.

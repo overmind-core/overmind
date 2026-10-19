@@ -190,12 +190,11 @@ async def run(request: Request) -> Response:
         progress = queue.Queue(maxsize=8)
 
         def report(value):
-            while not stop.is_set():
-                try:
-                    progress.put(value, timeout=0.2)
-                    return
-                except queue.Full:
-                    pass
+            try:
+                progress.put_nowait(value)
+                return True
+            except queue.Full:
+                return False
 
         task = asyncio.create_task(
             run_in_threadpool(execute.run, header, scratch, source, slot, stop, report)
