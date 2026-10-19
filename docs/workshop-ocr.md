@@ -68,7 +68,10 @@ Intermediate landing counters are coalesced to at most one write every two secon
 per import. Stage/file boundaries, completed OCR counters and terminal operation
 events remain immediate. Stale import attempts cannot overwrite current progress.
 Dataset event publishers reuse process-local Redis clients with bounded socket
-timeouts; event delivery remains advisory.
+timeouts; event delivery remains advisory. Checkpoint frames require explicit
+client opt-in; older landing clients keep English OCR and receive only ordinary
+progress. The language column retains its database default so older API instances
+can create datasets while the migration and service rollout are in progress.
 
 Deploy the migration first, then the sandbox image with the language packs, landing
 workers, remaining workers and API through the existing staged rollout. Older

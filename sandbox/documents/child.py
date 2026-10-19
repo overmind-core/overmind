@@ -31,6 +31,7 @@ def main(argv: list[str]) -> None:
             on_progress=progress,
             languages=json.loads(os.environ.get("SANDBOX_OCR_LANGUAGES", "[]")),
             cached=read(Path("ocr-cache.jsonl")),
+            checkpointing=os.environ.get("SANDBOX_OCR_CHECKPOINTS") == "1",
             memory_bytes=int(os.environ.get("SANDBOX_EXTRACTION_MEMORY", "0")) or None,
         )
     except DocumentError as exc:

@@ -231,7 +231,7 @@ def _checkpoint(callback, recipe, page, result):
 
 
 def extract_image(
-    path: Path, *, languages=None, cached=None, on_progress=None
+    path: Path, *, languages=None, cached=None, on_progress=None, checkpointing=True
 ) -> tuple[list[dict], dict]:
     engine = _engine(languages)
     recipe = _recipe(path, engine, "image")
@@ -313,7 +313,8 @@ def extract_image(
             scale_y=height / rendered_height,
             engine=engine,
         )
-    _checkpoint(on_progress, recipe, 1, {"rows": rows, "engine": engine})
+    if checkpointing:
+        _checkpoint(on_progress, recipe, 1, {"rows": rows, "engine": engine})
     if on_progress:
         on_progress(
             {
@@ -391,6 +392,7 @@ def extract_pdf(
     languages=None,
     cached=None,
     memory_bytes=None,
+    checkpointing=True,
 ) -> tuple[list[dict], dict | None]:
     text_pages = {row["page"] for row in native_rows}
     image_pages = {ref.page_no for picture in document.pictures for ref in picture.prov}
@@ -465,7 +467,8 @@ def extract_pdf(
                 for future in done:
                     number = pending.pop(future)
                     result = future.result()
-                    _checkpoint(on_progress, recipe, number, result)
+                    if checkpointing:
+                        _checkpoint(on_progress, recipe, number, result)
                     results[number] = result
                     progress()
                     submit()

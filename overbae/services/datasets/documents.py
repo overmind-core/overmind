@@ -51,6 +51,7 @@ def extract(
                 "filename": filename,
                 "input_bytes": size,
                 "ocr_languages": languages,
+                "ocr_checkpoints": True,
                 "cache_bytes": cache.tell(),
             }
         )

@@ -30,6 +30,7 @@ def extract(
     languages=None,
     cached=None,
     memory_bytes=None,
+    checkpointing=True,
 ) -> tuple[list[dict], dict]:
     if path.stat().st_size > MAX_BYTES:
         raise DocumentError("Documents are capped at 100 MiB (104857600 bytes).")
@@ -57,7 +58,11 @@ def extract(
     if suffix in ocr.IMAGE_SUFFIXES:
         try:
             rows, ocr_metadata = ocr.extract_image(
-                path, languages=languages, cached=cached, on_progress=on_progress
+                path,
+                languages=languages,
+                cached=cached,
+                on_progress=on_progress,
+                checkpointing=checkpointing,
             )
         except ocr.OcrError as exc:
             raise DocumentError(str(exc)) from exc
@@ -160,6 +165,7 @@ def extract(
                     languages=languages,
                     cached=cached,
                     memory_bytes=memory_bytes,
+                    checkpointing=checkpointing,
                 )
             except ocr.OcrError as exc:
                 raise DocumentError(str(exc)) from exc

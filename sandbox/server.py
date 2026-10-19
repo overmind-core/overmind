@@ -50,6 +50,8 @@ def _check(header: dict[str, Any]) -> None:
     ):
         raise FramingError("input_bytes is required.")
     if mode == "extract":
+        if type(header.get("ocr_checkpoints", False)) is not bool:
+            raise FramingError("Invalid OCR checkpoint capability.")
         cache_bytes = header.get("cache_bytes", 0)
         if type(cache_bytes) is not int or not 0 <= cache_bytes <= MAX_CACHE_BYTES:
             raise FramingError("Invalid OCR cache size.")

@@ -196,3 +196,34 @@ def test_corrupt_checkpoint_is_recomputed_and_expiry_is_bounded():
     )
     assert prune() == 1
     assert not DocumentExtractionPage.objects.filter(project=project).exists()
+
+
+def test_old_parser_clients_keep_english_ocr_without_internal_checkpoint_frames(sandbox_server):
+    from sandbox.protocol import HeaderReader
+
+    url, token = sandbox_server
+    path = Path(__file__).parent / "fixtures/documents/scanned.pdf"
+    payload = path.read_bytes()
+    response = httpx.post(
+        f"{url}/v1/run",
+        content=header_bytes(
+            {"mode": "extract", "filename": path.name, "input_bytes": len(payload)}
+        )
+        + payload,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=60,
+    )
+    response.raise_for_status()
+    pending = response.content
+    progress = []
+    while True:
+        reader = HeaderReader()
+        pending = reader.feed(pending)
+        value = reader.finish()
+        if "progress" not in value:
+            assert value["ok"]
+            assert value["extraction"]["ocr"]["languages"] == ["eng"]
+            break
+        progress.append(value["progress"])
+    assert any(value.get("stage") == "ocr" for value in progress)
+    assert not any("ocr_checkpoint" in value for value in progress)

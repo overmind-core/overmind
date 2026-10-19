@@ -565,9 +565,10 @@ def run(
         # Any process can read another's command line; only its own uid can read its environment.
         env={
             "SANDBOX_FILENAME": header["filename"],
-            "SANDBOX_OCR_LANGUAGES": json.dumps(header.get("ocr_languages", [])),
+            "SANDBOX_OCR_LANGUAGES": json.dumps(header.get("ocr_languages", ["eng"])),
             "SANDBOX_EXTRACTION_MEMORY": str(slot.limit - 3 * header.get("cache_bytes", 0)),
             "SANDBOX_OCR_WORKERS": os.environ.get("SANDBOX_OCR_WORKERS", "2"),
+            "SANDBOX_OCR_CHECKPOINTS": "1" if header.get("ocr_checkpoints") else "0",
         },
     )
     outcome = spawn(child, scratch, slot, stop, on_progress)
