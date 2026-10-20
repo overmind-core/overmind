@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from celery import shared_task
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -13,9 +14,14 @@ from overbae.services.native_evaluation_monitor import refresh_safely
     name="overbae.tasks.native_evaluation.refresh_monitor", soft_time_limit=1200, time_limit=1260
 )
 def refresh_monitor(plan_id):
-    plan = NativeEvaluationPlan.objects.filter(pk=plan_id, deleted_at=None).first()
-    if plan is not None:
-        refresh_safely(plan)
+    try:
+        plan = NativeEvaluationPlan.objects.filter(pk=plan_id, deleted_at=None).first()
+        if plan is not None:
+            refresh_safely(plan)
+    finally:
+        # The lease only coalesces an in-flight rebuild. Leaving it for the
+        # full minute hides a monitor removed after this task wrote it.
+        cache.delete(f"native-monitor:{plan_id}")
 
 
 @shared_task(name="overbae.tasks.native_evaluation.reconcile")
