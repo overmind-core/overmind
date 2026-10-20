@@ -53,7 +53,6 @@ ErrorCode = Literal[
     "invalid_trace_selection",
     "no_failures_found",
     "insufficient_credits",
-    "plan_limit_exceeded",
     "model_not_found",
     "finetune_not_found",
     "finetune_invalid",

@@ -10,7 +10,6 @@ from factories import auth_client
 from overbae.models import BillingService, BillingTelemetry
 from overbae.services.billing_ledger import charge_credits, grant_free_credits
 from overbae.services.billing_provider import get_billing
-from overbae.services.plan_limits import effective_projects_limit, require_plan_quota
 
 pytestmark = pytest.mark.django_db
 
@@ -38,10 +37,9 @@ def test_uncapped_skips_signup_grant(uncapped):
     assert not BillingTelemetry.objects.filter(user=user).exists()
 
 
-def test_uncapped_plan_quota_is_unlimited(uncapped):
-    user = _make_user("uncapped-quota")
-    require_plan_quota(user, "training_jobs")
-    assert effective_projects_limit(user) is None
+def test_uncapped_seats_are_unlimited(uncapped):
+    user = _make_user("uncapped-seats")
+    assert get_billing().plan_usage_payload(user) == {"seats": {"limit": None}}
 
 
 def test_uncapped_me_and_spend_routes(uncapped):
@@ -62,7 +60,7 @@ def test_uncapped_me_and_spend_routes(uncapped):
     assert sub.status_code == 200
     assert sub.data["billing_enabled"] is False
     assert sub.data["credits_spent_usd"] == "2.0000"
-    assert sub.data["usage"]["training_jobs"]["limit"] is None
+    assert sub.data["usage"] == {"seats": {"limit": None}}
 
     ledger = client.get(reverse("billing-ledger"))
     assert ledger.status_code == 200

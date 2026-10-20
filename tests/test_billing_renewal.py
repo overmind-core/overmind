@@ -86,7 +86,6 @@ def test_renew_plan_from_invoice_activates_pro_and_grants_credits(stripe_api):
         email="pro-renew@example.com",
         password="x",
         clerk_user_id="clerk_pro_renew",
-        projects_limit=5,
         stripe_customer_id="cus_test",
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
@@ -104,7 +103,6 @@ def test_renew_plan_from_invoice_activates_pro_and_grants_credits(stripe_api):
 
     user.refresh_from_db()
     sub = user.subscription
-    assert user.projects_limit is None
     assert sub.status == SubscriptionStatus.ACTIVE
     assert sub.stripe_subscription_id == "sub_test"
     assert sub.stripe_price_id == "price_1TvfC1CgXbweROl8gtGzCSV6"
@@ -126,7 +124,6 @@ def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start(str
         email="pro-renew2@example.com",
         password="x",
         clerk_user_id="clerk_pro_renew2",
-        projects_limit=5,
         stripe_customer_id="cus_test2",
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
@@ -174,7 +171,6 @@ def test_renew_plan_idempotent_on_same_invoice_id(stripe_api):
         email="pro-idem@example.com",
         password="x",
         clerk_user_id="clerk_pro_idem",
-        projects_limit=5,
         stripe_customer_id="cus_idem",
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
@@ -322,20 +318,19 @@ def test_a_stripe_outage_leaves_the_subscription_unchanged(stripe_api):
 
 
 @pytest.mark.parametrize(
-    ("event_type", "remote", "status", "cancel_at_period_end", "projects_limit"),
+    ("event_type", "remote", "status", "cancel_at_period_end"),
     [
-        ("customer.subscription.deleted", "canceled", SubscriptionStatus.CANCELED, False, 5),
-        ("customer.subscription.updated", "active", SubscriptionStatus.ACTIVE, True, None),
+        ("customer.subscription.deleted", "canceled", SubscriptionStatus.CANCELED, False),
+        ("customer.subscription.updated", "active", SubscriptionStatus.ACTIVE, True),
     ],
 )
 def test_subscription_events_sync_the_plan(
-    stripe_api, event_type, remote, status, cancel_at_period_end, projects_limit
+    stripe_api, event_type, remote, status, cancel_at_period_end
 ):
     user = User.objects.create_user(
         email=f"sync-{remote}@example.com",
         password="x",
         clerk_user_id=f"clerk_sync_{remote}",
-        projects_limit=None,
     )
     Subscription.objects.create(
         user=user,
@@ -363,7 +358,6 @@ def test_subscription_events_sync_the_plan(
     assert sub.status == status
     assert sub.cancel_at_period_end is cancel_at_period_end
     assert sub.end_date == datetime(2030, 1, 1, tzinfo=UTC)
-    assert user.projects_limit == projects_limit
 
 
 def test_a_newer_invoice_names_its_subscription_under_parent_details(stripe_api):
@@ -371,7 +365,6 @@ def test_a_newer_invoice_names_its_subscription_under_parent_details(stripe_api)
         email="pro-parent@example.com",
         password="x",
         clerk_user_id="clerk_pro_parent",
-        projects_limit=5,
         stripe_customer_id="cus_parent",
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)

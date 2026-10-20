@@ -16,7 +16,6 @@ from overbae.models.optimizer import optimizer_dataset_error
 from overbae.services.model_catalog import (
     is_model_available,
 )
-from overbae.services.plan_limits import require_plan_quota
 
 
 def validate_openrouter_key_source(source: str | None) -> str:
@@ -149,7 +148,6 @@ def create_optimizer_experiment(
 
     if user is not None:
         require_credits(user)
-        require_plan_quota(user, "optimize_runs")
 
     # "Overmind credits" proxies to OpenRouter with the server key, so fail fast when
     # it is unset rather than 503ing mid-run. A local run uses only the client's

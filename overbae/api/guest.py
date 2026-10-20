@@ -52,7 +52,6 @@ def start_guest_session() -> tuple[User, Project, str, str]:
             password=None,
             clerk_user_id=f"guest_{suffix}",
             is_guest=True,
-            projects_limit=1,
         )
         project = Project.objects.create(
             name="My product",
@@ -74,8 +73,7 @@ def claim_guest(*, guest: User, clerk_token: str) -> tuple[User, Project]:
 
     The guest row is deactivated, never converted: the Clerk account may already
     exist, and the daily sweep removes inactive guests. Memberships are the only
-    guest-owned rows — the gate blocks every other write — and ``projects_limit``
-    gates project creation only, so a claim never fails on it.
+    guest-owned rows — the gate blocks every other write.
     """
     if not guest.is_guest:
         raise PermissionDenied("This session is already an account.")

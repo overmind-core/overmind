@@ -32,30 +32,6 @@ export interface PlanUsage {
      * @type {PlanUsageUnit}
      * @memberof PlanUsage
      */
-    optimizeRuns: PlanUsageUnit;
-    /**
-     *
-     * @type {PlanUsageUnit}
-     * @memberof PlanUsage
-     */
-    trainingJobs: PlanUsageUnit;
-    /**
-     *
-     * @type {PlanUsageUnit}
-     * @memberof PlanUsage
-     */
-    deployJobs: PlanUsageUnit;
-    /**
-     *
-     * @type {PlanUsageUnit}
-     * @memberof PlanUsage
-     */
-    projects: PlanUsageUnit;
-    /**
-     *
-     * @type {PlanUsageUnit}
-     * @memberof PlanUsage
-     */
     seats: PlanUsageUnit;
 }
 
@@ -63,10 +39,6 @@ export interface PlanUsage {
  * Check if a given object implements the PlanUsage interface.
  */
 export function instanceOfPlanUsage(value: object): value is PlanUsage {
-    if (!('optimizeRuns' in value) || value['optimizeRuns'] === undefined) return false;
-    if (!('trainingJobs' in value) || value['trainingJobs'] === undefined) return false;
-    if (!('deployJobs' in value) || value['deployJobs'] === undefined) return false;
-    if (!('projects' in value) || value['projects'] === undefined) return false;
     if (!('seats' in value) || value['seats'] === undefined) return false;
     return true;
 }
@@ -81,10 +53,6 @@ export function PlanUsageFromJSONTyped(json: any, ignoreDiscriminator: boolean):
     }
     return {
 
-        'optimizeRuns': PlanUsageUnitFromJSON(json['optimize_runs']),
-        'trainingJobs': PlanUsageUnitFromJSON(json['training_jobs']),
-        'deployJobs': PlanUsageUnitFromJSON(json['deploy_jobs']),
-        'projects': PlanUsageUnitFromJSON(json['projects']),
         'seats': PlanUsageUnitFromJSON(json['seats']),
     };
 }
@@ -100,10 +68,6 @@ export function PlanUsageToJSONTyped(value?: PlanUsage | null, ignoreDiscriminat
 
     return {
 
-        'optimize_runs': PlanUsageUnitToJSON(value['optimizeRuns']),
-        'training_jobs': PlanUsageUnitToJSON(value['trainingJobs']),
-        'deploy_jobs': PlanUsageUnitToJSON(value['deployJobs']),
-        'projects': PlanUsageUnitToJSON(value['projects']),
         'seats': PlanUsageUnitToJSON(value['seats']),
     };
 }

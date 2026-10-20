@@ -138,22 +138,6 @@ logger = logging.getLogger(__name__)
 _user_project_ids = project_ids_for
 
 
-def _project_membership_count(user) -> int:
-    return ProjectMembership.objects.filter(user=user).count()
-
-
-def _ensure_user_may_acquire_project_membership(user) -> None:
-    """Raise PlanLimitExceeded if ``user`` is at their effective Free/Pro project cap."""
-    from overbae.services.plan_limits import PlanLimitExceeded, effective_projects_limit
-
-    limit = effective_projects_limit(user)
-    if limit is None:
-        return
-    n = _project_membership_count(user)
-    if n >= limit:
-        raise PlanLimitExceeded(f"Free plan allows {limit} projects. Upgrade to Pro for unlimited.")
-
-
 @extend_schema_view(
     list=extend_schema(summary="List projects"),
     retrieve=extend_schema(summary="Get project"),
@@ -189,7 +173,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 ),
                 code="account_key_required",
             )
-        _ensure_user_may_acquire_project_membership(self.request.user)
         project = serializer.save()
         ProjectMembership.objects.create(user=self.request.user, project=project)
 
@@ -255,7 +238,6 @@ class ProjectMembershipViewSet(
             from overbae.services.plan_limits import require_seat_for_invite
 
             require_seat_for_invite(request.user, project)
-            _ensure_user_may_acquire_project_membership(user)
         membership, _ = ProjectMembership.objects.get_or_create(project=project, user=user)
         return Response(
             ProjectMemberSerializer(membership).data,
@@ -759,12 +741,10 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from overbae.api.credit_gate import require_credits
-        from overbae.services.plan_limits import require_plan_quota
         from overbae.tasks.finetuning import run_finetuning
 
         def admit_new_training():
             require_credits(self.request.user)
-            require_plan_quota(self.request.user, "training_jobs")
 
         serializer.context["admit_new_training"] = admit_new_training
         job = serializer.save(triggered_by=self.request.user)

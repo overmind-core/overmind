@@ -1,7 +1,7 @@
 """Commercial billing vs uncapped metering.
 
-Ledger charges always run. Remaining-credit gates, signup grants, Stripe, and
-Free/Pro quotas exist only when ``STRIPE_SECRET_KEY`` is set.
+Ledger charges always run. Remaining-credit gates, signup grants, Stripe and
+the Free seat limit exist only when ``STRIPE_SECRET_KEY`` is set.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from django.conf import settings
 
 if TYPE_CHECKING:
     from overbae.models import BillingTelemetry, Project, User
-    from overbae.services.plan_limits import QuotaKind
 
 __all__ = ["Billing", "commercial_billing_enabled", "get_billing"]
 
@@ -28,9 +27,7 @@ class Billing(Protocol):
     def ensure_credits(self, user: User) -> None: ...
     def grant_free_credits(self, user: User) -> BillingTelemetry | None: ...
     def is_pro(self, user: User) -> bool: ...
-    def require_plan_quota(self, user: User, kind: QuotaKind) -> None: ...
     def require_seat_for_invite(self, actor: User, project: Project) -> None: ...
-    def effective_projects_limit(self, user: User) -> int | None: ...
     def plan_usage_payload(self, user: User) -> dict: ...
 
 
@@ -46,14 +43,8 @@ class UncappedBilling:
     def is_pro(self, user: User) -> bool:
         return False
 
-    def require_plan_quota(self, user: User, kind: QuotaKind) -> None:
-        return
-
     def require_seat_for_invite(self, actor: User, project: Project) -> None:
         return
-
-    def effective_projects_limit(self, user: User) -> int | None:
-        return None
 
     def plan_usage_payload(self, user: User) -> dict:
         from overbae.services.plan_limits import usage_payload
@@ -86,20 +77,10 @@ class StripeBilling:
 
         return subscription_is_pro(user)
 
-    def require_plan_quota(self, user: User, kind: QuotaKind) -> None:
-        from overbae.services.plan_limits import enforce_plan_quota
-
-        enforce_plan_quota(user, kind)
-
     def require_seat_for_invite(self, actor: User, project: Project) -> None:
         from overbae.services.plan_limits import enforce_seat_for_invite
 
         enforce_seat_for_invite(actor, project)
-
-    def effective_projects_limit(self, user: User) -> int | None:
-        from overbae.services.plan_limits import capped_projects_limit
-
-        return capped_projects_limit(user)
 
     def plan_usage_payload(self, user: User) -> dict:
         from overbae.services.plan_limits import usage_payload

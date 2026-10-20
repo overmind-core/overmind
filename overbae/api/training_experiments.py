@@ -12,7 +12,6 @@ from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.models import NativeEvaluationPlan, Project, TrainingExperiment
 from overbae.services import training_experiments
-from overbae.services.plan_limits import require_plan_quota
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +146,6 @@ class TrainingExperimentViewSet(
     @action(detail=True, methods=["post"])
     def launch(self, request, pk=None):
         require_credits(request.user)
-        require_plan_quota(request.user, "training_jobs")
         body = ExperimentLaunchSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         try:

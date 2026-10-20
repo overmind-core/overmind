@@ -66,12 +66,6 @@ class User(AbstractUser):
         db_index=True,
         help_text="Stable Stripe customer id; one per user.",
     )
-    projects_limit = models.IntegerField(
-        null=True,
-        blank=True,
-        default=5,
-        help_text="Max project memberships; null = unlimited (Pro).",
-    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

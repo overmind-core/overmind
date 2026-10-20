@@ -370,7 +370,6 @@ def test_start_uses_serializer_and_worker_task(
         lambda *_args: {"training_type": {"type": "Lora"}},
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
         lambda **kwargs: calls.update(kwargs=kwargs) or SimpleNamespace(id="celery-ft"),
@@ -877,7 +876,6 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
         lambda *_args: {"training_type": {"type": "Lora"}},
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     result = _call(
         "start_finetune",
         {
@@ -976,7 +974,6 @@ def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypa
     dispatch = Mock(return_value=SimpleNamespace(id="one-dispatch"))
     monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     arguments = {
         "dataset": str(train.id),
         "cell": str(train.active_cell.id),
@@ -1007,7 +1004,6 @@ def test_unsupported_gradient_accumulation_is_rejected_before_dispatch(settings,
     dispatch = Mock(return_value=SimpleNamespace(id="not-permitted-dispatch"))
     monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     result = _call(
         "start_finetune",
         {
@@ -1110,7 +1106,6 @@ def test_native_baseline_choice_is_pinned_without_disabling_validation(
     dispatch = Mock(return_value=SimpleNamespace(id="baseline-choice"))
     monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     recipe = {"training_type": {"type": "Lora"}}
     if baseline is not None:
         recipe["pre_training_baseline"] = baseline
@@ -1176,7 +1171,6 @@ def test_native_estimate_reuses_completed_launch_with_implicit_packing(settings,
         Mock(return_value=SimpleNamespace(id="forecast")),
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     monkeypatch.setattr("overbae.services.training_forecast.hardware", lambda *_: ("H100", 1))
     arguments = {
         "dataset": str(train.id),
@@ -1244,7 +1238,6 @@ def test_native_baseline_rejects_non_boolean_choices(baseline, settings, monkeyp
         contract="train",
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     result = _call(
         "start_finetune",
         {

@@ -209,7 +209,6 @@ class UserAdmin(DjangoUserAdmin):
                     "timezone",
                     "clerk_user_id",
                     "stripe_customer_id",
-                    "projects_limit",
                 )
             },
         ),

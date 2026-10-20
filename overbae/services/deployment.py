@@ -26,7 +26,6 @@ from overbae.services import operational_progress, provider_progress
 from overbae.services.decision_serving import current_runtime
 from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
 from overbae.services.model_catalog import resolve_training_openrouter_slug
-from overbae.services.plan_limits import PlanLimitExceeded, require_plan_quota
 from overbae.services.serving_context import job_serving_plan
 
 logger = logging.getLogger(__name__)
@@ -147,16 +146,6 @@ def ensure_training_deployment(job_id: str) -> DeployedModel | None:
                     deployment_next_poll_at=timezone.now(),
                 )
             return deployed
-        if job.triggered_by:
-            try:
-                require_plan_quota(job.triggered_by, "deploy_jobs")
-            except PlanLimitExceeded:
-                FinetuningJob.objects.filter(pk=job.pk).update(
-                    status="succeeded",
-                    completed_at=timezone.now(),
-                    error_message="Deploy skipped: Free plan deploy limit reached.",
-                )
-                return None
         cfg = get_model_config_any_backend(job.base_model) or {}
         native = (job.hyperparameters or {}).get("objective") in DECISION_OBJECTIVES
         if native:

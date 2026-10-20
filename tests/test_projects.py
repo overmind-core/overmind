@@ -10,7 +10,7 @@ from django.urls import reverse
 from factories import auth_client, make_user
 from rest_framework.test import APIClient
 
-from overbae.models import Project, ProjectMembership, Subscription, SubscriptionStatus
+from overbae.models import Project, ProjectMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -89,16 +89,14 @@ def test_destroy_project():
     assert not Project.objects.filter(id=project.id).exists()
 
 
-def test_create_project_rejects_when_user_at_projects_limit():
-    u = make_user("full@example.com", projects_limit=1)
-    p0 = Project.objects.create(name="Existing", slug=f"ex-{uuid.uuid4().hex[:6]}")
-    ProjectMembership.objects.create(user=u, project=p0)
+def test_free_user_can_create_more_than_five_projects():
+    u = make_user("many@example.com")
+    for i in range(6):
+        p = Project.objects.create(name=f"Existing {i}", slug=f"ex-{i}-{uuid.uuid4().hex[:6]}")
+        ProjectMembership.objects.create(user=u, project=p)
 
     r = auth_client(u).post(reverse("project-list"), _project_payload(), format="json")
-    assert r.status_code == 403
-    detail = r.data.get("detail") or ""
-    assert "Free plan" in detail or "Upgrade to Pro" in detail
-    assert r.data.get("code") == "plan_limit_exceeded"
+    assert r.status_code == 201, r.data
 
 
 def test_retrieve_other_project_not_visible():
@@ -127,35 +125,9 @@ def test_list_memberships_for_project():
     assert peer.email in emails
 
 
-def test_add_member_rejects_when_invitee_at_projects_limit():
-    owner = make_user("lead2@example.com")
-    Subscription.objects.update_or_create(
-        user=owner,
-        defaults={"status": SubscriptionStatus.ACTIVE, "stripe_subscription_id": "sub_lead2"},
-    )
-    owner.projects_limit = None
-    owner.save(update_fields=["projects_limit"])
-    invitee = make_user("saturated@example.com", projects_limit=1)
-    p_other = Project.objects.create(name="Other", slug=f"oth-{uuid.uuid4().hex[:6]}")
-    ProjectMembership.objects.create(user=invitee, project=p_other)
-
-    project = Project.objects.create(name="New", slug=f"new-{uuid.uuid4().hex[:6]}")
-    ProjectMembership.objects.create(user=owner, project=project)
-
-    r = auth_client(owner).post(
-        reverse("project-membership-list", kwargs={"project_id": project.id}),
-        {"email": invitee.email},
-        format="json",
-    )
-    assert r.status_code == 403
-    detail = str(r.data.get("detail") or "")
-    assert "Free plan" in detail or "Upgrade to Pro" in detail
-    assert r.data.get("code") == "plan_limit_exceeded"
-
-
 def test_add_member_idempotent_for_existing_member():
     owner = make_user("idemp@example.com")
-    member = make_user("already@example.com", projects_limit=5)
+    member = make_user("already@example.com")
     project = Project.objects.create(name="Same", slug=f"same-{uuid.uuid4().hex[:6]}")
     ProjectMembership.objects.create(user=owner, project=project)
     ProjectMembership.objects.create(user=member, project=project)

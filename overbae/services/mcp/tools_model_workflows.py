@@ -43,7 +43,6 @@ from overbae.services.mcp.contracts.model_workflows import (
 )
 from overbae.services.mcp.errors import MCPError, serializer_fields
 from overbae.services.mcp.resources import resource_link
-from overbae.services.plan_limits import require_plan_quota
 from overbae.tasks.data_exploration import run as explore
 from overbae.tasks.data_partitions import build_plan
 from overbae.tasks.decision_performance import measure
@@ -178,7 +177,6 @@ def save_training_plan(payload, context):
 
 def launch_experiment(payload, context):
     require_credits(context.user)
-    require_plan_quota(context.user, "training_jobs")
     experiment = training_experiments.launch(
         workflow(context, "training_experiment", payload.experiment),
         user=context.user,

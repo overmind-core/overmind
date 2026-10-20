@@ -1,6 +1,6 @@
 /**
- * Plan quota refusals: 403 with ``code: plan_limit_exceeded`` /
- * ``seat_limit_exceeded``. Unlike a credits 402, these toast a pricing link.
+ * Seat refusals: 403 with ``code: seat_limit_exceeded``. Unlike a credits 402,
+ * these toast a pricing link.
  */
 
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ export class PlanLimitError extends Error {
   readonly status = 403;
   readonly code: string;
 
-  constructor(message: string, code = "plan_limit_exceeded") {
+  constructor(message: string, code = "seat_limit_exceeded") {
     super(message);
     this.code = code;
   }
@@ -22,7 +22,7 @@ export function isPlanLimitError(err: unknown): boolean {
   return err instanceof PlanLimitError;
 }
 
-/** Parse DRF body ``{"detail":"…","code":"plan_limit_exceeded"}`` (or nested detail). */
+/** Parse DRF body ``{"detail":"…","code":"seat_limit_exceeded"}`` (or nested detail). */
 export function planLimitFromBody(body: string): { message: string; code: string } | null {
   try {
     const parsed = JSON.parse(body) as {
@@ -39,14 +39,10 @@ export function planLimitFromBody(body: string): { message: string; code: string
       if (typeof d.detail === "string") message = d.detail;
       if (typeof d.code === "string") code = d.code;
     }
-    if (
-      code === "plan_limit_exceeded" ||
-      code === "seat_limit_exceeded" ||
-      (message && /Free plan|Upgrade to Pro/i.test(message))
-    ) {
+    if (code === "seat_limit_exceeded") {
       return {
-        code: code || "plan_limit_exceeded",
-        message: message || "Plan limit reached. Upgrade to Pro for higher limits.",
+        code,
+        message: message || "Free plan is limited to one seat. Upgrade to Pro to invite teammates.",
       };
     }
   } catch {

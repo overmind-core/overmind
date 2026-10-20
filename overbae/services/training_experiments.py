@@ -24,7 +24,6 @@ from overbae.models import (
 )
 from overbae.services import native_evaluation, training_plans, training_release
 from overbae.services.datasets import rows, use
-from overbae.services.plan_limits import require_plan_quota
 from overbae.services.recommendation.candidates import dataset_total_tokens
 from overbae.services.training_contract import dataset_objective
 from overbae.services.training_forecast import forecast
@@ -216,7 +215,6 @@ def launch(experiment, *, user, quote_id=None):
             raise InputValidationError("A frozen candidate data version changed")
     jobs = []
     for index, variant in enumerate(experiment.variants):
-        require_plan_quota(user, "training_jobs")
         serializer = FinetuningJobSerializer(
             data=candidate_payload(
                 experiment.project, variant, group_id=experiment.pk, index=index

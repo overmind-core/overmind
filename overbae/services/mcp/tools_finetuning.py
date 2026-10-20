@@ -204,17 +204,6 @@ def _require_credits(context: MCPContext) -> None:
         ) from error
 
 
-def _require_training_quota(context: MCPContext) -> None:
-    from overbae.services.plan_limits import PlanLimitExceeded, require_plan_quota
-
-    try:
-        require_plan_quota(context.user, "training_jobs")
-    except PlanLimitExceeded as error:
-        raise MCPError(
-            "plan_limit_exceeded", "The training-job plan limit has been reached."
-        ) from error
-
-
 def _credits_available(context: MCPContext) -> bool:
     try:
         _require_credits(context)
@@ -688,7 +677,6 @@ def _start_sync(
 
     def admit_new_training():
         _require_credits(context)
-        _require_training_quota(context)
 
     try:
         job = launch_finetune(

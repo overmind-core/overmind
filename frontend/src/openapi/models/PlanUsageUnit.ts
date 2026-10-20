@@ -24,12 +24,6 @@ export interface PlanUsageUnit {
      * @type {number}
      * @memberof PlanUsageUnit
      */
-    used?: number;
-    /**
-     *
-     * @type {number}
-     * @memberof PlanUsageUnit
-     */
     limit: number | null;
 }
 
@@ -51,7 +45,6 @@ export function PlanUsageUnitFromJSONTyped(json: any, ignoreDiscriminator: boole
     }
     return {
 
-        'used': json['used'] == null ? undefined : json['used'],
         'limit': json['limit'],
     };
 }
@@ -67,7 +60,6 @@ export function PlanUsageUnitToJSONTyped(value?: PlanUsageUnit | null, ignoreDis
 
     return {
 
-        'used': value['used'],
         'limit': value['limit'],
     };
 }

@@ -139,7 +139,7 @@ Clerk when `CLERK_API_SECRET_KEY` is set; blank secret is self-hosted local JWT 
 - A guest (`User.is_guest`, minted by `POST /api/auth/guest/`) holds one project and can read and claim. `GuestJWTAuthentication` (`api/authentication.py`) refuses every other write with `guest_upgrade_required`; a view opts in with `guest_allowed = True` — never a permission class or middleware, since a view's own `permission_classes` replaces the defaults and a guest identity exists only through that token. Guests get no free credits; `/demo` points at local setup. A claim moves the memberships to the Clerk account and deactivates the guest; `tasks/guest_cleanup.py` deletes inactive guests and unclaimed ones after 7 days. Guest claim requires Clerk.
 - Console: `VITE_SELF_HOSTED=true` and a blank `VITE_CLERK_PUBLISHABLE_KEY` skip `ClerkProvider` and show the local login form; otherwise Clerk.
 - Project invites: with Clerk, an invitation email is sent; without Clerk the `ProjectInvite` row is stored and claimed on first local (or Clerk) sign-in for that email.
-- Commercial billing (remaining-credit 402s, Free/Pro quotas, Stripe Checkout) injects when `STRIPE_SECRET_KEY` is set (`overbae/services/billing_provider.py`). Ledger charges always run. Empty key → uncapped OSS: spend is recorded and shown, gates and grants no-op.
+- Commercial billing (remaining-credit 402s, the Free seat limit, Stripe Checkout) injects when `STRIPE_SECRET_KEY` is set (`overbae/services/billing_provider.py`). Ledger charges always run. Empty key → uncapped OSS: spend is recorded and shown, gates and grants no-op.
 - API keys are either `scope=account` (every project the user belongs to) or `scope=project` with one `resourceIds` entry. Creating a key with `project` always mints project scope.
 
 ## Training preparation
@@ -150,7 +150,7 @@ Workshop findings are advisory before model-specific work: incomplete task/evide
 
 Workshop is model-independent. Native agents inspect before transforming; historical source-bound plans and measured reviews stay attached to their exact versions. New pipeline/import runs record source bindings, impact and external attribution; no automatic semantic audit is scheduled. `services/training_preparation.py` caches exact Modal preprocessing by training/validation cell fingerprints, model, training type, context length, training stack and the SFT asset code fingerprint. REST `POST /api/training-preparations/` and MCP `prepare_training_data` share the service; MCP returns a `training_preparation` job receipt readable through `get_job` and the jobs resource. Preparation stages checksummed gzip JSONL through Modal Volume uploads and uses CPU-only `prepare_<train_function>` in the matching training image; it does not start GPU training. Tokenization writes artifacts incrementally. All Modal launches upload ordered binary SHA-256 row selections instead of the source rows a second time. The worker verifies each selection checksum and count plus the caller-pinned token artifact, then materializes training/validation through a bounded disk index, preserving order and duplicate visits. Initial source decompression and selection construction stream without retaining the corpus in memory.
 
-Explicit preparation atomically creates a `FinetuningJob` linked by `preparation`, before the preprocessing task is queued. `preprocessing` and `awaiting_launch` are dashboard-visible setup states excluded from the training dispatcher and launch quota. The preprocessing observer updates setup progress and failures, without changing launched or cancelled jobs. A matching REST/MCP launch promotes the same job under the project lock, applies normal budget admission and freezes the complete recipe; repeating its launch key remains idempotent. Retrying a setup failure never launches GPU training. MCP preparation returns both preparation and training job receipts.
+Explicit preparation atomically creates a `FinetuningJob` linked by `preparation`, before the preprocessing task is queued. `preprocessing` and `awaiting_launch` are dashboard-visible setup states excluded from the training dispatcher and launch admission. The preprocessing observer updates setup progress and failures, without changing launched or cancelled jobs. A matching REST/MCP launch promotes the same job under the project lock, applies normal budget admission and freezes the complete recipe; repeating its launch key remains idempotent. Retrying a setup failure never launches GPU training. MCP preparation returns both preparation and training job receipts.
 
 Console setup does not submit or await preprocessing and has no per-model preparation cards or workshop review recommendations. `run_finetuning` requests or reuses the exact artifact after launch, records its ID, state and report in job progress, and starts GPU training only when ready. Provider observations and finalization preserve that receipt and submission recovery history. Explicit REST/MCP preparation remains available.
 
@@ -265,9 +265,9 @@ A bounded cadence that misses the overhead target reports the conflict. Normal
 run/check-count boundaries and explicit step/epoch modes do not imply a budget
 failure. A measured overhead interval that prevents an otherwise due interim
 check is reported separately. Active jobs retain their pinned scheduler release.
-Launch credit/quota admission runs inside the project-locked creation path only
+Launch credit admission runs inside the project-locked creation path only
 after request-key recovery. Identical REST/MCP retries remain readable after
-credits or quota are exhausted; changed recipes conflict and new jobs remain gated.
+credits are exhausted; changed recipes conflict and new jobs remain gated.
 Chat success records the deduplicated training GPU charge before deployment;
 deployment readiness and its own usage cannot delay or replace the training receipt.
 

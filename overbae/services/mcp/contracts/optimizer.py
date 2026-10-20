@@ -53,11 +53,6 @@ class OptimizerCreditReadiness(MCPModel):
     available: bool
 
 
-class OptimizerPlanReadiness(MCPModel):
-    quota: Literal["optimize_runs"] = "optimize_runs"
-    available: bool
-
-
 class OptimizerNextAction(MCPModel):
     state: Literal[
         "ready", "connect_executioner", "fix_prerequisites", "run_executioner", "inspect_result"
@@ -86,7 +81,6 @@ class CheckOptimizerReadinessOutput(MCPModel):
     executioner: OptimizerExecutionerState
     models: OptimizerModelReadiness
     credits: OptimizerCreditReadiness
-    plan: OptimizerPlanReadiness
     next_action: OptimizerNextAction
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=4)
 
