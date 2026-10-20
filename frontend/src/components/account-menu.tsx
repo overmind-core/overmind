@@ -74,7 +74,8 @@ export function AccountMenu() {
             onClick={() => {
               setOpen(false);
               void signOut().then(() => {
-                window.location.href = "/login";
+                // Hard replace: drops the signed-in query cache and keeps Back off protected pages.
+                window.location.replace("/login");
               });
             }}
             type="button"

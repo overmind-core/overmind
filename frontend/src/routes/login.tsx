@@ -9,6 +9,7 @@ import { SplashBackground } from "@/components/splash-background";
 import { LoadingState } from "@/components/ui/spinner";
 import { config } from "@/config";
 import { useAuthContext } from "@/contexts/auth-context";
+import { safeNextPath } from "@/lib/auth-redirect";
 import { hasGuestSession } from "@/lib/guest";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 
@@ -33,9 +34,8 @@ function RouteComponent() {
   const { mode } = Route.useSearch();
   // Read once: the claim clears the flag before the redirect below runs.
   const [wasGuest] = useState(hasGuestSession);
-  // `?next=` may carry its own query string; `//` is rejected as an open redirect.
-  const next = new URLSearchParams(window.location.search).get("next");
-  const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : null;
+  // `?next=` may carry its own query string, which TanStack's parsed search would mangle.
+  const safeNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || isGuest || !safeNext) return;
