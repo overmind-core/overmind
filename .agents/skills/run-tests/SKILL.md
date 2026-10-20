@@ -42,7 +42,7 @@ uv run pytest tests/test_foo.py::test_bar 2>&1 | tee "$SCRATCHPAD/pytest-rerun.l
 the compose `postgres` and `redis` services, and uses Redis DB 15. Each journey
 writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
 LLM requests, background task failures and the error. `make test` never
-collects journeys: they need `TEST_REDIS_URL`. `make test-journeys` runs them with xdist (`-v`, `--dist loadfile`); each worker gets its own Redis DB, and DB 12 stays with the load subprocess. The journeys take several minutes, and CI runs them as their own job beside `test`;
+collects journeys: they need `TEST_REDIS_URL`. `make test-journeys` runs them with xdist (`-q`, `--dist loadfile`); each worker gets its own Redis DB, and DB 12 stays with the load subprocess. The journeys take several minutes, and CI runs them as their own job beside `test`;
 `make test-journeys test_args="-k <name>"` runs one. `test_kit_*.py` files run one
 journey per vendor (connectors, workshop LLM engines, GPU training outcomes): a new
 vendor joins its kit's parametrize list.

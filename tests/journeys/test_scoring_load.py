@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -14,35 +13,25 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _run(args, env, log_name, timeout):
+    # The nested pytest must not inherit this worker's xdist id, or journey_xdist
+    # rewrites its broker away from the load databases.
+    isolated = {
+        key: value
+        for key, value in env.items()
+        if key not in {"PYTEST_XDIST_WORKER", "PYTEST_XDIST_WORKER_COUNT", "OVERMIND_JOURNEY_XDIST"}
+    }
     RUNS.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.Popen(
+    result = subprocess.run(
         args,
         cwd=ROOT,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        env=isolated,
+        capture_output=True,
         text=True,
+        timeout=timeout,
     )
-    lines = []
-
-    def read():
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            lines.append(line)
-            print(line, end="", flush=True)
-
-    reader = threading.Thread(target=read)
-    reader.start()
-    try:
-        code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        reader.join()
-        raise
-    reader.join()
-    text = "".join(lines)
+    text = result.stdout + result.stderr
     (RUNS / log_name).write_text(text)
-    assert code == 0, failure_output(text)
+    assert result.returncode == 0, failure_output(text)
     return text
 
 
@@ -54,7 +43,7 @@ def test_read_load_in_isolated_process(worker):
     }
     # Celery's test-worker teardown sets process-wide stop flags.
     text = _run(
-        [sys.executable, "-m", "pytest", "tests/load/reads.py", "--ds=tests.load.settings", "-v"],
+        [sys.executable, "-m", "pytest", "tests/load/reads.py", "--ds=tests.load.settings", "-q"],
         env,
         "read-load.log",
         240,
@@ -93,7 +82,7 @@ def test_mixed_capacity_and_recovery_in_isolated_process(worker):
             "tests/load/landing_burst.py",
             "tests/load/query_capacity.py",
             "--ds=tests.load.settings",
-            "-v",
+            "-q",
         ],
         env,
         "mixed-capacity.log",

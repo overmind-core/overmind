@@ -10,6 +10,8 @@ from fakes.vendors import (
     support_desk_trace,
 )
 
+from overbae.models import ConnectorCredential
+
 from .stack import drain
 
 VENDORS = {
@@ -76,3 +78,6 @@ def test_a_recorded_vendor_trace_lands_as_one_rooted_tree(
     assert bound["triage"] == "triage"
     assert bound["answer"] == "answer"
     assert sum(root["total_tokens"] or 0 for root in roots) == sum(sum(s.tokens) for s in steps)
+    # The chunk schedules its own continuation. Leave it inactive so that call
+    # does not reach the next test's network fake.
+    ConnectorCredential.objects.filter(pk=connector).update(is_active=False)
