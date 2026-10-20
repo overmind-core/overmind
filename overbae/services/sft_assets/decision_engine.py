@@ -718,8 +718,10 @@ def main():
         load_in_4bit=os.environ.get("LOAD_IN_4BIT") == "1",
         local_files_only=True,
         # Trainer cleanup propagates the parent attention setting into nested text configs.
+        # Verify must load like the training model. The reference probabilities were
+        # measured on that runtime; a checkpointing-off load does not reproduce them.
         attn_implementation=ATTENTION_IMPLEMENTATION,
-        use_gradient_checkpointing="unsloth" if not inference and not verify else False,
+        use_gradient_checkpointing=False if inference else "unsloth",
         **(
             {"head_width": int(os.environ["DECISION_HEAD_WIDTH"])}
             if os.environ.get("DECISION_HEAD_WIDTH") and source != CHECKPOINT_DIR

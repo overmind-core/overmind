@@ -71,10 +71,23 @@ def _worker_ledger():
         yield ledger
 
 
+def _release_connector_chunks(ledger) -> None:
+    from overbae.models import ConnectorCredential
+
+    # A live chunk publishes its continuation with an eta. drain() ignores those,
+    # and one already past its active check still calls out after the next test
+    # installs a different vendor mock.
+    ConnectorCredential.objects.filter(is_active=True).update(is_active=False)
+    deadline = time.monotonic() + 8
+    while ledger.unfinished("sync_connector_chunk") and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
 @pytest.fixture
 def worker(_worker_ledger):
     failed_before = set(_worker_ledger.failed())
     yield _worker_ledger
+    _release_connector_chunks(_worker_ledger)
     drain(_worker_ledger)
     failed = {k: v for k, v in _worker_ledger.failed().items() if k not in failed_before}
     assert not failed, f"Background tasks failed: {failed}"

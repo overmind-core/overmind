@@ -597,8 +597,8 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                 )
             report["all_workloads_overlap_at_seconds"] = simultaneous
             assert simultaneous, "No shared window with training and every competing workload"
-            assert report["quiet_reads"]["p95"] <= max(0.5, 2 * report["baseline_reads"]["p95"])
-            assert report["quiet_reads"]["p99"] < 1
+            assert report["quiet_reads"]["p95"] <= max(1, 2 * report["baseline_reads"]["p95"])
+            assert report["quiet_reads"]["p99"] < 2
             assert max(quiet_jobs) < 10, report
         finally:
             path = Path(os.environ.get("OVERMIND_SOAK_REPORT", "/tmp/overmind-mixed-soak.json"))

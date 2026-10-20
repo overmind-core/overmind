@@ -80,6 +80,14 @@ class TaskLedger:
         with self._lock:
             return {k: v for k, v in self.published.items() if k not in self.finished}
 
+    def unfinished(self, name_suffix: str) -> bool:
+        with self._lock:
+            known = {**self.scheduled, **self.published}
+            return any(
+                task_id not in self.finished and name.endswith(name_suffix)
+                for task_id, name in known.items()
+            )
+
     def failed(self) -> dict[str, str]:
         with self._lock:
             return {

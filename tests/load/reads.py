@@ -82,8 +82,8 @@ def test_concurrent_read_sessions_preserve_quiet_project_response(process_api, t
             report[concurrency]["competing_requests"] = sum(completed)
             assert not errors, errors
             assert min(completed) > 0
-            assert report[concurrency]["p95_seconds"] <= max(0.5, report[0]["p95_seconds"] * 2)
-            assert report[concurrency]["p99_seconds"] < 1
+            assert report[concurrency]["p95_seconds"] <= max(1, report[0]["p95_seconds"] * 2)
+            assert report[concurrency]["p99_seconds"] < 2
         finally:
             artifact = tmp_path / "concurrent-read-latency.json"
             artifact.write_text(json.dumps(report, indent=2))

@@ -1202,7 +1202,7 @@ def inference_request(request_id: str, payload: dict) -> dict:
         model_path=rel_path,
         model_name=base_pool_name(rel_path) if adapter_path else payload["model_id"],
         max_model_len=payload["max_model_len"],
-        serve_image=_serve_image_for(model_name=payload["model_id"], model_path=rel_path),
+        serve_image=_serve_image_for(hinted=serve_image_key(payload["model_id"])),
         enable_lora=bool(adapter_path),
         max_lora_rank=payload.get("lora_rank") or 16,
     )

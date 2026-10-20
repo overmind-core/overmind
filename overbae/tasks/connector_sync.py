@@ -226,6 +226,16 @@ def _apply_backoff(credential, exc: Exception) -> dict:
     return {"status": "error", "retry_after": delay, "error": str(exc)}
 
 
+def _schedule_next_chunk(credential) -> None:
+    from overbae.models import ConnectorCredential
+
+    # The chunk that is already running passed the active check at entry.
+    # Deactivation has to stop the continuation it is about to publish.
+    if not ConnectorCredential.objects.filter(pk=credential.pk, is_active=True).exists():
+        return
+    sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=2)
+
+
 def _run_adapter_chunk(credential, cursor: dict) -> dict:
     """Provider-blind chunk: adapter.fetch_page → upsert → checkpoint cursor."""
     from overbae.models import ConnectorCredential, ConnectorSyncRun
@@ -330,7 +340,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
         last_synced_at=timezone.now(),
         next_poll_at=None,
     )
-    sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=2)
+    _schedule_next_chunk(credential)
     return {
         "status": "live_continuing" if page.mode == "live" else "backfilling",
         "imported": imported if page.mode == "live" else new_traces,
@@ -374,7 +384,7 @@ def sync_connector_chunk(credential_id: str) -> dict:
         return _run_adapter_chunk(credential, cursor)
     except SoftTimeLimitExceeded:
         ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
-        sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=2)
+        _schedule_next_chunk(credential)
         return {"status": "soft_timeout_resumed"}
     except Exception as exc:
         return _apply_backoff(credential, exc)
