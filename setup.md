@@ -12,10 +12,12 @@ There are 2 prerequisites to start this:
 {
   ...
   "overmind": {
-    "url": "https://api.overmindlab.ai/api/mcp"
+    "url": "https://api.overmindlab.ai/api/mcp/"
   }
 }
 ```
+
+**DO NOT forget the slash in the end for the url**
 
 2. **PyPI package overmind**
 
@@ -39,26 +41,25 @@ If the project's Python is older than 3.10 or the install conflicts with the env
 
 Now we can move onto setting up overmind.
 
-Overmind has two kinds of onboarding flows, on one account. They work slightly differently:
-
-- **Start from codebase**
-  - Use the `/overmind setup` skill to start scanning the codebase.
-- **Start from a dataset**
-  - If this is a data-only project (uploaded files, no repository), skip to [Data-only projects](#data-only-projects).
-
 # USING OVERMIND
+
+Overmind has two kinds of onboarding flows, on one account. They work slightly differently:
 
 Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset, ASK the USER which one they want to continue with if it hasn't already been configured.
 
-## 1. Onboarding using codebase or repository
+## Onboarding using codebase or repository
 
 Overmind has skills to scan through a respository with agentic codebase written either in Python or Typescript/Javascript
 
-> If codebase is any other Language, omit runnning `overmind chassis` command and just use the coding agent's output file and use it to run `overmind sync`
+> If codebase is any other Language, avoid runnning `overmind chassis` command and just use the coding agent's output file and use it to run `overmind sync`
 
 See (overmind://prompts/onboaring-using-codebase) Prompt on the Overmind MCP
 
-## 2. Onboarding using a dataset
+- Use the `/overmind setup` skill to start scanning the codebase.
+
+## Onboarding using a dataset
+
+> If this is a data-only project (uploaded files, no repository)
 
 You will ask the human to provide a dataset which the human wants to use
 for finetuning aka training a custom model.
@@ -72,7 +73,8 @@ Overmind has the following features
 
 | Feature           | Description                                                                                                                                            |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Agent Scanning    | Scans your codebase and builds a context map of how AI is used across the product.                                                                     |
+| Observability     | Helps you add observability to your agentic stack.                                                                                                     |
+| Agent Scanning    | Scans your codebase and builds a context map of how AI is used across the codebase.                                                                    |
 | Dataset           | Clients can upload datasets to Overmind, which then                                                                                                    |
 | Evaluations       | Creates a set of eval metrics relevant to your codebase or dataset and triggers evaluations.                                                           |
 | Finetuning        | Creates a custom finetuned language model trained on a dataset in Overmind, validated using the evaluations created for that dataset or codebase.      |
