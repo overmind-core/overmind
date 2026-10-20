@@ -9,6 +9,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF510,
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
+    TRAIN_U2026_10_7,
 )
 
 CLEF = FamilySpec(
@@ -181,6 +182,7 @@ NEMOTRON = FamilySpec(
 LLAMA = FamilySpec(
     key="llama",
     patterns=("llama",),
+    train_image=TRAIN_U2026_10_7,
     tool_call_parser="llama3_json",
     pretok_headers=(r"<\|start_header_id\|>(\w+)<\|end_header_id\|>\n\n",),
     llama31_patterns=("llama-3.1", "llama-3.2", "llama-3.3"),
@@ -208,6 +210,7 @@ QWEN38 = FamilySpec(
 QWEN35 = FamilySpec(
     key="qwen35",
     patterns=("qwen3.5", "qwen3.6"),
+    train_image=TRAIN_U2026_10_7,
     tool_call_parser="qwen3_coder",
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
     natively_multimodal=True,
@@ -220,6 +223,7 @@ QWEN35 = FamilySpec(
 QWEN3_CODER = FamilySpec(
     key="qwen3_coder",
     patterns=("qwen3-coder",),
+    train_image=TRAIN_U2026_10_7,
     tool_call_parser="qwen3_coder",
     mixed_moe_lora_format=True,
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
@@ -239,6 +243,7 @@ QWEN_MM = FamilySpec(
 QWEN = FamilySpec(
     key="qwen",
     patterns=("qwen",),
+    train_image=TRAIN_U2026_10_7,
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
     notes="TRL training jinja Path A; JSON <tool_call> hermes; think tags native.",
 )

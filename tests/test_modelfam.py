@@ -26,6 +26,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF510,
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
+    TRAIN_U2026_10_7,
 )
 
 _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "models.json"
@@ -116,7 +117,12 @@ def test_gemma4_train_image() -> None:
     assert resolve("google/gemma-4-E4B-it").train_image == TRAIN_U2026_8_TF510
     assert resolve("unsloth/Muse-Glimmer-30B").train_image == TRAIN_U2026_8_TF515
     assert resolve("unsloth/Muse-Glimmer-30B").serve_image == "vllm"
-    assert resolve("Qwen/Qwen3-8B").train_image == TRAIN_U2026_8_18
+    assert resolve("Qwen/Qwen3-8B").train_image == TRAIN_U2026_10_7
+    assert resolve("Qwen/Qwen3.5-2B").train_image == TRAIN_U2026_10_7
+    assert resolve("meta-llama/Llama-3.1-8B-Instruct").train_image == TRAIN_U2026_10_7
+    assert resolve("Qwen/Qwen3-Coder-30B-A3B-Instruct").train_image == TRAIN_U2026_10_7
+    assert resolve("LiquidAI/LFM2.5-230M").train_image == TRAIN_U2026_8_18
+    assert resolve("Qwen/Qwen2.5-VL-7B-Instruct").train_image == TRAIN_U2026_8_18
     assert resolve("Qwen/Qwen3.8-27B").train_image == TRAIN_U2026_9_2
     assert resolve("unsloth/Qwen3.8-27B").train_image == TRAIN_U2026_9_2
     assert resolve("Qwen/Qwen3-8B").serve_image == "vllm"

@@ -10,7 +10,7 @@ from django.utils import timezone
 from modal_shared.decision_inference import input_digest
 from modal_shared.decisions import DECISION_OBJECTIVES, decision_request
 from modal_shared.serving.artifacts import atomic_json
-from modal_shared.stacks import TRAIN_U2026_8_18
+from modal_shared.stacks import NATIVE_FOUNDATION_STACKS
 from overbae.core import decisions
 from overbae.core.errors import InputValidationError
 from overbae.core.model_registry import decision_models
@@ -58,7 +58,7 @@ def catalog(project):
             "qualification": "catalog_eligible",
         }
         for model, config in get_all_models_by_backend("baseten", include_disabled=False).items()
-        if get_unsloth_image(model) == TRAIN_U2026_8_18
+        if get_unsloth_image(model) in NATIVE_FOUNDATION_STACKS
     ]
     options.extend(
         {
@@ -150,7 +150,7 @@ def qualify_participants(project, selected):
             if (
                 not model
                 or get_model_config_any_backend(model) is None
-                or get_unsloth_image(model) != TRAIN_U2026_8_18
+                or get_unsloth_image(model) not in NATIVE_FOUNDATION_STACKS
             ):
                 raise InputValidationError(
                     "This foundation has no supported native evaluation runtime"

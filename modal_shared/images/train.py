@@ -16,6 +16,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF510,
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
+    TRAIN_U2026_10_7,
 )
 
 _SFT_ENV = {
@@ -190,6 +191,34 @@ def _unsloth_torch210_92() -> modal.Image:
     )
 
 
+def _unsloth_torch210_107() -> modal.Image:
+    # Qwen and Llama. 2026.10.7 caps transformers at 5.17, so this is not a second upgrade.
+    return _base_cuda.pip_install(
+        "torch==2.10.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    ).pip_install(
+        "unsloth[cu128-torch2100]==2026.10.7",
+        "unsloth_zoo==2026.10.7",
+        "transformers==5.17.0",
+        "datasets>=3.0.0",
+        "huggingface_hub>=0.27.0",
+        "sentencepiece",
+        "protobuf",
+    )
+
+
+_u2026_10_7 = _finish(
+    _clone_trl(_unsloth_torch210_107()).run_commands(
+        _assert_versions("u2026_10_7-ok", torch_prefix="2.10", tf_min=(5, 17)),
+    ),
+    {
+        **_SFT_ENV,
+        "TRL_SRC": "/opt/trl_src",
+        "UNSLOTH_IMAGE": TRAIN_U2026_10_7,
+    },
+)
+
+
 _u2026_9_2 = _finish(
     _clone_trl(_unsloth_torch210_92().pip_install("transformers>=5.10.2")).run_commands(
         _assert_versions("u2026_9_2-ok", torch_prefix="2.10", tf_min=(5, 10)),
@@ -243,7 +272,13 @@ _decision = _finish(
         "protobuf",
         "bitsandbytes==0.49.2",
     ),
-    {**_SFT_ENV, "UNSLOTH_IMAGE": TRAIN_DECISION, "UNSLOTH_DISABLE_STATISTICS": "1"},
+    {
+        **_SFT_ENV,
+        "UNSLOTH_IMAGE": TRAIN_DECISION,
+        "UNSLOTH_DISABLE_STATISTICS": "1",
+        # Default block compile does not finish a Qwen3.5 decision step.
+        "UNSLOTH_COMPILE_DISABLE": "1",
+    },
 )
 
 TRAIN_IMAGES: dict[str, modal.Image] = {
@@ -254,4 +289,5 @@ TRAIN_IMAGES: dict[str, modal.Image] = {
     TRAIN_U2026_8_GPOS: _u2026_8_gptoss,
     TRAIN_U2026_8_18: _u2026_8_18,
     TRAIN_U2026_9_2: _u2026_9_2,
+    TRAIN_U2026_10_7: _u2026_10_7,
 }

@@ -6,7 +6,7 @@ from typing import Any
 
 from django.db.models import Q
 
-from modal_shared.stacks import TRAIN_U2026_8_18
+from modal_shared.stacks import NATIVE_FOUNDATION_STACKS
 from overbae.modal.model_registry import TIER_ORDER, get_unsloth_image
 from overbae.modal.training_type import training_enabled
 from overbae.models import Capability, Dataset, EvalSet
@@ -117,7 +117,10 @@ def catalog_by_tier(
             and (not has_tool_calling or m.get("supports_tool_calling"))
             and (
                 not native
-                or (get_unsloth_image(m["id"]) == TRAIN_U2026_8_18 and training_enabled(m, "lora"))
+                or (
+                    get_unsloth_image(m["id"]) in NATIVE_FOUNDATION_STACKS
+                    and training_enabled(m, "lora")
+                )
             )
         ]
         if ids:
