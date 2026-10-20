@@ -11,7 +11,7 @@ const queryClient = new QueryClient({
 
 export function getContext() {
   return {
-    authUser: undefined,
+    auth: { isLoaded: false, isSignedIn: false },
     queryClient,
   };
 }

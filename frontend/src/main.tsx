@@ -2,8 +2,9 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
 import { ClerkProvider } from "@clerk/clerk-react";
-import { createRouter as createTanStackRouter, RouterProvider } from "@tanstack/react-router";
+import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 
+import { AuthRouter } from "./components/auth-router";
 import { RouteErrorFallback, RouteNotFound } from "./components/route-error";
 import { Toaster } from "./components/ui/sonner";
 
@@ -44,7 +45,7 @@ function App() {
   return (
     <AuthProvider>
       <PostHogProvider>
-        <RouterProvider router={router} />
+        <AuthRouter router={router} />
         <Toaster position="bottom-right" />
       </PostHogProvider>
     </AuthProvider>

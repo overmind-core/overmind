@@ -7,7 +7,6 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  RouterProvider,
 } from "@tanstack/react-router";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +39,11 @@ vi.mock("@/contexts/auth-context", async () => {
       ),
   };
 });
+// The self-hosted form is what these tests drive; local .env files must not flip it to Clerk.
+vi.mock("@/config", async (importOriginal) => {
+  const { config } = await importOriginal<typeof import("@/config")>();
+  return { config: { ...config, clerkReady: false } };
+});
 vi.mock("@/hooks/use-query", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useOnboardingStatus: () => ({ data: undefined, isLoading: false }),
@@ -49,6 +53,7 @@ vi.mock("@/components/app-sidebar", () => ({ AppSidebar: () => null }));
 vi.mock("@/components/command-palette", () => ({ CommandPalette: () => null }));
 vi.mock("@/components/datasets/workshop-sidebar", () => ({ WorkshopSidebar: () => null }));
 
+import { AuthRouter } from "@/components/auth-router";
 import { getContext } from "@/integrations/tanstack-query";
 import { safeNextPath } from "@/lib/auth-redirect";
 import { Route as AuthRouteFile } from "@/routes/_auth";
@@ -74,7 +79,7 @@ function mount(initial: string) {
   const router = createRouter({ context, history, routeTree });
   const view = () => (
     <QueryClientProvider client={context.queryClient}>
-      <RouterProvider router={router} />
+      <AuthRouter router={router} />
     </QueryClientProvider>
   );
   render(view());

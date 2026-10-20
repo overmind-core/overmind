@@ -1,7 +1,14 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Navigate,
+  Outlet,
+  redirect,
+  useRouterState,
+} from "@tanstack/react-router";
 
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
@@ -31,6 +38,16 @@ import { useCommandPalette } from "../hooks/use-command-palette";
 import { useProjectSearchSync } from "../hooks/use-project-search-sync";
 import { cn } from "../lib/utils";
 export const Route = createFileRoute("/_auth")({
+  beforeLoad: ({ context, location }) => {
+    // Until auth resolves the component renders its loading state; the bridge in
+    // AuthRouter invalidates once it does, which re-runs this check.
+    if (!context.auth.isLoaded || context.auth.isSignedIn) return;
+    throw redirect({
+      replace: true,
+      search: { next: location.href === "/" ? undefined : location.href },
+      to: "/login",
+    });
+  },
   component: RouteComponent,
   validateSearch: projectIdSearchSchema,
 });
@@ -424,31 +441,18 @@ function RouteComponent() {
     select: (s) => s.matches[s.matches.length - 1]?.pathname ?? s.location.pathname,
   });
   const gated = isGuest && !isGuestAllowedPath(settledPathname);
-  // Captured on the first signed-out render: once the redirect starts, `location`
-  // already reads /login while this gate is still mounted, and re-reading it
-  // would nest `next` forever.
-  const href = useRouterState({ select: (s) => s.location.href });
-  const destination = useRef<string | null>(null);
-  if (isSignedIn) destination.current = null;
-  else destination.current ??= href;
-
   // Home is hidden from guests, so landing there is a redirect, not a gate.
   useEffect(() => {
     if (gated && settledPathname !== "/") emitGuestUpgrade();
   }, [gated, settledPathname]);
 
-  if (!isLoaded) {
+  // A signed-out visitor is redirected to /login by beforeLoad.
+  if (!isLoaded || !isSignedIn) {
     return (
       <div className="flex h-screen items-center justify-center">
         <LoadingState className="max-w-5xl" fullPage label="Loading workspace" />
       </div>
     );
-  }
-
-  // `replace`: the gated URL must not stay in history, or Back re-triggers this redirect.
-  if (!isSignedIn) {
-    const next = destination.current === "/" ? undefined : (destination.current ?? undefined);
-    return <Navigate replace search={{ next }} to="/login" />;
   }
 
   if (gated) {

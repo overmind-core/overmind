@@ -5,7 +5,7 @@ import { RootQueryProvider } from "../integrations/tanstack-query";
 
 interface MyRouterContext {
   queryClient: QueryClient;
-  authUser: { id: string; email: string; name: string; picture: string | null } | undefined;
+  auth: { isLoaded: boolean; isSignedIn: boolean };
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
