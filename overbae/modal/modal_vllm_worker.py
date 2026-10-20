@@ -444,7 +444,7 @@ class _BaseVLLMWorker:
                 return
             # Reload sees adapters published after boot. vLLM keeps the safetensors
             # file mapped, and Modal rejects reload while that file is open on the volume.
-            weights_vol.reload()
+            await weights_vol.reload.aio()
             source = Path(WEIGHTS_MOUNT) / rel_path
             staged = Path("/tmp/overmind-adapters") / source.name
             if staged.exists():

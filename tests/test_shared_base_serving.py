@@ -244,8 +244,16 @@ async def test_adapter_load_leaves_the_weights_mount_closed(monkeypatch, tmp_pat
 
     first = write_adapter("ft-first", b"first-weights")
     second = write_adapter("ft-second", b"second-weights")
+    reloads = 0
+
+    async def reload():
+        nonlocal reloads
+        reloads += 1
+
+    volume = Mock()
+    volume.reload.aio = reload
     monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(mount))
-    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr(serving, "weights_vol", volume)
     monkeypatch.setattr("httpx.AsyncClient", _AdapterClient)
     obj = serving._BaseVLLMWorker()
     obj._loaded_adapters = set()
@@ -255,7 +263,8 @@ async def test_adapter_load_leaves_the_weights_mount_closed(monkeypatch, tmp_pat
         await obj._ensure_adapter("first", first)
         await obj._ensure_adapter("second", second)
 
-        assert serving.weights_vol.reload.call_count == 2
+        assert reloads == 2
+        serving.weights_vol.reload.assert_not_called()
         loaded = [body["lora_path"] for _url, body in posts]
         assert len(loaded) == 2
         for path, payload in zip(loaded, (b"first-weights", b"second-weights"), strict=True):
