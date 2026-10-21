@@ -87,7 +87,7 @@ Overmind has the following features
 | Dataset           | [Datasets](#datasets)                                                 |
 | Evaluations       | [Evals](#evals)                                                       |
 | Finetuning        | [Finetuning](#finetuning)                                             |
-| Optimizer         | [Optimizer](#optimizer)                                               |
+| Optimiser         | [Optimiser](#optimiser)                                               |
 | Model Backtesting | [Backtesting](#backtesting)                                           |
 | Inference         | [Inference](#inference)                                               |
 
@@ -148,7 +148,7 @@ Overmind has the following features
 - Split by group before fitting, measure a baseline, and never select on final-role data.
 - Use the skill `/overmind-training` to run finetuning operations
 
-## Optimizer
+## Optimiser
 
 > Runs an agent in your infrastructure to experiment with different prompts and models and find which works best. All results are backed by evaluations
 
