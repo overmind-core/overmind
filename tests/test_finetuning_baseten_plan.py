@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 from django.test import override_settings
+from rest_framework.exceptions import ValidationError
 
+from overbae.api.serializers import FinetuningJobSerializer
 from overbae.services.finetuning_policy import (
     TrainingPlanError,
     default_epochs,
@@ -121,6 +123,21 @@ class TestExplicitValuesWin:
         assert plan.weight_decay == 0.02
         assert (plan.lora_r, plan.lora_alpha, plan.lora_dropout) == (8, 16, 0.0)
         assert plan.lora_target_modules == "q_proj,v_proj"
+
+    def test_lora_rank_must_be_a_serving_step(self):
+        with pytest.raises(TrainingPlanError, match="lora_r must be one of"):
+            _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 4}})
+        high = _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 512}})
+        assert high.lora_r == 512
+        full = _plan(hyperparameters={"training_type": {"type": "Full", "lora_r": 4}})
+        assert full.lora_r == 4
+        serializer = FinetuningJobSerializer()
+        with pytest.raises(ValidationError, match="lora_r must be one of"):
+            serializer.validate_hyperparameters({"training_type": {"type": "Lora", "lora_r": 12}})
+        accepted = serializer.validate_hyperparameters(
+            {"training_type": {"type": "Lora", "lora_r": 32}}
+        )
+        assert accepted["training_type"]["lora_r"] == 32
 
     @override_settings(FINETUNING_BACKEND="baseten")
     def test_recommender_output_is_reproduced_exactly(self):

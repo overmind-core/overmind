@@ -12,6 +12,7 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from modal_shared.decision_checkpoint_policy import validate_policy
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.serving.args import require_lora_rank
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.native_evaluation import NativeEvaluationSerializer
 from overbae.api.scoping import project_ids_for
@@ -1293,6 +1294,20 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 )
             if training_type.get("type", "Lora") not in ("Lora", "Full"):
                 raise serializers.ValidationError('training_type.type must be "Lora" or "Full".')
+        full = isinstance(training_type, dict) and training_type.get("type") == "Full"
+        if full:
+            rank = None
+        elif isinstance(training_type, dict) and "lora_r" in training_type:
+            rank = training_type["lora_r"]
+        elif "lora_r" in value:
+            rank = value["lora_r"]
+        else:
+            rank = None
+        if rank is not None:
+            try:
+                require_lora_rank(rank)
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
         return value
 
     def validate_eval_judge_model(self, value):
