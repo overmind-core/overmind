@@ -21,12 +21,7 @@ from docling_core.types.doc import BoundingBox, DoclingDocument
 from PIL import Image, ImageDraw, ImageOps
 
 from sandbox.documents import checkpoints
-from sandbox.documents.languages import (
-    LANGUAGES,
-    POLICY_VERSION,
-    SCRIPT_LANGUAGES,
-    validate_languages,
-)
+from sandbox.documents.languages import POLICY_VERSION, validate_languages
 
 PAGE_TIMEOUT = 60
 DOCUMENT_TIMEOUT = 1200
@@ -102,14 +97,14 @@ def _engine(languages):
     languages = validate_languages(languages or [])
     listing = _tesseract(["--list-langs"], timeout=10)
     available = set(listing.splitlines()[1:])
-    required = languages or ["eng", "osd"]
+    required = {*(languages or ["eng"]), "osd"}
     if any(language not in available for language in required):
         raise OcrError("The requested OCR language data is unavailable on this worker.")
     match = re.search(r'"([^"\n]+)"', listing.splitlines()[0])
     if not match:
         raise OcrError("The OCR language data identity could not be verified.")
     traineddata = {}
-    for language in sorted(available & (set(LANGUAGES.values()) | {"osd"})):
+    for language in sorted(required):
         with (Path(match[1]) / f"{language}.traineddata").open("rb") as source:
             traineddata[language] = hashlib.file_digest(source, "sha256").hexdigest()
     return {
@@ -130,7 +125,6 @@ def _recipe(path, engine, kind):
             "kind": kind,
             "extraction_version": 2,
             "language_policy": POLICY_VERSION,
-            "langdetect": version("langdetect"),
             "docling": version("docling-slim"),
             "pdfium": version("pypdfium2"),
             "pillow": version("pillow"),
@@ -144,78 +138,11 @@ def _recipe(path, engine, kind):
 
 
 def _recognize(path, engine, timeout):
-    from langdetect import DetectorFactory, LangDetectException, detect_langs
-
-    deadline = time.monotonic() + timeout
-    selected = engine["requested_languages"]
-    detection = {
-        "mode": "explicit" if selected else "automatic",
-        "language": None,
-        "confidence": None,
-        "status": "explicit" if selected else "uncertain",
-    }
-    available = set(engine["traineddata"])
-    if not selected:
-        try:
-            osd = _tesseract([str(path), "stdout", "--psm", "0"], timeout=min(10, timeout))
-        except OcrError:
-            osd = ""
-        script = re.search(r"^Script: (.+)$", osd, re.MULTILINE)
-        script = script[1].strip() if script else None
-        confidence = re.search(r"^Script confidence: ([0-9.]+)$", osd, re.MULTILINE)
-        confidence = float(confidence[1]) if confidence else None
-        detection.update(script=script, script_confidence=confidence)
-        # Tesseract's ScriptDetector accepts script evidence only above this threshold.
-        if confidence is None or confidence <= 1:
-            script = None
-        if script and script not in SCRIPT_LANGUAGES:
-            detection["fallback_reason"] = "unsupported_script"
-        selected = [x for x in SCRIPT_LANGUAGES.get(script, ["eng"]) if x in available]
-        if not selected:
-            raise OcrError("Language data for the detected script is unavailable on this worker.")
-
-    def recognize(languages):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise OcrError(
-                "OCR timed out. Completed pages remain reusable; no partial source was landed."
-            )
-        return _tesseract(
-            [str(path), "stdout", "-l", "+".join(languages), "--psm", "1", "tsv"], timeout=remaining
-        )
-
-    tsv = recognize(selected)
-    if not engine["requested_languages"]:
-        text = " ".join(
-            word["text"]
-            for word in csv.DictReader(io.StringIO(tsv), delimiter="\t", quoting=csv.QUOTE_NONE)
-            if word.get("level") == "5" and float(word["conf"]) >= 40
-        )
-        if len(text.strip()) >= 80:
-            try:
-                DetectorFactory.seed = 0
-                detected = detect_langs(text)[0]
-                detection.update(language=detected.lang, confidence=round(detected.prob, 4))
-                language = LANGUAGES.get(detected.lang)
-                if detected.prob >= 0.9 and language not in available:
-                    detection["status"] = (
-                        "unsupported_language" if language is None else "language_data_unavailable"
-                    )
-                if detected.prob >= 0.9 and language in available:
-                    detection["status"] = "detected"
-                    if language not in selected:
-                        selected = [language, "eng"] if language != "eng" else [language]
-                        tsv = recognize(selected)
-            except LangDetectException:
-                pass
-    return tsv, {
-        **engine,
-        "traineddata": {
-            key: value for key, value in engine["traineddata"].items() if key in {*selected, "osd"}
-        },
-        "languages": selected,
-        "language_detection": detection,
-    }
+    selected = engine["requested_languages"] or ["eng"]
+    tsv = _tesseract(
+        [str(path), "stdout", "-l", "+".join(selected), "--psm", "1", "tsv"], timeout=timeout
+    )
+    return tsv, {**engine, "languages": selected}
 
 
 def _cached(cached, recipe, page):
@@ -488,7 +415,4 @@ def extract_pdf(
         "seconds": round(time.monotonic() - started, 3),
         "pages_processed": len(pages) - reused,
         "recipe_sha256": recipe,
-        "language_detection": {
-            str(number): results[number]["engine"]["language_detection"] for number in pages
-        },
     }

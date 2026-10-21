@@ -205,11 +205,11 @@ def _dataset_upload_resource(uri: str) -> dict:
         "document_max_bytes": documents.MAX_BYTES,
         "pdf_max_pages": documents.MAX_PAGES,
         "ocr": {
-            "language_mode": "automatic",
+            "language_mode": "default_english",
             "language_override_tool": "update_dataset",
             "language_field": "ocr_languages",
             "supported_languages": sorted(LANGUAGES.values()),
-            "override_guidance": "Set ocr_languages on a draft before uploading; [] restores automatic detection. Actual languages and detection uncertainty are retained per page.",
+            "override_guidance": "Set ocr_languages on a draft before uploading; [] uses English. Actual languages and model identities are retained in extraction provenance.",
             "checkpoint_retention_days": 30,
         },
         "max_files": 100,

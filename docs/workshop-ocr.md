@@ -1,25 +1,19 @@
 # OCR extraction
 
-PDF and PNG/JPEG/WebP landing runs in the isolated document sandbox. Automatic
-language selection is the default. A native coding agent can set
+PDF and PNG/JPEG/WebP landing runs in the isolated document sandbox. OCR uses
+English by default. A native coding agent can set
 `update_dataset(dataset=..., ocr_languages=["eng", "fra"])` on a draft before
 uploading source bytes. REST uses `PATCH /api/datasets/{id}/` with the same field.
-An empty list restores automatic selection; null and unsupported codes fail.
-Settings affect subsequent imports. Published cells and the settings pinned by an
-existing import receipt do not change.
+An empty list uses English; null and unsupported codes fail. Settings affect
+subsequent imports. Published cells and settings pinned by an existing import
+receipt do not change.
 
-The upload guidance resource lists supported Tesseract codes. Automatic selection
-uses offline script detection, initial recognition and language evidence from
-confident words. Script selection requires Tesseract script confidence above 1,
-matching its [script acceptance rule](https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/osdetect.cpp).
-Text-based language selection requires at least 80 recognised characters and a
-detector score of at least 0.9. That score is not a calibrated accuracy probability.
-Unsupported script guesses remain recorded and use English for the first pass;
-strong text evidence can then select a supported language. A script guess alone
-does not reject the document. Short or ambiguous text remains explicitly uncertain. It is not
-an assurance of OCR quality, and mixed-language pages need review. No provider
-calls or downloaded models run during extraction. Language models ship in the
-runtime image; their checksums and the actual selected languages are retained.
+Recognition uses the requested languages in one pass, without script guessing or
+text-based language detection. Tesseract still handles page orientation. Requested
+and actual languages and trained-data checksums remain in extraction provenance.
+Non-English and mixed-language documents need explicit supported language choices
+and quality review. Missing requested language data fails without publishing a
+partial source. No provider calls or downloaded models run during extraction.
 
 ## Parallelism and bounds
 
@@ -46,8 +40,7 @@ source bytes; it has no database credentials or shared media access.
 
 Identity covers the document checksum, requested language policy, Tesseract
 version and trained-data hashes, parser/library versions, rendering/masking
-settings and extraction implementation version. Automatic detection evidence and
-actual languages are retained in each completed page. Renaming a source does not
+settings and extraction implementation version. Actual languages and model identities are retained in each completed page. Renaming a source does not
 invalidate OCR; evidence binds the current source filename during final assembly.
 Changed source bytes, language preferences or extraction identity cannot reuse
 old OCR results. This cache skips recognition, not native PDF parsing.
@@ -62,9 +55,13 @@ process has already stopped.
 Checkpoints expire after 30 days. The existing import reconciler deletes up to
 1,000 expired pages per pass. Deleting a project cascades to its checkpoints.
 Source metadata exposes `pages_reused`, `pages_processed`, `recipe_sha256`, OCR
-elapsed seconds, configured worker limit, and per-page language evidence.
+elapsed seconds, configured worker limit, and actual languages.
 
 ## Progress and rollout
+
+Language policy version 4 invalidates checkpoints produced by automatic detection.
+Reload the sandbox service before resuming a blocked import to use the new policy.
+The retained bytes and frozen import language settings remain unchanged.
 
 Intermediate landing counters are coalesced to at most one write every two seconds
 per import. Stage/file boundaries, completed OCR counters and terminal operation
@@ -85,6 +82,9 @@ staging service passed rollout at `35164343`. See the
 limits; these measurements do not establish production throughput.
 
 ## Verification
+
+The staging measurements below describe PR #218 before automatic language
+detection was removed; they are historical evidence, not current-policy results.
 
 - Document service tests exercise interrupted extraction, exact page reuse, page
   order, changed-language invalidation, project isolation and real French OCR.

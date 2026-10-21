@@ -85,10 +85,10 @@ Use `start_dataset` to save a brief, or `create_dataset_from_traces` /
 `overmind dataset upload FILE --project-id PROJECT --json`, optionally `--dataset DATASET` to append
 sources. See `overmind://dataset-upload` for the current transfer contract.
 PDF and image OCR, original bytes and extraction evidence remain platform services.
-OCR detects supported languages automatically and records per-page language evidence
-and uncertainty. If you identify the source language, call `update_dataset` with
+OCR uses English by default and records actual languages and model identities.
+For another source language, call `update_dataset` with
 `ocr_languages` (up to four supported Tesseract codes, such as `["eng", "fra"]`)
-on the draft before uploading. `[]` restores automatic detection; settings affect
+on the draft before uploading. `[]` restores the English default; settings affect
 subsequent imports, never published cells. Read `overmind://dataset-upload` for
 supported codes. Completed pages are checkpointed per project for 30 days; an
 explicit import resume reuses matching pages, including after worker loss. Inspect

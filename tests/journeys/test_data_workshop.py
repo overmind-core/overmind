@@ -230,8 +230,9 @@ def test_a_source_capability_filter_is_preserved_when_the_destination_differs(
     )
 
 
-def test_mcp_ocr_language_override_survives_cli_upload_and_reuses_pages(
-    workshop, cli, sample_agent, worker
+@pytest.mark.parametrize("languages", [[], ["eng"]])
+def test_mcp_ocr_language_choice_survives_cli_upload_and_reuses_pages(
+    workshop, cli, sample_agent, worker, languages
 ):
     from pathlib import Path
 
@@ -246,7 +247,7 @@ def test_mcp_ocr_language_override_survives_cli_upload_and_reuses_pages(
                 "intent": "explore",
             },
         )["dataset"]["id"]
-        workshop.call("update_dataset", {"dataset": draft, "ocr_languages": ["eng"]})
+        workshop.call("update_dataset", {"dataset": draft, "ocr_languages": languages})
         uploaded = json.loads(
             cli.run(
                 "dataset", "upload", str(path), "--dataset", draft, "--json", cwd=sample_agent.repo
@@ -255,10 +256,10 @@ def test_mcp_ocr_language_override_survives_cli_upload_and_reuses_pages(
         assert uploaded["id"] == draft
         drain(worker)
         detail = workshop.call("inspect_dataset", {"dataset": draft})
-        assert detail["ocr_languages"] == ["eng"]
+        assert detail["ocr_languages"] == languages
         assert detail["sources"][0]["extraction"]["ocr"]["pages_reused"] == number
         assert detail["sources"][0]["extraction"]["ocr"]["languages"] == ["eng"]
-        assert detail["sources"][0]["extraction"]["ocr"]["requested_languages"] == ["eng"]
+        assert detail["sources"][0]["extraction"]["ocr"]["requested_languages"] == languages
         datasets.append(draft)
     invalid = workshop.call_result(
         "update_dataset", {"dataset": datasets[0], "ocr_languages": ["not-installed"]}
