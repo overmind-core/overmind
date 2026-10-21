@@ -158,7 +158,7 @@ def test_a_topup_without_a_usable_user_reference_finds_the_customer(stripe, refe
 
 
 def test_an_invoice_without_a_subscription_does_not_activate_pro(stripe):
-    user = _make_user("topup-invoice-guard", projects_limit=5, stripe_customer_id="cus_test")
+    user = _make_user("topup-invoice-guard", stripe_customer_id="cus_test")
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
 
     _deliver(
@@ -174,6 +174,5 @@ def test_an_invoice_without_a_subscription_does_not_activate_pro(stripe):
     )
 
     user.refresh_from_db()
-    assert user.projects_limit == 5
     assert user.subscription.status == SubscriptionStatus.INCOMPLETE
     assert balance_usd(user) == FREE_CREDITS_USD

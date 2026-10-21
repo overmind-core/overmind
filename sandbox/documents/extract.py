@@ -69,7 +69,7 @@ def extract(
         method, parser_version, pages = "tesseract-ocr", ocr_metadata["version"], 1
         limitations.extend(
             [
-                "OCR may misread text. Automatic language detection is evidence-based but can be uncertain; inspect per-page provenance.",
+                "OCR may misread text. English is the default; set explicit languages for other source languages and inspect extraction provenance.",
                 "Reading order and visual table structure are not reconstructed.",
             ]
         )
@@ -175,7 +175,7 @@ def extract(
             if ocr_metadata:
                 method += "+tesseract-ocr"
                 limitations.append(
-                    "OCR may misread text. Automatic language detection is evidence-based but can be uncertain; inspect per-page provenance."
+                    "OCR may misread text. English is the default; set explicit languages for other source languages and inspect extraction provenance."
                 )
             missing = sorted(set(document.pages) - {row["page"] for row in rows})
             if missing:

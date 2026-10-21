@@ -74,9 +74,8 @@ def test_completed_ocr_pages_survive_interruption_and_stay_project_scoped():
         path, filename=path.name, project_id=project.pk, ocr_languages=["eng"]
     )
     assert explicit["ocr"]["pages_reused"] == 0
-    assert all(
-        value["mode"] == "explicit" for value in explicit["ocr"]["language_detection"].values()
-    )
+    assert explicit["ocr"]["requested_languages"] == ["eng"]
+    assert explicit["ocr"]["languages"] == ["eng"]
     assert explicit["ocr"]["recipe_sha256"] != metadata["ocr"]["recipe_sha256"]
 
 
@@ -94,7 +93,7 @@ def test_progress_throttle_preserves_boundaries_and_terminal_counters():
     assert [item["stage"] for item in published[2:]] == ["publishing", "failed"]
 
 
-def test_automatic_french_ocr_records_language_evidence(tmp_path):
+def test_default_english_and_explicit_french_ocr(tmp_path):
     import textwrap
 
     from PIL import Image, ImageDraw, ImageFont
@@ -115,26 +114,12 @@ def test_automatic_french_ocr_records_language_evidence(tmp_path):
             spacing=14,
         )
         image.save(path)
-    rows, metadata = documents.extract(path, filename=path.name)
-    ocr = metadata["ocr"]
-    assert "fra" in ocr["languages"]
-    assert ocr["language_detection"]["mode"] == "automatic"
-    assert ocr["language_detection"]["language"] == "fr"
-    assert ocr["language_detection"]["status"] == "detected"
+    _, default = documents.extract(path, filename=path.name)
+    assert default["ocr"]["languages"] == ["eng"]
+    rows, metadata = documents.extract(path, filename=path.name, ocr_languages=["fra"])
+    assert metadata["ocr"]["languages"] == ["fra"]
     assert "facture" in " ".join(row["text"] for row in rows)
-    assert all("fra" in row["_overmind_provenance"]["extraction"]["languages"] for row in rows)
-    with Image.new("RGB", (1200, 150), "white") as image:
-        ImageDraw.Draw(image).text(
-            (25, 25),
-            "Imagen del sitio. Cuenta corriente. Costo $0",
-            fill="black",
-            font=ImageFont.load_default(size=28),
-        )
-        image.save(path)
-    _, short = documents.extract(path, filename=path.name)
-    assert short["ocr"]["language_detection"]["status"] == "uncertain"
-    assert short["ocr"]["language_detection"]["language"] is None
-    assert short["ocr"]["languages"] == ["eng"]
+    assert all(row["_overmind_provenance"]["extraction"]["languages"] == ["fra"] for row in rows)
 
 
 def test_ocr_worker_budget_stays_bounded(monkeypatch):
@@ -229,14 +214,9 @@ def test_old_parser_clients_keep_english_ocr_without_internal_checkpoint_frames(
     assert not any("ocr_checkpoint" in value for value in progress)
 
 
-def test_unsupported_script_guess_preserves_evidence_and_extracts():
+def test_script_like_content_does_not_change_ocr_language():
     path = Path(__file__).parent / "fixtures/documents/unsupported-script.pdf"
     rows, metadata = documents.extract(path, filename=path.name)
-    ocr = metadata["ocr"]
-    detection = ocr["language_detection"]["1"]
-    assert detection["script"] == "Fraktur"
-    assert detection["fallback_reason"] == "unsupported_script"
-    assert detection["language"] == "es"
-    assert detection["status"] == "detected"
-    assert "spa" in ocr["languages"]
+    assert metadata["ocr"]["languages"] == ["eng"]
+    assert "language_detection" not in metadata["ocr"]
     assert "Bono" in " ".join(row["text"] for row in rows)

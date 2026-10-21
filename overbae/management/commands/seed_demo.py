@@ -735,8 +735,6 @@ class Command(BaseCommand):
             return u
 
         owner = _user(owner_email, "Frey", "Mehta", DAYS + 4)
-        owner.projects_limit = None
-        owner.save(update_fields=["projects_limit"])
         amara = _user(f"amara@{TEAM_DOMAIN}", "Amara", "Okafor", DAYS + 2)
         jonas = _user(f"jonas@{TEAM_DOMAIN}", "Jonas", "Weber", DAYS)
         team = [owner, amara, jonas]

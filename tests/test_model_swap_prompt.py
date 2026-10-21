@@ -25,7 +25,6 @@ def _setup():
         email=f"u-{uuid.uuid4().hex[:6]}@test.com",
         password="x",
         clerk_user_id=f"c_{uuid.uuid4().hex}",
-        projects_limit=5,
     )
     ProjectMembership.objects.create(user=user, project=project)
     dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")

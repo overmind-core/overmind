@@ -248,7 +248,7 @@ separately. Training completion, evaluation completion and serving readiness
 are distinct outcomes. The job resource is `overmind://finetunes/{job_id}`;
 statuses are `queued`, `preparing`, `running`, `deploying`, `succeeded`, `failed`
 and `cancelled`. `start_finetune` validates the dataset, evaluation set, validation
-split, model, credits and quota, then dispatches the job. A multi-model sweep uses
+split, model and credits, then dispatches the job. A multi-model sweep uses
 one call per base model and can share the returned `group_id`.
 
 ### Evaluation schedule

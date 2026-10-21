@@ -25,7 +25,7 @@ def api_exception_handler(exc, context):
             flat = " ".join(str(item) for item in response.data if item)
             response.data = {"detail": flat or "Invalid request."}
         elif isinstance(response.data, dict) and "code" not in response.data:
-            # The client distinguishes e.g. plan_limit_exceeded from
+            # The client distinguishes e.g. seat_limit_exceeded from
             # permission_denied by this code, not by the shared 403.
             code = getattr(response.data.get("detail"), "code", None)
             if code:

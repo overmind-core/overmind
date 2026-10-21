@@ -111,6 +111,7 @@ def submit(deployment, user, request_key, payload, *, source="mcp"):
             next_poll_at=now,
         )
         observe(request)
+        transaction.on_commit(lambda: _follow(request))
         return request
 
 
@@ -155,6 +156,19 @@ def observe(request):
             "error_code": request.error_code or None,
         },
     )
+
+
+def _follow(request):
+    # Beat stays the safety net. Waiting for it leaves a warm call unfinished for ~45s.
+    delay = 0 if request.state == "queued" else 1 if request.state == "running" else None
+    if delay is None:
+        return
+    try:
+        from overbae.tasks.inference_requests import inspect_inference_request
+
+        inspect_inference_request.apply_async(args=[str(request.pk)], countdown=delay)
+    except Exception:
+        logger.warning("Inference follow-up not queued for %s", request.pk, exc_info=False)
 
 
 def advance(request_id):
@@ -243,6 +257,7 @@ def advance(request_id):
         )
         if persisted:
             request.refresh_from_db()
+            _follow(request)
             operation = observe(request)
             if request.remote_id:
                 collect(

@@ -285,11 +285,6 @@ def renew_plan_from_invoice(invoice: Any) -> None:
 
     sub.save(update_fields=update_fields)
 
-    # Pro = unlimited projects
-    if user.projects_limit is not None:
-        user.projects_limit = None
-        user.save(update_fields=["projects_limit"])
-
     logger.info(
         "Renewed Pro for user_id=%s subscription=%s end_date=%s grant=%s balance=%s",
         user.pk,
@@ -421,12 +416,7 @@ def sync_subscription_from_stripe(stripe_sub: Any) -> None:
     sub.save(update_fields=update_fields)
 
     user = sub.user
-    if sub.status == SubscriptionStatus.ACTIVE and user.projects_limit is not None:
-        user.projects_limit = None
-        user.save(update_fields=["projects_limit"])
-    elif sub.status == SubscriptionStatus.CANCELED and user.projects_limit is None:
-        user.projects_limit = 5
-        user.save(update_fields=["projects_limit"])
+    if sub.status == SubscriptionStatus.CANCELED:
         enforce_free_seats_after_downgrade(user)
 
 

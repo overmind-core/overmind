@@ -141,7 +141,7 @@ def _openai_compatible_client(
 def _inference_routing_header_items(model_id: str) -> tuple[tuple[str, str], ...]:
     """Postgres routing for Modal gateway calls. Empty if the row is missing."""
     # Deployment imports training monitoring while model registration imports this module.
-    from overbae.services.deployment import serving_gpu
+    from overbae.services.deployment import saved_base_identity, serving_gpu
 
     dep = (
         DeployedModel.objects.filter(model_id=model_id)
@@ -160,6 +160,7 @@ def _inference_routing_header_items(model_id: str) -> tuple[tuple[str, str], ...
                 serve_image=serve_image_key(dep.base_model_id, dep.model_id),
                 adapter_path=dep.adapter_path or "",
                 lora_rank=dep.lora_rank or 0,
+                base_identity=saved_base_identity(dep),
             ).items()
         )
     )

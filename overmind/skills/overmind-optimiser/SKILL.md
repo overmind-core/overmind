@@ -22,8 +22,8 @@ model list. Check the current schema for `optimize`, `model_comparison` or
 
 Use `list_datasets`, `inspect_dataset` and `query_dataset` to select a fitting
 eval cell. Call `check_optimizer_readiness` with that cell, capability, mode,
-eval set and requested models. Explain missing executioner, model, credit or
-quota prerequisites. Every iteration is graded with the rows of the
+eval set and requested models. Explain missing executioner, model or credit
+prerequisites. Every iteration is graded with the rows of the
 experiment's first run, by default the capability's active eval set; confirm
 it holds the code's expectations and toml checks (`eval_preload` on the
 capability, refreshed by `overmind sync`) before starting. The dataset stays on the server; a local file must be
@@ -134,7 +134,7 @@ it. Call `check_optimizer_readiness` with `mode="model_comparison"` and 1–5
 `model_ids` (the backend rejects an empty list or more than five), then
 `start_optimizer` with the same capability, dataset, mode and models after the human
 approves the model list. Use only model ids the readiness result returns or accepts;
-do not invent catalogue ids. The server validates model access, credits, plan quota,
+do not invent catalogue ids. The server validates model access, credits,
 eval-set readiness and executioner connectivity. Inspect progress with
 `inspect_optimizer_result` and `overmind://optimizer-runs/{experiment}`.
 

@@ -90,9 +90,9 @@ def test_regular_user_is_not_restricted():
     assert res.json()["is_guest"] is False
 
 
-def test_claim_moves_workspace_to_clerk_account_and_ignores_project_limit(clerk):
+def test_claim_moves_workspace_to_clerk_account(clerk):
     guest, project, client, _refresh = _guest_client()
-    owner = _member(projects_limit=0)
+    owner = _member()
     owner.clerk_user_id = clerk.user(owner.email)
     owner.save(update_fields=["clerk_user_id"])
     res = client.post(

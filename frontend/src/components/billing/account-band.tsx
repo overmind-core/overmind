@@ -21,7 +21,7 @@ import {
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { PlanEnum, type PlanUsage, type PlanUsageUnit, type Subscription } from "@/openapi";
+import { PlanEnum, type Subscription } from "@/openapi";
 
 function formatDate(value: Date | null | undefined): string | null {
   if (!value) return null;
@@ -165,45 +165,11 @@ function Fact({
   );
 }
 
-const QUOTA_ROWS: { key: keyof PlanUsage; label: string; monthly?: boolean }[] = [
-  { key: "projects", label: "Projects" },
-  { key: "optimizeRuns", label: "Optimise runs", monthly: true },
-  { key: "trainingJobs", label: "Training jobs", monthly: true },
-  { key: "deployJobs", label: "Deploy jobs", monthly: true },
-];
-
-function formatUnit(unit: PlanUsageUnit): string {
-  const used = unit.used ?? 0;
-  if (unit.limit == null) return `${used} / Unlimited`;
-  return `${used} / ${unit.limit}`;
-}
-
-function atCap(unit: PlanUsageUnit): boolean {
-  return unit.limit != null && (unit.used ?? 0) >= unit.limit;
-}
-
-function QuotaStat({
-  label,
-  title,
-  value,
-  warning,
-}: {
-  label: string;
-  title?: string;
-  value: string;
-  warning?: boolean;
-}) {
+function QuotaStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1.5" title={title}>
+    <div className="flex flex-col gap-1.5">
       <span className="pixel-label text-xs text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "text-sm font-medium leading-none tabular-nums",
-          warning ? "text-warning" : "text-foreground"
-        )}
-      >
-        {value}
-      </span>
+      <span className="text-sm font-medium leading-none tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
@@ -346,20 +312,6 @@ export function AccountBand({
 
       {usage ? (
         <div className="flex flex-wrap items-start gap-x-10 gap-y-4 border-t border-border/70 px-4 py-3">
-          {QUOTA_ROWS.map(({ key, label, monthly }) => {
-            const unit = usage[key];
-            return (
-              <QuotaStat
-                key={key}
-                label={label}
-                title={
-                  monthly ? "Resets on the 1st of the month (UTC)" : "Lifetime cap on the Free plan"
-                }
-                value={formatUnit(unit)}
-                warning={atCap(unit)}
-              />
-            );
-          })}
           <QuotaStat
             label="Seats / project"
             value={usage.seats.limit == null ? "Unlimited" : String(usage.seats.limit)}

@@ -23,7 +23,6 @@ def _setup() -> tuple[APIClient, Project, Dataset]:
         email=f"ft-runs-{uuid.uuid4().hex[:8]}@example.com",
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
     )
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)

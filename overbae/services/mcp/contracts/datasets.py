@@ -246,7 +246,7 @@ class DatasetHumanAction(MCPModel):
 class DatasetDetail(DatasetListItem):
     ocr_languages: list[str] = Field(
         default_factory=list,
-        description="Requested languages for subsequent imports; empty means automatic detection. Actual per-page languages are in extraction provenance.",
+        description="Requested languages for subsequent imports; empty means English. Actual per-page languages are in extraction provenance.",
     )
     operation: dict[str, Any] = Field(default_factory=dict)
     landing_progress: dict[str, Any] | None = Field(

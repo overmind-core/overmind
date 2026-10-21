@@ -14,7 +14,6 @@ from modal_shared.preparation import preparation_failure
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_preparation as preparation
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.plan_limits import usage_count
 from overbae.services.sft_assets.preprocess import preprocess_rows
 from overbae.tasks.finetuning import run_finetuning
 
@@ -327,7 +326,6 @@ def test_preparation_job_waits_for_launch_and_promotes_once(cell, monkeypatch, s
     monkeypatch.setattr(run_finetuning, "apply_async", submit)
     prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
     job = prep.training_jobs.get()
-    assert usage_count(user, "training_jobs") == 0
     assert run_finetuning(job_id=str(job.pk)) == {"status": "preprocessing"}
     prep.state = "ready"
     prep.report = {"ready": True}
@@ -359,7 +357,6 @@ def test_preparation_job_waits_for_launch_and_promotes_once(cell, monkeypatch, s
     preparation.sync_setup_jobs(prep)
     job.refresh_from_db()
     assert job.status == "queued" and job.requested_configuration
-    assert usage_count(user, "training_jobs") == 1
     changed = {**launch, "hyperparameters": {"context_length": 8192}}
     assert client.post("/api/finetuning-jobs/", changed, format="json").status_code == 400
 

@@ -22,17 +22,7 @@ LANGUAGES = {
     "ko": "kor",
     "el": "ell",
 }
-SCRIPT_LANGUAGES = {
-    "Latin": ["eng"],
-    "Cyrillic": ["rus", "ukr"],
-    "Arabic": ["ara"],
-    "Devanagari": ["hin"],
-    "Han": ["chi_sim", "chi_tra"],
-    "Japanese": ["jpn"],
-    "Hangul": ["kor"],
-    "Greek": ["ell"],
-}
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 
 
 def validate_languages(value) -> list[str]:
@@ -42,6 +32,6 @@ def validate_languages(value) -> list[str]:
         or any(not isinstance(item, str) or item not in LANGUAGES.values() for item in value)
     ):
         raise ValueError(
-            "Supply up to four supported Tesseract language codes, or [] for automatic detection."
+            "Supply up to four supported Tesseract language codes, or [] for the English default."
         )
     return list(dict.fromkeys(value))

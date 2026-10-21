@@ -30,7 +30,6 @@ def _user() -> User:
         email=f"u-{uuid.uuid4().hex[:6]}@test.com",
         password="pw",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
     )
 
 

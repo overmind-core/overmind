@@ -25,9 +25,9 @@ There are 2 prerequisites to start this:
 
 Use any of the following to install overmind, depending on what is available on the host machine:
 
-- pip: `pip install --upgrade "overmind>=0.1.103"`
-- uv: `uv pip install "overmind>=0.1.103"`
-- Poetry or anything else: `<PYTHON> -m pip install "overmind>=0.1.103"`
+- pip: `pip install --upgrade "overmind>=0.1.104"`
+- uv: `uv pip install "overmind>=0.1.104"`
+- Poetry or anything else: `<PYTHON> -m pip install "overmind>=0.1.104"`
 
 2.1 The overmind SDK comes with a set of loaded skills, run the command below using the coding agent you are being called within.
 
@@ -35,7 +35,7 @@ Use any of the following to install overmind, depending on what is available on 
 overmind init --ide=<cursor | claude | codex | opencode>
 ```
 
-Ensure that the project's `python version is >= 3.10`, and `overmind --version is >= 0.1.103`
+Ensure that the project's `python version is >= 3.10`, and `overmind --version is >= 0.1.104`
 
 If the project's Python is older than 3.10 or the install conflicts with the environment,
 report the exact conflict and stop; do not change the project's supported Python range.

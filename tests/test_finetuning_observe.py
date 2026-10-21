@@ -251,6 +251,40 @@ def test_stalled_progress_fails_and_cancels():
     runner.cancel.assert_called_once_with(job.remote_job_id)
 
 
+def test_training_stage_stalls_before_the_first_step():
+    job = _job(
+        progress={
+            "stage": "training",
+            "observe": {
+                "last_move_at": (timezone.now() - timedelta(minutes=31)).isoformat(),
+            },
+        }
+    )
+    runner = _runner(state="running")
+    runner.poll.return_value = PollSnapshot(state="running", stage="training")
+    _run_reconcile(runner=runner)
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.FAILED
+    runner.cancel.assert_called_once_with(job.remote_job_id)
+
+
+def test_weight_load_without_a_step_is_not_a_stall():
+    job = _job(
+        progress={
+            "stage": "loading_model",
+            "observe": {
+                "last_move_at": (timezone.now() - timedelta(minutes=31)).isoformat(),
+            },
+        }
+    )
+    runner = _runner(state="running")
+    runner.poll.return_value = PollSnapshot(state="running", stage="loading_model")
+    _run_reconcile(runner=runner)
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.RUNNING
+    runner.cancel.assert_not_called()
+
+
 def test_poll_errors_fail_after_budget():
     job = _job()
     job.progress = {"observe": {"poll_errors": 19}}

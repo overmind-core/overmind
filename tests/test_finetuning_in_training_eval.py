@@ -41,7 +41,6 @@ def _setup(*, with_eval_link=True):
         email=f"ft-eval-{uuid.uuid4().hex[:8]}@example.com",
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
     )
     p = Project.objects.create(name="p")
     ProjectMembership.objects.create(user=u, project=p)

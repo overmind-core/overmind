@@ -9,6 +9,9 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+# Default block compile does not finish a Qwen3.5 decision step.
+os.environ["UNSLOTH_COMPILE_DISABLE"] = "1"
+
 from unsloth import DecisionTrainer, FastDecisionModel  # isort: skip
 
 import torch

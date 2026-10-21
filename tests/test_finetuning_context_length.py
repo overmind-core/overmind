@@ -209,7 +209,6 @@ class TestJobSerializerContextValidation:
             email=f"ctx-{uuid.uuid4().hex[:8]}@example.com",
             password="pass",
             clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-            projects_limit=5,
         )
         project = Project.objects.create(name="ctx", slug=f"ctx-{uuid.uuid4().hex[:8]}")
         ProjectMembership.objects.create(user=user, project=project)

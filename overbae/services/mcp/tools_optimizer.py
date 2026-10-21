@@ -34,7 +34,6 @@ from overbae.services.mcp.contracts.optimizer import (
     OptimizerJobReference,
     OptimizerModelReadiness,
     OptimizerNextAction,
-    OptimizerPlanReadiness,
     OptimizerResultSummary,
     OptimizerWinner,
     StartOptimizerInput,
@@ -48,7 +47,6 @@ from overbae.services.optimizer_create import (
     validate_optimizer_models,
 )
 from overbae.services.optimizer_prereqs import optimizer_prerequisite_report
-from overbae.services.plan_limits import PlanLimitExceeded
 
 _PATCH_CAP = 4_000
 
@@ -126,16 +124,6 @@ def _credits_available(user) -> bool:
     try:
         require_credits(user)
     except PaymentRequired:
-        return False
-    return True
-
-
-def _plan_available(user) -> bool:
-    from overbae.services.plan_limits import require_plan_quota
-
-    try:
-        require_plan_quota(user, "optimize_runs")
-    except PlanLimitExceeded:
         return False
     return True
 
@@ -250,7 +238,6 @@ def _readiness_sync(
     executioner = _executioner()
     models = _model_readiness(payload.mode, payload.model_ids, capability)
     credits = OptimizerCreditReadiness(available=_credits_available(context.user))
-    plan = OptimizerPlanReadiness(available=_plan_available(context.user))
 
     missing: list[str] = []
     if dataset_data is None:
@@ -263,8 +250,6 @@ def _readiness_sync(
         missing.append(f"model selection: {models.issue or 'invalid'}")
     if not credits.available:
         missing.append("credits")
-    if not plan.available:
-        missing.append("plan quota")
 
     ready = not missing
     links = [resource_link("capabilities", str(capability.id), capability.name)]
@@ -280,7 +265,6 @@ def _readiness_sync(
         executioner=executioner,
         models=models,
         credits=credits,
-        plan=plan,
         next_action=_next_action(ready=ready),
         resource_links=links,
     )
@@ -338,10 +322,6 @@ def _start_sync(payload: StartOptimizerInput, context: MCPContext) -> StartOptim
             "optimizer_invalid",
             "The optimizer request failed validation.",
             fields={"request": _validation_message(error)},
-        ) from error
-    except PlanLimitExceeded as error:
-        raise MCPError(
-            "plan_limit_exceeded", "The optimizer plan quota has been reached."
         ) from error
 
     executioner = _executioner()

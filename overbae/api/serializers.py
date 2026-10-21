@@ -2533,15 +2533,10 @@ class CheckoutSessionResponseSerializer(serializers.Serializer):
 
 
 class PlanUsageUnitSerializer(serializers.Serializer):
-    used = serializers.IntegerField(required=False)
     limit = serializers.IntegerField(allow_null=True)
 
 
 class PlanUsageSerializer(serializers.Serializer):
-    optimize_runs = PlanUsageUnitSerializer()
-    training_jobs = PlanUsageUnitSerializer()
-    deploy_jobs = PlanUsageUnitSerializer()
-    projects = PlanUsageUnitSerializer()
     seats = PlanUsageUnitSerializer()
 
 

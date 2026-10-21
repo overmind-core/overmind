@@ -36,8 +36,6 @@ def _pro(user: User) -> User:
             "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:8]}",
         },
     )
-    user.projects_limit = None
-    user.save(update_fields=["projects_limit"])
     return user
 
 

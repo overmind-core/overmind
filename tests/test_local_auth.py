@@ -43,7 +43,6 @@ def _owner() -> tuple[User, Project]:
         email=f"owner-{uuid.uuid4().hex[:8]}@example.com",
         password="test-pass-123",
         clerk_user_id=f"local_{uuid.uuid4().hex}",
-        projects_limit=None,
     )
     Subscription.objects.update_or_create(
         user=user,

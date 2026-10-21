@@ -47,7 +47,6 @@ def test_start_rejects_invalid_training_method_without_creating_job(monkeypatch,
     context = _context()
     capability, train, _, _ = training_setup(context)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     result = _call(
         "start_finetune",
         {
@@ -83,7 +82,6 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
         lambda *_args: {"training_type": {"type": "Lora"}},
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
         lambda **_kwargs: SimpleNamespace(id="celery-ft"),
@@ -158,15 +156,13 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("gate", ["_require_credits", "_require_training_quota"])
-def test_recovering_a_launch_does_not_require_budget_for_another_job(monkeypatch, gate):
+def test_recovering_a_launch_does_not_require_budget_for_another_job(monkeypatch):
     from overbae.services.mcp import tools_finetuning
     from overbae.services.mcp.errors import MCPError
 
     context = _context()
     capability, train, _, _ = training_setup(context)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     dispatched = []
 
     def dispatch(**kwargs):
@@ -188,7 +184,7 @@ def test_recovering_a_launch_does_not_require_budget_for_another_job(monkeypatch
     def exhausted(_context):
         raise MCPError("insufficient_credits", "No budget for another job")
 
-    monkeypatch.setattr(tools_finetuning, gate, exhausted)
+    monkeypatch.setattr(tools_finetuning, "_require_credits", exhausted)
     repeated = _call("start_finetune", recipe, context)
     assert not repeated.isError, repeated.structuredContent
     assert repeated.structuredContent["job"]["id"] == first.structuredContent["job"]["id"]
@@ -211,7 +207,6 @@ def test_console_recovers_an_existing_job_after_credits_are_exhausted(monkeypatc
     context = _context()
     _, train, _, _ = training_setup(context)
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
     dispatched = []
 
     def dispatch(**kwargs):

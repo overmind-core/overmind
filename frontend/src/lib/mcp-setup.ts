@@ -10,7 +10,7 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 ];
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
-export const MIN_ONBOARDING_SDK_VERSION = "0.1.103";
+export const MIN_ONBOARDING_SDK_VERSION = "0.1.104";
 export const SDK_PREFLIGHT_COMMAND = "python -m overmind --version";
 
 const HOSTED_API_URL = "https://api.overmindlab.ai";

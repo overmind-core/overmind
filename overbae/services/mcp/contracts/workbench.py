@@ -122,7 +122,7 @@ class UpdateInput(DatasetInput):
     ocr_languages: list[str] | None = Field(
         default=None,
         max_length=4,
-        description="Tesseract codes for subsequent document imports (for example [eng, fra]); [] restores automatic detection. Set on a draft before CLI upload. Does not rewrite published cells.",
+        description="Tesseract codes for subsequent document imports (for example [eng, fra]); [] uses English. Set on a draft before CLI upload. Does not rewrite published cells.",
     )
     name: str | None = Field(default=None, min_length=1, max_length=255)
     intent: Literal["train", "eval", "explore"] | None = None

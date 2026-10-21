@@ -15,7 +15,6 @@ from overbae.modal.decision_catalog import options as decision_model_options
 from overbae.models import Dataset, DecisionJob, Project
 from overbae.services import decision_jobs
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.plan_limits import require_plan_quota
 from overbae.services.training_cancellation import cancel as cancel_training
 
 
@@ -121,7 +120,6 @@ class DecisionJobViewSet(
             from overbae.api.credit_gate import require_credits
 
             require_credits(request.user)
-            require_plan_quota(request.user, "training_jobs")
 
         try:
             job = decision_jobs.create(

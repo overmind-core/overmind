@@ -64,6 +64,7 @@ WORKER_TIMEOUT_SECONDS = 40 * MINUTES
 from modal_shared.modelfam import serve_image_key  # noqa: E402
 from modal_shared.shared import (  # noqa: E402
     ADAPTER_PATH_HEADER,
+    BASE_IDENTITY_HEADER,
     GPU_TYPE_HEADER,
     INFERENCE_APP_NAME,
     LORA_RANK_HEADER,
@@ -1106,7 +1107,9 @@ class InferenceAPIServer:
             # own pool and its own cold start, which is the thing this avoids.
             adapter_rel = rel_weights_path(routing.get("adapter_path") or "")
             adapter = (model_id, adapter_rel) if adapter_rel else None
-            base_identity = await _base_identity_aio(rel_path) if adapter else ""
+            base_identity = (routing.get("base_identity") or "").strip()
+            if adapter and not base_identity:
+                base_identity = await _base_identity_aio(rel_path)
             try:
                 worker, cls_name = _make_worker(
                     gpu_type=routing["gpu_type"],
@@ -1131,6 +1134,7 @@ class InferenceAPIServer:
                 SERVE_IMAGE_HEADER.lower(),
                 ADAPTER_PATH_HEADER.lower(),
                 LORA_RANK_HEADER.lower(),
+                BASE_IDENTITY_HEADER.lower(),
             }
             headers = {k: v for k, v in request.headers.items() if k.lower() not in _skip_hdr}
             print(

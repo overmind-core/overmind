@@ -134,9 +134,9 @@ current landing status. `--wait` observes terminal landing; MCP `get_job` reads
 current progress. First-source attachment
 preserves a draft; later attachment appends a new version. Original document/image
 bytes, extraction metadata and row evidence remain retained. Local Tesseract OCR covers scanned PDF regions and PNG/JPEG/WebP images.
-It detects supported languages offline and records actual models, detection evidence
-and uncertainty per page. `update_dataset(ocr_languages=[...])` sets explicit
-Tesseract codes for subsequent imports; `[]` restores automatic detection.
+It uses English by default and records actual languages and model identities.
+`update_dataset(ocr_languages=[...])` sets explicit Tesseract codes for subsequent
+imports; `[]` restores the English default.
 Set this on a draft before uploading; retries retain the original import settings.
 PDF pages use bounded spawned processes under the sandbox memory reservation.
 Completed OCR pages stream to project-scoped database checkpoints retained for
