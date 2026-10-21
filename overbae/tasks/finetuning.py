@@ -685,7 +685,10 @@ def _stalled(progress: dict) -> bool:
     from datetime import datetime
 
     observe = progress.get("observe") or {}
-    if not observe.get("saw_step"):
+    # Weight loading has no optimizer step and can sit there on a large base.
+    # A training stage that never logs a step is still a stall: the committer
+    # heartbeat does not move last_move_at.
+    if not observe.get("saw_step") and progress.get("stage") not in {"training", "validation"}:
         return False
     raw = observe.get("last_move_at") or ""
     try:
