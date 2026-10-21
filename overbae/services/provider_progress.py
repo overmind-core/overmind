@@ -178,6 +178,11 @@ def collect(run, *, environment, call_id="", deployed=None):
                             source_at=source_at,
                             observed_at=timezone.now(),
                         )
+                        if value["stage"] == "engine_ready" and facts.get("base_identity"):
+                            # deployment imports collect.
+                            from overbae.services.deployment import remember_base_identity
+
+                            remember_base_identity(deployed, facts["base_identity"])
                         # Pool startup may predate this operation; it is context, not its progress.
                         if (
                             scope != "pool"

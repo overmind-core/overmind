@@ -21,7 +21,12 @@ from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import gpu_vram_gb, select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
-from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
+from overbae.models import (
+    DeployedModel,
+    FinetuningJob,
+    FinetuningJobEval,
+    OperationalEvent,
+)
 from overbae.services import operational_progress, provider_progress
 from overbae.services.decision_serving import current_runtime
 from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
@@ -109,6 +114,42 @@ def serving_gpu(deployed: DeployedModel) -> str:
     DeployedModel.objects.filter(pk=deployed.pk, gpu_type=stored).update(gpu_type=selected)
     deployed.gpu_type = selected
     return selected
+
+
+def remember_base_identity(deployed: DeployedModel | None, identity: str) -> None:
+    if deployed is None or not identity:
+        return
+    runtime = dict(deployed.serving_runtime or {})
+    if runtime.get("base_identity") == identity:
+        return
+    runtime["base_identity"] = identity
+    DeployedModel.objects.filter(pk=deployed.pk).update(serving_runtime=runtime)
+    deployed.serving_runtime = runtime
+
+
+def saved_base_identity(deployed: DeployedModel) -> str:
+    """Identity of the warm shared-base engine, saved when it reported ready."""
+    runtime = deployed.serving_runtime if isinstance(deployed.serving_runtime, dict) else {}
+    saved = runtime.get("base_identity") or ""
+    if isinstance(saved, str) and saved:
+        return saved
+    if not deployed.adapter_path:
+        return ""
+    event = (
+        OperationalEvent.objects.filter(
+            operation__collection__deployment_id=str(deployed.pk),
+            facts__stage="engine_ready",
+        )
+        .order_by("-id")
+        .values_list("facts", flat=True)
+        .first()
+    )
+    nested = event.get("facts") if isinstance(event, dict) else None
+    identity = nested.get("base_identity") if isinstance(nested, dict) else ""
+    if isinstance(identity, str) and identity:
+        remember_base_identity(deployed, identity)
+        return identity
+    return ""
 
 
 def _reset(deployed: DeployedModel) -> None:

@@ -23,7 +23,7 @@ from modal_shared.context_budget import (
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import WEIGHTS_PATH_HEADER
 from modal_shared.shared import routing_headers as _routing_headers
-from overbae.services.deployment import serving_gpu
+from overbae.services.deployment import saved_base_identity, serving_gpu
 
 
 class InferenceClientError(Exception):
@@ -74,6 +74,9 @@ class InferenceClient:
             )
         adapter_path = routing.get("adapter_path") or getattr(deployed, "adapter_path", "") or ""
         lora_rank = routing.get("lora_rank") or getattr(deployed, "lora_rank", 0) or 0
+        identity = routing.get("base_identity") or (
+            saved_base_identity(deployed) if deployed is not None else ""
+        )
         if gpu_type and weights_path and max_model_len is not None:
             headers.update(
                 _routing_headers(
@@ -83,6 +86,7 @@ class InferenceClient:
                     serve_image=serve_image,
                     adapter_path=adapter_path,
                     lora_rank=int(lora_rank),
+                    base_identity=identity,
                 )
             )
         return headers

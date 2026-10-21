@@ -28,6 +28,9 @@ SERVE_IMAGE_HEADER = "X-Overmind-Serve-Image"
 # this carries the adapter riding on it.
 ADAPTER_PATH_HEADER = "X-Overmind-Adapter-Path"
 LORA_RANK_HEADER = "X-Overmind-Lora-Rank"
+# Shared-base pool key. The warm engine already reported this; reading the volume on the
+# request picks a different container while a checkpoint file is open.
+BASE_IDENTITY_HEADER = "X-Overmind-Base-Identity"
 
 
 def rel_weights_path(weights_path: str, mount: str = WEIGHTS_MOUNT) -> str:
@@ -52,6 +55,7 @@ def routing_headers(
     serve_image: str = "vllm",
     adapter_path: str = "",
     lora_rank: int = 0,
+    base_identity: str = "",
 ) -> dict[str, str]:
     headers = {
         GPU_TYPE_HEADER: gpu_type,
@@ -63,6 +67,8 @@ def routing_headers(
     if adapter_path:
         headers[ADAPTER_PATH_HEADER] = adapter_path
         headers[LORA_RANK_HEADER] = str(lora_rank or 16)
+    if base_identity:
+        headers[BASE_IDENTITY_HEADER] = base_identity
     return headers
 
 
@@ -91,6 +97,7 @@ def parse_routing_headers(headers: dict) -> dict | None:
         "serve_image": serve_image,
         "adapter_path": adapter_path,
         "lora_rank": lora_rank,
+        "base_identity": lower.get(BASE_IDENTITY_HEADER.lower(), "").strip(),
     }
 
 
