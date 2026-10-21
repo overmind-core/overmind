@@ -1,5 +1,4 @@
 import json
-import stat
 import subprocess
 from pathlib import Path
 
@@ -23,11 +22,6 @@ SURFACE_SKILLS = (
     "overmind-inference",
     "overmind-integrations",
 )
-
-
-def _claude_overmind(project: Path) -> dict:
-    config = json.loads(claude_config_path().read_text())
-    return config["projects"][project.resolve().as_posix()]["mcpServers"]["overmind"]
 
 
 def _init(tmp_path: Path, ide: str, *extra: str) -> None:
@@ -86,13 +80,10 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
         assert (installed / "agents/openai.yaml").read_bytes() == (source / "agents/openai.yaml").read_bytes()
 
 
-def test_init_writes_cursor_mcp_json(tmp_path, monkeypatch):
+def test_init_installs_cursor_skills_without_writing_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init(tmp_path, "cursor")
-    cfg = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
-    assert cfg["mcpServers"]["overmind"] == {
-        "url": "http://localhost:8000/api/mcp/",
-    }
+    assert not (tmp_path / ".cursor" / "mcp.json").exists()
     assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
     assert (tmp_path / ".agents" / "skills" / "overmind" / "references" / "setup.md").is_file()
 
@@ -122,11 +113,11 @@ def test_codex_local_init_without_url_override(tmp_path, monkeypatch):
     for name in ("OVERMIND_API_URL", "OVERMIND_BASE_URL", "OVERMIND_PROJECT_ID"):
         monkeypatch.delenv(name, raising=False)
     _init(tmp_path, "codex")
-    assert 'url = "http://localhost:8000/api/mcp/"' in (tmp_path / ".codex" / "config.toml").read_text()
+    assert not (tmp_path / ".codex" / "config.toml").exists()
     assert 'base-url = "http://localhost:8000"' in (tmp_path / "overmind.toml").read_text()
 
 
-def test_init_seeds_toml_and_mcp_without_slash_commands(tmp_path, monkeypatch):
+def test_init_seeds_toml_without_slash_commands(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_PROJECT_ID", "proj-uuid")
     monkeypatch.setenv("OVERMIND_API_URL", "http://localhost:8000")
@@ -147,9 +138,7 @@ def test_init_seeds_toml_and_mcp_without_slash_commands(tmp_path, monkeypatch):
     assert "[capabilities]" in toml
 
     assert not list((tmp_path / ".cursor" / "commands").glob("*.md"))
-
-    mcp = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
-    assert mcp["mcpServers"]["overmind"]["url"] == "http://localhost:8000/api/mcp/"
+    assert not (tmp_path / ".cursor" / "mcp.json").exists()
 
 
 def test_init_preserves_existing_toml(tmp_path, monkeypatch):
@@ -176,14 +165,16 @@ def test_init_backfills_project_name_without_overwriting(tmp_path, monkeypatch):
     assert 'project-name = "custom-name"' in toml
 
 
-def test_init_claude_writes_local_scope_mcp(tmp_path, monkeypatch):
+def test_init_claude_installs_skills_without_writing_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    before = claude_config_path().read_text() if claude_config_path().exists() else None
 
     for alias in ("claude", "claude_code", "claude-code"):
         _init(tmp_path, alias)
 
-        assert _claude_overmind(tmp_path) == {"type": "http", "url": "http://localhost:8000/api/mcp/"}
+        after = claude_config_path().read_text() if claude_config_path().exists() else None
+        assert after == before
         assert not (tmp_path / ".mcp.json").exists()
         assert not (tmp_path / ".claude" / "commands").exists()
         assert (tmp_path / ".claude" / "skills" / "overmind" / "SKILL.md").is_file()
@@ -205,83 +196,74 @@ def test_init_claude_preserves_other_config_and_tracked_mcp_json(tmp_path, monke
     config = json.loads(claude_config_path().read_text())
     assert config["theme"] == "dark"
     assert config["projects"]["/elsewhere"]["mcpServers"] == {"x": {"type": "http", "url": "u"}}
-    assert _claude_overmind(tmp_path)["url"] == "http://localhost:8000/api/mcp/"
+    assert tmp_path.resolve().as_posix() not in config["projects"]
     assert (tmp_path / ".mcp.json").read_text() == tracked
 
 
 def test_init_keeps_bootstrap_key_out_of_local_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_API_KEY", "secret")
+    claude = claude_config_path()
+    before = claude.read_text() if claude.exists() else None
     for ide in ("cursor", "claude", "opencode", "codex"):
         result = runner.invoke(app, ["init", "--ide", ide], catch_exceptions=False)
         assert result.exit_code == 0, result.output
 
     for path in (
         tmp_path / ".cursor" / "mcp.json",
-        claude_config_path(),
         tmp_path / "opencode.json",
         tmp_path / ".codex" / "config.toml",
-        tmp_path / "overmind.toml",
     ):
-        assert "secret" not in path.read_text()
+        assert not path.exists()
+    assert "secret" not in (tmp_path / "overmind.toml").read_text()
+    after = claude.read_text() if claude.exists() else None
+    assert after == before
     assert not (tmp_path / ".overmind" / "credentials.toml").exists()
 
 
-def test_init_opencode_json(tmp_path, monkeypatch):
+def test_init_opencode_installs_skill_without_writing_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init(tmp_path, "opencode")
-    cfg = json.loads((tmp_path / "opencode.json").read_text())
-    assert cfg["mcp"]["overmind"] == {
-        "type": "remote",
-        "url": "http://localhost:8000/api/mcp/",
-        "enabled": True,
-    }
+    assert not (tmp_path / "opencode.json").exists()
     assert (tmp_path / ".opencode" / "skills" / "overmind" / "SKILL.md").is_file()
     assert not (tmp_path / ".opencode" / "commands").exists()
 
 
-def test_init_codex_writes_project_config_and_skill(tmp_path, monkeypatch):
+def test_init_codex_installs_skill_without_writing_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_API_KEY", "k")
     result = runner.invoke(app, ["init", "--ide", "codex", "--env", "production"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    config = (tmp_path / ".codex" / "config.toml").read_text()
-    assert '[mcp_servers.overmind]\nurl = "https://api.overmindlab.ai/api/mcp/"' in config
-    assert "http_headers" not in config
-    assert "env_http_headers" not in config
+    assert not (tmp_path / ".codex" / "config.toml").exists()
     assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
     assert (tmp_path / "overmind.toml").is_file()
     assert not (tmp_path / ".codex" / "commands").exists()
 
 
-def test_init_codex_replaces_own_section_and_preserves_other_config(tmp_path, monkeypatch):
+def test_init_leaves_existing_codex_config_unchanged(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_API_KEY", "k")
     config_path = tmp_path / ".codex" / "config.toml"
     config_path.parent.mkdir()
-    config_path.write_text(
+    original = (
         'model = "gpt-5"\n\n'
         '[mcp_servers.overmind]\nurl = "https://old.example"\n\n'
         '[mcp_servers.other]\nurl = "https://other.example"\n'
     )
+    config_path.write_text(original)
 
     result = runner.invoke(app, ["init", "--ide", "codex"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    config = config_path.read_text()
-    assert 'model = "gpt-5"' in config
-    assert 'url = "https://other.example"' in config
-    assert config.count("[mcp_servers.overmind]") == 1
-    assert 'url = "https://old.example"' not in config
-    assert "http_headers" not in config
-    assert "env_http_headers" not in config
+    assert config_path.read_text() == original
 
 
-def test_init_uses_saved_project_key_when_adding_an_ide(tmp_path, monkeypatch):
+def test_init_does_not_copy_saved_project_key_into_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OVERMIND_API_URL", raising=False)
     monkeypatch.delenv("OVERMIND_BASE_URL", raising=False)
+    before = claude_config_path().read_text() if claude_config_path().exists() else None
     dump(
         Config(
             api_key="ovr_project_key",
@@ -294,9 +276,9 @@ def test_init_uses_saved_project_key_when_adding_an_ide(tmp_path, monkeypatch):
     result = runner.invoke(app, ["init", "--ide", "claude"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    server = _claude_overmind(tmp_path)
-    assert server["headers"] == {"X-Api-Key": "ovr_project_key"}
-    assert server["url"] == "http://localhost:8000/api/mcp/"
+    after = claude_config_path().read_text() if claude_config_path().exists() else None
+    assert after == before
+    assert "ovr_project_key" not in (after or "")
 
 
 def test_init_does_not_copy_legacy_inline_key_into_mcp(tmp_path, monkeypatch):
@@ -311,24 +293,24 @@ def test_init_does_not_copy_legacy_inline_key_into_mcp(tmp_path, monkeypatch):
     result = runner.invoke(app, ["init", "--ide", "codex"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    assert "legacy-bootstrap" not in (tmp_path / ".codex" / "config.toml").read_text()
+    assert not (tmp_path / ".codex" / "config.toml").exists()
     assert "legacy-bootstrap" in (tmp_path / "overmind.toml").read_text()
     assert not (tmp_path / ".overmind" / "credentials.toml").exists()
 
 
-def test_init_can_prepare_a_tracked_unauthenticated_mcp_config(tmp_path, monkeypatch):
+def test_init_leaves_tracked_mcp_config_unchanged(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     config_path = tmp_path / ".codex" / "config.toml"
     config_path.parent.mkdir()
-    config_path.write_text('[mcp_servers.other]\ncommand = "other"\n')
+    original = '[mcp_servers.other]\ncommand = "other"\n'
+    config_path.write_text(original)
     subprocess.run(["git", "add", ".codex/config.toml"], cwd=tmp_path, check=True)
 
     result = runner.invoke(app, ["init", "--ide", "codex"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    assert "http_headers" not in config_path.read_text()
-    assert stat.S_IMODE(config_path.stat().st_mode) == 0o644
+    assert config_path.read_text() == original
 
 
 def test_init_honors_api_url_over_env(tmp_path, monkeypatch):
@@ -350,8 +332,7 @@ def test_init_honors_api_url_over_env(tmp_path, monkeypatch):
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
-    mcp = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
-    assert mcp["mcpServers"]["overmind"]["url"] == "http://127.0.0.1:9000/api/mcp/"
+    assert not (tmp_path / ".cursor" / "mcp.json").exists()
     assert 'base-url = "http://127.0.0.1:9000"' in (tmp_path / "overmind.toml").read_text()
 
 
