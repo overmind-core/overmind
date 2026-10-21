@@ -316,7 +316,7 @@ def run_init(
         and config_path.exists()
     ):
         configured_url = load(config_path).base_url
-    mcp_url, base_url = resolve_mcp_url(env, configured_url)
+    mcp_url, base_url = resolve_mcp_url(env, configured_url)  # noqa: F841
 
     sync_skills([skill.slug for skill in skills], ide=ide)
     dest = get_destination_dir(ide)
@@ -328,14 +328,14 @@ def run_init(
     try:
         created = seed_toml(config_path, base_url=base_url)
         saved_key = saved_project_api_key(config_path)
-        mcp_path = write_mcp_config(ide, root, mcp_url, saved_key or None)
+        # mcp_path = write_mcp_config(ide, root, mcp_url, saved_key or None)
     except SecretFileError as exc:
         raise typer.BadParameter(str(exc), param_hint="MCP config") from exc
-    try:
-        mcp_display = str(mcp_path.relative_to(root))
-    except ValueError:
-        mcp_display = str(mcp_path)
-    console.print(f"MCP → {mcp_display}")
+    # try:
+    #     mcp_display = str(mcp_path.relative_to(root))
+    # except ValueError:
+    #     mcp_display = str(mcp_path)
+    # console.print(f"MCP → {mcp_display}")
 
     if created:
         console.print(f"Seeded {created.relative_to(root)}")
