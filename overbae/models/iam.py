@@ -1,11 +1,13 @@
 import hashlib
 import secrets
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -170,6 +172,10 @@ class UserOnboarding(models.Model):
         return f"Onboarding({self.user.email}, step={self.step})"
 
 
+# Same choices as the Console "Expires after" control. 0 means the key does not expire.
+API_KEY_EXPIRY_DAYS = (0, 30, 90, 180, 365)
+
+
 def account_scope(*, permission: list[str] | None = None) -> dict:
     return {"scope": "account", "permission": list(permission or ["read", "write"])}
 
@@ -254,16 +260,24 @@ class APIToken(models.Model):
         prefix_str: str = "ovr_",
         *,
         permission: list[str] | None = None,
+        description: str = "",
+        expires_in_days: int | None = None,
     ) -> tuple[str, "APIToken"]:
+        if expires_in_days not in {None, *API_KEY_EXPIRY_DAYS}:
+            raise ValueError("expires_in_days is not a Console expiry choice")
         raw = cls.generate_raw_key(prefix=prefix_str)
         prefix = raw[:12]
         key_hash = cls.hash_raw_key(raw)
         instance = cls.objects.create(
             user=user,
             name=name.strip(),
+            description=description.strip(),
             prefix=prefix,
             token_hash=key_hash,
             project=project,
+            expires_at=(
+                timezone.now() + timedelta(days=expires_in_days) if expires_in_days else None
+            ),
             scope=project_scope(project.pk, permission=permission)
             if project is not None
             else account_scope(permission=permission),

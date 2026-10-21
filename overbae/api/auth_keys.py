@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from overbae.models import APIToken
-from overbae.models.iam import account_scope, project_scope
+from overbae.models.iam import API_KEY_EXPIRY_DAYS, account_scope, project_scope
 
 
 class APITokenScopeSerializer(serializers.Serializer):
@@ -56,6 +56,10 @@ class APITokenMetadataSerializer(serializers.ModelSerializer):
 
 class APITokenCreateRequestSerializer(serializers.Serializer):
     name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=2_000)
+    expires_in_days = serializers.ChoiceField(
+        choices=API_KEY_EXPIRY_DAYS, required=False, help_text="0 means the key does not expire."
+    )
     project = serializers.UUIDField(required=False)
     scope = APITokenScopeSerializer(required=False)
 
@@ -64,9 +68,11 @@ class APITokenCreateResponseSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     key = serializers.CharField(help_text="Plaintext secret. Shown only once.")
     name = serializers.CharField()
+    description = serializers.CharField()
     prefix = serializers.CharField()
     project = serializers.UUIDField(allow_null=True)
     scope = APITokenScopeSerializer()
+    expires_at = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
 
 
@@ -99,7 +105,8 @@ class APITokenListCreateView(generics.ListCreateAPIView):
         description=(
             "Create a new API token. Passing ``project`` (or ``scope.scope=project``) "
             "mints a key pinned to that project. ``scope.scope=account`` covers every "
-            "project the user belongs to."
+            "project the user belongs to. ``description`` and ``expires_in_days`` "
+            "(0, 30, 90, 180 or 365) match the Console dialog. 0 does not expire."
         ),
         request=APITokenCreateRequestSerializer,
         responses={
@@ -122,15 +129,19 @@ class APITokenListCreateView(generics.ListCreateAPIView):
             name=name,
             project=project,
             permission=scope_doc["permission"],
+            description=ser.validated_data.get("description") or "",
+            expires_in_days=ser.validated_data.get("expires_in_days"),
         )
         return Response(
             {
                 "id": instance.id,
                 "key": raw,
                 "name": instance.name,
+                "description": instance.description,
                 "prefix": instance.prefix,
                 "project": instance.project_id,
                 "scope": instance.scope,
+                "expires_at": instance.expires_at,
                 "created_at": instance.created_at,
             },
             status=status.HTTP_201_CREATED,

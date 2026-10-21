@@ -50,6 +50,12 @@ export interface APITokenCreateResponse {
      * @type {string}
      * @memberof APITokenCreateResponse
      */
+    description: string;
+    /**
+     *
+     * @type {string}
+     * @memberof APITokenCreateResponse
+     */
     prefix: string;
     /**
      *
@@ -68,6 +74,12 @@ export interface APITokenCreateResponse {
      * @type {Date}
      * @memberof APITokenCreateResponse
      */
+    expiresAt: Date | null;
+    /**
+     *
+     * @type {Date}
+     * @memberof APITokenCreateResponse
+     */
     createdAt: Date;
 }
 
@@ -78,9 +90,11 @@ export function instanceOfAPITokenCreateResponse(value: object): value is APITok
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('key' in value) || value['key'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
+    if (!('description' in value) || value['description'] === undefined) return false;
     if (!('prefix' in value) || value['prefix'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('scope' in value) || value['scope'] === undefined) return false;
+    if (!('expiresAt' in value) || value['expiresAt'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     return true;
 }
@@ -98,9 +112,11 @@ export function APITokenCreateResponseFromJSONTyped(json: any, ignoreDiscriminat
         'id': json['id'],
         'key': json['key'],
         'name': json['name'],
+        'description': json['description'],
         'prefix': json['prefix'],
         'project': json['project'],
         'scope': APITokenScopeFromJSON(json['scope']),
+        'expiresAt': (json['expires_at'] == null ? null : new Date(json['expires_at'])),
         'createdAt': (new Date(json['created_at'])),
     };
 }
@@ -119,9 +135,11 @@ export function APITokenCreateResponseToJSONTyped(value?: APITokenCreateResponse
         'id': value['id'],
         'key': value['key'],
         'name': value['name'],
+        'description': value['description'],
         'prefix': value['prefix'],
         'project': value['project'],
         'scope': APITokenScopeToJSON(value['scope']),
+        'expires_at': value['expiresAt'] == null ? value['expiresAt'] : value['expiresAt'].toISOString(),
         'created_at': value['createdAt'].toISOString(),
     };
 }

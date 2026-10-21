@@ -47,6 +47,7 @@ _KNOWN_SCOPES = frozenset(
         "overmind:deploy",
         "overmind:optimize",
         "overmind:connectors",
+        "overmind:account:write",
     }
 )
 

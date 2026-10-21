@@ -28,7 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { featureFlags } from "@/lib/feature-flags";
 import type { McpClient } from "@/lib/mcp-setup";
 import { notify } from "@/lib/notify";
-import { ScopeEnum } from "@/openapi";
+import { type ExpiresInDaysEnum, ScopeEnum } from "@/openapi";
 
 const EXPIRY_OPTIONS = [
   { days: 30, label: "30 days" },
@@ -66,10 +66,15 @@ export function CreateApiKeyDialog({
     setCreatePending(true);
     try {
       const name = keyName.trim() || `API Key - ${Date.now()}`;
+      const fields = {
+        description: keyDescription.trim(),
+        expiresInDays: Number(expiryDays) as ExpiresInDaysEnum,
+        name,
+      };
       const tokenResponse = await apiClient.auth.authApiKeysCreate({
         aPITokenCreateRequestRequest: projectScoped
-          ? { name, project: projectId }
-          : { name, scope: { scope: ScopeEnum.account } },
+          ? { ...fields, project: projectId }
+          : { ...fields, scope: { scope: ScopeEnum.account } },
       });
 
       setNewToken(tokenResponse.key);

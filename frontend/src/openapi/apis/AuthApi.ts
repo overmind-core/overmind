@@ -108,7 +108,7 @@ export interface AuthTokenRefreshCreateRequest {
 export class AuthApi extends runtime.BaseAPI {
 
     /**
-     * Create a new API token. Passing ``project`` (or ``scope.scope=project``) mints a key pinned to that project. ``scope.scope=account`` covers every project the user belongs to.
+     * Create a new API token. Passing ``project`` (or ``scope.scope=project``) mints a key pinned to that project. ``scope.scope=account`` covers every project the user belongs to. ``description`` and ``expires_in_days`` (0, 30, 90, 180 or 365) match the Console dialog. 0 does not expire.
      * Generate API token
      */
     async authApiKeysCreateRaw(requestParameters: AuthApiKeysCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<APITokenCreateResponse>> {
@@ -153,7 +153,7 @@ export class AuthApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a new API token. Passing ``project`` (or ``scope.scope=project``) mints a key pinned to that project. ``scope.scope=account`` covers every project the user belongs to.
+     * Create a new API token. Passing ``project`` (or ``scope.scope=project``) mints a key pinned to that project. ``scope.scope=account`` covers every project the user belongs to. ``description`` and ``expires_in_days`` (0, 30, 90, 180 or 365) match the Console dialog. 0 does not expire.
      * Generate API token
      */
     async authApiKeysCreate(requestParameters: AuthApiKeysCreateRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<APITokenCreateResponse> {

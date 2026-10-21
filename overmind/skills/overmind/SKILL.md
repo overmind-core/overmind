@@ -107,7 +107,7 @@ coding environment with `overmind connection check --project-id PROJECT --json`;
 configuration alone is not readiness. Follow the Datasets skill for durable
 upload recovery and scoped host approvals.
 
-Use the connected catalog and `overmind://interface/current` as the authority for available operations and the current contract version. OAuth/account API keys discover projects with `list_projects` and pass `project_id` on every operation and resource; project API keys retain narrower scope. Never put credentials in chat.
+Use the connected catalog and `overmind://interface/current` as the authority for available operations and the current contract version. OAuth/account API keys discover projects with `list_projects` and pass `project_id` on every operation and resource; project API keys retain narrower scope. Never put credentials in chat. `create_api_key` returns a new secret once; do not write it into the repository, a prompt, or another tool argument.
 
 Data-first projects do not require repository scanning, capabilities or instrumentation. Use `develop-model-from-data` when starting with uploaded data. Repository discovery remains a local workflow only for code-backed projects. Installed skills assist discovery; they are not a correctness prerequisite.
 

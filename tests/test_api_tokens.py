@@ -25,6 +25,27 @@ def _api_key_client(user: User, *, project: Project | None = None) -> tuple[APIC
     return client, raw
 
 
+def test_create_stores_description_and_dialog_expiry():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+
+    r = _jwt(user).post(
+        "/api/auth/api-keys/",
+        {
+            "name": "CLI",
+            "description": "api key for overmind",
+            "expires_in_days": 90,
+            "project": str(project.id),
+        },
+        format="json",
+    )
+    assert r.status_code == status.HTTP_201_CREATED
+    token = APIToken.objects.get(id=r.data["id"])
+    assert token.description == "api key for overmind"
+    assert token.expires_at is not None
+    assert r.data["expires_at"] is not None
+
+
 def test_create_with_project_mints_project_scope():
     user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)

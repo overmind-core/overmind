@@ -141,6 +141,7 @@ export * from './ExperimentCandidateRequest';
 export * from './ExperimentLaunchRequest';
 export * from './ExperimentRequestRequest';
 export * from './ExperimentRequestStageEnum';
+export * from './ExpiresInDaysEnum';
 export * from './Exploration';
 export * from './ExplorationRequestKindEnum';
 export * from './ExplorationRequestRequest';

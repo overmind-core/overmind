@@ -182,6 +182,7 @@ models/ExperimentCandidateRequest.ts
 models/ExperimentLaunchRequest.ts
 models/ExperimentRequestRequest.ts
 models/ExperimentRequestStageEnum.ts
+models/ExpiresInDaysEnum.ts
 models/Exploration.ts
 models/ExplorationRequestKindEnum.ts
 models/ExplorationRequestRequest.ts

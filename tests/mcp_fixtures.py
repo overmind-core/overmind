@@ -8,7 +8,7 @@ from factories import make_matrix_row, make_project, make_user
 from overbae.models import APIToken, Capability, EvalMatrix, EvalSet
 from overbae.services.mcp.context import MCPContext
 
-MAX_MANIFEST_BYTES = 91 * 1024
+MAX_MANIFEST_BYTES = 92 * 1024
 
 EXPECTED_TOOL_NAMES = {
     "save_training_plan",
@@ -37,6 +37,7 @@ EXPECTED_TOOL_NAMES = {
     "measure_decision_performance",
     "resume_decision_performance",
     "list_projects",
+    "create_api_key",
     "inspect_capability_health",
     "query_failures",
     "query_traces",

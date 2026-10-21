@@ -20,6 +20,13 @@ import {
     APITokenScopeRequestToJSON,
     APITokenScopeRequestToJSONTyped,
 } from './APITokenScopeRequest';
+import type { ExpiresInDaysEnum } from './ExpiresInDaysEnum';
+import {
+    ExpiresInDaysEnumFromJSON,
+    ExpiresInDaysEnumFromJSONTyped,
+    ExpiresInDaysEnumToJSON,
+    ExpiresInDaysEnumToJSONTyped,
+} from './ExpiresInDaysEnum';
 
 /**
  *
@@ -38,6 +45,24 @@ export interface APITokenCreateRequestRequest {
      * @type {string}
      * @memberof APITokenCreateRequestRequest
      */
+    description?: string;
+    /**
+     * 0 means the key does not expire.
+     *
+     * * `0` - 0
+     * * `30` - 30
+     * * `90` - 90
+     * * `180` - 180
+     * * `365` - 365
+     * @type {ExpiresInDaysEnum}
+     * @memberof APITokenCreateRequestRequest
+     */
+    expiresInDays?: ExpiresInDaysEnum;
+    /**
+     *
+     * @type {string}
+     * @memberof APITokenCreateRequestRequest
+     */
     project?: string;
     /**
      *
@@ -46,6 +71,8 @@ export interface APITokenCreateRequestRequest {
      */
     scope?: APITokenScopeRequest;
 }
+
+
 
 /**
  * Check if a given object implements the APITokenCreateRequestRequest interface.
@@ -65,6 +92,8 @@ export function APITokenCreateRequestRequestFromJSONTyped(json: any, ignoreDiscr
     return {
 
         'name': json['name'] == null ? undefined : json['name'],
+        'description': json['description'] == null ? undefined : json['description'],
+        'expiresInDays': json['expires_in_days'] == null ? undefined : ExpiresInDaysEnumFromJSON(json['expires_in_days']),
         'project': json['project'] == null ? undefined : json['project'],
         'scope': json['scope'] == null ? undefined : APITokenScopeRequestFromJSON(json['scope']),
     };
@@ -82,6 +111,8 @@ export function APITokenCreateRequestRequestToJSONTyped(value?: APITokenCreateRe
     return {
 
         'name': value['name'],
+        'description': value['description'],
+        'expires_in_days': ExpiresInDaysEnumToJSON(value['expiresInDays']),
         'project': value['project'],
         'scope': APITokenScopeRequestToJSON(value['scope']),
     };
