@@ -59,11 +59,7 @@ function DatasetNotebookPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
-            <OnboardWithAiPanel
-              datasetId={datasetId}
-              projectId={projectId}
-              showManualSetup={false}
-            />
+            <OnboardWithAiPanel datasetId={datasetId} projectId={projectId} />
           </DialogBody>
           <DialogFooter>
             <Button onClick={closePreparation} variant="secondary">

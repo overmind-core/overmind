@@ -452,17 +452,14 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
         navigator.clipboard.writeText = async text => { window.copiedOnboardingPrompt = text; };
     }""")
     )
-    console.press("Copy onboarding prompt for Cursor")
+    console.press("Copy onboarding prompt")
     console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
-    assert f"Dataset ID: {dataset.id}" in prompt
-    assert f"Project ID: {dataset.project_id}" in prompt
-    assert "Start with the standard data exploration workflow" in prompt
-    assert "Do not assume conversational SFT" in prompt
-    assert "chat_train" in prompt
-    assert "decision_train" in prompt
-    assert "overmind init" not in prompt
-    assert "overmind sync" not in prompt
+    assert prompt.startswith(
+        f"Set me up on Overmind with my uploaded data (project {dataset.project_id}, dataset {dataset.id})"
+    )
+    assert prompt.endswith("/setup.md")
+    assert "api-key" not in prompt.lower()
     console.save_evidence("data-onboarding-handoff")
     console._browser.call(lambda: console._page.set_viewport_size({"width": 390, "height": 844}))
     console.wait_until(

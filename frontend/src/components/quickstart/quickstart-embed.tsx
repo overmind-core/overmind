@@ -33,7 +33,7 @@ export function QuickstartEmbed({
           </TabsList>
         </Tabs>
         {source === "agent" ? (
-          <OnboardWithAiPanel projectId={projectId} />
+          <OnboardWithAiPanel />
         ) : (
           <DataProjectForm
             onCreated={({ projectId: createdProjectId, datasetId }) =>

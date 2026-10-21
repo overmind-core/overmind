@@ -29,25 +29,30 @@ Use any of the following to install overmind, depending on what is available on 
 - uv: `uv pip install "overmind>=0.1.103"`
 - Poetry or anything else: `<PYTHON> -m pip install "overmind>=0.1.103"`
 
-2.1 The overmind SDK comes with a set of loaded skills:
+2.1 The overmind SDK comes with a set of loaded skills, run the command below using the coding agent you are being called within.
 
 ```bash
 overmind init --ide=<cursor | claude | codex | opencode>
 ```
 
-Ask the user to reload their coding agent if needed to enable MCP, otherwise they will not be able to invoke the MCP.
+Ensure that the project's `python version is >= 3.10`, and `overmind --version is >= 0.1.103`
 
-Preflight before `init` and after every reload. Both must succeed, the version must be at least 0.1.95, and the package path must be inside the project's virtualenv:
+If the project's Python is older than 3.10 or the install conflicts with the environment,
+report the exact conflict and stop; do not change the project's supported Python range.
 
-If the project's Python is older than 3.10 or the install conflicts with the environment, report the exact conflict and stop; do not change the project's supported Python range.
+The command above should add a `overmind.toml` file, which will also act as a source of truth for users' resources in Overmind.
 
-Now we can move onto setting up overmind.
+Ask the user to reload their coding agent if needed to enable MCP,
+otherwise they will not be able to invoke the MCP.
+
+Now we can move onto getting started with overmind.
 
 # USING OVERMIND
 
-Overmind has two kinds of onboarding flows, on one account. They work slightly differently:
+Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset,
+ASK the USER which one they want to continue with, if it hasn't already been configured.
 
-Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset, ASK the USER which one they want to continue with if it hasn't already been configured.
+> Use Overmind MCP to issue an OVERMIND_API_KEY
 
 ## Onboarding using codebase or repository
 
@@ -108,6 +113,7 @@ Overmind has the following features
 - Verify (both paths): get the user's approval for one run (real or smoke), stamp `conversation.id` with a unique value, run, `query_traces(session=...)` (expect one root), `verify_instrumentation(trace_id)`.
 - Investigate: `investigate-capability` prompt, or `inspect_capability_health` and `query_failures`, then follow trace links.
 - Signals: `list_signals`, `set_signal_subscription`.
+- Use the skill `/overmind-observability` to run observability operations
 
 ## Datasets
 
@@ -119,6 +125,7 @@ Overmind has the following features
 - Transform with a retained Python package: `overmind dataset pipeline-upload`, `save_dataset_pipeline`, `validate_dataset_pipeline`, preview, then full run. Use the `author-dataset-transformation` prompt. Never upload derived rows as a new source.
 - From production data: `create_dataset_from_traces` or `create_dataset_from_llm_calls`.
 - Export: `overmind dataset export DATASET --json`.
+- Use the skill `/overmind-datasets` to run dataset operations
 
 ## Evals
 
@@ -128,6 +135,7 @@ Overmind has the following features
 - Flow: `check_evaluation_readiness`, `run_evaluation`, `compare_evaluations`.
 - The dataset must be `eval` intent. The capability's active eval set grades by default; do not recreate it.
 - Report per-metric deltas and failed or missing rows, not just the average.
+- Use the skill `/overmind-evaluations` to run evals operations
 
 ## Finetuning
 
@@ -138,6 +146,7 @@ Overmind has the following features
 - Monitor with `get_job` and `inspect_training_progress`. Cancel with `cancel_finetune`. Never relaunch a job that already exists.
 - Data-only projects: use the `develop-model-from-data` prompt and `save_training_plan` first.
 - Split by group before fitting, measure a baseline, and never select on final-role data.
+- Use the skill `/overmind-training` to run finetuning operations
 
 ## Optimizer
 
@@ -146,6 +155,7 @@ Overmind has the following features
 - Needs an `eval` dataset cell.
 - Flow: `check_optimizer_readiness`, `start_optimizer`, then run `overmind optimise start -e EXPERIMENT && overmind optimise next` in the repo and do each returned action.
 - Stop at `COMPLETE`. Apply the winning diff only when authorised.
+- Use the skill `/overmind-optimiser` to run optimiser operations
 
 ## Backtesting
 
@@ -153,6 +163,7 @@ Overmind has the following features
 
 - Use the `compare-models` prompt: `check_optimizer_readiness` and `start_optimizer` with `mode=model_comparison` and 1-5 model ids, then `inspect_optimizer_result`.
 - Or replay stored LLM spans: `overmind backtest --models a,b --since 7d`.
+- Use the skill `/overmind-optimiser` to run backtesting operations
 
 ## Inference
 
@@ -162,11 +173,13 @@ Overmind has the following features
 - `run_inference` only on a `ready` deployment, with a stable `request_key`.
 - Go live with `set_active_model` after approval and poll the `model_activation` job. Use `get_model_swap_prompt` for the code rollout; the human applies it.
 - `retry_deployment` only for a failed deployment.
+- Use the skill `/overmind-inference` to run inference operations
 
 ## Integrations
 
 - Import external traces: `connect-traces` prompt, `inspect_connectors`, `configure_connector` (propose, get approval, then `confirm_mapping=true`), `sync_connector`.
 - Credentials are entered by the human in their terminal, never in chat.
+- Use the skill `/overmind-integrations` to run integrations operations
 
 ______________________________________________________________________
 

@@ -10,10 +10,10 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 ];
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
-export const MIN_ONBOARDING_SDK_VERSION = "0.1.95";
+export const MIN_ONBOARDING_SDK_VERSION = "0.1.103";
 export const SDK_PREFLIGHT_COMMAND = "python -m overmind --version";
 
-const SKILL_ONBOARD = "the “Onboard a repository” section of SKILL.md";
+const HOSTED_API_URL = "https://api.overmindlab.ai";
 
 export function mcpClientMeta(client: McpClient) {
   return MCP_CLIENTS.find((c) => c.id === client) ?? MCP_CLIENTS[0];
@@ -59,25 +59,6 @@ export function sdkPipInstall(apiUrl = config.apiUrl, extra?: "tracing"): string
   return `python -m pip install ${installSpec(apiUrl, extra)}`;
 }
 
-/** Whichever installer the project uses; the dependency manifest stays untouched. */
-function installGuidance(apiUrl: string): string {
-  const spec = installSpec(apiUrl);
-  const source = localSdkPath(apiUrl)
-    ? "Use the local checkout only — do not use PyPI or git."
-    : "Use the published PyPI package only — do not install from git or a local checkout.";
-  return `Install overmind into the project's environment with the installer it already uses: \`uv pip install ${spec}\` for uv, \`poetry run pip install ${spec}\` for Poetry, otherwise \`${sdkPipInstall(apiUrl)}\`. ${source} Adding it to the dependency manifest is not required.`;
-}
-
-/** Fallback when the project cannot take the SDK (Python range, lockfile or dependency conflict). */
-function isolatedToolingGuidance(apiUrl: string): string {
-  const path = localSdkPath(apiUrl);
-  const source = path
-    ? `--with-editable "${path}" --from overmind`
-    : `--from "overmind==${MIN_ONBOARDING_SDK_VERSION}"`;
-  const runner = `uv tool run --isolated --python 3.11 ${source} python`;
-  return `Requires Python 3.10+ and overmind>=${MIN_ONBOARDING_SDK_VERSION}. If the project cannot install it, report the exact conflict, never change the project's supported Python range, and use \`${runner}\` in place of python for every command below, from the repository root, including after reload. Tracing still has to be installed in the application environment; if that conflicts, finish capability sync and report instrumentation as pending.`;
-}
-
 /** Install, preflight, exports, `overmind init`, then `overmind sync` to create the project. */
 export function mcpInitCommand(
   client: McpClient,
@@ -97,31 +78,19 @@ export function mcpInitCommand(
   ].join(" &&\n");
 }
 
-/** Paste prompt: install, init with the bootstrap key, sync, then follow the onboard skill. */
-export function onboardWithAiBootstrapPrompt(
-  client: McpClient,
-  apiKey: string,
-  apiUrl = config.apiUrl
+/** One line that hands the coding agent the hosted setup guide; sign-in happens through MCP OAuth. */
+export function onboardingPrompt(
+  origin: string,
+  apiUrl: string,
+  data?: { projectId: string; datasetId: string }
 ): string {
+  const guide = `${origin.replace(/\/$/, "")}/setup.md`;
   const url = apiUrl.replace(/\/$/, "");
-  const env = `OVERMIND_API_URL=${url} OVERMIND_API_KEY=${apiKey}`;
-  const reload =
-    client === "claude"
-      ? "Then ask the user to exit Claude Code and run `claude -c` to continue with the Overmind MCP server loaded."
-      : "Reload the IDE once after sync.";
-  return [
-    installGuidance(url),
-    isolatedToolingGuidance(url),
-    "In every command below, replace python with uv run python for uv, poetry run python for Poetry, or the project's virtual-environment Python, unless using the isolated tooling above. Invoke the CLI as python -m overmind, never uv run overmind or a bare overmind executable: those can resolve to a global CLI. This is Overmind's version-consistency requirement, not a user-imposed restriction.",
-    `Before init or the first sync, run \`${SDK_PREFLIGHT_COMMAND}\`. It must succeed and report a version of at least ${MIN_ONBOARDING_SDK_VERSION}. Otherwise the install is incomplete: fix it before creating a project.`,
-    "The account-scoped API key below is a temporary bootstrap credential. Shell exports may not persist between commands, so prefix each command with it as shown; do not write it into project files.",
-    `${env} python -m overmind init ${initFlags(client, url)}`,
-    `Keep the destination explicit on every sync, including after reload: \`python -m overmind sync --api-url ${url}\`. After bootstrap, use the saved project credential without the bootstrap key. An inherited OVERMIND_API_URL must not redirect this connection to another environment.`,
-    `Before the first sync, open ${SKILL_ONBOARD} and its “Onboarding progress and data disclosure” section from the installed overmind skill. Show the full onboarding roadmap and data disclosure, then use its numbered progress updates throughout.`,
-    `Run \`${env} python -m overmind sync\`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. ${reload} Do not pass the bootstrap key again or run init again.`,
-    `After reload, repeat the preflight command before scanning or capability sync. Preserve any existing project-id, capability IDs, endpoint and saved credentials. After an SDK upgrade, refresh guidance with \`python -m overmind skills sync overmind --ide ${client}\`, reopen ${SKILL_ONBOARD} and continue without repeating bootstrap sync.`,
-    "During capability discovery, follow the scan coverage audit in SKILL.md's “Local repository setup” section: inspect every registered tool's source-backed branches and caller outcomes, keep distinct execution stages, and resolve transitions to actual step anchors. Trace model and prompt defaults through constructor/configuration precedence and template predicates; anchor utility implementations beyond their wrappers. A tool list and a generic observe/decide/act summary are not a finished scan. If conversion reports incomplete detail, repair the analysis JSON from the source and retry conversion without repeating init. Do not fabricate branches or remove tools to satisfy validation.",
-  ].join("\n\n");
+  const subject = data
+    ? `Set me up on Overmind with my uploaded data\n(project_id: ${data.projectId},\ndataset_id: ${data.datasetId})`
+    : "Set me up on Overmind";
+  const endpoint = url === HOSTED_API_URL ? "" : `using the API at ${url}`;
+  return `${subject}\n\n${endpoint}: ${guide}`;
 }
 
 /** Instruction handed to the coding agent, addressed to the agent the user picked. */

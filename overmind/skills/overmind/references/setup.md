@@ -23,7 +23,7 @@ when verified. Do not invent an MCP scan-status tool or resource.
 Before scanning, repeat [the project runtime checks](onboard.md#verify-the-project-runtime),
 including on a post-reload continuation. Use its isolated tooling recovery if the
 application cannot install compatible tooling;
-preserve any existing project and credentials instead of repeating bootstrap.
+preserve any existing project and credentials instead of repeating sync.
 For every CLI command below, use `uv run python -m overmind` for uv,
 `poetry run python -m overmind` for Poetry, or the virtual environment's
 `python -m overmind`, or the verified isolated tooling runner from onboarding.
@@ -39,8 +39,8 @@ Before the prompt: if `overmind.toml` exists, read it. Preserve `base-url`, `pro
 
 After the prompt: map the analysis schema onto toml (see **Persist**), run `python -m overmind sync`, then apply the decorators (see **Instrument**):
 
-- **Project credential missing** — leave the toml on disk and stop. Ask the user to repeat the Console onboarding paste so sync receives a temporary account key.
-- **`project-id` present** — run `python -m overmind sync` as usual (typical after onboarding bootstrap already synced once post-init).
+- **Project credential missing** — leave the toml on disk and stop. `sync` needs an account API key to create the project; ask the user for one.
+- **`project-id` present** — run `python -m overmind sync` as usual.
 - **`project-id` missing + account-scoped API key** — `python -m overmind sync` creates a project via `POST /api/projects/` (name from `project-name` in `overmind.toml`, seeded at init from the repo directory), writes `project-id` into `overmind.toml`, then pushes. Do not invent a UUID yourself. To recreate: delete the console project and clear `project-id` in the toml; keep `project-name` as the repo directory name — never `repo_summary`.
 - **`project-id` missing + project-scoped API key** — stop. Project-scoped keys are pinned and cannot mint projects. Tell the user to paste their console `project-id` into `overmind.toml`, or switch to an account-scoped key.
 
