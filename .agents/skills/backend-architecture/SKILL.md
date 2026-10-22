@@ -140,7 +140,7 @@ Clerk when `CLERK_API_SECRET_KEY` is set; blank secret is self-hosted local JWT 
 - Console: `VITE_SELF_HOSTED=true` and a blank `VITE_CLERK_PUBLISHABLE_KEY` skip `ClerkProvider` and show the local login form; otherwise Clerk.
 - Project invites: with Clerk, an invitation email is sent; without Clerk the `ProjectInvite` row is stored and claimed on first local (or Clerk) sign-in for that email.
 - Commercial billing (remaining-credit 402s, the Free seat limit, Stripe Checkout) injects when `STRIPE_SECRET_KEY` is set (`overbae/services/billing_provider.py`). Ledger charges always run. Empty key → uncapped OSS: spend is recorded and shown, gates and grants no-op.
-- API keys are either `scope=account` (every project the user belongs to) or `scope=project` with one `resourceIds` entry. Creating a key with `project` always mints project scope. REST and MCP `create_api_key` share `APIToken.create_for_user` and accept the Console dialog's name, description and expiry (30, 90, 180, 365 days, or 0 for never). The plaintext is returned once. A project-scoped credential cannot mint an account key.
+- API keys are either `scope=account` (every project the user belongs to) or `scope=project` with one `resourceIds` entry. Creating a key with `project` always mints project scope. REST and MCP `create_api_key` share `APIToken.create_for_user` and accept the Console dialog's name, description and expiry (30, 90, 180, 365 days, or 0 for never). MCP omits `project_id` for an account key and passes it for a project key. The plaintext is returned once. A project-scoped credential cannot mint an account key.
 
 ## Training preparation
 

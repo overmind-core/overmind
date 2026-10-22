@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from pydantic import BaseModel, ConfigDict, Field
@@ -57,21 +59,38 @@ def list_projects(payload, context):
     )
 
 
-def _create_api_key(payload: CreateApiKeyInput, context) -> CreateApiKeyOutput:
-    if context.user.is_guest:
-        raise MCPError("permission_denied", "Create an account to continue.")
-    if context.project is None:
-        raise MCPError("project_required", "Pass project_id from list_projects for this operation.")
+def _key_project(payload: CreateApiKeyInput, context):
     scope = context.token.scope if isinstance(context.token.scope, dict) else {}
-    if not payload.project_scoped and scope.get("scope") != "account":
+    account = scope.get("scope") == "account"
+    if payload.project_id is None:
+        if account:
+            return None
         raise MCPError(
             "permission_denied",
             "A project API key can only create a key for its own project.",
         )
+    if not account and str(payload.project_id) != str(context.project.id):
+        raise MCPError(
+            "permission_denied",
+            "A project API key can only create a key for its own project.",
+        )
+    try:
+        selected = UUID(str(payload.project_id))
+    except ValueError:
+        raise MCPError("invalid_input", "project_id must be a UUID.") from None
+    project = accessible_projects(context).filter(pk=selected).first()
+    if project is None:
+        raise MCPError("project_required", "The project is not accessible to this connection.")
+    return project
+
+
+def _create_api_key(payload: CreateApiKeyInput, context) -> CreateApiKeyOutput:
+    if context.user.is_guest:
+        raise MCPError("permission_denied", "Create an account to continue.")
     raw, instance = APIToken.create_for_user(
         context.user,
         name=payload.name,
-        project=context.project if payload.project_scoped else None,
+        project=_key_project(payload, context),
         description=payload.description,
         expires_in_days=payload.expires_in_days,
     )
@@ -96,9 +115,10 @@ def register_project_tools(catalog):
             name="create_api_key",
             title="Create API key",
             description=(
-                "Create an API key. name, description, expires_in_days (0, 30, 90, 180, 365; "
-                "0 does not expire) and project_scoped match the Console dialog. The plaintext "
-                "is returned once. A project connection cannot create an account key."
+                "Create an API key. name, description and expires_in_days (0, 30, 90, 180, 365; "
+                "0 does not expire) match the Console dialog. Omit project_id for an account key; "
+                "pass project_id for a project key. The plaintext is returned once. A project "
+                "connection can only create a key for its own project."
             ),
             input_model=CreateApiKeyInput,
             output_model=CreateApiKeyOutput,
@@ -108,6 +128,7 @@ def register_project_tools(catalog):
             required_scopes=frozenset({"overmind:account:write"}),
             cost_class="free",
             async_mode="sync",
+            project_scoped=False,
         ),
         sync_to_async(_create_api_key, thread_sensitive=True),
     )

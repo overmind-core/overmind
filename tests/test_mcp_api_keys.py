@@ -49,7 +49,7 @@ def test_create_api_key_returns_the_secret_once_and_stores_the_dialog_fields():
         name="CLI",
         description="api key for overmind",
         expires_in_days=30,
-        project_scoped=True,
+        project_id=str(context.project.id),
     )
 
     assert result.isError is False
@@ -71,7 +71,12 @@ def test_create_api_key_returns_the_secret_once_and_stores_the_dialog_fields():
 
 def test_account_connection_can_mint_an_account_key_that_does_not_expire():
     context = _context(account=True)
-    result = _call(context, name="root", expires_in_days=0, project_scoped=False)
+    result = _call(context, name="root", expires_in_days=0)
+    pinned = _call(context, name="pinned", project_id=str(context.project.id))
+    assert pinned.isError is False
+    pinned_token = APIToken.objects.get(id=pinned.structuredContent["id"])
+    assert pinned_token.project_id == context.project.id
+    assert pinned_token.scope["scope"] == "project"
 
     assert result.isError is False
     body = result.structuredContent
@@ -83,7 +88,12 @@ def test_account_connection_can_mint_an_account_key_that_does_not_expire():
 
 
 def test_project_key_cannot_mint_an_account_key():
-    result = _call(_context(), project_scoped=False)
+    context = _context()
+    result = _call(context)
+    other = make_project(member=context.user)
+    foreign = _call(context, project_id=str(other.id))
+    assert foreign.isError is True
+    assert foreign.structuredContent["error"]["code"] == "permission_denied"
 
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"

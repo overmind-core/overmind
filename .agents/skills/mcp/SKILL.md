@@ -6,10 +6,11 @@ description: End-to-end workflow for adding or changing Overmind MCP tools, reso
 # Adding or changing MCP
 
 Contract 7.12.0 adds `create_api_key`. It accepts the Console dialog's name,
-description, expiry (30, 90, 180 or 365 days, or 0 for never) and project or
-account scope. The plaintext is returned only in that response. A project
-connection can mint a key only for its own project. An account connection can
-mint either scope. Guests cannot create keys. The secret is not readable again.
+description and expiry (30, 90, 180 or 365 days, or 0 for never). Omit
+`project_id` for an account key; pass `project_id` for a project key. The
+plaintext is returned only in that response. A project connection can mint a
+key only for its own project. An account connection can mint either scope.
+Guests cannot create keys. The secret is not readable again.
 
 Contract 7.11.0 removes automatic OCR language detection. `ocr_languages=[]`
 uses English; explicit language choices remain MCP-ready through `update_dataset`.

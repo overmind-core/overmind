@@ -16,7 +16,7 @@ class CreateApiKeyInput(MCPModel):
     name: str = Field(default="", max_length=255)
     description: str = Field(default="", max_length=2_000)
     expires_in_days: ExpiryDays = 365
-    project_scoped: bool = True
+    project_id: str | None = None
 
 
 class CreateApiKeyOutput(MCPModel):
