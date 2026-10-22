@@ -10,7 +10,10 @@ from families.qwen35 import _seq_len_from_mask_kwargs, hooks
 
 
 def test_qwen35_sdpa_and_flex_off():
-    assert hooks.env_overrides(use_lora=True)["UNSLOTH_ENABLE_FLEX_ATTENTION"] == "0"
+    overrides = hooks.env_overrides(use_lora=True)
+    assert overrides["UNSLOTH_ENABLE_FLEX_ATTENTION"] == "0"
+    assert overrides["UNSLOTH_BLOCK_COMPILE"] == "0"
+    assert hooks.env_overrides(use_lora=False)["UNSLOTH_BLOCK_COMPILE"] == "0"
     assert hooks.load_kwargs(use_lora=True)["attn_implementation"] == "sdpa"
 
 

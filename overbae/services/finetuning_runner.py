@@ -1828,6 +1828,8 @@ class ModalRunner(BaseFinetuningRunner):
             env["LOAD_IN_4BIT"] = "1"
         if is_gpt_oss:
             env["UNSLOTH_COMPILE_DISABLE"] = "1"
+        if family_key(str(model_id)) in {"qwen35", "qwen38"}:
+            env["UNSLOTH_BLOCK_COMPILE"] = "0"
         if max_steps > 0:
             # Probe-run cap only: the wizard and recommender never set max_steps.
             env["MAX_STEPS"] = str(max_steps)

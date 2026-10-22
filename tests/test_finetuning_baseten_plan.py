@@ -82,6 +82,7 @@ class TestExplicitValuesWin:
         assert plan.token_budget == 32768
         env = ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")
         assert env["PADDED_TOKEN_BUDGET"] == "32768"
+        assert env["UNSLOTH_BLOCK_COMPILE"] == "0"
 
     @pytest.mark.parametrize("enabled", [True, False])
     def test_native_baseline_choice_reaches_worker_environment(self, enabled):
