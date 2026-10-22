@@ -52,23 +52,10 @@ Now we can move onto getting started with overmind.
 Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset,
 ASK the USER which one they want to continue with, if it hasn't already been configured.
 
-## Connect the project
-
-Skip this only when `overmind.toml` has a `project-id` and `.overmind/credentials.toml`
-holds its project key. If the `project-id` is there without the saved key, run these steps again.
-
-1. Call the MCP tool `create_api_key` without `project_id`, with `name="overmind-cli"`.
-   It returns an account key once.
-
-1. Run the first sync with that key in the command's environment only:
-
-   ```bash
-   OVERMIND_API_KEY=<key> python -m overmind sync
-   ```
-
-   Do not print the key in chat, write it to a file or reuse it. Sync creates the
-   project, saves a project-scoped key in `.overmind/credentials.toml` and writes
-   `project-id` into `overmind.toml`. Later syncs use the saved key.
+> Connect the project once: call the MCP tool `create_api_key` without `project_id`, then run
+> `OVERMIND_API_KEY=<key> python -m overmind sync`. Sync creates the project and saves its key;
+> later syncs need no key. Never print or store the account key. Skip this if `overmind.toml`
+> has a `project-id` and `.overmind/credentials.toml` exists.
 
 ## Onboarding using codebase or repository
 
