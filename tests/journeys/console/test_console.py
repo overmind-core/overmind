@@ -456,7 +456,7 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
     console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
     assert prompt.startswith(
-        f"Set me up on Overmind with my uploaded data (project {dataset.project_id}, dataset {dataset.id})"
+        f"Set me up on Overmind with my uploaded data\n(project_id: {dataset.project_id},\ndataset_id: {dataset.id})"
     )
     assert prompt.endswith("/setup.md")
     assert "api-key" not in prompt.lower()
