@@ -58,13 +58,12 @@ export function loraRank(value: unknown, fallback: number): number {
   return LORA_RANKS.some((step) => step === rank) ? rank : fallback;
 }
 
-const TIER_DEFAULTS: Record<string, { learning_rate: number; lora_r: number; lora_alpha: number }> =
-  {
-    compact: { learning_rate: 2e-4, lora_alpha: 32, lora_r: 16 },
-    large: { learning_rate: 2e-5, lora_alpha: 16, lora_r: 8 },
-    mid: { learning_rate: 5e-5, lora_alpha: 32, lora_r: 16 },
-    small: { learning_rate: 1e-4, lora_alpha: 16, lora_r: 8 },
-  };
+const TIER_DEFAULTS: Record<string, { learning_rate: number; lora_r: number }> = {
+  compact: { learning_rate: 2e-4, lora_r: 16 },
+  large: { learning_rate: 2e-5, lora_r: 8 },
+  mid: { learning_rate: 5e-5, lora_r: 16 },
+  small: { learning_rate: 1e-4, lora_r: 8 },
+};
 
 export function clampBatchSize(
   value: number | string | undefined,
@@ -234,7 +233,7 @@ export function draftFromRecommendation(
     learningRateFull: r.learningRateFull,
     learningRateLora: r.learningRateLora,
     loraParams: {
-      lora_alpha: Number(tt.lora_alpha) || rank * 2,
+      lora_alpha: rank * 2,
       lora_dropout: Number(tt.lora_dropout) || 0,
       lora_r: rank,
     },
@@ -275,7 +274,7 @@ export function draftFromCatalogModel(tier: string, m: ModelEntry): ModelDraft {
     id: crypto.randomUUID(),
     learningRateFull: td?.learning_rate ? td.learning_rate / 10 : 1e-5,
     learningRateLora: td?.learning_rate ?? 1e-4,
-    loraParams: { lora_alpha: td?.lora_alpha ?? loraR * 2, lora_dropout: 0, lora_r: loraR },
+    loraParams: { lora_alpha: loraR * 2, lora_dropout: 0, lora_r: loraR },
     maxBatchSize: m.maxBatchSize ?? 64,
     minBatchSize: m.minBatchSize ?? 1,
     model: m.id,
@@ -318,7 +317,7 @@ export function draftWithModel(draft: ModelDraft, tier: string, m: ModelEntry): 
     learningRateFull: td?.learning_rate ? td.learning_rate / 10 : draft.learningRateFull,
     learningRateLora: td?.learning_rate ?? draft.learningRateLora,
     loraParams: {
-      lora_alpha: td?.lora_alpha ?? draft.loraParams.lora_alpha,
+      lora_alpha: loraRank(td?.lora_r, draft.loraParams.lora_r) * 2,
       lora_dropout: draft.loraParams.lora_dropout,
       lora_r: loraRank(td?.lora_r, draft.loraParams.lora_r),
     },

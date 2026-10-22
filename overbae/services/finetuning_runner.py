@@ -1698,11 +1698,11 @@ class ModalRunner(BaseFinetuningRunner):
             raise ValueError("Training observer requires a pinned worker environment.")
         return self.release["environment"]
 
-    def _await_base_model(self, hf_base: str) -> None:
+    def _await_base_model(self, hf_base: str) -> dict:
         """Block until ``.base_models/`` has this repo. Concurrent jobs share the mutex."""
         import modal  # noqa: PLC0415
 
-        modal.Function.from_name(
+        return modal.Function.from_name(
             "overmind-register", "fetch_base_model", environment_name=self._modal_env()
         ).remote(base_model=hf_base)
 
@@ -1989,7 +1989,13 @@ class ModalRunner(BaseFinetuningRunner):
             "preparing_base_model",
             "Checking base model weights and downloading missing files",
         )
-        self._await_base_model(env["MODEL_ID"])
+        base = self._await_base_model(env["MODEL_ID"])
+        if training_kind == "lora":
+            from overbae.services.deployment import start_serving_snapshot  # noqa: PLC0415
+
+            start_serving_snapshot(
+                job, base=base if isinstance(base, dict) else {}, rank=int(env.get("LORA_R") or 16)
+            )
         training_submission.record_pre_dispatch_stage(
             job, "starting_training_worker", "Base model weights ready; starting training worker"
         )

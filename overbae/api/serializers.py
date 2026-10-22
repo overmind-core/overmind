@@ -12,7 +12,7 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from modal_shared.decision_checkpoint_policy import validate_policy
 from modal_shared.decisions import DECISION_OBJECTIVES
-from modal_shared.serving.args import require_lora_rank
+from modal_shared.serving.args import require_lora_alpha, require_lora_rank
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.native_evaluation import NativeEvaluationSerializer
 from overbae.api.scoping import project_ids_for
@@ -1306,6 +1306,19 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         if rank is not None:
             try:
                 require_lora_rank(rank)
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+        if isinstance(training_type, dict) and "lora_alpha" in training_type:
+            alpha = training_type["lora_alpha"]
+        elif "lora_alpha" in value:
+            alpha = value["lora_alpha"]
+        else:
+            alpha = None
+        if alpha is not None and not full:
+            if not isinstance(rank, int):
+                raise serializers.ValidationError("lora_alpha is twice lora_r.")
+            try:
+                require_lora_alpha(rank, alpha)
             except ValueError as exc:
                 raise serializers.ValidationError(str(exc)) from exc
         return value

@@ -37,6 +37,13 @@ def require_lora_rank(rank: object) -> int:
     return rank
 
 
+def require_lora_alpha(rank: int, alpha: object) -> int:
+    expected = rank * 2
+    if type(alpha) is not int or alpha != expected:
+        raise ValueError(f"lora_alpha must be {expected}, twice lora_r.")
+    return alpha
+
+
 def snap_lora_rank(rank: int) -> int:
     """Round a trained rank up to the nearest rank vLLM accepts.
 

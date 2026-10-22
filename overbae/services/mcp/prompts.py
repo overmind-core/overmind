@@ -146,7 +146,7 @@ PROMPTS = (
             "coverage, overlap and identity evidence through get_job(kind=native_evaluation). "
             "Use create_training_experiment to save purpose, explicit variants (base_model, cell, optional "
             "development_cell, hyperparameters) and optional evaluation protocol. Hyperparameters use n_epochs, "
-            'learning_rate, lora_r and seed; lora_r must be 8, 16, 32, 64, 128, 256, 320, or 512. LoRA uses training_type={{"type":"Lora"}}. checkpoint_policy has fractions ending at 1 and selection last '
+            'learning_rate, lora_r and seed; lora_r must be 8, 16, 32, 64, 128, 256, 320, or 512. lora_alpha is twice lora_r. LoRA uses training_type={{"type":"Lora"}}. checkpoint_policy has fractions ending at 1 and selection last '
             "or development_loss; final scores never select checkpoints. Inspect requested/effective settings "
             "and authorization after prepare_training_experiment returns a configuration-bound forecast. Pass its quote_id to launch_training_experiment where saved constraints require it. Novel recipes can use create_training_profile for explicitly authorized bounded measurement. Reuse completed compatible predictions only through reuse_evaluation_predictions or an explicit experiment reuse_existing_predictions choice. Poll existing jobs without duplicate starts. "
             "Transient evaluation interruptions recover automatically; poll get_job while running. Use resume_native_evaluation only for stopped work. Saved call IDs and completed responses are reused; missing external predictions have bounded retries with uncertain prior costs retained. "

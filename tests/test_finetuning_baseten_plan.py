@@ -129,9 +129,16 @@ class TestExplicitValuesWin:
             _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 4}})
         high = _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 512}})
         assert high.lora_r == 512
+        assert high.lora_alpha == 1024
+        with pytest.raises(TrainingPlanError, match="twice lora_r"):
+            _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 8, "lora_alpha": 8}})
         full = _plan(hyperparameters={"training_type": {"type": "Full", "lora_r": 4}})
         assert full.lora_r == 4
         serializer = FinetuningJobSerializer()
+        with pytest.raises(ValidationError, match="twice lora_r"):
+            serializer.validate_hyperparameters(
+                {"training_type": {"type": "Lora", "lora_r": 16, "lora_alpha": 16}}
+            )
         with pytest.raises(ValidationError, match="lora_r must be one of"):
             serializer.validate_hyperparameters({"training_type": {"type": "Lora", "lora_r": 12}})
         accepted = serializer.validate_hyperparameters(

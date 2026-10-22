@@ -13,7 +13,7 @@ from typing import Any
 
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.modelfam import resolve
-from modal_shared.serving.args import require_lora_rank
+from modal_shared.serving.args import require_lora_alpha, require_lora_rank
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import context_headroom, get_training_context_policy
 from overbae.services.training_contract import baseline_evaluation_enabled, validate_effective_batch
@@ -522,7 +522,19 @@ def derive_baseten_training_plan(
         except ValueError as exc:
             raise TrainingPlanError(str(exc)) from exc
     lora_r = int(supplied_rank or qlora["lora_r"])
-    lora_alpha = int(training_type.get("lora_alpha") or hp.get("lora_alpha") or lora_r * 2)
+    if "lora_alpha" in training_type:
+        supplied_alpha = training_type["lora_alpha"]
+    elif "lora_alpha" in hp:
+        supplied_alpha = hp["lora_alpha"]
+    else:
+        supplied_alpha = None
+    if use_lora and supplied_alpha is not None:
+        try:
+            lora_alpha = require_lora_alpha(lora_r, supplied_alpha)
+        except ValueError as exc:
+            raise TrainingPlanError(str(exc)) from exc
+    else:
+        lora_alpha = lora_r * 2
     if "lora_dropout" in training_type:
         lora_dropout = float(training_type["lora_dropout"])
     elif "lora_dropout" in hp:

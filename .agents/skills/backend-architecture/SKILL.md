@@ -379,9 +379,10 @@ The Console projects selected evaluations into waiting rows immediately and repl
 each by kind when its run arrives. Loss-curve polling continues after deployment while
 evaluations remain pending. `services.deployment` persists each deployment's stage,
 remote call handle, generation, retry budget, deadline, and evaluation waiters.
-The single 15-second deployment controller covers training outputs and baselines;
-short IO tasks claim a row for 45 seconds, spawn or observe one remote call, then exit.
-Worker death reconnects to the saved call rather than restarting GPU work. Each
+The single 15-second deployment controller covers training outputs and baselines.
+A finished stage starts the next remote call before the claim is released. The S3
+checkpoint archive is spawned beside that sequence and does not gate readiness.
+Short IO tasks claim a row for 45 seconds. Worker death reconnects to the saved call rather than restarting GPU work. Each
 attempt has a four-hour deadline and at most three confirmed-failure attempts with
 30/60-second backoff. Transport errors retain the handle. Submission without a saved
 acknowledgement fails closed; never launch another call until remote state is resolved.
