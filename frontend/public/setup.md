@@ -56,8 +56,8 @@ ASK the USER which one they want to continue with, if it hasn't already been con
 
 Skip this when `overmind.toml` already has a `project-id`.
 
-1. Call the MCP tool `create_api_key` without `project_id`, with `name="overmind-cli"`
-   and `expires_in_days=30`. It returns an account key once.
+1. Call the MCP tool `create_api_key` without `project_id`, with `name="overmind-cli"`.
+   It returns an account key once.
 
 1. Run the first sync with that key in the command's environment only:
 
