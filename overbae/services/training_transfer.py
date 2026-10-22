@@ -10,6 +10,9 @@ from modal.exception import InternalError, NotFoundError, ServiceError
 from modal_shared.training_data import write_selection
 from overbae.services import training_monitoring, training_release, training_submission
 
+# Modal's published v1 guidance: a handful of concurrent small commits.
+_VOLUME_WRITERS = 5
+
 STAGES = {
     "building_selections": "Building row selections",
     "uploading_selections": "Uploading row selections",
@@ -51,40 +54,47 @@ def stage_data(job, paths, run_id, preparation, volume, upload_fn, *, num_exampl
         if num_examples is not None and selections["data"]["rows"] != num_examples:
             raise ValueError("The training selection does not match the selected row count.")
         total_bytes = sum(spec["rows"] * 32 for spec in selections.values())
-        for name in paths:
+        # Lazy: task_lock imports the Celery app, which imports this module.
+        from overbae.tasks.utils.task_lock import hold_one_slot
+
+        # One commit for every selection file, and at most five launches at once.
+        # A commit per file across a sweep stacks volume layers until Modal refuses.
+        with hold_one_slot("sft-volume", _VOLUME_WRITERS, timeout=3600):
+            with volume.batch_upload() as batch:
+                for name in paths:
+                    report(
+                        {
+                            "stage": "uploading_selections",
+                            "completed": details["acknowledged_bytes"],
+                            "total": total_bytes,
+                            "unit": "bytes",
+                            "measurement": "provider_acknowledged_files",
+                        }
+                    )
+                    # put_file only queues bytes; successful context exit acknowledges the file.
+                    batch.put_file(
+                        Path(directory) / f"{name}.keys", f"/runs/{run_id}/selected-{name}.keys"
+                    )
+            for name in paths:
+                details["files_completed"] += 1
+                details["acknowledged_bytes"] += selections[name]["rows"] * 32
             report(
                 {
                     "stage": "uploading_selections",
-                    "completed": details["acknowledged_bytes"],
+                    "completed": total_bytes,
                     "total": total_bytes,
                     "unit": "bytes",
                     "measurement": "provider_acknowledged_files",
                 }
             )
-            # put_file only queues bytes; successful context exit acknowledges the file.
-            with volume.batch_upload() as batch:
-                batch.put_file(
-                    Path(directory) / f"{name}.keys", f"/runs/{run_id}/selected-{name}.keys"
-                )
-            details["files_completed"] += 1
-            details["acknowledged_bytes"] += selections[name]["rows"] * 32
-        report(
-            {
-                "stage": "uploading_selections",
-                "completed": total_bytes,
-                "total": total_bytes,
-                "unit": "bytes",
-                "measurement": "provider_acknowledged_files",
-            }
-        )
-    report({"stage": "waiting_for_materialization"})
-    result = upload_fn.remote(
-        run_id=run_id,
-        preparation_id=str(preparation.id),
-        artifact_sha256=preparation.report["artifact_sha256"],
-        selections=selections,
-        monitoring=(job.hyperparameters or {}).get("monitoring"),
-    )
+            report({"stage": "waiting_for_materialization"})
+            result = upload_fn.remote(
+                run_id=run_id,
+                preparation_id=str(preparation.id),
+                artifact_sha256=preparation.report["artifact_sha256"],
+                selections=selections,
+                monitoring=(job.hyperparameters or {}).get("monitoring"),
+            )
     if isinstance(result, dict) and result.get("monitoring_plan"):
         training_monitoring.save_plan(job, result["monitoring_plan"])
 

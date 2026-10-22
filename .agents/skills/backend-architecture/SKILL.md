@@ -162,8 +162,10 @@ Training handoff separates selection construction, acknowledged selection-file u
 provider artifact verification, indexing, row selection and publication. Only successful
 Modal batch completion increments acknowledged bytes/files; live network-byte progress
 is unavailable. The pinned worker publishes bounded transfer measurements to the run's
-`transfer-progress.json`; the existing 15-second reconciler collects them even while the
-submission task is active. Console and MCP read persisted, attempt-fenced diagnostics
+`transfer-progress.json` and commits that volume when a stage finishes. Modal's
+background commit publishes step files; a timer commit is not used, and at most
+five launches upload at once. The existing 15-second reconciler collects transfer
+facts even while the submission task is active. Console and MCP read persisted, attempt-fenced diagnostics
 and operational events, never invoking a worker to read status. Stage start, source
 observation and last forward progress remain separate; absent measurements show no
 percentage. Worker instrumentation requires deployment of a new immutable release and
