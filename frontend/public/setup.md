@@ -1,16 +1,18 @@
 # Overmind setup
 
 These are instructions for you, an AI coding agent, to set the human up on
-Overmind. Read them once, then act on them. The human who handed you this
+Overmind Cloud. Read them once, then act on them. The human who handed you this
 document wants you to do the setup and execute workflows, not to explain it back to them.
 
 There are 2 prerequisites to start this:
 
 1. **MCP config for Overmind**
 
+The Overmind server entry uses the following URL. Put it in your client's
+supported MCP configuration format; `overmind init` below configures the client.
+
 ```json
 {
-  ...
   "overmind": {
     "url": "https://api.overmindlab.ai/api/mcp/"
   }
@@ -59,11 +61,11 @@ ASK the USER which one they want to continue with, if it hasn't already been con
 
 ## Onboarding using codebase or repository
 
-Overmind has skills to scan through a respository with agentic codebase written either in Python or Typescript/Javascript
+Overmind has skills to scan repositories with agentic code written in Python or TypeScript/JavaScript.
 
-> If codebase is any other Language, avoid runnning `overmind chassis` command and just use the coding agent's output file and use it to run `overmind sync`
+For other languages, report repository discovery as unsupported. Dataset workflows and importing existing OpenTelemetry traces remain separate options.
 
-- Use the `/overmind setup` skill to start scanning the codebase.
+- Ask the coding agent to use the installed Overmind skill's `setup` workflow to scan the repository and sync its capability map. Clients that support skill arguments can invoke `/overmind setup`.
 
 ## Onboarding using a dataset
 
