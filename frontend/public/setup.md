@@ -54,7 +54,8 @@ ASK the USER which one they want to continue with, if it hasn't already been con
 
 ## Connect the project
 
-Skip this when `overmind.toml` already has a `project-id`.
+Skip this only when `overmind.toml` has a `project-id` and `.overmind/credentials.toml`
+holds its project key. If the `project-id` is there without the saved key, run these steps again.
 
 1. Call the MCP tool `create_api_key` without `project_id`, with `name="overmind-cli"`.
    It returns an account key once.
