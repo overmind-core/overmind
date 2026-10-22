@@ -144,7 +144,7 @@ jobs:
 
   deploy-landing:
     runs-on: ubuntu-latest
-    needs: [build-and-push, migrate, deploy-sandbox]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +163,7 @@ jobs:
 
   deploy-control:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-landing]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
@@ -171,7 +171,7 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Register fair dispatch before new trace consumers
+      - name: Deploy the control worker
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: celery-control-worker
@@ -179,7 +179,7 @@ jobs:
 
   deploy-traces:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-control]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
@@ -187,7 +187,7 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Verify dedicated trace capacity before isolating IO
+      - name: Deploy the traces worker
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: celery-traces-worker
@@ -195,7 +195,7 @@ jobs:
 
   deploy-workers:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-traces]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     strategy:
       fail-fast: false
@@ -216,7 +216,7 @@ jobs:
 
   deploy-beat:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-workers]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
@@ -225,9 +225,7 @@ jobs:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.run_id }}-beat
-      # Beat must not send newly introduced tasks to old workers that cannot
-      # register them. Old beat can keep serving existing schedules during rollout.
-      - name: Deploy scheduler after workers
+      - name: Deploy the scheduler
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: celery-beat
@@ -235,7 +233,7 @@ jobs:
 
   deploy-api:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-beat]
+    needs: [build-and-push, migrate]
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
@@ -244,7 +242,7 @@ jobs:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.run_id }}-api
-      - name: Deploy API after consumers and scheduler
+      - name: Deploy the API
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: api
