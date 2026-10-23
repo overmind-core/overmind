@@ -30,7 +30,7 @@ Isolation does not install application tracing. Verify the tracing SDK in the ap
 
 1. `python -m overmind init --ide <client>` writes `overmind.toml`, prepares the IDE's MCP config and installs this skill.
 1. `python -m overmind sync` creates the Console project from `project-name` in `overmind.toml` (seeded from the repo directory), writes `project-id` into the toml, stores the project credential in `.overmind/credentials.toml` and updates every configured IDE's MCP entry. Empty capabilities are fine.
-1. Report that the project is connected and a coding-agent reload is required. In Claude Code, ask the user to exit and run `claude -c`; elsewhere, reload the IDE. Stop until the user reloads. Do not print credentials or run init again.
+1. Report that the project is connected and a coding-agent reload is required. In Claude Code, ask the user to exit and run `claude -c`; elsewhere, reload the IDE. Stop if mcp is not loaded until the user reloads. Do not print credentials or run init again.
 
 After reload, read `overmind://project/current` to confirm the project and resume scanning without repeating sync. If authentication is still unavailable, keep this stage blocked and report it.
 
