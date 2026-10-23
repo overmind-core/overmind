@@ -1,0 +1,8 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
+  "extends": ["../frontend/biome.json"],
+  "files": {
+    "includes": ["src/**", "*.ts", "*.json", "!src/routeTree.gen.ts"]
+  },
+  "root": true
+}
