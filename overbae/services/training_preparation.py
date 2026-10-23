@@ -438,7 +438,15 @@ def advance(preparation_id):
                 volume = modal.Volume.from_name(
                     "overmind-sft", environment_name=prep.config["runtime"]["environment"]
                 )
-                with volume.batch_upload(force=True) as batch:
+                # Same cap as training-file commits. A launch wave otherwise stacks layers
+                # until Modal refuses every writer on this volume.
+                from overbae.services.training_transfer import VOLUME_WRITERS
+                from overbae.tasks.utils.task_lock import hold_one_slot
+
+                with (
+                    hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600),
+                    volume.batch_upload(force=True) as batch,
+                ):
                     batch.put_file(source, remote)
             function = modal.Function.from_name(
                 prep.config["runtime"]["app"],
@@ -474,12 +482,17 @@ def advance(preparation_id):
         # An observer failure is not a remote failure. Keep its handle until the deadline.
         return
     except Exception as exc:
+        # Modal squashes volume layers in the background and asks the caller to wait.
+        # Leaving the shared preparation failed makes every later job for this signature fail too.
+        volume_busy = starting and "too many layers" in str(exc).lower()
         TrainingPreparation.objects.filter(
             pk=prep.pk, state__in=["starting", "running"], deadline=prep.deadline
         ).update(
-            state="failed",
-            error=str(exc)[:1000],
-            report={"retryable": not starting or isinstance(exc, NotFoundError)},
+            state="queued" if volume_busy else "failed",
+            error="" if volume_busy else str(exc)[:1000],
+            report={}
+            if volume_busy
+            else {"retryable": not starting or isinstance(exc, NotFoundError)},
             touched_at=timezone.now(),
         )
 

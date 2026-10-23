@@ -11,7 +11,7 @@ from modal_shared.training_data import write_selection
 from overbae.services import training_monitoring, training_release, training_submission
 
 # Modal's published v1 guidance: a handful of concurrent small commits.
-_VOLUME_WRITERS = 5
+VOLUME_WRITERS = 5
 
 STAGES = {
     "building_selections": "Building row selections",
@@ -59,7 +59,7 @@ def stage_data(job, paths, run_id, preparation, volume, upload_fn, *, num_exampl
 
         # One commit for every selection file, and at most five launches at once.
         # A commit per file across a sweep stacks volume layers until Modal refuses.
-        with hold_one_slot("sft-volume", _VOLUME_WRITERS, timeout=3600):
+        with hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600):
             with volume.batch_upload() as batch:
                 for name in paths:
                     report(

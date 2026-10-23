@@ -207,6 +207,126 @@ def test_preparation_reports_exported_rows_before_upload(cell, monkeypatch):
     ]
 
 
+class _LayerBatch:
+    """First upload raises Modal's layer-limit error; the next one commits."""
+
+    def __init__(self, attempts):
+        self.attempts = attempts
+
+    def __enter__(self):
+        self.attempts["n"] += 1
+        if self.attempts["n"] == 1:
+            raise RuntimeError("Volume commit failed: Too Many Layers in volume")
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def put_file(self, _local, _remote):
+        return None
+
+
+def test_volume_layer_limit_is_retried_for_the_same_preparation(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    attempts = {"n": 0}
+    spawn = Mock(return_value=SimpleNamespace(object_id="fc-prep"))
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(return_value=SimpleNamespace(batch_upload=lambda **_: _LayerBatch(attempts))),
+    )
+    monkeypatch.setattr(
+        preparation.modal.Function,
+        "from_name",
+        Mock(return_value=SimpleNamespace(spawn=spawn)),
+    )
+
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "queued" and not prep.error and not prep.report
+    assert spawn.call_count == 0
+    assert preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096).id == prep.id
+
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    same = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    assert same.id == prep.id and same.state == "running" and same.remote_id == "fc-prep"
+    assert spawn.call_count == 1
+
+
+@pytest.mark.parametrize("where", ["enter", "put_file", "exit"])
+def test_volume_layer_limit_at_each_upload_step_stays_retriable(cell, monkeypatch, where):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+
+    class Batch:
+        def __enter__(self):
+            if where == "enter":
+                raise RuntimeError("too many layers in volume. Please wait and retry.")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            if where == "exit" and exc_type is None:
+                raise RuntimeError("too many layers in volume. Please wait and retry.")
+            return False
+
+        def put_file(self, _local, _remote):
+            if where == "put_file":
+                raise RuntimeError("too many layers in volume. Please wait and retry.")
+
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(return_value=SimpleNamespace(batch_upload=lambda **_: Batch())),
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "queued" and not prep.error and not prep.report
+
+
+def test_other_upload_errors_still_fail_the_preparation(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+
+    class Batch:
+        def __enter__(self):
+            raise RuntimeError("dataset bytes changed during export")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(return_value=SimpleNamespace(batch_upload=lambda **_: Batch())),
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "failed" and "dataset bytes changed" in prep.error
+    assert prep.report["retryable"] is False
+    with pytest.raises(ValueError, match="safely"):
+        preparation.retry_preparation(prep)
+
+
+def test_layer_limit_on_a_running_call_keeps_the_remote_id(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep.state, prep.remote_id = "running", "fc-live"
+    prep.save(update_fields=["state", "remote_id"])
+    call = SimpleNamespace(
+        get=Mock(side_effect=RuntimeError("too many layers in volume. Please wait and retry.")),
+        cancel=Mock(),
+    )
+    monkeypatch.setattr(
+        preparation.modal.FunctionCall,
+        "from_id",
+        Mock(return_value=call),
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "failed" and prep.remote_id == "fc-live"
+    assert prep.report["retryable"] is True and call.cancel.call_count == 0
+    assert preparation.retry_preparation(prep).state == "queued"
+    call.cancel.assert_called_once()
+
+
 def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import tempfile
 import time
@@ -254,6 +255,17 @@ def _progress_fingerprint(progress):
     )
 
 
+def _finite_json(value):
+    # Postgres json rejects NaN and Infinity; Python's encoder emits them.
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _finite_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_json(item) for item in value]
+    return value
+
+
 def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
     from overbae.models import FinetuningJob
     from overbae.services.finetuning_runner import progress_from_snapshot
@@ -340,6 +352,7 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
     observe["poll_errors"] = 0
     progress["observe"] = observe
 
+    progress = _finite_json(progress)
     FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
     job.progress = progress
     operational_progress.training(job)

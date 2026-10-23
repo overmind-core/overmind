@@ -69,8 +69,12 @@ def _reconcile() -> dict:
                 logger.exception("Provider submission reconciliation unavailable for %s", job.id)
             continue
         if job.remote_job_id and job.status in {"running", "preparing", "queued"}:
-            observe_finetuning_job(job)
-            observed += 1
+            try:
+                observe_finetuning_job(job)
+            except Exception:
+                logger.exception("Provider observation failed for %s", job.id)
+            else:
+                observed += 1
             continue
         if job.status == "preparing" and not job.remote_job_id:
             if not inventory_known or (timezone.now() - job.updated_at).total_seconds() < 120:
