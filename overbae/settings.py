@@ -293,6 +293,9 @@ STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 
+# Bearer token for the cross-tenant /api/internal/sales/ endpoints; blank denies every request.
+SALES_DASHBOARD_TOKEN = os.environ.get("SALES_DASHBOARD_TOKEN", "")
+
 AUTH_USER_MODEL = "overbae.User"
 
 REST_FRAMEWORK = {

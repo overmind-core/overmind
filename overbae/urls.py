@@ -50,6 +50,7 @@ from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
+from overbae.api.sales_dashboard import SalesAccountsView, SalesFunnelView, SalesOverviewView
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
@@ -145,6 +146,9 @@ urlpatterns = [
         name="inference-request",
     ),
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
+    path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
+    path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
+    path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
