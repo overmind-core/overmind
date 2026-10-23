@@ -50,6 +50,7 @@ from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
+from overbae.api.robots import robots_txt
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
@@ -169,6 +170,7 @@ urlpatterns += [
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
+    path("robots.txt", robots_txt, name="robots-txt"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
     path("v1/traces", otlp_traces, name="otlp-traces-compat"),
     # OpenAI-compatible inference API
