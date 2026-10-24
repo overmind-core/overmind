@@ -36,10 +36,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-sales-
 
-      # Runs alongside the Console's staging deploy; sales-dashboard/.env.staging
+      # Runs alongside the Console's production deploy; sales-dashboard/.env.production
       # holds the API it reads.
       - run: bun install --frozen-lockfile
-      - run: bun run build --mode staging
+      - run: bun run build --mode production
 
       - name: Deploy to Cloudflare Pages
         env:
