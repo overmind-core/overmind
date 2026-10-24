@@ -50,12 +50,6 @@ from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
-from overbae.api.sales_dashboard import (
-    SalesAccountActivityView,
-    SalesAccountsView,
-    SalesFunnelView,
-    SalesOverviewView,
-)
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
@@ -138,18 +132,29 @@ router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
 router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
 router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
-sales_urlpatterns = [
-    path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
-    path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
-    path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
-    path(
-        "api/internal/sales/accounts/<int:pk>/",
-        SalesAccountActivityView.as_view(),
-        name="sales-account-activity",
-    ),
-]
 
-urlpatterns = [
+urlpatterns = []
+# Self-hosted instances (no Clerk) never expose cross-tenant sales metrics.
+if settings.SALES_DASHBOARD_TOKEN:
+    from overbae.api.sales_dashboard import (
+        SalesAccountActivityView,
+        SalesAccountsView,
+        SalesFunnelView,
+        SalesOverviewView,
+    )
+
+    urlpatterns += [
+        path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
+        path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
+        path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
+        path(
+            "api/internal/sales/accounts/<int:pk>/",
+            SalesAccountActivityView.as_view(),
+            name="sales-account-activity",
+        ),
+    ]
+
+urlpatterns += [
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(
         "api/deployed-models/<uuid:deployment_id>/inference/",
@@ -215,10 +220,6 @@ urlpatterns = [
         name="redoc",
     ),
 ]
-
-# Self-hosted instances (no Clerk) never expose cross-tenant sales metrics.
-if settings.SALES_DASHBOARD_TOKEN:
-    urlpatterns += sales_urlpatterns
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
