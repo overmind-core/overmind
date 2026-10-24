@@ -3,6 +3,7 @@ projects only guests belong to are excluded everywhere."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 from statistics import median
@@ -28,10 +29,12 @@ from overbae.models import (
     BillingService,
     BillingTelemetry,
     Capability,
+    Dataset,
     DeployedModel,
     EvalRun,
     FinetuningJob,
     InferenceCall,
+    OptimizerExperiment,
     Project,
     ProjectMembership,
     Span,
@@ -52,6 +55,13 @@ FUNNEL_STEPS = (
 )
 LOW_BALANCE_USD = Decimal("5")
 TOP_BASE_MODELS = 5
+RECENT_TRAINING_JOBS = 20
+
+TRAINING_OUTCOMES = {
+    FinetuningJob.Status.SUCCEEDED: "completed",
+    FinetuningJob.Status.FAILED: "failed",
+    FinetuningJob.Status.CANCELLED: "cancelled",
+}
 
 USD = DecimalField(max_digits=12, decimal_places=7)
 
@@ -76,6 +86,34 @@ def _daily(queryset: QuerySet, field: str, value: Aggregate | None = None) -> li
 
 def _counts(queryset: QuerySet, field: str) -> dict[str, int]:
     return dict(queryset.order_by().values_list(field).annotate(n=Count("pk")))
+
+
+def _daily_by(
+    queryset: QuerySet, field: str, group: str, bucket: Callable[[str], str]
+) -> list[dict[str, Any]]:
+    days: dict[datetime, dict[str, int]] = {}
+    for row in (
+        queryset.annotate(day=TruncDay(field))
+        .values("day", group)
+        .annotate(n=Count("pk"))
+        .order_by("day")
+    ):
+        values = days.setdefault(row["day"], {})
+        key = bucket(row[group])
+        values[key] = values.get(key, 0) + row["n"]
+    return [{"day": day, "values": values} for day, values in days.items()]
+
+
+def _training_outcome(status: str) -> str:
+    return TRAINING_OUTCOMES.get(status, "in_progress")
+
+
+def _workflow(queryset: QuerySet, since: datetime) -> dict[str, Any]:
+    return {
+        "total": queryset.count(),
+        "by_status": _counts(queryset, "status"),
+        "daily": _daily(queryset.filter(created_at__gte=since), "created_at"),
+    }
 
 
 def _scalar(queryset: QuerySet, aggregate: Aggregate) -> Subquery:
@@ -264,3 +302,51 @@ def accounts(since: datetime) -> QuerySet[User]:
             0,
         ),
     )
+
+
+def account_activity(account: User, since: datetime) -> dict[str, Any]:
+    """Lifetime totals and in-window daily series across the account's projects."""
+    project_ids = ProjectMembership.objects.filter(user=account).values("project_id")
+    jobs = FinetuningJob.objects.filter(project_id__in=project_ids)
+    totals = {"started": 0, "completed": 0, "failed": 0, "cancelled": 0, "in_progress": 0}
+    for status, n in _counts(jobs, "status").items():
+        totals["started"] += n
+        totals[_training_outcome(status)] += n
+    roots = Span.objects.filter(project_id__in=project_ids, parent_span_id__isnull=True)
+    calls = InferenceCall.objects.filter(project_id__in=project_ids)
+    by_model = _counts(calls, "deployed_model__model_id")
+    datasets = Dataset.objects.filter(project_id__in=project_ids)
+    return {
+        "account": account,
+        "training": {
+            "totals": totals,
+            "daily": _daily_by(
+                jobs.filter(created_at__gte=since), "created_at", "status", _training_outcome
+            ),
+            "recent": list(
+                jobs.order_by("-created_at").values(
+                    "id", "base_model", "status", "created_at", "completed_at"
+                )[:RECENT_TRAINING_JOBS]
+            ),
+        },
+        "traces": {
+            "total": roots.count(),
+            "daily": _daily(roots.filter(received_at__gte=since), "received_at"),
+        },
+        "inference": {
+            "calls": sum(by_model.values()),
+            "models": len(by_model),
+            "by_model": by_model,
+            "daily": _daily(calls.filter(created_at__gte=since), "created_at"),
+        },
+        "datasets": {
+            "total": datasets.count(),
+            "by_source": _counts(datasets, "source_kind"),
+            "by_intent": _counts(datasets, "intent"),
+            "daily": _daily(datasets.filter(created_at__gte=since), "created_at"),
+        },
+        "optimizer": _workflow(
+            OptimizerExperiment.objects.filter(project_id__in=project_ids), since
+        ),
+        "evaluations": _workflow(EvalRun.objects.filter(project_id__in=project_ids), since),
+    }

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hmac
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers
@@ -16,6 +19,7 @@ from overbae.api.ordering import TableOrderingFilter
 from overbae.services import sales_metrics
 
 ACTIVE_DAYS = 7
+CACHE_SECONDS = 3600
 
 
 class HasSalesDashboardToken(BasePermission):
@@ -99,10 +103,87 @@ class SalesAccountSerializer(serializers.Serializer):
         return sales_metrics.stage(account)
 
 
+class DailyBreakdownSerializer(serializers.Serializer):
+    day = serializers.DateTimeField()
+    values = serializers.DictField(child=serializers.IntegerField())
+
+
+class TrainingJobSummarySerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    base_model = serializers.CharField()
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    completed_at = serializers.DateTimeField(allow_null=True)
+
+
+class TrainingTotalsSerializer(serializers.Serializer):
+    started = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    cancelled = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
+
+
+class TrainingActivitySerializer(serializers.Serializer):
+    totals = TrainingTotalsSerializer()
+    daily = DailyBreakdownSerializer(many=True)
+    recent = TrainingJobSummarySerializer(many=True)
+
+
+class TraceActivitySerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    daily = DailyCountSerializer(many=True)
+
+
+class InferenceActivitySerializer(serializers.Serializer):
+    calls = serializers.IntegerField()
+    models = serializers.IntegerField()
+    by_model = serializers.DictField(child=serializers.IntegerField())
+    daily = DailyCountSerializer(many=True)
+
+
+class DatasetActivitySerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    by_source = serializers.DictField(child=serializers.IntegerField())
+    by_intent = serializers.DictField(child=serializers.IntegerField())
+    daily = DailyCountSerializer(many=True)
+
+
+class WorkflowActivitySerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    by_status = serializers.DictField(child=serializers.IntegerField())
+    daily = DailyCountSerializer(many=True)
+
+
+class SalesAccountActivitySerializer(serializers.Serializer):
+    account = SalesAccountSerializer()
+    training = TrainingActivitySerializer()
+    traces = TraceActivitySerializer()
+    inference = InferenceActivitySerializer()
+    datasets = DatasetActivitySerializer()
+    optimizer = WorkflowActivitySerializer()
+    evaluations = WorkflowActivitySerializer()
+
+
 def _since(request):
     window = WindowSerializer(data=request.query_params)
     window.is_valid(raise_exception=True)
     return timezone.now() - timedelta(days=window.validated_data["days"])
+
+
+def _cached(request, compute) -> Response:
+    """Serve one computation per path and query for an hour, stamped with its freshness."""
+    key = f"sales-dashboard:{request.path}?{urlencode(sorted(request.query_params.items()))}"
+    payload = cache.get(key)
+    if payload is None:
+        computed_at = timezone.now()
+        payload = {
+            **compute(),
+            "computed_at": computed_at.isoformat(),
+            "refreshes_at": (computed_at + timedelta(seconds=CACHE_SECONDS)).isoformat(),
+        }
+        cache.set(key, payload, CACHE_SECONDS)
+    return Response(payload)
 
 
 class SalesDashboardView:
@@ -113,14 +194,34 @@ class SalesDashboardView:
 @extend_schema(exclude=True)
 class SalesOverviewView(SalesDashboardView, APIView):
     def get(self, request):
-        data = sales_metrics.overview(_since(request), timezone.now() - timedelta(days=ACTIVE_DAYS))
-        return Response(SalesOverviewSerializer(data).data)
+        def compute():
+            data = sales_metrics.overview(
+                _since(request), timezone.now() - timedelta(days=ACTIVE_DAYS)
+            )
+            return SalesOverviewSerializer(data).data
+
+        return _cached(request, compute)
 
 
 @extend_schema(exclude=True)
 class SalesFunnelView(SalesDashboardView, APIView):
     def get(self, request):
-        return Response(SalesFunnelSerializer(sales_metrics.funnel(_since(request))).data)
+        return _cached(
+            request, lambda: SalesFunnelSerializer(sales_metrics.funnel(_since(request))).data
+        )
+
+
+@extend_schema(exclude=True)
+class SalesAccountActivityView(SalesDashboardView, APIView):
+    def get(self, request, pk: int):
+        def compute():
+            since = _since(request)
+            account = get_object_or_404(sales_metrics.accounts(since), pk=pk)
+            return SalesAccountActivitySerializer(
+                sales_metrics.account_activity(account, since)
+            ).data
+
+        return _cached(request, compute)
 
 
 @extend_schema(exclude=True)
@@ -145,3 +246,6 @@ class SalesAccountsView(SalesDashboardView, generics.ListAPIView):
 
     def get_queryset(self):
         return sales_metrics.accounts(_since(self.request))
+
+    def list(self, request, *args, **kwargs):
+        return _cached(request, lambda: super(SalesAccountsView, self).list(request).data)

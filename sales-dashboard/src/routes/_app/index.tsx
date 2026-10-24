@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Breakdown } from "~/components/breakdown";
 import { DailyChart } from "~/components/daily-chart";
 import { Failure } from "~/components/failure";
+import { Freshness } from "~/components/freshness";
 import { Stat } from "~/components/stat";
 import { type Overview, salesGet } from "~/lib/api";
 import { fillDays, formatInt, formatUsd, sum } from "~/lib/format";
@@ -31,7 +32,11 @@ function OverviewPage() {
 
   return (
     <>
-      <PageHeader description={`Last ${days} days. Guests excluded.`} title="Overview" />
+      <PageHeader
+        actions={<Freshness data={query.data} />}
+        description={`Last ${days} days. Guests excluded.`}
+        title="Overview"
+      />
       {query.isPending ? (
         <LoadingState fullPage label="Loading overview" />
       ) : query.isError ? (

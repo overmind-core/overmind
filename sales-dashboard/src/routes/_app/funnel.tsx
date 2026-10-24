@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { Failure } from "~/components/failure";
+import { Freshness } from "~/components/freshness";
 import { Stat } from "~/components/stat";
 import { type Funnel, salesGet } from "~/lib/api";
 import { formatInt, humanize } from "~/lib/format";
@@ -25,6 +26,7 @@ function FunnelPage() {
   return (
     <>
       <PageHeader
+        actions={<Freshness data={query.data} />}
         description={`Accounts that signed up in the last ${days} days, by step reached. Steps can be reached out of order.`}
         title="Activation funnel"
       />

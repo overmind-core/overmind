@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { Failure } from "~/components/failure";
+import { Freshness } from "~/components/freshness";
 import { type Account, type Page, salesGet } from "~/lib/api";
 import { formatAgo, formatDate, formatInt, formatUsd, humanize } from "~/lib/format";
 
@@ -86,6 +87,7 @@ function AccountsPage() {
   return (
     <>
       <PageHeader
+        actions={<Freshness data={query.data} />}
         count={query.data?.count}
         description={`Spans and spend cover the last ${days} days. Top-ups and balance are lifetime.`}
         title="Accounts"
@@ -115,7 +117,7 @@ function AccountsPage() {
             </TableHeader>
             <TableBody>
               {query.data.results.map((account) => (
-                <AccountRow account={account} key={account.id} />
+                <AccountRow account={account} days={days} key={account.id} />
               ))}
             </TableBody>
           </Table>
@@ -135,14 +137,21 @@ function AccountsPage() {
   );
 }
 
-function AccountRow({ account }: { account: Account }) {
+function AccountRow({ account, days }: { account: Account; days: number }) {
   const status = account.subscription_status;
   const lowBalance = Number(account.balance_usd) < LOW_BALANCE_USD;
   const number = "font-mono tabular-nums";
   return (
     <TableRow>
       <TableCell className="max-w-64 truncate" title={account.email}>
-        {account.email}
+        <Link
+          className="hover:underline"
+          params={{ accountId: String(account.id) }}
+          search={{ days }}
+          to="/accounts/$accountId"
+        >
+          {account.email}
+        </Link>
       </TableCell>
       <TableCell>
         <Badge

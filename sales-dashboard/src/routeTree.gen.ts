@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppFunnelRouteImport } from './routes/_app/funnel'
+import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -39,18 +40,25 @@ const AppFunnelRoute = AppFunnelRouteImport.update({
   path: '/funnel',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
+  id: '/accounts_/$accountId',
+  path: '/accounts/$accountId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
   '/funnel': typeof AppFunnelRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
   '/funnel': typeof AppFunnelRoute
   '/': typeof AppIndexRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -59,12 +67,13 @@ export interface FileRoutesById {
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/funnel': typeof AppFunnelRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/accounts' | '/funnel'
+  fullPaths: '/' | '/login' | '/accounts' | '/funnel' | '/accounts/$accountId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/accounts' | '/funnel' | '/'
+  to: '/login' | '/accounts' | '/funnel' | '/' | '/accounts/$accountId'
   id:
     | '__root__'
     | '/_app'
@@ -72,6 +81,7 @@ export interface FileRouteTypes {
     | '/_app/accounts'
     | '/_app/funnel'
     | '/_app/'
+    | '/_app/accounts_/$accountId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -116,6 +126,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFunnelRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/accounts_/$accountId': {
+      id: '/_app/accounts_/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/accounts/$accountId'
+      preLoaderRoute: typeof AppAccountsAccountIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -123,12 +140,14 @@ interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppFunnelRoute: typeof AppFunnelRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppFunnelRoute: AppFunnelRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

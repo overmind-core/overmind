@@ -57,11 +57,43 @@ export type Account = {
 
 export type Page<T> = { count: number; next: string | null; previous: string | null; results: T[] };
 
+/** Every response is computed at most once an hour per path and query. */
+export type Cached = { computed_at: string; refreshes_at: string };
+
+type Workflow = { total: number; by_status: Record<string, number>; daily: Daily[] };
+
+export type TrainingOutcome = "completed" | "failed" | "cancelled" | "in_progress";
+
+export type AccountActivity = {
+  account: Account;
+  training: {
+    totals: Record<"started" | TrainingOutcome, number>;
+    daily: { day: string; values: Partial<Record<TrainingOutcome, number>> }[];
+    recent: {
+      id: string;
+      base_model: string;
+      status: string;
+      created_at: string;
+      completed_at: string | null;
+    }[];
+  };
+  traces: { total: number; daily: Daily[] };
+  inference: { calls: number; models: number; by_model: Record<string, number>; daily: Daily[] };
+  datasets: {
+    total: number;
+    by_source: Record<string, number>;
+    by_intent: Record<string, number>;
+    daily: Daily[];
+  };
+  optimizer: Workflow;
+  evaluations: Workflow;
+};
+
 export async function salesGet<T>(
-  path: "overview" | "funnel" | "accounts",
+  path: "overview" | "funnel" | "accounts" | `accounts/${number}`,
   params: Record<string, string | number | undefined>,
   token = getToken()
-): Promise<T> {
+): Promise<T & Cached> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) query.set(key, String(value));

@@ -13,12 +13,14 @@ export function DailyChart({
   data,
   series,
   format,
+  stacked = false,
 }: {
   title: string;
   total: string;
   data: Record<string, number | string>[];
   series: ChartSeries[];
   format: (value: number) => string;
+  stacked?: boolean;
 }) {
   return (
     <SectionCard
@@ -68,6 +70,7 @@ export function DailyChart({
                 isAnimationActive={false}
                 key={item.key}
                 name={item.label}
+                stackId={stacked ? "stack" : undefined}
               />
             ))}
           </BarChart>
