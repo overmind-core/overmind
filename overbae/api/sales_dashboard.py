@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,10 +24,14 @@ CACHE_SECONDS = 3600
 
 
 class HasSalesDashboardToken(BasePermission):
+    """Self-hosted instances (no Clerk) and unset tokens hide the endpoints entirely."""
+
     def has_permission(self, request, view) -> bool:
         expected = settings.SALES_DASHBOARD_TOKEN
+        if not (settings.CLERK_API_SECRET_KEY and expected):
+            raise NotFound
         scheme, _, presented = request.headers.get("Authorization", "").partition(" ")
-        return bool(expected) and scheme == "Bearer" and hmac.compare_digest(presented, expected)
+        return scheme == "Bearer" and hmac.compare_digest(presented, expected)
 
 
 class WindowSerializer(serializers.Serializer):
