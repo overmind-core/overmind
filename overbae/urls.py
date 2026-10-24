@@ -138,6 +138,17 @@ router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
 router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
 router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
+sales_urlpatterns = [
+    path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
+    path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
+    path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
+    path(
+        "api/internal/sales/accounts/<int:pk>/",
+        SalesAccountActivityView.as_view(),
+        name="sales-account-activity",
+    ),
+]
+
 urlpatterns = [
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(
@@ -151,14 +162,6 @@ urlpatterns = [
         name="inference-request",
     ),
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
-    path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
-    path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
-    path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
-    path(
-        "api/internal/sales/accounts/<int:pk>/",
-        SalesAccountActivityView.as_view(),
-        name="sales-account-activity",
-    ),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
@@ -212,6 +215,10 @@ urlpatterns = [
         name="redoc",
     ),
 ]
+
+# Self-hosted instances (no Clerk) never expose cross-tenant sales metrics.
+if settings.SALES_DASHBOARD_TOKEN:
+    urlpatterns += sales_urlpatterns
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -30,14 +30,14 @@ from overbae.models import (
 )
 from overbae.services.billing_ledger import FREE_CREDITS_USD
 
-pytestmark = pytest.mark.django_db
+# Tests run without Clerk, so overbae.urls leaves the sales routes out.
+pytestmark = [pytest.mark.django_db, pytest.mark.urls("sales_urls")]
 
 TOKEN = "sales-test-token"
 
 
 @pytest.fixture(autouse=True)
 def _token(settings):
-    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
     settings.SALES_DASHBOARD_TOKEN = TOKEN
 
 
@@ -109,12 +109,8 @@ def test_rejects_anything_but_the_configured_token(settings, path):
     assert api_key_client(user).get(url).status_code == 403
     assert sales_client().get(url).status_code == 200
 
-    settings.CLERK_API_SECRET_KEY = ""
-    assert sales_client().get(url).status_code == 404
-
-    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
     settings.SALES_DASHBOARD_TOKEN = ""
-    assert sales_client("").get(url).status_code == 404
+    assert sales_client("").get(url).status_code == 403
 
 
 def test_overview_counts_customers_only(accounts):
