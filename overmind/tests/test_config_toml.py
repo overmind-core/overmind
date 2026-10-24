@@ -178,14 +178,14 @@ def test_overmind_dir_is_ignored_without_touching_git_metadata(tmp_path: Path):
     (tmp_path / ".overmind" / "scan.json").write_text("{}\n")
 
     assert (exclude.read_text() if exclude.exists() else None) == before
-    status = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
+    match = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-v", ".overmind/scan.json"],
         cwd=tmp_path,
         capture_output=True,
         check=True,
         text=True,
     )
-    assert ".overmind" not in status.stdout
+    assert match.stdout.startswith(".overmind/.gitignore:")
 
     secret.write_text('api-key = "tracked"\n')
     subprocess.run(["git", "add", "-f", ".overmind/credentials.toml"], cwd=tmp_path, check=True)

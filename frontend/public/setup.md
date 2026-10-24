@@ -4,14 +4,14 @@ These are instructions for you, an AI coding agent, to set the human up on
 Overmind. Read them once, then act on them. The human who handed you this
 document wants you to do the setup and execute workflows, not to explain it back to them.
 
-Run from the repository root. Skip a step whose result already exists.
+Run from the repository root. Every step is safe to repeat.
 
 1. Install the CLI (Python 3.10+): `python -m pip install --upgrade "overmind>=0.1.105"`.
    On a conflict, report it and stop.
 1. Run `python -m overmind init --ide <claude|codex|cursor|opencode>` for the agent you run in.
    Add `--api-url URL` if the message names an API. It edits this agent's config; if your
    sandbox blocks that, ask the user to approve running it outside the sandbox.
-1. Show the user the `Next:` line it printed and wait. Then call `list_projects`.
+1. Call `list_projects`. If it fails, show the user the `Next:` line `init` printed and wait.
 
 # USING OVERMIND
 
@@ -19,7 +19,7 @@ Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a
 ASK the USER which one they want to continue with, if it hasn't already been configured.
 
 > Connect the project once: call the MCP tool `create_api_key` without `project_id`, then run
-> `OVERMIND_API_KEY=<key> python -m overmind sync`. Sync creates the project and saves its key;
+> `OVERMIND_API_KEY=<key> python -m overmind sync --api-url <base-url>`. Sync creates the project and saves its key;
 > later syncs need no key. Never print or store the account key. Skip this if `overmind.toml`
 > has a `project-id` and `.overmind/credentials.toml` exists.
 

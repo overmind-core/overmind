@@ -1,4 +1,5 @@
 import json
+import stat
 import subprocess
 from pathlib import Path
 
@@ -261,6 +262,7 @@ def test_init_codex_replaces_own_section_and_preserves_other_config(tmp_path, mo
         '[mcp_servers.overmind]\nurl = "https://old.example"\nhttp_headers = { "X-Api-Key" = "old" }\n\n'
         '[mcp_servers.other]\nurl = "https://other.example"\n'
     )
+    config_path.chmod(0o600)
 
     result = runner.invoke(app, ["init", "--ide", "codex"], catch_exceptions=False)
 
@@ -271,6 +273,7 @@ def test_init_codex_replaces_own_section_and_preserves_other_config(tmp_path, mo
     assert config.count("[mcp_servers.overmind]") == 1
     assert "https://old.example" not in config
     assert "http_headers" not in config
+    assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
 
 
 def test_init_does_not_copy_saved_project_key_into_mcp(tmp_path, monkeypatch):

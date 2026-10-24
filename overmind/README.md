@@ -50,7 +50,8 @@ overmind sync
 The pasted account key is a bootstrap credential for the current shell only.
 `init` installs the skill, adds the Overmind MCP server and prints the client's
 sign-in step; `sync` creates the project and stores its project-scoped key in
-`.overmind/credentials.toml`.
+`.overmind/credentials.toml`. Complete the `Next:` step `init` prints before
+using MCP tools.
 
 Then in your coding harness:
 

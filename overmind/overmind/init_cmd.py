@@ -146,7 +146,8 @@ def _write_text(path: Path, content: str, *, contains_secret: bool) -> None:
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
-        os.chmod(temp_name, 0o600 if contains_secret else 0o644)
+        mode = 0o600 if contains_secret else (path.stat().st_mode & 0o777 if path.exists() else 0o644)
+        os.chmod(temp_name, mode)
         os.replace(temp_name, path)
     except BaseException:
         Path(temp_name).unlink(missing_ok=True)
