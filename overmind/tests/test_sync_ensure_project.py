@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from overmind.config import Config, dump, load
-from overmind.init_cmd import claude_config_path, write_mcp_config
+from overmind.init_cmd import SUPPORTED_IDES, claude_config_path, write_mcp_config
 from overmind.sync import (
     SyncError,
     _api_key_scope,
@@ -124,12 +124,12 @@ def test_ensure_mcp_project_key_noop_for_project_scoped_key(tmp_path: Path):
     assert load(path).api_key == "already-project"
 
 
-def test_sync_installs_final_key_for_all_configured_ides(tmp_path: Path, monkeypatch, capsys):
+def test_sync_saves_project_key_without_touching_oauth_mcp_configs(tmp_path: Path, monkeypatch, capsys):
     path = tmp_path / "overmind.toml"
     project_id = "11111111-1111-1111-1111-111111111111"
     dump(Config(project_id=project_id, project_name="demo"), path)
-    for ide in ("cursor", "claude", "opencode", "codex"):
-        write_mcp_config(ide, tmp_path, "https://api.example/api/mcp/", None)
+    configs = [write_mcp_config(ide, tmp_path, "https://api.example/api/mcp/") for ide in SUPPORTED_IDES]
+    before = [config.read_text() for config in configs]
 
     with (
         patch("overmind.sync._api_key_scope", return_value="account"),
@@ -141,15 +141,7 @@ def test_sync_installs_final_key_for_all_configured_ides(tmp_path: Path, monkeyp
     assert result.api_key == "ovr_project_key"
     assert "ovr_project_key" not in capsys.readouterr().out
     assert "api-key" not in path.read_text()
-    assert json.loads((tmp_path / ".cursor" / "mcp.json").read_text())["mcpServers"]["overmind"]["headers"] == {
-        "X-Api-Key": "ovr_project_key"
-    }
-    claude = json.loads(claude_config_path().read_text())["projects"][tmp_path.resolve().as_posix()]
-    assert claude["mcpServers"]["overmind"]["headers"] == {"X-Api-Key": "ovr_project_key"}
-    assert json.loads((tmp_path / "opencode.json").read_text())["mcp"]["overmind"]["headers"] == {
-        "X-Api-Key": "ovr_project_key"
-    }
-    assert 'http_headers = { "X-Api-Key" = "ovr_project_key" }' in (tmp_path / ".codex" / "config.toml").read_text()
+    assert [config.read_text() for config in configs] == before
 
     monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
     assert resolve_api_key("", load(path)) == "ovr_project_key"

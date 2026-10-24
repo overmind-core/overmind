@@ -48,9 +48,9 @@ overmind sync
 ```
 
 The pasted account key is a bootstrap credential for the current shell only.
-`init` installs the skill and prepares the selected IDE; `sync` creates the
-project, stores its project-scoped key in `.overmind/credentials.toml`, and
-updates the local MCP config. Reload the IDE once after the first sync.
+`init` installs the skill, adds the Overmind MCP server and prints the client's
+sign-in step; `sync` creates the project and stores its project-scoped key in
+`.overmind/credentials.toml`.
 
 Then in your coding harness:
 
@@ -255,8 +255,8 @@ overmind skills sync overmind-observability overmind-datasets --ide codex
 overmind init --ide codex
 ```
 
-`init` prepares each vendor's project-scoped MCP config, leaving any other
-configured servers untouched. `sync` installs the final project key:
+`init` adds a URL-only Overmind server, leaving any other configured servers
+untouched. The client signs in through OAuth; `sync` never edits MCP config:
 
 | `--ide`                  | MCP config                     | Skill install      |
 | ------------------------ | ------------------------------ | ------------------ |
@@ -266,12 +266,10 @@ configured servers untouched. `sync` installs the final project key:
 | `codex`                  | `.codex/config.toml`           | `.agents/skills`   |
 
 Claude Code gets a local-scope server for this directory in `~/.claude.json`
-(or `$CLAUDE_CONFIG_DIR/.claude.json`), so the key never enters the repository
-and a committed `.mcp.json` is left untouched. Other MCP configs containing the
-project key and `.overmind/credentials.toml` are added to the clone-local Git
-exclude file and written with owner-only permissions. Sync refuses to put a key
-in a tracked config. Codex loads project configuration only for trusted
-repositories.
+(or `$CLAUDE_CONFIG_DIR/.claude.json`), and a committed `.mcp.json` is left
+untouched. Codex loads project configuration only for trusted repositories.
+`.overmind/` holds local state; its own `.gitignore` keeps it out of Git, and
+`credentials.toml` is owner-only.
 
 `overmind init` installs the complete skill set. Plugins bundle the same source;
 `overmind skills sync` refreshes selected skills in an existing installation.

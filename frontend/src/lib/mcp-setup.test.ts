@@ -44,9 +44,9 @@ describe("mcp setup snippets", () => {
 
   it("installs from PyPI on every host", () => {
     for (const host of [STAGING, PROD, LOCAL]) {
-      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.104"');
+      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.105"');
       expect(sdkPipInstall(host, "tracing")).toBe(
-        'python -m pip install "overmind[tracing]>=0.1.104"'
+        'python -m pip install "overmind[tracing]>=0.1.105"'
       );
     }
   });
@@ -88,7 +88,7 @@ describe("mcp setup snippets", () => {
     const { sdkPipInstall: pip } = await import("./mcp-setup");
     expect(pip(LOCAL)).toBe(`python -m pip install -e "${EDITABLE}"`);
     expect(pip(LOCAL, "tracing")).toBe(`python -m pip install -e "${EDITABLE}[tracing]"`);
-    expect(pip(PROD)).toBe('python -m pip install "overmind>=0.1.104"');
+    expect(pip(PROD)).toBe('python -m pip install "overmind>=0.1.105"');
     vi.unstubAllEnvs();
     vi.resetModules();
   });

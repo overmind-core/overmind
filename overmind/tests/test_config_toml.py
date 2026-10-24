@@ -168,23 +168,25 @@ def test_credentials_only_apply_to_their_project(tmp_path: Path):
     assert load(path).api_key == ""
 
 
-def test_secret_file_is_locally_excluded_and_must_not_be_tracked(tmp_path: Path):
+def test_overmind_dir_is_ignored_without_touching_git_metadata(tmp_path: Path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    exclude = tmp_path / ".git" / "info" / "exclude"
+    before = exclude.read_text() if exclude.exists() else None
     secret = tmp_path / ".overmind" / "credentials.toml"
 
     protect_secret_file(secret, repo_root=tmp_path)
+    (tmp_path / ".overmind" / "scan.json").write_text("{}\n")
 
-    exclude = subprocess.run(
-        ["git", "rev-parse", "--git-path", "info/exclude"],
+    assert (exclude.read_text() if exclude.exists() else None) == before
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=tmp_path,
         capture_output=True,
         check=True,
         text=True,
     )
-    exclude_path = tmp_path / exclude.stdout.strip()
-    assert "/.overmind/credentials.toml" in exclude_path.read_text().splitlines()
+    assert ".overmind" not in status.stdout
 
-    secret.parent.mkdir(parents=True, exist_ok=True)
     secret.write_text('api-key = "tracked"\n')
     subprocess.run(["git", "add", "-f", ".overmind/credentials.toml"], cwd=tmp_path, check=True)
     with pytest.raises(SecretFileError, match="tracked file"):
@@ -209,3 +211,5 @@ def test_secret_file_still_works_without_git(tmp_path: Path):
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("overmind.config.subprocess.run", missing_git)
         protect_secret_file(secret, repo_root=tmp_path)
+
+    assert (tmp_path / ".overmind" / ".gitignore").read_text() == "*\n"
