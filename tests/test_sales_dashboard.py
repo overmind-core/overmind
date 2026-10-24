@@ -30,8 +30,7 @@ from overbae.models import (
 )
 from overbae.services.billing_ledger import FREE_CREDITS_USD
 
-# Tests run without Clerk, so overbae.urls leaves the sales routes out.
-pytestmark = [pytest.mark.django_db, pytest.mark.urls("sales_urls")]
+pytestmark = pytest.mark.django_db
 
 TOKEN = "sales-test-token"
 

@@ -46,6 +46,9 @@ LANGFUSE_SECRET_KEY = ""
 # Remaining-credit billing on unless a test clears the key.
 STRIPE_SECRET_KEY = "sk_test_billing"
 
+# overbae.urls registers the sales routes only when this is set at import.
+SALES_DASHBOARD_TOKEN = "sales-test-token"
+
 # Local .env often points Celery at docker Redis, and an unmocked `.delay()` burns
 # ~20s on connect timeout. Celery reads CELERY_BROKER_URL from os.environ above app
 # config, so the env copy is overwritten too. In-memory transport accepts publishes
