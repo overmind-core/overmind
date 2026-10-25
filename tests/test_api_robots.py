@@ -17,7 +17,8 @@ FETCHABLE_PATHS = (
 
 @pytest.fixture
 def client():
-    # Not entered as a context manager: the MCP session manager's lifespan runs once per process.
+    """Not entered as a context manager: the MCP session manager's lifespan can run only
+    once per process."""
     return TestClient(application)
 
 
@@ -42,6 +43,7 @@ def longest_match_allows(rules: str, path: str) -> bool:
 
 @pytest.mark.parametrize("headers", [{}, {"X-Api-Key": "not-a-key"}])
 def test_robots_txt_blocks_crawlers_but_not_well_known_without_authentication(client, headers):
+    """A bad ``X-Api-Key`` must get the file too: DRF answers one with 401, even with AllowAny."""
     response = client.get("/robots.txt", headers=headers)
 
     assert response.status_code == 200
@@ -57,6 +59,8 @@ def test_robots_txt_blocks_crawlers_but_not_well_known_without_authentication(cl
 
 @pytest.mark.parametrize("allows", [first_match_allows, longest_match_allows])
 def test_first_and_longest_match_crawlers_read_the_rules_the_same_way(client, allows):
+    """Google keeps the longest matching rule, simpler parsers the first one;
+    ``RobotFileParser`` only became longest-match in Python 3.13.14."""
     rules = client.get("/robots.txt").text
 
     assert not any(allows(rules, path) for path in BLOCKED_PATHS)
@@ -64,6 +68,7 @@ def test_first_and_longest_match_crawlers_read_the_rules_the_same_way(client, al
 
 
 def test_head_robots_txt_is_answered_like_get(client):
+    """Fails if the view moves behind DRF's ``@api_view(["GET"])``, which answers HEAD with 405."""
     response = client.head("/robots.txt")
 
     assert response.status_code == 200
