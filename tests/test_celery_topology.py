@@ -211,10 +211,9 @@ def test_overwatch_slack_tasks_use_the_io_queue():
     from overbae.tasks.overwatch import (
         answer_slack_message,
         answer_slack_question,
-        dispatch_funnel_notifications,
     )
 
-    for task in (answer_slack_message, answer_slack_question, dispatch_funnel_notifications):
+    for task in (answer_slack_message, answer_slack_question):
         queue = app.amqp.router.route({}, task.name)["queue"].name
         assert queue == "io"
 

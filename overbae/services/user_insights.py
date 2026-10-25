@@ -39,7 +39,6 @@ from overbae.models import (
     FinetuningJob,
     InferenceCall,
     OptimizerExperiment,
-    OverwatchFunnelDelivery,
     Project,
     ProjectMembership,
     Span,
@@ -336,7 +335,6 @@ def activation(since: datetime) -> dict[str, Any]:
 def funnel_milestones(
     since: datetime,
     *,
-    only_unrecorded: bool = False,
     limit_per_step: int | None = None,
     steps: set[str] | None = None,
 ) -> list[dict[str, Any]]:
@@ -359,15 +357,6 @@ def funnel_milestones(
         # Correlate on a scalar user PK. Reusing a multi-valued membership path
         # as an OuterRef can create another join and mix different members.
         queryset = _users().filter(Exists(candidates), ~Exists(earlier))
-        if only_unrecorded:
-            queryset = queryset.filter(
-                ~Exists(
-                    OverwatchFunnelDelivery.objects.filter(
-                        user_id=OuterRef("pk"),
-                        step=step,
-                    )
-                )
-            )
         rows = (
             queryset.annotate(at=Subquery(candidates.order_by(at_field).values(at_field)[:1]))
             .values("pk", "at")
@@ -384,10 +373,6 @@ def funnel_milestones(
         )
 
     signups = _users().filter(date_joined__gte=since, date_joined__lte=timezone.now())
-    if only_unrecorded:
-        signups = signups.exclude(
-            pk__in=OverwatchFunnelDelivery.objects.filter(step="signed_up").values("user_id")
-        )
     signups = signups.order_by("date_joined", "pk")
     if limit_per_step is not None:
         signups = signups[:limit_per_step]

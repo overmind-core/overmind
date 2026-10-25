@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timedelta
 
 import pytest
+from django.apps import apps
+from django.db import connection
 from django.utils import timezone
 from factories import (
     api_key_client,
@@ -269,6 +271,41 @@ def test_posthog_empty_events_differ_from_incomplete_aggregates(
 
 def test_unicode_bearer_token_is_rejected_safely():
     assert overwatch_client("☃").get("/api/internal/overwatch/overview/").status_code == 403
+
+
+@pytest.mark.parametrize("path", ["overview", "activation", "users", "users/{id}", "product-usage"])
+def test_product_analytics_endpoints_only_read_the_database(accounts, path):
+    url = f"/api/internal/overwatch/{path.format(id=accounts['active'].pk)}/"
+
+    def only_reads(execute, sql, params, many, context):
+        assert (
+            sql.lstrip().upper().startswith(("SELECT", "SHOW", "SAVEPOINT", "RELEASE", "ROLLBACK"))
+        ), "An Overwatch analytics request attempted a database write."
+        return execute(sql, params, many, context)
+
+    client = overwatch_client()
+    with connection.execute_wrapper(only_reads):
+        assert client.get(url).status_code == 200
+        for method in (client.post, client.patch, client.delete):
+            assert method(url).status_code == 405
+
+
+def test_overwatch_has_no_product_models_or_periodic_writers(settings):
+    assert not any(model.__name__.startswith("Overwatch") for model in apps.get_models())
+    assert not any(
+        schedule["task"].startswith("overbae.tasks.overwatch.")
+        for schedule in settings.CELERY_BEAT_SCHEDULE.values()
+    )
+
+
+def test_dashboard_credential_cannot_create_a_core_product_project():
+    response = overwatch_client().post(
+        "/api/projects/", {"name": "Overwatch must not create this"}, format="json"
+    )
+    assert response.status_code in {401, 403}
+    assert not ProjectMembership.objects.filter(
+        project__name="Overwatch must not create this"
+    ).exists()
 
 
 def test_funnel_follows_window_signups(accounts):

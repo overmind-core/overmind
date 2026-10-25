@@ -446,7 +446,6 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
-    "overbae.tasks.overwatch.dispatch_funnel_notifications": {"queue": "io"},
     "overbae.tasks.overwatch.answer_slack_question": {"queue": "io"},
     "overbae.tasks.overwatch.answer_slack_message": {"queue": "io"},
     "overbae.tasks.innermind.dispatch_live_scoring": {"queue": "control"},
@@ -588,11 +587,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.connector_sync.sweep_abandoned_drafts",
         "schedule": 3600.0,
     },
-    "overwatch-funnel-notifications": {
-        "task": "overbae.tasks.overwatch.dispatch_funnel_notifications",
-        "schedule": 60.0,
-        "options": {"expires": 55.0},
-    },
 }
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -610,9 +604,6 @@ OVERWATCH_SLACK_ALLOWED_USER_IDS = os.environ.get("OVERWATCH_SLACK_ALLOWED_USER_
 OVERWATCH_AGENT_ENABLED = os.environ.get("OVERWATCH_AGENT_ENABLED", "").lower() == "true"
 OVERWATCH_ALLOWED_EMAIL_DOMAIN = os.environ.get("OVERWATCH_ALLOWED_EMAIL_DOMAIN", "overmindlab.ai")
 OVERWATCH_AGENT_MODEL = os.environ.get("OVERWATCH_AGENT_MODEL", "anthropic/claude-sonnet-5")
-OVERWATCH_FUNNEL_CHANNEL_IDS = os.environ.get("OVERWATCH_FUNNEL_CHANNEL_IDS", "{}")
-# No funnel milestones are sent to PostHog or Slack before this rollout timestamp.
-OVERWATCH_FUNNEL_START_AT = os.environ.get("OVERWATCH_FUNNEL_START_AT", "")
 
 # Blank disables Clerk; self-hosted Console uses /api/auth/local/ instead.
 # API keys and guest sessions still authenticate either way.

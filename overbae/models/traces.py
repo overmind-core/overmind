@@ -179,7 +179,6 @@ class Span(models.Model):
         ordering = ["-start_time_ns"]
         indexes = [
             models.Index(fields=["project", "trace_id"], name="span_project_trace_idx"),
-            models.Index(fields=["project", "received_at"], name="span_project_received"),
             models.Index(
                 fields=["project", "service_name", "-start_time_ns"],
                 name="span_proj_svc_time_idx",

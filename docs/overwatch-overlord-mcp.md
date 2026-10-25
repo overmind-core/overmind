@@ -16,6 +16,11 @@ The current branch contains a standalone Overwatch Slack adapter. It is disabled
 unless explicitly configured. It is a provisional surface, not evidence that
 the shared runtime or either MCP connection has been implemented.
 
+Overwatch's access to the product backend is read-only. Notification state,
+deduplication and retries belong to Overwatch's own storage. This PR adds no
+product database models, migrations, indexes or periodic writers, and does not
+change shared Python dependencies or core product business logic.
+
 ```mermaid
 flowchart LR
     DB[Overmind product and billing records] --> Services[Canonical Overwatch analytics services]
@@ -26,9 +31,9 @@ flowchart LR
     PHMCP[Restricted PostHog MCP tools] --> Runtime
     Runtime --> OW[Overwatch Slack profile]
     Runtime --> OL[Overlord Slack profile]
-    DB --> Notices[Durable milestone delivery]
+    PH --> Notices[Overwatch-owned milestone delivery]
     Notices --> Channels[Configured Overwatch channels]
-    Notices --> Events[PostHog milestone events]
+    Notices --> State[Overwatch notification storage]
 ```
 
 ## Source and metric definitions
@@ -93,11 +98,10 @@ features that invoke another AI service need separate approval of that data path
   `VITE_*` variable, URL, prompt, source file, error message or audit payload.
   Logs contain fixed error codes and redacted task argument metadata. Broker
   payloads are private application data and need restricted access and TLS.
-- Funnel alerts contain a dashboard user reference, never an email or trace
-  contents. PostHog receives only a pseudonymous identity, milestone and source
-  timestamp. Each destination has its own acknowledgement and retry state.
-  Slack retries remain at least once; a crash after acceptance can duplicate a
-  notice. The stable event UUID supports PostHog deduplication.
+- Proposed funnel alerts use a dashboard user reference rather than an email or
+  trace contents. PostHog supplies events; Overwatch stores acknowledgement,
+  deduplication and retry state outside the product database. Delivery remains
+  at least once; a crash after acceptance can duplicate a notice.
 - Browser responses are private and not cacheable. The provisional login uses a
   token scoped to a tab for 30 minutes, with legacy persistent tokens cleared.
   This is browser session expiry; the server-side bearer key remains valid until
@@ -106,9 +110,11 @@ features that invoke another AI service need separate approval of that data path
 
 ## Implementation and review boundaries
 
-This PR implements dashboard insights, the provisional Slack adapter, PostHog
-aggregate reads and milestone delivery. It documents the MCP design. It does
-not expose internal MCP tools or change the Overlord runtime.
+This PR implements dashboard insights, the provisional Slack adapter and
+read-only PostHog aggregates. It documents MCP and notification delivery. It
+does not expose internal MCP tools or change the Overlord runtime. Earlier
+backend delivery prototypes are archived as non-executable examples under
+`docs/proposals/`; do not apply their migrations to the product database.
 
 Pritam's integration review should settle the internal service identity and
 employee capability mapping, choose the shared runtime profile integration,

@@ -1,83 +1,71 @@
 # Overwatch engineering review
 
-Review date: October 25, 2026. Scope: the complete Overwatch branch and the
-proposed Overlord/PostHog MCP integration. Review remains active until the
-remaining checks and PR handoff are complete.
+Review date: October 25, 2026.
 
-## Findings fixed
+## Scope and read-only boundary
 
-| Area                   | Defect                                                                                                                 | Correction                                                                                                                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Private data           | Customer emails appeared in funnel alerts and customer tool results could reach the model.                             | Alerts use dashboard user references. Supplied emails become local references; customer reports are formatted locally.                                                                   |
-| Authorization          | Slack analytics access relied only on the email domain; unapproved callers could spend workspace rate budget.          | Gate ingress on the user allowlist before queueing or spending rate budget. Recheck the workspace, domain and active unrestricted employee profile before querying. Model use is opt-in. |
-| Secret handling        | Task metadata and stored network exception strings could expose questions or reply URLs.                               | Redact Celery argument representations, avoid question echoes, store fixed error codes, reject credential-like input and disable redirects.                                              |
-| Query correctness      | Synchronous ORM calls ran inside the async model loop.                                                                 | Execute ORM work on the synchronous thread with bounded SQL/report time and connection cleanup.                                                                                          |
-| Membership attribution | Separate relation filters could compare a span with another member's join date.                                        | Resolve the user and join-date condition together; test a late invite against overview and activation.                                                                                   |
-| Grounding              | The model could return an answer before querying data.                                                                 | Require a data tool for analytics answers; missing sources remain unavailable, not zero.                                                                                                 |
-| Delivery               | PostHog was marked delivered when an in-memory queue accepted an event.                                                | Wait for an HTTP ingestion acknowledgement and persist each destination independently. Retry with the same event UUID.                                                                   |
-| Recovery               | Retries depended on rediscovering an event in source tables; PostHog delivery was not bounded per tick.                | Retry durable ledger rows independently. Bound discovery, destination batches and elapsed time.                                                                                          |
-| Discovery isolation    | One slow source could discard successful steps, while historical aggregation scanned beyond the rollout window.        | Discover each step in its own bounded transaction; use scalar user correlations and bounded source windows, preserve first-ever semantics, and add a concurrent span timestamp index.    |
-| Serialization          | The dashboard serializer discarded PostHog milestone counts.                                                           | Add the missing fields and test the HTTP/serializer boundary. Validate malformed aggregate responses.                                                                                    |
-| Metric definitions     | Spans were labeled traces; membership activity implied individual action; adoption was described as conversion.        | Correct labels, expose attribution and retention limits, and leave ordered conversions to PostHog.                                                                                       |
-| Time windows           | Rolling backend windows did not match calendar-day charts.                                                             | Use UTC calendar days and anchor charts to the cached report timestamp.                                                                                                                  |
-| Browser data           | The shared token survived indefinitely in localStorage.                                                                | Use a 30-minute tab session, clear legacy tokens and query memory at sign-out/expiry, prohibit caching, and emit a restrictive CSP.                                                      |
-| Configuration          | The public example contained live workspace/channel identifiers.                                                       | Supply those identifiers privately through deployment settings.                                                                                                                          |
-| Dependency security    | The locked toolchain and backend included published networking, request parsing, tracing and image parsing advisories. | Patch Undici, DRF, OpenTelemetry and Pillow. The compatible Docling packages also advance for Pillow 13; document-parser CI is required before merge.                                    |
-| Continuous checks      | The separate dashboard had no CI typecheck or build job.                                                               | Add its lint, typecheck, session tests and production build to CI.                                                                                                                       |
+Sam clarified that Overwatch may read Overmind product data. Its notification
+state must live outside the product backend. The active PR therefore has no
+product database migrations, new models, span index, funnel writer or periodic
+notification task. Shared Python and SDK dependencies match main. Core training,
+evaluation, inference and billing business logic is unchanged.
 
-## Evidence
+Overwatch still uses internal read-only analytics endpoints in the existing
+Django backend. Its Slack command/event ingress accepts questions; it does not
+mutate product records. These are application-level read-only interfaces, not a
+claim that the existing Django process uses a database role limited to SELECT.
+A future Overwatch service credential must be restricted to analytics reads.
 
-- All 75 focused backend security, delivery, analytics and Celery topology
-  regressions pass against an isolated PostgreSQL instance. Outbound calls use network
-  fakes; no live Slack messages, customer queries or PostHog writes were sent.
-- All five dashboard session, request and date tests, typecheck, lint and the
-  production build pass. The login, desktop overview, users table and mobile
-  activation view passed isolated Chrome checks with synthetic API responses,
-  no page errors and no horizontal overflow. The visual check caught and fixed
-  a UTC chart-label date shift and narrow mobile header/step layouts.
-- Model state matches migrations; the branch is based on the current main
-  migration graph. Required pre-commit checks run over the entire branch, including private-key
-  detection and the test-boundary check.
-- The dashboard dependency audit and a scan of all 235 locked backend packages
-  report no known vulnerabilities after the security updates.
-  GitHub's existing root-lockfile alerts name the same patched packages. Its 20
-  alerts against the separate SDK lockfile (`overmind/uv.lock`) are outside this
-  review's runtime dependency changes and remain open. This is not a claim that
-  every lockfile in the repository is free of known advisories.
-- Repository secret scanning found candidates in test fixtures, local
-  development defaults and the existing public PostHog ingestion token. No
-  confirmed private credential was found in the reviewed Overwatch changes.
-  New scanner candidates are test fixture values; production candidates are
-  unchanged lines from main. Scanner output contains fingerprints and locations,
-  never credential values.
+Archived delivery prototypes and separate platform security findings are in
+[proposals](proposals/README.md). They are not active code or migrations.
 
-## Remaining boundaries
+## Review fixes retained
 
-The shared dashboard admin token is still a provisional internal access method.
-Browser expiry is not server-side key expiry: the shared bearer credential
-remains valid until rotated. Employee SSO, individual revocation and a production
-access gate need deployment review. Session storage and CSP reduce exposure; they do not provide SSO.
+- Require an approved Slack user ID before spending query limits or queueing.
+  Verify workspace, domain and active unrestricted employee status again in the
+  worker. Model use is disabled unless explicitly enabled.
+- Keep customer records out of model tool results. Replace supplied emails with
+  local references and render customer detail locally in private replies.
+- Redact task argument metadata, avoid question echoes, reject credential-like
+  input, store fixed errors, deny redirects and prevent unfurls or broadcasts.
+- Run ORM work on the synchronous thread. Bound SQL statements and report time,
+  clean up connections, and require tool evidence before answering metrics.
+- Validate PostHog aggregate shapes and dates. Incomplete or failed responses
+  remain unavailable; a genuine empty event set is shown as zero.
+- Fix join-date attribution and UTC calendar windows. Distinguish spans from
+  traces, membership attribution from actors, and adoption from ordered funnels.
+- Replace persistent browser tokens with 30-minute tab sessions, clear legacy
+  tokens and cached customer data at logout, prohibit response caching and emit
+  restrictive browser security headers.
+- Patch the dashboard's Undici dependency and add dashboard lint, typecheck,
+  tests, build and vulnerability checks to CI. Avoid persisted checkout tokens.
 
-The MCP design is documented, not implemented. Internal service authorization
-and employee capability checks must precede tool discovery or invocation. Normal
-customer/project MCP credentials must never reach company-wide analytics.
-PostHog MCP must use a project-scoped read-only connection and a local tool
-allowlist. The two Slack profiles should share governed runtime infrastructure.
+## Verification and limits
 
-Free-text employee questions can still contain sensitive prose that simple
-credential/email filters cannot recognize. Model use is opt-in and requires an
-approved provider data policy. Named customer records are kept out of model tool
-responses. Do not paste trace contents, secrets or sensitive documents into chat.
+Earlier review iterations passed 3,390 backend tests and all 94 journeys. One
+preceding run had a transient native benchmark monitor failure that did not
+recur; its underlying timing issue is not claimed fixed. The final read-only
+scope passed 73 focused checks against main's backend dependency versions,
+including SQL read-only assertions, rejected write methods, denied core project
+creation with the dashboard credential, and absent Overwatch models/scheduled
+writers. Model state matches migrations. Final full CI is pending. The five dashboard tests,
+lint, typecheck, build and isolated desktop/mobile browser checks passed.
 
-Live PostHog query compatibility, deployed Cloudflare headers and production
-identity configuration require deployment checks. Offline tests do not certify
-those external systems.
+Tracked-source secret scanning found no confirmed private credential in the
+reviewed Overwatch changes. Production scanner candidates are unchanged lines
+from main; new candidates are synthetic test values. This is not an absolute
+security guarantee. The dashboard dependency audit is clear; existing backend
+and SDK advisories remain separate platform work after their fixes were removed
+from this feature PR at Sam's request.
 
-The security dependency commit passed the full backend suite, all 94 journeys,
-dashboard, frontend, migrations and lint in CI. Document-parser coverage passed
-with the Pillow/Docling updates. The preceding run had one transient failure in
-the unchanged native benchmark monitor rebuild journey; it did not recur. This
-does not establish that the underlying timing issue is fixed. The final
-membership, ingress and discovery corrections require a fresh CI run.
-Pritam's review remains required before merge and rollout, including query plans
-and the concurrent index rollout on production data volumes.
+The shared dashboard bearer key is provisional. Browser expiry does not revoke
+it server-side. Employee SSO, individual revocation and a production access gate
+need review before wider access. Free-text questions may contain sensitive
+prose beyond the email/credential filters; model use requires an approved data
+policy and requests zero retention routing.
+
+Live PostHog compatibility, production identity, query plans on production data
+and deployed headers require deployment review. Internal MCP authorization and
+the shared Overlord runtime integration remain proposals. No live customer
+queries, Slack messages, PostHog writes or production deployments were performed
+by this review. Pritam's review is required before merge and rollout.

@@ -61,12 +61,7 @@ from .innermind import (
     SignalSubscription,
 )
 from .mcp_oauth import MCPOAuthClient, MCPOAuthGrant, MCPOAuthToken
-from .operations import (
-    InferenceRequest,
-    OperationalEvent,
-    OperationalRun,
-    OverwatchFunnelDelivery,
-)
+from .operations import InferenceRequest, OperationalEvent, OperationalRun
 from .optimizer import (
     OptimizerCandidate,
     OptimizerCommand,
@@ -86,7 +81,6 @@ __all__ = [
     "InferenceRequest",
     "OperationalEvent",
     "OperationalRun",
-    "OverwatchFunnelDelivery",
     "DatasetHistory",
     "DatasetImport",
     "DatasetLandingWork",
