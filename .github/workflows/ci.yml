@@ -27,6 +27,7 @@ jobs:
         with:
           bun-version: "1.4.2"
       - run: bun install --frozen-lockfile
+      - run: bun audit --audit-level=high
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test

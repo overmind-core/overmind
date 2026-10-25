@@ -100,7 +100,8 @@ features that invoke another AI service need separate approval of that data path
   notice. The stable event UUID supports PostHog deduplication.
 - Browser responses are private and not cacheable. The provisional login uses a
   token scoped to a tab for 30 minutes, with legacy persistent tokens cleared.
-  Employee SSO and individual revocation should replace the shared admin token
+  This is browser session expiry; the server-side bearer key remains valid until
+  rotated. Employee SSO and individual revocation should replace the shared admin token
   before broader access. Do not expose the internal app without an access gate.
 
 ## Implementation and review boundaries

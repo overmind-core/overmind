@@ -12,7 +12,7 @@ dependencies = [
     "django-filter>=25.2",
     "cryptography>=50.0.0",
     "pyjwt>=2.15.0,<3",
-    "djangorestframework>=3.17.2",
+    "djangorestframework>=3.18.2",
     "djangorestframework-simplejwt>=5.5.1",
     "drf-spectacular>=0.29.0",
     "httpx>=0.28.0",
@@ -168,8 +168,12 @@ testpaths = ["tests"]
 addopts = "--nomigrations -p tests.journey_xdist"
 
 [tool.uv]
-# aiohttp is transitive (litellm, modal); floor it for the CVE fix in 3.14.3.
-constraint-dependencies = ["aiohttp>=3.14.3"]
+# Keep transitive networking, tracing and image parsing above their security fixes.
+constraint-dependencies = [
+    "aiohttp>=3.14.3",
+    "opentelemetry-api>=1.45.1",
+    "pillow>=13.0.0",
+]
 override-dependencies = ["cryptography>=50.0.0"]
 
 
