@@ -19,7 +19,7 @@ from django.utils import timezone
 from overbae.models import OverwatchFunnelDelivery
 from overbae.services.overwatch_agent import answer_question
 from overbae.services.overwatch_events import capture_funnel_step
-from overbae.services.overwatch_privacy import slack_response_url, slack_text
+from overbae.services.overwatch_privacy import slack_response_url, slack_text, slack_user_allowed
 from overbae.services.user_insights import analytics_read_budget, funnel_milestones
 from overbae.tasks.utils.task_lock import with_task_lock
 
@@ -119,17 +119,25 @@ def dispatch_funnel_notifications() -> dict[str, int]:
 
     deadline = time.monotonic() + TICK_BUDGET_SECONDS
     created = sent = failed = 0
-    try:
-        with analytics_read_budget():
-            events = funnel_milestones(
-                start_at,
-                only_unrecorded=True,
-                limit_per_step=25,
-                steps=None if posthog_enabled else set(channels),
-            )
-    except (DatabaseError, TimeoutError):
-        logger.warning("overwatch_milestone_discovery_unavailable")
-        events = []
+    events = []
+    discovery_deadline = min(deadline, time.monotonic() + 15)
+    for step in STEP_LABELS:
+        if not posthog_enabled and step not in channels:
+            continue
+        remaining = discovery_deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            # Each step gets its own rollback boundary. A slow source must not
+            # discard other milestones or prevent durable destination retries.
+            with analytics_read_budget(min(3, remaining)):
+                events.extend(
+                    funnel_milestones(
+                        start_at, only_unrecorded=True, limit_per_step=25, steps={step}
+                    )
+                )
+        except (DatabaseError, TimeoutError):
+            logger.warning("overwatch_milestone_discovery_unavailable step=%s", step)
     for event in events:
         if time.monotonic() >= deadline:
             break
@@ -217,12 +225,7 @@ def dispatch_funnel_notifications() -> dict[str, int]:
 
 
 def _approved_user(user_id: str) -> bool:
-    allowed = {
-        value.strip()
-        for value in settings.OVERWATCH_SLACK_ALLOWED_USER_IDS.split(",")
-        if value.strip()
-    }
-    if user_id not in allowed or not settings.OVERWATCH_SLACK_TEAM_ID:
+    if not slack_user_allowed(user_id) or not settings.OVERWATCH_SLACK_TEAM_ID:
         return False
     user = _slack_api("users.info", params={"user": user_id}).get("user")
     if (

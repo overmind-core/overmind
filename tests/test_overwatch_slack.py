@@ -100,6 +100,26 @@ def test_slack_rejects_expired_signed_requests(settings):
     assert send(settings, event(), timestamp=str(int(time.time()) - 301)).status_code == 401
 
 
+@pytest.mark.parametrize("is_command", [True, False])
+def test_unapproved_callers_cannot_spend_workspace_budget(settings, monkeypatch, is_command):
+    queued = []
+    task = "answer_slack_question" if is_command else "answer_slack_message"
+    monkeypatch.setattr(
+        f"overbae.api.overwatch_slack.{task}.apply_async", lambda **kwargs: queued.append(kwargs)
+    )
+    for index in range(21):
+        payload = command(user_id=f"U{index:08d}") if is_command else event(user=f"U{index:08d}")
+        if not is_command:
+            payload["event_id"] = f"Ev{index:08d}"
+        response = send(settings, payload, command=is_command)
+        assert response.status_code == (403 if is_command else 200)
+    assert queued == []
+    assert cache.get(f"overwatch:slack:rate:workspace:{int(time.time()) // 60}") is None
+    approved = command() if is_command else event()
+    assert send(settings, approved, command=is_command).status_code == 200
+    assert len(queued) == 1
+
+
 def test_signed_commands_queue_once_with_redacted_task_metadata(settings, monkeypatch):
     queued = []
     monkeypatch.setattr(
@@ -173,18 +193,26 @@ def slack_profile(**extra):
     }
 
 
+@pytest.mark.django_db(transaction=True)
 def test_dm_answers_only_approved_internal_member_without_unfurls(scripted, fake_llm):
     slack = (
         scripted("https://slack.com").reply(json_body=slack_profile()).reply(json_body={"ok": True})
     )
-    fake_llm.on(lambda request: True, "Usage summary <https://example.com|link> <!channel>")
+    fake_llm.on(
+        lambda r: not any(m["role"] == "tool" for m in r.messages),
+        {"tool_calls": [tool_call("activation_funnel", {"days": 30})]},
+    )
+    hostile = "Usage summary <https://example.com|link> <!channel>"
+    fake_llm.on(lambda r: any(m["role"] == "tool" for m in r.messages), hostile)
     answer_slack_message(USER, "Show usage", CHANNEL, "123.45")
     reply = slack.calls[-1].json
     assert reply["channel"] == CHANNEL
     assert reply["thread_ts"] == "123.45"
     assert reply["blocks"][0]["text"]["type"] == "plain_text"
     assert reply["unfurl_links"] is reply["unfurl_media"] is False
-    assert "<!channel>" not in reply["text"]
+    assert reply["blocks"][0]["text"]["text"] == hostile
+    assert "&lt;!channel&gt;" in reply["text"]
+    assert len(fake_llm.requests) == 2
     assert fake_llm.requests[0].body["provider"] == {"data_collection": "deny", "zdr": True}
 
 

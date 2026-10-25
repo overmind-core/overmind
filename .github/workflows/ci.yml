@@ -23,6 +23,8 @@ jobs:
         working-directory: sales-dashboard
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.2"

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
+from django.conf import settings
+
 EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _CREDENTIAL = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----"
@@ -13,6 +15,15 @@ _CREDENTIAL = re.compile(
     r"|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
     r"|(?i:\b(?:api[_ -]?key|authorization|password|secret|token)\s*[:=]\s*\S+)"
 )
+
+
+def slack_user_allowed(user_id: str) -> bool:
+    """Cheap ingress gate; live Slack profile checks still run before querying data."""
+    return user_id in {
+        value.strip()
+        for value in settings.OVERWATCH_SLACK_ALLOWED_USER_IDS.split(",")
+        if value.strip()
+    }
 
 
 def model_question(question: str) -> tuple[str, dict[str, str]]:

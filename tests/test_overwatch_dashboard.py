@@ -307,6 +307,8 @@ def test_project_activity_only_counts_after_a_user_joins(accounts):
     assert steps["started_training"] == 1
     assert steps["deployed_model"] == 1
     assert steps["called_alias"] == 1
+    overview = overwatch_client().get("/api/internal/overwatch/overview/").json()
+    assert overview["trace_active_users_7d"] == overview["trace_active_users_window"] == 1
 
 
 def test_accounts_table_pages_and_orders(accounts):

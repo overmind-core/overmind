@@ -19,7 +19,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from overbae.services.overwatch_privacy import slack_response_url
+from overbae.services.overwatch_privacy import slack_response_url, slack_user_allowed
 from overbae.tasks.overwatch import answer_slack_message, answer_slack_question
 
 MAX_REQUEST_AGE_SECONDS = 300
@@ -89,6 +89,10 @@ class OverwatchSlackCommandView(APIView):
         response_url = field("response_url")
         if not re.fullmatch(r"[UW][A-Z0-9]{1,31}", user_id) or not slack_response_url(response_url):
             return Response({"text": "Could not read this Slack command."}, status=400)
+        if not slack_user_allowed(user_id):
+            return Response(
+                {"text": "Your Slack account is not approved for Overwatch."}, status=403
+            )
         if not question:
             return Response(
                 {
@@ -199,6 +203,8 @@ class OverwatchSlackEventsView(APIView):
         ):
             return Response({"ok": True})
         if not question:
+            return Response({"ok": True})
+        if not slack_user_allowed(user_id):
             return Response({"ok": True})
 
         cache_key = "overwatch:slack:event:" + hashlib.sha256(event_id.encode()).hexdigest()

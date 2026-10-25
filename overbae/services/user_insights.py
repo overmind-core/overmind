@@ -19,7 +19,6 @@ from django.db.models import (
     Exists,
     F,
     Max,
-    Min,
     OuterRef,
     Q,
     QuerySet,
@@ -223,8 +222,10 @@ def _active_users(since: datetime) -> int:
         .filter(
             Exists(
                 Span.objects.filter(
-                    project__memberships__user=OuterRef("pk"), received_at__gte=since
-                ).filter(received_at__gte=F("project__memberships__created_at"))
+                    Q(received_at__gte=since),
+                    project__memberships__user=OuterRef("pk"),
+                    received_at__gte=F("project__memberships__created_at"),
+                )
             )
         )
         .count()
@@ -341,57 +342,46 @@ def funnel_milestones(
 ) -> list[dict[str, Any]]:
     """Return each non-guest user's first reached timestamp for each funnel step."""
 
-    def aggregate(queryset: QuerySet, user_field: str, at_field: str, step: str):
+    until = timezone.now()
+
+    def first_events(model, user_field: str, at_field: str, step: str, condition: Q):
         if steps is not None and step not in steps:
             return []
+        # Bound the source before choosing a first event. An earlier event excludes
+        # the user, preserving first-ever semantics across all their projects.
+        earlier = model.objects.filter(
+            condition, **{user_field: OuterRef("pk"), f"{at_field}__lt": since}
+        )
+        candidates = model.objects.filter(
+            condition,
+            **{user_field: OuterRef("pk"), f"{at_field}__gte": since, f"{at_field}__lte": until},
+        )
+        # Correlate on a scalar user PK. Reusing a multi-valued membership path
+        # as an OuterRef can create another join and mix different members.
+        queryset = _users().filter(Exists(candidates), ~Exists(earlier))
         if only_unrecorded:
             queryset = queryset.filter(
                 ~Exists(
                     OverwatchFunnelDelivery.objects.filter(
-                        user_id=OuterRef(user_field),
+                        user_id=OuterRef("pk"),
                         step=step,
                     )
                 )
             )
         rows = (
-            queryset.order_by()
-            .values(user_field)
-            .annotate(at=Min(at_field))
-            .filter(at__gte=since, at__lte=timezone.now())
-            .order_by("at", user_field)
+            queryset.annotate(at=Subquery(candidates.order_by(at_field).values(at_field)[:1]))
+            .values("pk", "at")
+            .order_by("at", "pk")
         )
         if limit_per_step is not None:
             rows = rows[:limit_per_step]
-        return [{"user_id": row[user_field], "step": step, "source_at": row["at"]} for row in rows]
+        return [{"user_id": row["pk"], "step": step, "source_at": row["at"]} for row in rows]
 
-    project_users = ProjectMembership.objects.filter(user__is_guest=False)
-    spans = Span.objects.filter(
-        project__memberships__user__is_guest=False,
-        received_at__gte=F("project__memberships__created_at"),
-    )
-    synced = Capability.objects.filter(
-        project__memberships__user__is_guest=False,
-        observed=False,
-        created_at__gte=F("project__memberships__created_at"),
-    ).exclude(status=Capability.Status.DELETED)
-    evaluations = EvalRun.objects.filter(
-        project__memberships__user__is_guest=False,
-        created_at__gte=F("project__memberships__created_at"),
-    )
-    training = FinetuningJob.objects.filter(
-        project__memberships__user__is_guest=False,
-        created_at__gte=F("project__memberships__created_at"),
-    )
-    deployments = DeployedModel.objects.filter(
-        project__memberships__user__is_guest=False,
-        deployed_at__isnull=False,
-        deployed_at__gte=F("project__memberships__created_at"),
-    )
-    aliases = Capability.objects.filter(
-        project__memberships__user__is_guest=False,
-        first_application_request_at__isnull=False,
-        first_application_request_at__gte=F("project__memberships__created_at"),
-    )
+    def after_join(at_field: str) -> Q:
+        return Q(
+            project__memberships__user__is_guest=False,
+            **{f"{at_field}__gte": F("project__memberships__created_at")},
+        )
 
     signups = _users().filter(date_joined__gte=since, date_joined__lte=timezone.now())
     if only_unrecorded:
@@ -409,30 +399,29 @@ def funnel_milestones(
         if steps is None or "signed_up" in steps
         else []
     )
-    events.extend(aggregate(project_users, "user_id", "created_at", "joined_project"))
     events.extend(
-        aggregate(spans, "project__memberships__user_id", "received_at", "sent_first_span")
-    )
-    events.extend(
-        aggregate(synced, "project__memberships__user_id", "created_at", "synced_capabilities")
-    )
-    events.extend(
-        aggregate(evaluations, "project__memberships__user_id", "created_at", "ran_evaluation")
-    )
-    events.extend(
-        aggregate(training, "project__memberships__user_id", "created_at", "started_training")
-    )
-    events.extend(
-        aggregate(deployments, "project__memberships__user_id", "deployed_at", "deployed_model")
-    )
-    events.extend(
-        aggregate(
-            aliases,
-            "project__memberships__user_id",
-            "first_application_request_at",
-            "called_alias",
+        first_events(
+            ProjectMembership, "user_id", "created_at", "joined_project", Q(user__is_guest=False)
         )
     )
+    for model, at_field, step, extra in (
+        (Span, "received_at", "sent_first_span", Q()),
+        (
+            Capability,
+            "created_at",
+            "synced_capabilities",
+            Q(observed=False) & ~Q(status=Capability.Status.DELETED),
+        ),
+        (EvalRun, "created_at", "ran_evaluation", Q()),
+        (FinetuningJob, "created_at", "started_training", Q()),
+        (DeployedModel, "deployed_at", "deployed_model", Q()),
+        (Capability, "first_application_request_at", "called_alias", Q()),
+    ):
+        events.extend(
+            first_events(
+                model, "project__memberships__user_id", at_field, step, after_join(at_field) & extra
+            )
+        )
     return events
 
 
