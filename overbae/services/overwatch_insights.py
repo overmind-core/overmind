@@ -12,7 +12,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from overbae.services.overwatch_privacy import model_question, posthog_url
-from overbae.services.user_insights import ACTIVATION_STEPS, window_start
+from overbae.services.user_insights import window_start
 
 EVENT_METRICS = {
     "cli.completed": "cli_completions",
@@ -81,17 +81,16 @@ def product_usage(days: int) -> dict[str, Any]:
         f"SELECT properties.$mcp_tool_name, count(), uniq(person_id) FROM events WHERE {window} AND event = '$mcp_tool_call' GROUP BY properties.$mcp_tool_name ORDER BY count() DESC LIMIT 8",
         f"SELECT properties.command_path, count(), uniq(person_id) FROM events WHERE {window} AND event = 'cli.completed' GROUP BY properties.command_path ORDER BY count() DESC LIMIT 8",
         f"SELECT count(), countIf(toBool(properties.$mcp_is_error)) FROM events WHERE {window} AND event = '$mcp_tool_call'",
-        f"SELECT properties.funnel_step, uniqExact(distinct_id) FROM events WHERE {window} AND event = 'overwatch_funnel_step' GROUP BY properties.funnel_step LIMIT {len(ACTIVATION_STEPS)}",
     ]
     try:
-        # Six independent, bounded reads; at most three requests run concurrently.
+        # Five independent, bounded reads; at most three requests run concurrently.
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="overwatch-posthog") as pool:
-            rows, active, tools, commands, errors, steps = list(pool.map(_query, queries))
+            rows, active, tools, commands, errors = list(pool.map(_query, queries))
         # Aggregate SELECTs return one row even when the matching event set is empty.
         # A missing row is an incomplete response, not evidence of zero usage.
         if len(active) != 1 or len(active[0]) != 1 or len(errors) != 1 or len(errors[0]) != 2:
             raise ValueError("incomplete_posthog_aggregate")
-        if len(tools) > 8 or len(commands) > 8 or len(steps) > len(ACTIVATION_STEPS):
+        if len(tools) > 8 or len(commands) > 8:
             raise ValueError("unexpected_posthog_row_count")
         by_day: dict[str, dict[str, int]] = {}
         totals = dict.fromkeys(EVENT_METRICS.values(), 0)
@@ -130,9 +129,6 @@ def product_usage(days: int) -> dict[str, Any]:
                 }
                 for name, count, users in commands
             ],
-            "funnel_steps": {
-                step: _count(users) for step, users in steps if step in ACTIVATION_STEPS
-            },
             "mcp_tool_errors": failed_calls,
             "mcp_tool_error_rate": failed_calls / total_calls if total_calls else 0.0,
         }

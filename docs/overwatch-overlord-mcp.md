@@ -16,8 +16,10 @@ The current branch contains a standalone Overwatch Slack adapter. It is disabled
 unless explicitly configured. It is a provisional surface, not evidence that
 the shared runtime or either MCP connection has been implemented.
 
-Overwatch's access to the product backend is read-only. Notification state,
-deduplication and retries belong to Overwatch's own storage. This PR adds no
+Overwatch's access to the product backend is read-only. Prefer PostHog's native
+Slack destinations for events it already collects. Notification state,
+deduplication and retries belong in PostHog or, only if needed, a separate
+Overwatch service. This PR adds no
 product database models, migrations, indexes or periodic writers, and does not
 change shared Python dependencies or core product business logic.
 
@@ -31,9 +33,9 @@ flowchart LR
     PHMCP[Restricted PostHog MCP tools] --> Runtime
     Runtime --> OW[Overwatch Slack profile]
     Runtime --> OL[Overlord Slack profile]
-    PH --> Notices[Overwatch-owned milestone delivery]
+    PH --> Notices[PostHog Slack destinations or workflows]
     Notices --> Channels[Configured Overwatch channels]
-    Notices --> State[Overwatch notification storage]
+    Notices --> State[Notification state outside the product database]
 ```
 
 ## Source and metric definitions
@@ -57,6 +59,38 @@ identity mapping is verified; never join on guessed email or display names.
 Every answer must state its source, UTC time window and freshness. Missing or
 failed sources must be shown as unavailable, not zero. When definitions or
 windows differ, show the difference instead of merging incompatible totals.
+
+## Funnel notifications without product changes
+
+Use existing PostHog events or actions with its native Slack destination first.
+Route each verified milestone to its configured channel. Add a PostHog workflow
+only when the notification needs branching or explicit state. This avoids a new
+notification service or product database ledger for simple event alerts.
+
+Source inspection confirms existing producers for `cli.completed`, MCP SDK
+analytics, `training_result_available` and `training_check_finished`. It does
+not prove those events arrive in the deployed PostHog project, identify a
+registered user, or cover every requested funnel step. In particular, a command
+completion or tool invocation is not proof that the corresponding business
+operation succeeded. Confirm outcome and identity fields before using it.
+
+Before activation, Pritam should confirm the deployed project's event coverage,
+define the user or project identity for each milestone, choose first-time versus
+repeat alerts, and verify duplicate handling. A saved funnel is an analytics
+definition, not evidence that per-person step notifications are configured.
+Preview the destination with synthetic data, check channel membership and
+privacy, and obtain approval before enabling live messages. Do not replay
+historical events into the channels by default.
+
+If a milestone is absent from PostHog, record that gap. An external reader may
+use already available read-only backend data, with its own polling cursor and
+notification state outside the product database. Any instrumentation change in
+core Overmind requires a separate engineering review. The dashboard does not
+query the removed prototype's `overwatch_funnel_step` event or present missing
+milestone instrumentation as zero conversions.
+
+References: [Slack destination](https://posthog.com/docs/data-pipelines/destinations/slack),
+[workflow builder](https://posthog.com/docs/workflows/workflow-builder).
 
 ## Internal MCP boundary
 
@@ -98,9 +132,10 @@ features that invoke another AI service need separate approval of that data path
   `VITE_*` variable, URL, prompt, source file, error message or audit payload.
   Logs contain fixed error codes and redacted task argument metadata. Broker
   payloads are private application data and need restricted access and TLS.
-- Proposed funnel alerts use a dashboard user reference rather than an email or
-  trace contents. PostHog supplies events; Overwatch stores acknowledgement,
-  deduplication and retry state outside the product database. Delivery remains
+- Proposed funnel alerts use an approved pseudonymous reference rather than an
+  email or trace contents. PostHog supplies events and owns delivery for its native
+  destinations. Any additional Overwatch acknowledgement, deduplication and retry
+  state stays outside the product database. Delivery remains
   at least once; a crash after acceptance can duplicate a notice.
 - Browser responses are private and not cacheable. The provisional login uses a
   token scoped to a tab for 30 minutes, with legacy persistent tokens cleared.

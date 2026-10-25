@@ -42,9 +42,11 @@ put it in browser variables. Model routing requires zero retention.
 ## Funnel notifications: proposed
 
 The intended channels follow signup, project membership, first trace, capability
-sync, evaluation, training, deployment and first model call. PostHog should supply
-the relevant conversion events. Overwatch owns channel routing, notification
-history, deduplication and retries in its own storage, outside the product backend.
+sync, evaluation, training, deployment and first model call. Prefer native
+PostHog Slack destinations for existing events, adding a workflow when needed.
+Verify each milestone's event coverage, identity, successful outcome and duplicate
+handling before activation. Missing events are not evidence of zero conversions.
+Any extra Overwatch notification state belongs outside the product backend.
 
 The earlier product-database delivery prototype is archived in
 [proposals](proposals/README.md). No delivery model, migration, periodic writer

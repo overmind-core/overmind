@@ -86,7 +86,6 @@ export type ProductUsage = Cached & {
   }[];
   top_mcp_tools?: { name: string; calls: number; users: number }[];
   top_cli_commands?: { name: string; completions: number; users: number }[];
-  funnel_steps?: Record<string, number>;
   mcp_tool_errors?: number;
   mcp_tool_error_rate?: number;
 };

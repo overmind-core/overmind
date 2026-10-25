@@ -101,7 +101,6 @@ class ProductUsageSerializer(serializers.Serializer):
     daily = serializers.ListField(child=serializers.DictField(), required=False)
     top_mcp_tools = serializers.ListField(child=serializers.DictField(), required=False)
     top_cli_commands = serializers.ListField(child=serializers.DictField(), required=False)
-    funnel_steps = serializers.DictField(child=serializers.IntegerField(), required=False)
     mcp_tool_errors = serializers.IntegerField(required=False)
     mcp_tool_error_rate = serializers.FloatField(required=False)
 

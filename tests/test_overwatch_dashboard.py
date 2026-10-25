@@ -189,8 +189,6 @@ def test_posthog_usage_survives_http_and_serializer_boundary(settings, scripted)
             rows = [["sync", 7, 3]]
         elif "countIf(toBool(properties.$mcp_is_error))" in hogql:
             rows = [[5, 1]]
-        elif "properties.funnel_step" in hogql:
-            rows = [["joined_project", 2], ["ran_evaluation", 1]]
         else:
             raise AssertionError("Unexpected aggregate query")
         return 200, {"content-type": "application/json"}, json.dumps({"results": rows}).encode()
@@ -201,12 +199,13 @@ def test_posthog_usage_survives_http_and_serializer_boundary(settings, scripted)
     assert result["available"] is True
     assert result["active_users"] == 3
     assert result["totals"]["cli_completions"] == 4
-    assert result["funnel_steps"] == {"joined_project": 2, "ran_evaluation": 1}
+    assert "funnel_steps" not in result
     assert result["top_mcp_tools"] == [{"name": "list_projects", "calls": 5, "users": 2}]
     assert result["top_cli_commands"] == [{"name": "sync", "completions": 7, "users": 3}]
     assert result["mcp_tool_errors"] == 1
     assert result["mcp_tool_error_rate"] == 0.2
-    assert len(api.calls) == 6
+    assert len(api.calls) == 5
+    assert all("overwatch_funnel_step" not in query for query in queries)
     assert response["Cache-Control"] == "private, no-store"
     assert all("timestamp <= toDateTime" in query for query in queries)
 

@@ -7,7 +7,7 @@ import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
 import { Stat } from "~/components/stat";
 import { type Overview, overwatchGet, type ProductUsage } from "~/lib/api";
-import { fillDays, formatInt, formatUsd, MILESTONES, sum } from "~/lib/format";
+import { fillDays, formatInt, formatUsd, sum } from "~/lib/format";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
@@ -218,26 +218,6 @@ function OverviewBody({
                   ? "PostHog product event data could not be loaded."
                   : "Loading product event data…")}
             </p>
-          </SectionCard>
-        )}
-        {usage?.available && (
-          <SectionCard title="Milestone identities in PostHog">
-            {Object.keys(usage.funnel_steps ?? {}).length ? (
-              <dl className="grid gap-3 sm:grid-cols-2">
-                {MILESTONES.map(({ step, label }) => (
-                  <div className="flex items-center justify-between gap-3" key={step}>
-                    <dt className="text-sm text-muted-foreground">{label}</dt>
-                    <dd className="font-medium tabular-nums">
-                      {formatInt(usage.funnel_steps?.[step] ?? 0)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No milestone events have reached PostHog in this time window.
-              </p>
-            )}
           </SectionCard>
         )}
         <DailyChart
