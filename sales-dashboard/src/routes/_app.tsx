@@ -43,7 +43,7 @@ function Shell() {
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border/70 bg-card px-6 py-3">
         <div className="flex items-center gap-2">
           <Icon.overmind className="size-5" />
-          <span className={LABEL.sidebar}>Sales</span>
+          <span className={LABEL.sidebar}>Overwatch</span>
         </div>
         <nav aria-label="Sections" className="flex gap-1">
           {NAV.map((item) => (
