@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
-import { getToken, salesGet, setToken, Unauthorized } from "~/lib/api";
+import { getToken, overwatchGet, setToken, Unauthorized } from "~/lib/api";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ function Login() {
     setChecking(true);
     setError("");
     try {
-      await salesGet("funnel", { days: 1 }, token.trim());
+      await overwatchGet("activation", { days: 1 }, token.trim());
       setToken(token.trim());
       await navigate({ search: { days: 30 }, to: "/" });
     } catch (failure) {

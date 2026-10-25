@@ -205,6 +205,19 @@ def test_training_preparation_does_not_wait_for_live_trace_scoring():
         assert all("--disable-prefetch" in command for command in [*io_workers, *trace_workers])
 
 
+def test_overwatch_slack_tasks_use_the_io_queue():
+    from overbae.celery import app
+    from overbae.tasks.overwatch import (
+        answer_slack_message,
+        answer_slack_question,
+        dispatch_funnel_notifications,
+    )
+
+    for task in (answer_slack_message, answer_slack_question, dispatch_funnel_notifications):
+        queue = app.amqp.router.route({}, task.name)["queue"].name
+        assert queue == "io"
+
+
 def test_new_producers_wait_for_healthy_landing_capacity():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]

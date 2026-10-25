@@ -12,8 +12,8 @@ const WINDOWS = [7, 30, 90, 365] as const;
 
 const NAV = [
   { label: "Overview", to: "/" },
-  { label: "Funnel", to: "/funnel" },
-  { label: "Accounts", to: "/accounts" },
+  { label: "Activation", to: "/funnel" },
+  { label: "Users", to: "/accounts" },
 ] as const;
 
 export const Route = createFileRoute("/_app")({

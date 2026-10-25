@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "overmind-sales-dashboard",
+      "name": "overmind-overwatch",
       "dependencies": {
         "@tanstack/react-query": "^5.101.2",
         "@tanstack/react-router": "^1.170.17",

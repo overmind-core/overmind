@@ -6,8 +6,8 @@ import { DailyChart } from "~/components/daily-chart";
 import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
 import { Stat } from "~/components/stat";
-import { type AccountActivity, salesGet, type TrainingOutcome } from "~/lib/api";
-import { fillDays, formatDate, formatInt, humanize, sum } from "~/lib/format";
+import { type UserActivity, overwatchGet, type TrainingOutcome } from "~/lib/api";
+import { fillDays, formatDate, formatInt, formatUsd, humanize, sum } from "~/lib/format";
 
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
@@ -42,8 +42,8 @@ function AccountPage() {
   const { days } = Route.useSearch();
   const { accountId } = Route.useParams();
   const query = useQuery({
-    queryFn: () => salesGet<AccountActivity>(`accounts/${Number(accountId)}`, { days }),
-    queryKey: ["account", accountId, days],
+    queryFn: () => overwatchGet<UserActivity>(`users/${Number(accountId)}`, { days }),
+    queryKey: ["user", accountId, days],
   });
 
   return (
@@ -54,15 +54,15 @@ function AccountPage() {
         to="/accounts"
       >
         <Icon.back className="size-3.5" />
-        Accounts
+        Users
       </Link>
       <PageHeader
         actions={<Freshness data={query.data} />}
-        description={`Totals are lifetime. Charts cover the last ${days} days.`}
-        title={query.data?.account.email ?? "Account"}
+        description={`Usage, spend and payment totals are lifetime. Charts cover the last ${days} days.`}
+        title={query.data?.user.email ?? "User"}
       />
       {query.isPending ? (
-        <LoadingState fullPage label="Loading account" />
+        <LoadingState fullPage label="Loading user" />
       ) : query.isError ? (
         <Failure error={query.error} onRetry={query.refetch} />
       ) : (
@@ -72,8 +72,8 @@ function AccountPage() {
   );
 }
 
-function AccountBody({ data, days }: { data: AccountActivity; days: number }) {
-  const { training, traces, inference, datasets, optimizer, evaluations } = data;
+function AccountBody({ data, days }: { data: UserActivity; days: number }) {
+  const { training, traces, inference, datasets, optimizer, evaluations, billing } = data;
   const trainingByDay = new Map(training.daily.map((point) => [point.day.slice(0, 10), point]));
   const trainingDaily = fillDays([], days).map(({ day }) => {
     const values = trainingByDay.get(day)?.values ?? {};
@@ -92,6 +92,13 @@ function AccountBody({ data, days }: { data: AccountActivity; days: number }) {
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Stat
+          label="Subscription"
+          value={billing.subscription_status ? humanize(billing.subscription_status) : "Free"}
+        />
+        <Stat label="Stripe top-ups" value={formatUsd(billing.topups_usd)} />
+        <Stat label="Product spend" value={formatUsd(billing.spend_usd)} />
+        <Stat label="Credit balance" value={formatUsd(billing.balance_usd)} />
+        <Stat
           detail={`${formatInt(training.totals.completed)} completed · ${formatInt(training.totals.failed)} failed`}
           label="Training jobs"
           value={formatInt(training.totals.started)}
@@ -106,9 +113,23 @@ function AccountBody({ data, days }: { data: AccountActivity; days: number }) {
         <Stat label="Datasets" value={formatInt(datasets.total)} />
         <Stat label="Optimiser runs" value={formatInt(optimizer.total)} />
         <Stat label="Evaluations" value={formatInt(evaluations.total)} />
-        <Stat label="Projects" value={formatInt(data.account.projects)} />
+        <Stat label="Projects" value={formatInt(data.user.projects)} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
+        <DailyChart
+          data={fillDays(billing.spend_daily, days)}
+          format={formatUsd}
+          series={[{ color: "var(--chart-4)", key: "value", label: "Spend" }]}
+          title="Product spend"
+          total={formatUsd(sum(billing.spend_daily))}
+        />
+        <DailyChart
+          data={fillDays(billing.topups_daily, days)}
+          format={formatUsd}
+          series={[{ color: "var(--chart-2)", key: "value", label: "Stripe top-ups" }]}
+          title="Payments and top-ups"
+          total={formatUsd(sum(billing.topups_daily))}
+        />
         <DailyChart
           data={trainingDaily}
           format={formatInt}

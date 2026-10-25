@@ -293,7 +293,7 @@ STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 
-# Bearer token for the cross-tenant /api/internal/sales/ endpoints; blank denies every request.
+# Existing bearer token for /api/internal/overwatch/* (legacy name); blank disables endpoints.
 SALES_DASHBOARD_TOKEN = os.environ.get("SALES_DASHBOARD_TOKEN", "")
 
 AUTH_USER_MODEL = "overbae.User"
@@ -446,6 +446,9 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
+    "overbae.tasks.overwatch.dispatch_funnel_notifications": {"queue": "io"},
+    "overbae.tasks.overwatch.answer_slack_question": {"queue": "io"},
+    "overbae.tasks.overwatch.answer_slack_message": {"queue": "io"},
     "overbae.tasks.innermind.dispatch_live_scoring": {"queue": "control"},
     "overbae.tasks.innermind.execute_live_scoring": {"queue": "io_traces"},
     "overbae.tasks.innermind.score_spans": {"queue": "io_traces"},
@@ -585,6 +588,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.connector_sync.sweep_abandoned_drafts",
         "schedule": 3600.0,
     },
+    "overwatch-funnel-notifications": {
+        "task": "overbae.tasks.overwatch.dispatch_funnel_notifications",
+        "schedule": 60.0,
+        "options": {"expires": 55.0},
+    },
 }
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -594,6 +602,18 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+OVERWATCH_SLACK_TEAM_ID = os.environ.get("OVERWATCH_SLACK_TEAM_ID", "")
+OVERWATCH_ALLOWED_EMAIL_DOMAIN = os.environ.get(
+    "OVERWATCH_ALLOWED_EMAIL_DOMAIN", "overmindlab.ai"
+)
+OVERWATCH_AGENT_MODEL = os.environ.get(
+    "OVERWATCH_AGENT_MODEL", "anthropic/claude-sonnet-5"
+)
+OVERWATCH_FUNNEL_CHANNEL_IDS = os.environ.get("OVERWATCH_FUNNEL_CHANNEL_IDS", "{}")
+# No funnel milestones are sent to PostHog or Slack before this rollout timestamp.
+OVERWATCH_FUNNEL_START_AT = os.environ.get("OVERWATCH_FUNNEL_START_AT", "")
 
 # Blank disables Clerk; self-hosted Console uses /api/auth/local/ instead.
 # API keys and guest sessions still authenticate either way.
@@ -615,6 +635,12 @@ POSTHOG_PROJECT_TOKEN = (
     )
 )
 POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.i.posthog.com")
+# Optional read-only access used by the internal Overwatch product insights view.
+POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY", "")
+POSTHOG_PROJECT_ID = os.environ.get("POSTHOG_PROJECT_ID", "")
+POSTHOG_API_HOST = os.environ.get(
+    "POSTHOG_API_HOST", POSTHOG_HOST.replace(".i.posthog.com", ".posthog.com")
+).rstrip("/")
 
 # TLS terminates at the Fly proxy, which forwards X-Forwarded-Proto: trusting it
 # is how Django sees a client's HTTPS behind plain HTTP on the machine.

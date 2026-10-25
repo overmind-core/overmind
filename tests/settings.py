@@ -46,7 +46,7 @@ LANGFUSE_SECRET_KEY = ""
 # Remaining-credit billing on unless a test clears the key.
 STRIPE_SECRET_KEY = "sk_test_billing"
 
-# overbae.urls registers the sales routes only when this is set at import.
+# overbae.urls registers internal Overwatch metrics only when this is set at import.
 SALES_DASHBOARD_TOKEN = "sales-test-token"
 
 # Local .env often points Celery at docker Redis, and an unmocked `.delay()` burns
