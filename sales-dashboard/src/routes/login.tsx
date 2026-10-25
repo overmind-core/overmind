@@ -48,7 +48,7 @@ function Login() {
       <Card className="w-full max-w-sm space-y-4 bg-wash-subtle p-6">
         <div className="flex items-center gap-2">
           <Icon.overmind className="size-5" />
-          <h1 className={TITLE.card}>Overmind Sales</h1>
+          <h1 className={TITLE.card}>Overwatch</h1>
         </div>
         <form className="space-y-3" onSubmit={submit}>
           <label className="block space-y-1.5 text-sm" htmlFor="token">
