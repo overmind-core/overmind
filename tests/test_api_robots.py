@@ -30,6 +30,16 @@ def first_match_allows(rules: str, path: str) -> bool:
     return True
 
 
+def longest_match_allows(rules: str, path: str) -> bool:
+    """Google's reading (RFC 9309): the longest matching rule wins, and Allow wins a tie."""
+    best = (-1, True)
+    for line in rules.splitlines():
+        field, _, value = (part.strip() for part in line.partition(":"))
+        if field.lower() in ("allow", "disallow") and value and path.startswith(value):
+            best = max(best, (len(value), field.lower() == "allow"))
+    return best[1]
+
+
 @pytest.mark.parametrize("headers", [{}, {"X-Api-Key": "not-a-key"}])
 def test_robots_txt_blocks_crawlers_but_not_well_known_without_authentication(client, headers):
     response = client.get("/robots.txt", headers=headers)
@@ -45,11 +55,12 @@ def test_robots_txt_blocks_crawlers_but_not_well_known_without_authentication(cl
             assert rules.can_fetch(agent, f"{API_URL}{path}"), (agent, path)
 
 
-def test_a_first_match_crawler_reads_the_rules_the_same_way(client):
+@pytest.mark.parametrize("allows", [first_match_allows, longest_match_allows])
+def test_first_and_longest_match_crawlers_read_the_rules_the_same_way(client, allows):
     rules = client.get("/robots.txt").text
 
-    assert not any(first_match_allows(rules, path) for path in BLOCKED_PATHS)
-    assert all(first_match_allows(rules, path) for path in FETCHABLE_PATHS)
+    assert not any(allows(rules, path) for path in BLOCKED_PATHS)
+    assert all(allows(rules, path) for path in FETCHABLE_PATHS)
 
 
 def test_head_robots_txt_is_answered_like_get(client):
