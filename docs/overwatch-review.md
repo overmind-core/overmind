@@ -32,6 +32,9 @@ Archived delivery prototypes and separate platform security findings are in
   clean up connections, and require tool evidence before answering metrics.
 - Validate PostHog aggregate shapes and dates. Incomplete or failed responses
   remain unavailable; a genuine empty event set is shown as zero.
+- Remove the prototype milestone-event query after its emitter was archived.
+  Keep database adoption metrics separate from PostHog conversion definitions.
+  Prefer PostHog's native Slack destinations for verified existing events.
 - Fix join-date attribution and UTC calendar windows. Distinguish spans from
   traces, membership attribution from actors, and adoption from ordered funnels.
 - Replace persistent browser tokens with 30-minute tab sessions, clear legacy
@@ -42,14 +45,28 @@ Archived delivery prototypes and separate platform security findings are in
 
 ## Verification and limits
 
-Earlier review iterations passed 3,390 backend tests and all 94 journeys. One
-preceding run had a transient native benchmark monitor failure that did not
-recur; its underlying timing issue is not claimed fixed. The final read-only
-scope passed 73 focused checks against main's backend dependency versions,
+The reviewed code commit is `83ced65`. It passed 3,399 backend tests (15 skipped),
+dashboard checks, frontend checks, lint, migration checks and CodeQL in
+[CI](https://github.com/overmind-core/overmind/actions/runs/40225646008).
+Its 73 focused checks ran against main's backend dependency versions,
 including SQL read-only assertions, rejected write methods, denied core project
 creation with the dashboard credential, and absent Overwatch models/scheduled
-writers. Model state matches migrations. Final full CI is pending. The five dashboard tests,
-lint, typecheck, build and isolated desktop/mobile browser checks passed.
+writers. Model state matches migrations. The five dashboard tests, lint,
+typecheck, build and isolated desktop/mobile browser checks passed after the
+final event-source correction.
+
+The journey suite passed 93 of 94 tests. The six-participant native benchmark
+monitor rebuild test failed at `test_native_benchmark_monitor.py:447`, indexing
+an empty `arms` list after a pending projection rebuild. The identical test,
+participant count, assertion and exception already failed on
+[main before this branch](https://github.com/overmind-core/overmind/actions/runs/39353345351).
+The monitor service, task, journey and worker-ledger files are unchanged from
+that baseline. Earlier review runs also passed all 94 journeys, so a green run
+does not establish that the timing issue is fixed.
+
+This is a documented pre-existing merge gate, not a passing check. Core monitor
+changes are outside Sam's read-only scope. Pritam must resolve or explicitly
+disposition that gate before merge; this review does not authorize a rollout.
 
 Tracked-source secret scanning found no confirmed private credential in the
 reviewed Overwatch changes. Production scanner candidates are unchanged lines
