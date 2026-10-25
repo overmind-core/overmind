@@ -222,6 +222,51 @@ def test_malformed_posthog_results_are_unavailable_not_zero(settings, scripted, 
     assert "active_users" not in result
 
 
+@pytest.mark.parametrize(
+    ("section", "replacement", "available"),
+    [
+        ("active", [], False),
+        ("active", [[0, 1]], False),
+        ("errors", [], False),
+        ("errors", [[0]], False),
+        ("daily", [["2000-01-01", "cli.completed", 1]], False),
+        ("tools", [["list_projects", 1, 1]] * 9, False),
+        ("daily", [], True),
+    ],
+)
+def test_posthog_empty_events_differ_from_incomplete_aggregates(
+    settings, scripted, section, replacement, available
+):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
+
+    def answer(request):
+        query = request.json["query"]["query"]
+        key, rows = "other", []
+        if "SELECT uniq(person_id)" in query:
+            key, rows = "active", [[0]]
+        elif "countIf(toBool(properties.$mcp_is_error))" in query:
+            key, rows = "errors", [[0, 0]]
+        elif "SELECT toDate(timestamp" in query:
+            key = "daily"
+        elif "properties.$mcp_tool_name" in query:
+            key = "tools"
+        return (
+            200,
+            {"content-type": "application/json"},
+            json.dumps({"results": replacement if key == section else rows}).encode(),
+        )
+
+    scripted("https://eu.posthog.com").then(answer)
+    result = overwatch_client().get("/api/internal/overwatch/product-usage/").json()
+    assert result["available"] is available
+    if available:
+        assert result["active_users"] == result["mcp_tool_errors"] == 0
+    else:
+        assert "active_users" not in result
+
+
 def test_unicode_bearer_token_is_rejected_safely():
     assert overwatch_client("☃").get("/api/internal/overwatch/overview/").status_code == 403
 

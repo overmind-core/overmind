@@ -37,7 +37,11 @@ def _query(hogql: str) -> list[list[Any]]:
     if not 200 <= response.status_code < 300 or len(response.content) > 256_000:
         raise ValueError("posthog_query_failed")
     rows = response.json()["results"]
-    if not isinstance(rows, list) or len(rows) > 2000:
+    if (
+        not isinstance(rows, list)
+        or len(rows) > 2000
+        or any(not isinstance(row, list) for row in rows)
+    ):
         raise ValueError("invalid_posthog_results")
     return rows
 
@@ -83,16 +87,23 @@ def product_usage(days: int) -> dict[str, Any]:
         # Six independent, bounded reads; at most three requests run concurrently.
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="overwatch-posthog") as pool:
             rows, active, tools, commands, errors, steps = list(pool.map(_query, queries))
+        # Aggregate SELECTs return one row even when the matching event set is empty.
+        # A missing row is an incomplete response, not evidence of zero usage.
+        if len(active) != 1 or len(active[0]) != 1 or len(errors) != 1 or len(errors[0]) != 2:
+            raise ValueError("incomplete_posthog_aggregate")
+        if len(tools) > 8 or len(commands) > 8 or len(steps) > len(ACTIVATION_STEPS):
+            raise ValueError("unexpected_posthog_row_count")
         by_day: dict[str, dict[str, int]] = {}
         totals = dict.fromkeys(EVENT_METRICS.values(), 0)
         for raw_day, event, raw_count in rows:
             day = raw_day.isoformat() if isinstance(raw_day, date) else str(raw_day)
-            date.fromisoformat(day)
+            if not since.date() <= date.fromisoformat(day) <= until.date():
+                raise ValueError("posthog_day_outside_window")
             metric = EVENT_METRICS[event]
             count = _count(raw_count)
             by_day.setdefault(day, dict.fromkeys(totals, 0))[metric] += count
             totals[metric] += count
-        total_calls, failed_calls = (_count(value) for value in errors[0]) if errors else (0, 0)
+        total_calls, failed_calls = (_count(value) for value in errors[0])
         if failed_calls > total_calls:
             raise ValueError("invalid_error_count")
         return {
@@ -100,7 +111,7 @@ def product_usage(days: int) -> dict[str, Any]:
             "identity_basis": "PostHog identities, including unlinked CLI installations; not a count of registered customers.",
             "window_start": since.isoformat(),
             "window_end": until.isoformat(),
-            "active_users": _count(active[0][0]) if active else 0,
+            "active_users": _count(active[0][0]),
             "totals": totals,
             "daily": [{"day": day, **values} for day, values in sorted(by_day.items())],
             "top_mcp_tools": [

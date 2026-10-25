@@ -25,7 +25,7 @@ remaining checks and PR handoff are complete.
 
 ## Evidence
 
-- All 64 focused backend security, delivery, analytics and Celery topology
+- All 71 focused backend security, delivery, analytics and Celery topology
   regressions pass against an isolated PostgreSQL instance. Outbound calls use network
   fakes; no live Slack messages, customer queries or PostHog writes were sent.
 - All five dashboard session, request and date tests, typecheck, lint and the
@@ -38,6 +38,10 @@ remaining checks and PR handoff are complete.
   detection and the test-boundary check.
 - The dashboard dependency audit and a scan of all 235 locked backend packages
   report no known vulnerabilities after the security updates.
+  GitHub's existing root-lockfile alerts name the same patched packages. Its 20
+  alerts against the separate SDK lockfile (`overmind/uv.lock`) are outside this
+  review's runtime dependency changes and remain open. This is not a claim that
+  every lockfile in the repository is free of known advisories.
 - Repository secret scanning found candidates in test fixtures, local
   development defaults and the existing public PostHog ingestion token. No
   confirmed private credential was found in the reviewed Overwatch changes.
