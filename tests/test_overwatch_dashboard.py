@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import json
+from datetime import datetime, timedelta
 
 import pytest
 from django.utils import timezone
@@ -28,7 +29,6 @@ from overbae.models import (
     SubscriptionStatus,
     User,
 )
-from overbae.services import overwatch_insights
 
 pytestmark = pytest.mark.django_db
 
@@ -82,9 +82,7 @@ def accounts():
     return {"active": active, "paying": paying, "old": old}
 
 
-@pytest.mark.parametrize(
-    "path", ["overview", "activation", "users", "users/{id}"]
-)
+@pytest.mark.parametrize("path", ["overview", "activation", "users", "users/{id}"])
 def test_rejects_anything_but_the_configured_token(settings, path):
     user = make_user()
     url = f"/api/internal/overwatch/{path.format(id=user.id)}/"
@@ -121,7 +119,7 @@ def test_overview_retains_subscription_spend_and_payment_insights(accounts):
     )
     BillingTelemetry.objects.create(
         user=paying,
-        amount="-3.2500000",
+        amount="-53.2500000",
         service=BillingService.INFERENCE,
     )
     BillingTelemetry.objects.create(
@@ -137,9 +135,9 @@ def test_overview_retains_subscription_spend_and_payment_insights(accounts):
     assert body["cancelling_users"] == 1
     assert body["free_users"] == 1
     assert body["low_balance_users"] == 1
-    assert body["spend_by_service"] == {BillingService.INFERENCE: "3.2500000"}
+    assert body["spend_by_service"] == {BillingService.INFERENCE: "53.2500000"}
     assert sum(float(point["value"]) for point in body["topups_usd"]) == 5
-    assert sum(float(point["value"]) for point in body["spend_usd"]) == 3.25
+    assert sum(float(point["value"]) for point in body["spend_usd"]) == 53.25
 
 
 def test_user_activity_retains_lifetime_billing_and_window_history(accounts):
@@ -161,54 +159,71 @@ def test_user_activity_retains_lifetime_billing_and_window_history(accounts):
     assert body["user"]["subscription_status"] == SubscriptionStatus.PAST_DUE
     assert body["user"]["spend_usd"] == "7.5000000"
     assert body["user"]["topups_usd"] == "10.0000000"
-    assert body["user"]["balance_usd"] == "2.5000000"
+    assert body["user"]["balance_usd"] == "52.5000000"
     assert body["billing"]["subscription_status"] == SubscriptionStatus.PAST_DUE
     assert body["billing"]["spend_usd"] == "7.5000000"
     assert body["billing"]["topups_usd"] == "10.0000000"
-    assert body["billing"]["balance_usd"] == "2.5000000"
+    assert body["billing"]["balance_usd"] == "52.5000000"
     assert sum(float(point["value"]) for point in body["billing"]["spend_daily"]) == 7.5
     assert sum(float(point["value"]) for point in body["billing"]["topups_daily"]) == 10
 
 
-def test_posthog_usage_uses_captured_cli_and_mcp_event_properties(settings, monkeypatch):
-    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-key"
+def test_posthog_usage_survives_http_and_serializer_boundary(settings, scripted):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
     settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
     queries = []
 
-    def query(hogql):
+    def answer(call):
+        hogql = call.json["query"]["query"]
         queries.append(hogql)
-        if "SELECT toDate(timestamp), event, count()" in hogql:
-            return [[date(2026, 10, 25), "cli.completed", 4]]
-        if "SELECT uniq(person_id)" in hogql:
-            return [[3]]
-        if "properties.$mcp_tool_name" in hogql:
-            return [["list_projects", 5, 2]]
-        if "properties.command_path" in hogql:
-            return [["sync", 7, 3]]
-        if "countIf(toBool(properties.$mcp_is_error))" in hogql:
-            return [[5, 1]]
-        if "properties.funnel_step" in hogql:
-            return [["joined_project", 2], ["ran_evaluation", 1]]
-        raise AssertionError(f"Unexpected PostHog query: {hogql}")
+        if "SELECT toDate(timestamp" in hogql:
+            rows = [[timezone.now().date().isoformat(), "cli.completed", 4]]
+        elif "SELECT uniq(person_id)" in hogql:
+            rows = [[3]]
+        elif "properties.$mcp_tool_name" in hogql:
+            rows = [["list_projects", 5, 2]]
+        elif "properties.command_path" in hogql:
+            rows = [["sync", 7, 3]]
+        elif "countIf(toBool(properties.$mcp_is_error))" in hogql:
+            rows = [[5, 1]]
+        elif "properties.funnel_step" in hogql:
+            rows = [["joined_project", 2], ["ran_evaluation", 1]]
+        else:
+            raise AssertionError("Unexpected aggregate query")
+        return 200, {"content-type": "application/json"}, json.dumps({"results": rows}).encode()
 
-    monkeypatch.setattr(overwatch_insights, "_query", query)
-
-    result = overwatch_insights.product_usage(14)
-
+    api = scripted("https://eu.posthog.com").then(answer)
+    response = overwatch_client().get("/api/internal/overwatch/product-usage/?days=14")
+    result = response.json()
     assert result["available"] is True
     assert result["active_users"] == 3
-    assert result["totals"] == {
-        "cli_completions": 4,
-        "mcp_tool_calls": 0,
-        "training_results_available": 0,
-        "training_checks_finished": 0,
-    }
+    assert result["totals"]["cli_completions"] == 4
     assert result["funnel_steps"] == {"joined_project": 2, "ran_evaluation": 1}
     assert result["top_mcp_tools"] == [{"name": "list_projects", "calls": 5, "users": 2}]
     assert result["top_cli_commands"] == [{"name": "sync", "completions": 7, "users": 3}]
     assert result["mcp_tool_errors"] == 1
     assert result["mcp_tool_error_rate"] == 0.2
-    assert all("timestamp >= now() - INTERVAL 14 DAY" in query for query in queries)
+    assert len(api.calls) == 6
+    assert response["Cache-Control"] == "private, no-store"
+    assert all("timestamp <= toDateTime" in query for query in queries)
+
+
+@pytest.mark.parametrize(
+    "rows", [None, [["bad-date", "cli.completed", 1]], [["2026-10-25", "unknown", 1]]]
+)
+def test_malformed_posthog_results_are_unavailable_not_zero(settings, scripted, rows):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
+    scripted("https://eu.posthog.com").reply(json_body={"results": rows})
+    result = overwatch_client().get("/api/internal/overwatch/product-usage/").json()
+    assert result["available"] is False
+    assert "active_users" not in result
+
+
+def test_unicode_bearer_token_is_rejected_safely():
+    assert overwatch_client("☃").get("/api/internal/overwatch/overview/").status_code == 403
 
 
 def test_funnel_follows_window_signups(accounts):
@@ -216,7 +231,7 @@ def test_funnel_follows_window_signups(accounts):
 
     assert body["steps"] == [
         {"step": "signed_up", "users": 2},
-        {"step": "joined_project", "users": 2},
+        {"step": "joined_project", "users": 1},
         {"step": "sent_first_span", "users": 1},
         {"step": "synced_capabilities", "users": 1},
         {"step": "ran_evaluation", "users": 1},
@@ -331,3 +346,45 @@ def test_responses_are_cached_for_an_hour(accounts):
 
     page = overwatch_client().get("/api/internal/overwatch/users/").json()
     assert page["count"] == 4 and page["computed_at"]
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(settings):
+    # These tests never call the parser sandbox; outbound requests remain guarded.
+    settings.SANDBOX_URL = "http://sandbox.test"
+    settings.SANDBOX_TOKEN = "analytics-test"
+
+
+def test_one_day_window_starts_at_utc_midnight():
+    from overbae.services.user_insights import window_start
+
+    start = window_start(1)
+    assert (start.hour, start.minute, start.second, start.microsecond) == (0, 0, 0, 0)
+    assert start.date() == timezone.now().date()
+
+
+def test_database_timeout_is_bounded_and_restores_connection():
+    from django.db import DatabaseError, connection
+
+    from overbae.services.user_insights import analytics_read_budget
+
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW statement_timeout")
+        before = cursor.fetchone()[0]
+    with pytest.raises(DatabaseError), analytics_read_budget(0.05), connection.cursor() as cursor:
+        cursor.execute("SELECT pg_sleep(0.3)")
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW statement_timeout")
+        assert cursor.fetchone()[0] == before
+        cursor.execute("SELECT 1")
+        assert cursor.fetchone() == (1,)
+
+
+def test_posthog_credentials_cannot_be_sent_to_unapproved_host(settings, scripted):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://attacker.test"
+    attacker = scripted("https://attacker.test").reply(json_body={"results": []})
+    response = overwatch_client().get("/api/internal/overwatch/product-usage/")
+    assert response.json()["available"] is False
+    assert attacker.calls == []

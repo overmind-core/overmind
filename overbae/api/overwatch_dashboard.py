@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
+from contextlib import nullcontext
 from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import DatabaseError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -26,7 +29,11 @@ class HasOverwatchToken(BasePermission):
     def has_permission(self, request, view) -> bool:
         expected = settings.SALES_DASHBOARD_TOKEN
         scheme, _, presented = request.headers.get("Authorization", "").partition(" ")
-        return bool(expected) and scheme == "Bearer" and hmac.compare_digest(presented, expected)
+        return (
+            bool(expected)
+            and scheme == "Bearer"
+            and hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
+        )
 
 
 class WindowSerializer(serializers.Serializer):
@@ -86,11 +93,15 @@ class ActivationSerializer(serializers.Serializer):
 class ProductUsageSerializer(serializers.Serializer):
     available = serializers.BooleanField()
     reason = serializers.CharField(required=False)
+    identity_basis = serializers.CharField(required=False)
+    window_start = serializers.DateTimeField(required=False)
+    window_end = serializers.DateTimeField(required=False)
     active_users = serializers.IntegerField(required=False)
     totals = serializers.DictField(child=serializers.IntegerField(), required=False)
     daily = serializers.ListField(child=serializers.DictField(), required=False)
     top_mcp_tools = serializers.ListField(child=serializers.DictField(), required=False)
     top_cli_commands = serializers.ListField(child=serializers.DictField(), required=False)
+    funnel_steps = serializers.DictField(child=serializers.IntegerField(), required=False)
     mcp_tool_errors = serializers.IntegerField(required=False)
     mcp_tool_error_rate = serializers.FloatField(required=False)
 
@@ -191,22 +202,37 @@ class UserActivitySerializer(serializers.Serializer):
 def _since(request):
     window = WindowSerializer(data=request.query_params)
     window.is_valid(raise_exception=True)
-    return timezone.now() - timedelta(days=window.validated_data["days"])
+    return user_insights.window_start(window.validated_data["days"])
 
 
-def _cached(request, compute) -> Response:
+def _cached(request, compute, *, database: bool = True) -> Response:
     """Serve one computation per path and query for an hour, stamped with its freshness."""
-    key = f"overwatch:{request.path}?{urlencode(sorted(request.query_params.items()))}"
+    # Hash untrusted query strings to keep cache keys bounded. Never cache a token.
+    fingerprint = hashlib.sha256(
+        f"{request.path}?{urlencode(sorted(request.query_params.items()))}".encode()
+    ).hexdigest()
+    key = f"overwatch:v2:{fingerprint}"
     payload = cache.get(key)
     if payload is None:
         computed_at = timezone.now()
+        try:
+            with user_insights.analytics_read_budget() if database else nullcontext():
+                data = compute()
+        except (DatabaseError, TimeoutError):
+            response = Response({"detail": "Analytics are temporarily unavailable."}, status=503)
+            response["Cache-Control"] = "private, no-store"
+            return response
+        ttl = 60 if data.get("available") is False else CACHE_SECONDS
         payload = {
-            **compute(),
+            **data,
             "computed_at": computed_at.isoformat(),
-            "refreshes_at": (computed_at + timedelta(seconds=CACHE_SECONDS)).isoformat(),
+            "refreshes_at": (computed_at + timedelta(seconds=ttl)).isoformat(),
         }
-        cache.set(key, payload, CACHE_SECONDS)
-    return Response(payload)
+        cache.set(key, payload, ttl)
+    response = Response(payload)
+    response["Cache-Control"] = "private, no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 class OverwatchView:
@@ -218,9 +244,7 @@ class OverwatchView:
 class OverviewView(OverwatchView, APIView):
     def get(self, request):
         def compute():
-            data = user_insights.overview(
-                _since(request), timezone.now() - timedelta(days=ACTIVE_DAYS)
-            )
+            data = user_insights.overview(_since(request), user_insights.window_start(ACTIVE_DAYS))
             return OverviewSerializer(data).data
 
         return _cached(request, compute)
@@ -243,6 +267,7 @@ class ProductUsageView(OverwatchView, APIView):
         return _cached(
             request,
             lambda: ProductUsageSerializer(overwatch_insights.product_usage(days)).data,
+            database=False,
         )
 
 

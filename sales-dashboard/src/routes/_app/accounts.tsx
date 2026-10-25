@@ -3,8 +3,15 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
-import { type Page, type User, overwatchGet } from "~/lib/api";
-import { formatAgo, formatDate, formatInt, formatUsd, humanize } from "~/lib/format";
+import { overwatchGet, type Page, type User } from "~/lib/api";
+import {
+  formatAgo,
+  formatDate,
+  formatInt,
+  formatUsd,
+  humanize,
+  milestoneLabel,
+} from "~/lib/format";
 
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
@@ -26,7 +33,7 @@ const COLUMNS = [
   { key: "projects", label: "Projects" },
   { key: "seats", label: "Seats" },
   { key: "last_span_at", label: "Last activity" },
-  { key: "spans", label: "Traces" },
+  { key: "spans", label: "Spans" },
   { key: "training_jobs", label: "Training runs" },
   { key: "live_deployments", label: "Live" },
   { key: "spend_usd", label: "Spend" },
@@ -77,8 +84,9 @@ function AccountsPage() {
     <>
       <PageHeader
         actions={<Freshness data={query.data} />}
+        className="flex-col sm:flex-row"
         count={query.data?.count}
-        description={`Usage and spend cover the last ${days} days. Top-ups and balance are lifetime totals.`}
+        description={`Spans and spend cover ${days} UTC days. Training and top-ups are lifetime totals. Activity is shared across each user's projects.`}
         title="Users"
       />
       {query.isPending ? (
@@ -91,7 +99,7 @@ function AccountsPage() {
             <TableHeader>
               <TableRow>
                 <SortableHeader label="User" onSort={onSort} sort={sort} sortKey="email" />
-                <TableHead>Stage</TableHead>
+                <TableHead>Milestone reached</TableHead>
                 <TableHead>Subscription</TableHead>
                 {COLUMNS.map((column) => (
                   <SortableHeader
@@ -106,7 +114,7 @@ function AccountsPage() {
             </TableHeader>
             <TableBody>
               {query.data.results.map((user) => (
-                <UserRow user={user} days={days} key={user.id} />
+                <UserRow days={days} key={user.id} user={user} />
               ))}
             </TableBody>
           </Table>
@@ -142,7 +150,7 @@ function UserRow({ user, days }: { user: User; days: number }) {
       </TableCell>
       <TableCell>
         <Badge size="chip" variant={user.stage === "called_alias" ? "success" : "info"}>
-          {humanize(user.stage)}
+          {milestoneLabel(user.stage)}
         </Badge>
       </TableCell>
       <TableCell>

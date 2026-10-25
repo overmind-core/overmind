@@ -4,11 +4,14 @@ projects only guests belong to are excluded everywhere."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from statistics import median
+from time import monotonic
 from typing import Any
 
+from django.db import connection, transaction
 from django.db.models import (
     Aggregate,
     Count,
@@ -25,6 +28,7 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Coalesce, TruncDay
+from django.utils import timezone
 
 from overbae.models import (
     BillingService,
@@ -36,6 +40,7 @@ from overbae.models import (
     FinetuningJob,
     InferenceCall,
     OptimizerExperiment,
+    OverwatchFunnelDelivery,
     Project,
     ProjectMembership,
     Span,
@@ -64,6 +69,44 @@ TRAINING_OUTCOMES = {
     FinetuningJob.Status.FAILED: "failed",
     FinetuningJob.Status.CANCELLED: "cancelled",
 }
+
+
+@contextmanager
+def analytics_read_budget(seconds: float = 15):
+    """Bound each SQL statement and stop a multi-query report after its budget."""
+    deadline = monotonic() + seconds
+
+    def bounded(execute, sql, params, many, context):
+        if monotonic() >= deadline:
+            raise TimeoutError("analytics_read_timeout")
+        return execute(sql, params, many, context)
+
+    with transaction.atomic():
+        previous = None
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW statement_timeout")
+                previous = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    [f"{max(1, min(5000, int(seconds * 1000)))}ms"],
+                )
+        with connection.execute_wrapper(bounded):
+            yield
+        # On failure the atomic rollback restores SET LOCAL automatically.
+        if previous is not None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
+
+
+def window_start(days: int) -> datetime:
+    """Start of the first UTC calendar day, including today in the day count."""
+    if isinstance(days, bool) or not isinstance(days, int) or not 1 <= days <= 365:
+        raise ValueError("days must be an integer from 1 to 365")
+    return timezone.now().astimezone(UTC).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ) - timedelta(days=days - 1)
+
 
 def _users() -> QuerySet[User]:
     return User.objects.filter(is_guest=False)
@@ -197,9 +240,13 @@ def overview(since: datetime, active_since: datetime) -> dict[str, Any]:
     ledger = BillingTelemetry.objects.filter(user__is_guest=False)
     window_ledger = ledger.filter(timestamp__gte=since)
     subscription_counts = _counts(subscriptions, "status")
-    ledger_balances = ledger.order_by().values("user").annotate(
-        balance=Sum("amount"),
-        spent=Sum("amount", filter=Q(amount__lt=0)),
+    ledger_balances = (
+        ledger.order_by()
+        .values("user")
+        .annotate(
+            balance=Sum("amount"),
+            spent=Sum("amount", filter=Q(amount__lt=0)),
+        )
     )
     return {
         "users_total": users.count(),
@@ -285,19 +332,37 @@ def activation(since: datetime) -> dict[str, Any]:
     }
 
 
-def funnel_milestones(since: datetime) -> list[dict[str, Any]]:
+def funnel_milestones(
+    since: datetime,
+    *,
+    only_unrecorded: bool = False,
+    limit_per_step: int | None = None,
+    steps: set[str] | None = None,
+) -> list[dict[str, Any]]:
     """Return each non-guest user's first reached timestamp for each funnel step."""
 
     def aggregate(queryset: QuerySet, user_field: str, at_field: str, step: str):
-        return [
-            {"user_id": row[user_field], "step": step, "source_at": row["at"]}
-            for row in (
-                queryset.order_by()
-                .values(user_field)
-                .annotate(at=Min(at_field))
-                .filter(at__gte=since)
+        if steps is not None and step not in steps:
+            return []
+        if only_unrecorded:
+            queryset = queryset.filter(
+                ~Exists(
+                    OverwatchFunnelDelivery.objects.filter(
+                        user_id=OuterRef(user_field),
+                        step=step,
+                    )
+                )
             )
-        ]
+        rows = (
+            queryset.order_by()
+            .values(user_field)
+            .annotate(at=Min(at_field))
+            .filter(at__gte=since, at__lte=timezone.now())
+            .order_by("at", user_field)
+        )
+        if limit_per_step is not None:
+            rows = rows[:limit_per_step]
+        return [{"user_id": row[user_field], "step": step, "source_at": row["at"]} for row in rows]
 
     project_users = ProjectMembership.objects.filter(user__is_guest=False)
     spans = Span.objects.filter(
@@ -328,10 +393,22 @@ def funnel_milestones(since: datetime) -> list[dict[str, Any]]:
         first_application_request_at__gte=F("project__memberships__created_at"),
     )
 
-    events = [
-        {"user_id": user.pk, "step": "signed_up", "source_at": user.date_joined}
-        for user in _users().filter(date_joined__gte=since).only("pk", "date_joined")
-    ]
+    signups = _users().filter(date_joined__gte=since, date_joined__lte=timezone.now())
+    if only_unrecorded:
+        signups = signups.exclude(
+            pk__in=OverwatchFunnelDelivery.objects.filter(step="signed_up").values("user_id")
+        )
+    signups = signups.order_by("date_joined", "pk")
+    if limit_per_step is not None:
+        signups = signups[:limit_per_step]
+    events = (
+        [
+            {"user_id": user.pk, "step": "signed_up", "source_at": user.date_joined}
+            for user in signups.only("pk", "date_joined")
+        ]
+        if steps is None or "signed_up" in steps
+        else []
+    )
     events.extend(aggregate(project_users, "user_id", "created_at", "joined_project"))
     events.extend(
         aggregate(spans, "project__memberships__user_id", "received_at", "sent_first_span")
@@ -369,7 +446,9 @@ def users(since: datetime) -> QuerySet[User]:
         projects=Coalesce(_scalar(ProjectMembership.objects.filter(user=member), Count("pk")), 0),
         seats=Coalesce(
             _scalar(
-                ProjectMembership.objects.filter(project__memberships__user=member),
+                ProjectMembership.objects.filter(
+                    project__memberships__user=member, user__is_guest=False
+                ),
                 Count("user", distinct=True),
             ),
             0,
@@ -427,12 +506,12 @@ def user_activity(user: User, since: datetime) -> dict[str, Any]:
         "user": user,
         "billing": {
             "subscription_status": getattr(user, "subscription_status", None),
-            "spend_usd": ledger.filter(amount__lt=0)
-            .aggregate(value=spend)["value"]
+            "spend_usd": ledger.filter(amount__lt=0).aggregate(value=spend)["value"]
             or Decimal("0"),
             "topups_usd": ledger.filter(
                 service=BillingService.STRIPE_TOPUP, amount__gt=0
-            ).aggregate(value=topups)["value"] or Decimal("0"),
+            ).aggregate(value=topups)["value"]
+            or Decimal("0"),
             "balance_usd": ledger.aggregate(value=Sum("amount"))["value"] or Decimal("0"),
             "spend_daily": _daily(
                 ledger.filter(amount__lt=0, timestamp__gte=since), "timestamp", spend

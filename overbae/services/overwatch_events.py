@@ -2,58 +2,49 @@
 
 from __future__ import annotations
 
-import atexit
-from threading import Lock
+from datetime import datetime
 from uuid import UUID
 
+import requests
 from django.conf import settings
-from posthog import Posthog
+from django.utils import timezone
 
-_lock = Lock()
-_client: Posthog | None = None
+from overbae.services.overwatch_privacy import posthog_url
+from overbae.services.user_insights import ACTIVATION_STEPS
 
 
-def _get_client() -> Posthog | None:
-    global _client
+def capture_funnel_step(
+    *, event_id: UUID, distinct_id: str, step: str, source_at: datetime
+) -> bool:
+    """Wait for ingestion acceptance before advancing the durable delivery ledger."""
     if not settings.POSTHOG_PROJECT_TOKEN:
-        return None
-    with _lock:
-        if _client is None:
-            _client = Posthog(
-                settings.POSTHOG_PROJECT_TOKEN,
-                host=settings.POSTHOG_HOST,
-                timeout=2,
-                max_retries=0,
-                flush_interval=1,
-                max_queue_size=1000,
-                enable_local_evaluation=False,
-            )
-        return _client
-
-
-def flush() -> None:
-    with _lock:
-        if _client is not None:
-            _client.flush(timeout_seconds=2)
-
-
-atexit.register(flush)
-
-
-def capture_funnel_step(*, event_id: UUID, distinct_id: str, step: str, source_at) -> bool:
-    """Queue one idempotently identified funnel milestone without customer PII."""
-    client = _get_client()
-    if client is None:
         return False
-    client.capture(
-        "overwatch_funnel_step",
-        distinct_id=distinct_id,
-        uuid=str(event_id),
-        timestamp=source_at,
-        properties={
-            "funnel_step": step,
-            "source": "overmind_backend",
-            "$process_person_profile": False,
+    if (
+        step not in ACTIVATION_STEPS
+        or not distinct_id
+        or len(distinct_id) > 200
+        or "@" in distinct_id
+        or timezone.is_naive(source_at)
+        or source_at > timezone.now()
+    ):
+        raise ValueError("invalid_funnel_event")
+    response = requests.post(
+        posthog_url(settings.POSTHOG_HOST, "/i/v0/e/", ingest=True),
+        json={
+            "api_key": settings.POSTHOG_PROJECT_TOKEN,
+            "event": "overwatch_funnel_step",
+            "distinct_id": distinct_id,
+            "uuid": str(event_id),
+            "timestamp": source_at.isoformat(),
+            "properties": {
+                "funnel_step": step,
+                "source": "overmind_backend",
+                "$process_person_profile": False,
+            },
         },
+        timeout=(2, 5),
+        allow_redirects=False,
     )
+    if not 200 <= response.status_code < 300:
+        raise RuntimeError("posthog_ingestion_rejected")
     return True

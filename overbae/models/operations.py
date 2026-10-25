@@ -121,7 +121,5 @@ class OverwatchFunnelDelivery(models.Model):
             )
         ]
         indexes = [
-            models.Index(
-                fields=["status", "source_at"], name="overbae_ove_status_3f53a2_idx"
-            )
+            models.Index(fields=["status", "source_at"], name="overbae_ove_status_3f53a2_idx")
         ]

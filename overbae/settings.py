@@ -605,12 +605,11 @@ SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
 OVERWATCH_SLACK_TEAM_ID = os.environ.get("OVERWATCH_SLACK_TEAM_ID", "")
-OVERWATCH_ALLOWED_EMAIL_DOMAIN = os.environ.get(
-    "OVERWATCH_ALLOWED_EMAIL_DOMAIN", "overmindlab.ai"
-)
-OVERWATCH_AGENT_MODEL = os.environ.get(
-    "OVERWATCH_AGENT_MODEL", "anthropic/claude-sonnet-5"
-)
+OVERWATCH_SLACK_ALLOWED_USER_IDS = os.environ.get("OVERWATCH_SLACK_ALLOWED_USER_IDS", "")
+# Explicit opt-in: only aggregated data may be sent to the analytics model.
+OVERWATCH_AGENT_ENABLED = os.environ.get("OVERWATCH_AGENT_ENABLED", "").lower() == "true"
+OVERWATCH_ALLOWED_EMAIL_DOMAIN = os.environ.get("OVERWATCH_ALLOWED_EMAIL_DOMAIN", "overmindlab.ai")
+OVERWATCH_AGENT_MODEL = os.environ.get("OVERWATCH_AGENT_MODEL", "anthropic/claude-sonnet-5")
 OVERWATCH_FUNNEL_CHANNEL_IDS = os.environ.get("OVERWATCH_FUNNEL_CHANNEL_IDS", "{}")
 # No funnel milestones are sent to PostHog or Slack before this rollout timestamp.
 OVERWATCH_FUNNEL_START_AT = os.environ.get("OVERWATCH_FUNNEL_START_AT", "")

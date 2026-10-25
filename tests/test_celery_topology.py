@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 from django.conf import settings
 
@@ -277,3 +278,10 @@ def test_redis_redelivers_only_after_every_late_ack_task_has_hit_its_time_limit(
     assert not offenders, (
         f"late-ack time limits at or above visibility_timeout={visibility}: {offenders}"
     )
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(settings):
+    # These tests never call the parser sandbox; outbound requests remain guarded.
+    settings.SANDBOX_URL = "http://sandbox.test"
+    settings.SANDBOX_TOKEN = "analytics-test"

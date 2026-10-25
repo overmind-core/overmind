@@ -43,6 +43,17 @@ DATABASES = {
 LANGFUSE_PUBLIC_KEY = ""
 LANGFUSE_SECRET_KEY = ""
 
+# Never inherit live analytics/Slack destinations from a developer's local .env.
+# The focused tests explicitly enable their fake destinations when required.
+POSTHOG_PROJECT_TOKEN = ""
+POSTHOG_PERSONAL_API_KEY = ""
+POSTHOG_PROJECT_ID = ""
+SLACK_BOT_TOKEN = ""
+SLACK_SIGNING_SECRET = ""
+OVERWATCH_FUNNEL_START_AT = ""
+OVERWATCH_AGENT_ENABLED = False
+OVERWATCH_SLACK_ALLOWED_USER_IDS = ""
+
 # Remaining-credit billing on unless a test clears the key.
 STRIPE_SECRET_KEY = "sk_test_billing"
 

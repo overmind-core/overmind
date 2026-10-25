@@ -1,93 +1,120 @@
 # Overwatch and Overlord MCP architecture
 
-## Decision
+## Proposed design: two agents, shared governance
 
-Keep Overwatch and Overlord as separate agents with clear roles:
+Overwatch is the product and customer insights specialist. Its dashboard remains
+our main analytics interface, and its Slack identity handles analytics questions
+and funnel notices. Overlord is the broader company agent.
 
-- **Overwatch** owns product and customer insights. Its dashboard is the main
-  analytics interface. Its Slack agent handles focused analytics questions and
-  posts funnel milestones to the configured channels.
-- **Overlord** remains the wider company agent. It answers in its existing Slack
-  experience and can combine PostHog event analysis with customer and commercial
-  context from Overwatch.
-- **Overwatch MCP** will be the read-only analytics interface Overlord uses
-  when it needs customer or product context. Its tools will call the same
-  canonical services as the dashboard and Overwatch Slack agent, so it is not a
-  second source of analytics logic.
+The two Slack identities should use the same governed agent runtime when the
+integration is implemented. Overlord already resolves employees, restricts tools
+by capability and conversation, and records metadata audits. Reuse those rules
+with an analytics-only Overwatch profile rather than maintaining two different
+permission systems. Overwatch must not inherit Overlord's HR or personal tools.
 
-This preserves a specialist Overwatch experience while allowing Overlord to
-answer broader questions. Keep the Slack entry points distinct, `/overwatch` for
-product insights and the existing Overlord mention or command for general
-questions. Funnel alerts remain in the Overwatch channels.
+The current branch contains a standalone Overwatch Slack adapter. It is disabled
+unless explicitly configured. It is a provisional surface, not evidence that
+the shared runtime or either MCP connection has been implemented.
 
-## Data flow
-
-```text
-Overmind database ─┐
-Billing ledger ────┼─> shared Overwatch services ─┬─> Overwatch dashboard
-PostHog aggregates ┘                              ├─> Overwatch Slack agent
-                                                  └─> Overwatch MCP ─┐
-PostHog MCP ─────────────────────────────────────────────────────────┴─> Overlord Slack agent
+```mermaid
+flowchart LR
+    DB[Overmind product and billing records] --> Services[Canonical Overwatch analytics services]
+    PH[PostHog aggregate queries] --> Services
+    Services --> Dashboard[Overwatch dashboard]
+    Services --> MCP[Restricted Overwatch MCP tools]
+    MCP --> Runtime[Governed agent runtime]
+    PHMCP[Restricted PostHog MCP tools] --> Runtime
+    Runtime --> OW[Overwatch Slack profile]
+    Runtime --> OL[Overlord Slack profile]
+    DB --> Notices[Durable milestone delivery]
+    Notices --> Channels[Configured Overwatch channels]
+    Notices --> Events[PostHog milestone events]
 ```
 
-Overwatch services define the canonical customer identity, funnel milestones,
-spend, payments, subscription, balance and product-usage views. The dashboard,
-Overwatch Slack tools and Overwatch MCP should call those services. The
-Overwatch MCP must not call the dashboard's internal REST endpoints.
+## Source and metric definitions
 
-Overlord can use both MCPs for different needs:
+Use Overwatch tools for customer context, billing, payments, credits and recorded
+product milestones. PostHog owns behavioral exploration, retention and ordered
+conversion funnels. Keep named metric definitions in one place and reuse the
+same definitions in the dashboard and agent answers.
 
-- Use **Overwatch MCP** for a customer profile, funnel status, activation
-  milestones, spend, payments, subscription and credit balance.
-- Use **PostHog MCP** for event-level exploration, behavioural breakdowns and
-  questions that need PostHog's own event or insight definitions.
-- When a question spans both sources, join only on the stable identity mapping
-  already used by Overwatch. Return source and time window with the answer. If
-  the sources disagree, show the two values and their definitions rather than
-  silently choosing one.
+Database milestone counts are independent adoption counts for a signup cohort.
+They are not an ordered funnel. First activity inferred from retained records
+may differ from the original event after retention deletes older rows. Project
+activity identifies a project, not which member performed an action. Do not
+present membership attribution as individual behavior.
 
-PostHog remains an input to the Overwatch dashboard. Sending funnel milestones
-to PostHog and to Slack remains independent of Overlord's query path.
+CLI telemetry can begin with an installation identity before authentication
+links it to a Clerk identity. A combined PostHog identity count is not necessarily
+a count of registered customers. Join customer data only when the recorded
+identity mapping is verified; never join on guessed email or display names.
 
-## Tool and access boundary
+Every answer must state its source, UTC time window and freshness. Missing or
+failed sources must be shown as unavailable, not zero. When definitions or
+windows differ, show the difference instead of merging incompatible totals.
 
-The Overwatch MCP should expose a small, read-only contract, such as:
+## Internal MCP boundary
 
-- `get_customer_insights`: exact customer lookup with product activity and
-  commercial context.
-- `query_product_usage`: bounded aggregate metrics over a time window.
-- `get_funnel_progress`: counts and conversion between named milestones.
-- `get_customer_milestones`: milestone history for one customer.
+Expose a small read-only contract built on the same domain services as the
+dashboard. Suggested tools are `get_customer_insights`, `query_product_usage`,
+`get_milestone_adoption` and `get_customer_milestones`. The adapters call services
+directly, not the dashboard's internal REST endpoints.
 
-Keep spend and payment fields in customer insights. Return only fields needed to
-answer the question, include source timestamps, and cap result sizes. Funnel
-alerts and aggregate answers must not include customer email or trace contents.
-Customer-level details should only be available in approved private Slack
-contexts.
+The existing `/api/mcp/` is a customer-facing, project-scoped API. Internal
+analytics crosses customer boundaries. It needs an explicit internal permission
+and a dedicated service credential before any tool is registered. Reuse the
+existing MCP transport and catalog; do not mount another feature server.
 
-The existing `/api/mcp/` serves Overmind customer projects and account
-credentials. Company-wide Overwatch data crosses customer project boundaries,
-so it must have an explicit internal employee or service identity and a
-separate read-only permission. Ordinary customer API keys and OAuth grants must
-never discover or call these tools. Reuse the existing MCP transport and
-catalog; do not mount another MCP server. The current dashboard bearer token is
-not, by itself, proof that a caller may query cross-customer data.
+Enforce permission at discovery and again at invocation. A normal customer key,
+project key or OAuth grant must neither see nor invoke internal analytics tools.
+A company email domain, a model instruction or an unverified caller header is
+not authorization. Bind service access to the calling deployment, and bind user
+requests to the verified employee, analytics capability and conversation mode.
+The dashboard bearer token must not become the MCP service credential.
 
-The implementation should record the caller and tool name, but not customer
-identifiers, event payloads, or returned records in its audit log. Add tests
-showing customer credentials cannot see or invoke internal analytics tools,
-while the approved Overlord service identity can.
+PostHog MCP supports writes as well as reads. Use its supported read-only mode,
+a single approved project, minimum credential scopes and an explicit local tool
+allowlist. Do not blindly forward its full catalog. Do not allow arbitrary SQL,
+raw event properties, person rows, session replays or customer records into an
+analytics model prompt. Read-only access still needs a data policy. PostHog
+features that invoke another AI service need separate approval of that data path.
 
-## Ownership for the review
+## Private data and operational controls
 
-This branch owns the Overwatch dashboard, shared analytics services, funnel
-delivery and the Overwatch MCP contract. The Overlord repo owns its Slack
-experience, MCP client configuration, tool selection and answer composition.
-Its current worktree has unrelated uncommitted changes, so this branch does not
-modify it.
+- Keep named customer records and customer billing detail inside the backend and
+  approved private replies. The provisional adapter replaces supplied emails
+  with request-local references and renders customer reports locally. Only
+  aggregate tool results are returned to its model.
+- Require explicit model opt-in and approved internal Slack user IDs. Reject
+  deleted, guest, restricted, external and bot accounts. The provisional model
+  requests deny data collection and require zero retention routing. Free-text
+  questions still require care: email redaction is not a general PII classifier.
+- Keep secrets in server-side deployment settings. Never put a service key in a
+  `VITE_*` variable, URL, prompt, source file, error message or audit payload.
+  Logs contain fixed error codes and redacted task argument metadata. Broker
+  payloads are private application data and need restricted access and TLS.
+- Funnel alerts contain a dashboard user reference, never an email or trace
+  contents. PostHog receives only a pseudonymous identity, milestone and source
+  timestamp. Each destination has its own acknowledgement and retry state.
+  Slack retries remain at least once; a crash after acceptance can duplicate a
+  notice. The stable event UUID supports PostHog deduplication.
+- Browser responses are private and not cacheable. The provisional login uses a
+  token scoped to a tab for 30 minutes, with legacy persistent tokens cleared.
+  Employee SSO and individual revocation should replace the shared admin token
+  before broader access. Do not expose the internal app without an access gate.
 
-This branch documents the MCP contract; it does not yet expose an MCP endpoint.
-Before wiring Overlord to a deployed endpoint, Pritam should confirm the
-internal service identity and how it will be provisioned. The contract above
-keeps the data boundary clear without binding the integration to customer
-credentials or the dashboard's legacy token.
+## Implementation and review boundaries
+
+This PR implements dashboard insights, the provisional Slack adapter, PostHog
+aggregate reads and milestone delivery. It documents the MCP design. It does
+not expose internal MCP tools or change the Overlord runtime.
+
+Pritam's integration review should settle the internal service identity and
+employee capability mapping, choose the shared runtime profile integration,
+and confirm the production access gate. Then add negative tests for discovery,
+invocation and private versus public conversations before wiring live MCPs.
+
+References: [PostHog capture API](https://posthog.com/docs/api/capture),
+[PostHog MCP](https://posthog.com/docs/model-context-protocol),
+[PostHog API authentication](https://posthog.com/docs/api), and
+[OpenRouter retention routing](https://openrouter.ai/docs/guides/routing/provider-selection).

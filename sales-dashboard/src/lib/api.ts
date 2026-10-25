@@ -1,16 +1,42 @@
-const TOKEN_KEY = "overmind.sales.token";
+const TOKEN_KEY = "overmind.overwatch.session";
 const API_URL = import.meta.env.VITE_API_URL ?? "";
+const SESSION_MS = 30 * 60 * 1000;
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (token: string) => localStorage.setItem(TOKEN_KEY, token);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+export function clearToken() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem("overmind.sales.token");
+}
+
+export function getToken(): string | null {
+  // Retire the legacy persistent token, even for a previously signed-in browser.
+  localStorage.removeItem("overmind.sales.token");
+  try {
+    const value = JSON.parse(sessionStorage.getItem(TOKEN_KEY) ?? "null");
+    if (
+      typeof value?.token === "string" &&
+      typeof value?.expiresAt === "number" &&
+      value.expiresAt > Date.now()
+    ) {
+      return value.token;
+    }
+  } catch {
+    // Invalid or expired session state requires a fresh sign-in.
+  }
+  sessionStorage.removeItem(TOKEN_KEY);
+  return null;
+}
+
+export function setToken(token: string) {
+  clearToken();
+  sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ expiresAt: Date.now() + SESSION_MS, token }));
+}
 
 export class Unauthorized extends Error {}
 
 export type Daily = { day: string; value: number };
 export type DailyUsd = { day: string; value: string };
 
-export type Overview = {
+export type Overview = Cached & {
   users_total: number;
   signups: Daily[];
   sign_on_methods: Record<string, number>;
@@ -41,6 +67,9 @@ export type Activation = {
 export type ProductUsage = Cached & {
   available: boolean;
   reason?: string;
+  identity_basis?: string;
+  window_start?: string;
+  window_end?: string;
   active_users?: number;
   totals?: {
     cli_completions: number;
@@ -89,7 +118,7 @@ type Workflow = { total: number; by_status: Record<string, number>; daily: Daily
 
 export type TrainingOutcome = "completed" | "failed" | "cancelled" | "in_progress";
 
-export type UserActivity = {
+export type UserActivity = Cached & {
   user: User;
   billing: {
     subscription_status: string | null;
@@ -132,7 +161,10 @@ export async function overwatchGet<T>(
     if (value !== undefined) query.set(key, String(value));
   }
   const response = await fetch(`${API_URL}/api/internal/overwatch/${path}/?${query}`, {
+    cache: "no-store",
     headers: { Authorization: `Bearer ${token ?? ""}` },
+    redirect: "error",
+    referrerPolicy: "no-referrer",
   });
   if (response.status === 401 || response.status === 403) throw new Unauthorized();
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);

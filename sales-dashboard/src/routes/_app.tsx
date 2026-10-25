@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 
@@ -31,6 +33,21 @@ function Shell() {
   const { days } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const checkSession = () => {
+      if (!getToken()) {
+        queryClient.clear();
+        void navigate({ to: "/login" });
+      }
+    };
+    const interval = window.setInterval(checkSession, 5000);
+    document.addEventListener("visibilitychange", checkSession);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", checkSession);
+    };
+  }, [navigate, queryClient]);
 
   function signOut() {
     clearToken();

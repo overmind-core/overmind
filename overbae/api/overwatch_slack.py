@@ -5,18 +5,21 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs
 
 from django.conf import settings
 from django.core.cache import cache
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from overbae.services.overwatch_privacy import slack_response_url
 from overbae.tasks.overwatch import answer_slack_message, answer_slack_question
 
 MAX_REQUEST_AGE_SECONDS = 300
@@ -30,6 +33,7 @@ def _valid_signature(body: bytes, timestamp: str, signature: str) -> bool:
         or len(timestamp) > 12
         or not timestamp.isascii()
         or not timestamp.isdecimal()
+        or re.fullmatch(r"v0=[a-f0-9]{64}", signature) is None
     ):
         return False
     if abs(int(time.time()) - int(timestamp)) > MAX_REQUEST_AGE_SECONDS:
@@ -41,31 +45,30 @@ def _valid_signature(body: bytes, timestamp: str, signature: str) -> bool:
     return hmac.compare_digest(f"v0={digest}", signature)
 
 
-def _response_url_is_slack(value: str) -> bool:
-    try:
-        parsed = urlparse(value)
-        return (
-            parsed.scheme == "https"
-            and parsed.hostname == "hooks.slack.com"
-            and parsed.port in (None, 443)
-        )
-    except ValueError:
-        return False
+def _admit(user_id: str) -> bool:
+    """Bound expensive model calls for both one user and the whole workspace."""
+    minute = int(time.time()) // 60
+    for scope, limit in ((user_id, 5), ("workspace", 20)):
+        key = f"overwatch:slack:rate:{scope}:{minute}"
+        cache.add(key, 0, timeout=120)
+        if cache.incr(key) > limit:
+            return False
+    return True
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(sensitive_post_parameters("text", "response_url"), name="dispatch")
 class OverwatchSlackCommandView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
     @extend_schema(exclude=True)
+    @sensitive_variables()
     def post(self, request):
         body = request.body
         timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
         signature = request.headers.get("X-Slack-Signature", "")
-        if len(body) > MAX_BODY_BYTES or not _valid_signature(
-            body, timestamp, signature
-        ):
+        if len(body) > MAX_BODY_BYTES or not _valid_signature(body, timestamp, signature):
             return Response({"text": "Invalid Slack request."}, status=401)
 
         expected_team = settings.OVERWATCH_SLACK_TEAM_ID
@@ -84,7 +87,7 @@ class OverwatchSlackCommandView(APIView):
         user_id = field("user_id")
         question = field("text").strip()[:MAX_QUESTION_LENGTH]
         response_url = field("response_url")
-        if not user_id or not _response_url_is_slack(response_url):
+        if not re.fullmatch(r"[UW][A-Z0-9]{1,31}", user_id) or not slack_response_url(response_url):
             return Response({"text": "Could not read this Slack command."}, status=400)
         if not question:
             return Response(
@@ -98,8 +101,34 @@ class OverwatchSlackCommandView(APIView):
             )
 
         try:
-            answer_slack_question.delay(user_id, question, response_url)
+            cache_key = (
+                "overwatch:slack:command:" + hashlib.sha256(timestamp.encode() + body).hexdigest()
+            )
+            if not cache.add(cache_key, True, timeout=600):
+                return Response(
+                    {
+                        "response_type": "ephemeral",
+                        "text": "That question is already being processed.",
+                    }
+                )
+            if not _admit(user_id):
+                cache.delete(cache_key)
+                return Response(
+                    {
+                        "response_type": "ephemeral",
+                        "text": "Overwatch has reached its query limit. Try again in a minute.",
+                    },
+                    status=429,
+                )
+            answer_slack_question.apply_async(
+                args=(user_id, question, response_url),
+                argsrepr="(<redacted>)",
+                kwargsrepr="{}",
+                expires=120,
+            )
         except Exception:
+            if "cache_key" in locals():
+                cache.delete(cache_key)
             return Response(
                 {
                     "response_type": "ephemeral",
@@ -107,12 +136,11 @@ class OverwatchSlackCommandView(APIView):
                 },
                 status=503,
             )
-        return Response(
-            {"response_type": "ephemeral", "text": "Overwatch is looking into that…"}
-        )
+        return Response({"response_type": "ephemeral", "text": "Overwatch is looking into that…"})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(sensitive_post_parameters(), name="dispatch")
 class OverwatchSlackEventsView(APIView):
     """Queue signed direct-message events; public channel mentions are ignored."""
 
@@ -120,6 +148,7 @@ class OverwatchSlackEventsView(APIView):
     authentication_classes = []
 
     @extend_schema(exclude=True)
+    @sensitive_variables()
     def post(self, request):
         body = request.body
         timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
@@ -165,19 +194,30 @@ class OverwatchSlackEventsView(APIView):
         thread_ts = event.get("thread_ts", "")
         if not all(isinstance(value, str) and value for value in (user_id, channel_id, message_ts)):
             return Response({"ok": True})
+        if not re.fullmatch(r"[UW][A-Z0-9]{1,31}", user_id) or not re.fullmatch(
+            r"D[A-Z0-9]{1,31}", channel_id
+        ):
+            return Response({"ok": True})
         if not question:
             return Response({"ok": True})
 
         cache_key = "overwatch:slack:event:" + hashlib.sha256(event_id.encode()).hexdigest()
-        if not cache.add(cache_key, True, timeout=24 * 60 * 60):
-            return Response({"ok": True})
         try:
-            answer_slack_message.delay(
-                user_id,
-                question,
-                channel_id,
-                message_ts,
-                thread_ts if isinstance(thread_ts, str) else "",
+            if not cache.add(cache_key, True, timeout=24 * 60 * 60):
+                return Response({"ok": True})
+            if not _admit(user_id):
+                return Response({"ok": True})
+            answer_slack_message.apply_async(
+                args=(
+                    user_id,
+                    question,
+                    channel_id,
+                    message_ts,
+                    thread_ts if isinstance(thread_ts, str) else "",
+                ),
+                argsrepr="(<redacted>)",
+                kwargsrepr="{}",
+                expires=120,
             )
         except Exception:
             cache.delete(cache_key)

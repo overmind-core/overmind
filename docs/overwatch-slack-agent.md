@@ -37,25 +37,25 @@ it happens. The initial funnel follows the milestones already represented in
 the dashboard:
 
 1. Signed up
-2. Joined a project
-3. Sent a first trace
-4. Synced capabilities
-5. Ran an evaluation
-6. Started training
-7. Deployed a model
-8. Made a first model call
+1. Joined a project
+1. Sent a first trace
+1. Synced capabilities
+1. Ran an evaluation
+1. Started training
+1. Deployed a model
+1. Made a first model call
 
 The Overmind workspace now has public channels for these steps:
 `#overwatch-signed-up`, `#overwatch-project-created`, `#overwatch-first-trace`,
 `#overwatch-capabilities-synced`, `#overwatch-evaluations`,
 `#overwatch-training`, `#overwatch-model-deployments`, and
-`#overwatch-first-model-call`. The channel ID map is recorded in `.env.example`.
+`#overwatch-first-model-call`. The channel ID map is supplied privately through deployment settings; `.env.example` contains no workspace IDs.
 The existing `#overwatch-project-created` channel is mapped to the
 `joined_project` step because the source records project membership, not who
 created the project.
 Project activity after a user joins is attributed to each member of that project;
 the underlying records do not identify which member performed the action. Slack
-messages for project activity describe the project milestone and name a member.
+messages identify a dashboard user reference and the project milestone, not an email.
 
 Channel IDs are configured per step. Delivery is recorded with a stable
 user-and-step key and Slack client message ID to suppress ordinary retry
@@ -80,15 +80,15 @@ historical activity from flooding channels when the monitor is first enabled.
 
 The dashboard, aggregate PostHog view, private `/overwatch` command, and DM
 event handler are in the current branch. Both Slack ingress paths verify
-signatures and the configured workspace ID, check the Slack user's email domain,
-and use bounded read-only analytics tools. The DM handler accepts only direct
+signatures and the configured workspace ID, require an explicit internal Slack user allowlist and matching workspace and email domain,
+reject restricted, external, deleted and bot accounts, and use bounded read-only analytics tools. The DM handler accepts only direct
 messages, ignores bot messages and public channel posts, and deduplicates Slack
 event retries. The PostHog personal key and project ID remain optional; when
 absent, answers must say the PostHog data is unavailable.
 
 The funnel delivery ledger and scheduler send milestone events to PostHog when
 the existing project write token is configured. Slack notifications are
-independent and need a bot token and per-step channel IDs. The rollout timestamp
+independent and need a bot token and per-step channel IDs. The rollout timestamp must include its timezone and
 gates both destinations; leaving it blank disables new funnel delivery. The
 PostHog dashboard query also needs a project-query read key and project ID.
 Slack's app setup needs the
@@ -97,7 +97,8 @@ Slack's app setup needs the
 `/api/internal/overwatch/slack/events/` with the `message.im` event subscribed,
 the `commands`, `chat:write`, `chat:write.public`, `im:history`, `users:read`,
 and `users:read.email` OAuth scopes. Install or reinstall the Slack app after
-granting the scopes, then add the signing secret, bot token, and workspace ID to
-deployment settings.
+granting the scopes, then add the signing secret, bot token, workspace ID, approved Slack user IDs, and explicit model opt-in to
+deployment settings. Model calls require zero retention routing; named customer
+reports are rendered locally and are never sent back to the model.
 Channel creation and live delivery are workspace operations; this code branch
 does not create channels or send messages during development.

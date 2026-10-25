@@ -6,8 +6,8 @@ import { DailyChart } from "~/components/daily-chart";
 import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
 import { Stat } from "~/components/stat";
-import { type Overview, type ProductUsage, overwatchGet } from "~/lib/api";
-import { fillDays, formatInt, formatUsd, sum } from "~/lib/format";
+import { type Overview, overwatchGet, type ProductUsage } from "~/lib/api";
+import { fillDays, formatInt, formatUsd, MILESTONES, sum } from "~/lib/format";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
@@ -38,7 +38,8 @@ function OverviewPage() {
     <>
       <PageHeader
         actions={<Freshness data={query.data} />}
-        description={`Product activity over the last ${days} days. Guest activity excluded.`}
+        className="flex-col sm:flex-row"
+        description={`Product activity over the last ${days} days. Guest-only projects excluded. Project activity does not identify the individual who performed it.`}
         title="User insights"
       />
       {query.isPending ? (
@@ -68,10 +69,10 @@ function OverviewBody({
   usage?: ProductUsage;
   usageFailed: boolean;
 }) {
-  const signups = fillDays(data.signups, days);
-  const projects = fillDays(data.projects_created, days);
-  const spans = fillDays(data.spans, days);
-  const traces = fillDays(data.traces, days);
+  const signups = fillDays(data.signups, days, data.computed_at);
+  const projects = fillDays(data.projects_created, days, data.computed_at);
+  const spans = fillDays(data.spans, days, data.computed_at);
+  const traces = fillDays(data.traces, days, data.computed_at);
   const traffic = spans.map((point, index) => ({
     day: point.day,
     spans: point.value,
@@ -85,34 +86,35 @@ function OverviewBody({
   const posthogDays = fillDays(
     (usage?.daily ?? []).map(({ day, cli_completions: value }) => ({ day, value })),
     days,
+    usage?.computed_at ?? data.computed_at
   );
   const posthogByDay = new Map((usage?.daily ?? []).map((point) => [point.day, point]));
   const productEvents = posthogDays.map(({ day }) => {
     const point = posthogByDay.get(day);
     return {
-      day,
       cli_completions: point?.cli_completions ?? 0,
+      day,
       mcp_tool_calls: point?.mcp_tool_calls ?? 0,
-      training_results_available: point?.training_results_available ?? 0,
       training_checks_finished: point?.training_checks_finished ?? 0,
+      training_results_available: point?.training_results_available ?? 0,
     };
   });
   const productActionTotal = Object.values(usage?.totals ?? {}).reduce(
     (total, count) => total + count,
-    0,
+    0
   );
-  const dailyTopups = fillDays(data.topups_usd, days);
+  const dailyTopups = fillDays(data.topups_usd, days, data.computed_at);
   const dailySpend = new Map(
-    fillDays(data.spend_usd, days).map(({ day, value }) => [day, value]),
+    fillDays(data.spend_usd, days, data.computed_at).map(({ day, value }) => [day, value])
   );
   const financial = dailyTopups.map(({ day, value }) => ({
     day,
-    topups: value,
     spend: dailySpend.get(day) ?? 0,
+    topups: value,
   }));
   const totalSpend = Object.values(data.spend_by_service).reduce(
     (total, amount) => total + Number(amount),
-    0,
+    0
   );
 
   return (
@@ -121,20 +123,20 @@ function OverviewBody({
         <Stat label="Users" value={formatInt(data.users_total)} />
         <Stat label="Sign-ups" value={formatInt(sum(data.signups))} />
         <Stat
-          detail="Sent traces in the last 7 days"
-          label="Trace active users"
+          detail="Members of projects that received traces in the last 7 days"
+          label="Members of trace-active projects"
           value={formatInt(data.trace_active_users_7d)}
         />
         <Stat
-          detail={`Sent traces in the last ${days} days`}
-          label={`Trace active users, ${days} days`}
+          detail={`Members of projects that received traces in the last ${days} UTC days`}
+          label={`Members of active projects, ${days} days`}
           value={formatInt(data.trace_active_users_window)}
         />
         <Stat label="Live deployments" value={formatInt(data.live_deployments)} />
         {usage?.available ? (
           <Stat
             detail={`Last ${days} days · CLI and MCP`}
-            label="CLI/MCP active users"
+            label="Active CLI/MCP identities"
             value={formatInt(usage.active_users ?? 0)}
           />
         ) : null}
@@ -219,19 +221,10 @@ function OverviewBody({
           </SectionCard>
         )}
         {usage?.available && (
-          <SectionCard title="Conversion milestones in PostHog">
+          <SectionCard title="Milestone identities in PostHog">
             {Object.keys(usage.funnel_steps ?? {}).length ? (
               <dl className="grid gap-3 sm:grid-cols-2">
-                {[
-                  ["signed_up", "Signed up"],
-                  ["joined_project", "Joined a project"],
-                  ["sent_first_span", "Sent first trace"],
-                  ["synced_capabilities", "Synced capabilities"],
-                  ["ran_evaluation", "Ran an evaluation"],
-                  ["started_training", "Started training"],
-                  ["deployed_model", "Deployed a model"],
-                  ["called_alias", "Made a first model call"],
-                ].map(([step, label]) => (
+                {MILESTONES.map(({ step, label }) => (
                   <div className="flex items-center justify-between gap-3" key={step}>
                     <dt className="text-sm text-muted-foreground">{label}</dt>
                     <dd className="font-medium tabular-nums">
@@ -242,7 +235,7 @@ function OverviewBody({
               </dl>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No conversion milestones have reached PostHog in this time window.
+                No milestone events have reached PostHog in this time window.
               </p>
             )}
           </SectionCard>
@@ -258,7 +251,7 @@ function OverviewBody({
           total={`${formatInt(sum(spans))} spans`}
         />
         <DailyChart
-          data={fillDays(data.inference_calls, days)}
+          data={fillDays(data.inference_calls, days, data.computed_at)}
           format={formatInt}
           series={[{ color: "var(--chart-2)", key: "value", label: "Calls" }]}
           title="Inference calls"
@@ -289,7 +282,7 @@ function OverviewBody({
                   <TableRow>
                     <TableHead>Command</TableHead>
                     <TableHead className="text-right">Runs</TableHead>
-                    <TableHead className="text-right">Users</TableHead>
+                    <TableHead className="text-right">Identities</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -319,7 +312,7 @@ function OverviewBody({
                   <TableRow>
                     <TableHead>Tool</TableHead>
                     <TableHead className="text-right">Calls</TableHead>
-                    <TableHead className="text-right">Users</TableHead>
+                    <TableHead className="text-right">Identities</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

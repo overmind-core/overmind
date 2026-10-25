@@ -48,8 +48,8 @@ from overbae.api.inference_requests import (
 from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
-from overbae.api.overwatch_slack import OverwatchSlackCommandView, OverwatchSlackEventsView
 from overbae.api.otlp import otlp_traces
+from overbae.api.overwatch_slack import OverwatchSlackCommandView, OverwatchSlackEventsView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
@@ -147,7 +147,11 @@ if settings.SALES_DASHBOARD_TOKEN:
 
     urlpatterns += [
         path("api/internal/overwatch/overview/", OverviewView.as_view(), name="overwatch-overview"),
-        path("api/internal/overwatch/activation/", ActivationView.as_view(), name="overwatch-activation"),
+        path(
+            "api/internal/overwatch/activation/",
+            ActivationView.as_view(),
+            name="overwatch-activation",
+        ),
         path(
             "api/internal/overwatch/product-usage/",
             ProductUsageView.as_view(),
