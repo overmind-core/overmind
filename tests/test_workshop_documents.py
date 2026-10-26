@@ -400,9 +400,7 @@ def test_invalid_image_does_not_partially_append_a_batch(
     assert expected[failure] in dataset.error
 
 
-def test_image_without_text_lands_as_an_empty_recorded_part_of_a_batch(
-    workshop, django_capture_on_commit_callbacks, in_process_parser
-):
+def test_image_without_text_lands_as_an_empty_recorded_part_of_a_batch(workshop):
     client, project = workshop
     good, _ = upload(client, "policy.png", image_bytes("PNG"))
     blank, _ = upload(client, "blank.png", image_bytes("PNG", variant="blank"))
