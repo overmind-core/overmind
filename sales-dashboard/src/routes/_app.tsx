@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 
+import overwatchLogo from "~/assets/overwatch-logo.svg";
 import { clearToken, getToken } from "~/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ function Shell() {
     <div className="flex h-screen flex-col">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border/70 bg-card px-6 py-3">
         <div className="flex items-center gap-2">
-          <Icon.overmind className="size-5" />
+          <img alt="" className="size-6 shrink-0" height={24} src={overwatchLogo} width={24} />
           <span className={LABEL.sidebar}>Overwatch</span>
         </div>
         <nav aria-label="Sections" className="flex gap-1">

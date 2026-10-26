@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
+import overwatchLogo from "~/assets/overwatch-logo.svg";
 import { getToken, overwatchGet, setToken, Unauthorized } from "~/lib/api";
 
 import { Alert } from "@/components/ui/alert";
@@ -47,7 +48,7 @@ function Login() {
     <div className="flex h-screen items-center justify-center p-6">
       <Card className="w-full max-w-sm space-y-4 bg-wash-subtle p-6">
         <div className="flex items-center gap-2">
-          <Icon.overmind className="size-5" />
+          <img alt="" className="size-6 shrink-0" height={24} src={overwatchLogo} width={24} />
           <h1 className={TITLE.card}>Overwatch</h1>
         </div>
         <form className="space-y-3" onSubmit={submit}>
