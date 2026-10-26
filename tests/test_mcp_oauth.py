@@ -105,6 +105,7 @@ def test_oauth_discovery_consent_project_access_refresh_and_revoke(flow):
     assert "resource_metadata=" in challenge.headers["www-authenticate"]
     metadata = client.get("/.well-known/oauth-protected-resource/api/mcp/").json()
     assert metadata["resource"] == RESOURCE
+    assert client.get("/.well-known/oauth-protected-resource/api/mcp").json() == metadata
     assert client.get("/.well-known/oauth-authorization-server").json()[
         "token_endpoint_auth_methods_supported"
     ] == ["none"]
