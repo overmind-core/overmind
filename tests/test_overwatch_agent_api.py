@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.core.cache import cache
 from django.db import connection
 from django.utils import timezone
 from factories import (
@@ -33,6 +34,7 @@ def _sandbox(settings):
 def configured(settings):
     settings.OVERWATCH_SERVICE_TOKEN = TOKEN
     settings.SALES_DASHBOARD_TOKEN = "dashboard-test-token"
+    cache.clear()
 
 
 def client(token=TOKEN):
@@ -260,6 +262,64 @@ def test_milestone_report_counts_all_matches_but_fetches_only_newest_customers(s
     assert actual == expected[:3]
     # Observe real PostgreSQL result sizes: a small response must not fetch all matches.
     assert row_counts and max(row_counts) <= 3
+
+
+def test_agent_reads_share_one_snapshot_for_an_hour(time_machine):
+    time_machine.move_to(datetime(2026, 10, 25, 12, tzinfo=UTC), tick=False)
+    make_user(email="cached@example.com")
+    calls = [
+        ("activation_funnel", {"days": 7}),
+        ("billing_summary", {"days": 7}),
+        ("customer_activity", {"days": 7, "email": "Cached@example.com"}),
+        ("customers_at_step", {"days": 7, "step": "signed_up"}),
+    ]
+
+    def ask(tool, arguments):
+        response = client().post(URL, {"tool": tool, "arguments": arguments}, format="json")
+        assert response.status_code == 200
+        assert response["Cache-Control"] == "private, no-store"
+        return response.data
+
+    first = {tool: ask(tool, arguments) for tool, arguments in calls}
+    make_user(email="later@example.com")
+    User.objects.filter(email="cached@example.com").update(
+        date_joined=timezone.now() - timedelta(days=2)
+    )
+    time_machine.shift(3599)
+    observed = []
+
+    def record(execute, sql, params, many, context):
+        observed.append(sql)
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(record):
+        again = ask("billing_summary", {"days": 7})
+    assert again == first["billing_summary"]
+    assert observed == []
+    assert ask("activation_funnel", {"days": 7}) == first["activation_funnel"]
+    assert (
+        ask("customer_activity", {"days": 7, "email": "cached@example.com"})
+        == first["customer_activity"]
+    )
+    assert (
+        ask("customers_at_step", {"days": 7, "step": "signed_up", "limit": 25})
+        == first["customers_at_step"]
+    )
+    other_window = ask("activation_funnel", {"days": 30})
+    assert other_window["content"] != first["activation_funnel"]["content"]
+    assert other_window["as_of"] != first["activation_funnel"]["as_of"]
+    assert "later@example.com" not in first["customers_at_step"]["content"]
+
+    time_machine.shift(2)
+    refreshed = ask("activation_funnel", {"days": 7})
+    customer = ask("customer_activity", {"days": 7, "email": "cached@example.com"})
+    assert refreshed["content"] != first["activation_funnel"]["content"]
+    assert refreshed["as_of"] != first["activation_funnel"]["as_of"]
+    assert customer["content"] != first["customer_activity"]["content"]
+    assert (
+        "later@example.com"
+        in ask("customers_at_step", {"days": 7, "step": "signed_up", "limit": 25})["content"]
+    )
 
 
 @pytest.fixture

@@ -4,7 +4,9 @@ POST carries private query arguments in the body, never in access-log URLs.
 It performs no product mutations and is deliberately absent from public OpenAPI/MCP.
 """
 
+import hashlib
 import hmac
+import json
 import logging
 
 from django.conf import settings
@@ -22,6 +24,11 @@ from rest_framework.views import APIView
 from overbae.services import overwatch_tools, user_insights
 
 logger = logging.getLogger(__name__)
+TOOL_CACHE_SECONDS = 3600
+# product_usage keeps its own PostHog cache and still reads product rows live.
+CACHED_TOOLS = frozenset(
+    {"activation_funnel", "billing_summary", "customer_activity", "customers_at_step"}
+)
 DAYS = {"type": "integer", "minimum": 1, "maximum": 365}
 SCHEMAS = {
     name: {
@@ -78,6 +85,21 @@ class QuerySerializer(serializers.Serializer):
         return attrs
 
 
+def _tool_cache_key(tool: str, arguments: dict) -> str:
+    # One snapshot per tool and arguments. Hash the query so a customer email is
+    # not a Redis key, and never include the bearer token.
+    normalized = dict(arguments)
+    if tool == "customer_activity":
+        normalized["email"] = normalized["email"].casefold()
+    elif tool == "customers_at_step":
+        # The handler treats a missing limit as 25; the snapshot must too.
+        normalized["limit"] = normalized.get("limit", 25)
+    fingerprint = hashlib.sha256(
+        json.dumps({"tool": tool, "arguments": normalized}, sort_keys=True).encode()
+    ).hexdigest()
+    return f"overwatch:agent:query:{fingerprint}"
+
+
 class QueryResultSerializer(serializers.Serializer):
     content = serializers.CharField()
     private = serializers.BooleanField()
@@ -106,13 +128,18 @@ class OverwatchQueryView(APIView):
         query = QuerySerializer(data=request.data)
         if not query.is_valid():
             return Response({"error": "invalid_query"}, status=400)
-        tool, args = query.validated_data["tool"], query.validated_data["arguments"]
+        tool, args = query.validated_data["tool"], dict(query.validated_data["arguments"])
         try:
             minute = int(timezone.now().timestamp()) // 60
-            key = f"overwatch:service:rate:{minute}"
-            cache.add(key, 0, timeout=120)
-            if cache.incr(key) > 120:
+            rate_key = f"overwatch:service:rate:{minute}"
+            cache.add(rate_key, 0, timeout=120)
+            if cache.incr(rate_key) > 120:
                 return Response({"error": "query_limit"}, status=429)
+            result_key = _tool_cache_key(tool, args) if tool in CACHED_TOOLS else None
+            if result_key is not None:
+                cached = cache.get(result_key)
+                if cached is not None:
+                    return Response(cached)
             # Dedicated top-level transaction: PostgreSQL itself rejects writes,
             # including accidental future ORM writes and data-modifying CTEs.
             with transaction.atomic():
@@ -132,7 +159,10 @@ class OverwatchQueryView(APIView):
                     "window_start": user_insights.window_start(args["days"]),
                 }
             )
-            return Response(result.data)
+            payload = dict(result.data)
+            if result_key is not None:
+                cache.set(result_key, payload, TOOL_CACHE_SECONDS)
+            return Response(payload)
         except Exception:
             logger.warning("overwatch_service_query_failed")
             return Response({"error": "analytics_unavailable"}, status=503)
