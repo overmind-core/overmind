@@ -49,7 +49,7 @@ from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
-from overbae.api.overwatch_slack import OverwatchSlackCommandView, OverwatchSlackEventsView
+from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
@@ -167,14 +167,9 @@ if settings.SALES_DASHBOARD_TOKEN:
 
 urlpatterns += [
     path(
-        "api/internal/overwatch/slack/command/",
-        OverwatchSlackCommandView.as_view(),
-        name="overwatch-slack-command",
-    ),
-    path(
-        "api/internal/overwatch/slack/events/",
-        OverwatchSlackEventsView.as_view(),
-        name="overwatch-slack-events",
+        "api/internal/overwatch/agent/query/",
+        OverwatchQueryView.as_view(),
+        name="overwatch-agent-query",
     ),
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(

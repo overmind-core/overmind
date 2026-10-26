@@ -446,8 +446,6 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
-    "overbae.tasks.overwatch.answer_slack_question": {"queue": "io"},
-    "overbae.tasks.overwatch.answer_slack_message": {"queue": "io"},
     "overbae.tasks.innermind.dispatch_live_scoring": {"queue": "control"},
     "overbae.tasks.innermind.execute_live_scoring": {"queue": "io_traces"},
     "overbae.tasks.innermind.score_spans": {"queue": "io_traces"},
@@ -596,14 +594,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
-OVERWATCH_SLACK_TEAM_ID = os.environ.get("OVERWATCH_SLACK_TEAM_ID", "")
-OVERWATCH_SLACK_ALLOWED_USER_IDS = os.environ.get("OVERWATCH_SLACK_ALLOWED_USER_IDS", "")
-# Explicit opt-in: only aggregated data may be sent to the analytics model.
-OVERWATCH_AGENT_ENABLED = os.environ.get("OVERWATCH_AGENT_ENABLED", "").lower() == "true"
-OVERWATCH_ALLOWED_EMAIL_DOMAIN = os.environ.get("OVERWATCH_ALLOWED_EMAIL_DOMAIN", "overmindlab.ai")
-OVERWATCH_AGENT_MODEL = os.environ.get("OVERWATCH_AGENT_MODEL", "anthropic/claude-sonnet-5")
+# Dedicated read-only analytics service credential, never shared with the dashboard.
+OVERWATCH_SERVICE_TOKEN = os.environ.get("OVERWATCH_SERVICE_TOKEN", "")
 
 # Blank disables Clerk; self-hosted Console uses /api/auth/local/ instead.
 # API keys and guest sessions still authenticate either way.

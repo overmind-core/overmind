@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse
-
-from django.conf import settings
 
 EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _CREDENTIAL = re.compile(
@@ -15,15 +12,6 @@ _CREDENTIAL = re.compile(
     r"|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
     r"|(?i:\b(?:api[_ -]?key|authorization|password|secret|token)\s*[:=]\s*\S+)"
 )
-
-
-def slack_user_allowed(user_id: str) -> bool:
-    """Cheap ingress gate; live Slack profile checks still run before querying data."""
-    return user_id in {
-        value.strip()
-        for value in settings.OVERWATCH_SLACK_ALLOWED_USER_IDS.split(",")
-        if value.strip()
-    }
 
 
 def model_question(question: str) -> tuple[str, dict[str, str]]:
@@ -46,36 +34,6 @@ def model_question(question: str) -> tuple[str, dict[str, str]]:
     question = re.sub(r"https?://\S+", "[link omitted]", question)
     question = re.sub(r"<[@#!][^>]+>", "[Slack reference omitted]", question)
     return question, identities
-
-
-def slack_text(text: str) -> dict:
-    """Render untrusted model or user text literally; never unfurl its links."""
-    text = text[:2900]
-    fallback = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return {
-        "text": fallback,
-        "blocks": [{"type": "section", "text": {"type": "plain_text", "text": text}}],
-        "parse": "none",
-        "unfurl_links": False,
-        "unfurl_media": False,
-    }
-
-
-def slack_response_url(value: str) -> bool:
-    try:
-        parsed = urlparse(value)
-        return (
-            parsed.scheme == "https"
-            and parsed.hostname == "hooks.slack.com"
-            and parsed.port in (None, 443)
-            and parsed.username is None
-            and parsed.password is None
-            and parsed.path.startswith("/commands/")
-            and not parsed.query
-            and not parsed.fragment
-        )
-    except ValueError:
-        return False
 
 
 def posthog_url(host: str, path: str, *, ingest: bool = False) -> str:

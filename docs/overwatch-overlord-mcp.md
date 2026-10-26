@@ -1,20 +1,18 @@
 # Overwatch and Overlord MCP architecture
 
-## Proposed design: two agents, shared governance
+## Two agents, shared governance
 
 Overwatch is the product and customer insights specialist. Its dashboard remains
-our main analytics interface, and its Slack identity handles analytics questions
-and funnel notices. Overlord is the broader company agent.
+the analytics interface; its separate Slack identity handles private analytics
+questions. Overlord is the broader company agent.
 
-The two Slack identities should use the same governed agent runtime when the
-integration is implemented. Overlord already resolves employees, restricts tools
-by capability and conversation, and records metadata audits. Reuse those rules
-with an analytics-only Overwatch profile rather than maintaining two different
-permission systems. Overwatch must not inherit Overlord's HR or personal tools.
-
-The current branch contains a standalone Overwatch Slack adapter. It is disabled
-unless explicitly configured. It is a provisional surface, not evidence that
-the shared runtime or either MCP connection has been implemented.
+This PR and its companion in `overmind-core/overlord` implement a shared tool
+loop with a restricted Overwatch profile. Slack app/workspace verification,
+explicit employee authorization and invocation checks run outside the model.
+Overwatch cannot inherit Overlord's HR, personal or action tools. The former
+standalone backend Slack/model adapter is archived, with no active routes or
+Celery tasks. Internal MCP authorization and PostHog funnel-channel activation
+remain separate integration steps.
 
 Overwatch's access to the product backend is read-only. Prefer PostHog's native
 Slack destinations for events it already collects. Notification state,
@@ -25,17 +23,15 @@ change shared Python dependencies or core product business logic.
 
 ```mermaid
 flowchart LR
-    DB[Overmind product and billing records] --> Services[Canonical Overwatch analytics services]
+    DB[Overmind product and billing records] --> Services[Canonical read-only analytics services]
     PH[PostHog aggregate queries] --> Services
     Services --> Dashboard[Overwatch dashboard]
-    Services --> MCP[Restricted Overwatch MCP tools]
-    MCP --> Runtime[Governed agent runtime]
-    PHMCP[Restricted PostHog MCP tools] --> Runtime
-    Runtime --> OW[Overwatch Slack profile]
-    Runtime --> OL[Overlord Slack profile]
-    PH --> Notices[PostHog Slack destinations or workflows]
-    Notices --> Channels[Configured Overwatch channels]
-    Notices --> State[Notification state outside the product database]
+    Services --> API[Dedicated read-only query contract]
+    API --> OW[Overwatch analytics profile]
+    OW --> Engine[Shared Overlord engine]
+    Engine --> Slack[Separate private Overwatch Slack app]
+    PH --> Notices[PostHog destinations or workflows]
+    Notices --> Channels[Approved funnel channels]
 ```
 
 ## Source and metric definitions
@@ -96,8 +92,7 @@ References: [Slack destination](https://posthog.com/docs/data-pipelines/destinat
 
 Expose a small read-only contract built on the same domain services as the
 dashboard. Suggested tools are `get_customer_insights`, `query_product_usage`,
-`get_milestone_adoption` and `get_customer_milestones`. The adapters call services
-directly, not the dashboard's internal REST endpoints.
+`get_milestone_adoption` and `get_customer_milestones`. A future MCP adapter should call these same domain services directly. The implemented Slack profile uses a separate, dedicated internal query endpoint, never the dashboard bearer.
 
 The existing `/api/mcp/` is a customer-facing, project-scoped API. Internal
 analytics crosses customer boundaries. It needs an explicit internal permission
@@ -118,45 +113,57 @@ raw event properties, person rows, session replays or customer records into an
 analytics model prompt. Read-only access still needs a data policy. PostHog
 features that invoke another AI service need separate approval of that data path.
 
-## Private data and operational controls
+## Implemented shared engine and data boundary
 
-- Keep named customer records and customer billing detail inside the backend and
-  approved private replies. The provisional adapter replaces supplied emails
-  with request-local references and renders customer reports locally. Only
-  aggregate tool results are returned to its model.
-- Require explicit model opt-in and approved internal Slack user IDs. Reject
-  deleted, guest, restricted, external and bot accounts. The provisional model
-  requests deny data collection and require zero retention routing. Free-text
-  questions still require care: email redaction is not a general PII classifier.
-- Keep secrets in server-side deployment settings. Never put a service key in a
-  `VITE_*` variable, URL, prompt, source file, error message or audit payload.
-  Logs contain fixed error codes and redacted task argument metadata. Broker
-  payloads are private application data and need restricted access and TLS.
-- Proposed funnel alerts use an approved pseudonymous reference rather than an
-  email or trace contents. PostHog supplies events and owns delivery for its native
-  destinations. Any additional Overwatch acknowledgement, deduplication and retry
-  state stays outside the product database. Delivery remains
-  at least once; a crash after acceptance can duplicate a notice.
-- Browser responses are private and not cacheable. The provisional login uses a
-  token scoped to a tab for 30 minutes, with legacy persistent tokens cleared.
-  This is browser session expiry; the server-side bearer key remains valid until
-  rotated. Employee SSO and individual revocation should replace the shared admin token
-  before broader access. Do not expose the internal app without an access gate.
+The companion Overlord PR extracts one reusable tool loop. Overwatch supplies a
+separate hard allowlist, prompt and untraced client; it never inherits HR tools,
+admin lookup tools, stored conversations or training trace observers. Each tool
+invocation is checked again before dispatch, regardless of administrator status.
+Its separate Slack app handles private DMs and ephemeral slash commands only.
 
-## Implementation and review boundaries
+`POST /api/internal/overwatch/agent/query/` is the implemented read contract. It
+accepts a dedicated service key, rejects the dashboard key and ordinary product
+credentials, validates every argument and wraps product queries in a PostgreSQL
+read-only transaction. POST avoids logging customer emails in URL parameters.
+There is no new public MCP catalog or internal MCP authorization in this change.
 
-This PR implements dashboard insights, the provisional Slack adapter and
-read-only PostHog aggregates. It documents MCP and notification delivery. It
-does not expose internal MCP tools or change the Overlord runtime. Earlier
-backend delivery prototypes are archived as non-executable examples under
-`docs/proposals/`; do not apply their migrations to the product database.
+Customer reports are rendered locally in the backend and terminate the loop.
+Only aggregates reach the model after supplied emails become local references.
+Questions are not stored in Overlord or exported as training traces. Slack thread
+follow-ups may include up to two earlier questions from the same caller; bot
+reports and other users' messages are excluded. Metadata audit uses the existing
+Overlord store. A dedicated Redis admission store keeps hashes/IDs/counters,
+never question or report content, and is outside the product database.
 
-Pritam's integration review should settle the internal service identity and
-employee capability mapping, choose the shared runtime profile integration,
-and confirm the production access gate. Then add negative tests for discovery,
-invocation and private versus public conversations before wiring live MCPs.
+The profile uses a dedicated direct Anthropic API key and is disabled by default.
+The operator must approve its data policy and retention agreement. There is no
+automatic zero-retention routing in this direct adapter. Free-text questions may
+contain sensitive prose beyond email/credential filters; approval must account
+for that. Secrets remain in server settings, never browser variables, prompts,
+URLs, audit values or error responses.
 
-References: [PostHog capture API](https://posthog.com/docs/api/capture),
-[PostHog MCP](https://posthog.com/docs/model-context-protocol),
-[PostHog API authentication](https://posthog.com/docs/api), and
-[OpenRouter retention routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+Funnel delivery remains a PostHog configuration task, with verified events,
+approved channels and a deliberate activation step. No event emitter, delivery
+ledger or writer is added to core Overmind. The dashboard's provisional shared
+bearer still needs a production access gate and eventual individual SSO.
+
+## Review and deployment
+
+Both PRs require Pritam's review. Backend read-contract deployment must precede
+the Slack profile. Configure separate credentials, Redis admission, approved
+employees and the model agreement while the profile remains disabled. Create
+the separate Slack app from the companion manifest only when deliberately
+activating it. There is no merge, live Slack message, live customer query,
+PostHog write or production deployment in this implementation task.
+
+Next's post-response execution matches Overlord's interactive runtime and is not
+a durable queue: a process failure after acknowledgement may lose a reply. The
+user can submit a new question. Model requests, tool rounds and source queries
+are bounded; missing or failed sources remain unavailable rather than zero.
+
+Earlier standalone Slack code and product-write prototypes are retained only
+as non-executable examples under `docs/proposals/`. Do not restore them beside
+the shared runtime. Public/project MCP permissions are unchanged; future
+internal MCP integration requires explicit discovery and invocation security.
+
+Companion Slack runtime PR: [overlord#8](https://github.com/overmind-core/overlord/pull/8).

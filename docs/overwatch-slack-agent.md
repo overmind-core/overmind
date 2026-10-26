@@ -1,54 +1,57 @@
 # Overwatch Slack product scope
 
-Overwatch is the product and customer insights specialist, with a dashboard and
-private Slack Q&A. Overlord is the broader company agent. The proposed shared
-runtime is described in [the MCP architecture](overwatch-overlord-mcp.md).
+Overwatch is the usage and customer insights dashboard and specialist Slack
+agent. It uses Overlord's shared engine, with its own Slack identity and a fixed
+analytics-only profile. The implementation spans this PR and a companion PR in
+`overmind-core/overlord`. See [the architecture](overwatch-overlord-mcp.md) and the
+companion repository's `docs/overwatch.md` for setup and operational limits.
 
 ## Read-only product access
 
-Overwatch reads identity, membership, traces, capabilities, evaluations, training,
-deployments, inference, spend, payments, subscriptions and balances. It must not
-create, modify or delete Overmind product records. Spend and payments remain
-part of the dashboard and customer context.
+Five queries cover adoption, usage, billing, milestone lists and private customer
+reports. Spend, payments, subscriptions and credit balances remain part of the
+product. `POST /api/internal/overwatch/agent/query/` accepts a dedicated
+`OVERWATCH_SERVICE_TOKEN`, distinct from the dashboard bearer. POST keeps private
+arguments out of URLs; the database transaction itself is read-only. Statement
+and report budgets apply. This key cannot authenticate product writes or the
+dashboard; ordinary user/project keys and staff sessions cannot use the agent
+endpoint. It is excluded from public OpenAPI and is not a new MCP server.
 
-PostHog supplies read-only behavioral aggregates and ordered conversion funnels.
-PostHog identities can include unlinked installations and are not automatically
-registered customer counts. Database milestones show independent adoption,
-with project activity attributed to members after they joined, not to an
-identified actor.
+There are no active Overwatch product models, migrations, scheduled writers,
+backend event emitters or shared dependency changes. The old standalone model
+loop and Slack/Celery adapter are archived as non-executable examples under
+[retired adapter](proposals/retired-slack-adapter/README.md).
 
-The current branch contains the dashboard, aggregate PostHog reads, private
-`/overwatch` command and DM handler. Normal customer/project credentials cannot
-access the internal dashboard endpoints. A future service credential must grant
-analytics reads only, with no product write capabilities.
+## Private Slack behavior
 
-## Ask questions
+The companion runtime supplies signed `/overwatch` and `message.im` routes in
+Overlord's deployment, using separate app/workspace IDs, bot token and signing
+secret. The explicit Slack user allowlist grants analytics access; HR admins do
+not bypass it. Before querying, the live Slack profile must be unrestricted,
+internal and linked to an existing employee. Public mentions are ignored and
+slash replies are ephemeral. No live app is installed by either PR.
 
-Approved employees can ask about usage, milestones, customer activity, spend and
-payments in a DM or slash command. Both ingress paths verify Slack signatures,
-workspace and the user allowlist before queueing. Workers recheck the employee
-profile and reject deleted, restricted, external and bot accounts. Public channel
-questions are ignored. Supplied emails become local references before model
-calls; named customer reports are formatted locally and never returned to the
-model. Aggregate answers require tool evidence and explicit source/window limits.
+Emails become request-local references. Named customer reports are rendered by
+this backend and terminate the shared loop without returning to the model.
+Only aggregates and sanitized questions reach the dedicated Anthropic client.
+Overlord's HR tools, saved conversations, extraction and training traces are
+excluded. Short DM-thread follow-ups replay only the caller's earlier questions,
+never bot reports. Audit contains tool metadata only. No content is kept in the
+external Redis admission store; it holds only retry hashes, Slack IDs and limits.
 
-Configure the command at `/api/internal/overwatch/slack/command/` and subscribe
-to `message.im` at `/api/internal/overwatch/slack/events/`. Use `commands`,
-`chat:write`, `im:history`, `users:read` and `users:read.email` scopes. Supply the
-bot token, signing secret, workspace, allowed employee IDs and explicit model
-opt-in privately. PostHog query access requires a project-bound read key; never
-put it in browser variables. Model routing requires zero retention.
+Model use is disabled by default. Deployment requires an approved Anthropic key
+and retention agreement. The direct client does not enforce OpenRouter-style
+zero-retention routing, and email/credential filters cannot classify all
+sensitive prose. Pritam must approve that data path before enabling it.
 
-## Funnel notifications: proposed
+## Funnel notifications
 
-The intended channels follow signup, project membership, first trace, capability
-sync, evaluation, training, deployment and first model call. Prefer native
-PostHog Slack destinations for existing events, adding a workflow when needed.
-Verify each milestone's event coverage, identity, successful outcome and duplicate
-handling before activation. Missing events are not evidence of zero conversions.
-Any extra Overwatch notification state belongs outside the product backend.
+Prefer native PostHog Slack destinations for verified existing events, adding a
+workflow when needed. Check event coverage, identity, successful outcome,
+first-time/repeat policy and duplicates before activation. Database adoption
+counts are independent milestones, with project activity attributed to members,
+not an identified actor. PostHog identities may include unlinked installations.
+Missing events are not zero conversions. Notifications are a separate setup
+step and require no changes to core Overmind. Neither PR enables live delivery.
 
-The earlier product-database delivery prototype is archived in
-[proposals](proposals/README.md). No delivery model, migration, periodic writer
-or event emitter remains active in the product backend. Notification delivery
-and the Overlord/MCP integration require Pritam's implementation review.
+Companion Slack runtime PR: [overlord#8](https://github.com/overmind-core/overlord/pull/8).

@@ -10,26 +10,28 @@ product database migrations, new models, span index, funnel writer or periodic
 notification task. Shared Python and SDK dependencies match main. Core training,
 evaluation, inference and billing business logic is unchanged.
 
-Overwatch still uses internal read-only analytics endpoints in the existing
-Django backend. Its Slack command/event ingress accepts questions; it does not
-mutate product records. These are application-level read-only interfaces, not a
-claim that the existing Django process uses a database role limited to SELECT.
-A future Overwatch service credential must be restricted to analytics reads.
+Overwatch uses internal read-only analytics endpoints in the existing Django
+backend. Slack now runs in the companion Overlord repository using the shared
+engine, with no active Slack routes or Celery adapter in the product backend.
+Its dedicated service key only grants the bounded analytics query contract;
+PostgreSQL enforces a read-only transaction during each request. The existing
+Django process still uses its normal database role outside those requests.
 
 Archived delivery prototypes and separate platform security findings are in
 [proposals](proposals/README.md). They are not active code or migrations.
 
 ## Review fixes retained
 
-- Require an approved Slack user ID before spending query limits or queueing.
-  Verify workspace, domain and active unrestricted employee status again in the
-  worker. Model use is disabled unless explicitly enabled.
+- Require an approved Slack user ID before spending query limits or scheduling.
+  Verify workspace, app, domain and an unrestricted linked employee again in the
+  Slack runtime. Model use is disabled unless explicitly enabled.
 - Keep customer records out of model tool results. Replace supplied emails with
   local references and render customer detail locally in private replies.
-- Redact task argument metadata, avoid question echoes, reject credential-like
-  input, store fixed errors, deny redirects and prevent unfurls or broadcasts.
-- Run ORM work on the synchronous thread. Bound SQL statements and report time,
-  clean up connections, and require tool evidence before answering metrics.
+- Retire broker/model-loop duplication. Avoid question echoes, reject credential-like
+  input, store metadata-only audits and fixed errors, deny redirects and prevent
+  unfurls or broadcasts. Keep Overwatch out of Overlord history and training traces.
+- Bound SQL statements and report time in the synchronous read API, enforce a
+  PostgreSQL read-only transaction, and require tool evidence before answering metrics.
 - Validate PostHog aggregate shapes and dates. Incomplete or failed responses
   remain unavailable; a genuine empty event set is shown as zero.
 - Remove the prototype milestone-event query after its emitter was archived.
@@ -79,10 +81,33 @@ The shared dashboard bearer key is provisional. Browser expiry does not revoke
 it server-side. Employee SSO, individual revocation and a production access gate
 need review before wider access. Free-text questions may contain sensitive
 prose beyond the email/credential filters; model use requires an approved data
-policy and requests zero retention routing.
+policy and the dedicated direct Anthropic project needs an approved retention agreement.
+There is no automatic zero-retention routing in this adapter.
 
 Live PostHog compatibility, production identity, query plans on production data
-and deployed headers require deployment review. Internal MCP authorization and
-the shared Overlord runtime integration remain proposals. No live customer
+and deployed headers require deployment review. Internal MCP authorization remains a proposal; the shared runtime now has a companion PR. No live customer
 queries, Slack messages, PostHog writes or production deployments were performed
 by this review. Pritam's review is required before merge and rollout.
+
+## Shared Slack runtime completion
+
+The new integration passes 63 focused backend checks and 19 Node checks, including
+complete synthetic slash-command and DM paths. The backend checks assert the
+actual PostgreSQL transaction is read-only, preserve dashboard metrics, validate
+all five tools, and reject normal customer/project/staff/dashboard credentials.
+Node checks cover private terminal reports, argument injection, invalid references,
+HR-tool denial, app/workspace/caller restrictions, restricted/unlinked employees,
+thread isolation, retry suppression, fail-closed admission and existing Overlord
+identity, admin tool, private history and trace behavior. Typecheck, changed-file ESLint and a production Next build pass.
+The initial sandboxed build could not fetch its existing Google font; the same
+build passed with network access. No package dependencies were changed.
+
+The Overlord work is isolated from the unrelated local Python migration. It is
+based on the deployed `origin/main` engine at `3c594a7`. Its setup guide documents
+the separate Slack app and credentials, dedicated external admission store,
+model-policy approval, disabled-by-default behavior and post-acknowledgement
+process-failure limit. These are reviewable activation steps, not a live rollout.
+The earlier full-suite/journey results above describe the pre-integration code;
+new CI must run on the updated commits. The known main journey gate remains.
+
+Companion Slack runtime PR: [overlord#8](https://github.com/overmind-core/overlord/pull/8).
