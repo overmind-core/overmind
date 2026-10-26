@@ -6,7 +6,6 @@ import json
 from decimal import Decimal
 from typing import Any
 
-from overbae.models import User
 from overbae.services import overwatch_insights, user_insights
 
 
@@ -29,7 +28,7 @@ def _product_usage(args: dict[str, Any]) -> dict[str, Any]:
         "training_jobs": overview["training_jobs"],
         "live_deployments": overview["live_deployments"],
         "inference_calls": sum(point["value"] for point in overview["inference_calls"]),
-        "posthog": overwatch_insights.product_usage(days),
+        "posthog": overwatch_insights.cached_product_usage(days),
     }
 
 
@@ -91,30 +90,11 @@ def _customers_at_step(args: dict[str, Any]) -> dict[str, Any]:
     days = args["days"]
     limit = args.get("limit", 25)
     since = user_insights.window_start(days)
-    matches = [
-        event
-        for event in user_insights.funnel_milestones(since, steps={step})
-        if event["step"] == step
-    ]
-    matches.sort(key=lambda event: event["source_at"], reverse=True)
-    users = {
-        row["id"]: row["email"]
-        for row in User.objects.filter(
-            pk__in=[event["user_id"] for event in matches[:limit]]
-        ).values("id", "email")
-    }
     return {
         "available": True,
         "step": step,
         "window_days": days,
-        "total": len(matches),
-        "customers": [
-            {
-                "email": users.get(event["user_id"], "Unknown user"),
-                "reached_at": event["source_at"].isoformat(),
-            }
-            for event in matches[:limit]
-        ],
+        **user_insights.milestone_customers(since, step=step, limit=limit),
     }
 
 

@@ -21,6 +21,27 @@ guide must reuse the installed Overwatch app rather than create another identity
 All enablement and approval gates remain off. The verification snapshots below
 are historical; see the current PR checks for the corrected revisions.
 
+## Customer retrieval and PostHog load corrections
+
+Customer milestone reports count matching users separately from the newest-row
+query. The database returns at most the requested 25 customers, with deterministic
+ordering for ties, while totals still include all matches. Earlier retained
+activity across projects and guest exclusions remain unchanged. The old unbounded
+milestone-list helper is no longer used or retained as an active path.
+
+Agent PostHog aggregates use the existing Django cache: successful results live
+for one hour, unavailable results for 60 seconds. Cache keys separate source host,
+project, credential fingerprint, requested days and UTC calendar window. Credentials
+are hashed, never included verbatim in cache keys. Product database totals are
+still queried on each request. Concurrent cold misses can still perform separate
+reads; this cache does not replace the existing admission and rate limits.
+
+Cached aggregates retain their original `window_end`. The companion agent includes
+that snapshot time in its final source note and distinguishes it from the report
+request time. No customer report is cached, no new database writes or migrations
+are added, and all activation gates stay disabled. Current CI and the PR description
+are the verification source for these corrections; older results below are historical.
+
 ## Scope and read-only boundary
 
 Sam clarified that Overwatch may read Overmind product data. Its notification

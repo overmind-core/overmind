@@ -1,14 +1,22 @@
 """The agent credential can only run bounded analytics reads, never product actions."""
 
-from datetime import timedelta
+import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.db import connection
 from django.utils import timezone
-from factories import api_key_client, auth_client, make_capability, make_project, make_user
+from factories import (
+    api_key_client,
+    auth_client,
+    make_capability,
+    make_project,
+    make_span,
+    make_user,
+)
 from rest_framework.test import APIClient
 
-from overbae.models import DeployedModel, ProjectMembership
+from overbae.models import Dataset, DeployedModel, EvalRun, FinetuningJob, ProjectMembership, User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 URL = "/api/internal/overwatch/agent/query/"
@@ -171,3 +179,172 @@ def test_resettable_milestones_do_not_claim_first_time_customers(step):
     assert "cannot be determined" in response.data["content"]
     assert "returning@example.com" not in response.data["content"]
     assert "0 users" not in response.data["content"]
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "signed_up",
+        "joined_project",
+        "sent_first_span",
+        "synced_capabilities",
+        "ran_evaluation",
+        "started_training",
+    ],
+)
+def test_milestone_report_counts_all_matches_but_fetches_only_newest_customers(step, time_machine):
+    time_machine.move_to(datetime(2026, 10, 25, 12, tzinfo=UTC), tick=False)
+    now = timezone.now()
+
+    def add_milestone(user, at):
+        if step == "signed_up":
+            User.objects.filter(pk=user.pk).update(date_joined=at)
+            return
+        project = make_project(member=user)
+        ProjectMembership.objects.filter(project=project).update(
+            created_at=at if step == "joined_project" else at - timedelta(days=1)
+        )
+        if step == "joined_project":
+            return
+        if step == "sent_first_span":
+            record = make_span(project, trace_id="a" * 32)
+            field = "received_at"
+        elif step == "synced_capabilities":
+            record = make_capability(project)
+            field = "created_at"
+        elif step == "ran_evaluation":
+            record = EvalRun.objects.create(project=project, status=EvalRun.Status.COMPLETED)
+            field = "created_at"
+        else:
+            dataset = Dataset.objects.create(project=project, name="Train", intent="train")
+            record = FinetuningJob.objects.create(
+                project=project,
+                dataset=dataset,
+                base_model="Qwen/Qwen3-4B",
+                status=FinetuningJob.Status.SUCCEEDED,
+            )
+            field = "created_at"
+        type(record).objects.filter(pk=record.pk).update(**{field: at})
+
+    expected = []
+    for index in range(30):
+        user = make_user(email=f"bounded-{index:02}@example.com")
+        # Ties must keep deterministic user order, not duplicate a customer.
+        at = now - timedelta(hours=index // 2 + 1)
+        add_milestone(user, at)
+        expected.append(user.email)
+    guest = make_user(email="guest@example.com", is_guest=True)
+    add_milestone(guest, now)
+    old = make_user(email="old-milestone@example.com")
+    add_milestone(old, now - timedelta(days=60))
+    if step != "signed_up":
+        add_milestone(old, now - timedelta(hours=1))
+    row_counts = []
+
+    def observe_rows(execute, sql, params, many, context):
+        result = execute(sql, params, many, context)
+        if sql.startswith("SELECT") and User._meta.db_table in sql:
+            row_counts.append(context["cursor"].rowcount)
+        return result
+
+    with connection.execute_wrapper(observe_rows):
+        response = client().post(
+            URL,
+            {"tool": "customers_at_step", "arguments": {"days": 7, "step": step, "limit": 3}},
+            format="json",
+        )
+    assert response.status_code == 200
+    report = response.data["content"]
+    assert "30 users" in report and "Showing 3 results" in report
+    actual = [line.split(": ")[0] for line in report.splitlines() if "@" in line]
+    assert actual == expected[:3]
+    # Observe real PostgreSQL result sizes: a small response must not fetch all matches.
+    assert row_counts and max(row_counts) <= 3
+
+
+@pytest.fixture
+def posthog_usage_source(settings, scripted):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-cache-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
+    state = {"available": True, "count": 1}
+
+    def answer(request):
+        if not state["available"]:
+            return 503, {"content-type": "application/json"}, b"{}"
+        query = request.json["query"]["query"]
+        rows = []
+        if "SELECT toDate(" in query:
+            rows = [[timezone.now().date().isoformat(), "cli.completed", state["count"]]]
+        elif "SELECT uniq(person_id)" in query:
+            rows = [[state["count"]]]
+        elif "countIf(" in query:
+            rows = [[0, 0]]
+        return 200, {"content-type": "application/json"}, json.dumps({"results": rows}).encode()
+
+    return scripted("https://eu.posthog.com").then(answer), state
+
+
+def usage(days=7):
+    response = client().post(
+        URL, {"tool": "product_usage", "arguments": {"days": days}}, format="json"
+    )
+    assert response.status_code == 200
+    return json.loads(response.data["content"])
+
+
+def test_agent_usage_reuses_source_snapshot_for_an_hour_without_caching_product_rows(
+    posthog_usage_source, time_machine
+):
+    time_machine.move_to(datetime(2026, 10, 25, 12, tzinfo=UTC), tick=False)
+    api, state = posthog_usage_source
+    first = usage()
+    assert first["posthog"]["available"] is True and len(api.calls) == 5
+    state["count"] = 2
+    make_user()
+    time_machine.shift(3599)
+    cached = usage()
+    assert cached["posthog"] == first["posthog"]
+    assert cached["registered_users"] == first["registered_users"] + 1
+    assert len(api.calls) == 5
+    time_machine.shift(2)
+    refreshed = usage()
+    assert refreshed["posthog"]["totals"]["cli_completions"] == 2
+    assert refreshed["posthog"]["window_end"] != first["posthog"]["window_end"]
+    assert len(api.calls) == 10
+
+
+def test_agent_usage_failure_is_cached_briefly_then_recovers(posthog_usage_source, time_machine):
+    time_machine.move_to(datetime(2026, 10, 25, 12, tzinfo=UTC), tick=False)
+    api, state = posthog_usage_source
+    state["available"] = False
+    first = usage()["posthog"]
+    assert first["available"] is False and "totals" not in first
+    assert len(api.calls) == 5
+    state["available"] = True
+    time_machine.shift(59)
+    assert usage()["posthog"] == first
+    assert len(api.calls) == 5
+    time_machine.shift(2)
+    assert usage()["posthog"]["available"] is True
+    assert len(api.calls) == 10
+
+
+def test_agent_usage_cache_separates_window_source_and_utc_day(
+    posthog_usage_source, time_machine, settings
+):
+    time_machine.move_to(datetime(2026, 10, 25, 23, 59, tzinfo=UTC), tick=False)
+    api, state = posthog_usage_source
+    first = usage()["posthog"]
+    assert first["available"] is True
+    state["count"] = 2
+    assert usage(30)["posthog"]["totals"]["cli_completions"] == 2
+    settings.POSTHOG_PROJECT_ID = "43"
+    assert usage()["posthog"]["totals"]["cli_completions"] == 2
+    settings.POSTHOG_PERSONAL_API_KEY = "rotated-read-key"
+    state["count"] = 3
+    assert usage()["posthog"]["totals"]["cli_completions"] == 3
+    time_machine.shift(120)
+    today = usage()["posthog"]
+    assert today["window_start"] != first["window_start"]
+    assert len(api.calls) == 25

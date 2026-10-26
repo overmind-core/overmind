@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -9,6 +11,7 @@ from typing import Any
 
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 from overbae.services.overwatch_privacy import model_question, posthog_url
@@ -21,6 +24,25 @@ EVENT_METRICS = {
     "training_check_finished": "training_checks_finished",
 }
 ACTIVE_USER_EVENTS = ("cli.completed", "$mcp_tool_call")
+
+
+def cached_product_usage(days: int) -> dict[str, Any]:
+    # Source changes and UTC rollover must not reuse another source/window's data.
+    # Hash credentials in the fingerprint; never put a key itself in Redis keys.
+    source = [
+        settings.POSTHOG_API_HOST,
+        settings.POSTHOG_PROJECT_ID,
+        settings.POSTHOG_PERSONAL_API_KEY,
+        days,
+        window_start(days).isoformat(),
+    ]
+    fingerprint = hashlib.sha256(json.dumps(source).encode()).hexdigest()
+    key = f"overwatch:agent:posthog:{fingerprint}"
+    result = cache.get(key)
+    if result is None:
+        result = product_usage(days)
+        cache.set(key, result, timeout=3600 if result.get("available") is True else 60)
+    return result
 
 
 def _query(hogql: str, *, require_complete: bool = True) -> list[list[Any]]:

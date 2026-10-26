@@ -333,24 +333,37 @@ def activation(since: datetime) -> dict[str, Any]:
     }
 
 
-def funnel_milestones(
-    since: datetime,
-    *,
-    limit_per_step: int | None = None,
-    steps: set[str] | None = None,
-) -> list[dict[str, Any]]:
-    """Return earliest retained milestone records, excluding resettable timestamps."""
-
-    if steps and steps & RESETTABLE_MILESTONE_STEPS:
+def milestone_customers(since: datetime, *, step: str, limit: int) -> dict[str, Any]:
+    """Count retained milestones separately from the bounded newest-customer list."""
+    if step in RESETTABLE_MILESTONE_STEPS:
         raise ValueError("First-time deployment and alias activity cannot be determined.")
-
+    if not 1 <= limit <= 25:
+        raise ValueError("Invalid customer report limit.")
     until = timezone.now()
-
-    def first_events(model, user_field: str, at_field: str, step: str, condition: Q):
-        if steps is not None and step not in steps:
-            return []
-        # Bound the source before choosing a first event. An earlier event excludes
-        # the user across all their projects. Deleted history cannot be recovered.
+    if step == "signed_up":
+        matched = _users().filter(date_joined__gte=since, date_joined__lte=until)
+        rows = matched.annotate(at=F("date_joined"))
+    else:
+        sources = {
+            "joined_project": (ProjectMembership, "user_id", "created_at", Q(user__is_guest=False)),
+            "sent_first_span": (Span, "project__memberships__user_id", "received_at", Q()),
+            "synced_capabilities": (
+                Capability,
+                "project__memberships__user_id",
+                "created_at",
+                Q(observed=False) & ~Q(status=Capability.Status.DELETED),
+            ),
+            "ran_evaluation": (EvalRun, "project__memberships__user_id", "created_at", Q()),
+            "started_training": (FinetuningJob, "project__memberships__user_id", "created_at", Q()),
+        }
+        model, user_field, at_field, condition = sources[step]
+        if step != "joined_project":
+            condition &= Q(
+                project__memberships__user__is_guest=False,
+                **{f"{at_field}__gte": F("project__memberships__created_at")},
+            )
+        # Correlate on a scalar user PK across all memberships. Earlier retained
+        # activity excludes the user even if they reached the step in another project.
         earlier = model.objects.filter(
             condition, **{user_field: OuterRef("pk"), f"{at_field}__lt": since}
         )
@@ -358,58 +371,15 @@ def funnel_milestones(
             condition,
             **{user_field: OuterRef("pk"), f"{at_field}__gte": since, f"{at_field}__lte": until},
         )
-        # Correlate on a scalar user PK. Reusing a multi-valued membership path
-        # as an OuterRef can create another join and mix different members.
-        queryset = _users().filter(Exists(candidates), ~Exists(earlier))
-        rows = (
-            queryset.annotate(at=Subquery(candidates.order_by(at_field).values(at_field)[:1]))
-            .values("pk", "at")
-            .order_by("at", "pk")
-        )
-        if limit_per_step is not None:
-            rows = rows[:limit_per_step]
-        return [{"user_id": row["pk"], "step": step, "source_at": row["at"]} for row in rows]
-
-    def after_join(at_field: str) -> Q:
-        return Q(
-            project__memberships__user__is_guest=False,
-            **{f"{at_field}__gte": F("project__memberships__created_at")},
-        )
-
-    signups = _users().filter(date_joined__gte=since, date_joined__lte=timezone.now())
-    signups = signups.order_by("date_joined", "pk")
-    if limit_per_step is not None:
-        signups = signups[:limit_per_step]
-    events = (
-        [
-            {"user_id": user.pk, "step": "signed_up", "source_at": user.date_joined}
-            for user in signups.only("pk", "date_joined")
-        ]
-        if steps is None or "signed_up" in steps
-        else []
-    )
-    events.extend(
-        first_events(
-            ProjectMembership, "user_id", "created_at", "joined_project", Q(user__is_guest=False)
-        )
-    )
-    for model, at_field, step, extra in (
-        (Span, "received_at", "sent_first_span", Q()),
-        (
-            Capability,
-            "created_at",
-            "synced_capabilities",
-            Q(observed=False) & ~Q(status=Capability.Status.DELETED),
-        ),
-        (EvalRun, "created_at", "ran_evaluation", Q()),
-        (FinetuningJob, "created_at", "started_training", Q()),
-    ):
-        events.extend(
-            first_events(
-                model, "project__memberships__user_id", at_field, step, after_join(at_field) & extra
-            )
-        )
-    return events
+        matched = _users().filter(Exists(candidates), ~Exists(earlier))
+        rows = matched.annotate(at=Subquery(candidates.order_by(at_field).values(at_field)[:1]))
+    return {
+        "total": matched.count(),
+        "customers": [
+            {"email": row["email"], "reached_at": row["at"].isoformat()}
+            for row in rows.order_by("-at", "pk").values("email", "at")[:limit]
+        ],
+    }
 
 
 def users(since: datetime) -> QuerySet[User]:
