@@ -29,7 +29,7 @@ Isolation does not install application tracing. Verify the tracing SDK in the ap
 ## Connect project
 
 1. `python -m overmind init --ide <client>`. If your sandbox blocks it, ask the user to approve running it outside the sandbox.
-1. Call `list_projects`. If the client offers its own sign-in, let the user complete it; otherwise show the `Next:` line `init` printed and wait.
+1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when it offers one or else by following the `Next:` line `init` printed, then call it again.
 1. Call `create_api_key` without `project_id`, then run `OVERMIND_API_KEY=<key> python -m overmind sync --api-url <saved-base-url>` once. Do not print the key or rerun init.
 
 Then read `overmind://project/current?project_id=ID` to confirm the project. If authentication is still unavailable, keep this stage blocked and report it.

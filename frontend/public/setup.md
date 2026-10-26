@@ -11,8 +11,8 @@ Run from the repository root. Every step is safe to repeat.
 1. Run `python -m overmind init --ide <claude|codex|cursor|opencode>` for the agent you run in.
    Add `--api-url URL` if the message names an API. It edits this agent's config; if your
    sandbox blocks that, ask the user to approve running it outside the sandbox.
-1. Call `list_projects`. If the client offers its own sign-in, let the user complete it; otherwise
-   show the `Next:` line `init` printed and wait.
+1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when
+   it offers one or else by following the `Next:` line `init` printed, then call it again.
 
 # USING OVERMIND
 
