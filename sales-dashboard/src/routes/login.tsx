@@ -2,8 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
-import overwatchLogo from "~/assets/overwatch-logo.svg";
-import { getToken, overwatchGet, setToken, Unauthorized } from "~/lib/api";
+import { getToken, salesGet, setToken, Unauthorized } from "~/lib/api";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -34,7 +33,7 @@ function Login() {
     setChecking(true);
     setError("");
     try {
-      await overwatchGet("activation", { days: 1 }, token.trim());
+      await salesGet("funnel", { days: 1 }, token.trim());
       setToken(token.trim());
       await navigate({ search: { days: 30 }, to: "/" });
     } catch (failure) {
@@ -48,8 +47,8 @@ function Login() {
     <div className="flex h-screen items-center justify-center p-6">
       <Card className="w-full max-w-sm space-y-4 bg-wash-subtle p-6">
         <div className="flex items-center gap-2">
-          <img alt="" className="size-6 shrink-0" height={24} src={overwatchLogo} width={24} />
-          <h1 className={TITLE.card}>Overwatch</h1>
+          <Icon.overmind className="size-5" />
+          <h1 className={TITLE.card}>Overmind Sales</h1>
         </div>
         <form className="space-y-3" onSubmit={submit}>
           <label className="block space-y-1.5 text-sm" htmlFor="token">

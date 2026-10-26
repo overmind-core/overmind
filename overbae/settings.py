@@ -293,7 +293,7 @@ STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 
-# Existing bearer token for /api/internal/overwatch/* (legacy name); blank disables endpoints.
+# Bearer token for the cross-tenant /api/internal/sales/ endpoints; blank denies every request.
 SALES_DASHBOARD_TOKEN = os.environ.get("SALES_DASHBOARD_TOKEN", "")
 
 AUTH_USER_MODEL = "overbae.User"
@@ -594,8 +594,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
-# Dedicated read-only analytics service credential, never shared with the dashboard.
-OVERWATCH_SERVICE_TOKEN = os.environ.get("OVERWATCH_SERVICE_TOKEN", "")
 
 # Blank disables Clerk; self-hosted Console uses /api/auth/local/ instead.
 # API keys and guest sessions still authenticate either way.
@@ -617,12 +615,6 @@ POSTHOG_PROJECT_TOKEN = (
     )
 )
 POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.i.posthog.com")
-# Optional read-only access used by the internal Overwatch product insights view.
-POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY", "")
-POSTHOG_PROJECT_ID = os.environ.get("POSTHOG_PROJECT_ID", "")
-POSTHOG_API_HOST = os.environ.get(
-    "POSTHOG_API_HOST", POSTHOG_HOST.replace(".i.posthog.com", ".posthog.com")
-).rstrip("/")
 
 # TLS terminates at the Fly proxy, which forwards X-Forwarded-Proto: trusting it
 # is how Django sees a client's HTTPS behind plain HTTP on the machine.

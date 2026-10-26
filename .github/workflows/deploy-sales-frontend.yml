@@ -1,4 +1,4 @@
-name: Deploy Overwatch User Insights
+name: Deploy Sales Frontend
 on:
   workflow_dispatch:
   push:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-overwatch:
+  deploy-sales-frontend:
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -8,7 +8,6 @@ const time = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
   month: "short",
-  timeZoneName: "short",
 });
 
 export function Freshness({ data }: { data?: Cached }) {

@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 from django.conf import settings
 
@@ -206,12 +205,6 @@ def test_training_preparation_does_not_wait_for_live_trace_scoring():
         assert all("--disable-prefetch" in command for command in [*io_workers, *trace_workers])
 
 
-def test_overwatch_slack_is_not_a_product_worker():
-    assert not any(
-        name.startswith("overbae.tasks.overwatch.") for name in settings.CELERY_TASK_ROUTES
-    )
-
-
 def test_new_producers_wait_for_healthy_landing_capacity():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]
@@ -271,10 +264,3 @@ def test_redis_redelivers_only_after_every_late_ack_task_has_hit_its_time_limit(
     assert not offenders, (
         f"late-ack time limits at or above visibility_timeout={visibility}: {offenders}"
     )
-
-
-@pytest.fixture(autouse=True)
-def _sandbox(settings):
-    # These tests never call the parser sandbox; outbound requests remain guarded.
-    settings.SANDBOX_URL = "http://sandbox.test"
-    settings.SANDBOX_TOKEN = "analytics-test"
