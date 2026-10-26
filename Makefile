@@ -68,4 +68,4 @@ test-serial: ## Run all tests serially (for debugging)
 
 test-journeys: ## Run end-to-end journeys on the live stack (needs compose Postgres and Redis)
 	TEST_REDIS_URL=redis://localhost:6379/15 OVERMIND_JOURNEY_XDIST=1 \
-		uv run pytest tests/journeys -n $(WORKERS) --dist loadfile -q $(test_args)
+		uv run pytest tests/journeys -n $(WORKERS) --dist loadfile -v -o console_output_style=count --durations=10 $(test_args)

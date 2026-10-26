@@ -13,7 +13,7 @@ from overbae.services.datasets import land
 from overbae.services.decision_benchmark_scoring import records
 
 from ..conftest import RUNS
-from ..stack import drain
+from ..stack import settle
 
 
 @pytest.mark.parametrize("participant_count", [1, 3, 6])
@@ -443,8 +443,8 @@ def test_native_benchmark_progress_samples_and_completed_backfill(
     (source / "monitor.sqlite").unlink()
     (source / "monitor.json").unlink()
     assert rest.request("GET", endpoint)["state"] == "pending"
-    drain(worker)
-    assert rest.request("GET", endpoint)["arms"][0]["scored"] == 28
+    rebuilt = settle(worker, lambda: rest.request("GET", endpoint)["arms"])
+    assert rebuilt[0]["scored"] == 28
     assert fake_modal.spawns() == before
     for query in ("?participant=unknown", "?outcome=unknown", "?key=0&search=Passenger"):
         with pytest.raises(AssertionError, match="400"):
