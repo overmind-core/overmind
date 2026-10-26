@@ -203,7 +203,24 @@ def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capab
         return publish(dataset, prepared, user=user)
 
 
-def read_file(
+def read_file(path: Path, **options) -> Landing:
+    return _require_rows(_read_one(path, **options))
+
+
+def _require_rows(landing: Landing) -> Landing:
+    # A document without text lands as an empty, recorded part of a batch; a source with
+    # no rows at all is still an upload mistake.
+    if not len(landing.rows):
+        reasons = [
+            source["extraction"]["limitations"][-1]
+            for source in landing.spec["sources"]
+            if source["extraction"].get("status") == "no_text"
+        ]
+        raise LandError(reasons[0] if reasons else "The file has no rows.")
+    return landing
+
+
+def _read_one(
     path: Path,
     *,
     filename: str,
@@ -246,7 +263,7 @@ def read_file(
     except (files.FileError, documents.DocumentError) as exc:
         progress({"stage": "failed"})
         raise LandError(str(exc)) from exc
-    if not rows:
+    if not rows and extraction.get("status") != "no_text":
         raise LandError("The file has no rows.")
     identity = store.file_sha256(path)
     artifact = {
@@ -321,7 +338,7 @@ def read_uploads(
             if on_progress:
                 on_progress({"completed": index, "total": len(upload_ids), **detail})
 
-        part = read_file(
+        part = _read_one(
             path,
             filename=filename,
             on_progress=progress,
@@ -333,12 +350,14 @@ def read_uploads(
         parts.append(part.rows)
     if on_progress:
         on_progress({"completed": len(upload_ids), "total": len(upload_ids), "stage": "merging"})
-    return Landing(
-        UploadRows(parts),
-        spec={
-            "sources": sources,
-            "files": [{k: item[k] for k in ("filename", "bytes", "rows")} for item in sources],
-        },
+    return _require_rows(
+        Landing(
+            UploadRows(parts),
+            spec={
+                "sources": sources,
+                "files": [{k: item[k] for k in ("filename", "bytes", "rows")} for item in sources],
+            },
+        )
     )
 
 

@@ -106,9 +106,9 @@ def extract(
                 metadata = result.get("extraction")
                 if (
                     not isinstance(rows, list)
-                    or not rows
-                    or not all(isinstance(row, dict) for row in rows)
                     or not isinstance(metadata, dict)
+                    or (not rows and metadata.get("status") != "no_text")
+                    or not all(isinstance(row, dict) for row in rows)
                 ):
                     raise DocumentError("The document parser returned an invalid result.")
                 return rows, metadata

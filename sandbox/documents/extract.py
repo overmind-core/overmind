@@ -181,12 +181,10 @@ def extract(
             if missing:
                 limitations.append("Pages without extracted text: " + ", ".join(map(str, missing)))
     if not rows:
-        if ocr_metadata:
-            raise DocumentError(
-                "No text was found after OCR. Check that the document contains legible text."
-            )
-        raise DocumentError(
-            "No text was extracted. Check that the document contains readable text."
+        limitations.append(
+            "No text was found after OCR. Check that the document contains legible text."
+            if ocr_metadata
+            else "No text was extracted. Check that the document contains readable text."
         )
     for row in rows:
         evidence = {
@@ -205,6 +203,7 @@ def extract(
         "method": method,
         "version": parser_version,
         "pages": pages,
+        "status": "extracted" if rows else "no_text",
         "limitations": limitations,
         **({"ocr": ocr_metadata} if ocr_metadata else {}),
         **({"native_text_recovery": native_recovery} if native_recovery else {}),
