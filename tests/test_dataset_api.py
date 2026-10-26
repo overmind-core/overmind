@@ -11,7 +11,15 @@ from conftest import EVAL_ROWS, import_version, review_fixture
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from overbae.models import Capability, Dataset, Project, ProjectMembership, Span, User
+from overbae.models import (
+    Capability,
+    Dataset,
+    OptimizerExperiment,
+    Project,
+    ProjectMembership,
+    Span,
+    User,
+)
 from overbae.services.datasets import paths, store, use
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -262,6 +270,35 @@ def test_list_filters_by_intent_and_shows_the_active_version():
     assert [d["intent"] for d in res.data["results"]] == ["eval"]
     assert res.data["results"][0]["active_version"] == "1.0"
     assert res.data["results"][0]["cells"] == []
+
+
+def test_preparation_names_an_optimizer_experiment_by_its_capability():
+    project = _project()
+    client = _client(project)
+    capability = Capability.objects.create(project=project, name="Support", slug="support")
+    dataset = _create(
+        client,
+        project,
+        rows=[dict(r) for r in EVAL_ROWS],
+        intent="eval",
+        capability=str(capability.id),
+    )
+    review_fixture(dataset)
+    cell = use.use(dataset, "eval")
+    experiment = OptimizerExperiment.objects.create(
+        project=project, capability=capability, dataset=dataset, cell=cell, entrypoint="answer"
+    )
+    res = client.get(f"/api/datasets/{dataset.id}/preparation/")
+    assert res.status_code == 200, res.content
+    usage = next(
+        node["cell"]["usage"] for node in res.data["nodes"] if node["cell"]["id"] == str(cell.id)
+    )
+    assert usage["optimizer_experiments"][0]["id"] == str(experiment.id)
+    assert usage["optimizer_experiments"][0]["name"] == "Support"
+    assert usage["optimizer_experiments"][0]["status"] == experiment.status
+    detail = client.get(f"/api/datasets/{dataset.id}/")
+    assert detail.status_code == 200
+    assert detail.data["cells"][0]["usage"]["optimizer_experiments"][0]["name"] == "Support"
 
 
 def test_delete_refused_while_a_version_is_used():
