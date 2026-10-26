@@ -32,7 +32,7 @@ from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
 from overbae.services.mcp import CONTRACT_VERSION
-from overbae.services.mcp.auth import MCP_PATH, MCPAuthMiddleware
+from overbae.services.mcp.auth import MCP_PATHS, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.errors import MCPError, error_payload
@@ -279,10 +279,7 @@ class MCPTransportMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http" or scope.get("path") not in {
-            MCP_PATH,
-            MCP_PATH.rstrip("/"),
-        }:
+        if scope.get("type") != "http" or scope.get("path") not in MCP_PATHS:
             await self.app(scope, receive, send)
             return
 
@@ -380,10 +377,9 @@ def create_mcp_application() -> Starlette:
         routes=[
             *oauth_routes(),
             Route("/.well-known/openai-apps-challenge", endpoint=domain_challenge, methods=["GET"]),
-            Route(
-                MCP_PATH,
-                endpoint=endpoint,
-                methods=["GET", "POST", "DELETE"],
+            *(
+                Route(path, endpoint=endpoint, methods=["GET", "POST", "DELETE"])
+                for path in MCP_PATHS
             ),
         ],
         middleware=[

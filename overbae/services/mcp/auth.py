@@ -20,6 +20,8 @@ from overbae.services.mcp.errors import MCPError, error_payload
 from overbae.services.mcp.oauth import authenticate_access
 
 MCP_PATH = "/api/mcp/"
+# Starlette would redirect the other form. MCP clients do not follow that redirect.
+MCP_PATHS = (MCP_PATH, MCP_PATH.rstrip("/"))
 
 
 def _request_for_scope(scope: Scope) -> ASGIRequest:
@@ -150,7 +152,7 @@ class MCPAuthMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http" or scope.get("path") not in {MCP_PATH, MCP_PATH.rstrip("/")}:
+        if scope.get("type") != "http" or scope.get("path") not in MCP_PATHS:
             await self.app(scope, receive, send)
             return
 

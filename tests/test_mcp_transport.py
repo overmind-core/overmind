@@ -230,6 +230,34 @@ def test_tool_call_exposes_complete_json_and_resource_links_to_text_only_clients
     )
 
 
+def test_initialize_accepts_the_path_with_or_without_a_trailing_slash():
+    raw, _ = _token()
+    body = _rpc(
+        "initialize",
+        {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "test-client", "version": "1.0"},
+        },
+    )
+    with TestClient(_application(), follow_redirects=False) as client:
+        responses = [
+            client.post(
+                path,
+                json=body,
+                headers={"X-Api-Key": raw, "Accept": "application/json"},
+            )
+            for path in ("/api/mcp/", "/api/mcp")
+        ]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert [response.headers.get("location") for response in responses] == [None, None]
+    assert [response.json()["result"]["serverInfo"]["name"] for response in responses] == [
+        "overmind-platform",
+        "overmind-platform",
+    ]
+
+
 def test_initialize_accepts_an_allowed_host_with_a_port():
     raw, _ = _token()
     with TestClient(_application()) as client:
