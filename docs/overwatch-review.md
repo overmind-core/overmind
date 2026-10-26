@@ -2,6 +2,25 @@
 
 Review date: October 25, 2026.
 
+## Current analytics corrections
+
+The Astra review found three defects after the earlier green CI runs below.
+PostHog date bucketing now uses `toDate(toTimeZone(timestamp, 'UTC'))`.
+The daily query explicitly allows every day/event group plus an overflow row;
+truncated complete aggregates are rejected instead of presented as full totals.
+Top-eight tool/command lists may remain intentionally partial.
+
+The private milestone report no longer treats resettable deployment or alias
+timestamps as first-time activity. Those two reports explicitly say that the
+first-time count and customer list cannot be determined. Other steps report
+earliest retained records, without promising lifetime-first history after deletion.
+No product models, migrations, emitters or lifecycle writers were changed.
+
+The companion Slack tool description uses the same semantics. Its activation
+guide must reuse the installed Overwatch app rather than create another identity.
+All enablement and approval gates remain off. The verification snapshots below
+are historical; see the current PR checks for the corrected revisions.
+
 ## Scope and read-only boundary
 
 Sam clarified that Overwatch may read Overmind product data. Its notification

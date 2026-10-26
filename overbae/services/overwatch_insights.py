@@ -23,7 +23,7 @@ EVENT_METRICS = {
 ACTIVE_USER_EVENTS = ("cli.completed", "$mcp_tool_call")
 
 
-def _query(hogql: str) -> list[list[Any]]:
+def _query(hogql: str, *, require_complete: bool = True) -> list[list[Any]]:
     project = settings.POSTHOG_PROJECT_ID
     if not str(project).isascii() or not str(project).isdecimal():
         raise ValueError("invalid_posthog_project")
@@ -36,7 +36,12 @@ def _query(hogql: str) -> list[list[Any]]:
     )
     if not 200 <= response.status_code < 300 or len(response.content) > 256_000:
         raise ValueError("posthog_query_failed")
-    rows = response.json()["results"]
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("invalid_posthog_response")
+    if require_complete and payload.get("hasMore", False):
+        raise ValueError("incomplete_posthog_results")
+    rows = payload["results"]
     if (
         not isinstance(rows, list)
         or len(rows) > 2000
@@ -75,22 +80,31 @@ def product_usage(days: int) -> dict[str, Any]:
     window = f"timestamp >= toDateTime('{since.strftime('%Y-%m-%d %H:%M:%S')}', 'UTC') AND timestamp <= toDateTime('{until.strftime('%Y-%m-%d %H:%M:%S')}', 'UTC')"
     events = ", ".join(f"'{event}'" for event in EVENT_METRICS)
     active_events = ", ".join(f"'{event}'" for event in ACTIVE_USER_EVENTS)
-    queries = [
-        f"SELECT toDate(timestamp, 'UTC'), event, count() FROM events WHERE {window} AND event IN ({events}) GROUP BY toDate(timestamp, 'UTC'), event ORDER BY toDate(timestamp, 'UTC')",
-        f"SELECT uniq(person_id) FROM events WHERE {window} AND event IN ({active_events})",
-        f"SELECT properties.$mcp_tool_name, count(), uniq(person_id) FROM events WHERE {window} AND event = '$mcp_tool_call' GROUP BY properties.$mcp_tool_name ORDER BY count() DESC LIMIT 8",
-        f"SELECT properties.command_path, count(), uniq(person_id) FROM events WHERE {window} AND event = 'cli.completed' GROUP BY properties.command_path ORDER BY count() DESC LIMIT 8",
-        f"SELECT count(), countIf(toBool(properties.$mcp_is_error)) FROM events WHERE {window} AND event = '$mcp_tool_call'",
-    ]
+    day_expression = "toDate(toTimeZone(timestamp, 'UTC'))"
+    daily_limit = days * len(EVENT_METRICS)
+    queries = {
+        "daily": f"SELECT {day_expression}, event, count() FROM events WHERE {window} AND event IN ({events}) GROUP BY {day_expression}, event ORDER BY {day_expression}, event LIMIT {daily_limit + 1}",
+        "active": f"SELECT uniq(person_id) FROM events WHERE {window} AND event IN ({active_events})",
+        "tools": f"SELECT properties.$mcp_tool_name, count(), uniq(person_id) FROM events WHERE {window} AND event = '$mcp_tool_call' GROUP BY properties.$mcp_tool_name ORDER BY count() DESC LIMIT 8",
+        "commands": f"SELECT properties.command_path, count(), uniq(person_id) FROM events WHERE {window} AND event = 'cli.completed' GROUP BY properties.command_path ORDER BY count() DESC LIMIT 8",
+        "errors": f"SELECT count(), countIf(toBool(properties.$mcp_is_error)) FROM events WHERE {window} AND event = '$mcp_tool_call'",
+    }
     try:
         # Five independent, bounded reads; at most three requests run concurrently.
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="overwatch-posthog") as pool:
-            rows, active, tools, commands, errors = list(pool.map(_query, queries))
+            pending = {
+                name: pool.submit(_query, query, require_complete=name not in {"tools", "commands"})
+                for name, query in queries.items()
+            }
+            rows, active, tools, commands, errors = (
+                pending[name].result()
+                for name in ("daily", "active", "tools", "commands", "errors")
+            )
         # Aggregate SELECTs return one row even when the matching event set is empty.
         # A missing row is an incomplete response, not evidence of zero usage.
         if len(active) != 1 or len(active[0]) != 1 or len(errors) != 1 or len(errors[0]) != 2:
             raise ValueError("incomplete_posthog_aggregate")
-        if len(tools) > 8 or len(commands) > 8:
+        if len(rows) > daily_limit or len(tools) > 8 or len(commands) > 8:
             raise ValueError("unexpected_posthog_row_count")
         by_day: dict[str, dict[str, int]] = {}
         totals = dict.fromkeys(EVENT_METRICS.values(), 0)

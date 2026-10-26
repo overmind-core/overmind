@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 
 import pytest
@@ -179,7 +180,7 @@ def test_posthog_usage_survives_http_and_serializer_boundary(settings, scripted)
     def answer(call):
         hogql = call.json["query"]["query"]
         queries.append(hogql)
-        if "SELECT toDate(timestamp" in hogql:
+        if "SELECT toDate(" in hogql:
             rows = [[timezone.now().date().isoformat(), "cli.completed", 4]]
         elif "SELECT uniq(person_id)" in hogql:
             rows = [[3]]
@@ -249,7 +250,7 @@ def test_posthog_empty_events_differ_from_incomplete_aggregates(
             key, rows = "active", [[0]]
         elif "countIf(toBool(properties.$mcp_is_error))" in query:
             key, rows = "errors", [[0, 0]]
-        elif "SELECT toDate(timestamp" in query:
+        elif "SELECT toDate(" in query:
             key = "daily"
         elif "properties.$mcp_tool_name" in query:
             key = "tools"
@@ -266,6 +267,78 @@ def test_posthog_empty_events_differ_from_incomplete_aggregates(
         assert result["active_users"] == result["mcp_tool_errors"] == 0
     else:
         assert "active_users" not in result
+
+
+@pytest.mark.parametrize("days", [30, 365])
+def test_posthog_daily_totals_include_the_complete_window(settings, scripted, days):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
+    today = timezone.now().date()
+    events = [
+        "cli.completed",
+        "$mcp_tool_call",
+        "training_result_available",
+        "training_check_finished",
+    ]
+    daily = [
+        [(today - timedelta(days=offset)).isoformat(), event, 1]
+        for offset in reversed(range(days))
+        for event in events
+    ]
+
+    def answer(request):
+        query = request.json["query"]["query"]
+        if "GROUP BY" in query and "timestamp" in query and "properties." not in query:
+            # Reproduce the external API's implicit result cap, not an unlimited fake.
+            match = re.search(r"LIMIT (\d+)\s*$", query)
+            limit = int(match[1]) if match else 100
+            payload = {"results": daily[:limit], "hasMore": len(daily) > limit}
+        elif "SELECT uniq(person_id)" in query:
+            payload = {"results": [[1]]}
+        elif "countIf(" in query:
+            payload = {"results": [[days, 0]]}
+        else:
+            payload = {"results": []}
+        return 200, {"content-type": "application/json"}, json.dumps(payload).encode()
+
+    scripted("https://eu.posthog.com").then(answer)
+    result = overwatch_client().get(f"/api/internal/overwatch/product-usage/?days={days}").json()
+    assert result["available"] is True
+    assert list(result["totals"].values()) == [days] * 4
+    assert len(result["daily"]) == days
+    assert result["daily"][-1]["day"] == today.isoformat()
+    assert result["daily"][-1]["cli_completions"] == 1
+
+
+@pytest.mark.parametrize("section", ["daily", "active", "errors", "tools"])
+def test_posthog_truncation_is_only_allowed_for_top_lists(settings, scripted, section):
+    settings.POSTHOG_PERSONAL_API_KEY = "posthog-read-test"
+    settings.POSTHOG_PROJECT_ID = "42"
+    settings.POSTHOG_API_HOST = "https://eu.posthog.com"
+
+    def answer(request):
+        query = request.json["query"]["query"]
+        key, rows = "daily", [[timezone.now().date().isoformat(), "cli.completed", 1]]
+        if "SELECT uniq(person_id)" in query:
+            key, rows = "active", [[1]]
+        elif "countIf(" in query:
+            key, rows = "errors", [[1, 0]]
+        elif "properties.$mcp_tool_name" in query:
+            key, rows = "tools", [["list_projects", 1, 1]] * 8
+        elif "properties.command_path" in query:
+            key, rows = "commands", []
+        return (
+            200,
+            {"content-type": "application/json"},
+            json.dumps({"results": rows, "hasMore": key == section}).encode(),
+        )
+
+    scripted("https://eu.posthog.com").then(answer)
+    result = overwatch_client().get("/api/internal/overwatch/product-usage/?days=7").json()
+    assert result["available"] is (section == "tools")
+    if section != "tools":
+        assert "totals" not in result
 
 
 def test_unicode_bearer_token_is_rejected_safely():

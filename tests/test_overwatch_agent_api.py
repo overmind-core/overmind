@@ -1,9 +1,14 @@
 """The agent credential can only run bounded analytics reads, never product actions."""
 
+from datetime import timedelta
+
 import pytest
 from django.db import connection
-from factories import api_key_client, auth_client, make_user
+from django.utils import timezone
+from factories import api_key_client, auth_client, make_capability, make_project, make_user
 from rest_framework.test import APIClient
+
+from overbae.models import DeployedModel, ProjectMembership
 
 pytestmark = pytest.mark.django_db(transaction=True)
 URL = "/api/internal/overwatch/agent/query/"
@@ -136,3 +141,33 @@ def test_all_read_tools_share_the_validated_contract(tool, args):
     assert response.status_code == 200
     assert response.data["private"] is (tool == "customers_at_step")
     assert response.data["content"]
+
+
+@pytest.mark.parametrize("step", ["deployed_model", "called_alias"])
+def test_resettable_milestones_do_not_claim_first_time_customers(step):
+    user = make_user(email="returning@example.com")
+    project = make_project(member=user)
+    earlier = timezone.now() - timedelta(days=60)
+    ProjectMembership.objects.filter(project=project).update(created_at=earlier)
+    deployed = DeployedModel.objects.create(
+        project=project,
+        model_id="ft-returning",
+        status=DeployedModel.Status.READY,
+        deployed_at=earlier,
+    )
+    capability = make_capability(project, first_application_request_at=earlier)
+    # The persisted state after a redeploy/model switch no longer retains the first date.
+    DeployedModel.objects.filter(pk=deployed.pk).update(deployed_at=timezone.now())
+    type(capability).objects.filter(pk=capability.pk).update(
+        first_application_request_at=timezone.now()
+    )
+    response = client().post(
+        URL,
+        {"tool": "customers_at_step", "arguments": {"days": 7, "step": step}},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.data["private"] is True
+    assert "cannot be determined" in response.data["content"]
+    assert "returning@example.com" not in response.data["content"]
+    assert "0 users" not in response.data["content"]

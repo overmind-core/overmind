@@ -57,6 +57,7 @@ ACTIVATION_STEPS = (
     "deployed_model",
     "called_alias",
 )
+RESETTABLE_MILESTONE_STEPS = frozenset({"deployed_model", "called_alias"})
 TOP_BASE_MODELS = 5
 RECENT_TRAINING_JOBS = 20
 LOW_BALANCE_USD = Decimal("5")
@@ -338,7 +339,10 @@ def funnel_milestones(
     limit_per_step: int | None = None,
     steps: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return each non-guest user's first reached timestamp for each funnel step."""
+    """Return earliest retained milestone records, excluding resettable timestamps."""
+
+    if steps and steps & RESETTABLE_MILESTONE_STEPS:
+        raise ValueError("First-time deployment and alias activity cannot be determined.")
 
     until = timezone.now()
 
@@ -346,7 +350,7 @@ def funnel_milestones(
         if steps is not None and step not in steps:
             return []
         # Bound the source before choosing a first event. An earlier event excludes
-        # the user, preserving first-ever semantics across all their projects.
+        # the user across all their projects. Deleted history cannot be recovered.
         earlier = model.objects.filter(
             condition, **{user_field: OuterRef("pk"), f"{at_field}__lt": since}
         )
@@ -399,8 +403,6 @@ def funnel_milestones(
         ),
         (EvalRun, "created_at", "ran_evaluation", Q()),
         (FinetuningJob, "created_at", "started_training", Q()),
-        (DeployedModel, "deployed_at", "deployed_model", Q()),
-        (Capability, "first_application_request_at", "called_alias", Q()),
     ):
         events.extend(
             first_events(

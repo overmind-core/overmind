@@ -79,6 +79,15 @@ def _customer_activity(args: dict[str, Any]) -> dict[str, Any]:
 
 def _customers_at_step(args: dict[str, Any]) -> dict[str, Any]:
     step = args["step"]
+    if step in user_insights.RESETTABLE_MILESTONE_STEPS:
+        return {
+            "available": False,
+            "reason": (
+                f"First-time activity for {step} cannot be determined from retained product records. "
+                "Deployment and alias timestamps reset on redeployment or model switching. "
+                "No first-time customer count or list is available."
+            ),
+        }
     days = args["days"]
     limit = args.get("limit", 25)
     since = user_insights.window_start(days)
@@ -95,6 +104,7 @@ def _customers_at_step(args: dict[str, Any]) -> dict[str, Any]:
         ).values("id", "email")
     }
     return {
+        "available": True,
         "step": step,
         "window_days": days,
         "total": len(matches),
@@ -126,6 +136,8 @@ def _private_result(name: str, result: dict[str, Any]) -> str:
             f"{result['inference_calls']} model calls, {result['evaluations']} evaluations.\n"
             "Project activity belongs to the customer's projects; it does not identify the actor."
         )
+    if not result["available"]:
+        return result["reason"]
     rows = []
     for row in result.get("customers", []):
         line = f"{row['email']}: {row['reached_at']}"
@@ -134,8 +146,10 @@ def _private_result(name: str, result: dict[str, Any]) -> str:
         rows.append(line)
     listing = "\n".join(rows)
     return (
-        f"{result['step']}: {result['total']} users in the last {result['window_days']} UTC days.\n"
+        f"{result['step']}: {result['total']} users with their earliest retained record "
+        f"in the last {result['window_days']} UTC days.\n"
         f"Showing {len(rows)} results.\n{listing}\n"
+        "Retained records do not prove lifetime-first activity if history was deleted. "
         "Project milestones are attributed to memberships, not individual actions."
     )
 
