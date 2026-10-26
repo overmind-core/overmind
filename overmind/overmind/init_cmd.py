@@ -39,7 +39,7 @@ MCP_CONFIG_PATHS: dict[Ide, Path] = {
 SIGN_IN: dict[Ide, str] = {
     "claude": "Restart Claude Code, run /mcp, select overmind, then Authenticate.",
     "codex": "Run `codex mcp login overmind`, then restart Codex.",
-    "cursor": "Open Cursor Settings > MCP and click Connect next to overmind.",
+    "cursor": "Enable overmind in Cursor Settings > MCP (or restart Cursor), then click Authenticate.",
     "opencode": "Run `opencode mcp auth overmind`, then restart OpenCode.",
 }
 
