@@ -81,7 +81,10 @@ class CreateEvalMatrixRowInput(MCPModel):
         max_length=20_000,
         description=(
             "deterministic: a script defining evaluate(span) returning a score in [0, 1], "
-            "None to abstain, or {score, reason}. llm: one sentence the output must meet."
+            "None to abstain, or {score, reason}. span is a dict: input, output and expected "
+            "(text), tool, status, duration_s, usage, attributes, parent, children, siblings. "
+            "json and re are preloaded; imports are not allowed. "
+            "llm: one sentence the output must meet."
         ),
     )
     span_type: Literal["", "llm_call", "tool_call", "retrieval", "workflow"] = ""
