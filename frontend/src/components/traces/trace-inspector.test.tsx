@@ -77,7 +77,7 @@ describe("Trace inspector", () => {
     expect(screen.getByText(/Who won\?/)).toBeTruthy();
     expect(screen.getByText(/"tool_result"/)).toBeTruthy();
   });
-  it("shows OTel GenAI messages: text, tool calls, and no server-tool results", () => {
+  it("shows OTel GenAI messages: text, tool calls and results, not server-tool results", () => {
     const answer = [
       {
         parts: [
@@ -88,11 +88,17 @@ describe("Trace inspector", () => {
         role: "assistant",
       },
     ];
+    const toolResult = [
+      { parts: [{ id: "t2", response: "16C, cloudy", type: "tool_call_response" }], role: "user" },
+    ];
     render(
       <Fixture>
-        <SpanDetailView span={{ ...root, inputs: null, outputs: JSON.stringify(answer) }} />
+        <SpanDetailView
+          span={{ ...root, inputs: JSON.stringify(toolResult), outputs: JSON.stringify(answer) }}
+        />
       </Fixture>
     );
+    expect(screen.getByText("16C, cloudy")).toBeTruthy();
     expect(screen.getByText("Team A won.")).toBeTruthy();
     expect(screen.getByText("web_search")).toBeTruthy();
     expect(screen.queryByText(/Search result/)).toBeNull();

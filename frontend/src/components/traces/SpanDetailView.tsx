@@ -362,9 +362,9 @@ function blockText(block: unknown, role: string | undefined): string | null {
   }
   if (type === "tool_call") return null;
   // Server tools (Claude web search) return results inside the assistant message;
-  // the tool's own span shows them.
+  // the tool's own span shows them. Client tool results arrive in user or tool messages.
   if (type === "tool_call_response") {
-    if (role !== "tool") return null;
+    if (role === "assistant") return null;
     return typeof response === "string" ? response : JSON.stringify(response, null, 2);
   }
   return JSON.stringify(block, null, 2);
