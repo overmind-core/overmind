@@ -105,10 +105,11 @@ def test_an_otlp_json_export_lands_like_protobuf():
     owner = make_user()
     make_member(owner, project)
     trace_id, root_id, child_id = uuid.uuid4().hex, uuid.uuid4().hex[:16], uuid.uuid4().hex[:16]
-    # OTLP/JSON: hex ids, integer enums and 64-bit integers as strings.
+    # OTLP/JSON: hex ids, integer enums, 64-bit integers as strings, unknown fields.
     export = {
         "resourceSpans": [
             {
+                "extension": {"spanId": "opaque"},
                 "resource": {
                     "attributes": [{"key": "service.name", "value": {"stringValue": "web"}}]
                 },

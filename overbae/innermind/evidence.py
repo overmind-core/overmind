@@ -78,10 +78,21 @@ def _messages(span: Span) -> tuple[list[dict] | None, list[dict] | None]:
     return prompt, completion
 
 
+def _arguments(attributes: dict) -> dict[str, Any]:
+    return {
+        key.removeprefix(ARG_PREFIX): value
+        for key, value in attributes.items()
+        if key.startswith(ARG_PREFIX)
+    }
+
+
 def payloads(span: Span) -> tuple[Any, Any]:
-    """Input and output as sent, for display: a native payload, else the GenAI message lists."""
+    """Input and output as sent, for display: a native payload or the call arguments,
+    else the GenAI message lists."""
     attributes = span.attributes or {}
     native_in = chatml.pick(attributes, INPUT_KEYS)
+    if native_in is None:
+        native_in = _arguments(attributes) or None
     native_out = chatml.pick(attributes, OUTPUT_KEYS)
     if native_in is not None and native_out is not None:
         return native_in, native_out
@@ -97,11 +108,7 @@ def read_input(span: Span) -> str:
     value = chatml.pick(attributes, INPUT_KEYS)
     if value is not None:
         return as_text(unwrap_payload(value))
-    args = {
-        key.removeprefix(ARG_PREFIX): value
-        for key, value in attributes.items()
-        if key.startswith(ARG_PREFIX)
-    }
+    args = _arguments(attributes)
     if len(args) == 1:
         (value,) = args.values()
         if isinstance(value, str):

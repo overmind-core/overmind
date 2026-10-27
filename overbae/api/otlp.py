@@ -815,23 +815,22 @@ class _MalformedBodyError(Exception):
     pass
 
 
-_OTLP_JSON_ID_FIELDS = frozenset(
-    {"traceId", "spanId", "parentSpanId", "trace_id", "span_id", "parent_span_id"}
-)
+def _hex_id_to_base64(holder: dict, *keys: str) -> None:
+    for key in keys:
+        if isinstance(holder.get(key), str):
+            holder[key] = base64.b64encode(bytes.fromhex(holder[key])).decode()
 
 
-def _hex_ids_to_base64(node: Any) -> Any:
-    """OTLP/JSON writes trace and span ids as hex; proto3 JSON reads bytes as base64."""
-    if isinstance(node, dict):
-        return {
-            key: base64.b64encode(bytes.fromhex(value)).decode()
-            if key in _OTLP_JSON_ID_FIELDS and isinstance(value, str)
-            else _hex_ids_to_base64(value)
-            for key, value in node.items()
-        }
-    if isinstance(node, list):
-        return [_hex_ids_to_base64(item) for item in node]
-    return node
+def _hex_ids_to_base64(export: dict) -> dict:
+    """OTLP/JSON writes trace and span ids as hex; proto3 JSON reads bytes as base64.
+    Only Span and Link ids convert, so unknown fields stay ignorable."""
+    for resource_spans in export.get("resourceSpans") or []:
+        for scope_spans in resource_spans.get("scopeSpans") or []:
+            for span in scope_spans.get("spans") or []:
+                _hex_id_to_base64(span, "traceId", "spanId", "parentSpanId")
+                for link in span.get("links") or []:
+                    _hex_id_to_base64(link, "traceId", "spanId")
+    return export
 
 
 def _parse_export(request, body: bytes) -> trace_service_pb2.ExportTraceServiceRequest:
@@ -858,7 +857,7 @@ def otlp_traces(request):
         export_request = _parse_export(request, body)
     except Exception as exc:
         logger.error("Failed to parse OTLP export: %s", exc)
-        return JsonResponse({"error": f"Invalid OTLP export: {exc}"}, status=400)
+        return JsonResponse({"error": "Invalid OTLP export."}, status=400)
 
     all_spans: list[Span] = []
     for resource_span in export_request.resource_spans:
