@@ -159,56 +159,39 @@ def test_an_otlp_json_export_lands_like_protobuf():
     assert child.attributes["gen_ai.usage.input_tokens"] == 12
 
 
-_ASK = json.dumps([{"role": "user", "parts": [{"type": "text", "content": "Who won?"}]}])
-# A server tool's call and result travel inside the assistant message.
-_ANSWER = json.dumps(
-    [
-        {
-            "role": "assistant",
-            "parts": [
-                {"type": "tool_call", "id": "t1", "name": "web_search", "arguments": {"q": "w"}},
-                {"type": "tool_call_response", "id": "t1", "response": [{"title": "Result"}]},
-                {"type": "text", "content": "Team A."},
-            ],
-        }
-    ]
-)
-
-
 @pytest.mark.parametrize(
-    ("attributes", "expected_input", "expected_output"),
+    ("attributes", "input_attribute", "output_attribute"),
     [
         (
-            {"gen_ai.input.messages": _ASK, "gen_ai.output.messages": _ANSWER},
-            [{"role": "user", "content": "Who won?"}],
-            "Team A.",
+            {"gen_ai.input.messages": "[]", "gen_ai.output.messages": "[]"},
+            "gen_ai.input.messages",
+            "gen_ai.output.messages",
         ),
         (
             {"gen_ai.tool.call.arguments": '{"q": "w"}', "gen_ai.tool.call.result": "Result"},
-            '{"q": "w"}',
-            "Result",
+            "gen_ai.tool.call.arguments",
+            "gen_ai.tool.call.result",
         ),
         (
-            {
-                "gen_ai.tool.call.arguments": '{"q": "w"}',
-                "anthropic.tool_result.content": '[{"type": "text", "text": "Result"}]',
-            },
-            '{"q": "w"}',
-            '[{"type": "text", "text": "Result"}]',
+            {"gen_ai.tool.call.arguments": '{"q": "w"}', "anthropic.tool_result.content": "[]"},
+            "gen_ai.tool.call.arguments",
+            "anthropic.tool_result.content",
         ),
         (
-            {
-                "gen_ai.prompt": '{"messages": [{"role": "user", "content": "Who won?"}]}',
-                "gen_ai.completion": '{"completion": "Team A."}',
-            },
-            '{"messages": [{"role": "user", "content": "Who won?"}]}',
-            '{"completion": "Team A."}',
+            {"gen_ai.prompt": '{"messages": []}', "gen_ai.completion": '{"completion": "A"}'},
+            "gen_ai.prompt",
+            "gen_ai.completion",
         ),
-        ({"user_prompt": "Who won?"}, "Who won?", None),
+        ({"user_prompt": "Who won?"}, "user_prompt", None),
         (
             {"tool_input": '{"query": "w"}', "response.model_output": "Team A."},
-            '{"query": "w"}',
-            "Team A.",
+            "tool_input",
+            "response.model_output",
+        ),
+        (
+            {"overmind.input.data": "q", "gen_ai.input.messages": "[]"},
+            "overmind.input.data",
+            None,
         ),
     ],
     ids=[
@@ -218,10 +201,11 @@ _ANSWER = json.dumps(
         "single-attribute prompt (OpenRouter)",
         "Claude Code prompt",
         "Claude Code detailed",
+        "native payload wins",
     ],
 )
-def test_a_span_shows_the_input_and_output_its_exporter_sent(
-    attributes, expected_input, expected_output
+def test_a_span_names_the_attributes_holding_its_input_and_output(
+    attributes, input_attribute, output_attribute
 ):
     project = make_project()
     viewer = make_user()
@@ -231,8 +215,7 @@ def test_a_span_shows_the_input_and_output_its_exporter_sent(
 
     (span,) = api_key_client(viewer, project).get(f"/api/traces/{trace_id}/").json()["spans"]
 
-    assert span["input"] == expected_input
-    output = span["output"]
-    if isinstance(output, list):
-        output = output[0]["content"]
-    assert output == expected_output
+    assert (span["input_attribute"], span["output_attribute"]) == (
+        input_attribute,
+        output_attribute,
+    )

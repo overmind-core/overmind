@@ -243,9 +243,7 @@ def _parts_to_message(role: str, parts: list[Any]) -> dict[str, Any]:
         elif ptype == "tool_call_response":
             tool_call_id = str(part.get("id") or tool_call_id or "")
             response = part.get("response")
-            # Server tools (Claude web search) return results inside the assistant
-            # message; they are not the assistant's words.
-            if response is not None and role == "tool":
+            if response is not None:
                 content_chunks.append(
                     response if isinstance(response, str) else json.dumps(response, default=str)
                 )

@@ -353,24 +353,44 @@ const ROLE_LABELS: Record<string, string> = {
   user: "User",
 };
 
-// Content is a string or typed blocks (OpenAI, Anthropic); other blocks read as JSON.
-function contentText(content: unknown): string {
+function blockText(block: unknown, role: string | undefined): string | null {
+  if (typeof block === "string") return block;
+  const { content, response, text, type } = (block ?? {}) as Record<string, unknown>;
+  if (type === "text" || type === "reasoning") {
+    const value = text ?? content;
+    if (typeof value === "string") return value;
+  }
+  if (type === "tool_call") return null;
+  // Server tools (Claude web search) return results inside the assistant message;
+  // the tool's own span shows them.
+  if (type === "tool_call_response") {
+    if (role !== "tool") return null;
+    return typeof response === "string" ? response : JSON.stringify(response, null, 2);
+  }
+  return JSON.stringify(block, null, 2);
+}
+
+// Chat APIs send `content` as a string or typed blocks (OpenAI, Anthropic); OTel GenAI
+// messages send `parts`. Text reads as text, tool calls as tool-call rows, the rest as JSON.
+function contentText(content: unknown, role: string | undefined): string {
   if (content === null || content === undefined) return "";
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return JSON.stringify(content, null, 2);
   return content
-    .map((block) =>
-      block?.type === "text" && typeof block.text === "string"
-        ? block.text
-        : JSON.stringify(block, null, 2)
-    )
+    .map((block) => blockText(block, role))
+    .filter((value) => value !== null)
     .join("\n");
 }
 
 function MessageRow({ msg }: { msg: TranscriptMessage }) {
   const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? msg.role ?? "Message";
-  const hasToolCalls = (msg.tool_calls?.length ?? 0) > 0;
-  const text = contentText(msg.content);
+  const toolCalls =
+    msg.tool_calls ??
+    ((msg.parts ?? []).filter(
+      (part) => (part as { type?: unknown })?.type === "tool_call"
+    ) as ToolCallItem[]);
+  const hasToolCalls = toolCalls.length > 0;
+  const text = contentText(msg.content ?? msg.parts, msg.role);
   const isTool = msg.role === "tool";
   const canMarkdown =
     !isTool && typeof text === "string" && text.length > 0 && isLikelyMarkdown(text);
@@ -405,7 +425,7 @@ function MessageRow({ msg }: { msg: TranscriptMessage }) {
           )}
         </div>
       )}
-      {msg.tool_calls?.map((tc, tcIdx) => (
+      {toolCalls.map((tc, tcIdx) => (
         <ToolCallBlock key={tcIdx} tc={tc} />
       ))}
     </div>

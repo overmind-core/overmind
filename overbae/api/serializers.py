@@ -762,18 +762,16 @@ class SpanSerializer(serializers.ModelSerializer):
     the per-trace list) and as the per-row representation for any span query."""
 
     is_root = serializers.BooleanField(read_only=True)
-    input = serializers.SerializerMethodField()
-    output = serializers.SerializerMethodField()
+    input_attribute = serializers.SerializerMethodField()
+    output_attribute = serializers.SerializerMethodField()
 
-    # ``input`` precedes ``output`` in ``fields``, so one parse serves both.
-    @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_input(self, obj):
-        self._payloads = evidence.payloads(obj)
-        return self._payloads[0]
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_input_attribute(self, obj):
+        return evidence.input_attribute(obj)
 
-    @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_output(self, obj):
-        return self._payloads[1]
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_output_attribute(self, obj):
+        return evidence.output_attribute(obj)
 
     class Meta:
         model = Span
@@ -797,8 +795,8 @@ class SpanSerializer(serializers.ModelSerializer):
             "scope_name",
             "scope_version",
             "attributes",
-            "input",
-            "output",
+            "input_attribute",
+            "output_attribute",
             "events",
             "links",
             "capability",

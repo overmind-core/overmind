@@ -77,6 +77,26 @@ describe("Trace inspector", () => {
     expect(screen.getByText(/Who won\?/)).toBeTruthy();
     expect(screen.getByText(/"tool_result"/)).toBeTruthy();
   });
+  it("shows OTel GenAI messages: text, tool calls, and no server-tool results", () => {
+    const answer = [
+      {
+        parts: [
+          { arguments: { query: "who won" }, id: "t1", name: "web_search", type: "tool_call" },
+          { id: "t1", response: [{ title: "Search result" }], type: "tool_call_response" },
+          { content: "Team A won.", type: "text" },
+        ],
+        role: "assistant",
+      },
+    ];
+    render(
+      <Fixture>
+        <SpanDetailView span={{ ...root, inputs: null, outputs: JSON.stringify(answer) }} />
+      </Fixture>
+    );
+    expect(screen.getByText("Team A won.")).toBeTruthy();
+    expect(screen.getByText("web_search")).toBeTruthy();
+    expect(screen.queryByText(/Search result/)).toBeNull();
+  });
   it("reveals matching descendants without changing the saved collapsed state", () => {
     const { rerender } = render(
       <Fixture>
