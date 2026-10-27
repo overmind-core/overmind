@@ -856,7 +856,13 @@ def otlp_traces(request):
     try:
         export_request = _parse_export(request, body)
     except Exception as exc:
-        logger.error("Failed to parse OTLP export: %s", exc)
+        # The parser's message can quote the rejected payload, so log only its type.
+        logger.error(
+            "Failed to parse OTLP export: %s (%s, %d bytes)",
+            type(exc).__name__,
+            request.content_type,
+            len(body),
+        )
         return JsonResponse({"error": "Invalid OTLP export."}, status=400)
 
     all_spans: list[Span] = []
