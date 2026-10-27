@@ -57,6 +57,26 @@ describe("Trace inspector", () => {
     expect(screen.getAllByText("Not captured")).toHaveLength(1);
     expect(screen.getByText(value === "" ? '""' : JSON.stringify(value))).toBeTruthy();
   });
+  it("shows content-block messages as text, with non-text blocks as JSON", () => {
+    const request = {
+      messages: [
+        {
+          content: [
+            { text: "Who won?", type: "text" },
+            { content: "42", tool_use_id: "t1", type: "tool_result" },
+          ],
+          role: "user",
+        },
+      ],
+    };
+    render(
+      <Fixture>
+        <SpanDetailView span={{ ...root, inputs: JSON.stringify(request), outputs: null }} />
+      </Fixture>
+    );
+    expect(screen.getByText(/Who won\?/)).toBeTruthy();
+    expect(screen.getByText(/"tool_result"/)).toBeTruthy();
+  });
   it("reveals matching descendants without changing the saved collapsed state", () => {
     const { rerender } = render(
       <Fixture>

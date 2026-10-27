@@ -8,7 +8,7 @@ export type ToolCallItem = {
 
 export type TranscriptMessage = {
   role?: string;
-  content?: string | null;
+  content?: unknown;
   tool_calls?: ToolCallItem[];
   tool_call_id?: string;
   name?: string;

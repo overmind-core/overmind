@@ -353,10 +353,24 @@ const ROLE_LABELS: Record<string, string> = {
   user: "User",
 };
 
+// Content is a string or typed blocks (OpenAI, Anthropic); other blocks read as JSON.
+function contentText(content: unknown): string {
+  if (content === null || content === undefined) return "";
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return JSON.stringify(content, null, 2);
+  return content
+    .map((block) =>
+      block?.type === "text" && typeof block.text === "string"
+        ? block.text
+        : JSON.stringify(block, null, 2)
+    )
+    .join("\n");
+}
+
 function MessageRow({ msg }: { msg: TranscriptMessage }) {
   const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? msg.role ?? "Message";
   const hasToolCalls = (msg.tool_calls?.length ?? 0) > 0;
-  const text = msg.content ?? "";
+  const text = contentText(msg.content);
   const isTool = msg.role === "tool";
   const canMarkdown =
     !isTool && typeof text === "string" && text.length > 0 && isLikelyMarkdown(text);

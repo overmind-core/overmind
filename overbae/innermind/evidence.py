@@ -78,47 +78,11 @@ def _messages(span: Span) -> tuple[list[dict] | None, list[dict] | None]:
     return prompt, completion
 
 
-def _arguments(attributes: dict) -> dict[str, Any]:
-    return {
-        key.removeprefix(ARG_PREFIX): value
-        for key, value in attributes.items()
-        if key.startswith(ARG_PREFIX)
-    }
-
-
-def _only_text_blocks(source: Any) -> bool:
-    messages = source.get("messages") if isinstance(source, dict) else source
-    if not isinstance(messages, list):
-        return True
-    return all(
-        not isinstance(message.get("content"), list)
-        or all(
-            isinstance(block, dict) and block.get("type") == "text" for block in message["content"]
-        )
-        for message in messages
-        if isinstance(message, dict)
-    )
-
-
-def _as_messages(value: Any) -> Any:
-    """A chat request or completion envelope reads as its messages; anything else, or
-    content with non-text blocks the normalization would drop, as sent."""
-    if value is None:
-        return None
-    messages = chatml.parse_messages(value)
-    if not messages or not _only_text_blocks(chatml.maybe_parse_json(value)):
-        return value
-    return messages
-
-
 def payloads(span: Span) -> tuple[Any, Any]:
-    """Input and output for display: a native payload or the call arguments,
-    else the GenAI message lists."""
+    """Input and output for display: the native payload as sent, else the GenAI message lists."""
     attributes = span.attributes or {}
-    native_in = _as_messages(chatml.pick(attributes, INPUT_KEYS))
-    if native_in is None:
-        native_in = _arguments(attributes) or None
-    native_out = _as_messages(chatml.pick(attributes, OUTPUT_KEYS))
+    native_in = chatml.pick(attributes, INPUT_KEYS)
+    native_out = chatml.pick(attributes, OUTPUT_KEYS)
     if native_in is not None and native_out is not None:
         return native_in, native_out
     prompt, completion = _messages(span)
@@ -133,7 +97,11 @@ def read_input(span: Span) -> str:
     value = chatml.pick(attributes, INPUT_KEYS)
     if value is not None:
         return as_text(unwrap_payload(value))
-    args = _arguments(attributes)
+    args = {
+        key.removeprefix(ARG_PREFIX): value
+        for key, value in attributes.items()
+        if key.startswith(ARG_PREFIX)
+    }
     if len(args) == 1:
         (value,) = args.values()
         if isinstance(value, str):
