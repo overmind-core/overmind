@@ -31,7 +31,8 @@ INPUT_KEYS = (
     "overmind.input_data",
     "traceloop.entity.input",
     "inputs",
-    # OTel GenAI tool spans, then Claude Code's content keys.
+    # OTel GenAI: the single-attribute prompt, tool spans; then Claude Code's keys.
+    "gen_ai.prompt",
     "gen_ai.tool.call.arguments",
     "user_prompt",
     "tool_input",
@@ -41,7 +42,9 @@ OUTPUT_KEYS = (
     "overmind.output_data",
     "traceloop.entity.output",
     "outputs",
-    # OTel GenAI tool spans, the Claude API's tool result, then Claude Code's.
+    # OTel GenAI: the single-attribute completion, tool spans; then the Claude
+    # API's tool result and Claude Code's answer.
+    "gen_ai.completion",
     "gen_ai.tool.call.result",
     "anthropic.tool_result.content",
     "response.model_output",

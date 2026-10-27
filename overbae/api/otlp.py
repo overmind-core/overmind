@@ -835,7 +835,7 @@ def _hex_ids_to_base64(export: dict) -> dict:
 
 def _parse_export(request, body: bytes) -> trace_service_pb2.ExportTraceServiceRequest:
     export_request = trace_service_pb2.ExportTraceServiceRequest()
-    if request.content_type == "application/json":
+    if request.content_type.split(";", 1)[0].strip().lower() == "application/json":
         json_format.ParseDict(
             _hex_ids_to_base64(json.loads(body)), export_request, ignore_unknown_fields=True
         )

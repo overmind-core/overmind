@@ -86,14 +86,19 @@ def _arguments(attributes: dict) -> dict[str, Any]:
     }
 
 
+def _as_messages(value: Any) -> Any:
+    """A chat request or completion envelope reads as its messages; anything else as sent."""
+    return value if value is None else (chatml.parse_messages(value) or value)
+
+
 def payloads(span: Span) -> tuple[Any, Any]:
-    """Input and output as sent, for display: a native payload or the call arguments,
+    """Input and output for display: a native payload or the call arguments,
     else the GenAI message lists."""
     attributes = span.attributes or {}
-    native_in = chatml.pick(attributes, INPUT_KEYS)
+    native_in = _as_messages(chatml.pick(attributes, INPUT_KEYS))
     if native_in is None:
         native_in = _arguments(attributes) or None
-    native_out = chatml.pick(attributes, OUTPUT_KEYS)
+    native_out = _as_messages(chatml.pick(attributes, OUTPUT_KEYS))
     if native_in is not None and native_out is not None:
         return native_in, native_out
     prompt, completion = _messages(span)
