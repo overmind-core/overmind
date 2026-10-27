@@ -91,7 +91,7 @@ from modal_shared.images.serve import (  # noqa: E402
     SERVE_IMAGES,
     api_server_image,
 )
-from modal_shared.stacks import GPU_TIER, WORKER_CLS  # noqa: E402
+from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_MEMORY_MIB  # noqa: E402
 
 APP_NAME = INFERENCE_APP_NAME
 app = modal.App(APP_NAME)
@@ -888,7 +888,15 @@ _SCALEDOWN = {
 }
 
 
-def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=False) -> None:
+def _register_worker(
+    cls_name: str,
+    gpu_type: str,
+    serve_image: str,
+    *,
+    lora=False,
+    target_app=None,
+    pin_resources=False,
+) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
     parameters = {
@@ -918,7 +926,7 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
         parameters,
     )
     cls = _worker_concurrency(cls)
-    globals()[cls_name] = app.cls(
+    globals()[cls_name] = (target_app or app).cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
@@ -929,23 +937,33 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
                     "cpu": 8,
                     # Restore maps the saved process while rebuilding it. Below this the
                     # container is SIGKILL'd (137) and Modal retries with a cold boot.
-                    "memory": {
-                        "L4": 131072,
-                        "L40S": 196608,
-                        "A100-80GB": 131072,
-                        "H200": 196608,
-                        "B200": 262144,
-                        "B300": 393216,
-                    }[gpu_type],
+                    "memory": WORKER_MEMORY_MIB[gpu_type],
                     "volumes": {**_volume_mounts, ARTIFACTS_MOUNT: artifacts_vol},
                     "enable_memory_snapshot": True,
                     "experimental_options": {"enable_gpu_snapshot": True},
                 }
                 if lora
-                else {}
+                else ({"cpu": 8, "memory": WORKER_MEMORY_MIB[gpu_type]} if pin_resources else {})
             ),
         },
     )(cls)
+
+
+def register_dedicated_classes(target_app) -> None:
+    """One class per GPU on the dedicated app, including H100. Not the shared inference app."""
+    for gpu_type in GPU_TIER:
+        token = gpu_type.replace("-", "")
+        _register_worker(
+            f"{token}_vllm", gpu_type, "vllm", target_app=target_app, pin_resources=True
+        )
+        _register_worker(
+            f"{token}_vllm_lora",
+            gpu_type,
+            "vllm",
+            lora=True,
+            target_app=target_app,
+            pin_resources=True,
+        )
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():

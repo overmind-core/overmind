@@ -105,3 +105,4 @@ If the family has no existing icon mapping, it falls through to a generic simple
 - [ ] `pricing.train_from_usd` + `pricing.run_from_usd_per_1m_output` set for the model library display
 - [ ] Frontend icon mapped if the family is new
 - [ ] Benchmark artifact (`overbae/services/benchmarks/data/benchmark_results.json`) refreshed by a maintainer once the model is in `models.json`, so its benchmark results feed model recommendations; the sync runs outside this repo
+- [ ] `overbae/modal/serving_benchmarks.json` has a row per eligible GPU and serving shape (`lora_bf16`, `merged_fp8`, and `decision` where that contract exists), including H100 when the model fits in 80 GB. Leave a GPU out and the Console shows that speed as unmeasured. Nothing benches from the API process

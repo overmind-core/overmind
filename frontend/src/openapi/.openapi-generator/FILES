@@ -139,6 +139,10 @@ models/DecisionModelOption.ts
 models/DecisionParticipantRequest.ts
 models/DecisionPerformance.ts
 models/DecisionTrainingModelOption.ts
+models/DedicatedDeployment.ts
+models/DedicatedDeploymentStatusEnum.ts
+models/DedicatedGpu.ts
+models/DedicatedWriteRequest.ts
 models/DefinitionSourceEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
@@ -314,6 +318,7 @@ models/PartitionRequestRequest.ts
 models/PatchedCapabilityRequest.ts
 models/PatchedConnectorCredentialRequest.ts
 models/PatchedDatasetRequest.ts
+models/PatchedDedicatedWriteRequest.ts
 models/PatchedEvalSetRequest.ts
 models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts

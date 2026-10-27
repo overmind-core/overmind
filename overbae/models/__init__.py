@@ -45,7 +45,7 @@ from .iam import (
     UserManager,
     UserOnboarding,
 )
-from .inference import DeployedModel, InferenceCall, ModelActivation
+from .inference import DedicatedDeployment, DeployedModel, InferenceCall, ModelActivation
 from .innermind import (
     EvalGenerationScheduler,
     EvalMatrix,
@@ -137,6 +137,7 @@ __all__ = [
     "DecisionPerformanceRun",
     "DecisionPerformanceRequest",
     "NativeEvaluationPlan",
+    "DedicatedDeployment",
     "DeployedModel",
     "InferenceCall",
     "ModelActivation",

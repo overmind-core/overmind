@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "overbae/modal/modal_vllm_worker.py"
+      - "overbae/modal/modal_dedicated_worker.py"
       - "overbae/modal/modal_sft_worker.py"
       - "overbae/modal/modal_decision_serving.py"
       - "overbae/modal/modal_decision_evaluation.py"
@@ -70,6 +71,11 @@ jobs:
         env:
           MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
         run: modal deploy overbae/modal/modal_vllm_worker.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy dedicated vLLM worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_dedicated_worker.py --env ${{ matrix.modal_env }}
 
       - name: Deploy register model worker (download + FP8)
         env:

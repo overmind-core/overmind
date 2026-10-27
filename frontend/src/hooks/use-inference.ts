@@ -159,6 +159,77 @@ export const useRetryModelMutation = () => {
   });
 };
 
+const DEDICATED_ACTIVE = new Set(["deploying", "warming", "online", "shutting_down"]);
+
+export const useDedicatedDeploymentQuery = (id: string | undefined, enabled: boolean) =>
+  useQuery({
+    enabled: !!id && enabled,
+    queryFn: () => apiClient.deployedModels.deployedModelsDedicatedRetrieve({ deploymentId: id! }),
+    queryKey: ["dedicated-deployment", id],
+    refetchInterval: (q) =>
+      backoffPolling(
+        q,
+        q.state.data && DEDICATED_ACTIVE.has(q.state.data.status ?? "") ? 5_000 : false
+      ),
+  });
+
+export const useDedicatedGpusQuery = (id: string | undefined, enabled: boolean) =>
+  useQuery({
+    enabled: !!id && enabled,
+    queryFn: () => apiClient.deployedModels.deployedModelsDedicatedGpusList({ deploymentId: id! }),
+    queryKey: ["dedicated-gpus", id],
+    staleTime: 60_000,
+  });
+
+const refreshDedicated = (qc: ReturnType<typeof useQueryClient>, id: string) => {
+  qc.invalidateQueries({ queryKey: ["dedicated-deployment", id] });
+};
+
+export const useStartDedicatedMutation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      gpuType: string;
+      minReplicas: number;
+      maxReplicas: number;
+      scaleToZero: boolean;
+      idleShutdownSeconds: number;
+    }) =>
+      apiClient.deployedModels.deployedModelsDedicatedCreate({
+        dedicatedWriteRequest: body,
+        deploymentId: id,
+      }),
+    onSuccess: () => refreshDedicated(qc, id),
+  });
+};
+
+export const useUpdateDedicatedMutation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      gpuType: string;
+      minReplicas: number;
+      maxReplicas: number;
+      scaleToZero: boolean;
+      idleShutdownSeconds: number;
+    }) =>
+      apiClient.deployedModels.deployedModelsDedicatedPartialUpdate({
+        deploymentId: id,
+        patchedDedicatedWriteRequest: body,
+      }),
+    onSuccess: () => refreshDedicated(qc, id),
+  });
+};
+
+export const useStopDedicatedMutation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiClient.deployedModels.deployedModelsDedicatedStopCreate({ deploymentId: id }),
+    onSuccess: () => refreshDedicated(qc, id),
+  });
+};
+
 /** Live serving signals. `pollMs` = 0 → one-shot fetch; > 0 → poll. */
 export const useModelLiveQuery = (id: string | undefined, enabled = false, pollMs = 5_000) =>
   useQuery({

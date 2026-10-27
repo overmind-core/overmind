@@ -1069,6 +1069,28 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
     }
 
 
+def _dedicated_payload(deployment) -> dict | None:
+    from overbae.services.dedicated import live_for
+
+    row = live_for(deployment)
+    if row is None:
+        return None
+    return {
+        "id": str(row.id),
+        "model_id": row.public_model_id,
+        "status": row.status,
+        "gpu_type": row.gpu_type,
+        "min_replicas": row.min_replicas,
+        "max_replicas": row.max_replicas,
+        "scale_to_zero": row.scale_to_zero,
+        "idle_shutdown_seconds": row.idle_shutdown_seconds,
+        "running_replicas": row.running_replicas,
+        "credits_per_gpu_hour": str(row.credits_per_gpu_hour),
+        "accrued_credits": str(row.accrued_credits),
+        "error": row.error_message[:1_000],
+    }
+
+
 def _deployment_resource(project, value: str, uri: str) -> dict:
     query = DeployedModel.objects.filter(project=project).select_related(
         "finetuning_job__capability"
@@ -1114,6 +1136,7 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
         "error": deployment.error_message[:1_000],
         "created_at": deployment.created_at,
         "deployed_at": deployment.deployed_at,
+        "dedicated": _dedicated_payload(deployment),
     }
 
 

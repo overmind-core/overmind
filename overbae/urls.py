@@ -30,6 +30,7 @@ from overbae.api.dataset_transfers import DatasetTransferViewSet
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.decision import DecisionJobViewSet, DecisionModelListView
 from overbae.api.decision_performance import DecisionPerformanceViewSet
+from overbae.api.dedicated import DedicatedDeploymentView, DedicatedGpusView, DedicatedStopView
 from overbae.api.eval_views import (
     EvalMatrixViewSet,
     EvalRunRowViewSet,
@@ -177,6 +178,21 @@ urlpatterns += [
         "api/deployed-models/<uuid:deployment_id>/inference/",
         DeploymentInferenceView.as_view(),
         name="deployment-inference",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/gpus/",
+        DedicatedGpusView.as_view(),
+        name="dedicated-gpus",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/",
+        DedicatedDeploymentView.as_view(),
+        name="dedicated-deployment",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/stop/",
+        DedicatedStopView.as_view(),
+        name="dedicated-stop",
     ),
     path(
         "api/inference-requests/<uuid:request_id>/",

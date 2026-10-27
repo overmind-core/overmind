@@ -1,0 +1,2373 @@
+{
+  "workload": {
+    "chat_input_tokens": 512,
+    "chat_output_tokens": 128,
+    "concurrency": 1
+  },
+  "models": {
+    "fdtn-ai/antares-350m": {
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 17.7,
+          "tokens_per_second_p50": 699.7,
+          "measured_at": "2026-10-27T14:28:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 19.7,
+          "tokens_per_second_p50": 580.5,
+          "measured_at": "2026-10-27T14:28:26Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 26.1,
+          "tokens_per_second_p50": 547.1,
+          "measured_at": "2026-10-27T14:28:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 20.1,
+          "tokens_per_second_p50": 563.6,
+          "measured_at": "2026-10-27T14:29:11Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 21.6,
+          "tokens_per_second_p50": 531.3,
+          "measured_at": "2026-10-27T14:29:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 28.4,
+          "tokens_per_second_p50": 273.7,
+          "measured_at": "2026-10-27T14:29:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 34.7,
+          "tokens_per_second_p50": 403.3,
+          "measured_at": "2026-10-27T14:30:27Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "H100": {
+          "ttft_ms_p50": 14.5,
+          "tokens_per_second_p50": 795.0,
+          "measured_at": "2026-10-27T14:28:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 28.3,
+          "tokens_per_second_p50": 560.0,
+          "measured_at": "2026-10-27T14:28:53Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 18.8,
+          "tokens_per_second_p50": 660.0,
+          "measured_at": "2026-10-27T14:29:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 23.3,
+          "tokens_per_second_p50": 535.5,
+          "measured_at": "2026-10-27T14:29:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 17.5,
+          "tokens_per_second_p50": 688.7,
+          "measured_at": "2026-10-27T15:01:36Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 45.0,
+          "tokens_per_second_p50": 327.6,
+          "measured_at": "2026-10-27T15:03:11Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-0.5B-Instruct": {
+      "merged_fp8": {
+        "B200": {
+          "ttft_ms_p50": 9.0,
+          "tokens_per_second_p50": 895.8,
+          "measured_at": "2026-10-27T14:28:15Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 20.9,
+          "tokens_per_second_p50": 502.7,
+          "measured_at": "2026-10-27T14:29:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 17.0,
+          "tokens_per_second_p50": 493.4,
+          "measured_at": "2026-10-27T14:29:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 17.6,
+          "tokens_per_second_p50": 345.8,
+          "measured_at": "2026-10-27T14:30:14Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 17.1,
+          "tokens_per_second_p50": 520.1,
+          "measured_at": "2026-10-27T15:01:58Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 25.2,
+          "tokens_per_second_p50": 261.6,
+          "measured_at": "2026-10-27T15:03:08Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 20.7,
+          "tokens_per_second_p50": 543.9,
+          "measured_at": "2026-10-27T14:28:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 21.4,
+          "tokens_per_second_p50": 541.4,
+          "measured_at": "2026-10-27T14:28:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 26.2,
+          "tokens_per_second_p50": 471.4,
+          "measured_at": "2026-10-27T14:29:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 17.2,
+          "tokens_per_second_p50": 586.0,
+          "measured_at": "2026-10-27T14:29:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 22.5,
+          "tokens_per_second_p50": 494.7,
+          "measured_at": "2026-10-27T14:29:45Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 30.6,
+          "tokens_per_second_p50": 453.8,
+          "measured_at": "2026-10-27T15:02:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 36.5,
+          "tokens_per_second_p50": 206.6,
+          "measured_at": "2026-10-27T15:03:05Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "LiquidAI/LFM2.5-230M": {
+      "merged_fp8": {
+        "H200": {
+          "ttft_ms_p50": 14.5,
+          "tokens_per_second_p50": 465.4,
+          "measured_at": "2026-10-27T14:28:22Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 26.4,
+          "tokens_per_second_p50": 298.5,
+          "measured_at": "2026-10-27T14:58:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 23.8,
+          "tokens_per_second_p50": 379.5,
+          "measured_at": "2026-10-27T15:01:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 21.0,
+          "tokens_per_second_p50": 364.8,
+          "measured_at": "2026-10-27T15:01:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 10.8,
+          "tokens_per_second_p50": 604.8,
+          "measured_at": "2026-10-27T15:01:05Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 10.7,
+          "tokens_per_second_p50": 774.2,
+          "measured_at": "2026-10-27T15:00:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 15.1,
+          "tokens_per_second_p50": 306.8,
+          "measured_at": "2026-10-27T15:01:43Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 21.9,
+          "tokens_per_second_p50": 440.3,
+          "measured_at": "2026-10-27T14:28:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 33.5,
+          "tokens_per_second_p50": 278.9,
+          "measured_at": "2026-10-27T14:58:42Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 28.3,
+          "tokens_per_second_p50": 298.4,
+          "measured_at": "2026-10-27T15:02:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 21.9,
+          "tokens_per_second_p50": 383.2,
+          "measured_at": "2026-10-27T15:01:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 23.2,
+          "tokens_per_second_p50": 382.2,
+          "measured_at": "2026-10-27T15:01:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 12.0,
+          "tokens_per_second_p50": 741.0,
+          "measured_at": "2026-10-27T15:01:00Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 18.5,
+          "tokens_per_second_p50": 433.7,
+          "measured_at": "2026-10-27T15:02:27Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-0.6B": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 13.1,
+          "tokens_per_second_p50": 789.7,
+          "measured_at": "2026-10-27T14:28:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 27.9,
+          "tokens_per_second_p50": 394.5,
+          "measured_at": "2026-10-27T14:29:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 20.3,
+          "tokens_per_second_p50": 535.9,
+          "measured_at": "2026-10-27T14:30:06Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 20.0,
+          "tokens_per_second_p50": 517.7,
+          "measured_at": "2026-10-27T14:30:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 35.1,
+          "tokens_per_second_p50": 390.3,
+          "measured_at": "2026-10-27T14:30:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 42.6,
+          "tokens_per_second_p50": 169.1,
+          "measured_at": "2026-10-27T15:03:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 30.1,
+          "tokens_per_second_p50": 427.7,
+          "measured_at": "2026-10-27T15:04:32Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 28.7,
+          "tokens_per_second_p50": 454.7,
+          "measured_at": "2026-10-27T14:29:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 28.9,
+          "tokens_per_second_p50": 615.7,
+          "measured_at": "2026-10-27T14:29:44Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 24.7,
+          "tokens_per_second_p50": 646.0,
+          "measured_at": "2026-10-27T14:29:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 38.1,
+          "tokens_per_second_p50": 483.5,
+          "measured_at": "2026-10-27T14:30:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 30.1,
+          "tokens_per_second_p50": 562.8,
+          "measured_at": "2026-10-27T14:30:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 43.9,
+          "tokens_per_second_p50": 226.5,
+          "measured_at": "2026-10-27T15:03:41Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-0.8B": {
+      "merged_fp8": {
+        "B200": {
+          "ttft_ms_p50": 23.1,
+          "tokens_per_second_p50": 734.8,
+          "measured_at": "2026-10-27T14:29:27Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 42.2,
+          "tokens_per_second_p50": 392.4,
+          "measured_at": "2026-10-27T14:30:45Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 43.5,
+          "tokens_per_second_p50": 388.6,
+          "measured_at": "2026-10-27T15:02:43Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 34.6,
+          "tokens_per_second_p50": 467.5,
+          "measured_at": "2026-10-27T15:03:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 51.1,
+          "tokens_per_second_p50": 392.3,
+          "measured_at": "2026-10-27T15:04:11Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 80.6,
+          "tokens_per_second_p50": 187.3,
+          "measured_at": "2026-10-27T15:06:51Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 32.2,
+          "tokens_per_second_p50": 408.0,
+          "measured_at": "2026-10-27T14:29:58Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 38.2,
+          "tokens_per_second_p50": 386.0,
+          "measured_at": "2026-10-27T14:30:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 33.7,
+          "tokens_per_second_p50": 420.0,
+          "measured_at": "2026-10-27T14:30:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 36.5,
+          "tokens_per_second_p50": 399.3,
+          "measured_at": "2026-10-27T15:02:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 50.2,
+          "tokens_per_second_p50": 343.0,
+          "measured_at": "2026-10-27T15:04:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 54.5,
+          "tokens_per_second_p50": 312.1,
+          "measured_at": "2026-10-27T15:05:04Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 75.0,
+          "tokens_per_second_p50": 145.3,
+          "measured_at": "2026-10-27T15:06:53Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "meta-llama/Llama-3.2-1B-Instruct": {
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 37.2,
+          "tokens_per_second_p50": 256.5,
+          "measured_at": "2026-10-27T14:30:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 16.1,
+          "tokens_per_second_p50": 980.8,
+          "measured_at": "2026-10-27T15:01:21Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 46.3,
+          "tokens_per_second_p50": 396.5,
+          "measured_at": "2026-10-27T15:02:43Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 28.3,
+          "tokens_per_second_p50": 533.7,
+          "measured_at": "2026-10-27T15:02:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 53.0,
+          "tokens_per_second_p50": 486.6,
+          "measured_at": "2026-10-27T15:03:06Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 32.0,
+          "tokens_per_second_p50": 451.4,
+          "measured_at": "2026-10-27T15:02:36Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 56.9,
+          "tokens_per_second_p50": 97.0,
+          "measured_at": "2026-10-27T15:04:23Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "B200": {
+          "ttft_ms_p50": 12.2,
+          "tokens_per_second_p50": 603.8,
+          "measured_at": "2026-10-27T15:01:45Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 19.0,
+          "tokens_per_second_p50": 255.5,
+          "measured_at": "2026-10-27T15:01:57Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 20.1,
+          "tokens_per_second_p50": 396.0,
+          "measured_at": "2026-10-27T15:02:25Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 16.8,
+          "tokens_per_second_p50": 498.7,
+          "measured_at": "2026-10-27T15:01:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 16.2,
+          "tokens_per_second_p50": 526.3,
+          "measured_at": "2026-10-27T15:02:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 11.9,
+          "tokens_per_second_p50": 568.5,
+          "measured_at": "2026-10-27T15:02:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 23.8,
+          "tokens_per_second_p50": 97.7,
+          "measured_at": "2026-10-27T15:04:00Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "LiquidAI/LFM2.5-1.2B-Instruct": {
+      "merged_fp8": {
+        "H200": {
+          "ttft_ms_p50": 16.7,
+          "tokens_per_second_p50": 391.3,
+          "measured_at": "2026-10-27T14:30:32Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 18.9,
+          "tokens_per_second_p50": 386.8,
+          "measured_at": "2026-10-27T15:01:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 13.5,
+          "tokens_per_second_p50": 502.0,
+          "measured_at": "2026-10-27T15:01:53Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 19.3,
+          "tokens_per_second_p50": 275.3,
+          "measured_at": "2026-10-27T15:02:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 23.0,
+          "tokens_per_second_p50": 336.2,
+          "measured_at": "2026-10-27T15:02:22Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 16.8,
+          "tokens_per_second_p50": 416.6,
+          "measured_at": "2026-10-27T15:02:25Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 28.8,
+          "tokens_per_second_p50": 103.2,
+          "measured_at": "2026-10-27T15:04:07Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 19.8,
+          "tokens_per_second_p50": 275.2,
+          "measured_at": "2026-10-27T15:01:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 20.3,
+          "tokens_per_second_p50": 436.1,
+          "measured_at": "2026-10-27T15:01:56Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 16.4,
+          "tokens_per_second_p50": 502.5,
+          "measured_at": "2026-10-27T15:01:43Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 30.4,
+          "tokens_per_second_p50": 302.4,
+          "measured_at": "2026-10-27T15:02:57Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 27.0,
+          "tokens_per_second_p50": 357.1,
+          "measured_at": "2026-10-27T15:02:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 22.4,
+          "tokens_per_second_p50": 350.4,
+          "measured_at": "2026-10-27T15:02:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 36.9,
+          "tokens_per_second_p50": 103.8,
+          "measured_at": "2026-10-27T15:04:24Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-1.7B": {
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 27.4,
+          "tokens_per_second_p50": 241.6,
+          "measured_at": "2026-10-27T15:02:53Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 20.9,
+          "tokens_per_second_p50": 495.1,
+          "measured_at": "2026-10-27T15:02:31Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 42.6,
+          "tokens_per_second_p50": 99.9,
+          "measured_at": "2026-10-27T15:05:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 22.3,
+          "tokens_per_second_p50": 531.1,
+          "measured_at": "2026-10-27T15:36:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 23.4,
+          "tokens_per_second_p50": 644.2,
+          "measured_at": "2026-10-27T15:35:56Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 32.4,
+          "tokens_per_second_p50": 506.1,
+          "measured_at": "2026-10-27T15:36:50Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 23.1,
+          "tokens_per_second_p50": 440.7,
+          "measured_at": "2026-10-27T15:02:27Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 35.6,
+          "tokens_per_second_p50": 230.8,
+          "measured_at": "2026-10-27T15:03:36Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 35.7,
+          "tokens_per_second_p50": 403.1,
+          "measured_at": "2026-10-27T15:03:58Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 40.8,
+          "tokens_per_second_p50": 67.9,
+          "measured_at": "2026-10-27T15:05:13Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 27.6,
+          "tokens_per_second_p50": 178.5,
+          "measured_at": "2026-10-27T15:09:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 16.5,
+          "tokens_per_second_p50": 629.4,
+          "measured_at": "2026-10-27T15:35:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 20.1,
+          "tokens_per_second_p50": 454.0,
+          "measured_at": "2026-10-27T15:36:57Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-2B": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 22.2,
+          "tokens_per_second_p50": 607.6,
+          "measured_at": "2026-10-27T15:05:43Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 21.1,
+          "tokens_per_second_p50": 630.4,
+          "measured_at": "2026-10-27T15:06:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 43.7,
+          "tokens_per_second_p50": 426.4,
+          "measured_at": "2026-10-27T15:37:25Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 35.1,
+          "tokens_per_second_p50": 446.9,
+          "measured_at": "2026-10-27T15:36:57Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 47.1,
+          "tokens_per_second_p50": 274.8,
+          "measured_at": "2026-10-27T15:39:35Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 50.1,
+          "tokens_per_second_p50": 169.4,
+          "measured_at": "2026-10-27T15:40:31Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 72.2,
+          "tokens_per_second_p50": 64.3,
+          "measured_at": "2026-10-27T17:57:51Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "H100": {
+          "ttft_ms_p50": 46.5,
+          "tokens_per_second_p50": 476.0,
+          "measured_at": "2026-10-27T15:37:26Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 37.3,
+          "tokens_per_second_p50": 510.0,
+          "measured_at": "2026-10-27T15:37:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 20.0,
+          "tokens_per_second_p50": 667.6,
+          "measured_at": "2026-10-27T15:36:03Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 32.8,
+          "tokens_per_second_p50": 550.7,
+          "measured_at": "2026-10-27T15:37:31Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 53.0,
+          "tokens_per_second_p50": 220.2,
+          "measured_at": "2026-10-27T17:25:10Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 82.5,
+          "tokens_per_second_p50": 88.5,
+          "measured_at": "2026-10-27T17:51:07Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "meta-llama/Llama-3.2-3B-Instruct": {
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 18.7,
+          "tokens_per_second_p50": 104.7,
+          "measured_at": "2026-10-27T15:06:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 15.1,
+          "tokens_per_second_p50": 298.0,
+          "measured_at": "2026-10-27T15:05:35Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 15.0,
+          "tokens_per_second_p50": 368.4,
+          "measured_at": "2026-10-27T15:05:36Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 9.5,
+          "tokens_per_second_p50": 501.2,
+          "measured_at": "2026-10-27T15:35:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 12.8,
+          "tokens_per_second_p50": 496.5,
+          "measured_at": "2026-10-27T15:36:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 24.3,
+          "tokens_per_second_p50": 179.8,
+          "measured_at": "2026-10-27T15:38:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 62.6,
+          "tokens_per_second_p50": 38.0,
+          "measured_at": "2026-10-27T15:44:59Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 23.0,
+          "tokens_per_second_p50": 296.9,
+          "measured_at": "2026-10-27T15:06:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 21.4,
+          "tokens_per_second_p50": 361.6,
+          "measured_at": "2026-10-27T15:06:45Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 17.4,
+          "tokens_per_second_p50": 505.6,
+          "measured_at": "2026-10-27T15:35:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 19.7,
+          "tokens_per_second_p50": 374.9,
+          "measured_at": "2026-10-27T15:36:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 30.4,
+          "tokens_per_second_p50": 180.1,
+          "measured_at": "2026-10-27T15:38:26Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 28.0,
+          "tokens_per_second_p50": 104.6,
+          "measured_at": "2026-10-27T15:39:21Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 71.8,
+          "tokens_per_second_p50": 37.8,
+          "measured_at": "2026-10-27T17:48:39Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-4B": {
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 19.8,
+          "tokens_per_second_p50": 235.1,
+          "measured_at": "2026-10-27T15:06:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 38.3,
+          "tokens_per_second_p50": 142.8,
+          "measured_at": "2026-10-27T15:06:50Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 21.8,
+          "tokens_per_second_p50": 372.7,
+          "measured_at": "2026-10-27T15:36:13Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 22.5,
+          "tokens_per_second_p50": 283.9,
+          "measured_at": "2026-10-27T15:36:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 21.8,
+          "tokens_per_second_p50": 395.7,
+          "measured_at": "2026-10-27T15:37:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 31.4,
+          "tokens_per_second_p50": 83.0,
+          "measured_at": "2026-10-27T15:39:19Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 88.1,
+          "tokens_per_second_p50": 30.2,
+          "measured_at": "2026-10-27T17:56:26Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "H100": {
+          "ttft_ms_p50": 17.1,
+          "tokens_per_second_p50": 310.7,
+          "measured_at": "2026-10-27T15:06:15Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 22.1,
+          "tokens_per_second_p50": 119.9,
+          "measured_at": "2026-10-27T15:07:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 35.1,
+          "tokens_per_second_p50": 47.9,
+          "measured_at": "2026-10-27T15:09:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 17.6,
+          "tokens_per_second_p50": 395.5,
+          "measured_at": "2026-10-27T15:08:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 26.0,
+          "tokens_per_second_p50": 344.9,
+          "measured_at": "2026-10-27T15:37:42Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 19.3,
+          "tokens_per_second_p50": 395.5,
+          "measured_at": "2026-10-27T15:36:32Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "fdtn-ai/antares-1b": {
+      "merged_fp8": {
+        "L4": {
+          "ttft_ms_p50": 35.4,
+          "tokens_per_second_p50": 107.6,
+          "measured_at": "2026-10-27T15:06:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 23.2,
+          "tokens_per_second_p50": 418.5,
+          "measured_at": "2026-10-27T15:36:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 19.9,
+          "tokens_per_second_p50": 446.6,
+          "measured_at": "2026-10-27T15:36:27Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 16.5,
+          "tokens_per_second_p50": 520.2,
+          "measured_at": "2026-10-27T15:35:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 20.6,
+          "tokens_per_second_p50": 459.2,
+          "measured_at": "2026-10-27T15:36:44Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 24.0,
+          "tokens_per_second_p50": 230.0,
+          "measured_at": "2026-10-27T17:23:33Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 44.9,
+          "tokens_per_second_p50": 234.2,
+          "measured_at": "2026-10-27T15:37:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 36.0,
+          "tokens_per_second_p50": 382.5,
+          "measured_at": "2026-10-27T15:36:44Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 20.3,
+          "tokens_per_second_p50": 421.8,
+          "measured_at": "2026-10-27T15:35:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 21.0,
+          "tokens_per_second_p50": 518.2,
+          "measured_at": "2026-10-27T15:35:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 26.6,
+          "tokens_per_second_p50": 455.3,
+          "measured_at": "2026-10-27T15:36:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 34.4,
+          "tokens_per_second_p50": 170.5,
+          "measured_at": "2026-10-27T17:23:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 52.6,
+          "tokens_per_second_p50": 68.9,
+          "measured_at": "2026-10-27T17:24:31Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-4B": {
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 52.9,
+          "tokens_per_second_p50": 236.2,
+          "measured_at": "2026-10-27T15:07:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 61.9,
+          "tokens_per_second_p50": 80.8,
+          "measured_at": "2026-10-27T15:08:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 103.7,
+          "tokens_per_second_p50": 29.0,
+          "measured_at": "2026-10-27T15:11:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 65.9,
+          "tokens_per_second_p50": 144.3,
+          "measured_at": "2026-10-27T15:33:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 41.0,
+          "tokens_per_second_p50": 289.0,
+          "measured_at": "2026-10-27T15:37:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 37.6,
+          "tokens_per_second_p50": 369.4,
+          "measured_at": "2026-10-27T15:36:35Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 40.4,
+          "tokens_per_second_p50": 377.6,
+          "measured_at": "2026-10-27T15:37:48Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "H100": {
+          "ttft_ms_p50": 49.0,
+          "tokens_per_second_p50": 301.8,
+          "measured_at": "2026-10-27T15:07:22Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 57.6,
+          "tokens_per_second_p50": 107.1,
+          "measured_at": "2026-10-27T15:08:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 35.7,
+          "tokens_per_second_p50": 343.4,
+          "measured_at": "2026-10-27T15:08:09Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 50.0,
+          "tokens_per_second_p50": 343.0,
+          "measured_at": "2026-10-27T15:09:22Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 89.5,
+          "tokens_per_second_p50": 43.1,
+          "measured_at": "2026-10-27T15:11:27Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 34.9,
+          "tokens_per_second_p50": 408.8,
+          "measured_at": "2026-10-27T15:36:33Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-7B-Instruct": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 12.0,
+          "tokens_per_second_p50": 310.9,
+          "measured_at": "2026-10-27T15:09:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 44.9,
+          "tokens_per_second_p50": 50.1,
+          "measured_at": "2026-10-27T17:23:44Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 24.8,
+          "tokens_per_second_p50": 164.4,
+          "measured_at": "2026-10-27T17:23:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 32.6,
+          "tokens_per_second_p50": 211.7,
+          "measured_at": "2026-10-27T17:23:56Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 22.4,
+          "tokens_per_second_p50": 314.0,
+          "measured_at": "2026-10-27T17:23:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 42.7,
+          "tokens_per_second_p50": 96.8,
+          "measured_at": "2026-10-27T17:24:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 154.1,
+          "tokens_per_second_p50": 17.8,
+          "measured_at": "2026-10-27T18:04:15Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "B300": {
+          "ttft_ms_p50": 12.0,
+          "tokens_per_second_p50": 346.3,
+          "measured_at": "2026-10-27T15:09:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 10.6,
+          "tokens_per_second_p50": 339.9,
+          "measured_at": "2026-10-27T15:39:33Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 31.8,
+          "tokens_per_second_p50": 73.3,
+          "measured_at": "2026-10-27T17:23:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 17.2,
+          "tokens_per_second_p50": 244.6,
+          "measured_at": "2026-10-27T17:23:13Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 14.3,
+          "tokens_per_second_p50": 289.5,
+          "measured_at": "2026-10-27T17:22:52Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 105.4,
+          "tokens_per_second_p50": 29.2,
+          "measured_at": "2026-10-27T18:03:50Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "meta-llama/Llama-3.1-8B-Instruct": {
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 31.0,
+          "tokens_per_second_p50": 47.5,
+          "measured_at": "2026-10-27T15:10:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 26.0,
+          "tokens_per_second_p50": 156.2,
+          "measured_at": "2026-10-27T15:10:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 36.1,
+          "tokens_per_second_p50": 92.3,
+          "measured_at": "2026-10-27T15:11:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 24.2,
+          "tokens_per_second_p50": 284.1,
+          "measured_at": "2026-10-27T15:40:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 23.5,
+          "tokens_per_second_p50": 206.3,
+          "measured_at": "2026-10-27T17:23:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 12.4,
+          "tokens_per_second_p50": 285.6,
+          "measured_at": "2026-10-27T17:23:35Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 40.2,
+          "tokens_per_second_p50": 71.4,
+          "measured_at": "2026-10-27T15:11:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 26.8,
+          "tokens_per_second_p50": 361.5,
+          "measured_at": "2026-10-27T15:12:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 41.0,
+          "tokens_per_second_p50": 233.7,
+          "measured_at": "2026-10-27T15:40:45Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 32.2,
+          "tokens_per_second_p50": 284.4,
+          "measured_at": "2026-10-27T15:40:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 25.8,
+          "tokens_per_second_p50": 373.6,
+          "measured_at": "2026-10-27T15:40:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 110.6,
+          "tokens_per_second_p50": 27.8,
+          "measured_at": "2026-10-27T18:12:43Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-8B": {
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 22.6,
+          "tokens_per_second_p50": 68.7,
+          "measured_at": "2026-10-27T15:11:15Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 16.0,
+          "tokens_per_second_p50": 225.5,
+          "measured_at": "2026-10-27T15:11:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 13.7,
+          "tokens_per_second_p50": 317.7,
+          "measured_at": "2026-10-27T15:40:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 19.1,
+          "tokens_per_second_p50": 270.2,
+          "measured_at": "2026-10-27T15:41:09Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 18.0,
+          "tokens_per_second_p50": 330.3,
+          "measured_at": "2026-10-27T17:24:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 112.2,
+          "tokens_per_second_p50": 26.6,
+          "measured_at": "2026-10-27T18:04:30Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 13.9,
+          "tokens_per_second_p50": 266.4,
+          "measured_at": "2026-10-27T15:39:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 46.5,
+          "tokens_per_second_p50": 91.4,
+          "measured_at": "2026-10-27T15:41:00Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 47.9,
+          "tokens_per_second_p50": 46.6,
+          "measured_at": "2026-10-27T17:24:15Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 21.2,
+          "tokens_per_second_p50": 155.0,
+          "measured_at": "2026-10-27T17:23:33Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 25.8,
+          "tokens_per_second_p50": 197.4,
+          "measured_at": "2026-10-27T17:23:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 25.0,
+          "tokens_per_second_p50": 274.9,
+          "measured_at": "2026-10-27T17:24:40Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "google/gemma-4-E4B-it": {
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 42.3,
+          "tokens_per_second_p50": 148.2,
+          "measured_at": "2026-10-27T15:12:46Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 31.3,
+          "tokens_per_second_p50": 363.1,
+          "measured_at": "2026-10-27T15:13:05Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 43.9,
+          "tokens_per_second_p50": 251.5,
+          "measured_at": "2026-10-27T15:13:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 20.4,
+          "tokens_per_second_p50": 236.5,
+          "measured_at": "2026-10-27T15:41:21Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 11.9,
+          "tokens_per_second_p50": 246.9,
+          "measured_at": "2026-10-27T15:41:17Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 37.2,
+          "tokens_per_second_p50": 184.1,
+          "measured_at": "2026-10-27T15:44:05Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 96.2,
+          "tokens_per_second_p50": 145.4,
+          "measured_at": "2026-10-27T15:13:33Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 110.0,
+          "tokens_per_second_p50": 245.2,
+          "measured_at": "2026-10-27T15:14:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 28.1,
+          "tokens_per_second_p50": 242.1,
+          "measured_at": "2026-10-27T15:41:10Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 86.8,
+          "tokens_per_second_p50": 160.3,
+          "measured_at": "2026-10-27T15:43:28Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 49.0,
+          "tokens_per_second_p50": 249.5,
+          "measured_at": "2026-10-27T17:26:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 105.4,
+          "tokens_per_second_p50": 184.9,
+          "measured_at": "2026-10-27T17:27:44Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-14B-Instruct": {
+      "merged_fp8": {
+        "B200": {
+          "ttft_ms_p50": 12.7,
+          "tokens_per_second_p50": 212.3,
+          "measured_at": "2026-10-27T15:13:57Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 24.0,
+          "tokens_per_second_p50": 135.3,
+          "measured_at": "2026-10-27T15:15:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 56.2,
+          "tokens_per_second_p50": 38.7,
+          "measured_at": "2026-10-27T15:16:06Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 21.6,
+          "tokens_per_second_p50": 165.8,
+          "measured_at": "2026-10-27T15:15:56Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 24.6,
+          "tokens_per_second_p50": 216.9,
+          "measured_at": "2026-10-27T15:16:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 138.9,
+          "tokens_per_second_p50": 15.2,
+          "measured_at": "2026-10-27T15:18:26Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 20.9,
+          "tokens_per_second_p50": 169.3,
+          "measured_at": "2026-10-27T15:13:31Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 32.4,
+          "tokens_per_second_p50": 86.3,
+          "measured_at": "2026-10-27T15:14:52Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 28.5,
+          "tokens_per_second_p50": 165.8,
+          "measured_at": "2026-10-27T15:15:42Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 49.8,
+          "tokens_per_second_p50": 25.8,
+          "measured_at": "2026-10-27T15:16:44Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 52.9,
+          "tokens_per_second_p50": 50.6,
+          "measured_at": "2026-10-27T15:15:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 32.4,
+          "tokens_per_second_p50": 113.4,
+          "measured_at": "2026-10-27T15:16:07Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-9B": {
+      "merged_fp8": {
+        "H200": {
+          "ttft_ms_p50": 53.9,
+          "tokens_per_second_p50": 258.5,
+          "measured_at": "2026-10-27T15:14:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 34.6,
+          "tokens_per_second_p50": 306.5,
+          "measured_at": "2026-10-27T15:40:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 19.9,
+          "tokens_per_second_p50": 312.2,
+          "measured_at": "2026-10-27T15:40:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 47.7,
+          "tokens_per_second_p50": 214.8,
+          "measured_at": "2026-10-27T15:41:46Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 57.8,
+          "tokens_per_second_p50": 62.9,
+          "measured_at": "2026-10-27T17:25:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 123.4,
+          "tokens_per_second_p50": 24.3,
+          "measured_at": "2026-10-27T18:18:52Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 56.8,
+          "tokens_per_second_p50": 253.0,
+          "measured_at": "2026-10-27T15:14:05Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 45.1,
+          "tokens_per_second_p50": 151.1,
+          "measured_at": "2026-10-27T15:40:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 24.3,
+          "tokens_per_second_p50": 262.4,
+          "measured_at": "2026-10-27T15:40:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 48.5,
+          "tokens_per_second_p50": 191.3,
+          "measured_at": "2026-10-27T15:41:33Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 62.3,
+          "tokens_per_second_p50": 44.7,
+          "measured_at": "2026-10-27T17:25:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 51.0,
+          "tokens_per_second_p50": 89.9,
+          "measured_at": "2026-10-27T17:27:12Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-14B": {
+      "merged_fp8": {
+        "H100": {
+          "ttft_ms_p50": 19.4,
+          "tokens_per_second_p50": 175.8,
+          "measured_at": "2026-10-27T15:15:46Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 32.8,
+          "tokens_per_second_p50": 40.6,
+          "measured_at": "2026-10-27T15:16:27Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 17.9,
+          "tokens_per_second_p50": 175.6,
+          "measured_at": "2026-10-27T15:16:00Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 18.4,
+          "tokens_per_second_p50": 219.5,
+          "measured_at": "2026-10-27T15:16:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 22.4,
+          "tokens_per_second_p50": 222.2,
+          "measured_at": "2026-10-27T15:16:46Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 209.3,
+          "tokens_per_second_p50": 15.5,
+          "measured_at": "2026-10-27T18:41:07Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 41.0,
+          "tokens_per_second_p50": 52.8,
+          "measured_at": "2026-10-27T15:16:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 31.6,
+          "tokens_per_second_p50": 117.5,
+          "measured_at": "2026-10-27T15:16:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 81.7,
+          "tokens_per_second_p50": 26.0,
+          "measured_at": "2026-10-27T17:24:50Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 29.8,
+          "tokens_per_second_p50": 91.8,
+          "measured_at": "2026-10-27T17:24:23Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 28.0,
+          "tokens_per_second_p50": 172.5,
+          "measured_at": "2026-10-27T17:24:09Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 17.1,
+          "tokens_per_second_p50": 178.3,
+          "measured_at": "2026-10-27T17:24:18Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.6-27B": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 36.3,
+          "tokens_per_second_p50": 94.8,
+          "measured_at": "2026-10-27T15:17:53Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 67.7,
+          "tokens_per_second_p50": 51.0,
+          "measured_at": "2026-10-27T15:19:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 86.4,
+          "tokens_per_second_p50": 66.4,
+          "measured_at": "2026-10-27T15:22:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 142.9,
+          "tokens_per_second_p50": 29.1,
+          "measured_at": "2026-10-27T15:46:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 69.1,
+          "tokens_per_second_p50": 96.5,
+          "measured_at": "2026-10-27T17:27:32Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "google/gemma-4-12B-it": {
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 55.0,
+          "tokens_per_second_p50": 57.4,
+          "measured_at": "2026-10-27T15:18:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 19.7,
+          "tokens_per_second_p50": 167.2,
+          "measured_at": "2026-10-27T17:24:09Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 45.7,
+          "tokens_per_second_p50": 92.5,
+          "measured_at": "2026-10-27T17:25:50Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 40.1,
+          "tokens_per_second_p50": 111.4,
+          "measured_at": "2026-10-27T17:25:23Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 74.3,
+          "tokens_per_second_p50": 29.9,
+          "measured_at": "2026-10-27T17:26:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 34.2,
+          "tokens_per_second_p50": 169.5,
+          "measured_at": "2026-10-27T17:27:19Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "A100-80GB": {
+          "ttft_ms_p50": 53.2,
+          "tokens_per_second_p50": 57.2,
+          "measured_at": "2026-10-27T15:18:48Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 31.4,
+          "tokens_per_second_p50": 111.7,
+          "measured_at": "2026-10-27T15:17:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 26.1,
+          "tokens_per_second_p50": 168.6,
+          "measured_at": "2026-10-27T17:24:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 31.4,
+          "tokens_per_second_p50": 89.1,
+          "measured_at": "2026-10-27T17:25:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 72.8,
+          "tokens_per_second_p50": 29.9,
+          "measured_at": "2026-10-27T17:26:37Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 24.5,
+          "tokens_per_second_p50": 169.8,
+          "measured_at": "2026-10-27T17:26:56Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "openai/gpt-oss-20b": {
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 18.9,
+          "tokens_per_second_p50": 180.0,
+          "measured_at": "2026-10-27T15:19:19Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 14.8,
+          "tokens_per_second_p50": 267.7,
+          "measured_at": "2026-10-27T15:17:52Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 21.3,
+          "tokens_per_second_p50": 322.9,
+          "measured_at": "2026-10-27T17:27:30Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 17.4,
+          "tokens_per_second_p50": 433.0,
+          "measured_at": "2026-10-27T17:28:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 15.2,
+          "tokens_per_second_p50": 436.9,
+          "measured_at": "2026-10-27T17:28:57Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-32B-Instruct": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 20.6,
+          "tokens_per_second_p50": 81.2,
+          "measured_at": "2026-10-27T15:20:59Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 37.1,
+          "tokens_per_second_p50": 40.7,
+          "measured_at": "2026-10-27T15:22:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 63.5,
+          "tokens_per_second_p50": 24.3,
+          "measured_at": "2026-10-27T15:24:10Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 58.8,
+          "tokens_per_second_p50": 55.8,
+          "measured_at": "2026-10-27T15:53:52Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 39.1,
+          "tokens_per_second_p50": 79.6,
+          "measured_at": "2026-10-27T17:25:43Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-27B": {
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 96.0,
+          "tokens_per_second_p50": 48.8,
+          "measured_at": "2026-10-27T15:20:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 148.3,
+          "tokens_per_second_p50": 29.0,
+          "measured_at": "2026-10-27T15:23:06Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 113.4,
+          "tokens_per_second_p50": 66.3,
+          "measured_at": "2026-10-27T15:24:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 35.4,
+          "tokens_per_second_p50": 95.9,
+          "measured_at": "2026-10-27T15:42:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 81.7,
+          "tokens_per_second_p50": 96.4,
+          "measured_at": "2026-10-27T17:27:59Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "google/gemma-4-31B-it": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 23.6,
+          "tokens_per_second_p50": 80.4,
+          "measured_at": "2026-10-27T15:21:01Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 41.1,
+          "tokens_per_second_p50": 81.8,
+          "measured_at": "2026-10-27T15:25:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 51.3,
+          "tokens_per_second_p50": 53.3,
+          "measured_at": "2026-10-27T15:26:10Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-Coder-32B-Instruct": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 21.2,
+          "tokens_per_second_p50": 80.1,
+          "measured_at": "2026-10-27T15:21:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 19.4,
+          "tokens_per_second_p50": 84.6,
+          "measured_at": "2026-10-27T15:21:08Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 59.7,
+          "tokens_per_second_p50": 24.3,
+          "measured_at": "2026-10-27T15:22:47Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 62.2,
+          "tokens_per_second_p50": 55.5,
+          "measured_at": "2026-10-27T15:45:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 57.8,
+          "tokens_per_second_p50": 40.7,
+          "measured_at": "2026-10-27T17:25:56Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.5-35B-A3B": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 51.6,
+          "tokens_per_second_p50": 311.2,
+          "measured_at": "2026-10-27T15:22:26Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 49.3,
+          "tokens_per_second_p50": 326.4,
+          "measured_at": "2026-10-27T15:22:24Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 98.2,
+          "tokens_per_second_p50": 240.5,
+          "measured_at": "2026-10-27T15:45:37Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "meta-llama/Llama-3.3-70B-Instruct": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 33.6,
+          "tokens_per_second_p50": 40.7,
+          "measured_at": "2026-10-27T15:22:53Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 34.8,
+          "tokens_per_second_p50": 40.7,
+          "measured_at": "2026-10-27T15:24:56Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen2.5-72B-Instruct": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 34.5,
+          "tokens_per_second_p50": 39.5,
+          "measured_at": "2026-10-27T15:22:32Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 34.6,
+          "tokens_per_second_p50": 40.2,
+          "measured_at": "2026-10-27T15:25:23Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-32B": {
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 59.3,
+          "tokens_per_second_p50": 24.0,
+          "measured_at": "2026-10-27T15:23:28Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 36.2,
+          "tokens_per_second_p50": 40.6,
+          "measured_at": "2026-10-27T15:23:40Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 62.1,
+          "tokens_per_second_p50": 54.6,
+          "measured_at": "2026-10-27T15:46:52Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 35.5,
+          "tokens_per_second_p50": 79.7,
+          "measured_at": "2026-10-27T17:25:13Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 39.2,
+          "tokens_per_second_p50": 80.6,
+          "measured_at": "2026-10-27T17:27:42Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B": {
+      "lora_bf16": {
+        "H200": {
+          "ttft_ms_p50": 79.2,
+          "tokens_per_second_p50": 331.9,
+          "measured_at": "2026-10-27T15:23:51Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 60.3,
+          "tokens_per_second_p50": 397.9,
+          "measured_at": "2026-10-27T15:24:23Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 50.1,
+          "tokens_per_second_p50": 281.7,
+          "measured_at": "2026-10-27T17:24:21Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 59.6,
+          "tokens_per_second_p50": 435.7,
+          "measured_at": "2026-10-27T17:24:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 88.2,
+          "tokens_per_second_p50": 180.7,
+          "measured_at": "2026-10-27T17:32:31Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3-Coder-30B-A3B-Instruct": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 58.2,
+          "tokens_per_second_p50": 327.7,
+          "measured_at": "2026-10-27T15:23:56Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 56.6,
+          "tokens_per_second_p50": 218.5,
+          "measured_at": "2026-10-27T17:24:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 67.9,
+          "tokens_per_second_p50": 251.1,
+          "measured_at": "2026-10-27T17:24:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 54.9,
+          "tokens_per_second_p50": 327.9,
+          "measured_at": "2026-10-27T17:27:32Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 77.7,
+          "tokens_per_second_p50": 140.6,
+          "measured_at": "2026-10-27T17:56:56Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "Qwen/Qwen3.8-27B": {
+      "lora_bf16": {
+        "H200": {
+          "ttft_ms_p50": 111.4,
+          "tokens_per_second_p50": 66.2,
+          "measured_at": "2026-10-27T15:24:22Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 35.0,
+          "tokens_per_second_p50": 96.6,
+          "measured_at": "2026-10-27T15:42:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 73.3,
+          "tokens_per_second_p50": 50.7,
+          "measured_at": "2026-10-27T15:43:50Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 73.0,
+          "tokens_per_second_p50": 96.8,
+          "measured_at": "2026-10-27T17:27:06Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 142.5,
+          "tokens_per_second_p50": 29.1,
+          "measured_at": "2026-10-27T17:59:15Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "unsloth/Muse-Glimmer-30B": {
+      "lora_bf16": {
+        "B300": {
+          "ttft_ms_p50": 44.8,
+          "tokens_per_second_p50": 90.5,
+          "measured_at": "2026-10-27T15:25:15Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 83.6,
+          "tokens_per_second_p50": 28.5,
+          "measured_at": "2026-10-27T15:25:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 51.0,
+          "tokens_per_second_p50": 46.3,
+          "measured_at": "2026-10-27T17:24:46Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 56.4,
+          "tokens_per_second_p50": 62.9,
+          "measured_at": "2026-10-27T17:25:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 40.0,
+          "tokens_per_second_p50": 89.0,
+          "measured_at": "2026-10-27T17:24:19Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "LiquidAI/LFM2.5-350M": {
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 23.7,
+          "tokens_per_second_p50": 436.1,
+          "measured_at": "2026-10-27T15:36:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 30.5,
+          "tokens_per_second_p50": 313.9,
+          "measured_at": "2026-10-27T15:36:41Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 17.5,
+          "tokens_per_second_p50": 571.0,
+          "measured_at": "2026-10-27T15:35:34Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 26.2,
+          "tokens_per_second_p50": 427.6,
+          "measured_at": "2026-10-27T15:36:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 12.7,
+          "tokens_per_second_p50": 748.6,
+          "measured_at": "2026-10-27T15:35:14Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 12.3,
+          "tokens_per_second_p50": 862.1,
+          "measured_at": "2026-10-27T15:35:39Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 35.2,
+          "tokens_per_second_p50": 304.2,
+          "measured_at": "2026-10-27T15:37:11Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "L40S": {
+          "ttft_ms_p50": 17.9,
+          "tokens_per_second_p50": 474.2,
+          "measured_at": "2026-10-27T15:36:07Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 20.3,
+          "tokens_per_second_p50": 422.6,
+          "measured_at": "2026-10-27T15:36:12Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 16.9,
+          "tokens_per_second_p50": 489.9,
+          "measured_at": "2026-10-27T15:36:04Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 16.0,
+          "tokens_per_second_p50": 485.4,
+          "measured_at": "2026-10-27T15:35:49Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 12.4,
+          "tokens_per_second_p50": 596.6,
+          "measured_at": "2026-10-27T15:35:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 18.9,
+          "tokens_per_second_p50": 340.2,
+          "measured_at": "2026-10-27T15:36:16Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L4": {
+          "ttft_ms_p50": 16.6,
+          "tokens_per_second_p50": 308.0,
+          "measured_at": "2026-10-27T16:53:01Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "google/gemma-4-E2B-it": {
+      "lora_bf16": {
+        "H100": {
+          "ttft_ms_p50": 43.7,
+          "tokens_per_second_p50": 246.3,
+          "measured_at": "2026-10-27T15:40:20Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 31.8,
+          "tokens_per_second_p50": 270.3,
+          "measured_at": "2026-10-27T15:39:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 33.4,
+          "tokens_per_second_p50": 317.6,
+          "measured_at": "2026-10-27T15:39:07Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 40.7,
+          "tokens_per_second_p50": 130.9,
+          "measured_at": "2026-10-27T17:26:03Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 24.8,
+          "tokens_per_second_p50": 337.4,
+          "measured_at": "2026-10-27T17:26:55Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 50.0,
+          "tokens_per_second_p50": 197.3,
+          "measured_at": "2026-10-27T17:28:40Z",
+          "runtime": "vllm-0.30.0"
+        }
+      },
+      "merged_fp8": {
+        "H200": {
+          "ttft_ms_p50": 24.4,
+          "tokens_per_second_p50": 267.0,
+          "measured_at": "2026-10-27T15:39:18Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 32.7,
+          "tokens_per_second_p50": 191.9,
+          "measured_at": "2026-10-27T15:41:38Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 28.4,
+          "tokens_per_second_p50": 248.3,
+          "measured_at": "2026-10-27T15:41:05Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "L40S": {
+          "ttft_ms_p50": 27.3,
+          "tokens_per_second_p50": 131.0,
+          "measured_at": "2026-10-27T15:42:02Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B200": {
+          "ttft_ms_p50": 19.3,
+          "tokens_per_second_p50": 351.0,
+          "measured_at": "2026-10-27T17:25:29Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 18.9,
+          "tokens_per_second_p50": 340.9,
+          "measured_at": "2026-10-27T17:26:15Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    },
+    "google/gemma-4-26B-A4B-it": {
+      "lora_bf16": {
+        "B200": {
+          "ttft_ms_p50": 25.5,
+          "tokens_per_second_p50": 289.3,
+          "measured_at": "2026-10-27T15:42:50Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 46.6,
+          "tokens_per_second_p50": 195.4,
+          "measured_at": "2026-10-27T15:44:07Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "B300": {
+          "ttft_ms_p50": 65.0,
+          "tokens_per_second_p50": 297.8,
+          "measured_at": "2026-10-27T15:45:19Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 57.7,
+          "tokens_per_second_p50": 219.5,
+          "measured_at": "2026-10-27T17:25:54Z",
+          "runtime": "vllm-0.30.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 67.6,
+          "tokens_per_second_p50": 137.6,
+          "measured_at": "2026-10-27T17:32:51Z",
+          "runtime": "vllm-0.30.0"
+        }
+      }
+    }
+  }
+}

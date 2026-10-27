@@ -273,9 +273,11 @@ from overbae.services.mcp.tools_evaluations import register_evaluation_tools  # 
 
 register_evaluation_tools(CATALOG)
 
+from overbae.services.mcp.tools_dedicated import register_dedicated_tools  # noqa: E402
 from overbae.services.mcp.tools_finetuning import register_finetuning_tools  # noqa: E402
 
 register_finetuning_tools(CATALOG)
+register_dedicated_tools(CATALOG)
 
 from overbae.services.mcp.tools_model_catalog import (  # noqa: E402
     register_model_catalog_tools,

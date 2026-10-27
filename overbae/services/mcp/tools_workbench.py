@@ -172,7 +172,7 @@ def register_workbench_tools(catalog):
             "save_dataset_pipeline",
             SaveInput,
             False,
-            "Retain a transformation without execution. Supply dataset to give its current script a persistent home automatically; saving a correction replaces that association. No user retention decision is needed. A retained Python package is mandatory: author meaningful staged scripts, upload with overmind dataset pipeline-upload (see overmind://dataset-upload), and supply its package UUID. Package-free step definitions are rejected. Historical package-free revisions are read-only. Give steps id and input (source or earlier step), or inputs=[earlier IDs] for fan-in. Inputs concatenate in order; overlapping source_row identities fail. Last step is output; flow.unconsumed_steps identifies disconnected deliverables. Script conditions cite expression and entrypoint line; flow declarations are distinct from execution facts. Revise with pipeline family ID and expected_revision; adapt with derived_from revision ID. Changed request-key content conflicts.",
+            "Retain a package without running it. Pass dataset to attach the script; a correction replaces that link. Package UUID is required (pipeline-upload). Steps take id and input, or inputs for ordered fan-in; overlapping source_row ids fail. Last step is the output. Revise with the family id and expected_revision; adapt with derived_from. A changed request key conflicts.",
         ),
         (
             "run_dataset_pipeline",
