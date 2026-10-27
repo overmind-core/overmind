@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 from overbae.services.transcripts.normalizer import reconstruct_spans
@@ -181,3 +182,22 @@ def test_span_tree_sorts_siblings_by_start_time_not_input_order():
     assert child_names == ["get_weather", "calculate_temperature_difference"]
     rendered = render_span_tree(tree)
     assert rendered.index("get_weather") < rendered.index("calculate_temperature_difference")
+
+
+def test_a_server_tools_results_are_not_scored_as_the_assistants_answer():
+    from overbae.innermind import evidence
+
+    answer = [
+        {
+            "role": "assistant",
+            "parts": [
+                {"type": "tool_call", "id": "t1", "name": "web_search", "arguments": {"q": "w"}},
+                {"type": "tool_call_response", "id": "t1", "response": [{"title": "Result"}]},
+                {"type": "text", "content": "Team A."},
+            ],
+        }
+    ]
+    span = _span(span_type="llm_call", attributes={"gen_ai.output.messages": json.dumps(answer)})
+
+    assert "Result" not in evidence.read_output(span)
+    assert "Team A." in evidence.read_output(span)
