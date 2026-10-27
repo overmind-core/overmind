@@ -86,9 +86,29 @@ def _arguments(attributes: dict) -> dict[str, Any]:
     }
 
 
+def _only_text_blocks(source: Any) -> bool:
+    messages = source.get("messages") if isinstance(source, dict) else source
+    if not isinstance(messages, list):
+        return True
+    return all(
+        not isinstance(message.get("content"), list)
+        or all(
+            isinstance(block, dict) and block.get("type") == "text" for block in message["content"]
+        )
+        for message in messages
+        if isinstance(message, dict)
+    )
+
+
 def _as_messages(value: Any) -> Any:
-    """A chat request or completion envelope reads as its messages; anything else as sent."""
-    return value if value is None else (chatml.parse_messages(value) or value)
+    """A chat request or completion envelope reads as its messages; anything else, or
+    content with non-text blocks the normalization would drop, as sent."""
+    if value is None:
+        return None
+    messages = chatml.parse_messages(value)
+    if not messages or not _only_text_blocks(chatml.maybe_parse_json(value)):
+        return value
+    return messages
 
 
 def payloads(span: Span) -> tuple[Any, Any]:

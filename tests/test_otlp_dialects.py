@@ -157,3 +157,27 @@ def test_an_otlp_json_export_lands_like_protobuf():
     assert (root.trace_id, root.parent_span_id, root.service_name) == (trace_id, None, "web")
     assert (child.parent_span_id, child.duration_ns) == (root_id, 6000)
     assert child.attributes["gen_ai.usage.input_tokens"] == 12
+
+
+def test_a_span_output_the_message_parser_cannot_read_is_shown_as_sent():
+    project = make_project()
+    viewer = make_user()
+    make_member(viewer, project)
+    trace_id = uuid.uuid4().hex
+    # A streamed envelope whose tool-call arguments arrive as an object, not text.
+    output = [{"choices": [{"delta": {"tool_calls": [{"function": {"arguments": {"a": 1}}}]}}]}]
+    ingest_spans(
+        project,
+        [
+            {
+                "name": "chat",
+                "trace_id": trace_id,
+                "attributes": {"overmind.output.data": json.dumps(output)},
+            }
+        ],
+    )
+
+    response = api_key_client(viewer, project).get(f"/api/traces/{trace_id}/")
+
+    assert response.status_code == 200, response.content
+    assert json.loads(response.json()["spans"][0]["output"]) == output

@@ -164,8 +164,11 @@ def parse_response_envelope(value: Any) -> list[dict[str, Any]] | None:
             fn = fragment.get("function") or {}
             if fn.get("name"):
                 slot["function"]["name"] += fn["name"]
-            if fn.get("arguments"):
-                slot["function"]["arguments"] += fn["arguments"]
+            arguments = fn.get("arguments")
+            if arguments:
+                if not isinstance(arguments, str):
+                    return None
+                slot["function"]["arguments"] += arguments
     message: dict[str, Any] = {"role": role, "content": "".join(content_parts)}
     if tool_calls:
         message["tool_calls"] = [tool_calls[i] for i in sorted(tool_calls)]

@@ -765,13 +765,15 @@ class SpanSerializer(serializers.ModelSerializer):
     input = serializers.SerializerMethodField()
     output = serializers.SerializerMethodField()
 
+    # ``input`` precedes ``output`` in ``fields``, so one parse serves both.
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_input(self, obj):
-        return evidence.payloads(obj)[0]
+        self._payloads = evidence.payloads(obj)
+        return self._payloads[0]
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_output(self, obj):
-        return evidence.payloads(obj)[1]
+        return self._payloads[1]
 
     class Meta:
         model = Span
