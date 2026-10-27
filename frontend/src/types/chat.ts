@@ -2,6 +2,8 @@ export type ToolCallItem = {
   id?: string;
   type?: string;
   function?: { name?: string; arguments?: string };
+  name?: string;
+  arguments?: unknown;
 };
 
 export type TranscriptMessage = {

@@ -6,6 +6,8 @@ nothing here may wait for a sibling or the trace root.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import zlib
 from datetime import UTC, datetime
@@ -15,6 +17,7 @@ from django.db import transaction
 from django.http import HttpResponseBase, JsonResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from google.protobuf import json_format
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 from rest_framework.decorators import api_view, permission_classes
@@ -812,6 +815,36 @@ class _MalformedBodyError(Exception):
     pass
 
 
+_OTLP_JSON_ID_FIELDS = frozenset(
+    {"traceId", "spanId", "parentSpanId", "trace_id", "span_id", "parent_span_id"}
+)
+
+
+def _hex_ids_to_base64(node: Any) -> Any:
+    """OTLP/JSON writes trace and span ids as hex; proto3 JSON reads bytes as base64."""
+    if isinstance(node, dict):
+        return {
+            key: base64.b64encode(bytes.fromhex(value)).decode()
+            if key in _OTLP_JSON_ID_FIELDS and isinstance(value, str)
+            else _hex_ids_to_base64(value)
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_hex_ids_to_base64(item) for item in node]
+    return node
+
+
+def _parse_export(request, body: bytes) -> trace_service_pb2.ExportTraceServiceRequest:
+    export_request = trace_service_pb2.ExportTraceServiceRequest()
+    if request.content_type == "application/json":
+        json_format.ParseDict(
+            _hex_ids_to_base64(json.loads(body)), export_request, ignore_unknown_fields=True
+        )
+    else:
+        export_request.ParseFromString(body)
+    return export_request
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @extend_schema(exclude=True)
@@ -822,11 +855,10 @@ def otlp_traces(request):
         return JsonResponse({"error": str(exc)}, status=400)
 
     try:
-        export_request = trace_service_pb2.ExportTraceServiceRequest()
-        export_request.ParseFromString(body)
+        export_request = _parse_export(request, body)
     except Exception as exc:
-        logger.error("Failed to parse OTLP protobuf: %s", exc)
-        return JsonResponse({"error": f"Invalid protobuf: {exc}"}, status=400)
+        logger.error("Failed to parse OTLP export: %s", exc)
+        return JsonResponse({"error": f"Invalid OTLP export: {exc}"}, status=400)
 
     all_spans: list[Span] = []
     for resource_span in export_request.resource_spans:

@@ -167,20 +167,10 @@ const transformSpan = (span: Span): SpanRow => {
     evalMetrics: evalBlock(span.evalAttributes).metrics ?? null,
     evalScore: finiteOrNull(evalBlock(span.evalAttributes).score),
     events: Array.isArray(span.events) ? (span.events as SpanEvent[]) : [],
-    inputs:
-      attrs["overmind.input_data"] ??
-      attrs["overmind.input.data"] ??
-      attrs.inputs ??
-      attrs["traceloop.entity.input"] ??
-      null,
+    inputs: span.input ?? null,
     model: pickModel(attrs),
     name: span.name ?? "",
-    outputs:
-      attrs["overmind.output_data"] ??
-      attrs["overmind.output.data"] ??
-      attrs.outputs ??
-      attrs["traceloop.entity.output"] ??
-      null,
+    outputs: span.output ?? null,
     parentSpanId: span.parentSpanId || null,
     policyOutcome: (attrs.policy_outcome as string) ?? null,
     scopeName,

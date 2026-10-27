@@ -219,19 +219,22 @@ function ToolCallBadge() {
   );
 }
 
+// OpenAI wire shape, or the flat {name, arguments} the backend normalizes to.
 function ToolCallBlock({ tc }: { tc: ToolCallItem }) {
+  const args = tc.function?.arguments ?? tc.arguments;
   const prettyArgs = useMemo(() => {
-    if (!tc.function?.arguments) return "";
+    if (args === undefined || args === null || args === "") return "";
+    if (typeof args !== "string") return JSON.stringify(args, null, 2);
     try {
-      return JSON.stringify(JSON.parse(tc.function.arguments), null, 2);
+      return JSON.stringify(JSON.parse(args), null, 2);
     } catch {
-      return tc.function.arguments;
+      return args;
     }
-  }, [tc.function?.arguments]);
+  }, [args]);
 
   return (
     <div className="mt-1 rounded-sm border border-border/60 bg-wash-raised px-2 py-1.5">
-      <span className="font-semibold text-cat-2">{tc.function?.name ?? "tool"}</span>
+      <span className="font-semibold text-cat-2">{tc.function?.name ?? tc.name ?? "tool"}</span>
       {prettyArgs && (
         <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
           {prettyArgs}

@@ -139,6 +139,18 @@ export interface Span {
      * @type {any}
      * @memberof Span
      */
+    readonly input: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof Span
+     */
+    readonly output: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof Span
+     */
     readonly events: any | null;
     /**
      *
@@ -201,6 +213,8 @@ export function instanceOfSpan(value: object): value is Span {
     if (!('scopeName' in value) || value['scopeName'] === undefined) return false;
     if (!('scopeVersion' in value) || value['scopeVersion'] === undefined) return false;
     if (!('attributes' in value) || value['attributes'] === undefined) return false;
+    if (!('input' in value) || value['input'] === undefined) return false;
+    if (!('output' in value) || value['output'] === undefined) return false;
     if (!('events' in value) || value['events'] === undefined) return false;
     if (!('links' in value) || value['links'] === undefined) return false;
     if (!('capability' in value) || value['capability'] === undefined) return false;
@@ -240,6 +254,8 @@ export function SpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): Span
         'scopeName': json['scope_name'],
         'scopeVersion': json['scope_version'],
         'attributes': json['attributes'],
+        'input': json['input'],
+        'output': json['output'],
         'events': json['events'],
         'links': json['links'],
         'capability': json['capability'],
@@ -254,7 +270,7 @@ export function SpanToJSON(json: any): Span {
     return SpanToJSONTyped(json, false);
 }
 
-export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'eval_attributes'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'input'|'output'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'eval_attributes'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
