@@ -216,8 +216,13 @@ class DedicatedDeployment(models.Model):
         ]
 
     @property
-    def public_model_id(self) -> str:
+    def served_model_id(self) -> str:
+        # vLLM and the loaded adapter keep this name for the life of the container.
         return f"dedicated/{self.id}"
+
+    @property
+    def public_model_id(self) -> str:
+        return f"dedicated/{self.deployed_model.model_id}"
 
 
 class ModelActivation(models.Model):

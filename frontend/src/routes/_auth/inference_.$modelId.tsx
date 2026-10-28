@@ -145,7 +145,7 @@ function ModelDetailPage() {
             }
             model={model}
           />
-          <DedicatedDeploymentCard model={model} />
+          <DedicatedDeploymentCard model={model} projectId={projectId} />
           <ModelPerformance modelId={model.id} onConnect={() => setSnippetOpen(true)} />
           <Disclosure onOpenChange={setWeightsOpen} title="Deployment details">
             <div className="space-y-5">

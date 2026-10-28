@@ -896,6 +896,7 @@ def _register_worker(
     lora=False,
     target_app=None,
     pin_resources=False,
+    max_containers: int | None = None,
 ) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
@@ -926,12 +927,15 @@ def _register_worker(
         parameters,
     )
     cls = _worker_concurrency(cls)
+    worker_kwargs = {**_WORKER_KWARGS}
+    if max_containers is not None:
+        worker_kwargs["max_containers"] = max_containers
     globals()[cls_name] = (target_app or app).cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
         **{
-            **_WORKER_KWARGS,
+            **worker_kwargs,
             **(
                 {
                     "cpu": 8,
@@ -954,7 +958,12 @@ def register_dedicated_classes(target_app) -> None:
     for gpu_type in GPU_TIER:
         token = gpu_type.replace("-", "")
         _register_worker(
-            f"{token}_vllm", gpu_type, "vllm", target_app=target_app, pin_resources=True
+            f"{token}_vllm",
+            gpu_type,
+            "vllm",
+            target_app=target_app,
+            pin_resources=True,
+            max_containers=8,
         )
         _register_worker(
             f"{token}_vllm_lora",
@@ -963,6 +972,7 @@ def register_dedicated_classes(target_app) -> None:
             lora=True,
             target_app=target_app,
             pin_resources=True,
+            max_containers=8,
         )
 
 

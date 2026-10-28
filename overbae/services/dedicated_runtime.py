@@ -15,6 +15,10 @@ from overbae.core.errors import InputValidationError
 
 APP_NAME = "overmind-dedicated"
 WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
+# with_options() builds a separate autoscaler. Keep one option set and change
+# min, max, and idle through update_autoscaler, or a GPU change leaves the old set running.
+_STABLE_MAX = 8
+_STABLE_WINDOW = 3600
 
 
 def environment() -> str:
@@ -62,7 +66,7 @@ def parameters(deployment) -> dict:
     # in one pool and one tenant's floor would warm the others.
     params = {
         "model_path": path,
-        "model_name": deployment.public_model_id
+        "model_name": deployment.served_model_id
         if not deployed.is_lora
         else f"dedicated-base-{deployment.id}",
         "max_model_len": deployed.max_model_len,
@@ -72,6 +76,89 @@ def parameters(deployment) -> dict:
     if deployed.is_lora:
         params["base_identity"] = _base_identity(path)
     return params
+
+
+def _window(seconds: int) -> int:
+    return min(max(int(seconds), 2), _STABLE_WINDOW)
+
+
+def _chat_cls(deployed, gpu_type: str):
+    return modal.Cls.from_name(
+        APP_NAME, _class_name(deployed, gpu_type), environment_name=environment()
+    )
+
+
+def _variant(cls, *, maximum: int, idle_seconds: int):
+    if not hasattr(cls, "with_options"):
+        return cls
+    return cls.with_options(
+        max_containers=max(int(maximum), 1), scaledown_window=_window(idle_seconds)
+    )
+
+
+def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
+    instance = cls(**parameters(deployment))
+    method = getattr(instance, "update_autoscaler", None)
+    if method is not None:
+        _drive(
+            method(
+                min_containers=minimum,
+                max_containers=max(int(maximum), 1),
+                scaledown_window=_window(idle_seconds),
+            )
+        )
+    return instance
+
+
+def release(deployment, gpu_type: str) -> None:
+    """Drop every autoscaler variant for one GPU class."""
+    deployed = deployment.deployed_model
+    if deployed.inference_contract == "decision":
+        return
+    try:
+        cls = _chat_cls(deployed, gpu_type)
+        option_sets = (
+            (deployment.max_replicas, deployment.idle_shutdown_seconds),
+            (_STABLE_MAX, _STABLE_WINDOW),
+        )
+        seen = set()
+        for maximum, idle_seconds in option_sets:
+            key = (max(int(maximum), 1), _window(idle_seconds))
+            if key in seen:
+                continue
+            seen.add(key)
+            _scale(
+                _variant(cls, maximum=maximum, idle_seconds=idle_seconds),
+                deployment,
+                minimum=0,
+                maximum=1,
+                idle_seconds=2,
+            )
+        _scale(cls, deployment, minimum=0, maximum=1, idle_seconds=2)
+    except InputValidationError:
+        raise
+    except Exception as exc:
+        raise InputValidationError(WORKER_UNAVAILABLE) from exc
+
+
+def retire_previous_options(deployment) -> None:
+    """Scale down an option set that is not the stable one for this GPU."""
+    deployed = deployment.deployed_model
+    if deployed.inference_contract == "decision":
+        return
+    key = (max(int(deployment.max_replicas), 1), _window(deployment.idle_shutdown_seconds))
+    if key == (_STABLE_MAX, _STABLE_WINDOW):
+        return
+    cls = _chat_cls(deployed, deployment.gpu_type)
+    _scale(
+        _variant(
+            cls, maximum=deployment.max_replicas, idle_seconds=deployment.idle_shutdown_seconds
+        ),
+        deployment,
+        minimum=0,
+        maximum=1,
+        idle_seconds=2,
+    )
 
 
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
@@ -90,32 +177,23 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
                 cls = cls.with_options(
                     gpu=deployment.gpu_type,
                     max_containers=max(maximum, 1),
-                    scaledown_window=idle_seconds,
+                    scaledown_window=_window(idle_seconds),
                 )
-        else:
-            cls = modal.Cls.from_name(
-                APP_NAME, _class_name(deployed, deployment.gpu_type), environment_name=env
+            return _scale(
+                cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
             )
-            if hasattr(cls, "with_options"):
-                cls = cls.with_options(
-                    max_containers=max(maximum, 1),
-                    scaledown_window=idle_seconds,
-                )
-        instance = cls(**parameters(deployment))
+        cls = _chat_cls(deployed, deployment.gpu_type)
+        return _scale(
+            _variant(cls, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
+            deployment,
+            minimum=minimum,
+            maximum=maximum,
+            idle_seconds=idle_seconds,
+        )
     except InputValidationError:
         raise
     except Exception as exc:
         raise InputValidationError(WORKER_UNAVAILABLE) from exc
-    method = getattr(instance, "update_autoscaler", None)
-    if method is not None:
-        _drive(
-            method(
-                min_containers=minimum,
-                max_containers=max(maximum, 1),
-                scaledown_window=idle_seconds,
-            )
-        )
-    return instance
 
 
 def spawn_probe(instance, deployment) -> str:
@@ -135,7 +213,7 @@ def spawn_probe(instance, deployment) -> str:
         adapter = None
         if deployed.is_lora:
             adapter = (
-                deployment.public_model_id,
+                deployment.served_model_id,
                 rel_weights_path(deployed.adapter_path),
             )
         call = instance.infer.spawn(
@@ -143,7 +221,7 @@ def spawn_probe(instance, deployment) -> str:
             path="/v1/chat/completions",
             body=json.dumps(
                 {
-                    "model": deployment.public_model_id,
+                    "model": deployment.served_model_id,
                     "messages": [{"role": "user", "content": "ping"}],
                     "max_tokens": 1,
                 }
@@ -182,15 +260,26 @@ def runner_count(instance, *, decision: bool) -> int | None:
     return int(value) if value is not None else None
 
 
+def _served_body(deployment, body: bytes) -> bytes:
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return body
+    if not isinstance(payload, dict):
+        return body
+    payload["model"] = deployment.served_model_id
+    return json.dumps(payload).encode()
+
+
 def chat(instance, deployment, body: bytes) -> tuple[int, bytes, str]:
     deployed = deployment.deployed_model
     adapter = None
     if deployed.is_lora:
-        adapter = (deployment.public_model_id, rel_weights_path(deployed.adapter_path))
+        adapter = (deployment.served_model_id, rel_weights_path(deployed.adapter_path))
     result = instance.infer.remote(
         method="POST",
         path="/v1/chat/completions",
-        body=body,
+        body=_served_body(deployment, body),
         headers={"content-type": "application/json"},
         adapter=adapter,
     )

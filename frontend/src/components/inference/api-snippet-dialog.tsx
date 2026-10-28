@@ -2,7 +2,6 @@ import { useState } from "react";
 
 import { Link } from "@tanstack/react-router";
 
-import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { useCopy } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
@@ -99,7 +98,6 @@ export function ApiSnippetDialog({
     summary?.state === "available" ? (summary.label_sets ?? []) : [];
   const example = examples[Number(exampleIndex)];
   const [pin, setPin] = useState(false);
-  const [keyOpen, setKeyOpen] = useState(false);
   const capability = useCapabilityDetailQuery(open ? (capabilityId ?? "") : "").data;
   const routedModelId = capabilityId && !pin ? `overmind/${capabilityId}` : modelId;
   const baseUrl = inferenceBaseUrl();
@@ -152,19 +150,22 @@ export function ApiSnippetDialog({
             ) : null}
             <p className="text-xs text-muted-foreground">
               Set OVERMIND_API_KEY to an existing project key.
-            </p>
-            {projectId ? (
-              <div className="flex items-center gap-2">
-                <Button asChild size="sm" variant="secondary">
-                  <Link params={{ projectId }} to="/projects/$projectId">
-                    Project API keys
+              {projectId ? (
+                <>
+                  {" "}
+                  If you don't have an API key,{" "}
+                  <Link
+                    className="text-foreground underline underline-offset-2"
+                    hash="api-keys-heading"
+                    params={{ projectId }}
+                    to="/projects/$projectId"
+                  >
+                    generate here
                   </Link>
-                </Button>
-                <Button onClick={() => setKeyOpen(true)} size="sm" variant="secondary">
-                  New API key
-                </Button>
-              </div>
-            ) : null}
+                  .
+                </>
+              ) : null}
+            </p>
             {decisionDeploymentId && training.isFetching && !training.data ? (
               <LoadingState className="min-h-40" label="Loading model examples" />
             ) : (
@@ -211,9 +212,6 @@ export function ApiSnippetDialog({
           </DialogBody>
         </DialogContent>
       </Dialog>
-      {projectId ? (
-        <CreateApiKeyDialog onOpenChange={setKeyOpen} open={keyOpen} projectId={projectId} />
-      ) : null}
     </>
   );
 }

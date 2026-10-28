@@ -42,15 +42,17 @@ def gpu_offers(deployed):
 
 def latest_for(deployed):
     return (
-        DedicatedDeployment.objects.filter(deployed_model=deployed).order_by("-created_at").first()
+        DedicatedDeployment.objects.select_related("deployed_model")
+        .filter(deployed_model=deployed)
+        .order_by("-created_at")
+        .first()
     )
 
 
 def live_for(deployed):
     return (
-        DedicatedDeployment.objects.filter(
-            deployed_model=deployed, status__in=DedicatedDeployment.LIVE
-        )
+        DedicatedDeployment.objects.select_related("deployed_model")
+        .filter(deployed_model=deployed, status__in=DedicatedDeployment.LIVE)
         .order_by("-created_at")
         .first()
     )
@@ -59,13 +61,19 @@ def live_for(deployed):
 def lookup(model_id: str, project_ids):
     if not str(model_id).startswith("dedicated/"):
         return None
+    token = str(model_id).removeprefix("dedicated/")
+    rows = DedicatedDeployment.objects.select_related("deployed_model").filter(
+        project_id__in=project_ids
+    )
     try:
-        pk = uuid.UUID(str(model_id).removeprefix("dedicated/"))
+        pk = uuid.UUID(token)
     except ValueError:
-        return None
+        pk = None
+    if pk is not None:
+        return rows.filter(pk=pk).first()
     return (
-        DedicatedDeployment.objects.select_related("deployed_model")
-        .filter(pk=pk, project_id__in=project_ids)
+        rows.filter(deployed_model__model_id=token, status__in=DedicatedDeployment.LIVE)
+        .order_by("-created_at")
         .first()
     )
 
@@ -168,6 +176,7 @@ def update(
         row.rates_fetched_at,
     )
     if gpu != row.gpu_type:
+        dedicated_runtime.release(row, row.gpu_type)
         price, credits, fetched = _quote(gpu)
         _require_floor(row.started_by, price, minimum)
     DedicatedDeployment.objects.filter(pk=row.pk).update(
@@ -263,8 +272,10 @@ def advance(deployment_id: str) -> None:
                 row,
                 minimum=0 if stopping else row.min_replicas,
                 maximum=row.max_replicas,
-                idle_seconds=1 if stopping else row.idle_shutdown_seconds,
+                idle_seconds=2 if stopping else row.idle_shutdown_seconds,
             )
+            if not stopping and not decision:
+                dedicated_runtime.retire_previous_options(row)
             if row.status == DedicatedDeployment.Status.DEPLOYING:
                 row.probe_call_id = dedicated_runtime.spawn_probe(instance, row)
                 row.status = DedicatedDeployment.Status.WARMING
@@ -297,9 +308,9 @@ def advance(deployment_id: str) -> None:
                     row.min_replicas = 0
         except InputValidationError as exc:
             _fail(row, exc.detail, now)
-        except Exception:
+        except Exception as exc:
             logger.exception("Dedicated deployment %s failed", row.pk)
-            _fail(row, dedicated_runtime.WORKER_UNAVAILABLE, now)
+            _fail(row, str(exc).strip() or dedicated_runtime.WORKER_UNAVAILABLE, now)
         row.next_poll_at = now + timedelta(seconds=15)
         row.save()
 

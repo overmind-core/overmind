@@ -1313,7 +1313,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "run_inference",
             "Run inference",
-            "Submit inference with a stable request_key; identical retries reuse its durable job. Pass a deployment id, or dedicated/<uuid> for a private deployment. Supply messages for chat or input-only decisions. Read get_job(kind=inference_request). Omitted chat max_tokens uses the production default.",
+            "Submit inference with a stable request_key; identical retries reuse its durable job. Pass a deployment id, or dedicated/<trained model id> for a private deployment. Supply messages for chat or input-only decisions. Read get_job(kind=inference_request). Omitted chat max_tokens uses the production default.",
             RunInferenceInput,
             RunInferenceOutput,
             _inference_sync,

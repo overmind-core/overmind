@@ -1,4 +1,4 @@
-"""Dedicated GPU menu, hourly metering, and dedicated/<uuid> chat routing."""
+"""Dedicated GPU menu, hourly metering, and dedicated/<model> chat routing."""
 
 from __future__ import annotations
 
@@ -59,6 +59,8 @@ def _ok(**_kwargs):
         "headers": {"content-type": "application/json"},
         "body": json.dumps(
             {
+                "model": "dedicated/internal",
+                "system_fingerprint": "vllm-0.30.0-nohash",
                 "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
@@ -123,6 +125,27 @@ def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     assert row.running_replicas == 0
 
 
+def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
+    refresh_rates()
+    user = _user()
+    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
+    deployed = _ready(project)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=1)
+    dedicated.advance(str(row.id))
+    dedicated.advance(str(row.id))
+    dedicated.update(row, gpu_type="H200")
+    drained = [
+        kwargs
+        for kind, name, _, kwargs in fake_modal.log
+        if kind == "autoscaler" and name.endswith("H100_vllm") and kwargs.get("min_containers") == 0
+    ]
+    assert drained
+    row.refresh_from_db()
+    assert row.gpu_type == "H200"
+    assert row.status == DedicatedDeployment.Status.DEPLOYING
+
+
 def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(fake_modal):
     refresh_rates()
     user = _user()
@@ -145,6 +168,8 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
         format="json",
     )
     assert response.status_code == 200
+    assert response.json()["model"] == f"dedicated/{deployed.model_id}"
+    assert "system_fingerprint" not in response.json()
     call = InferenceCall.objects.get(requested_model=row.public_model_id)
     assert call.cost is None
     assert BillingTelemetry.objects.filter(service=BillingService.INFERENCE_FT_MODEL).count() == 0

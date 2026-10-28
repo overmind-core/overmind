@@ -813,13 +813,42 @@ def _dedicated_chat(request, model_id: str, data: dict, started_at):
         bill=False,
     )
     if "text/event-stream" in content_type:
-        return StreamingHttpResponse(iter([raw]), content_type=content_type)
+        return StreamingHttpResponse(
+            iter([_present_dedicated_body(raw, row.public_model_id)]),
+            content_type=content_type,
+        )
     if parsed is None:
         return Response(
             {"error": {"message": "Dedicated inference failed.", "type": "server_error"}},
             status=status.HTTP_502_BAD_GATEWAY,
         )
+    if isinstance(parsed, dict):
+        parsed.pop("system_fingerprint", None)
+        if "model" in parsed:
+            parsed["model"] = row.public_model_id
     return Response(parsed, status=upstream)
+
+
+def _present_dedicated_body(raw: bytes, public_id: str) -> bytes:
+    text = raw.decode()
+    lines = []
+    for line in text.splitlines(keepends=True):
+        if not line.startswith("data:") or "{" not in line:
+            lines.append(line)
+            continue
+        blob = line[line.index("{") :].strip()
+        try:
+            payload = json.loads(blob)
+        except json.JSONDecodeError:
+            lines.append(line)
+            continue
+        if isinstance(payload, dict):
+            payload.pop("system_fingerprint", None)
+            if "model" in payload:
+                payload["model"] = public_id
+        ending = "\n" if line.endswith("\n") else ""
+        lines.append(f"data: {json.dumps(payload)}{ending}")
+    return "".join(lines).encode()
 
 
 def _dedicated_model_dict(row) -> dict:

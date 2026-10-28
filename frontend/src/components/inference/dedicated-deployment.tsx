@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DateTime } from "@/components/ui/datetime";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useDedicatedDeploymentQuery,
   useDedicatedGpusQuery,
@@ -27,7 +29,23 @@ const STATUS_LABEL: Record<string, string> = {
   warming: "Warming up",
 };
 
+const STATUS_TONE = {
+  deploying: "info",
+  failed: "error",
+  offline: "neutral",
+  online: "success",
+  shutting_down: "warning",
+  warming: "info",
+} as const;
+
 const ACTIVE = new Set(["deploying", "warming", "online", "shutting_down"]);
+
+function creditsAmount(raw: string | null | undefined): string {
+  if (raw == null || raw === "") return "—";
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return raw;
+  return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
 
 function speed(gpu: DedicatedGpu, decision: boolean): string {
   if (decision) {
@@ -43,7 +61,40 @@ function price(credits: string | null | undefined): string {
   return credits == null ? "Price unavailable" : `${credits} credits/hour per GPU`;
 }
 
-export function DedicatedDeploymentCard({ model }: { model: DeployedModel }) {
+function digits(raw: string): string {
+  return raw.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+}
+
+function whole(raw: string): number | null {
+  return /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
+function Hint({ label, text }: { label: string; text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={`About ${label.toLowerCase()}`}
+          className="inline-flex rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+          type="button"
+        >
+          <Icon.info className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64" side="bottom">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function DedicatedDeploymentCard({
+  model,
+  projectId,
+}: {
+  model: DeployedModel;
+  projectId?: string;
+}) {
   const ready = model.status === "ready";
   const deployment = useDedicatedDeploymentQuery(model.id, ready);
   const gpus = useDedicatedGpusQuery(model.id, ready);
@@ -56,7 +107,7 @@ export function DedicatedDeploymentCard({ model }: { model: DeployedModel }) {
         <Icon.server className="size-4" />
         <p className="text-sm font-medium">Dedicated GPU</p>
       </div>
-      {row ? <DeploymentStatus model={model} row={row} /> : null}
+      {row ? <DeploymentStatus model={model} projectId={projectId} row={row} /> : null}
       {gpus.isLoading || deployment.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading GPUs</p>
       ) : null}
@@ -72,19 +123,64 @@ export function DedicatedDeploymentCard({ model }: { model: DeployedModel }) {
   );
 }
 
-function DeploymentStatus({ model, row }: { model: DeployedModel; row: DedicatedDeployment }) {
+function DeploymentStatus({
+  model,
+  projectId,
+  row,
+}: {
+  model: DeployedModel;
+  projectId?: string;
+  row: DedicatedDeployment;
+}) {
   const stop = useStopDedicatedMutation(model.id);
   const [snippetOpen, setSnippetOpen] = useState(false);
   const decision = model.inferenceContract === "decision";
-  const stopping = row.status === "shutting_down";
+  const status = row.status ?? "";
+  const stopping = status === "shutting_down";
+  const actions = (
+    <div className="flex flex-wrap gap-2">
+      {status === "online" ? (
+        <Button onClick={() => setSnippetOpen(true)} size="sm" variant="secondary">
+          <Icon.terminal className="size-3.5" />
+          Dedicated snippet
+        </Button>
+      ) : null}
+      {ACTIVE.has(status) ? (
+        <Button
+          disabled={stop.isPending || stopping}
+          onClick={() =>
+            stop.mutate(undefined, {
+              onError: (error) => notify.error(error, "Couldn't stop the deployment"),
+            })
+          }
+          size="sm"
+          variant="secondary"
+        >
+          <Icon.stop className="size-3.5" />
+          {stopping ? "Shutting down" : "Stop"}
+        </Button>
+      ) : null}
+    </div>
+  );
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-        <span className="font-medium">{STATUS_LABEL[row.status ?? ""] ?? row.status}</span>
-        <span>{row.gpuType}</span>
-        <span>{row.runningReplicas ?? 0} replicas running</span>
-        <span>{price(row.creditsPerGpuHour)}</span>
-        <span>{row.accruedCredits ?? "0"} credits this run</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Badge size="chip" variant={STATUS_TONE[status as keyof typeof STATUS_TONE] ?? "neutral"}>
+            {STATUS_LABEL[status] ?? status}
+          </Badge>
+          <span className="text-sm font-medium">{row.gpuType}</span>
+        </div>
+        {actions}
+      </div>
+      <div className="grid grid-cols-3 gap-4 border-t border-border/70 pt-3">
+        <StatusFact detail="running" label="Replicas" value={String(row.runningReplicas ?? 0)} />
+        <StatusFact
+          detail="credits/hour"
+          label="Rate"
+          value={creditsAmount(row.creditsPerGpuHour)}
+        />
+        <StatusFact detail="credits" label="This run" value={creditsAmount(row.accruedCredits)} />
       </div>
       {row.ratesFetchedAt ? (
         <p className="text-xs text-muted-foreground">
@@ -92,37 +188,25 @@ function DeploymentStatus({ model, row }: { model: DeployedModel; row: Dedicated
         </p>
       ) : null}
       {row.errorMessage ? <p className="text-sm text-destructive">{row.errorMessage}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        {row.status === "online" ? (
-          <Button onClick={() => setSnippetOpen(true)} size="sm" variant="secondary">
-            <Icon.terminal className="size-3.5" />
-            Dedicated snippet
-          </Button>
-        ) : null}
-        {ACTIVE.has(row.status ?? "") ? (
-          <Button
-            disabled={stop.isPending || stopping}
-            onClick={() =>
-              stop.mutate(undefined, {
-                onError: (error) => notify.error(error, "Couldn't stop the deployment"),
-              })
-            }
-            size="sm"
-            variant="secondary"
-          >
-            <Icon.stop className="size-3.5" />
-            {stopping ? "Shutting down" : "Stop"}
-          </Button>
-        ) : null}
-      </div>
       <ApiSnippetDialog
         capabilityId={null}
         decisionDeploymentId={decision ? model.id : undefined}
         modelId={row.modelId}
         onOpenChange={setSnippetOpen}
         open={snippetOpen}
+        projectId={projectId}
         trainingJobId={model.finetuningJobId}
       />
+    </div>
+  );
+}
+
+function StatusFact({ label, value, detail }: { label: string; value: string; detail: ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -138,21 +222,19 @@ function GpuMenu({
   model: DeployedModel;
   row: DedicatedDeployment | null;
 }) {
-  const [gpuType, setGpuType] = useState(row?.gpuType ?? "");
-  const [minReplicas, setMinReplicas] = useState(row?.minReplicas ?? 1);
-  const [maxReplicas, setMaxReplicas] = useState(row?.maxReplicas ?? 1);
+  const [gpuType, setGpuType] = useState(row?.gpuType || gpus[0]?.gpuType || "");
+  const [minReplicas, setMinReplicas] = useState(String(row?.minReplicas ?? 1));
+  const [maxReplicas, setMaxReplicas] = useState(String(row?.maxReplicas ?? 1));
   const [scaleToZero, setScaleToZero] = useState(row?.scaleToZero ?? false);
-  const [idleMinutes, setIdleMinutes] = useState(
-    Math.round((row?.idleShutdownSeconds ?? 900) / 60)
-  );
+  const [idleSeconds, setIdleSeconds] = useState(String(row?.idleShutdownSeconds ?? 900));
   const [syncedId, setSyncedId] = useState(row?.id ?? null);
   if (row && syncedId !== row.id) {
     setSyncedId(row.id);
     setGpuType(row.gpuType);
-    setMinReplicas(row.minReplicas ?? 1);
-    setMaxReplicas(row.maxReplicas ?? 1);
+    setMinReplicas(String(row.minReplicas ?? 1));
+    setMaxReplicas(String(row.maxReplicas ?? 1));
     setScaleToZero(row.scaleToZero ?? false);
-    setIdleMinutes(Math.round((row.idleShutdownSeconds ?? 900) / 60));
+    setIdleSeconds(String(row.idleShutdownSeconds ?? 900));
   }
   const start = useStartDedicatedMutation(model.id);
   const update = useUpdateDedicatedMutation(model.id);
@@ -160,21 +242,27 @@ function GpuMenu({
 
   const selected = gpus.find((gpu) => gpu.gpuType === gpuType);
   const credits = selected?.creditsPerGpuHour == null ? null : Number(selected.creditsPerGpuHour);
-  const minimum = scaleToZero ? 0 : minReplicas;
+  const minCount = whole(minReplicas);
+  const maxCount = whole(maxReplicas);
+  const idleCount = whole(idleSeconds);
+  const minimum = scaleToZero ? 0 : minCount;
   const body = {
     gpuType,
-    idleShutdownSeconds: idleMinutes * 60,
-    maxReplicas,
-    minReplicas: minimum,
+    idleShutdownSeconds: idleCount ?? 0,
+    maxReplicas: maxCount ?? 0,
+    minReplicas: minimum ?? 0,
     scaleToZero,
   };
   const invalid =
     !gpuType ||
     credits == null ||
-    minimum > maxReplicas ||
-    maxReplicas > 8 ||
-    idleMinutes < 5 ||
-    idleMinutes > 24 * 60;
+    minimum == null ||
+    maxCount == null ||
+    idleCount == null ||
+    minimum > maxCount ||
+    maxCount > 8 ||
+    idleCount < 300 ||
+    idleCount > 24 * 60 * 60;
 
   const submit = () => {
     const onError = (error: unknown) =>
@@ -189,11 +277,11 @@ function GpuMenu({
 
   return (
     <div className="space-y-4">
-      <div className="divide-y divide-border/70 rounded-md border border-border">
+      <div className="grid grid-cols-[7.5rem_auto_minmax(0,1fr)] divide-y divide-border/70 overflow-x-auto rounded-md border border-border">
         {gpus.map((gpu) => (
           <button
             className={cn(
-              "flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-left text-sm",
+              "col-span-3 grid grid-cols-subgrid items-baseline gap-x-6 px-3 py-2 text-left text-sm",
               gpu.gpuType === gpuType && "bg-wash-raised"
             )}
             key={gpu.gpuType}
@@ -201,65 +289,93 @@ function GpuMenu({
             type="button"
           >
             <span className="font-medium">{gpu.gpuType}</span>
-            <span className="text-muted-foreground">{speed(gpu, decision)}</span>
-            <span>{price(gpu.creditsPerGpuHour)}</span>
+            <span className="whitespace-nowrap text-muted-foreground">{speed(gpu, decision)}</span>
+            <span className="justify-self-end whitespace-nowrap tabular-nums">
+              {price(gpu.creditsPerGpuHour)}
+            </span>
           </button>
         ))}
       </div>
       {selected?.ratesFetchedAt ? (
-        <p className="text-xs text-muted-foreground">Rate fetched {selected.ratesFetchedAt}</p>
+        <p className="text-xs text-muted-foreground">
+          Rate fetched <DateTime value={selected.ratesFetchedAt} />
+        </p>
       ) : null}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="space-y-1 text-xs text-muted-foreground">
-          Min replicas
-          <Input
-            className="w-24"
-            disabled={scaleToZero}
-            max={8}
-            min={scaleToZero ? 0 : 1}
-            onChange={(event) => setMinReplicas(Number(event.target.value))}
-            type="number"
-            value={minimum}
-          />
-        </label>
-        <label className="space-y-1 text-xs text-muted-foreground">
-          Max replicas
-          <Input
-            className="w-24"
-            max={8}
-            min={1}
-            onChange={(event) => setMaxReplicas(Number(event.target.value))}
-            type="number"
-            value={maxReplicas}
-          />
-        </label>
-        <label className="space-y-1 text-xs text-muted-foreground">
-          Idle timeout (minutes)
-          <Input
-            className="w-28"
-            max={24 * 60}
-            min={5}
-            onChange={(event) => setIdleMinutes(Number(event.target.value))}
-            type="number"
-            value={idleMinutes}
-          />
-        </label>
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <Checkbox
-            checked={scaleToZero}
-            onCheckedChange={(checked) => setScaleToZero(checked === true)}
-          />
-          Scale to zero
-        </label>
-      </div>
-      {credits != null ? (
+      <TooltipProvider delayDuration={150}>
+        <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[7.5rem_7.5rem_14rem_auto]">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <label htmlFor="dedicated-min-replicas">Min replicas</label>
+              <Hint
+                label="Min replicas"
+                text="GPUs that stay running. The hourly floor is this count times the per-GPU rate. At most 8."
+              />
+            </div>
+            <Input
+              disabled={scaleToZero}
+              id="dedicated-min-replicas"
+              inputMode="numeric"
+              onChange={(event) => setMinReplicas(digits(event.target.value))}
+              value={scaleToZero ? "0" : minReplicas}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <label htmlFor="dedicated-max-replicas">Max replicas</label>
+              <Hint
+                label="Max replicas"
+                text="Most GPUs this deployment can start. Extra replicas add capacity. At most 8."
+              />
+            </div>
+            <Input
+              id="dedicated-max-replicas"
+              inputMode="numeric"
+              onChange={(event) => setMaxReplicas(digits(event.target.value))}
+              value={maxReplicas}
+            />
+          </div>
+          <div className="col-span-2 space-y-1 sm:col-span-1">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <label htmlFor="dedicated-idle-seconds">Idle timeout (seconds)</label>
+              <Hint
+                label="Idle timeout"
+                text="With nothing in flight for this long, the count falls to the minimum. 300 to 86400 seconds."
+              />
+            </div>
+            <Input
+              id="dedicated-idle-seconds"
+              inputMode="numeric"
+              onChange={(event) => setIdleSeconds(digits(event.target.value))}
+              value={idleSeconds}
+            />
+          </div>
+          <div className="col-span-2 flex h-8 items-center gap-2 self-end text-sm sm:col-span-1">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={scaleToZero}
+                onCheckedChange={(checked) => setScaleToZero(checked === true)}
+              />
+              Scale to zero
+            </label>
+            <Hint
+              label="Scale to zero"
+              text="On sets the minimum to 0, so an idle deployment costs nothing. Off keeps at least 1 replica running."
+            />
+          </div>
+        </div>
+      </TooltipProvider>
+      {credits == null ? (
+        <p className="text-sm text-muted-foreground">Price unavailable</p>
+      ) : minimum == null || maxCount == null ? (
+        <p className="text-sm text-muted-foreground">Enter a replica count.</p>
+      ) : minimum > maxCount ? (
+        <p className="text-sm text-muted-foreground">Minimum is above the maximum.</p>
+      ) : (
         <p className="text-sm text-muted-foreground">
           {Math.round(minimum * credits)} credits/hour at the minimum.{" "}
-          {Math.round(maxReplicas * credits)} credits/hour at the maximum. One request uses one
+          {Math.round(maxCount * credits)} credits/hour at the maximum. One request uses one
           replica.
         </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">Price unavailable</p>
       )}
       <Button disabled={invalid || pending} onClick={submit} size="sm">
         <Icon.play className="size-3.5" />
