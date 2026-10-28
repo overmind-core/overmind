@@ -11,7 +11,7 @@ from guards import check_command
 def main():
     data = payload.read()
     command = payload.command(data)
-    verdict = check_command(command, payload.branch(data) if "git push" in command else None)
+    verdict = check_command(command, payload.branch(data) if "push" in command else None)
     if not verdict:
         return
     decision, reason = verdict

@@ -42,7 +42,8 @@ def branch(payload):
             cwd=payload.get("cwd") or os.getcwd(),
             capture_output=True,
             text=True,
-            timeout=5,
+            # Under the 5 s hook timeout, or the runner drops the verdict.
+            timeout=2,
         ).stdout.strip()
     except Exception:
         return ""

@@ -5,6 +5,7 @@ from django.conf import settings
 from pydantic import BaseModel, ConfigDict, Field
 
 from overbae.models import APIToken
+from overbae.models.iam import delegation_denial
 from overbae.services.mcp.context import accessible_projects
 from overbae.services.mcp.contracts.projects import CreateApiKeyInput, CreateApiKeyOutput
 from overbae.services.mcp.errors import MCPError
@@ -61,19 +62,11 @@ def list_projects(payload, context):
 
 def _key_project(payload: CreateApiKeyInput, context):
     scope = context.token.scope if isinstance(context.token.scope, dict) else {}
-    account = scope.get("scope") == "account"
+    denial = delegation_denial(scope, payload.project_id)
+    if denial:
+        raise MCPError("permission_denied", denial)
     if payload.project_id is None:
-        if account:
-            return None
-        raise MCPError(
-            "permission_denied",
-            "A project API key can only create a key for its own project.",
-        )
-    if not account and str(payload.project_id) != str(context.project.id):
-        raise MCPError(
-            "permission_denied",
-            "A project API key can only create a key for its own project.",
-        )
+        return None
     try:
         selected = UUID(str(payload.project_id))
     except ValueError:

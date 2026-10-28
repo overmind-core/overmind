@@ -117,7 +117,7 @@ Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.
 
 ## Conventions
 
-- Never push directly to `main`; land work via a PR from a feature branch. A hook blocks a push that names `main` or `master`; a bare `git push` while on `main` is not caught.
+- Never push directly to `main`; land work via a PR from a feature branch. A hook blocks a push that names `main` or `master`, and any `git push` while `main` or `master` is checked out.
 - Verify the actual current branch with `git status -sb` before pushing — the session-start banner can be stale.
 - Commit messages: short subject + at most one body line. No co-author trailers.
 - For fix-sweep PRs, a before/after table in the body is the house style.

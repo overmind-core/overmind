@@ -114,6 +114,22 @@ def test_project_api_key_mints_only_for_its_own_project():
     assert APIToken.objects.filter(user=user).count() == 2
 
 
+def test_api_key_mints_only_permissions_it_holds():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+    raw, _ = APIToken.create_for_user(user, project=project, permission=["read"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
+    wider = client.post("/api/auth/api-keys/", {"project": str(project.id)}, format="json")
+    assert wider.status_code == status.HTTP_403_FORBIDDEN
+
+    same = {"scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["read"]}}
+    r = client.post("/api/auth/api-keys/", same, format="json")
+    assert r.status_code == status.HTTP_201_CREATED
+    assert r.data["scope"]["permission"] == ["read"]
+
+
 def test_api_key_current_returns_scope():
     user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)
