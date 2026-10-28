@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 
@@ -6,17 +7,182 @@ from django.utils import timezone
 from modal_shared.training_monitoring import fingerprint
 from overbae.models import (
     Cell,
+    DataPartitionMember,
+    DataPartitionPlan,
     Dataset,
     DatasetContext,
+    DatasetPipeline,
+    DatasetPipelineRun,
     DeployedModel,
     EvalRun,
     FinetuningJob,
     NativeEvaluationPlan,
 )
+from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
 
 from ..datasets import tickets, upload
 from ..stack import drain, settle
+
+
+def test_activity_outcomes_and_setup_progress_survive_console_reload(
+    console, workshop, worker, rest_for
+):
+    project = workshop.project()["id"]
+    workshop.call("list_datasets")
+    activity = workshop.read("overmind://activity")
+    assert {item["kind"] for item in activity["results"]} >= {
+        "agent_connected",
+        "repository_synced",
+        "capabilities_available",
+    }
+    before = activity["count"]
+    for _ in range(2):
+        workshop.call("list_datasets")
+    assert workshop.read("overmind://activity")["count"] == before
+
+    console.goto(f"/?projectId={project}")
+    console.press("unread notification")
+    console.sees("connected to Overmind", exact=False)
+    workshop.call(
+        "create_eval_matrix_row",
+        {"name": "Visible activity check", "type": "llm", "source": "The answer is grounded."},
+    )
+    console.sees("added", exact=False)
+    console.sees("Visible activity check")
+    console.press("Mark read")
+    settle(worker, lambda: workshop.read("overmind://activity")["unseen_count"] == 0)
+
+    console.goto(f"/?projectId={project}")
+    console.press("Notifications")
+    console.sees("Visible activity check")
+    console.click("Visible activity check")
+    console.wait_until("() => location.pathname.startsWith('/evaluations')")
+    console.press("Notifications")
+    console.wait_until("() => !document.body.textContent.includes('Setup progress')")
+    onboarding_run = str(uuid.uuid4())
+    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 2})
+    console.goto(f"/?projectId={project}")
+    console.wait_until(
+        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Inspect repository')"
+    )
+    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 9})
+    console.wait_until(
+        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities')"
+    )
+    rest_for(workshop.api_key).request(
+        "POST",
+        "/api/v1/sync",
+        json={
+            "project_id": project,
+            "version": "1",
+            "capabilities": [
+                {
+                    "slug": "onboarding-capability",
+                    "name": "Onboarding capability",
+                    "entrypoint_fn": "support.run",
+                }
+            ],
+        },
+    )
+    console.wait_until("""() => {
+        return document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities') && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt') && !document.body.textContent.includes('Get started');
+    }""")
+    console.save_evidence("activity-and-onboarding")
+    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
+    console.wait_until("""() => {
+        const panel = document.querySelector('[aria-label="Agent onboarding"]');
+        if (!panel) return false;
+        const rect = panel.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth && panel.scrollWidth <= panel.clientWidth;
+    }""")
+    console.save_evidence("onboarding-mobile")
+    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 10})
+    console.wait_until(
+        "() => document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '10'"
+    )
+    console.wait_until(
+        "() => [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && !document.querySelector('[role=progressbar]')"
+    )
+    console.save_evidence("onboarding-complete-capabilities")
+
+
+def test_agent_changes_update_visible_assets_without_reload(console, workshop):
+    project = workshop.project()["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Datasets", exact=False)
+    console._browser.call(console._page.evaluate, "window.activityDocument = 'unchanged'")
+    dataset = workshop.call(
+        "start_dataset",
+        {"name": "Live agent source", "brief": "Review live agent changes", "intent": "explore"},
+    )["dataset"]["id"]
+    console.sees("Live agent source")
+    console.wait_until(
+        "() => [...document.querySelectorAll('.activity-highlight')].some(row => row.textContent.includes('Live agent source'))"
+    )
+    workshop.call("update_dataset", {"dataset": dataset, "name": "Renamed live source"})
+    console.sees("Renamed live source")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Live agent source') && window.activityDocument === 'unchanged'"
+    )
+    console.save_evidence("agent-live-asset-update")
+    console._browser.call(lambda: console._page.context.set_offline(True))
+    workshop.call("update_dataset", {"dataset": dataset, "name": "Reconnected live source"})
+    console._browser.call(lambda: console._page.context.set_offline(False))
+    console.sees("Reconnected live source")
+    console.wait_until("() => window.activityDocument === 'unchanged'")
+    console.press("unread notification")
+    console.sees("Reconnected live source", exact=False)
+    console.save_evidence("agent-live-notifications")
+
+
+def test_dataset_inventory_follows_upload_bytes_and_publication(
+    console, workshop, rest_for, worker
+):
+    project = workshop.project()["id"]
+    dataset = workshop.call(
+        "start_dataset", {"name": "Live upload", "brief": "Inspect uploaded rows"}
+    )["dataset"]["id"]
+    rest = rest_for(workshop.api_key)
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Waiting for source")
+    data = b'[{"value":1},{"value":2}]'
+    receipt = rest.request(
+        "POST",
+        "/api/dataset-transfers/",
+        json={
+            "project": project,
+            "dataset": dataset,
+            "request_key": "live-upload",
+            "filename": "rows.json",
+            "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        },
+    )
+    console.sees("Uploading", exact=False)
+    rest.request(
+        "PUT",
+        f"/api/dataset-transfers/{receipt['id']}/chunk/?offset=0",
+        data=data[:10],
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    console.wait_until(
+        "() => Number(document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')) > 0"
+    )
+    console.save_evidence("dataset-upload-progress")
+    rest.request(
+        "PUT",
+        f"/api/dataset-transfers/{receipt['id']}/chunk/?offset=10",
+        data=data[10:],
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    rest.request("POST", f"/api/dataset-transfers/{receipt['id']}/complete/", json={})
+    drain(worker)
+    console.sees("Ready")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Uploading') && [...document.querySelectorAll('td')].some(cell => cell.textContent === '2')"
+    )
+    console.save_evidence("dataset-upload-ready")
 
 
 def test_evaluations_share_runs_navigation_and_probability_metrics(console, workshop):
@@ -483,3 +649,102 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
     console.wait_until("() => !location.search.includes('prepare=')")
     console.sees("Training onboarding fixture")
     console.healthy()
+
+
+def test_dataset_role_filter_uses_recorded_outputs(console, workshop):
+    project = workshop.project()["id"]
+    source = Dataset.objects.create(project_id=project, name="Raw evidence", intent="explore")
+    source_cell = Cell.objects.create(dataset=source, position=0, state="ok", fingerprint="a" * 64)
+    raw = Dataset.objects.create(project_id=project, name="Unused source", intent="explore")
+    Cell.objects.create(dataset=raw, position=0, state="ok", fingerprint="c" * 64)
+    output = Dataset.objects.create(project_id=project, name="Shared output", intent="explore")
+    output_cell = Cell.objects.create(dataset=output, position=1, state="ok", fingerprint="b" * 64)
+    Dataset.objects.create(project_id=project, name="Training by name only", intent="train")
+    plan = DataPartitionPlan.objects.create(
+        project_id=project,
+        name="Recorded roles",
+        request_key="inventory-roles",
+        source_cell=source_cell,
+        source_fingerprint=source_cell.fingerprint,
+        state="completed",
+    )
+    for role in ("train", "calibration", "final", "development"):
+        DataPartitionMember.objects.create(plan=plan, role=role, cell=output_cell)
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Raw evidence")
+    console.wait_until("() => !document.body.textContent.includes('Shared output')")
+    for label in ("Training", "Calibration", "Evaluation", "Development"):
+        console.choose('[aria-label="Filter by role"]', label)
+        console.sees("Raw evidence")
+        console.wait_until(
+            "() => !document.body.textContent.includes('Training by name only') && !document.body.textContent.includes('Unused source')"
+        )
+    console.save_evidence("dataset-multiple-roles")
+    console.choose('[aria-label="Filter by role"]', "Source")
+    console.sees("Unused source")
+    console.wait_until("() => !document.body.textContent.includes('Shared output')")
+    console.choose('[aria-label="Filter by role"]', "Unassigned")
+    console.sees("Training by name only")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Shared output') && !document.body.textContent.includes('Raw evidence')"
+    )
+    console.save_evidence("dataset-unassigned-role")
+    console.goto(f"/datasets/{output.pk}?projectId={project}")
+    console.sees("Shared output", exact=False)
+
+
+def test_activity_connects_pipeline_sequence(console, workshop):
+    project = workshop.project()["id"]
+    dataset = Dataset.objects.create(project_id=project, name="Connected work")
+    source = Cell.objects.create(dataset=dataset, position=0, state="ok", fingerprint="a" * 64)
+    pipeline = DatasetPipeline.objects.create(
+        project_id=project, name="Features", request_key="features"
+    )
+    for key, kind, action in (
+        ("upload", "source_uploaded", "Uploaded source"),
+        ("import", "source_ready", "Source ready"),
+        ("save", "asset_changed", "Saved a transformation for"),
+    ):
+        activity_service.record(
+            key=key,
+            project_id=project,
+            kind=kind,
+            action=action,
+            assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+        )
+    activity_service.record(
+        key="unrelated-edit",
+        project_id=project,
+        kind="asset_changed",
+        action="Updated dataset",
+        assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+    )
+    for index in range(2):
+        run = DatasetPipelineRun.objects.create(
+            dataset=dataset,
+            source=source,
+            pipeline=pipeline,
+            request_key=f"sequence-{index}",
+            state="completed",
+        )
+        activity_service.record(
+            key=f"sequence-{index}",
+            project_id=project,
+            kind="task_requested",
+            action="Requested a transformation of",
+            actor_kind="codex",
+            actor_name="Codex",
+            task_kind="dataset_pipeline",
+            task_id=run.pk,
+            assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+        )
+    records = workshop.read("overmind://activity")["results"]
+    linked = [item for item in records if item["sequence_key"]]
+    assert len(linked) == 5
+    assert len({item["sequence_key"] for item in linked}) == 1
+    assert linked[0]["sequence_key"]
+    assert all(not item["sequence_key"] for item in records if item["action"] == "Updated dataset")
+    console.goto(f"/datasets?projectId={project}")
+    console.press("unread notification")
+    console.wait_until("() => document.querySelectorAll('[data-sequence-key]').length === 5")
+    console.save_evidence("connected-pipeline-events")

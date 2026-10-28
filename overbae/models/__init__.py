@@ -1,3 +1,4 @@
+from .activity import Activity, ActivityClient, ActivityRead
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
@@ -73,6 +74,9 @@ from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
 
 __all__ = [
+    "Activity",
+    "ActivityRead",
+    "ActivityClient",
     "DocumentExtractionPage",
     "TrainingPlan",
     "TrainingCheckpoint",

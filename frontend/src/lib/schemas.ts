@@ -160,8 +160,8 @@ export const datasetsSearchSchema = projectIdSearchSchema.extend({
     .optional(),
   /** A capability id, or the `NO_CAPABILITY` sentinel for datasets attached to none. */
   ds_capability: z.string().optional().default("all"),
-  ds_intent: z
-    .enum(["all", "train", "eval", "pending", "explore"])
+  ds_role: z
+    .enum(["all", "training", "development", "calibration", "evaluation", "source", "unassigned"])
     .optional()
     .default("all")
     .catch("all"),

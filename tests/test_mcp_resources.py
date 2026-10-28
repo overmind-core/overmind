@@ -259,10 +259,11 @@ def test_connector_setup_resource_describes_human_cli_boundary():
 def test_static_resource_manifest_includes_checkpoint_download_guidance():
     resources = resource_list()
 
-    assert len(resources) == 7
+    assert len(resources) == 8
     uris = {str(resource.uri) for resource in resources}
     assert "overmind://checkpoint-download" in uris
     assert "overmind://connector-setup" in uris
+    assert "overmind://activity" in uris
 
 
 def test_resource_reads_are_json_and_project_scoped():

@@ -76,6 +76,7 @@ function FlowCanvas({
   onGraphHeight,
   scrollCaptured,
   showMinimap,
+  trajectoryNode,
 }: {
   canvasActions: React.ReactNode;
   capability: Capability;
@@ -84,6 +85,7 @@ function FlowCanvas({
   onGraphHeight: (height: number) => void;
   scrollCaptured: boolean;
   showMinimap: boolean;
+  trajectoryNode?: string;
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -147,7 +149,12 @@ function FlowCanvas({
     [fullGraph, runPath, query]
   );
   const match = matches[matchIndex % Math.max(1, matches.length)];
-  const searchTarget = match?.id;
+  const [dismissedTarget, setDismissedTarget] = useState<string>();
+  const linkedTarget =
+    trajectoryNode !== dismissedTarget && fullGraph.nodes.some((node) => node.id === trajectoryNode)
+      ? trajectoryNode
+      : undefined;
+  const searchTarget = match?.id ?? linkedTarget;
   const graph = useMemo(
     () => projectTrajectory(runPath?.graph ?? fullGraph, collapsed, searchTarget),
     [fullGraph, runPath, collapsed, searchTarget]
@@ -216,6 +223,7 @@ function FlowCanvas({
 
   const changeQuery = useCallback(
     (value: string) => {
+      setDismissedTarget(trajectoryNode);
       if (value.trim() && !query.trim()) beforeSearch.current = getViewport();
       if (!value.trim() && beforeSearch.current) {
         setViewport(beforeSearch.current);
@@ -224,7 +232,7 @@ function FlowCanvas({
       setQuery(value);
       setMatchIndex(0);
     },
-    [query, getViewport, setViewport]
+    [query, getViewport, setViewport, trajectoryNode]
   );
   const toggleBranch = useCallback(
     (id: string) => {
@@ -716,12 +724,14 @@ type TrajectoryFlowTabProps = {
   capability: Capability;
   expanded: boolean;
   onExpandedChange: (next: boolean) => void;
+  trajectoryNode?: string;
 };
 
 export function TrajectoryFlowTab({
   capability,
   expanded,
   onExpandedChange,
+  trajectoryNode,
 }: TrajectoryFlowTabProps) {
   const matrix = useEvalMatrixQuery(capability.project, capability.id);
   // Null until the nodes report their bounds; the CSS clamp covers that first paint.
@@ -732,6 +742,10 @@ export function TrajectoryFlowTab({
     : null;
   const [scrollLocked, setScrollLocked] = usePersistedState(FLOW_SCROLL_LOCK_KEY, true);
   const [showMinimap, setShowMinimap] = usePersistedState(FLOW_MINIMAP_KEY, false);
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (trajectoryNode) sectionRef.current?.scrollIntoView({ block: "start" });
+  }, [trajectoryNode]);
 
   // Full screen leaves no page to scroll, so the canvas always takes the wheel.
   const scrollCaptured = expanded || !scrollLocked;
@@ -772,7 +786,7 @@ export function TrajectoryFlowTab({
   }
 
   return (
-    <section aria-label="Trajectory map" className="space-y-2">
+    <section aria-label="Trajectory map" className="scroll-mt-6 space-y-2" ref={sectionRef}>
       <div
         className={cn(
           "overflow-hidden rounded-md border border-border bg-background",
@@ -861,6 +875,7 @@ export function TrajectoryFlowTab({
                 onGraphHeight={setGraphHeight}
                 scrollCaptured={scrollCaptured}
                 showMinimap={showMinimap && !highlighted}
+                trajectoryNode={trajectoryNode}
               />
             </ReactFlowProvider>
           )}

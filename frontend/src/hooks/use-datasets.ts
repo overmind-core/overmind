@@ -140,7 +140,7 @@ export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null =
 };
 
 export const isBusy = (ds: Dataset | null | undefined): boolean =>
-  !!ds && (ds.state === "running" || ds.state === "landing");
+  !!ds && (!!ds.work || ds.state === "running" || ds.state === "landing");
 
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
@@ -252,7 +252,7 @@ export function useProjectDatasetsQuery(projectId: string | undefined) {
     enabled: !!projectId,
     queryFn: ({ signal }) => fetchProjectDatasets(projectId!, signal),
     queryKey: ["datasets", "list", projectId, "inventory"],
-    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 3000 : 15000),
+    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 1000 : 3000),
   });
 }
 

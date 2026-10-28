@@ -4,18 +4,43 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
+import { OnboardingMilestones } from "@/components/quickstart/onboarding-milestones";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useOnboardingMilestones } from "@/hooks/use-activity";
 
 export function QuickstartEmbed({
   projectId,
   projectName,
+  devPreview = false,
+  onComplete,
+  autoPlay = false,
 }: {
   projectId?: string;
   projectName?: string;
+  devPreview?: boolean;
+  onComplete?: () => void;
+  autoPlay?: boolean;
 }) {
-  const [source, setSource] = useState("agent");
+  const [source, setSource] = useState<"agent" | "data">("agent");
   const navigate = useNavigate();
+  const milestones = useOnboardingMilestones(projectId, "agent");
+  const connected = milestones.data?.some(
+    (step) => step.kind === "agent_connected" && step.completedAt
+  );
+  if (source === "agent" && (connected || devPreview)) {
+    return (
+      <section aria-label="Agent onboarding" className="w-full max-w-md">
+        <OnboardingMilestones
+          autoPlay={autoPlay}
+          devPreview={devPreview}
+          onComplete={onComplete}
+          projectId={projectId}
+          projectName={projectName}
+        />
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="agent-onboarding-title" className="w-full max-w-2xl">
@@ -26,7 +51,11 @@ export function QuickstartEmbed({
         Get started
       </h2>
       <Card className="p-4">
-        <Tabs className="mb-4" onValueChange={setSource} value={source}>
+        <Tabs
+          className="mb-4"
+          onValueChange={(value) => setSource(value as "agent" | "data")}
+          value={source}
+        >
           <TabsList>
             <TabsTrigger value="agent">Agent</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>

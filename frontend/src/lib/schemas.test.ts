@@ -189,7 +189,7 @@ describe("schemas", () => {
     it("parses empty with unfiltered defaults", () => {
       const result = datasetsSearchSchema.parse({});
       expect(result.ds_search).toBe("");
-      expect(result.ds_intent).toBe("all");
+      expect(result.ds_role).toBe("all");
       expect(result.ds_capability).toBe("all");
     });
     it("accepts the create deep-link param", () => {
@@ -200,22 +200,22 @@ describe("schemas", () => {
     it("round-trips every filter a shared datasets link carries", () => {
       const result = datasetsSearchSchema.parse({
         ds_capability: "capability-1",
-        ds_intent: "train",
+        ds_role: "training",
         ds_search: "golden",
         projectId: "proj-1",
       });
       expect(result.ds_capability).toBe("capability-1");
-      expect(result.ds_intent).toBe("train");
+      expect(result.ds_role).toBe("training");
       expect(result.ds_search).toBe("golden");
       expect(result.projectId).toBe("proj-1");
     });
     it("falls back to unfiltered for stale values, keeping the rest of the search", () => {
       const result = datasetsSearchSchema.parse({
-        ds_intent: "ready_with_warnings",
+        ds_role: "ready_with_warnings",
         ds_search: "kept",
         projectId: "proj-1",
       });
-      expect(result.ds_intent).toBe("all");
+      expect(result.ds_role).toBe("all");
       expect(result.ds_search).toBe("kept");
       expect(result.projectId).toBe("proj-1");
     });

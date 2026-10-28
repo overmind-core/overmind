@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Capability, Dataset, DatasetImport, DatasetTransfer
+from overbae.services.activity import asset, record
 from overbae.services.datasets import dispatch, files, imports
 from overbae.services.datasets.lifecycle import DatasetError
 
@@ -255,6 +256,17 @@ def complete(transfer):
     transfer.published_at = timezone.now()
     transfer.save(
         update_fields=["state", "result", "task", "received", "published_at", "updated_at"]
+    )
+
+    record(
+        key=f"source-uploaded:{transfer.pk}",
+        project_id=transfer.project_id,
+        user_id=transfer.user_id,
+        kind="source_uploaded",
+        action="Uploaded source",
+        actor_kind="cli",
+        actor_name="Overmind CLI",
+        assets=[asset("dataset", dataset.pk, dataset.name)],
     )
     transaction.on_commit(lambda: dispatch_landing(transfer.pk))
     return transfer

@@ -11,6 +11,7 @@ from overbae.services.mcp.context import MCPContext
 MAX_MANIFEST_BYTES = 92 * 1024
 
 EXPECTED_TOOL_NAMES = {
+    "report_onboarding_progress",
     "save_training_plan",
     "deploy_finetune",
     "inspect_native_evaluation",

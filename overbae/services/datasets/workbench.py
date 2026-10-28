@@ -22,7 +22,7 @@ from overbae.models import (
     DatasetPipelineRunner,
     Project,
 )
-from overbae.services import operational_progress
+from overbae.services import activity, operational_progress
 from overbae.services.datasets import (
     events,
     lifecycle,
@@ -781,6 +781,16 @@ def execute(run_id, *, script_executor=None):
                 Dataset.objects.filter(pk=dataset.pk).update(
                     active=cell, state=Dataset.State.IDLE, error="", updated_at=timezone.now()
                 )
+                activity.record(
+                    key=f"mcp-task:{dataset.project_id}:dataset_pipeline:{run.pk}",
+                    task_kind="dataset_pipeline",
+                    task_id=run.pk,
+                    project_id=dataset.project_id,
+                    kind="preparation_published",
+                    action="Published dataset preparation",
+                    assets=[activity.asset("dataset", dataset.pk, dataset.name)],
+                )
+                activity.update_task(dataset.project_id, "dataset_pipeline", run.pk, "completed")
                 if binding:
                     binding.checkpoint = run.specification["binding_checkpoint"]
                     binding.error = ""

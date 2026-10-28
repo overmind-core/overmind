@@ -13,6 +13,7 @@ The token spec is the root `DESIGN.md`; extend its values, don't restructure it.
 
 - Use no raw Tailwind palette utilities (`bg-green-500`) and no hex in class strings (`bg-[#1c1917]`).
 - **Status** uses a tint triplet, with no `dark:` variants: `border-success/40 bg-success/10 text-success`. The tones are `success` (passed, healthy, connected, completed), `warning` (review, degraded, stale), `info` (running, pending, queued, training), `error` (failed, cancelled; the `destructive` token) and `neutral` (draft, skipped, awaiting launch, unknown). Prefer `<Badge variant="success|warning|info|error|neutral">`; `variant="destructive"` is a solid fill, not the tint. For a domain state use `<StatusBadge status={state} fallback=…>`, which maps it through `domainStatus` itself (`lib/job-status.tsx`, `lib/colors.ts`).
+- Active and queued job chips use `bg-foreground text-background` through the shared `StatusBadge`, not the blue info tint. Active chips pulse gently with reduced-motion support. Use the recorded coding-agent logo in place of the spinner when that task is attributed to a coding agent; never infer identity from connection presence.
 - **Categorical** entity types use `text-cat-1 … text-cat-6` and `bg-cat-1/10`, one stable slot per type.
 - **Login and onboarding** use the `--auth-*` tokens (`bg-auth-panel`, `border-auth-border`, `text-auth-accent`, …).
 - Neutrals: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`, `border-border`.

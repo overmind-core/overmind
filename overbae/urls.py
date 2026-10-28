@@ -10,6 +10,7 @@ from drf_spectacular.views import (
 from rest_framework.permissions import AllowAny
 from rest_framework.routers import DefaultRouter
 
+from overbae.api.activity import ActivityViewSet
 from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APITokenListCreateView
 from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
@@ -105,6 +106,7 @@ router.register(
     basename="project-invite",
 )
 router.register(r"projects", ProjectViewSet, basename="project")
+router.register(r"activity", ActivityViewSet, basename="activity")
 router.register(r"capabilities", CapabilityViewSet, basename="capability")
 router.register(r"datasets", DatasetViewSet, basename="dataset")
 router.register(

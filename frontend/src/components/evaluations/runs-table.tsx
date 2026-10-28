@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useActivityActor } from "@/hooks/use-activity";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   useDeleteEvalRunMutation,
@@ -51,8 +52,19 @@ const STATUS_FILTER_LABELS: Record<string, string> = {
   running: "Running",
 };
 
-export function StatusBadge({ status, progress }: { status: string; progress?: number | null }) {
-  return <JobStatusBadge fallback="pending" progress={progress} status={status} />;
+export function StatusBadge({
+  status,
+  progress,
+  taskId,
+}: {
+  status: string;
+  progress?: number | null;
+  taskId?: string;
+}) {
+  const actorKind = useActivityActor("eval_run", taskId);
+  return (
+    <JobStatusBadge actorKind={actorKind} fallback="pending" progress={progress} status={status} />
+  );
 }
 
 function runProgressPercent(progress?: EvalRunProgress | null): number | null {
@@ -304,6 +316,7 @@ export function RunsTable({
           <StatusBadge
             progress={r.status === "running" ? runProgressPercent(r.progress) : null}
             status={r.status ?? "pending"}
+            taskId={r.id}
           />
         );
       },

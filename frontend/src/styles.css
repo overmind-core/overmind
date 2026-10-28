@@ -182,11 +182,21 @@ code {
       top left,
       bottom left;
     -webkit-mask-size:
-      2px calc(100% - 12px),
+      var(--elbow-stroke, 2px) calc(100% - 12px),
       12px 12px;
     mask-size:
-      2px calc(100% - 12px),
+      var(--elbow-stroke, 2px) calc(100% - 12px),
       12px 12px;
+  }
+
+  .sidebar-elbow-thin::before {
+    --elbow-stroke: 1px;
+    -webkit-mask-image:
+      linear-gradient(#000 0 0),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M.5 0V8.5H2.5V10.5H4.5V11.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
+    mask-image:
+      linear-gradient(#000 0 0),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M.5 0V8.5H2.5V10.5H4.5V11.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
   }
 
   [data-active="true"] .sidebar-label {
@@ -733,5 +743,39 @@ body:has(
 @media (prefers-reduced-motion: reduce) {
   body::after {
     transition: none;
+  }
+}
+
+@keyframes activity-highlight {
+  from {
+    background-color: color-mix(in oklab, var(--success) 16%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.activity-highlight {
+  animation: activity-highlight 2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-highlight {
+    outline: 1px solid var(--success);
+    outline-offset: -1px;
+    animation: none;
+  }
+}
+
+@keyframes job-active-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .job-active-pulse {
+    animation: job-active-pulse 2.4s ease-in-out infinite;
   }
 }

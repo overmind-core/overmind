@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 
-import { format, formatDistanceToNowStrict, isYesterday } from "date-fns";
+import { differenceInCalendarDays, format, formatDistanceToNowStrict, isYesterday } from "date-fns";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -35,17 +35,28 @@ type DateTimeProps = Omit<ComponentProps<"time">, "dateTime"> & {
   fallback?: string;
   /** Skip the relative "N days ago" rule and always show the absolute date/time. */
   exact?: boolean;
+  /** Show today's time, otherwise the number of calendar days ago. */
+  compact?: boolean;
 };
 
-export function DateTime({ value, fallback = "—", exact = false, ...props }: DateTimeProps) {
+export function DateTime({
+  value,
+  fallback = "—",
+  exact = false,
+  compact = false,
+  ...props
+}: DateTimeProps) {
   const date = toDate(value);
   if (!date) return <span {...props}>{fallback}</span>;
+  const days = differenceInCalendarDays(new Date(), date);
+  const compactLabel =
+    days <= 0 ? format(date, "HH:mm") : `${days} ${days === 1 ? "day" : "days"} ago`;
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
           <time dateTime={date.toISOString()} {...props}>
-            {exact ? format(date, EXACT_FORMAT) : formatSmart(date)}
+            {exact ? format(date, EXACT_FORMAT) : compact ? compactLabel : formatSmart(date)}
           </time>
         </TooltipTrigger>
         <TooltipContent>{format(date, EXACT_FORMAT)}</TooltipContent>

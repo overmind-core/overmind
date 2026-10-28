@@ -5,7 +5,9 @@ from django.conf import settings
 from pydantic import BaseModel, ConfigDict, Field
 
 from overbae.models import APIToken
+from overbae.services import activity
 from overbae.services.mcp.context import accessible_projects
+from overbae.services.mcp.contracts.activity import ReportOnboardingInput, ReportOnboardingOutput
 from overbae.services.mcp.contracts.projects import CreateApiKeyInput, CreateApiKeyOutput
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import interface_resource
@@ -107,6 +109,14 @@ def _create_api_key(payload: CreateApiKeyInput, context) -> CreateApiKeyOutput:
     )
 
 
+@sync_to_async(thread_sensitive=True)
+def report_onboarding_progress(payload, context):
+
+    activity.report_onboarding_progress(context, payload.run_id, payload.completed_steps)
+    query = activity.visible(context.user, [context.project.pk], context.project.pk)
+    return ReportOnboardingOutput(milestones=activity.milestones(query, "agent"))
+
+
 def register_project_tools(catalog):
     from overbae.services.mcp.catalog import ToolDefinition
 
@@ -114,12 +124,7 @@ def register_project_tools(catalog):
         ToolDefinition(
             name="create_api_key",
             title="Create API key",
-            description=(
-                "Create an API key. name, description and expires_in_days (0, 30, 90, 180, 365; "
-                "0 does not expire) match the Console dialog. Omit project_id for an account key; "
-                "pass project_id for a project key. The plaintext is returned once. A project "
-                "connection can only create a key for its own project."
-            ),
+            description="Create a key: name, description, expiry (0=never or 30/90/180/365 days). Plaintext once. Omit project_id for account scope; project keys mint only same-project keys.",
             input_model=CreateApiKeyInput,
             output_model=CreateApiKeyOutput,
             read_only=False,
@@ -136,7 +141,7 @@ def register_project_tools(catalog):
         ToolDefinition(
             name="list_projects",
             title="List accessible projects",
-            description="List active projects this connection may access. Pass the chosen id as project_id on subsequent tools and resources; selection is per request.",
+            description="List accessible active projects. Pass project_id per tool/resource; no shared selection.",
             input_model=ListProjectsInput,
             output_model=ListProjectsOutput,
             read_only=True,
@@ -148,4 +153,21 @@ def register_project_tools(catalog):
             project_scoped=False,
         ),
         list_projects,
+    )
+
+    catalog.register(
+        ToolDefinition(
+            name="report_onboarding_progress",
+            title="Report onboarding progress",
+            description="Report verified onboarding stages (0–10); reuse run_id. Roadmap: overmind://activity. No notifications.",
+            input_model=ReportOnboardingInput,
+            output_model=ReportOnboardingOutput,
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:account:write"}),
+            cost_class="free",
+            async_mode="sync",
+        ),
+        report_onboarding_progress,
     )

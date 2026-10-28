@@ -26,7 +26,8 @@ project by slug (plus the retired Undermind demo slugs), the `@ledgerline.dev`
 team users, and the owner's non-free-credit ledger rows before it seeds. The
 project belongs to `--owner` (default `frey@overmindlab.ai`); the
 account is created with password `password` when it does not exist. Plaintext
-API keys print at the end.
+API keys print at the end. Activity and onboarding examples are terminal receipts
+labelled Demo; they never imply that a real coding agent performed the seeded work.
 
 ## Beat-safety invariants — never break these
 

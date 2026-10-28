@@ -47,8 +47,11 @@ beforeEach(() => {
     name: "titanic",
     operation: { source_import: { can_resume: true } },
     project: "project",
+    roles: [],
     source_spec: {},
     state: "error",
+    work: null,
+    workspace_id: "dataset-1",
   });
   state.retry.mockImplementation(() => new Promise(() => {}));
   queryClient = new QueryClient({

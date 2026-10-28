@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from overbae.models import Cell, Dataset
 from overbae.models.traces import Span
+from overbae.services.activity import source_ready
 from overbae.services.datasets import (
     alignment,
     contract,
@@ -186,6 +187,8 @@ def publish(dataset, prepared, *, user=None):
         **prepared.dataset_fields, updated_at=timezone.now()
     )
     dataset.refresh_from_db()
+
+    source_ready(dataset, prepared.cell_id, user)
     return dataset
 
 

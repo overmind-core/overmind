@@ -18,6 +18,7 @@ from django.db.models.functions import Least
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, User
+from overbae.services.activity import asset, record, update_task
 from overbae.services.datasets import events, files, heartbeat, llm_calls, operations, paths
 from overbae.services.datasets import land as landing
 from overbae.services.datasets.lifecycle import DatasetError
@@ -143,6 +144,15 @@ def queue_landing_receipt(dataset, task_id, inputs, *, published=False, preserve
         published_at=now if published else None,
         next_publish_at=None if published else now,
     )
+    if _uploads(inputs["source"]):
+        record(
+            key=f"source-uploaded:{run.pk}",
+            project_id=locked.project_id,
+            user_id=inputs.get("user_id"),
+            kind="source_uploaded",
+            action="Uploaded source",
+            assets=[asset("dataset", locked.pk, locked.name)],
+        )
     Dataset.objects.filter(pk__in=_target_ids(run)).update(
         state=Dataset.State.LANDING, error="", updated_at=now
     )
@@ -222,6 +232,8 @@ def _block(run, code, error):
     run.owner = None
     run.lease_until = None
     run.save(update_fields=["state", "failure_code", "error", "owner", "lease_until", "updated_at"])
+
+    update_task(run.dataset.project_id, "dataset_run", run.dataset_id, "failed")
     Dataset.objects.filter(pk__in=_target_ids(run), state=Dataset.State.LANDING).update(
         state=Dataset.State.ERROR, error=run.error, updated_at=timezone.now()
     )
@@ -262,6 +274,8 @@ def claim(run_id):
         _block(run, "ownership_lost", "Another operation changed this dataset.")
         return None
     run.state = DatasetImport.State.RUNNING
+
+    update_task(run.dataset.project_id, "dataset_run", run.dataset_id, "running")
     run.owner = uuid.uuid4()
     run.started_at = now
     run.lease_until = now + timedelta(seconds=LEASE_SECONDS)
@@ -707,6 +721,8 @@ def execute(task_id, inputs):
                 landing.publish(target, result, user=user)
                 rows += result.cell_fields["rows"]
             locked.state = DatasetImport.State.COMPLETE
+
+            update_task(dataset.project_id, "dataset_run", dataset.pk, "completed")
             locked.result = {"rows": rows}
             locked.owner = locked.lease_until = None
             locked.save(

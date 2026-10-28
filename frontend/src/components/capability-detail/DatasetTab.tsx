@@ -3,7 +3,8 @@ import { useState } from "react";
 import floppyDiskIcon from "@/assets/floppy-disk-save.svg";
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
 import { TableSectionHeader } from "@/components/ui/table-section-header";
-import { useDatasetsQuery } from "@/hooks/use-datasets";
+import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
+import { datasetWorkspaces } from "@/lib/dataset-workspaces";
 
 interface DatasetTabProps {
   capabilityId: string;
@@ -12,13 +13,18 @@ interface DatasetTabProps {
 
 export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
   const [search, setSearch] = useState("");
-  const [intentFilter, setIntentFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
 
-  const datasetsQuery = useDatasetsQuery(projectId ?? undefined, {
-    capability: capabilityId,
-    pageSize: 200,
-  });
-  const datasets = datasetsQuery.data?.results ?? [];
+  const datasetsQuery = useProjectDatasetsQuery(projectId ?? undefined);
+  const inventory = datasetsQuery.data ?? [];
+  const attachedWorkspaces = new Set(
+    inventory
+      .filter((dataset) => dataset.capability === capabilityId)
+      .map((dataset) => dataset.workspaceId)
+  );
+  const datasets = datasetWorkspaces(inventory).filter((dataset) =>
+    attachedWorkspaces.has(dataset.id)
+  );
 
   return (
     <div className="space-y-3">
@@ -37,9 +43,9 @@ export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
         toolbar={
           <DatasetsToolbar
             datasets={datasets}
-            intentFilter={intentFilter}
+            roleFilter={roleFilter}
             search={search}
-            setIntentFilter={setIntentFilter}
+            setRoleFilter={setRoleFilter}
             setSearch={setSearch}
           />
         }
@@ -49,12 +55,12 @@ export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
         error={datasetsQuery.error}
         fill={false}
         hideCapabilityColumn
-        intentFilter={intentFilter}
         // The query is gated on the project and this tab has no project early-return,
         // so a capability seen without one must settle empty rather than skeleton forever.
         isLoading={!!projectId && !datasetsQuery.isFetched}
+        roleFilter={roleFilter}
         search={search}
-        setIntentFilter={setIntentFilter}
+        setRoleFilter={setRoleFilter}
         setSearch={setSearch}
       />
     </div>

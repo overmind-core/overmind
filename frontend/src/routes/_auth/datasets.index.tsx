@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
+import { datasetWorkspaces } from "@/lib/dataset-workspaces";
 import { featureFlags } from "@/lib/feature-flags";
 import { datasetsSearchSchema } from "@/lib/schemas";
 
@@ -34,12 +35,12 @@ function DatasetsIndexPage() {
 }
 
 function ProjectDatasets({ projectId }: { projectId: string }) {
-  const { create, ds_search, ds_intent, ds_capability } = Route.useSearch();
+  const { create, ds_search, ds_role, ds_capability } = Route.useSearch();
   const navigate = Route.useNavigate();
   const query = useProjectDatasetsQuery(projectId);
   const capabilities = useProjectCapabilitiesQuery(projectId);
   const [createOpen, setCreateOpen] = useState(false);
-  const datasets = query.data ?? [];
+  const datasets = datasetWorkspaces(query.data ?? []);
 
   useEffect(() => {
     if (!create) return;
@@ -57,7 +58,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
       (capabilities.data?.results ?? []).map((capability) => [capability.id, capability.name])
     ),
     datasets,
-    intentFilter: ds_intent,
+    roleFilter: ds_role,
     search: ds_search,
     setCapabilityFilter: (value: string) =>
       void navigate({
@@ -65,11 +66,11 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
         resetScroll: false,
         search: (prev) => ({ ...prev, ds_capability: value }),
       }),
-    setIntentFilter: (value: string) =>
+    setRoleFilter: (value: string) =>
       void navigate({
         replace: true,
         resetScroll: false,
-        search: (prev) => ({ ...prev, ds_intent: value as typeof ds_intent }),
+        search: (prev) => ({ ...prev, ds_role: value as typeof ds_role }),
       }),
     setSearch: (value: string) =>
       void navigate({
@@ -83,7 +84,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
     <PageShell
       header={
         <PageHeader
-          count={query.data?.length}
+          count={query.isFetched ? datasets.length : undefined}
           description="Source data and step-by-step transformations for training and evaluation."
           icon={
             <img
@@ -103,7 +104,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
         {...filters}
         error={query.error}
         isLoading={query.isPending}
-        key={JSON.stringify([ds_search, ds_intent, ds_capability])}
+        key={JSON.stringify([ds_search, ds_role, ds_capability])}
         rowSearch={{ projectId }}
       />
       <NewDatasetDialog onOpenChange={setCreateOpen} open={createOpen} projectId={projectId} />

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CellContext, ColumnDef } from "@tanstack/react-table";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render as renderComponent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FinetuningJobList, FinetuningJobRun } from "@/openapi";
@@ -236,3 +237,12 @@ describe("JobsHistory run rows", () => {
     expect(mocks.peeked).toHaveBeenCalledWith("job-solo");
   });
 });
+
+function render(children: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderComponent(children, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}

@@ -1005,10 +1005,8 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
           label={activeStageLabel ?? undefined}
           solidProgress
           status={status}
+          taskId={snapshot.job.id}
         />
-        {!snapshot.terminal && status !== "awaiting_launch" && (
-          <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-xs bg-primary" />
-        )}
         <p
           className="min-w-0 flex-1 truncate font-mono text-xs leading-none tabular-nums text-muted-foreground"
           title={statusLine}

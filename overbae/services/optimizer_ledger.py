@@ -16,6 +16,7 @@ from overbae.models.optimizer import (
     OptimizerExperiment,
     OptimizerIteration,
 )
+from overbae.services.activity import update_task
 
 logger = logging.getLogger(__name__)
 
@@ -210,4 +211,6 @@ def complete_experiment(experiment: OptimizerExperiment) -> OptimizerExperiment:
     experiment._stop_children(reason="experiment completed")
     experiment.save()
     experiment.refresh_from_db()
+
+    update_task(experiment.project_id, "optimizer_experiment", experiment.pk, "completed")
     return experiment

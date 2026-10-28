@@ -13,6 +13,7 @@ from asgiref.sync import sync_to_async
 from mcp import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from overbae.services.activity import mcp_succeeded
 from overbae.services.mcp.annotations import annotations_for
 from overbae.services.mcp.context import MCPContext, project_context
 from overbae.services.mcp.errors import MCPError, error_result, internal_error
@@ -239,6 +240,13 @@ class ToolCatalog:
             return error_result(internal_error())
 
         structured = output.model_dump(mode="json", by_alias=True)
+
+        try:
+            await sync_to_async(mcp_succeeded, thread_sensitive=True)(
+                name, entry.definition, structured, context
+            )
+        except Exception:
+            logger.exception("Could not retain MCP activity for %s", name)
         if entry.definition.project_scoped and context.token.scope.get("scope") == "account":
             structured = project_references(structured, context.project.pk)
         return tool_result(structured)

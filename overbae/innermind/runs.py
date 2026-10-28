@@ -19,6 +19,7 @@ from overbae.core import async_loop
 from overbae.innermind import classes, comparison, dataset, generation
 from overbae.innermind.metrics import FAIL_BELOW
 from overbae.models import EvalMatrix, EvalRun, EvalRunRow, EvalSet, FinetuningJob
+from overbae.services.activity import update_task
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.alignment import system_prompt
 from overbae.services.datasets.sampling import select_rows
@@ -261,6 +262,8 @@ def finish(run: EvalRun) -> None:
 
 
 def on_terminal(run: EvalRun) -> None:
+
+    update_task(run.project_id, "eval_run", run.pk, run.status)
     # Both consumers import this module to create their runs.
     from overbae.models.optimizer import on_candidate_eval_finished  # noqa: PLC0415
     from overbae.services.finetuning_eval import sync_eval_scores  # noqa: PLC0415

@@ -16,6 +16,10 @@ export interface RunningJobItem {
   error?: string;
   /** ISO timestamp; rows sort on it as a string. */
   startedAt: string;
+  datasetId?: string;
+  datasetName?: string;
+  capabilityId?: string;
+  capabilityName?: string;
 }
 
 const FT_ACTIVE = new Set(["queued", "preparing", "running", "deploying", "validating_files"]);
@@ -58,6 +62,9 @@ function foldOptimizerStatus(status: string): string {
 
 type OptimizerExperimentRow = {
   id: string;
+  capability?: string | null;
+  dataset?: string | null;
+  datasetName?: string;
   capabilityName?: string | null;
   status: string;
   failureReason?: string | null;
@@ -87,6 +94,8 @@ function toIso(value: Date | string | null | undefined): string {
 
 type FinetuningJobRow = {
   id: string;
+  capability?: string | null;
+  dataset?: string;
   groupId?: string | null;
   name?: string | null;
   baseModel?: string | null;
@@ -135,6 +144,9 @@ export function buildRunningJobs(
       id: string;
       name: string;
       capabilityName?: string | null;
+      capabilityId?: string | null;
+      dataset?: string | null;
+      datasetName?: string;
       error?: string | null;
       status: string;
       createdAt: Date | string;
@@ -179,6 +191,8 @@ export function buildRunningJobs(
           startedAt: startedAt || toIso(rep.startedAt ?? rep.createdAt),
           status: activeOnly ? rep.status : foldFtGroupStatus(members),
           title: ftGroupTitle(members),
+          ...(rep.dataset ? { datasetId: rep.dataset } : {}),
+          ...(rep.capability ? { capabilityId: rep.capability } : {}),
         });
       }
     }
@@ -197,6 +211,10 @@ export function buildRunningJobs(
       startedAt: toIso(run.createdAt),
       status: run.status,
       title: run.name?.trim() || (capability ? `${capability} eval` : "Eval run"),
+      ...(run.dataset ? { datasetId: run.dataset, datasetName: run.datasetName } : {}),
+      ...(run.capabilityId
+        ? { capabilityId: run.capabilityId, capabilityName: run.capabilityName ?? undefined }
+        : {}),
     });
   }
 
@@ -210,6 +228,10 @@ export function buildRunningJobs(
       startedAt: toIso(exp.createdAt),
       status: foldOptimizerStatus(exp.status),
       title: optimizerTitle(exp),
+      ...(exp.dataset ? { datasetId: exp.dataset, datasetName: exp.datasetName } : {}),
+      ...(exp.capability
+        ? { capabilityId: exp.capability, capabilityName: exp.capabilityName ?? undefined }
+        : {}),
     });
   }
 

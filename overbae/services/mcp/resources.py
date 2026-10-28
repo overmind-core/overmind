@@ -15,7 +15,7 @@ from django.db.models import Prefetch, Q
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
-from pydantic import AnyUrl
+from pydantic import AnyUrl, ValidationError
 
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.training_telemetry import STARTUP_LABELS
@@ -49,6 +49,7 @@ from overbae.models import (
     TrainingPreparation,
 )
 from overbae.services import (
+    activity,
     inference_requests,
     model_workflows,
     operational_progress,
@@ -71,6 +72,7 @@ from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
 from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.context import get_context, project_context
+from overbae.services.mcp.contracts.activity import InspectActivityInput, InspectActivityOutput
 from overbae.services.mcp.contracts.datasets import (
     next_actions,
     serialize_dataset_detail,
@@ -1506,6 +1508,31 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         raise _not_found("resource", raw_uri)
     segments = [unquote(part) for part in parsed.path.split("/") if part]
     host = parsed.netloc
+    if host == "activity" and not segments:
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        try:
+            values = InspectActivityInput.model_validate(
+                {key: value[0] for key, value in params.items() if key != "project_id"}
+            )
+            if any(len(value) != 1 for value in params.values()):
+                raise ValueError
+        except (ValidationError, ValueError):
+            raise MCPError(
+                "invalid_input", "Use offset >= 0, limit 1–100 and path=agent|data."
+            ) from None
+        context = get_context()
+        query = activity.visible(
+            context.user,
+            [project.pk],
+            project.pk,
+            include_account=context.token.scope.get("scope") != "project",
+        )
+        return InspectActivityOutput.model_validate(
+            {
+                **activity.feed(query, offset=values.offset, limit=values.limit),
+                "milestones": activity.milestones(query, values.path),
+            }
+        ).model_dump(mode="json")
     if host == "interface" and segments == ["current"]:
         return interface_resource()
     if host == "project" and segments == ["current"]:
@@ -1713,6 +1740,13 @@ def resource_list() -> list[types.Resource]:
             title="Signal events",
             uri="overmind://signal-events",
             description="The project's newest signal events and its unseen count. Account connections must add ?project_id=ID.",
+            mimeType=JSON_MIME,
+        ),
+        types.Resource(
+            name="activity",
+            title="Activity and onboarding",
+            uri="overmind://activity",
+            description="Saved outcomes and setup milestones. Account connections add project_id; optional offset, limit (1–100), path=agent|data. Reads never mark notifications seen.",
             mimeType=JSON_MIME,
         ),
     ]

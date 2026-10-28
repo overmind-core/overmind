@@ -81,13 +81,6 @@ def test_retiring_usage_preserves_experiments_and_ledger(
                 )
             assert "cursor_usage" not in {column.name for column in columns}
 
-            completed = complete_experiment(OptimizerExperiment.objects.get(pk=experiment.pk))
-            assert completed.status == "completed"
-            assert completed.state["archived_cursor_usage"] == usage
-            ledger = apps.get_model("overbae", "BillingTelemetry")
-            assert list(ledger.objects.values()) == before_receipts
-            assert ledger.objects.get(pk=receipt.pk).amount == Decimal("-0.55")
-
             executor = MigrationExecutor(database)
             executor.migrate(BEFORE)
             apps = executor.loader.project_state(BEFORE).apps
@@ -96,12 +89,16 @@ def test_retiring_usage_preserves_experiments_and_ledger(
             )
             assert restored.cursor_usage == usage
             assert "archived_cursor_usage" not in restored.state
-            assert restored.state == {
-                key: value
-                for key, value in completed.state.items()
-                if key != "archived_cursor_usage"
-            }
+            assert restored.state == state
             assert list(ledger.objects.values()) == before_receipts
+
+            executor = MigrationExecutor(database)
+            executor.migrate(executor.loader.graph.leaf_nodes("overbae"))
+            completed = complete_experiment(OptimizerExperiment.objects.get(pk=experiment.pk))
+            assert completed.status == "completed"
+            assert completed.state["archived_cursor_usage"] == usage
+            assert list(ledger.objects.values()) == before_receipts
+            assert ledger.objects.get(pk=receipt.pk).amount == Decimal("-0.55")
         finally:
             database.close()
             connections["default"] = original

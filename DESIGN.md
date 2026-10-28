@@ -935,6 +935,10 @@ indicator and chart navigation.
 
 ### Loading and live updates
 
+Active and queued job chips use a white surface with dark text. Active chips pulse
+subtly, respecting reduced motion. Agent-attributed work uses the recorded coding
+agent logo instead of a spinner; uncredited work retains its normal status icon.
+
 Initial page loads use the shared `LoadingState` spinner inside the page shell;
 keep the page header and navigation visible. Do not use a generic skeleton page.
 Skeletons belong to known component or asset slots: keep the actual table headers,

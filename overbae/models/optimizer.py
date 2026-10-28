@@ -291,6 +291,10 @@ class OptimizerExperiment(models.Model):
             self.failure_reason = (reason or "").strip()[:2000]
             self.status = self.Status.FAILED
             self.save(update_fields=["failure_reason", "status", "updated_at"])
+            # Activity imports models; defer this dependency until runtime.
+            from overbae.services.activity import update_task
+
+            update_task(self.project_id, "optimizer_experiment", self.pk, "failed")
 
     def _lock_unless_terminal(self) -> bool:
         """Take the row lock inside the caller's transaction; False once the run has ended."""
@@ -306,6 +310,10 @@ class OptimizerExperiment(models.Model):
             self._stop_children(reason="experiment cancelled")
             self.status = self.Status.CANCELLED
             self.save(update_fields=["status", "updated_at"])
+            # Activity imports models; defer this dependency until runtime.
+            from overbae.services.activity import update_task
+
+            update_task(self.project_id, "optimizer_experiment", self.pk, "cancelled")
 
     def _record_baseline_scores(self, iteration: OptimizerIteration):
         best = max((c.score for c in iteration.candidates.all()), default=0.0)

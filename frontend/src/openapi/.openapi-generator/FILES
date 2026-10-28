@@ -1,3 +1,4 @@
+apis/ActivityApi.ts
 apis/AgentApi.ts
 apis/AuthApi.ts
 apis/BillingApi.ts
@@ -46,6 +47,12 @@ models/APITokenCreateResponse.ts
 models/APITokenMetadata.ts
 models/APITokenScope.ts
 models/APITokenScopeRequest.ts
+models/Activity.ts
+models/ActivityAsset.ts
+models/ActivityAssetKindEnum.ts
+models/ActivityFeed.ts
+models/ActivitySeenRequest.ts
+models/ActivitySeenResult.ts
 models/AgentGraph.ts
 models/ApiVersionEnum.ts
 models/AuthTokensResponse.ts
@@ -129,6 +136,7 @@ models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DatasetWork.ts
 models/DecisionComparisonRequestRequest.ts
 models/DecisionInputKindEnum.ts
 models/DecisionInputRequest.ts
@@ -257,6 +265,7 @@ models/NativeModelProgress.ts
 models/NativeMonitor.ts
 models/NativeSample.ts
 models/NativeSamplePrediction.ts
+models/OnboardingMilestone.ts
 models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
 models/OptimizerCandidate.ts
@@ -357,6 +366,7 @@ models/QuantizationEnum.ts
 models/RepositorySnapshot.ts
 models/RepositorySnapshotRequest.ts
 models/RoleEnum.ts
+models/RolesEnum.ts
 models/RootSpanList.ts
 models/RowsPage.ts
 models/RunPipelineModeEnum.ts

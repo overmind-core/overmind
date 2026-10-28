@@ -4,9 +4,20 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import analytics, imports, lifecycle, review, transformation
+from overbae.services.datasets import (
+    analytics,
+    imports,
+    lifecycle,
+    list_activity,
+    review,
+    transformation,
+)
+from overbae.services.datasets import (
+    roles as dataset_role_service,
+)
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
+from overbae.services.datasets.workspaces import workspace_ids
 
 
 class DatasetReadinessSerializer(serializers.Serializer):
@@ -193,7 +204,28 @@ class DatasetPreparationSerializer(serializers.Serializer):
     edges = PreparationEdgeSerializer(many=True)
 
 
+class DatasetWorkSerializer(serializers.Serializer):
+    actor_kind = serializers.CharField(allow_null=True)
+    label = serializers.CharField()
+    status = serializers.CharField()
+    completed = serializers.IntegerField(allow_null=True)
+    total = serializers.IntegerField(allow_null=True)
+    unit = serializers.CharField(allow_blank=True)
+
+
+class DatasetListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        datasets = list(data.all() if hasattr(data, "all") else data)
+        self.context["current_work"] = list_activity.current_work(datasets)
+        self.context["dataset_roles"] = dataset_role_service.dataset_roles(datasets)
+        self.context["workspace_ids"] = workspace_ids(datasets)
+        return super().to_representation(datasets)
+
+
 class DatasetSerializer(serializers.ModelSerializer):
+    workspace_id = serializers.SerializerMethodField()
+    roles = serializers.SerializerMethodField()
+    work = serializers.SerializerMethodField()
     ocr_languages = serializers.ListField(
         child=serializers.CharField(), max_length=4, required=False
     )
@@ -207,7 +239,11 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Dataset
+        list_serializer_class = DatasetListSerializer
         fields = [
+            "work",
+            "roles",
+            "workspace_id",
             "id",
             "project",
             "name",
@@ -237,6 +273,31 @@ class DatasetSerializer(serializers.ModelSerializer):
             for f in fields
             if f not in ("name", "capability", "intent", "active", "ocr_languages")
         ]
+
+    @extend_schema_field(serializers.UUIDField())
+    def get_workspace_id(self, obj):
+        roots = self.context.get("workspace_ids")
+        if roots is None:
+            roots = workspace_ids([obj])
+        return roots[str(obj.pk)]
+
+    @extend_schema_field(
+        serializers.ListField(
+            child=serializers.ChoiceField(choices=dataset_role_service.ROLE_NAMES)
+        )
+    )
+    def get_roles(self, obj):
+        assigned = self.context.get("dataset_roles")
+        if assigned is None:
+            assigned = dataset_role_service.dataset_roles([obj])
+        return assigned.get(str(obj.pk), [])
+
+    @extend_schema_field(DatasetWorkSerializer(allow_null=True))
+    def get_work(self, obj):
+        work = self.context.get("current_work")
+        if work is None:
+            work = list_activity.current_work([obj])
+        return work.get(str(obj.pk))
 
     def _chain(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")

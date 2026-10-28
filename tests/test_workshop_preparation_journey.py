@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from overbae.models import DatasetPipelineRun
+from overbae.models import Activity, DatasetPipelineRun
 from overbae.services import operational_progress
 from overbae.services.datasets import (
     attachments,
@@ -131,9 +131,17 @@ def test_explicit_row_batches_publish_atomically_and_preserve_order(fail_last):
         source_fingerprint=original.fingerprint,
         request_key="batch-run",
     )
+    task_activity = Activity.objects.get(task_id=receipt["run"]["id"])
+    inventory = client.get("/api/datasets/", {"project": str(project.pk)}).data["results"]
+    active_work = next(item["work"] for item in inventory if item["id"] == str(dataset.pk))
+    assert active_work["label"] == "Transforming"
+    assert active_work["status"] == "queued"
+    assert active_work["actor_kind"] == task_activity.actor_kind
     seen = []
 
     def executor(run, index, path, directory, step, files, progress):
+        task_activity.refresh_from_db()
+        assert task_activity.status == "running"
         receipt = run.result["steps"][index]
         assert "exit_code" not in receipt
         assert "provider_execution" not in receipt
@@ -148,6 +156,11 @@ def test_explicit_row_batches_publish_atomically_and_preserve_order(fail_last):
     workbench.execute(receipt["run"]["id"], script_executor=executor)
     run = DatasetPipelineRun.objects.get(pk=receipt["run"]["id"])
     dataset.refresh_from_db()
+    task_activity.refresh_from_db()
+    assert task_activity.status == ("failed" if fail_last else "completed")
+    assert Activity.objects.filter(task_id=str(run.pk)).count() == 1
+    inventory = client.get("/api/datasets/", {"project": str(project.pk)}).data["results"]
+    assert next(item["work"] for item in inventory if item["id"] == str(dataset.pk)) is None
     assert seen == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10]]
     if fail_last:
         assert run.state == "failed"
