@@ -50,9 +50,12 @@ class APITokenBackend(BaseAuthentication):
 
     def authenticate(self, request):
         result = self.resolve(request)
-        if result and request.method not in SAFE_METHODS:
-            if "write" not in result[1].scope.get("permission", []):
-                raise exceptions.PermissionDenied("This API key is read-only.")
+        if (
+            result
+            and request.method not in SAFE_METHODS
+            and "write" not in result[1].scope.get("permission", [])
+        ):
+            raise exceptions.PermissionDenied("This API key is read-only.")
         return result
 
     def resolve(self, request):
