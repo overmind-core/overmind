@@ -63,4 +63,4 @@ A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` contr
   (`TEST_POSTGRES_HOST`/`TEST_POSTGRES_PORT` override it).
 - `uv add`/`uv remove` resync the venv WITHOUT dev/test groups — pytest
   vanishes. Restore with `uv sync --group dev --group test`.
-- Compose workers restart through watchmedo on `.py` changes under `overbae/`; API containers hot-reload. Recreate a worker after a dependency change (AGENTS.md Gotchas).
+- Compose workers restart through watchmedo on `.py` changes under `overbae/`; API containers hot-reload. A non-Python edit under `overbae/` (for example `overbae/modal/models.json`) needs `docker compose restart <worker>`. Recreate a worker after a dependency change (AGENTS.md Gotchas).

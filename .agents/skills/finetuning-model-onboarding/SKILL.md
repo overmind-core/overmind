@@ -28,12 +28,12 @@ If the log shows:
 diag: pretok_trl unsupported (ValueError('The chat template is not training-compatible (missing prefix-preservation or `{% generation %}` markers) and patching is not supported for this template. ...')); using multi_header fallback
 ```
 
-the job may still train, but assistant-only masks are the weaker Path B. **Onboarding is not done until Path A succeeds**: the preparation log has no `pretok_trl unsupported` line.
+the job may still train, but assistant-only masks are the weaker Path B. **Onboarding is not done until Path A succeeds**: `pretok_row` returns `path` `trl_training_template` or `native_generation_markers`, not `multi_header_fallback`. A missing `pretok_trl unsupported` line is not proof: when TRL's helper is unavailable the fallback is silent, and preprocessing does not keep the path.
 
 How to check (tokenizer issue — LoRA is enough; skip a second Full run):
 
 1. Probe the catalog **`hf_model_id`**, not the catalog `id`. Unsloth repos often ship a different `chat_template.jinja` than the upstream id; TRL and our patches match the live string after `from_pretrained`.
-1. Tiny Modal LoRA (`MAX_STEPS=2`, short `MAX_LENGTH`) is enough. Pretok runs in CPU preparation, so read `preparations/<id>/preprocess_stdout.log` on the SFT volume for `pretok_trl unsupported`.
+1. Tiny Modal LoRA (`MAX_STEPS=2`, short `MAX_LENGTH`) is enough. Pretok runs in CPU preparation, so read `preparations/<id>/preprocess_stdout.log` on the SFT volume for `pretok_trl unsupported`, and confirm Path A by calling `pretok_row` on a sample conversation in the training image and reading its `path`.
 1. One size is not enough when Unsloth templates differ inside a family (Gemma 4 E2B vs 12B, Qwen3-0.6B vs 8B, Qwen3.5-0.8B vs 4B). Hash the Hub template for each `hf_model_id` you enable.
 
 How to fix — do **not** branch in `engine_unsloth.py` / `pretok.py`:
@@ -95,7 +95,7 @@ If the family has no existing icon mapping, it falls through to a generic simple
 
 - [ ] Family resolves correctly (`modal_shared/modelfam/registry.py` pattern order) — add a `FamilySpec` only if genuinely new, otherwise reuse
 - [ ] Family quirks live in a hooks module, not in `engine_unsloth.py`/`finetuning_runner.py`/`finetuning_policy.py`
-- [ ] Chat template is pretok Path A on the **`hf_model_id` tokenizer** (no `pretok_trl unsupported` line in the preparation log). If TRL cannot auto-patch, add a byte-identical `{% generation %}` twin and register it in `training_chat_template.py` `KNOWN_TEMPLATE_PATCHES`; LoRA-only is enough to verify. Redeploy the SFT worker after jinja/pretok edits
+- [ ] Chat template is pretok Path A on the **`hf_model_id` tokenizer** (`pretok_row` returns `path` `trl_training_template` or `native_generation_markers`). If TRL cannot auto-patch, add a byte-identical `{% generation %}` twin and register it in `training_chat_template.py` `KNOWN_TEMPLATE_PATCHES`; LoRA-only is enough to verify. Redeploy the SFT worker after jinja/pretok edits
 - [ ] `finetuning.context_length` set to the real HF max position embeddings
 - [ ] Context probed per training type, H100 before H200, with real Modal runs
 - [ ] `training_type.{full,lora}.context_length` + `validated_context_length` set from actual probe results
