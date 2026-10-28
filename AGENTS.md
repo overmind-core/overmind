@@ -14,7 +14,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Frontend (Bun, from `frontend/`): `bun run typecheck`, `bun run lint` (Biome; no ESLint or Prettier), `bun run test` (vitest), `bun run check:all` (design, contrast and controls scripts). There is no `node` on this machine; run scripts with `bun`.
 - Backend (uv): `make test` (parallel pytest on the compose Postgres), `make test-journeys` (end-to-end journeys on the live ASGI app, a real Celery worker and compose Redis), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
 - SDK (uv): `make -C overmind test`, `make -C overmind lint-check`.
-- CI (`.github/workflows/ci.yml`) runs lint, frontend, migrations, test and journeys on `main` and ready PRs; draft PRs skip it. SDK CI runs on `overmind/` changes.
+- CI (`.github/workflows/ci.yml`) runs lint, frontend, test and journeys on `main` and ready PRs, plus migrations on ready PRs; draft PRs skip it. SDK CI runs on `overmind/` changes.
 - A local deployment already runs through `docker compose` with hot reload. Do not start dev servers to verify a change. Celery workers restart through watchmedo; `docker compose restart <worker>` if in doubt.
 - After changing the backend API surface: `make generate_api_client` (api-endpoints skill).
 - Run `pre-commit run --files <changed files>` at the end of a multi-file task, before committing.
@@ -25,10 +25,10 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Most status transitions use `.filter().update()`, so no Django signals fire and the in-memory object goes stale. Wire each side effect at the call site on a freshly reloaded row.
 - MCP (`/api/mcp/`, `services/mcp/`) is the first-class agent surface. REST, MCP and the Console share domain services; MCP is not a proxy of either. Every change gets an MCP-impact decision (mcp skill).
 - The frontend uses only the generated OpenAPI client in `frontend/src/openapi/`; never hand-edit it.
-- Every model ID lives in `overbae/core/model_registry.py`. Jev decisions use `overbae/core/decisions.py`.
+- Platform model IDs (judges, generation, Jev) live in `overbae/core/model_registry.py`; the training and serving catalog lives in `overbae/modal/models.json`. Jev decisions use `overbae/core/decisions.py`.
 - Tenancy is project-scoped with no org layer. A view that accepts guest writes opts in with `guest_allowed = True`, never with a permission class or middleware.
-- Ingest never creates a capability, a scan never deletes one, and `DELETE` is a soft delete. Wire identity is `overmind.capability.id` alone.
-- Celery routing must agree across `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json`. Only prefork pools enforce `time_limit`. `tests/test_celery_topology.py` enforces both.
+- OTLP ingest never creates a capability, a scan never deletes one, and `DELETE` is a soft delete. On OTLP spans, wire identity is `overmind.capability.id` alone.
+- Celery routing must agree across `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json`. Only prefork pools enforce `time_limit`. `tests/test_celery_topology.py` checks compose and `make worker` against the routes.
 - Native coding agents own interpretation, code and semantic work. The platform runs deterministic, lineage-bound operations and never invokes a platform planning or generation agent.
 - Work-starting operations take a project-scoped request key: an identical retry returns the same record, and a changed payload conflicts. An unknown provider acknowledgement is reconciled from its saved call ID, never resubmitted.
 - Measured facts only. Missing usage, progress, scores and telemetry stay unknown; never fill them with a percentage, a zero, an ETA or elapsed time.

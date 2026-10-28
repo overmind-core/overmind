@@ -9,24 +9,24 @@ The native coding agent owns interpretation, code and semantic work. The platfor
 
 ## Map
 
-| Path                                                                 | Owns                                                                                                               |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `services/datasets/dispatch.py`                                      | Create, split and attach sources                                                                                   |
-| `services/datasets/land.py`, `imports.py`, `admission.py`            | Landing, `DatasetImport` receipts, `DatasetLandingWork` admission                                                  |
-| `services/datasets/transfers.py`                                     | CLI `DatasetTransfer` receipts                                                                                     |
-| `services/datasets/workbench.py`                                     | Shared REST/MCP pipeline, import and publication lifecycle (`api/workbench.py`, `mcp/tools_workbench.py` adapt it) |
-| `models/dataset_pipeline.py`                                         | Immutable `DatasetPipeline` revisions and `DatasetPipelineRun` receipts                                            |
-| `pipeline_packages.py`, `pipeline_runner.py`, `pipeline_bindings.py` | Retained packages, sandbox execution, explicitly enabled bindings                                                  |
-| `services/datasets/versions.py`, `use.py`                            | Version resolution; consumer checks and pinning                                                                    |
-| `services/datasets/preparation.py`                                   | The source-to-output graph shared by the Console and MCP                                                           |
-| `sandbox/documents/`                                                 | Document parsing and OCR in the isolated `sandbox` service                                                         |
-| `tasks/datasets.py`                                                  | Landing and pipeline execution; the reaper fails expired runs without replay                                       |
+| Path                                                                                                               | Owns                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `services/datasets/dispatch.py`                                                                                    | Create, split and attach sources                                                                                   |
+| `services/datasets/land.py`, `imports.py`, `admission.py`                                                          | Landing, `DatasetImport` receipts, `DatasetLandingWork` admission                                                  |
+| `services/datasets/transfers.py`                                                                                   | CLI `DatasetTransfer` receipts                                                                                     |
+| `services/datasets/workbench.py`                                                                                   | Shared REST/MCP pipeline, import and publication lifecycle (`api/workbench.py`, `mcp/tools_workbench.py` adapt it) |
+| `models/dataset_pipeline.py`                                                                                       | Immutable `DatasetPipeline` revisions and `DatasetPipelineRun` receipts                                            |
+| `pipeline_packages.py`, `pipeline_runner.py`, `pipeline_execution.py`, `pipeline_graph.py`, `pipeline_bindings.py` | Retained packages, sandbox execution, row batching, the `flow` graph, explicitly enabled bindings                  |
+| `services/datasets/versions.py`, `use.py`                                                                          | Version resolution; consumer checks and pinning                                                                    |
+| `services/datasets/preparation.py`                                                                                 | The source-to-output graph shared by the Console and MCP                                                           |
+| `sandbox/documents/`                                                                                               | Document parsing and OCR in the isolated `sandbox` service                                                         |
+| `tasks/datasets.py`                                                                                                | Landing and pipeline execution; the reaper fails expired runs without replay                                       |
 
 Setup, the package protocol and regression commands: `docs/workshop-pipelines.md`. OCR details and rollout: `docs/workshop-ocr.md`.
 
 ## Sources and landing
 
-- A dataset may start from a written `brief` with no source or capability. Purpose is explicit (`train`, `eval`, `explore`) and otherwise stays pending; capability inference is only a hint.
+- A dataset may start from a written `brief` with no source or capability. Purpose is explicit (`train`, `eval`, `explore`) and otherwise stays pending; when no capability is given, REST and MCP landing assign the top-ranked capability if its score is above zero; CLI transfers never infer one.
 - The first source attaches to the draft; later uploads append versions. Original bytes, extraction metadata and row evidence are retained.
 - CLI uploads use `DatasetTransfer`: a project request key binds SHA-256, byte count and destination. Up to 100 ordered files and 2 GiB per transfer; file order is part of identity; one batch becomes one source cell or one version. Repeat the identical command after an interruption. `get_job(kind=dataset_transfer)` reads byte and publication state; `dataset_run` reports landing. An explicit `--json-rows-field` selects a top-level JSON row array and is recorded.
 - Local upload, export and checkpoint download authenticate separately from MCP. Without an explicit or repository key they use the address-bound account connection at `$XDG_CONFIG_HOME/overmind/connection.toml` (mode `0600`); repository keys are endpoint-bound too. `overmind connection check --project-id PROJECT --json` verifies MCP and transfer access from the invoking environment; MCP connectivity alone is not readiness. Verify the installed CLI from the workspace and from a repository-free directory.
@@ -46,12 +46,12 @@ Setup, the package protocol and regression commands: `docs/workshop-pipelines.md
 - New revisions need a retained Python package with agent-authored stages; inline operations are rejected (`pipeline_package_required`). Package-free historical revisions are read-only.
 - Revisions are immutable and numbered per project family; `derived_from` starts a separate attributed family. Revision keys are project-scoped; run keys are per dataset.
 - Packages run only in the isolated sandbox through interactive workers: separate UIDs, no network, credentials, media mounts or Docker socket, measured memory admission. Registration and validation never execute code. Process exit status, not a script-written file, establishes completion.
-- Steps declare `id` and `input`; `inputs` concatenates disjoint earlier branches in order and rejects overlapping `source_row` identities. It is not a relational join. `flow` returns nodes, edges, conditions, terminal and `unconsumed_steps`. Script conditions cite `expression` and `line` and never execute as expressions.
+- Steps declare `id` and `input`; `inputs` concatenates disjoint earlier branches in order and rejects overlapping `source_row` identities. It is not a relational join. `flow` (`pipeline_graph.py`) returns `nodes`, `edges` (each with its `condition`), `terminal_steps` and `unconsumed_steps`. Script conditions cite `expression` and `line` and never execute as expressions.
 - A successful run publishes all step cells atomically. Preview publishes nothing. `min_rows`/`max_rows` apply at publication and show as deferred in previews; row preservation, schema and lineage checks apply in both. Run receipts expose queue age, a polling interval, terminal time and structured failed checks. Runner heartbeats continue through validation and publication without advancing measured progress.
 - Cells carry receipt-backed `transformation` attribution (run, revision, package checksum, entrypoint). External imports and unrecorded history never claim platform execution. Every retained package file is inspectable with checksum-verified pagination.
-- Controller recovery uses a dedicated PostgreSQL session lock; only its owner executes queued recipes. On startup it fails interrupted runs and removes their containers, without publishing partial output or replaying scripts.
+- Recovery is lease expiry: the `reap_stuck_runs` beat task calls `workbench.expire_runs`, which fails runs past their lease without publishing partial output or replaying scripts.
 - Failure or cancellation leaves source and consumer versions unchanged. Cancellation prevents publication; it does not claim to stop a running calculation.
-- `batch_rows` (1–100,000) splits row-independent steps into separate containers; global sorting, grouping, splitting and deduplication must not batch.
+- `batch_rows` (1–100,000) splits a row-independent step into separate sandbox runs (`pipeline_execution.py`); global sorting, grouping, splitting and deduplication must not batch.
 - Bindings start paused, pin a revision, and rebuild full source snapshots; checkpoint and cells commit together.
 - Keep each step's logic in its visible entrypoint; helpers hold reusable utilities, not an opaque dispatcher. Change a recipe through a new revision and run; never rewrite historical scripts.
 - `save_dataset_pipeline(dataset=..., package=...)` associates the script with the dataset's preparation; retrying an older request never resets a newer association.
@@ -59,12 +59,12 @@ Setup, the package protocol and regression commands: `docs/workshop-pipelines.md
 
 ## External imports
 
-External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-scoped artifact cell. Every row keeps `source_row` or declares all parents in `_overmind_parent_rows`; the provenance service validates every parent. External execution is recorded as `external_attributed`. Never promote source references or supplied review flags into proof of semantic correctness.
+External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-scoped artifact cell. Every row keeps `source_row` or declares all parents in `_overmind_parent_rows`; publication validates every parent (`review.py`, `workbench.py`). External runs are recorded as `external_attributed`, and their cells' `transformation.execution` is `external_import`. Never promote source references or supplied review flags into proof of semantic correctness.
 
 ## Storage and queries
 
 - Frames are Parquet at `MEDIA_ROOT/datasets/<dataset>/cells/<cell>.parquet`. Cell IDs bind versions; version labels are derived. Source identity is `source_row`, not display position.
-- Mixed scalars and integers outside signed 64-bit range are stored as JSON. Shared pandas readers must not coerce them again.
+- A column becomes JSON when it mixes kinds, holds an integer outside signed 64-bit range, or mixes floats with an integer a float cannot represent exactly (`store.py`). Shared pandas readers must not coerce these values again.
 - `query_dataset` caps output at 100 rows and 32 KiB and returns `query_result_too_large` without clipping; a configurable ten-second deadline returns `query_timeout`. Redis admission bounds MCP SQL globally and per project; busy admission returns a retryable error with the cell and retry delay.
 - `overmind dataset export --source SHA256` downloads retained originals with byte verification.
 

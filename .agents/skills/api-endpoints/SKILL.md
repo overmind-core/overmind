@@ -31,7 +31,7 @@ or in `urlpatterns` for plain views.
 make generate_api_client
 ```
 
-Settings refuse to load without Modal tokens when `.env` has none: prefix with `MODAL_TOKEN_ID=dummy MODAL_TOKEN_SECRET=dummy` — the schema step never talks to Modal.
+Settings refuse to load when any key in `_REQUIRED_KEYS` (`overbae/settings.py`: sandbox, OpenRouter, Modal, inference, AWS, Hugging Face) is unset. If `.env` lacks some, prefix the command with dummy values for those keys — the schema step calls none of these services.
 
 Runs `manage.py spectacular` → dockerized `openapi-generator-cli` → rewrites `frontend/src/openapi/{apis,models}`.
 

@@ -4,14 +4,14 @@ Six workers over six queues. Workers are resource profiles; queues are fairness 
 
 | Worker        | Pool    | Conc | Holds                                                                               |
 | ------------- | ------- | ---- | ----------------------------------------------------------------------------------- |
-| `control`     | threads | 8    | orchestration, chord callbacks, FSM advances, reconcilers, beat                     |
+| `control`     | threads | 8    | orchestration, chord callbacks, FSM advances, reconcilers                           |
 | `io`          | threads | 24   | preparation, eval launch, serving, connector polling                                |
 | `io_traces`   | prefork | 4    | live span and trajectory scoring, signals                                           |
 | `batch`       | prefork | 6    | pipeline bindings, evaluation generation and scoring, partitions, native evaluation |
 | `landing`     | prefork | 1    | source imports                                                                      |
 | `interactive` | prefork | 4    | retained-package Workshop pipelines, runtime health                                 |
 
-Each worker consumes only its own queue.
+Each worker consumes only its own queue. Beat runs as its own `celery-beat` service; its tasks route like any other task.
 
 ## Why the split exists
 
@@ -25,7 +25,7 @@ Every prefork lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved
 
 ## Routing must agree in four places
 
-`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` enforces the agreement, rejects a time-limited task on a thread lane, and imports `overbae.tasks` in a fresh worker so a task that only tests import cannot pass. Workers hot-restart via watchmedo on `.py` changes.
+`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` checks that compose and `make worker` drain every routed queue, rejects a time-limited task on a compose thread pool, checks the prefork prefetch flags and the `io`/`io_traces` split in `worker-topology.json`, and imports `overbae.tasks` in a fresh worker. Nothing checks that `worker-topology.json` drains every queue; keep it in step by hand. Workers hot-restart via watchmedo on `.py` changes.
 
 ## Durable admission
 
@@ -34,13 +34,13 @@ Waiting work is a PostgreSQL row, admitted by a row-locked dispatcher in least-r
 - `LiveScoringWork` — spans, trajectories and signals; global and per-project caps; fenced running lease longer than the five-minute hard limit.
 - `DatasetLandingWork` — one import per project, global admission follows observed landing capacity up to eight. Waiting never expires unless `DATASET_IMPORT_MAX_QUEUE_SECONDS` is nonzero. A lost started import needs explicit recovery.
 - `EvalGenerationScheduler` — `EVAL_MAX_IN_FLIGHT`, `EVAL_MAX_IN_FLIGHT_PER_PROJECT` and `EVAL_MAX_IN_FLIGHT_PER_RUN`; completion and a 30-second control tick refill slots.
-- `DatasetPipelineRun` — per-project interactive slots in Redis; the default project limit stays below the minimum interactive worker size.
+- `DatasetPipelineRun` is the exception: a queued run takes a per-project Redis slot or retries through the broker every 2 s, and fails after 15 minutes without capacity. The default project limit stays below the minimum interactive worker size.
 
 A lost started attempt becomes an explicit unknown outcome. It is never repeated automatically. Queue metrics report durable backlog and oldest waiting age.
 
 ## Leases and reconcilers
 
-Reconcilers run on `control` with short expiries. The training reconciler renews a 30-second Redis lease, so a dead worker stops suppressing observations quickly. Reconciliation repairs missed terminal events from local receipts; it never polls or resubmits a provider to do so.
+Frequent beat tasks (live-scoring admission, import and evaluation dispatch, Workshop bindings, queue metrics, sweeps) set short `expires`, so a busy queue drops stale ticks; most domain reconcilers set none. The training reconciler renews a 30-second Redis lease, so a dead worker stops suppressing observations quickly. Reconciliation repairs missed terminal events from local receipts; it never polls or resubmits a provider to do so.
 
 ## Deployment
 

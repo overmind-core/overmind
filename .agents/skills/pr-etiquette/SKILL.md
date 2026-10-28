@@ -7,15 +7,15 @@ description: How to open a complete pull request on overmind-core/overmind — t
 
 ## Before you push — what CI will run
 
-`.github/workflows/ci.yml` runs five jobs on every non-draft PR and on `main`. Run the equivalents locally rather than discovering them in CI:
+`.github/workflows/ci.yml` runs five jobs on every non-draft PR; pushes to `main` run all but `migrations`. Run the equivalents locally rather than discovering them in CI:
 
-| CI job       | What it runs                                                                                                                                  | Local equivalent            |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `lint`       | `uv run ruff check .` and `uv run ruff format --check .`                                                                                      | `make lint-backend`         |
-| `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/` |
-| `test`       | `uv run pytest tests/ -n auto --dist worksteal -q`                                                                                            | `make test`                 |
-| `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract                                                                                       | `make test-journeys`        |
-| `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`     |
+| CI job       | What it runs                                                                                                                                  | Local equivalent                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `lint`       | `uv run ruff check .` and `uv run ruff format --check .`                                                                                      | the same two commands (`make lint-backend` fixes in place) |
+| `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/`                                |
+| `test`       | `uv run pytest tests/ -n auto --dist worksteal -q`                                                                                            | `make test`                                                |
+| `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract                                                                                       | `make test-journeys`                                       |
+| `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`                                    |
 
 `pre-commit run --files <changed files>` before committing substantial work. Note that `mdformat` reflows markdown, so commit its output rather than fighting it.
 
@@ -64,7 +64,7 @@ able to progress is not complete. The mcp skill itself lives in
 
 Ask what else reads what you changed, and check each one that does:
 
-- Celery routing in `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json` — `tests/test_celery_topology.py` enforces their agreement
+- Celery routing in `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json` — `tests/test_celery_topology.py` checks compose and `make worker`; keep `worker-topology.json` in step by hand
 - `manage.py seed_demo` — new tables and states must seed, and must stay terminal (seed-demo-data skill)
 - the generated OpenAPI client (api-endpoints skill)
 - the agent instructions (section 4)
@@ -118,7 +118,7 @@ Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.
 
 ## Conventions
 
-- Never push directly to `main`; land work via a PR from a feature branch. A hook blocks the push.
+- Never push directly to `main`; land work via a PR from a feature branch. A hook blocks a push that names `main` or `master`; a bare `git push` while on `main` is not caught.
 - Verify the actual current branch with `git status -sb` before pushing — the session-start banner can be stale.
 - Commit messages: short subject + at most one body line. No co-author trailers.
 - For fix-sweep PRs, a before/after table in the body is the house style.
