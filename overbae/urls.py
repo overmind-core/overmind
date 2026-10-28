@@ -49,6 +49,7 @@ from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
+from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.robots import robots_txt
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
@@ -135,27 +136,42 @@ router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
 
 urlpatterns = []
-# Self-hosted instances (no Clerk) never expose cross-tenant sales metrics.
+# Register internal Overwatch metrics only when an admin token is configured.
 if settings.SALES_DASHBOARD_TOKEN:
-    from overbae.api.sales_dashboard import (
-        SalesAccountActivityView,
-        SalesAccountsView,
-        SalesFunnelView,
-        SalesOverviewView,
+    from overbae.api.overwatch_dashboard import (
+        ActivationView,
+        OverviewView,
+        ProductUsageView,
+        UserActivityView,
+        UsersView,
     )
 
     urlpatterns += [
-        path("api/internal/sales/overview/", SalesOverviewView.as_view(), name="sales-overview"),
-        path("api/internal/sales/funnel/", SalesFunnelView.as_view(), name="sales-funnel"),
-        path("api/internal/sales/accounts/", SalesAccountsView.as_view(), name="sales-accounts"),
+        path("api/internal/overwatch/overview/", OverviewView.as_view(), name="overwatch-overview"),
         path(
-            "api/internal/sales/accounts/<int:pk>/",
-            SalesAccountActivityView.as_view(),
-            name="sales-account-activity",
+            "api/internal/overwatch/activation/",
+            ActivationView.as_view(),
+            name="overwatch-activation",
+        ),
+        path(
+            "api/internal/overwatch/product-usage/",
+            ProductUsageView.as_view(),
+            name="overwatch-product-usage",
+        ),
+        path("api/internal/overwatch/users/", UsersView.as_view(), name="overwatch-users"),
+        path(
+            "api/internal/overwatch/users/<int:pk>/",
+            UserActivityView.as_view(),
+            name="overwatch-user-activity",
         ),
     ]
 
 urlpatterns += [
+    path(
+        "api/internal/overwatch/agent/query/",
+        OverwatchQueryView.as_view(),
+        name="overwatch-agent-query",
+    ),
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(
         "api/deployed-models/<uuid:deployment_id>/inference/",
