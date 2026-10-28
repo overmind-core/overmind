@@ -30,7 +30,7 @@ interface FeedbackDialogProps {
 
 type SubmitState = "idle" | "submitting" | "submitted" | "error";
 
-const DISCORD_URL = "https://discord.gg/TPF722ZKuj";
+const DISCORD_URL = "https://discord.gg/XGsbf49EHG";
 
 const CATEGORIES: {
   value: FeedbackCategoryEnum;
