@@ -135,9 +135,9 @@ reports and other users' messages are excluded. Metadata audit uses the existing
 Overlord store. A dedicated Redis admission store keeps hashes/IDs/counters,
 never question or report content, and is outside the product database.
 
-The profile uses a dedicated direct Anthropic API key and is disabled by default.
-The operator must approve its data policy and retention agreement. There is no
-automatic zero-retention routing in this direct adapter. Free-text questions may
+The profile calls the Anthropic model through OpenRouter and is disabled by
+default. Every request requires zero-data-retention providers; OpenRouter rejects
+it when none can serve the model. The operator must approve the data policy. Free-text questions may
 contain sensitive prose beyond email/credential filters; approval must account
 for that. Secrets remain in server settings, never browser variables, prompts,
 URLs, audit values or error responses.

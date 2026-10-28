@@ -121,8 +121,7 @@ The shared dashboard bearer key is provisional. Browser expiry does not revoke
 it server-side. Employee SSO, individual revocation and a production access gate
 need review before wider access. Free-text questions may contain sensitive
 prose beyond the email/credential filters; model use requires an approved data
-policy and the dedicated direct Anthropic project needs an approved retention agreement.
-There is no automatic zero-retention routing in this adapter.
+policy. Model calls go through OpenRouter with zero-data-retention routing required.
 
 Live PostHog compatibility, production identity, query plans on production data
 and deployed headers require deployment review. Internal MCP authorization remains a proposal; the shared runtime now has a companion PR. No live customer
