@@ -11,7 +11,7 @@ Tenancy is project-scoped (`User` ↔ `Project` through `ProjectMembership`), wi
 
 ## API keys
 
-`scope=account` (every project the user belongs to) or `scope=project` (one `resourceIds` entry). REST and MCP `create_api_key` share `APIToken.create_for_user` and the Console dialog's fields: name, description, expiry of 30, 90, 180 or 365 days, or 0 for never. MCP omits `project_id` for an account key. The plaintext is returned once. Over MCP, a project credential cannot mint an account key; guests cannot mint keys. MCP OAuth credentials work only on MCP (mcp skill).
+`scope=account` (every project the user belongs to) or `scope=project` (one `resourceIds` entry). REST and MCP `create_api_key` share `APIToken.create_for_user` and the Console dialog's fields: name, description, expiry of 30, 90, 180 or 365 days, or 0 for never. MCP omits `project_id` for an account key. The plaintext is returned once. A key creates keys only for its own project and permissions (`iam.delegation_denial`, REST and MCP); guests cannot mint keys. `APITokenBackend.authenticate` refuses REST writes from a key without `write`; MCP resolves keys through `resolve()` and filters tools by permission instead. MCP OAuth credentials work only on MCP (mcp skill).
 
 ## Billing
 

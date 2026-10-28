@@ -114,20 +114,34 @@ def test_project_api_key_mints_only_for_its_own_project():
     assert APIToken.objects.filter(user=user).count() == 2
 
 
-def test_api_key_mints_only_permissions_it_holds():
+def test_read_only_api_key_cannot_write():
     user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)
     raw, _ = APIToken.create_for_user(user, project=project, permission=["read"])
     client = APIClient()
     client.credentials(HTTP_X_API_KEY=raw)
 
+    assert client.get(f"/api/projects/{project.id}/").status_code == status.HTTP_200_OK
+    r = client.patch(f"/api/projects/{project.id}/", {"name": "renamed"}, format="json")
+    assert r.status_code == status.HTTP_403_FORBIDDEN
+    project.refresh_from_db()
+    assert project.name != "renamed"
+
+
+def test_api_key_mints_only_permissions_it_holds():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+    raw, _ = APIToken.create_for_user(user, project=project, permission=["write"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
     wider = client.post("/api/auth/api-keys/", {"project": str(project.id)}, format="json")
     assert wider.status_code == status.HTTP_403_FORBIDDEN
 
-    same = {"scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["read"]}}
+    same = {"scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["write"]}}
     r = client.post("/api/auth/api-keys/", same, format="json")
     assert r.status_code == status.HTTP_201_CREATED
-    assert r.data["scope"]["permission"] == ["read"]
+    assert r.data["scope"]["permission"] == ["write"]
 
 
 def test_api_key_current_returns_scope():

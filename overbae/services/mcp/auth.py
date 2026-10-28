@@ -83,7 +83,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
             ),
         )
     try:
-        result = APITokenBackend().authenticate(request)
+        result = APITokenBackend().resolve(request)
     except exceptions.AuthenticationFailed as exc:
         raise _auth_error(str(exc.detail)) from None
 
