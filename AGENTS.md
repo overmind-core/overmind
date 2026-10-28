@@ -77,7 +77,7 @@ Name by behavior. Plan-phase labels (P0/P1, "Phase N") stay out of code, comment
 - Simple, self-evident fixes need typecheck and lint only; say plainly that tests did not run. When a suite run is warranted, run it once, tee to a log and grep the log.
 - Which tests to run (compose Postgres and Redis up): while editing, the feature's test file and its journey (`make test-journeys test_args="-k <name>"`); before a push, `make test` (about 75 s); when a change crosses ingest, sync, the worker, the gateway, MCP or the Console, `make test-journeys` (about 6 min). CI runs the rest.
 - A change is finished when every surface that reflects it is updated: MCP, Celery routing, `seed_demo`, the generated client, this file and the skills, and the docs repo at `../docs` (pr-etiquette skill lists them). CI cannot catch these.
-- When a change makes this file or a skill untrue, fix that line in the same PR. There is one copy of every rule.
+- When a change makes this file, a skill, a hook message or another agent doc untrue, update or delete that line in the same PR; the pr-etiquette skill lists the places to search. There is one copy of every rule.
 - Commit messages: short subject plus at most one body line, no co-author trailers. Commit and push only when asked; on a sweep branch, one commit per observation.
 
 ## Communication

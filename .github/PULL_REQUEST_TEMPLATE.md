@@ -26,7 +26,7 @@
 - [ ] **MCP** — classify (MCP-ready / CLI-guided / frontend-only / out of scope); catalog, contracts, tools, prompts, resources, `tests/test_mcp_*.py`
 - [ ] **Blast radius** — celery routing, `seed_demo`, generated OpenAPI client
 - [ ] **Docs** — `overmind-core/docs` PR opened and linked, if user-visible behaviour changed
-- [ ] **Agent config** — `AGENTS.md` or the affected skill updated, if this changes behaviour they describe
+- [ ] **Agent instructions** — every match in `AGENTS.md`, `.agents/` (skills, references, hooks), `docs/` and `overmind/skills/` updated, if this changes behaviour they describe
 
 ## Checklist
 

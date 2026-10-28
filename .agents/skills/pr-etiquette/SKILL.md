@@ -1,6 +1,6 @@
 ---
 name: pr-etiquette
-description: How to open a complete pull request on overmind-core/overmind — the CI gates, the cross-cutting surfaces a change must carry with it (MCP, blast radius, the docs repo), gh pr edit being broken here, and body conventions. Use when opening a PR, editing a PR title or body, or pushing branch work for review.
+description: How to open a complete pull request on overmind-core/overmind — the CI gates, the cross-cutting surfaces a change must carry with it (MCP, blast radius, the docs repo, agent instructions), gh pr edit being broken here, and body conventions. Use when opening a PR, editing a PR title or body, or pushing branch work for review.
 ---
 
 # Pull requests on overmind-core/overmind
@@ -64,10 +64,10 @@ able to progress is not complete. The mcp skill itself lives in
 
 Ask what else reads what you changed, and check each one that does:
 
-- Celery routing in `CELERY_TASK_ROUTES`, `make worker`, and docker-compose — `tests/test_celery_topology.py` enforces the three agreeing
+- Celery routing in `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json` — `tests/test_celery_topology.py` enforces their agreement
 - `manage.py seed_demo` — new tables and states must seed, and must stay terminal (seed-demo-data skill)
 - the generated OpenAPI client (api-endpoints skill)
-- `AGENTS.md` and any skill whose statements the change makes untrue
+- the agent instructions (section 4)
 
 ### 3. Docs
 
@@ -76,6 +76,28 @@ User-visible behaviour changes ship with a docs change in the sibling repo
 page, plus `docs.json` if the navigation moves. Open that PR alongside this one
 and link the two. A platform PR that changes what a user sees is not complete
 while the docs still describe the old behaviour.
+
+### 4. Agent instructions
+
+Agent docs drift when a PR changes behaviour and leaves the old text in place. Before
+you open the PR, search them for every name, limit, route, state and command you
+changed, and update each match in the same PR:
+
+```bash
+rg -n '<changed name>' AGENTS.md CONTRIBUTING.md DESIGN.md PRODUCT.md .agents/ docs/ overmind/skills/
+```
+
+- `AGENTS.md` — the rules and traps every task needs.
+- `.agents/skills/*/SKILL.md` and their `references/*.md` — subsystem maps and procedures.
+- `.agents/hooks/` — a guard whose rule or message names what you changed. Hook wiring in `.claude/settings.json` and `.codex/hooks.json` changes together.
+- `docs/*.md` — internal runbooks such as `workshop-pipelines.md` and `workshop-ocr.md`.
+- `overmind/skills/` — the user-facing skills that `overmind init` installs; a change there needs the SDK version bump above.
+- `CONTRIBUTING.md`, `DESIGN.md` and `PRODUCT.md` when they describe the change.
+
+Update or delete the stale line; don't append a description of the new behaviour
+beside it. There is one copy of each rule: put a fact in the skill that owns the
+subsystem and point to it from elsewhere. `AGENTS.md` keeps only what every task
+needs, and the `agent-docs-size` hook enforces its size.
 
 ## Creating
 
@@ -100,4 +122,3 @@ Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.
 - Verify the actual current branch with `git status -sb` before pushing — the session-start banner can be stale.
 - Commit messages: short subject + at most one body line. No co-author trailers.
 - For fix-sweep PRs, a before/after table in the body is the house style.
-- If the change makes `AGENTS.md` or a skill wrong, fix it in the same PR. There is one copy of each rule.
