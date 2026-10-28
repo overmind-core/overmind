@@ -5,7 +5,7 @@ description: Rules for adding a new model or model family to the finetuning pipe
 
 # Finetuning model onboarding
 
-All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_unsloth.py`). Every model and family in this pipeline goes through the same engine — the rules below exist to keep it that way.
+All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_unsloth.py`). Every chat model and family goes through the same engine — the rules below exist to keep it that way. Decision families (Clef, D3, D1) run `sft_assets/decision_engine.py` instead.
 
 ## 1. Never branch on model/family in the shared script
 
@@ -13,10 +13,10 @@ All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_u
 
 - Do **not** add `if model_id == "..."` or `if family == "..."` branches to the engine, runner, or policy.
 - Do add/extend a family hooks module under `overbae/services/sft_assets/families/<family>.py`, subclassing `DefaultHooks` (`families/__init__.py`) and overriding only the hook methods you need (`env_overrides`, `load_kwargs`, `post_load`, `device_map`, `sft_config_overrides`, `peft_lora_dropout`, `peft_gradient_checkpointing`, `fast_model_cls`). Export a single `hooks = XxxHooks()`.
-- Register the family in `modal_shared/modelfam/families.py` as a `FamilySpec` (patterns, images, `hooks_module="families.<family>"`), then add it to the ordered `_FAMILIES` tuple in `modal_shared/modelfam/registry.py` — **specific patterns before general ones** (e.g. `qwen35`/`qwen_coder` before `qwen_mm` before `qwen`).
+- Register the family in `modal_shared/modelfam/families.py` as a `FamilySpec` (patterns, images, `hooks_module="families.<family>"`), then add it to the ordered `_FAMILIES` tuple in `modal_shared/modelfam/registry.py` — **specific patterns before general ones** (e.g. `qwen38`, `qwen35` and `qwen3_coder` before `qwen_mm` before `qwen`).
 - The engine calls hooks uniformly (`load_hooks(_spec.hooks_module)` then `_hooks.<method>(...)`) — it never knows which family it's running. That's the contract to preserve.
 
-Reference existing hooks files for scale: `qwen35.py` (two-line SDPA override) up to `gpt_oss.py` (monkeypatches + adapter base-model swap) — match the size of the override to the size of the actual quirk, don't build more than the model needs.
+Reference existing hooks files for scale: `llama.py` (`hooks = DefaultHooks()`) up to `gpt_oss.py` (monkeypatches + adapter base-model swap) — match the size of the override to the size of the actual quirk, don't build more than the model needs.
 
 ## 2. Chat template must be training-compatible (pretok Path A)
 
@@ -28,25 +28,25 @@ If the log shows:
 diag: pretok_trl unsupported (ValueError('The chat template is not training-compatible (missing prefix-preservation or `{% generation %}` markers) and patching is not supported for this template. ...')); using multi_header fallback
 ```
 
-the job may still train, but assistant-only masks are the weaker Path B. **Onboarding is not done until Path A succeeds** (`pretok paths:` contains `trl_training_template` or `native_generation_markers`, not only `multi_header_fallback`).
+the job may still train, but assistant-only masks are the weaker Path B. **Onboarding is not done until Path A succeeds**: `pretok_row` returns `path` `trl_training_template` or `native_generation_markers`, not `multi_header_fallback`. A missing `pretok_trl unsupported` line is not proof: when TRL's helper is unavailable the fallback is silent, and preprocessing does not keep the path.
 
 How to check (tokenizer issue — LoRA is enough; skip a second Full run):
 
 1. Probe the catalog **`hf_model_id`**, not the catalog `id`. Unsloth repos often ship a different `chat_template.jinja` than the upstream id; TRL and our patches match the live string after `from_pretrained`.
-1. Tiny Modal LoRA (`MAX_STEPS=2`, short `MAX_LENGTH`) is enough. Read `runs/<run_id>/train_stdout.log` for `pretok paths:` / `pretok_trl unsupported`.
+1. Tiny Modal LoRA (`MAX_STEPS=2`, short `MAX_LENGTH`) is enough. Pretok runs in CPU preparation, so read `preparations/<id>/preprocess_stdout.log` on the SFT volume for `pretok_trl unsupported`, and confirm Path A by calling `pretok_row` on a sample conversation in the training image and reading its `path`.
 1. One size is not enough when Unsloth templates differ inside a family (Gemma 4 E2B vs 12B, Qwen3-0.6B vs 8B, Qwen3.5-0.8B vs 4B). Hash the Hub template for each `hf_model_id` you enable.
 
 How to fix — do **not** branch in `engine_unsloth.py` / `pretok.py`:
 
 1. Save the **live** Hub template as a base jinja under `overbae/services/sft_assets/` (existing dirs: `llama_templates/`, `qwen_templates/`, `gemma_templates/`, …).
 1. Copy it to `*_training.jinja` and wrap only assistant-generated spans in `{% generation %}` / `{% endgeneration %}`. `{% generation %}` is a real Jinja block: it cannot open inside `{% if %}` and close after `{% endif %}`, and `{% if %}`/`{% else %}`/`{% endif %}` must sit wholly inside or wholly outside it. The training file must render **byte-identical** text to the base; markers are invisible in the rendered string. Qwen3's twins omit the empty `<think>` block the base inserts on a final assistant turn: that block is not prefix-preserving, and serving keeps thinking off. Compile every twin (see `test_every_training_template_compiles`).
-1. Register `(base, training)` in `KNOWN_TEMPLATE_PATCHES` in `overbae/services/sft_assets/training_chat_template.py`. `pretok.py` and `engine_unsloth.py` both call `patch_known_training_template` — that is the only dispatch table.
+1. Register `(base, training)` in `KNOWN_TEMPLATE_PATCHES` in `overbae/services/sft_assets/training_chat_template.py`. `pretok.py` calls `patch_known_training_template` — that is the only dispatch table.
 1. Add a pair assertion in `tests/test_sft_training_chat_template.py` (or rely on `test_every_patch_pair_exists_and_training_has_markers`).
 1. `sft_assets` is baked into the train image (`add_local_dir`). A pretok/jinja change does nothing until `modal deploy` of `overbae/modal/modal_sft_worker.py`. Re-run the LoRA probe after deploy.
 
 ## 3. If a model fails on its assigned environment, re-derive the GPU, don't patch around it
 
-GPU selection for training lives in `finetuning_runner.py`'s `_GPU_TABLE` / `_GPU_TABLE_FULL` (params_b → gpu_type/count) plus the `_LONG_CONTEXT_H200` bump and any family-specific clamp (e.g. `clamp_gemma4_training_gpu` — Gemma4 forced onto 1×H200 because Unsloth's `device_map="balanced"` multi-GPU split is broken for it).
+GPU selection for training lives in `finetuning_runner.py`'s `_GPU_TABLE` / `_GPU_TABLE_FULL` (params_b → gpu_type/count) plus the `_LONG_CONTEXT_H200` bump and any family-specific clamp (e.g. `clamp_gemma4_training_gpu` — a Gemma4 run the table puts on more than one GPU moves to 1×H200, because Unsloth's `device_map="balanced"` multi-GPU split is broken for it).
 
 If a new model OOMs or errors on its assigned GPU:
 
@@ -59,7 +59,7 @@ If a new model OOMs or errors on its assigned GPU:
 For every new model, before it's usable for finetuning:
 
 1. **Find the real max context length.** This is the HF `max_position_embeddings` (no RoPE/YaRN scaling) — it goes in `finetuning.context_length` in `models.json`, distinct from the top-level `context_length` (published inference window, which may be YaRN-extended).
-1. **Probe each enabled training type (`full`, `lora`) independently.** Use `scripts/calibrate_activation_budget.py` (`--experiment e3` context sweep, spawns real Modal `sft_unsloth` jobs and reads peak VRAM) to find the largest context that actually trains without OOM.
+1. **Probe each enabled training type (`full`, `lora`) independently.** Run tiny real Modal jobs (`MAX_STEPS=2`) at increasing `MAX_LENGTH` and read `vram_peak_gb` from the run's metrics records to find the largest context that trains without OOM. The repo has no calibration script for this sweep.
 1. **Try H100 first, then H200.** `TRAINING_GPU_VRAM_GB = {"H100": 80.0, "H200": 141.0}` (`finetuning_policy.py`) — H100 has less VRAM, so it's the cheaper GPU and must be tried first. Only fall back to H200 if the model can't reach its real max context length on H100.
 1. **Record the result per training type** in `models.json` under `finetuning.training_type.<full|lora>`:
    - `context_length`: the largest context that trained successfully (equal to `finetuning.context_length` if the full ceiling was reached, lower otherwise).
@@ -76,10 +76,10 @@ Model configuration — context lengths, batch sizes, training type enablement, 
 
 Actual training cost is **computed, not stored per model** — `overbae/services/finetuning_pricing.py` derives it from fields already in `models.json`:
 
-- Baseten/Modal: `estimate_training_cost()` picks GPU count from `_BASETEN_GPU_COUNT_TIERS` keyed on `total_params_b`, estimates duration from FLOPs (`6·N·D` full / `4·N·D` LoRA at 35% assumed MFU), and bills GPU-count × minutes × the fixed H100 per-minute rate.
-- Together: `training_price_per_million()` looks up a $/1M-token rate from `_TOGETHER_SFT_TIERS`, again keyed on `total_params_b`.
+- Modal (the only backend settings allow): `estimate_training_cost()` picks GPU count from `_BASETEN_GPU_COUNT_TIERS` keyed on `total_params_b`, estimates duration from FLOPs (`6·N·D` full / `4·N·D` LoRA at 35% assumed MFU) plus a fixed 10-minute overhead, and bills GPU count × seconds × `_MODAL_H100_USD_PER_SECOND`.
+- The Baseten (per-minute) and Together (`training_price_per_million()`, `_TOGETHER_SFT_TIERS`) branches remain for catalog entries on those backends.
 
-So as long as the new model's `total_params_b` is set correctly in `models.json`, cost estimation works automatically — don't add a new pricing branch or per-model rate to `finetuning_pricing.py`. The only case it returns `None` is a >100B-param Together model, which needs an individually negotiated rate (not in this catalog today).
+So as long as the new model's `total_params_b` is set correctly in `models.json`, cost estimation works automatically — don't add a new pricing branch or per-model rate to `finetuning_pricing.py`. It returns `None` for an unpriced backend, for zero trained tokens, and for a >100B-param Together model, which needs an individually negotiated rate.
 
 The one thing to add by hand is the **marketing "from" floor**: `models.json`'s `pricing.train_from_usd` (paired with `pricing.run_from_usd_per_1m_output` — `model_library.py`'s `_pricing()` drops the whole block from the API response unless both are set). This is a display-only number for the model library UI, not read by the cost estimator. Set it by calling `estimate_training_run()`/`estimate_training_cost()` for a small representative dataset on the new model and rounding to a customer-facing number consistent with similarly-sized peer models already in the catalog (e.g. dense ~1-4B models cluster around `0.5–0.7`, larger dense/MoE tiers step up to `1.0–2.5`, frontier-scale up to `4.5–5.0`).
 
@@ -87,7 +87,7 @@ The one thing to add by hand is the **marketing "from" floor**: `models.json`'s 
 
 If the family has no existing icon mapping, it falls through to a generic simpleicons/placeholder fallback (see `model-provider.ts`'s `SIMPLEICONS_SLUG_FIXES`, and `model-provider-chip.tsx`'s `ProviderLogo` fallback chain). To add one:
 
-1. Add a `ProviderId` variant and `PROVIDER_BY_SLUG` entry in `frontend/src/components/model-provider.ts` (or a `PROVIDER_ALIASES` entry if it should map onto an existing provider, e.g. Meta/NVIDIA).
+1. Add a `ProviderId` variant and `PROVIDER_BY_SLUG` entry in `frontend/src/components/model-provider.ts` (or a `PROVIDER_ALIASES` entry if it should map onto an existing provider, e.g. `metallama` → `meta`).
 1. If a dedicated icon should render (not the CDN fallback), import the `@lobehub/icons` component and add it to `PROVIDER_ICONS` in `frontend/src/components/model-provider-chip.tsx`.
 1. Extend `inferProviderFromModelId()` if the model id doesn't carry an explicit provider prefix.
 
@@ -95,9 +95,9 @@ If the family has no existing icon mapping, it falls through to a generic simple
 
 - [ ] Family resolves correctly (`modal_shared/modelfam/registry.py` pattern order) — add a `FamilySpec` only if genuinely new, otherwise reuse
 - [ ] Family quirks live in a hooks module, not in `engine_unsloth.py`/`finetuning_runner.py`/`finetuning_policy.py`
-- [ ] Chat template is pretok Path A on the **`hf_model_id` tokenizer** (log `pretok paths:` is `trl_training_template` or `native_generation_markers`). If TRL cannot auto-patch, add a byte-identical `{% generation %}` twin and register it in `training_chat_template.py` `KNOWN_TEMPLATE_PATCHES`; LoRA-only is enough to verify. Redeploy the SFT worker after jinja/pretok edits
+- [ ] Chat template is pretok Path A on the **`hf_model_id` tokenizer** (`pretok_row` returns `path` `trl_training_template` or `native_generation_markers`). If TRL cannot auto-patch, add a byte-identical `{% generation %}` twin and register it in `training_chat_template.py` `KNOWN_TEMPLATE_PATCHES`; LoRA-only is enough to verify. Redeploy the SFT worker after jinja/pretok edits
 - [ ] `finetuning.context_length` set to the real HF max position embeddings
-- [ ] Context probed per training type, H100 before H200, via `calibrate_activation_budget.py`
+- [ ] Context probed per training type, H100 before H200, with real Modal runs
 - [ ] `training_type.{full,lora}.context_length` + `validated_context_length` set from actual probe results
 - [ ] `real_max_context_length` set and consistent with validated training types
 - [ ] `tests/test_modelfam.py` passes, including `test_baseten_real_max_context_length`

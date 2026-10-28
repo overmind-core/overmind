@@ -32,14 +32,14 @@ Run the same checks CI runs:
 
 - `main` is protected. Branch from `main`, open a PR, and fill in `.github/PULL_REQUEST_TEMPLATE.md`. The Verification section takes the commands you ran, not the ones you would run.
 - Keep a PR to one change. Fix the stated thing plus its real prerequisites; list adjacent findings in the PR body instead of fixing them.
-- A change is finished when every surface reflecting it is updated: MCP (`overbae/services/mcp/`), Celery routing, `seed.py`, the generated OpenAPI client (`make generate_api_client`), and `AGENTS.md` or the skill that describes the behaviour. The PR template walks this list.
+- A change is finished when every surface reflecting it is updated: MCP (`overbae/services/mcp/`), Celery routing, `manage.py seed_demo`, the generated OpenAPI client (`make generate_api_client`), and `AGENTS.md` or the skill that describes the behaviour. The PR template walks this list.
 - Frontend code uses the generated client in `frontend/src/openapi/`; never edit it by hand.
 - Commit messages: short subject plus at most one body line. No co-author trailers.
 - SDK changes (`overmind/`) bump `overmind/pyproject.toml` `version` and add a `CHANGELOG.md` entry.
 
 ## Coding agents
 
-`.agents/skills/` holds subsystem maps and procedures that Claude Code, Codex and Cursor load on demand; `AGENTS.md` indexes them. If you contribute with a coding agent, point it at the repo root and it picks these up. Hooks in `.agents/hooks/` guard generated files and dangerous commands; a denial names the fix.
+`.agents/skills/` holds subsystem maps and procedures that Claude Code, Codex and Cursor load on demand; `AGENTS.md` indexes them. If you contribute with a coding agent, point it at the repo root and it picks these up. Hooks in `.agents/hooks/` guard generated files and dangerous commands; a denial names the fix. Codex runs them after you approve them with `/hooks`, and asks again after a hook changes.
 
 ## Licence
 

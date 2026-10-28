@@ -5,7 +5,7 @@ description: How to run the platform test suites without wasting minutes — log
 
 # Running tests on this repo
 
-Test runs here are expensive (backend suite ~90s+, frontend ~40s). Two rules:
+Test runs here are expensive (`make test` about 75 s, frontend about 40 s, journeys about 6 min). Two rules:
 
 ## 1. Decide whether to run at all
 
@@ -42,9 +42,9 @@ uv run pytest tests/test_foo.py::test_bar 2>&1 | tee "$SCRATCHPAD/pytest-rerun.l
 the compose `postgres` and `redis` services, and uses Redis DB 15. Each journey
 writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
 LLM requests, background task failures and the error. `make test` never
-collects journeys: they need `TEST_REDIS_URL`. `make test-journeys` runs them with xdist (`-q`, `--dist loadfile`); each worker gets its own Redis DB, and DB 12 stays with the load subprocess. The journeys take several minutes, and CI runs them as their own job beside `test`;
+collects journeys: a parallel run without `OVERMIND_JOURNEY_XDIST` skips them, and so does any run without `TEST_REDIS_URL`. `make test-journeys` sets both and runs them with xdist (`-v`, `--dist loadfile`); each worker gets its own Redis DB, and DB 12 stays with the load subprocess. The journeys take several minutes, and CI runs them as their own job beside `test`;
 `make test-journeys test_args="-k <name>"` runs one. `test_kit_*.py` files run one
-journey per vendor (connectors, workshop LLM engines, GPU training outcomes): a new
+journey per vendor (`tests/journeys/test_kit_connectors.py`, `test_kit_gpu_training.py`): a new
 vendor joins its kit's parametrize list.
 
 ## Where a test belongs
@@ -63,5 +63,4 @@ A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` contr
   (`TEST_POSTGRES_HOST`/`TEST_POSTGRES_PORT` override it).
 - `uv add`/`uv remove` resync the venv WITHOUT dev/test groups — pytest
   vanishes. Restore with `uv sync --group dev --group test`.
-- Celery-dependent behavior needs `docker compose restart` of the worker to
-  pick up backend changes; API containers hot-reload.
+- Compose workers restart through watchmedo on `.py` changes under `overbae/`; API containers hot-reload. A non-Python edit under `overbae/` (for example `overbae/modal/models.json`) needs `docker compose restart <worker>`. Recreate a worker after a dependency change (AGENTS.md Gotchas).

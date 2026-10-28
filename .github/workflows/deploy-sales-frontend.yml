@@ -1,10 +1,9 @@
-name: Deploy Sales Frontend
+name: Deploy Overwatch User Insights
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "*.md"
+  # Ships with the production API (deploy-api.yml); main only reaches staging.
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -14,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-sales-frontend:
+  deploy-overwatch:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,8 +35,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-sales-
 
-      # Runs alongside the Console's production deploy; sales-dashboard/.env.production
-      # holds the API it reads.
+      # sales-dashboard/.env.production holds the API it reads.
       - run: bun install --frozen-lockfile
       - run: bun run build --mode production
 
