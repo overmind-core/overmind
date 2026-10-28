@@ -113,7 +113,7 @@ export const navLinks: NavLeaf[] = [
 
 const externalLinks = [
   { href: "https://docs.overmindlab.ai", icon: Icon.docs, label: "Docs" },
-  { href: "https://discord.gg/XGsbf49EHG", icon: Icon.discord, label: "Discord" },
+  { href: "https://discord.gg/TPF722ZKuj", icon: Icon.discord, label: "Discord" },
 ];
 
 const isLeafActive = (pathname: string, to: string): boolean =>

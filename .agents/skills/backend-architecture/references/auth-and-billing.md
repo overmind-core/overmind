@@ -22,7 +22,7 @@ Tenancy is project-scoped (`User` ↔ `Project` through `ProjectMembership`), wi
 
 ## Overwatch (internal insights)
 
-Overwatch is the internal user-insights dashboard. Its endpoints are `/api/internal/overwatch/*` (`api/overwatch_dashboard.py`, `services/user_insights.py`, `services/overwatch_insights.py`), gated by the static bearer token `SALES_DASHBOARD_TOKEN` (legacy name kept for deployment compatibility). `overbae/urls.py` registers them only when the token is set at import (`tests/settings.py` sets one).
+Overwatch is the internal user-insights dashboard. Its dashboard endpoints under `/api/internal/overwatch/*` (`api/overwatch_dashboard.py`, `services/user_insights.py`, `services/overwatch_insights.py`) are gated by the static bearer token `SALES_DASHBOARD_TOKEN` (legacy name kept for deployment compatibility). `overbae/urls.py` registers them only when the token is set at import (`tests/settings.py` sets one). The agent query endpoint is always registered and uses its own token (below).
 
 - Each path and query is computed at most once an hour through the Django cache; responses carry `computed_at`/`refreshes_at` and forbid browser and shared caches. Internal reads have SQL and report time budgets.
 - They skip user authentication, stay out of MCP and the OpenAPI schema, and exclude guests and guest-only projects.
