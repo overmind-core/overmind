@@ -7,7 +7,7 @@
 </p>
 <p align="center">
   <a href="https://docs.overmindlab.ai"><img src="https://img.shields.io/badge/Docs-ed670f?style=for-the-badge" alt="Documentation"></a>
-  <a href="https://discord.gg/TPF722ZKuj"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/XGsbf49EHG"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://pypi.org/project/overmind/"><img src="https://img.shields.io/pypi/v/overmind?style=for-the-badge&label=PyPI&color=3b1b06" alt="PyPI"></a>
   <a href="https://github.com/overmind-core/overmind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/overmind-core/overmind/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/Platform-AGPL--3.0-3b1b06?style=for-the-badge" alt="Platform AGPL-3.0"></a>
@@ -220,7 +220,7 @@ ______________________________________________________________________
 
 ## Contributing
 
-Open an [issue](https://github.com/overmind-core/overmind/issues/new), or a PR from a feature branch using `.github/PULL_REQUEST_TEMPLATE.md` — `main` is protected and `AGENTS.md` describes how we work. Questions go to the [Discord](https://discord.gg/TPF722ZKuj).
+Open an [issue](https://github.com/overmind-core/overmind/issues/new), or a PR from a feature branch using `.github/PULL_REQUEST_TEMPLATE.md` — `main` is protected and `AGENTS.md` describes how we work. Questions go to the [Discord](https://discord.gg/XGsbf49EHG).
 
 ______________________________________________________________________
 
