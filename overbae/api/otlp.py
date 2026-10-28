@@ -773,8 +773,8 @@ def _build_spans_for_resource(
     return spans, project
 
 
-# Updated when the same ``span_id`` is re-ingested. The experiment FKs
-# (capability / job / iteration) are owned by ``process_span`` and must stay out.
+# Updated when the same ``span_id`` is re-ingested. The linkage FKs
+# (capability / conversation) are owned by ``process_span`` and must stay out.
 _SPAN_UPSERT_FIELDS = [
     "name",
     "kind",

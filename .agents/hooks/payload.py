@@ -35,6 +35,19 @@ def edited_paths(payload):
     return [os.path.normpath(os.path.join(cwd, p)) for p in paths]
 
 
+def branch(payload):
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=payload.get("cwd") or os.getcwd(),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+
 def project_root(payload):
     root = os.environ.get("CLAUDE_PROJECT_DIR")
     if root:

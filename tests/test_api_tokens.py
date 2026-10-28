@@ -93,6 +93,27 @@ def test_account_api_key_can_mint_project_scoped_key():
     assert r.data["key"].startswith("ovr_")
 
 
+def test_project_api_key_mints_only_for_its_own_project():
+    user, own, sibling = make_user(), make_project(), make_project()
+    ProjectMembership.objects.create(user=user, project=own)
+    ProjectMembership.objects.create(user=user, project=sibling)
+    client, _ = _api_key_client(user, project=own)
+
+    account = {"name": "x", "scope": {"scope": "account", "permission": ["read", "write"]}}
+    pinned = {
+        "name": "x",
+        "scope": {"scope": "project", "resourceIds": [str(sibling.id)], "permission": ["read"]},
+    }
+    for body in (account, {"name": "x", "project": str(sibling.id)}, pinned):
+        r = client.post("/api/auth/api-keys/", body, format="json")
+        assert r.status_code == status.HTTP_403_FORBIDDEN, body
+
+    r = client.post("/api/auth/api-keys/", {"name": "x", "project": str(own.id)}, format="json")
+    assert r.status_code == status.HTTP_201_CREATED
+    assert r.data["scope"]["resourceIds"] == [str(own.id)]
+    assert APIToken.objects.filter(user=user).count() == 2
+
+
 def test_api_key_current_returns_scope():
     user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)

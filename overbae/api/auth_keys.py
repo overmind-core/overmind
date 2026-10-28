@@ -123,6 +123,14 @@ class APITokenListCreateView(generics.ListCreateAPIView):
         project, scope_doc = _resolve_create_scope(ser.validated_data, request.user)
         if isinstance(project, Response):
             return project
+        auth = request.auth
+        if isinstance(auth, APIToken) and not auth.is_account_scoped:
+            allowed = {str(pid) for pid in auth.allowed_project_ids()}
+            if project is None or str(project.id) not in allowed:
+                return Response(
+                    {"detail": "A project API key can only create a key for its own project."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         raw, instance = APIToken.create_for_user(
             request.user,
