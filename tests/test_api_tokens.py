@@ -138,7 +138,9 @@ def test_api_key_mints_only_permissions_it_holds():
     wider = client.post("/api/auth/api-keys/", {"project": str(project.id)}, format="json")
     assert wider.status_code == status.HTTP_403_FORBIDDEN
 
-    same = {"scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["write"]}}
+    same = {
+        "scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["write"]}
+    }
     r = client.post("/api/auth/api-keys/", same, format="json")
     assert r.status_code == status.HTTP_201_CREATED
     assert r.data["scope"]["permission"] == ["write"]
