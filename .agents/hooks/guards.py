@@ -3,7 +3,9 @@
 import re
 
 _PUSH_MAIN = "Direct push to main is not allowed. Push to the current feature branch and open a PR."
-_PUSH = re.compile(r"(^|[;&|\n(){}])\s*git(\s+-[Cc]\s+\S+|\s+--?[\w-]+(=\S+)?)*\s+push\b")
+_PUSH = re.compile(
+    r"(^|[;&|\n(){}])\s*git(\s+-[Cc]\s+[^\s-]\S*|\s+-(?![Cc]\s)[^\s=]*(=\S*)?)*\s+push\b"
+)
 
 _RULES = [
     (
