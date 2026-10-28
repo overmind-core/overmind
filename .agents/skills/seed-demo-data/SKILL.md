@@ -54,7 +54,7 @@ workers to re-drive seeded rows against **real providers** and spend credits:
 
 - `auto_now_add`/`auto_now` columns are backdated via the raw-SQL `backdate()`
   helper (executemany), not via the ORM.
-- Datasets land through `services/datasets/land`. Explicit fixture transformations
+- Datasets land through `services/datasets/land.py`. Explicit fixture transformations
   publish measured, provenance-preserving frames directly; no platform agent or
   script runner exists. Every dataset has a real active frame. Historical demo consumption stamps `used_at` directly and pins cells,
   including each training job's `eval_cell`; it does not fabricate a semantic

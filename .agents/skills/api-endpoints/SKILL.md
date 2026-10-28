@@ -63,5 +63,5 @@ Hardcoded URLs and bare `fetch`/`axios` bypass auth middleware and typing. Respo
 
 ## Rules
 
-- Never hand-edit anything under `frontend/src/openapi/` — a hook blocks it under Claude Code, and the next regeneration would overwrite it anyway.
+- Never hand-edit anything under `frontend/src/openapi/` — the `protect_generated` hook blocks it in Claude Code, Codex and Cursor, and the next regeneration would overwrite it anyway.
 - A DRF view docstring becomes the OpenAPI operation `description`, so editing one changes the generated client. Prefer an explicit `@extend_schema(summary=...)`.

@@ -5,7 +5,7 @@ description: How to run the platform test suites without wasting minutes — log
 
 # Running tests on this repo
 
-Test runs here are expensive (backend suite ~90s+, frontend ~40s). Two rules:
+Test runs here are expensive (`make test` about 75 s, frontend about 40 s, journeys about 6 min). Two rules:
 
 ## 1. Decide whether to run at all
 

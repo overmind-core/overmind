@@ -7,13 +7,14 @@ description: How to open a complete pull request on overmind-core/overmind — t
 
 ## Before you push — what CI will run
 
-`.github/workflows/ci.yml` runs four jobs on every non-draft PR. Run the equivalents locally rather than discovering them in CI:
+`.github/workflows/ci.yml` runs five jobs on every non-draft PR and on `main`. Run the equivalents locally rather than discovering them in CI:
 
 | CI job       | What it runs                                                                                                                                  | Local equivalent            |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | `lint`       | `uv run ruff check .` and `uv run ruff format --check .`                                                                                      | `make lint-backend`         |
 | `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/` |
 | `test`       | `uv run pytest tests/ -n auto --dist worksteal -q`                                                                                            | `make test`                 |
+| `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract                                                                                       | `make test-journeys`        |
 | `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`     |
 
 `pre-commit run --files <changed files>` before committing substantial work. Note that `mdformat` reflows markdown, so commit its output rather than fighting it.
@@ -80,9 +81,9 @@ while the docs still describe the old behaviour.
 
 `gh pr create --body-file <file>` works normally. Write the body to a temp file in the scratchpad, never inline via `--body` (quoting breaks on long bodies). Fill in `.github/PULL_REQUEST_TEMPLATE.md` — the Verification section takes the commands you actually ran, not the ones you would run.
 
-## Editing title/body — gh pr edit is BROKEN
+## Editing title/body — use REST, not gh pr edit
 
-`gh pr edit <n> --title/--body-file` aborts on this repo with a Projects-classic GraphQL deprecation error (`repository.pullRequest.projectCards`) **and exits looking like it worked**. The PR is left unchanged.
+`gh pr edit <n> --title/--body-file` aborts on this repo with a Projects-classic GraphQL deprecation error (`repository.pullRequest.projectCards`) and exits looking like it worked, leaving the PR unchanged. The `bash_guard` hook denies it.
 
 Use REST instead:
 
@@ -98,5 +99,5 @@ Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.
 - Never push directly to `main`; land work via a PR from a feature branch. A hook blocks the push.
 - Verify the actual current branch with `git status -sb` before pushing — the session-start banner can be stale.
 - Commit messages: short subject + at most one body line. No co-author trailers.
-- For fix-sweep PRs, a before/after table in the body is the house style (see PR #458/#460 for the shape).
+- For fix-sweep PRs, a before/after table in the body is the house style.
 - If the change makes `AGENTS.md` or a skill wrong, fix it in the same PR. There is one copy of each rule.

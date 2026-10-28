@@ -59,7 +59,7 @@ If a new model OOMs or errors on its assigned GPU:
 For every new model, before it's usable for finetuning:
 
 1. **Find the real max context length.** This is the HF `max_position_embeddings` (no RoPE/YaRN scaling) — it goes in `finetuning.context_length` in `models.json`, distinct from the top-level `context_length` (published inference window, which may be YaRN-extended).
-1. **Probe each enabled training type (`full`, `lora`) independently.** Use `scripts/calibrate_activation_budget.py` (`--experiment e3` context sweep, spawns real Modal `sft_unsloth` jobs and reads peak VRAM) to find the largest context that actually trains without OOM.
+1. **Probe each enabled training type (`full`, `lora`) independently.** Run tiny real Modal jobs (`MAX_STEPS=2`) at increasing `MAX_LENGTH` and read peak VRAM from `runs/<run_id>/train_stdout.log` to find the largest context that trains without OOM. The repo has no calibration script for this sweep.
 1. **Try H100 first, then H200.** `TRAINING_GPU_VRAM_GB = {"H100": 80.0, "H200": 141.0}` (`finetuning_policy.py`) — H100 has less VRAM, so it's the cheaper GPU and must be tried first. Only fall back to H200 if the model can't reach its real max context length on H100.
 1. **Record the result per training type** in `models.json` under `finetuning.training_type.<full|lora>`:
    - `context_length`: the largest context that trained successfully (equal to `finetuning.context_length` if the full ceiling was reached, lower otherwise).
@@ -97,7 +97,7 @@ If the family has no existing icon mapping, it falls through to a generic simple
 - [ ] Family quirks live in a hooks module, not in `engine_unsloth.py`/`finetuning_runner.py`/`finetuning_policy.py`
 - [ ] Chat template is pretok Path A on the **`hf_model_id` tokenizer** (log `pretok paths:` is `trl_training_template` or `native_generation_markers`). If TRL cannot auto-patch, add a byte-identical `{% generation %}` twin and register it in `training_chat_template.py` `KNOWN_TEMPLATE_PATCHES`; LoRA-only is enough to verify. Redeploy the SFT worker after jinja/pretok edits
 - [ ] `finetuning.context_length` set to the real HF max position embeddings
-- [ ] Context probed per training type, H100 before H200, via `calibrate_activation_budget.py`
+- [ ] Context probed per training type, H100 before H200, with real Modal runs
 - [ ] `training_type.{full,lora}.context_length` + `validated_context_length` set from actual probe results
 - [ ] `real_max_context_length` set and consistent with validated training types
 - [ ] `tests/test_modelfam.py` passes, including `test_baseten_real_max_context_length`
