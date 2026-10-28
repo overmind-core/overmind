@@ -84,13 +84,12 @@ you open the PR, search them for every name, limit, route, state and command you
 changed, and update each match in the same PR:
 
 ```bash
-rg -n '<changed name>' AGENTS.md CONTRIBUTING.md DESIGN.md PRODUCT.md .agents/ docs/ overmind/skills/
+rg -n '<changed name>' AGENTS.md CONTRIBUTING.md DESIGN.md PRODUCT.md .agents/ overmind/skills/
 ```
 
 - `AGENTS.md` — the rules and traps every task needs.
 - `.agents/skills/*/SKILL.md` and their `references/*.md` — subsystem maps and procedures.
 - `.agents/hooks/` — a guard whose rule or message names what you changed. Hook wiring in `.claude/settings.json` and `.codex/hooks.json` changes together.
-- `docs/*.md` — internal runbooks such as `workshop-pipelines.md` and `workshop-ocr.md`.
 - `overmind/skills/` — the user-facing skills that `overmind init` installs; a change there needs the SDK version bump above.
 - `CONTRIBUTING.md`, `DESIGN.md` and `PRODUCT.md` when they describe the change.
 

@@ -22,8 +22,6 @@ The native coding agent owns interpretation, code and semantic work. The platfor
 | `sandbox/documents/`                                                                                               | Document parsing and OCR in the isolated `sandbox` service                                                         |
 | `tasks/datasets.py`                                                                                                | Landing and pipeline execution; the reaper fails expired runs without replay                                       |
 
-Setup, the package protocol and regression commands: `docs/workshop-pipelines.md`. OCR details and rollout: `docs/workshop-ocr.md`.
-
 ## Sources and landing
 
 - A dataset may start from a written `brief` with no source or capability. Purpose is explicit (`train`, `eval`, `explore`) and otherwise stays pending; when no capability is given, REST and MCP landing assign the top-ranked capability if its score is above zero; CLI transfers never infer one.

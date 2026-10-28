@@ -3,8 +3,15 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
-import { type Account, type Page, salesGet } from "~/lib/api";
-import { formatAgo, formatDate, formatInt, formatUsd, humanize } from "~/lib/format";
+import { overwatchGet, type Page, type User } from "~/lib/api";
+import {
+  formatAgo,
+  formatDate,
+  formatInt,
+  formatUsd,
+  humanize,
+  milestoneLabel,
+} from "~/lib/format";
 
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,33 +27,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { cn } from "@/lib/utils";
 
 const COLUMNS = [
   { key: "date_joined", label: "Joined" },
   { key: "projects", label: "Projects" },
   { key: "seats", label: "Seats" },
-  { key: "last_span_at", label: "Last span" },
+  { key: "last_span_at", label: "Last activity" },
   { key: "spans", label: "Spans" },
+  { key: "training_jobs", label: "Training runs" },
+  { key: "live_deployments", label: "Live" },
   { key: "spend_usd", label: "Spend" },
   { key: "topups_usd", label: "Top-ups" },
   { key: "balance_usd", label: "Balance" },
-  { key: "training_jobs", label: "Training" },
-  { key: "live_deployments", label: "Live" },
 ] as const;
 
 type SortKey = "email" | (typeof COLUMNS)[number]["key"];
 const SORT_KEYS: string[] = ["email", ...COLUMNS.map((column) => column.key)];
-const LOW_BALANCE_USD = 5;
-
-const SUBSCRIPTION_VARIANT: Record<string, "success" | "warning" | "error" | "neutral"> = {
-  active: "success",
-  canceled: "neutral",
-  incomplete: "warning",
-  past_due: "error",
-  unpaid: "error",
-};
-
 type AccountsSearch = { page: number; page_size: number; ordering: string };
 
 export const Route = createFileRoute("/_app/accounts")({
@@ -68,8 +64,8 @@ function AccountsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const query = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => salesGet<Page<Account>>("accounts", { days, ordering, page, page_size }),
-    queryKey: ["accounts", days, ordering, page, page_size],
+    queryFn: () => overwatchGet<Page<User>>("users", { days, ordering, page, page_size }),
+    queryKey: ["users", days, ordering, page, page_size],
   });
   const sort: SortState<SortKey> = {
     dir: ordering.startsWith("-") ? "desc" : "asc",
@@ -88,22 +84,23 @@ function AccountsPage() {
     <>
       <PageHeader
         actions={<Freshness data={query.data} />}
+        className="flex-col sm:flex-row"
         count={query.data?.count}
-        description={`Spans and spend cover the last ${days} days. Top-ups and balance are lifetime.`}
-        title="Accounts"
+        description={`Spans and spend cover ${days} UTC days. Training and top-ups are lifetime totals. Activity is shared across each user's projects.`}
+        title="Users"
       />
       {query.isPending ? (
-        <LoadingState fullPage label="Loading accounts" />
+        <LoadingState fullPage label="Loading users" />
       ) : query.isError ? (
         <Failure error={query.error} onRetry={query.refetch} />
       ) : (
-        <SectionCard contentClassName="p-0" title="Customer accounts">
+        <SectionCard contentClassName="p-0" title="User activity">
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHeader label="Email" onSort={onSort} sort={sort} sortKey="email" />
-                <TableHead>Plan</TableHead>
-                <TableHead>Stage</TableHead>
+                <SortableHeader label="User" onSort={onSort} sort={sort} sortKey="email" />
+                <TableHead>Milestone reached</TableHead>
+                <TableHead>Subscription</TableHead>
                 {COLUMNS.map((column) => (
                   <SortableHeader
                     key={column.key}
@@ -116,8 +113,8 @@ function AccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {query.data.results.map((account) => (
-                <AccountRow account={account} days={days} key={account.id} />
+              {query.data.results.map((user) => (
+                <UserRow days={days} key={user.id} user={user} />
               ))}
             </TableBody>
           </Table>
@@ -137,47 +134,53 @@ function AccountsPage() {
   );
 }
 
-function AccountRow({ account, days }: { account: Account; days: number }) {
-  const status = account.subscription_status;
-  const lowBalance = Number(account.balance_usd) < LOW_BALANCE_USD;
+function UserRow({ user, days }: { user: User; days: number }) {
   const number = "font-mono tabular-nums";
   return (
     <TableRow>
-      <TableCell className="max-w-64 truncate" title={account.email}>
+      <TableCell className="max-w-64 truncate" title={user.email}>
         <Link
           className="hover:underline"
-          params={{ accountId: String(account.id) }}
+          params={{ accountId: String(user.id) }}
           search={{ days }}
           to="/accounts/$accountId"
         >
-          {account.email}
+          {user.email}
         </Link>
+      </TableCell>
+      <TableCell>
+        <Badge size="chip" variant={user.stage === "called_alias" ? "success" : "info"}>
+          {milestoneLabel(user.stage)}
+        </Badge>
       </TableCell>
       <TableCell>
         <Badge
           size="chip"
-          variant={status ? (SUBSCRIPTION_VARIANT[status] ?? "neutral") : "neutral"}
+          variant={
+            user.subscription_status === "active"
+              ? "success"
+              : user.subscription_status === "past_due" || user.subscription_status === "unpaid"
+                ? "error"
+                : user.subscription_status === "incomplete"
+                  ? "warning"
+                  : "neutral"
+          }
         >
-          {status ? humanize(status) : "Free"}
+          {user.subscription_status ? humanize(user.subscription_status) : "Free"}
         </Badge>
       </TableCell>
-      <TableCell>
-        <Badge size="chip" variant={account.stage === "called_alias" ? "success" : "info"}>
-          {humanize(account.stage)}
-        </Badge>
+      <TableCell className="whitespace-nowrap">{formatDate(user.date_joined)}</TableCell>
+      <TableCell className={number}>{formatInt(user.projects)}</TableCell>
+      <TableCell className={number}>{formatInt(user.seats)}</TableCell>
+      <TableCell className="whitespace-nowrap">{formatAgo(user.last_span_at)}</TableCell>
+      <TableCell className={number}>{formatInt(user.spans)}</TableCell>
+      <TableCell className={number}>{formatInt(user.training_jobs)}</TableCell>
+      <TableCell className={number}>{formatInt(user.live_deployments)}</TableCell>
+      <TableCell className={number}>{formatUsd(user.spend_usd)}</TableCell>
+      <TableCell className={number}>{formatUsd(user.topups_usd)}</TableCell>
+      <TableCell className={`${number} ${Number(user.balance_usd) < 5 ? "text-warning" : ""}`}>
+        {formatUsd(user.balance_usd)}
       </TableCell>
-      <TableCell className="whitespace-nowrap">{formatDate(account.date_joined)}</TableCell>
-      <TableCell className={number}>{formatInt(account.projects)}</TableCell>
-      <TableCell className={number}>{formatInt(account.seats)}</TableCell>
-      <TableCell className="whitespace-nowrap">{formatAgo(account.last_span_at)}</TableCell>
-      <TableCell className={number}>{formatInt(account.spans)}</TableCell>
-      <TableCell className={number}>{formatUsd(account.spend_usd)}</TableCell>
-      <TableCell className={number}>{formatUsd(account.topups_usd)}</TableCell>
-      <TableCell className={cn(number, lowBalance && "text-warning")}>
-        {formatUsd(account.balance_usd)}
-      </TableCell>
-      <TableCell className={number}>{formatInt(account.training_jobs)}</TableCell>
-      <TableCell className={number}>{formatInt(account.live_deployments)}</TableCell>
     </TableRow>
   );
 }

@@ -43,10 +43,20 @@ DATABASES = {
 LANGFUSE_PUBLIC_KEY = ""
 LANGFUSE_SECRET_KEY = ""
 
+# Never inherit live analytics/Slack destinations from a developer's local .env.
+# The focused tests explicitly enable their fake destinations when required.
+POSTHOG_PROJECT_TOKEN = ""
+POSTHOG_PERSONAL_API_KEY = ""
+POSTHOG_PROJECT_ID = ""
+SLACK_BOT_TOKEN = ""
+SLACK_SIGNING_SECRET = ""
+OVERWATCH_AGENT_ENABLED = False
+OVERWATCH_SLACK_ALLOWED_USER_IDS = ""
+
 # Remaining-credit billing on unless a test clears the key.
 STRIPE_SECRET_KEY = "sk_test_billing"
 
-# overbae.urls registers the sales routes only when this is set at import.
+# overbae.urls registers internal Overwatch metrics only when this is set at import.
 SALES_DASHBOARD_TOKEN = "sales-test-token"
 
 # Local .env often points Celery at docker Redis, and an unmocked `.delay()` burns

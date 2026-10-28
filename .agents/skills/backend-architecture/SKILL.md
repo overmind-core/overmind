@@ -38,7 +38,7 @@ Read the one that matches the task:
 | [references/tracing-and-scoring.md](references/tracing-and-scoring.md) | Span model, OTLP ingest, span cost, live scoring, signals, Jev                      |
 | [references/evaluation.md](references/evaluation.md)                   | Evaluation runs, comparison, judges, context estimates, benchmark selection         |
 | [references/capabilities.md](references/capabilities.md)               | The agent graph, scans, toml sync, Default eval set, provenance                     |
-| [references/auth-and-billing.md](references/auth-and-billing.md)       | Clerk and local auth, guests, API keys, billing, sales endpoints                    |
+| [references/auth-and-billing.md](references/auth-and-billing.md)       | Clerk and local auth, guests, API keys, billing, Overwatch internal endpoints       |
 | [references/training.md](references/training.md)                       | Preparation, launch, monitoring, transfer, native decision training                 |
 | [references/serving.md](references/serving.md)                         | Deployments, shared-base LoRA, activation, inference requests, operational receipts |
 | [references/data-first.md](references/data-first.md)                   | Training plans, partitions, native evaluation, experiments, performance runs        |
