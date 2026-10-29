@@ -405,7 +405,34 @@ export function EvalMatrixTable({
                         {target ? (
                           <Link
                             className={`${badgeVariants({ size: "chip", variant: "outline" })} max-w-full gap-1.5 hover:bg-accent`}
+                            hash="trajectory"
+                            hashScrollIntoView={{
+                              behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                                .matches
+                                ? "instant"
+                                : "smooth",
+                              block: "start",
+                            }}
+                            onClick={(event) => {
+                              if (
+                                event.button !== 0 ||
+                                event.metaKey ||
+                                event.ctrlKey ||
+                                event.shiftKey ||
+                                event.altKey ||
+                                event.currentTarget.href !== window.location.href
+                              )
+                                return;
+                              document.getElementById("trajectory")?.scrollIntoView({
+                                behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                                  .matches
+                                  ? "instant"
+                                  : "smooth",
+                                block: "start",
+                              });
+                            }}
                             params={{ capabilityId: target.capabilityId }}
+                            resetScroll={false}
                             search={{
                               projectId,
                               trajectoryNode: target.nodeId,

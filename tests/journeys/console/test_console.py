@@ -895,3 +895,40 @@ def test_dataset_preparation_persists_between_jobs_until_agent_finishes(
         "update_dataset_preparation", {**workflow, "state": "preparing"}
     ).isError
     console.healthy()
+
+
+def test_evaluation_scope_link_settles_on_trajectory_and_supports_repeat_clicks(console, workshop):
+    project = workshop.project()["id"]
+    console.goto(f"/evaluations?projectId={project}&view=matrix")
+    link = console._page.locator('a[href*="trajectoryNode="]').first
+    console._browser.call(link.wait_for)
+    href = console._browser.call(link.get_attribute, "href")
+    console._browser.call(link.click)
+    focused = """() => {
+        const target = new URL(location.href).searchParams.get('trajectoryNode');
+        const node = [...document.querySelectorAll('.react-flow__node.selected')].find(n => n.dataset.id === target);
+        const canvas = document.querySelector('[aria-label="Capability trajectory map"]');
+        if (!node || !canvas) return false;
+        const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+        return n.width >= 180 && n.left >= c.left && n.right <= c.right &&
+            n.top >= Math.max(c.top, 64) && n.bottom <= Math.min(c.bottom, innerHeight);
+    }"""
+    console.wait_until(focused)
+    console._browser.call(console._page.locator(f'a[href="{href}"]').first.click)
+    console.wait_until(focused)
+    stable = console._browser.call(
+        console._page.evaluate,
+        """async () => {
+        const positions = [];
+        for (let i = 0; i < 60; i++) {
+            await new Promise(requestAnimationFrame);
+            const r = document.querySelector('.react-flow__node.selected').getBoundingClientRect();
+            positions.push([r.x, r.y, r.width]);
+        }
+        const last = positions.slice(-10);
+        return last.every(p => p.every((v, i) => Math.abs(v - last[0][i]) < 1));
+    }""",
+    )
+    assert stable
+    console.save_evidence("evaluation-scope-focus")
+    console.healthy()
