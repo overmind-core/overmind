@@ -2,6 +2,7 @@
 authors = [{ name = "Overmind Ltd" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -10,6 +11,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
 # Default is the CLI (`overmind init`, sync, …). OpenTelemetry lives on the
@@ -25,14 +27,33 @@ dependencies = [
     "tree-sitter-typescript>=0.23.2",
     "tree-sitter-javascript>=0.25.0",
 ]
-description = "Overmind — autonomous agent optimisation through structured experimentation"
-keywords = ["overmind", "ai", "api", "client", "policy", "enforcement"]
+description = "Have your coding agent train a model on your data, test it, and serve it through an OpenAI-compatible API. Start from a dataset you upload or from your app's recorded LLM calls. CLI and Python SDK for Overmind, the model training platform for AI teams."
+keywords = [
+    "overmind",
+    "model-training",
+    "fine-tuning",
+    "lora",
+    "open-weight",
+    "llm",
+    "evals",
+    "datasets",
+    "inference",
+    "mcp",
+    "coding-agents",
+    "tracing",
+]
 license = { text = "MIT" }
 name = "overmind"
 readme = "README.md"
 requires-python = ">=3.10,<4" # todo; remove the upper bound
-urls = { Homepage = "https://github.com/overmind-core/overmind", Repository = "https://github.com/overmind-core/overmind" }
-version = "0.1.111"
+version = "0.1.112"
+
+    [project.urls]
+    "Agent setup" = "https://console.overmindlab.ai/setup.md"
+    Documentation = "https://docs.overmindlab.ai"
+    Homepage = "https://www.overmindlab.ai"
+    Issues = "https://github.com/overmind-core/overmind/issues"
+    Repository = "https://github.com/overmind-core/overmind"
 
     [project.scripts]
     overmind = "overmind.__main__:app"

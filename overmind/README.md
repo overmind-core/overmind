@@ -1,13 +1,27 @@
-<img alt="Overmind" src="https://github.com/user-attachments/assets/4a5caceb-49e8-4b8e-a6aa-511222a94381" />
+<img alt="Overmind" src="https://github.com/user-attachments/assets/8ba6a64f-0819-47bd-9d58-af89ee3e7bad" />
 
 # Overmind
 
-Overmind is two things in one package:
+Overmind turns any company into an AI lab. Have your coding agent train a model
+on your data, test it, and serve it through an OpenAI-compatible API. Start from
+a dataset you upload or from your app's recorded LLM calls. This package is the
+CLI and Python SDK for [Overmind](https://www.overmindlab.ai), the model
+training platform for AI teams.
 
-- **Tracing SDK** — drop-in observability for LLM agents. Decorate your code, get structured traces of every LLM call and tool invocation.
-- **Inference client and CLI** — `overmind.Client` calls models you deployed on Overmind through the OpenAI-compatible API; the `overmind` command scans, syncs, and moves datasets and checkpoints.
+**To start**, ask your coding agent to read
+[setup.md](https://console.overmindlab.ai/setup.md) and follow it. If you are
+that coding agent, read it now. It installs this package, connects Claude Code,
+Codex, Cursor or OpenCode, and asks the person to sign in once.
 
-**Documentation:** [Overmind guide](https://docs.overmindlab.ai/core/observability)
+- `overmind init --ide claude` connects your coding agent (or `codex`, `cursor`,
+  `opencode`). The same `overmind` command scans, syncs, and moves datasets and
+  checkpoints.
+- `overmind.Client` calls models you deployed on Overmind through the
+  OpenAI-compatible API.
+- `overmind[tracing]` records each LLM call and tool call in your app, so its
+  runs can become training and test data.
+
+**Documentation:** [docs.overmindlab.ai](https://docs.overmindlab.ai)
 
 **Console:** [console.overmindlab.ai](https://console.overmindlab.ai/)
 
