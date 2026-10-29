@@ -25,6 +25,37 @@ from ..datasets import tickets, upload
 from ..stack import drain, settle
 
 
+def test_embedded_onboarding_copies_setup_and_switches_to_data(console):
+    console.sees("Overmind works best via the MCP")
+    console._browser.call(
+        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
+    )
+    console.press("Copy onboarding prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    assert prompt == "Set me up on Overmind https://console.overmindlab.ai/setup.md"
+    console.wait_until("""() => {
+        const panel = document.querySelector('section[aria-label="Get started"]');
+        return panel.querySelector('a[href$="/setup.md"]') &&
+            [...panel.querySelectorAll('img')].every(img => img.complete && img.naturalWidth > 0);
+    }""")
+    console.save_evidence("embedded-onboarding-desktop")
+    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
+    console.wait_until("""() => {
+        const panel = document.querySelector('section[aria-label="Get started"]');
+        return panel.scrollWidth <= panel.clientWidth && panel.getBoundingClientRect().right <= innerWidth;
+    }""")
+    console.save_evidence("embedded-onboarding-mobile")
+    console._browser.call(lambda: console._page.get_by_role("tab", name="Data", exact=True).click())
+    console.sees("Create dataset")
+    console.wait_until("() => !document.querySelector('[role=dialog]')")
+    console._browser.call(
+        lambda: console._page.get_by_role("tab", name="Agent", exact=True).click()
+    )
+    console.sees("Copy onboarding prompt")
+    console.healthy()
+
+
 def test_activity_outcomes_and_setup_progress_survive_console_reload(
     console, workshop, worker, rest_for
 ):
@@ -61,10 +92,21 @@ def test_activity_outcomes_and_setup_progress_survive_console_reload(
     console.press("Notifications")
     console.wait_until("() => !document.body.textContent.includes('Setup progress')")
     onboarding_run = str(uuid.uuid4())
-    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 2})
+    progress = workshop.call(
+        "report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 2}
+    )
+    reporter = progress["milestones"][2]["actor_name"]
+    assert reporter
     console.goto(f"/?projectId={project}")
     console.wait_until(
         "() => document.querySelector('[aria-current=step]')?.textContent.includes('Inspect repository')"
+    )
+    console._browser.call(
+        lambda: (
+            console._page.get_by_label("Onboarding agent", exact=True)
+            .get_by_text(reporter, exact=True)
+            .wait_for()
+        )
     )
     workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 9})
     console.wait_until(
@@ -347,7 +389,7 @@ def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
     console.goto(f"/datasets?projectId={project}")
     console.command("New dataset")
     console.fill("#dataset-name", "Console upload")
-    console.upload('input[type="file"]', tickets(tmp_path))
+    console.upload('[role="dialog"] input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")
     console.choose("#dataset-purpose", "Evaluation")
     console.press("Create dataset")
@@ -651,6 +693,22 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
     console.healthy()
 
 
+def test_empty_dataset_inventory_onboards_into_the_selected_project(console, workshop, tmp_path):
+    project = workshop.project()["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Get started with data")
+    console.upload('input[type="file"]', tickets(tmp_path))
+    console.sees("3 rows")
+    console.save_evidence("dataset-empty-onboarding")
+    console.press("Create dataset")
+    console.sees("Prepare your training data")
+    dataset = Dataset.objects.get(project_id=project)
+    console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
+    console.goto(f"/datasets?projectId={project}&ds_search=no-matching-dataset")
+    console.wait_until("() => !document.body.textContent.includes('Get started with data')")
+    console.healthy()
+
+
 def test_dataset_role_filter_uses_recorded_outputs(console, workshop):
     project = workshop.project()["id"]
     source = Dataset.objects.create(project_id=project, name="Raw evidence", intent="explore")
@@ -748,3 +806,92 @@ def test_activity_connects_pipeline_sequence(console, workshop):
     console.press("unread notification")
     console.wait_until("() => document.querySelectorAll('[data-sequence-key]').length === 5")
     console.save_evidence("connected-pipeline-events")
+
+
+def test_dataset_preparation_persists_between_jobs_until_agent_finishes(
+    console, workshop, cli, sample_agent, worker, tmp_path
+):
+    project = workshop.project()["id"]
+    dataset = workshop.call(
+        "start_dataset",
+        {"name": "Continuous preparation", "brief": "Prepare support rows", "intent": "train"},
+    )["dataset"]["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Continuous preparation")
+    args = {"dataset": dataset, "request_key": "continuous-preparation"}
+    started = workshop.call("start_dataset_preparation", args)["preparation_workflow"]
+    assert (
+        workshop.call("start_dataset_preparation", args)["preparation_workflow"]["id"]
+        == started["id"]
+    )
+    console.sees("Preparing")
+    workflow = {"dataset": dataset, "preparation_id": started["id"]}
+    assert workshop.call_result(
+        "update_dataset_preparation", {**workflow, "state": "completed"}
+    ).isError
+    assert workshop.call_result(
+        "start_dataset_preparation", {**args, "request_key": "another"}
+    ).isError
+    upload(cli, sample_agent, tickets(tmp_path), "--dataset", dataset)
+    drain(worker)
+    source = workshop.call("inspect_dataset", {"dataset": dataset})["active"]
+    console.sees("Preparing")
+    result = workshop.call(
+        "import_dataset_version",
+        {
+            "dataset": dataset,
+            "source_cell": source["id"],
+            "source_fingerprint": source["fingerprint"],
+            "name": "Prepared support",
+            "request_key": "continuous-import",
+            "provenance": "Journey creates source-bound support messages",
+            "imported_rows": [
+                {
+                    "source_row": i,
+                    "messages": [
+                        {"role": "user", "content": f"Refund order {i}"},
+                        {"role": "assistant", "content": "Your refund is ready."},
+                    ],
+                }
+                for i in range(3)
+            ],
+        },
+    )
+    drain(worker)
+    receipt = workshop.call("get_job", {"kind": "dataset_pipeline", "id": result["job"]["id"]})
+    assert receipt["status"] == "completed", receipt
+    console.sees("Preparing")
+    current = workshop.call("inspect_dataset_workbench", {"dataset": dataset})[
+        "preparation_workflow"
+    ]
+    assert current["state"] == "preparing"
+    events = workshop.read("overmind://activity")["results"]
+    preparation_events = [e for e in events if e["kind"] == "dataset_preparation"]
+    assert len(preparation_events) == 1
+    event_id = preparation_events[0]["id"]
+    assert not [e for e in events if e["task_kind"] == "dataset_pipeline"]
+    workshop.call("update_dataset_preparation", {**workflow, "state": "paused"})
+    console.sees("Preparation paused")
+    workshop.call("update_dataset_preparation", {**workflow, "state": "preparing"})
+    console.sees("Preparing")
+    console.press("unread notification")
+    console.wait_until(
+        f"() => document.querySelector('[data-activity-id=\"{event_id}\"]')?.dataset.activityStatus === 'running'"
+    )
+    console.wait_until(
+        "() => document.getAnimations().every(a => a.effect?.getTiming().iterations === Infinity || a.playState !== 'running')"
+    )
+    console.save_evidence("dataset-preparation-active")
+    output = workshop.call("inspect_dataset", {"dataset": dataset})["active"]["id"]
+    completion = {**workflow, "state": "completed", "outputs": [output]}
+    workshop.call("update_dataset_preparation", completion)
+    workshop.call("update_dataset_preparation", completion)
+    console.wait_until(
+        f"() => document.querySelector('[data-activity-id=\"{event_id}\"]')?.dataset.activityStatus === 'completed'"
+    )
+    console.sees("Ready")
+    console.save_evidence("dataset-preparation-completed")
+    assert workshop.call_result(
+        "update_dataset_preparation", {**workflow, "state": "preparing"}
+    ).isError
+    console.healthy()

@@ -8,6 +8,9 @@ class Activity(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", null=True, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    preparation = models.ForeignKey(
+        "overbae.DatasetPreparation", null=True, on_delete=models.SET_NULL
+    )
     key = models.CharField(max_length=255, unique=True)
     kind = models.CharField(max_length=64)
     actor_kind = models.CharField(max_length=32, default="overmind")

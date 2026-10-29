@@ -179,7 +179,7 @@ function DatasetStatus({ dataset }: { dataset: Dataset }) {
   const work = dataset.work;
   const queued =
     work?.status === "queued" ||
-    (dataset.state === "landing" && dataset.operation?.state === "queued");
+    (!work && dataset.state === "landing" && dataset.operation?.state === "queued");
   const busy = !!work || dataset.state === "running" || dataset.state === "landing";
   const failed = !work && dataset.state === "error";
   if (!busy && !failed) {
@@ -204,7 +204,10 @@ function DatasetStatus({ dataset }: { dataset: Dataset }) {
     <span aria-live="polite" className="inline-flex items-center gap-2">
       <ResolvedStatusBadge
         actorKind={work?.actorKind ?? undefined}
-        cfg={resolveStatus(failed ? "failed" : queued ? "queued" : "running", "running")}
+        cfg={resolveStatus(
+          failed ? "failed" : (work?.status ?? (queued ? "queued" : "running")),
+          "running"
+        )}
         label={label}
         progress={percent}
       />

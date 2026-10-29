@@ -156,7 +156,12 @@ export function ResolvedStatusBadge({
           style={{ width: `${normalizedProgress}%` }}
         />
       )}
-      <span className="relative z-10 inline-flex items-center gap-1">
+      <span
+        className={cn(
+          "inline-flex items-center gap-1",
+          normalizedProgress != null && "relative z-10"
+        )}
+      >
         {cfg.spinning &&
         actorKind &&
         ["codex", "claude", "cursor", "gemini", "coding_agent"].includes(actorKind) ? (

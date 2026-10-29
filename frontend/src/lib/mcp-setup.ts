@@ -78,17 +78,16 @@ export function mcpInitCommand(
   ].join(" &&\n");
 }
 
-/** One line that hands the coding agent the hosted setup guide; sign-in happens through MCP OAuth. */
+export const ONBOARDING_GUIDE_URL = "https://console.overmindlab.ai/setup.md";
 export function onboardingPrompt(
   origin: string,
   apiUrl: string,
   data?: { projectId: string; datasetId: string }
 ): string {
+  if (!data) return `Set me up on Overmind ${ONBOARDING_GUIDE_URL}`;
   const guide = `${origin.replace(/\/$/, "")}/setup.md`;
   const url = apiUrl.replace(/\/$/, "");
-  const subject = data
-    ? `Set me up on Overmind with my uploaded data\n(project_id: ${data.projectId},\ndataset_id: ${data.datasetId})`
-    : "Set me up on Overmind";
+  const subject = `Set me up on Overmind with my uploaded data\n(project_id: ${data.projectId},\ndataset_id: ${data.datasetId})`;
   const endpoint = url === HOSTED_API_URL ? "" : `using the API at ${url}`;
   return `${subject}\n\n${endpoint}: ${guide}`;
 }

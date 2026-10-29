@@ -142,3 +142,10 @@ creation, upload, import, saved transformations, previews and publication. Pipel
 runs resolve their dataset from the retained run record. Other edits and consumers
 remain separate. The Console connects adjacent matching events without declaring
 whole-task completion.
+
+An explicit `start_dataset_preparation` / `update_dataset_preparation` lifecycle keeps
+the dataset Preparing between jobs until the agent finishes. Inspect it through
+`inspect_dataset_workbench.preparation_workflow`. Child source and pipeline activity
+remains recorded but is folded into its single evolving notification; child updates
+touch the parent timestamp to invalidate Console assets. Pause is explicitly reported,
+not inferred from a client disconnect.

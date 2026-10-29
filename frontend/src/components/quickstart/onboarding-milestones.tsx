@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -35,7 +36,10 @@ function StageLabel({ text, active }: { text: string; active: boolean }) {
     };
   }, [text]);
   return (
-    <h2 aria-current={active ? "step" : undefined} className="relative text-sm font-medium">
+    <h2
+      aria-current={active ? "step" : undefined}
+      className="relative shrink-0 whitespace-nowrap pr-3 text-sm font-medium"
+    >
       <span className="sr-only">{text}</span>
       <span aria-hidden="true" className="invisible">
         {text}
@@ -153,6 +157,11 @@ export function OnboardingMilestones({
   const completed = steps.filter((step) => step.completedAt).length;
   const current = steps.find((step) => !step.completedAt);
   const stage = current?.label ?? "Your agent is set up";
+  const reporter = simulation
+    ? { actorKind: "codex", actorName: "Codex" }
+    : current?.actorName
+      ? current
+      : steps.find((step) => step.actorName);
   const connected = steps.some((step) => step.kind === "agent_connected" && step.completedAt);
   const synced = steps.some((step) => step.kind === "repository_synced" && step.completedAt);
   const capabilities = new Map(
@@ -210,8 +219,21 @@ export function OnboardingMilestones({
         </div>
       )}
       <Card className="space-y-3 p-4">
-        <div aria-atomic="true" aria-live="polite" className="overflow-hidden">
+        <div
+          aria-atomic="true"
+          aria-live="polite"
+          className="flex flex-wrap items-center justify-between gap-3"
+        >
           <StageLabel active={!!current} key={stage} text={stage} />
+          {reporter?.actorName && reporter.actorKind && (
+            <span
+              aria-label="Onboarding agent"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <CodingAgentIcon kind={reporter.actorKind} />
+              {reporter.actorName}
+            </span>
+          )}
         </div>
         <div
           aria-label="Onboarding progress"

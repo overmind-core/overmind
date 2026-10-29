@@ -7,6 +7,10 @@ description: Data Workshop internals — source landing and OCR, immutable datas
 
 The native coding agent owns interpretation, code and semantic work. The platform stores evidence and runs explicit, deterministic operations. Landing never diagnoses, starts a chat turn, generates examples or starts preparation. There is no platform chat, mutable cell or replay endpoint; old conversations and provider receipts are archived in `DatasetHistory`, and historical cell scripts, reviews and frames stay readable.
 
+## Preparation lifecycle
+
+Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation.
+
 ## Map
 
 | Path                                                                                                               | Owns                                                                                                               |

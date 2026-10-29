@@ -47,6 +47,7 @@ PROMPTS = (
             ),
         ),
         template=(
+            "Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation. "
             "Transform dataset {dataset} for this request: {task}. Optional starting revision: {pipeline}. "
             "Discover list_projects and pass project_id explicitly. Read overmind://interface/current and "
             "overmind://dataset-upload. Inspect the exact source cell, fingerprint, columns and values with "

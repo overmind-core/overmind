@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -32,6 +33,26 @@ class DatasetInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
 
 
+class StartPreparationInput(DatasetInput):
+    request_key: str = Field(min_length=1, max_length=128)
+
+
+class UpdatePreparationInput(DatasetInput):
+    preparation_id: UUID
+    state: Literal["preparing", "paused", "completed", "cancelled"]
+    outputs: list[UUID] = Field(default_factory=list, max_length=100)
+
+
+class PreparationWorkflow(MCPModel):
+    id: str
+    dataset_id: str
+    state: Literal["preparing", "paused", "completed", "cancelled"]
+    actor_kind: str
+    actor_name: str
+    outputs: list[str]
+    updated_at: datetime
+
+
 class InspectInput(MCPModel):
     dataset: str | None = Field(default=None, max_length=255)
     pipeline: UUID | None = None
@@ -49,8 +70,8 @@ class SaveInput(MCPModel):
     expected_revision: int | None = Field(default=None, ge=1)
     derived_from: UUID | None = None
     package: UUID = Field(
-        description="Required retained Python package UUID from overmind dataset pipeline-upload. "
-        "Author meaningful stages in entrypoint files; read overmind://dataset-upload for the manifest."
+        description="Python package UUID from overmind dataset pipeline-upload. "
+        "Manifest: overmind://dataset-upload."
     )
 
     @model_validator(mode="before")
@@ -122,7 +143,7 @@ class UpdateInput(DatasetInput):
     ocr_languages: list[str] | None = Field(
         default=None,
         max_length=4,
-        description="Tesseract codes for subsequent document imports (for example [eng, fra]); [] uses English. Set on a draft before CLI upload. Does not rewrite published cells.",
+        description="Future-import Tesseract codes (e.g. [eng, fra]); [] English. Set before upload. Published cells unchanged.",
     )
     name: str | None = Field(default=None, min_length=1, max_length=255)
     intent: Literal["train", "eval", "explore"] | None = None
@@ -192,6 +213,7 @@ class Output(MCPModel):
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
     dataset: str | None = None
     preparation: dict[str, Any] | None = None
+    preparation_workflow: PreparationWorkflow | None = None
     current_pipeline: str | None = None
     pipeline: Pipeline | None = None
     run: Run | None = None

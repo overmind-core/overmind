@@ -12,7 +12,8 @@ export function datasetWorkspaces(datasets: Dataset[]): Dataset[] {
   return [...groups].map(([id, members]) => {
     const root = byId.get(id)!;
     const busy = members.find(
-      (member) => member.work && ["running", "queued", "accepted"].includes(member.work.status)
+      (member) =>
+        member.work && ["running", "queued", "accepted", "paused"].includes(member.work.status)
     );
     const latest = members.reduce((a, b) => (a.updatedAt > b.updatedAt ? a : b));
     return {

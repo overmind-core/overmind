@@ -37,6 +37,8 @@ class ActivityContract(MCPModel):
 
 
 class MilestoneContract(MCPModel):
+    actor_kind: str | None
+    actor_name: str | None
     kind: str
     label: str
     completed_at: datetime | None

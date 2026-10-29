@@ -65,6 +65,8 @@ class ActivitySeenResultSerializer(serializers.Serializer):
 
 
 class OnboardingMilestoneSerializer(serializers.Serializer):
+    actor_kind = serializers.CharField(allow_null=True)
+    actor_name = serializers.CharField(allow_null=True)
     kind = serializers.CharField()
     label = serializers.CharField()
     completed_at = serializers.DateTimeField(allow_null=True)

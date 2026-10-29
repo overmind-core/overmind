@@ -12,6 +12,7 @@ from overbae.models import (
     ActivityRead,
     Capability,
     DatasetPipelineRun,
+    DatasetPreparation,
     FinetuningJob,
 )
 
@@ -158,9 +159,20 @@ def record(
     task_id="",
     status="completed",
 ):
-    event, _ = Activity.objects.get_or_create(
+    preparation = None
+    if (
+        task_kind == "dataset_pipeline"
+        or kind in {"source_uploaded", "source_ready", "preparation_published"}
+        or action in {"Saved a transformation for", "Saved dataset pipeline"}
+    ):
+        dataset_ids = [item["id"] for item in assets if item["kind"] == "dataset"]
+        preparation = DatasetPreparation.objects.filter(
+            project_id=project_id, dataset_id__in=dataset_ids, state__in=["preparing", "paused"]
+        ).first()
+    event, created = Activity.objects.get_or_create(
         key=key,
         defaults={
+            "preparation": preparation,
             "project_id": project_id,
             "user_id": user_id,
             "kind": kind,
@@ -173,6 +185,10 @@ def record(
             "status": status,
         },
     )
+    if created and preparation:
+        Activity.objects.filter(key=f"preparation:{preparation.pk}").update(
+            updated_at=timezone.now()
+        )
     if event.actor_kind == "overmind" and actor_kind != "overmind":
         Activity.objects.filter(pk=event.pk, actor_kind="overmind").update(
             actor_kind=actor_kind, actor_name=actor_name
@@ -222,9 +238,17 @@ def update_task(project_id, kind, identity, status):
     }.get(status, status)
     if normalized not in {"accepted", "running", "completed", "failed", "cancelled"}:
         return
-    Activity.objects.filter(project_id=project_id, task_kind=kind, task_id=str(identity)).exclude(
-        status=normalized
-    ).update(status=normalized, updated_at=timezone.now())
+    changed = Activity.objects.filter(
+        project_id=project_id, task_kind=kind, task_id=str(identity)
+    ).exclude(status=normalized)
+    preparation_ids = list(
+        changed.exclude(preparation=None).values_list("preparation_id", flat=True)
+    )
+    changed.update(status=normalized, updated_at=timezone.now())
+    if preparation_ids:
+        Activity.objects.filter(
+            key__in=[f"preparation:{identity}" for identity in preparation_ids]
+        ).update(updated_at=timezone.now())
 
 
 def mcp_succeeded(name, definition, output, context):
@@ -239,6 +263,8 @@ def mcp_succeeded(name, definition, output, context):
         ).exists()
     ):
         connected(context)
+    if name in {"start_dataset_preparation", "update_dataset_preparation"}:
+        return
     if not context.project or definition.read_only:
         return
     if name.partition("_")[0] not in ACTION_VERBS:
@@ -424,6 +450,8 @@ def milestones(query, path):
             {
                 "kind": kind,
                 "label": label,
+                "actor_kind": (progress or event).actor_kind if progress or event else None,
+                "actor_name": (progress or event).actor_name if progress or event else None,
                 "completed_at": event.created_at if event else None,
                 "activity_id": event.pk if event else None,
                 "assets": event.assets if event else [],
@@ -471,7 +499,7 @@ def source_ready(dataset, cell_id, user=None):
 
 def feed(query, *, offset=0, limit=25):
     observed_at = timezone.now()
-    query = query.filter(updated_at__lte=observed_at).exclude(
+    query = query.filter(updated_at__lte=observed_at, preparation__isnull=True).exclude(
         kind__startswith="onboarding_progress_"
     )
     count = query.count()

@@ -20,7 +20,7 @@ const EDITABLE = "/Users/dom/git/overmind/overmind/overmind";
 describe("mcp setup snippets", () => {
   it("hands the agent the hosted setup guide with no credential", () => {
     expect(onboardingPrompt("https://console.overmindlab.ai/", PROD)).toBe(
-      "Set me up on Overmind\n\n: https://console.overmindlab.ai/setup.md"
+      "Set me up on Overmind https://console.overmindlab.ai/setup.md"
     );
     expect(
       onboardingPrompt("https://console.overmindlab.ai", PROD, {
@@ -36,9 +36,9 @@ describe("mcp setup snippets", () => {
     STAGING,
     LOCAL,
     "https://api.customer.example",
-  ])("names a non-hosted API endpoint %s", (host) => {
+  ])("uses the hosted setup prompt on %s", (host) => {
     expect(onboardingPrompt("http://localhost:5173", `${host}/`)).toBe(
-      `Set me up on Overmind\n\nusing the API at ${host}: http://localhost:5173/setup.md`
+      "Set me up on Overmind https://console.overmindlab.ai/setup.md"
     );
   });
 

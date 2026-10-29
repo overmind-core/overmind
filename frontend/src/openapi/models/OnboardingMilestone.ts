@@ -32,6 +32,18 @@ export interface OnboardingMilestone {
      * @type {string}
      * @memberof OnboardingMilestone
      */
+    actorKind: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof OnboardingMilestone
+     */
+    actorName: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof OnboardingMilestone
+     */
     kind: string;
     /**
      *
@@ -63,6 +75,8 @@ export interface OnboardingMilestone {
  * Check if a given object implements the OnboardingMilestone interface.
  */
 export function instanceOfOnboardingMilestone(value: object): value is OnboardingMilestone {
+    if (!('actorKind' in value) || value['actorKind'] === undefined) return false;
+    if (!('actorName' in value) || value['actorName'] === undefined) return false;
     if (!('kind' in value) || value['kind'] === undefined) return false;
     if (!('label' in value) || value['label'] === undefined) return false;
     if (!('completedAt' in value) || value['completedAt'] === undefined) return false;
@@ -81,6 +95,8 @@ export function OnboardingMilestoneFromJSONTyped(json: any, ignoreDiscriminator:
     }
     return {
 
+        'actorKind': json['actor_kind'],
+        'actorName': json['actor_name'],
         'kind': json['kind'],
         'label': json['label'],
         'completedAt': (json['completed_at'] == null ? null : new Date(json['completed_at'])),
@@ -100,6 +116,8 @@ export function OnboardingMilestoneToJSONTyped(value?: OnboardingMilestone | nul
 
     return {
 
+        'actor_kind': value['actorKind'],
+        'actor_name': value['actorName'],
         'kind': value['kind'],
         'label': value['label'],
         'completed_at': value['completedAt'] == null ? value['completedAt'] : value['completedAt'].toISOString(),

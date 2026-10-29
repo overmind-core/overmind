@@ -1,4 +1,4 @@
-from overbae.models import Activity, DatasetPipelineRun, DatasetTransfer
+from overbae.models import Activity, DatasetPipelineRun, DatasetPreparation, DatasetTransfer
 
 
 def current_work(datasets):
@@ -34,5 +34,16 @@ def current_work(datasets):
             "completed": transfer.received,
             "total": sum(member["size"] for member in members),
             "unit": "bytes",
+        }
+    for preparation in DatasetPreparation.objects.filter(
+        dataset_id__in=ids, state__in=["preparing", "paused"]
+    ):
+        work[str(preparation.dataset_id)] = {
+            "label": "Preparing" if preparation.state == "preparing" else "Preparation paused",
+            "status": "running" if preparation.state == "preparing" else "paused",
+            "actor_kind": preparation.actor_kind,
+            "completed": None,
+            "total": None,
+            "unit": "",
         }
     return work

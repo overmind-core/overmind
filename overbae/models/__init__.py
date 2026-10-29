@@ -11,6 +11,7 @@ from .dataset_pipeline import (
     DatasetPipelineRun,
     DatasetPipelineRunner,
 )
+from .dataset_preparation import DatasetPreparation
 from .dataset_transfer import DatasetTransfer
 from .datasets import (
     Cell,
@@ -114,6 +115,7 @@ __all__ = [
     "ConnectorSyncRun",
     "Dataset",
     "DatasetPipeline",
+    "DatasetPreparation",
     "DatasetPipelineRun",
     "DatasetPipelineBinding",
     "DatasetPipelinePackage",

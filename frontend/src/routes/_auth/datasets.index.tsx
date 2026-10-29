@@ -5,11 +5,14 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import floppyDiskIcon from "@/assets/floppy-disk-save.svg";
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
+import { DataProjectForm } from "@/components/onboarding/data-project-form";
+import { OnboardingWindow } from "@/components/onboarding/onboarding-window";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
+import { useProjectsList } from "@/hooks/use-projects";
 import { datasetWorkspaces } from "@/lib/dataset-workspaces";
 import { featureFlags } from "@/lib/feature-flags";
 import { datasetsSearchSchema } from "@/lib/schemas";
@@ -39,6 +42,8 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
   const navigate = Route.useNavigate();
   const query = useProjectDatasetsQuery(projectId);
   const capabilities = useProjectCapabilitiesQuery(projectId);
+  const projects = useProjectsList();
+  const project = projects.data?.projects.find((project) => project.id === projectId);
   const [createOpen, setCreateOpen] = useState(false);
   const datasets = datasetWorkspaces(query.data ?? []);
 
@@ -99,14 +104,33 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
       }
       variant="full"
     >
-      <DatasetsToolbar {...filters} />
-      <DatasetsBrowser
-        {...filters}
-        error={query.error}
-        isLoading={query.isPending}
-        key={JSON.stringify([ds_search, ds_role, ds_capability])}
-        rowSearch={{ projectId }}
-      />
+      {query.isSuccess && datasets.length === 0 && project ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto py-4">
+          <OnboardingWindow className="w-full max-w-2xl shrink-0" title="Get started with data">
+            <DataProjectForm
+              onCreated={({ projectId: createdProjectId, datasetId }) =>
+                void navigate({
+                  params: { datasetId },
+                  search: { prepare: "training", projectId: createdProjectId },
+                  to: "/datasets/$datasetId",
+                })
+              }
+              project={project}
+            />
+          </OnboardingWindow>
+        </div>
+      ) : (
+        <>
+          <DatasetsToolbar {...filters} />
+          <DatasetsBrowser
+            {...filters}
+            error={query.error}
+            isLoading={query.isPending}
+            key={JSON.stringify([ds_search, ds_role, ds_capability])}
+            rowSearch={{ projectId }}
+          />
+        </>
+      )}
       <NewDatasetDialog onOpenChange={setCreateOpen} open={createOpen} projectId={projectId} />
     </PageShell>
   );

@@ -956,6 +956,14 @@ reduced motion places them immediately. It never refits the camera on a backgrou
 update. Preparation refresh failures keep the last available graph beside a retry
 notice.
 
+### Onboarding
+
+Initial onboarding is embedded in the landing page, using a white retro frame,
+striped title bar and Figma pixel eye without window controls. It introduces MCP
+and keeps the Agent/Data toggle with the setup prompt and upload form. The empty
+dataset inventory reuses the frame for data onboarding. Connected agents show
+setup progress instead. Setup and connection evidence use the shared MCP workflow.
+
 ### Motion (system-wide)
 
 150ms for colour and background transitions, 200ms for dialog open/close, `ease`

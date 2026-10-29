@@ -14,6 +14,19 @@ Run from the repository root. Every step is safe to repeat.
 1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when
    it offers one or else by following the `Next:` line `init` printed, then call it again.
 
+## Report onboarding progress through MCP
+
+Once the account and project are verified, read `overmind://activity?project_id=PROJECT_ID`.
+For repository onboarding, generate one UUID `run_id` and retain it across reloads.
+Call `report_onboarding_progress(project_id=PROJECT_ID, run_id=RUN_ID, completed_steps=N)`
+with the verified consecutive completed count before starting the next stage and
+after every completed stage. Resume by verifying retained work and reporting its
+count with the same run ID. Await a successful receipt; retry failures with the
+same values. Chat messages and local task lists do not update the Console.
+Never invent completion, advance on a timer, or claim delivery after a failed call.
+If reporting is unavailable, explicitly say Console progress is not updating.
+This applies even when an older installed skill omits reporting instructions.
+
 # USING OVERMIND
 
 Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset,
