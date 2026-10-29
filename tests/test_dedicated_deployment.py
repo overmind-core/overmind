@@ -91,6 +91,45 @@ def test_missing_rate_refuses_start_and_a_second_start_conflicts(fake_modal):
         dedicated.start(deployed, user, gpu_type="H100")
 
 
+def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal):
+    refresh_rates()
+    user = _user()
+    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
+    deployed = _ready(project)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    row = dedicated.start(
+        deployed,
+        user,
+        gpu_type="H100",
+        min_replicas=2,
+        max_replicas=3,
+        idle_shutdown_seconds=600,
+    )
+    dedicated.advance(str(row.id))
+    dedicated.advance(str(row.id))
+    dedicated.stop(row)
+    fake_modal.worker_stats = {"num_total_runners": 0, "backlog": 0, "num_running_inputs": 0}
+    dedicated.advance(str(row.id))
+    row.refresh_from_db()
+    assert row.status == DedicatedDeployment.Status.OFFLINE
+    assert any(
+        kind == "autoscaler" and kwargs.get("min_containers") == 0
+        for kind, _, _, kwargs in fake_modal.log
+    )
+    restarted = dedicated.start(
+        deployed,
+        user,
+        gpu_type=row.gpu_type,
+        min_replicas=row.min_replicas,
+        max_replicas=row.max_replicas,
+        scale_to_zero=row.scale_to_zero,
+        idle_shutdown_seconds=row.idle_shutdown_seconds,
+    )
+    assert restarted.min_replicas == 2
+    assert restarted.max_replicas == 3
+    assert restarted.idle_shutdown_seconds == 600
+
+
 def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     refresh_rates()
     user = _user()

@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DedicatedStartup } from './DedicatedStartup';
+import {
+    DedicatedStartupFromJSON,
+    DedicatedStartupFromJSONTyped,
+    DedicatedStartupToJSON,
+    DedicatedStartupToJSONTyped,
+} from './DedicatedStartup';
 import type { DedicatedDeploymentStatusEnum } from './DedicatedDeploymentStatusEnum';
 import {
     DedicatedDeploymentStatusEnumFromJSON,
@@ -135,6 +142,12 @@ export interface DedicatedDeployment {
      * @memberof DedicatedDeployment
      */
     errorMessage?: string;
+    /**
+     *
+     * @type {DedicatedStartup}
+     * @memberof DedicatedDeployment
+     */
+    readonly startup: DedicatedStartup | null;
 }
 
 
@@ -150,6 +163,7 @@ export function instanceOfDedicatedDeployment(value: object): value is Dedicated
     if (!('gpuType' in value) || value['gpuType'] === undefined) return false;
     if (!('servingShape' in value) || value['servingShape'] === undefined) return false;
     if (!('creditsPerGpuHour' in value) || value['creditsPerGpuHour'] === undefined) return false;
+    if (!('startup' in value) || value['startup'] === undefined) return false;
     return true;
 }
 
@@ -181,6 +195,7 @@ export function DedicatedDeploymentFromJSONTyped(json: any, ignoreDiscriminator:
         'onlineAt': json['online_at'] == null ? undefined : (new Date(json['online_at'])),
         'stoppedAt': json['stopped_at'] == null ? undefined : (new Date(json['stopped_at'])),
         'errorMessage': json['error_message'] == null ? undefined : json['error_message'],
+        'startup': DedicatedStartupFromJSON(json['startup']),
     };
 }
 
@@ -188,7 +203,7 @@ export function DedicatedDeploymentToJSON(json: any): DedicatedDeployment {
     return DedicatedDeploymentToJSONTyped(json, false);
 }
 
-export function DedicatedDeploymentToJSONTyped(value?: Omit<DedicatedDeployment, 'id'|'model_name'> | null, ignoreDiscriminator: boolean = false): any {
+export function DedicatedDeploymentToJSONTyped(value?: Omit<DedicatedDeployment, 'id'|'model_name'|'startup'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

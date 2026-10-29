@@ -13,10 +13,12 @@ from overbae.models import (
     DatasetContext,
     DatasetPipeline,
     DatasetPipelineRun,
+    DedicatedDeployment,
     DeployedModel,
     EvalRun,
     FinetuningJob,
     NativeEvaluationPlan,
+    OperationalRun,
 )
 from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
@@ -610,7 +612,7 @@ def test_decision_deployment_without_training_data_never_invents_an_example(cons
     )
     console.goto(f"/inference/{deployed.pk}?projectId={project}")
     console.sees(deployed.model_id)
-    console.press("View API snippet")
+    console.press("Serverless API snippet")
     console.sees("TypeSafe systemone. Point the SDK base URL at this API.")
     console.sees(
         "A complete example input is unavailable for this model’s pinned training version."
@@ -931,4 +933,88 @@ def test_evaluation_scope_link_settles_on_trajectory_and_supports_repeat_clicks(
     )
     assert stable
     console.save_evidence("evaluation-scope-focus")
+    console.healthy()
+
+
+def test_dedicated_startup_updates_and_keeps_configuration_after_stop(console, workshop):
+    project = workshop.project()["id"]
+    deployed = DeployedModel.objects.create(
+        project_id=project,
+        model_id="ft-dedicated-startup",
+        status="ready",
+        base_model_id="meta-llama/Llama-3.2-3B-Instruct",
+        gpu_type="H100",
+    )
+    row = DedicatedDeployment.objects.create(
+        project_id=project,
+        deployed_model=deployed,
+        gpu_type="H100",
+        status="warming",
+        min_replicas=2,
+        max_replicas=3,
+        rate_usd_per_gpu_hour=4,
+        credits_per_gpu_hour=400,
+        probe_call_id="fc-console-startup",
+    )
+    run = OperationalRun.objects.create(
+        project_id=project,
+        kind="dedicated_deployment",
+        reference=str(row.pk),
+        attempt=row.probe_call_id,
+        snapshot={"stage": "loading_weights"},
+        provider_state={
+            "available": True,
+            "current": {"message": "Loading model weights"},
+            "logs": [
+                {
+                    "stage": "loading_weights",
+                    "message": "Loading model weights",
+                    "at": timezone.now().isoformat(),
+                    "worker": "ta-console",
+                    "completed": 1,
+                    "total": 2,
+                    "unit": "tensors",
+                }
+            ],
+        },
+    )
+    console.goto(f"/inference/{deployed.pk}?projectId={project}")
+    console.sees("Loading model weights")
+    console.wait_until("() => !document.body.innerText.includes('Startup logs')")
+    console.wait_until("""() => {
+        const bar = document.querySelector('[role=progressbar][aria-label="Startup stages"]');
+        const title = document.querySelector('[aria-label="Dedicated endpoint"] h2');
+        const controls = document.querySelector('[aria-label="GPU controls"]');
+        if (!bar || bar.children.length < 2) return false;
+        const b = bar.getBoundingClientRect(), t = title.getBoundingClientRect(), c = controls.getBoundingClientRect();
+        return b.left > t.right && b.right < c.left && Math.abs(b.y - t.y) < 12;
+    }""")
+    console.save_evidence("dedicated-startup-header")
+    run.snapshot = {"stage": "capturing_graphs"}
+    run.provider_state["current"] = {"message": "Capturing CUDA graphs"}
+    run.save()
+    console.sees("Capturing CUDA graphs")
+    DedicatedDeployment.objects.filter(pk=row.pk).update(status="online", running_replicas=2)
+    console.sees("Online")
+    console.wait_until(
+        """() => !document.querySelector('[role=progressbar][aria-label="Startup stages"]') && !document.body.innerText.includes('Startup logs')"""
+    )
+    console.save_evidence("dedicated-online")
+    DedicatedDeployment.objects.filter(pk=row.pk).update(status="offline", running_replicas=0)
+    console.sees("Offline")
+    console.sees("0 running · 2–3 configured")
+    console.press("Dedicated API snippet")
+    console.sees("Call this model")
+    console.wait_until(
+        "() => document.querySelector('[role=dialog]').innerText.includes('dedicated/ft-dedicated-startup')"
+    )
+    console.save_evidence("dedicated-offline-snippet")
+    console.press("Close")
+    console.press("Configure GPU")
+    console.sees("Dedicated GPU")
+    console.wait_until("""() => {
+        const dialog = document.querySelector('[role=dialog]');
+        return dialog && dialog.querySelector('#dedicated-min-replicas')?.value === '2';
+    }""")
+    console.save_evidence("dedicated-configuration-dialog")
     console.healthy()

@@ -3,7 +3,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { DedicatedStatusBadge } from "@/components/inference/dedicated-deployment";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
-import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";

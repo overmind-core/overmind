@@ -114,104 +114,101 @@ export function ApiSnippetDialog({
   const python = decision?.python ?? buildPythonSnippet({ baseUrl, modelId: routedModelId });
 
   return (
-    <>
-      <Dialog
-        onOpenChange={(next) => {
-          if (!next) {
-            setPin(false);
-            setExampleIndex("0");
-          }
-          onOpenChange(next);
-        }}
-        open={open}
-      >
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>Call this model</DialogTitle>
-            <DialogDescription>
-              {decisionDeploymentId
-                ? "TypeSafe systemone. Point the SDK base URL at this API."
-                : "OpenAI-compatible chat completions at the project API base URL."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-4">
-            {capabilityId ? (
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <p className="text-muted-foreground">
-                  {pin ? "Pinned to this version." : "Follows the capability’s live model."}
-                </p>
-                <Button onClick={() => setPin(!pin)} size="sm" variant="secondary">
-                  {pin ? "Use live alias" : "Pin this version"}
-                </Button>
-              </div>
-            ) : null}
-            {capabilityId && !pin && capability && !capability.activeModel ? (
-              <p className="text-xs text-warning">Make a model live before calling this alias.</p>
-            ) : null}
-            <p className="text-xs text-muted-foreground">
-              Set OVERMIND_API_KEY to an existing project key.
-              {projectId ? (
-                <>
-                  {" "}
-                  If you don't have an API key,{" "}
-                  <Link
-                    className="text-foreground underline underline-offset-2"
-                    hash="api-keys-heading"
-                    params={{ projectId }}
-                    to="/projects/$projectId"
-                  >
-                    generate here
-                  </Link>
-                  .
-                </>
-              ) : null}
-            </p>
-            {decisionDeploymentId && training.isFetching && !training.data ? (
-              <LoadingState className="min-h-40" label="Loading model examples" />
-            ) : (
+    <Dialog
+      onOpenChange={(next) => {
+        if (!next) {
+          setPin(false);
+          setExampleIndex("0");
+        }
+        onOpenChange(next);
+      }}
+      open={open}
+    >
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Call this model</DialogTitle>
+          <DialogDescription>
+            {decisionDeploymentId
+              ? "TypeSafe systemone. Point the SDK base URL at this API."
+              : "OpenAI-compatible chat completions at the project API base URL."}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="space-y-4">
+          {capabilityId ? (
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <p className="text-muted-foreground">
+                {pin ? "Pinned to this version." : "Follows the capability’s live model."}
+              </p>
+              <Button onClick={() => setPin(!pin)} size="sm" variant="secondary">
+                {pin ? "Use live alias" : "Pin this version"}
+              </Button>
+            </div>
+          ) : null}
+          {capabilityId && !pin && capability && !capability.activeModel ? (
+            <p className="text-xs text-warning">Make a model live before calling this alias.</p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            Set OVERMIND_API_KEY to an existing project key.
+            {projectId ? (
               <>
-                {decisionDeploymentId && examples.length > 1 && (
-                  <Select onValueChange={setExampleIndex} value={exampleIndex}>
-                    <SelectTrigger aria-label="Decision example" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {examples.map((item, index) => (
-                        <SelectItem key={index} value={String(index)}>
-                          {item.question}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {decisionDeploymentId && !decision ? (
-                  <p className="text-sm text-muted-foreground">
-                    A complete example input is unavailable for this model’s pinned training
-                    version.
-                  </p>
-                ) : (
-                  <>
-                    {decisionDeploymentId && (
-                      <p className="text-xs text-muted-foreground">
-                        Uses an example from this model’s training version. Replace state with your
-                        input.
-                        {summary?.total_sets > examples.length &&
-                          ` Showing ${examples.length} of ${summary.total_sets} decision examples.`}
-                      </p>
-                    )}
-                    <SnippetBlock kind="shell" label="cURL" text={curl} />
-                    <SnippetBlock
-                      kind="python"
-                      label={decisionDeploymentId ? "Python (TypeSafe SDK)" : "Python (OpenAI SDK)"}
-                      text={python}
-                    />
-                  </>
-                )}
+                {" "}
+                If you don't have an API key,{" "}
+                <Link
+                  className="text-foreground underline underline-offset-2"
+                  hash="api-keys-heading"
+                  params={{ projectId }}
+                  to="/projects/$projectId"
+                >
+                  generate here
+                </Link>
+                .
               </>
-            )}
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
-    </>
+            ) : null}
+          </p>
+          {decisionDeploymentId && training.isFetching && !training.data ? (
+            <LoadingState className="min-h-40" label="Loading model examples" />
+          ) : (
+            <>
+              {decisionDeploymentId && examples.length > 1 && (
+                <Select onValueChange={setExampleIndex} value={exampleIndex}>
+                  <SelectTrigger aria-label="Decision example" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {examples.map((item, index) => (
+                      <SelectItem key={index} value={String(index)}>
+                        {item.question}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {decisionDeploymentId && !decision ? (
+                <p className="text-sm text-muted-foreground">
+                  A complete example input is unavailable for this model’s pinned training version.
+                </p>
+              ) : (
+                <>
+                  {decisionDeploymentId && (
+                    <p className="text-xs text-muted-foreground">
+                      Uses an example from this model’s training version. Replace state with your
+                      input.
+                      {summary?.total_sets > examples.length &&
+                        ` Showing ${examples.length} of ${summary.total_sets} decision examples.`}
+                    </p>
+                  )}
+                  <SnippetBlock kind="shell" label="cURL" text={curl} />
+                  <SnippetBlock
+                    kind="python"
+                    label={decisionDeploymentId ? "Python (TypeSafe SDK)" : "Python (OpenAI SDK)"}
+                    text={python}
+                  />
+                </>
+              )}
+            </>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

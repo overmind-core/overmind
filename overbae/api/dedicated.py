@@ -1,7 +1,12 @@
 import uuid
 
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_field,
+    extend_schema_view,
+)
 from rest_framework import serializers
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -10,8 +15,8 @@ from rest_framework.views import APIView
 from overbae.api.config import PageNumberPagination
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
-from overbae.models import DedicatedDeployment, DeployedModel
-from overbae.services import dedicated
+from overbae.models import DedicatedDeployment, DeployedModel, OperationalRun
+from overbae.services import dedicated, dedicated_progress
 from overbae.services.dedicated import (
     DEFAULT_IDLE_SECONDS,
     MAX_IDLE_SECONDS,
@@ -31,12 +36,51 @@ class DedicatedGpuSerializer(serializers.Serializer):
     latency_ms_p50 = serializers.FloatField(allow_null=True)
 
 
+class DedicatedStartupLogSerializer(serializers.Serializer):
+    stage = serializers.CharField()
+    message = serializers.CharField()
+    at = serializers.DateTimeField()
+    worker = serializers.CharField()
+    completed = serializers.FloatField(allow_null=True)
+    total = serializers.FloatField(allow_null=True)
+    unit = serializers.CharField(allow_null=True)
+
+
+class DedicatedStartupSerializer(serializers.Serializer):
+    operation_id = serializers.UUIDField()
+    stage = serializers.CharField()
+    label = serializers.CharField()
+    completed = serializers.FloatField(allow_null=True)
+    total = serializers.FloatField(allow_null=True)
+    unit = serializers.CharField(allow_null=True)
+    available = serializers.BooleanField()
+    observed_at = serializers.DateTimeField(allow_null=True)
+    logs = DedicatedStartupLogSerializer(many=True)
+    truncated = serializers.BooleanField()
+
+
+class DedicatedDeploymentListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        rows = list(data)
+        runs = OperationalRun.objects.filter(
+            kind="dedicated_deployment",
+            reference__in=[str(row.pk) for row in rows],
+            attempt__in=[row.probe_call_id for row in rows],
+        )
+        by_attempt = {(run.reference, run.attempt): run for run in runs}
+        for row in rows:
+            row._startup_operation = by_attempt.get((str(row.pk), row.probe_call_id))
+        return super().to_representation(rows)
+
+
 class DedicatedDeploymentSerializer(serializers.ModelSerializer):
     model_id = serializers.CharField(source="public_model_id")
     model_name = serializers.SerializerMethodField()
+    startup = serializers.SerializerMethodField()
 
     class Meta:
         model = DedicatedDeployment
+        list_serializer_class = DedicatedDeploymentListSerializer
         fields = [
             "id",
             "model_id",
@@ -56,7 +100,12 @@ class DedicatedDeploymentSerializer(serializers.ModelSerializer):
             "online_at",
             "stopped_at",
             "error_message",
+            "startup",
         ]
+
+    @extend_schema_field(DedicatedStartupSerializer(allow_null=True))
+    def get_startup(self, obj):
+        return dedicated_progress.summary(obj)
 
     def get_model_name(self, obj) -> str:
         job = obj.deployed_model.finetuning_job

@@ -1,13 +1,30 @@
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
+import { DedicatedStartupProgress } from "@/components/inference/dedicated-startup";
+import { EndpointStatus } from "@/components/inference/serving-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DateTime } from "@/components/ui/datetime";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -19,7 +36,7 @@ import {
 } from "@/hooks/use-inference";
 import { useCommercialBilling, useCredits } from "@/hooks/use-subscription";
 import { notify } from "@/lib/notify";
-import { cn, usdToOvermindCredits } from "@/lib/utils";
+import { usdToOvermindCredits } from "@/lib/utils";
 import type { DedicatedDeployment, DedicatedGpu, DeployedModel } from "@/openapi";
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -32,12 +49,12 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const STATUS_TONE = {
-  deploying: "info",
+  deploying: "default",
   failed: "error",
   offline: "neutral",
   online: "success",
   shutting_down: "warning",
-  warming: "info",
+  warming: "default",
 } as const;
 
 const ACTIVE = new Set(["deploying", "warming", "online", "shutting_down"]);
@@ -54,13 +71,6 @@ export function DedicatedStatusBadge({ status }: { status: string }) {
       {STATUS_LABEL[status] ?? status}
     </Badge>
   );
-}
-
-function creditsAmount(raw: string | null | undefined): string {
-  if (raw == null || raw === "") return "—";
-  const amount = Number(raw);
-  if (!Number.isFinite(amount)) return raw;
-  return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function speed(gpu: DedicatedGpu, decision: boolean): string {
@@ -110,123 +120,202 @@ function Hint({ label, text }: { label: string; text: string }) {
   );
 }
 
-export function DedicatedDeploymentCard({
+export function DedicatedDeploymentSection({
   model,
   projectId,
 }: {
   model: DeployedModel;
   projectId?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const [snippetOpen, setSnippetOpen] = useState(false);
+  const start = useStartDedicatedMutation(model.id);
+  const stop = useStopDedicatedMutation(model.id);
   const ready = model.status === "ready";
   const deployment = useDedicatedDeploymentQuery(model.id, ready);
-  const gpus = useDedicatedGpusQuery(model.id, ready);
+  const gpus = useDedicatedGpusQuery(model.id, ready && open);
   const row = deployment.data ?? null;
   const active = row != null && ACTIVE.has(row.status ?? "");
+  const stopping = row?.status === "shutting_down";
+  const pending = start.isPending || stop.isPending;
+  const toggleDeployment = () => {
+    if (!row) return;
+    if (active) {
+      stop.mutate(undefined, {
+        onError: (error) => notify.error(error, "Couldn't stop the deployment"),
+      });
+    } else {
+      start.mutate(
+        {
+          gpuType: row.gpuType,
+          idleShutdownSeconds: row.idleShutdownSeconds ?? 900,
+          maxReplicas: row.maxReplicas ?? 1,
+          minReplicas: row.scaleToZero ? 0 : Math.max(1, row.minReplicas ?? 1),
+          scaleToZero: row.scaleToZero ?? false,
+        },
+        { onError: (error) => notify.error(error, "Couldn't start the deployment") }
+      );
+    }
+  };
   if (!ready) return null;
   return (
-    <Card className="space-y-4 p-4">
-      <div className="flex items-center gap-2">
-        <Icon.server className="size-4" />
-        <p className="text-sm font-medium">Dedicated GPU</p>
-      </div>
-      {row ? <DeploymentStatus model={model} projectId={projectId} row={row} /> : null}
-      {gpus.isLoading || deployment.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading GPUs</p>
-      ) : null}
-      {deployment.isFetched && gpus.data && row?.status !== "shutting_down" ? (
-        <GpuMenu
-          decision={model.inferenceContract === "decision"}
-          gpus={gpus.data}
-          model={model}
-          row={active ? row : null}
+    <>
+      <Dialog onOpenChange={setOpen} open={open}>
+        <Card aria-label="Dedicated endpoint" className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2">
+            <div className="flex shrink-0 items-center gap-3">
+              <h2 className="text-sm font-medium">Dedicated endpoint</h2>
+              {row && STARTING.has(row.status ?? "") ? null : (
+                <EndpointStatus
+                  label={
+                    deployment.isLoading
+                      ? "Loading"
+                      : deployment.error
+                        ? "Unavailable"
+                        : row
+                          ? STATUS_LABEL[row.status ?? "offline"]
+                          : "Not deployed"
+                  }
+                  state={
+                    deployment.error || row?.status === "failed"
+                      ? "error"
+                      : deployment.isLoading || (active && row?.status !== "online")
+                        ? "busy"
+                        : row?.status === "online"
+                          ? "online"
+                          : "offline"
+                  }
+                />
+              )}
+            </div>
+            {row && STARTING.has(row.status ?? "") ? <DedicatedStartupProgress row={row} /> : null}
+            <div className="inline-flex shrink-0 items-center gap-2">
+              {row ? (
+                <Button
+                  aria-label="Dedicated API snippet"
+                  onClick={() => setSnippetOpen(true)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  <Icon.terminal />
+                  <span className="hidden lg:inline">Dedicated API snippet</span>
+                </Button>
+              ) : null}
+              <div
+                aria-label="GPU controls"
+                className="inline-flex shrink-0 items-center"
+                role="group"
+              >
+                <DialogTrigger asChild>
+                  <Button
+                    className={row ? "rounded-r-none" : undefined}
+                    disabled={stopping || pending || deployment.isLoading || !!deployment.error}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Configure GPU
+                  </Button>
+                </DialogTrigger>
+                {row ? (
+                  <Button
+                    className="rounded-l-none border-l-border"
+                    disabled={stopping || pending || !!deployment.error}
+                    onClick={toggleDeployment}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {pending || stopping ? (
+                      <Spinner size="sm" />
+                    ) : active ? (
+                      <Icon.stop />
+                    ) : (
+                      <Icon.play />
+                    )}
+                    {stopping || stop.isPending
+                      ? "Stopping"
+                      : start.isPending
+                        ? "Starting"
+                        : active
+                          ? "Stop"
+                          : "Start"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="px-4 py-3">
+            {deployment.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading deployment</p>
+            ) : deployment.error ? (
+              <p className="text-sm text-destructive">Could not load deployment</p>
+            ) : row ? (
+              <DeploymentStatus row={row} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No dedicated GPU deployed</p>
+            )}
+          </div>
+        </Card>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Dedicated GPU</DialogTitle>
+            <DialogDescription>{model.modelId}</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-5">
+            {gpus.isLoading || deployment.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading GPUs</p>
+            ) : null}
+            {gpus.error ? (
+              <p className="text-sm text-destructive">GPU options could not load</p>
+            ) : null}
+            {deployment.isFetched && gpus.data && row?.status !== "shutting_down" ? (
+              <GpuMenu
+                decision={model.inferenceContract === "decision"}
+                gpus={gpus.data}
+                model={model}
+                row={row}
+              />
+            ) : null}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+      {row ? (
+        <ApiSnippetDialog
+          capabilityId={null}
+          decisionDeploymentId={model.inferenceContract === "decision" ? model.id : undefined}
+          modelId={row.modelId}
+          onOpenChange={setSnippetOpen}
+          open={snippetOpen}
+          projectId={projectId}
+          trainingJobId={model.finetuningJobId}
         />
       ) : null}
-    </Card>
+    </>
   );
 }
 
-function DeploymentStatus({
-  model,
-  projectId,
-  row,
-}: {
-  model: DeployedModel;
-  projectId?: string;
-  row: DedicatedDeployment;
-}) {
-  const stop = useStopDedicatedMutation(model.id);
-  const [snippetOpen, setSnippetOpen] = useState(false);
-  const decision = model.inferenceContract === "decision";
-  const status = row.status ?? "";
-  const stopping = status === "shutting_down";
-  const actions = (
-    <div className="flex flex-wrap gap-2">
-      {status === "online" ? (
-        <Button onClick={() => setSnippetOpen(true)} size="sm" variant="secondary">
-          <Icon.terminal className="size-3.5" />
-          Dedicated snippet
-        </Button>
-      ) : null}
-      {ACTIVE.has(status) ? (
-        <Button
-          disabled={stop.isPending || stopping}
-          onClick={() =>
-            stop.mutate(undefined, {
-              onError: (error) => notify.error(error, "Couldn't stop the deployment"),
-            })
-          }
-          size="sm"
-          variant="secondary"
-        >
-          <Icon.stop className="size-3.5" />
-          {stopping ? "Shutting down" : "Stop"}
-        </Button>
-      ) : null}
-    </div>
-  );
+function DeploymentStatus({ row }: { row: DedicatedDeployment }) {
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <DedicatedStatusBadge status={status} />
-          <span className="text-sm font-medium">{row.gpuType}</span>
-        </div>
-        {actions}
-      </div>
-      <div className="grid grid-cols-3 gap-4 border-t border-border/70 pt-3">
-        <StatusFact detail="running" label="Replicas" value={String(row.runningReplicas ?? 0)} />
-        <StatusFact
-          detail="credits/hour"
-          label="Rate"
-          value={creditsAmount(row.creditsPerGpuHour)}
-        />
-        <StatusFact detail="credits" label="This run" value={creditsAmount(row.accruedCredits)} />
-      </div>
-      {row.ratesFetchedAt ? (
-        <p className="text-xs text-muted-foreground">
-          Rate fetched <DateTime value={row.ratesFetchedAt} />
-        </p>
-      ) : null}
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
+        {[
+          ["GPU", row.gpuType],
+          [
+            "Replicas",
+            `${row.runningReplicas ?? "—"} running · ${row.minReplicas}–${row.maxReplicas} configured`,
+          ],
+          [
+            "Idle timeout",
+            `${row.idleShutdownSeconds}s${row.scaleToZero ? " · scales to zero" : ""}`,
+          ],
+          ["Rate per GPU", `${row.creditsPerGpuHour} credits/hour`],
+        ].map(([label, value]) => (
+          <div className="space-y-1" key={label}>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="text-sm">{value}</dd>
+          </div>
+        ))}
+      </dl>
       {row.errorMessage ? <p className="text-sm text-destructive">{row.errorMessage}</p> : null}
-      <ApiSnippetDialog
-        capabilityId={null}
-        decisionDeploymentId={decision ? model.id : undefined}
-        modelId={row.modelId}
-        onOpenChange={setSnippetOpen}
-        open={snippetOpen}
-        projectId={projectId}
-        trainingJobId={model.finetuningJobId}
-      />
-    </div>
-  );
-}
-
-function StatusFact({ label, value, detail }: { label: string; value: string; detail: ReactNode }) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium tabular-nums">{value}</p>
-      <p className="text-xs text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -243,7 +332,7 @@ function GpuMenu({
   row: DedicatedDeployment | null;
 }) {
   const [gpuType, setGpuType] = useState(row?.gpuType || gpus[0]?.gpuType || "");
-  const [minReplicas, setMinReplicas] = useState(String(row?.minReplicas ?? 1));
+  const [minReplicas, setMinReplicas] = useState(String(Math.max(1, row?.minReplicas ?? 1)));
   const [maxReplicas, setMaxReplicas] = useState(String(row?.maxReplicas ?? 1));
   const [scaleToZero, setScaleToZero] = useState(row?.scaleToZero ?? false);
   const [idleSeconds, setIdleSeconds] = useState(String(row?.idleShutdownSeconds ?? 900));
@@ -251,7 +340,7 @@ function GpuMenu({
   if (row && syncedId !== row.id) {
     setSyncedId(row.id);
     setGpuType(row.gpuType);
-    setMinReplicas(String(row.minReplicas ?? 1));
+    setMinReplicas(String(Math.max(1, row.minReplicas ?? 1)));
     setMaxReplicas(String(row.maxReplicas ?? 1));
     setScaleToZero(row.scaleToZero ?? false);
     setIdleSeconds(String(row.idleShutdownSeconds ?? 900));
@@ -259,6 +348,7 @@ function GpuMenu({
   const start = useStartDedicatedMutation(model.id);
   const update = useUpdateDedicatedMutation(model.id);
   const pending = start.isPending || update.isPending;
+  const active = row != null && ACTIVE.has(row.status ?? "");
   const { enabled: commercialBilling } = useCommercialBilling();
   const { balanceUsd } = useCredits();
 
@@ -299,8 +389,11 @@ function GpuMenu({
 
   const submit = () => {
     const onError = (error: unknown) =>
-      notify.error(error, row ? "Couldn't update the deployment" : "Couldn't start the deployment");
-    if (row) update.mutate(body, { onError });
+      notify.error(
+        error,
+        active ? "Couldn't update the deployment" : "Couldn't start the deployment"
+      );
+    if (active) update.mutate(body, { onError });
     else start.mutate(body, { onError });
   };
 
@@ -309,33 +402,29 @@ function GpuMenu({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-[7.5rem_auto_minmax(0,1fr)] divide-y divide-border/70 overflow-x-auto rounded-md border border-border">
-        {gpus.map((gpu) => (
-          <button
-            className={cn(
-              "col-span-3 grid grid-cols-subgrid items-baseline gap-x-6 px-3 py-2 text-left text-sm",
-              gpu.gpuType === gpuType && "bg-wash-raised"
-            )}
-            key={gpu.gpuType}
-            onClick={() => setGpuType(gpu.gpuType)}
-            type="button"
-          >
-            <span className="font-medium">{gpu.gpuType}</span>
-            <span className="whitespace-nowrap text-muted-foreground">{speed(gpu, decision)}</span>
-            <span className="justify-self-end whitespace-nowrap tabular-nums">
-              {price(gpu.creditsPerGpuHour)}
-            </span>
-          </button>
-        ))}
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <label className="text-xs text-muted-foreground" htmlFor="dedicated-gpu">
+          GPU
+        </label>
+        <Select onValueChange={setGpuType} value={gpuType}>
+          <SelectTrigger aria-label="GPU" className="w-full" id="dedicated-gpu">
+            <SelectValue>{gpuType}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {gpus.map((gpu) => (
+              <SelectItem key={gpu.gpuType} value={gpu.gpuType}>
+                {gpu.gpuType} · {price(gpu.creditsPerGpuHour)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selected && speed(selected, decision) !== "Unmeasured" ? (
+          <p className="text-xs text-muted-foreground">{speed(selected, decision)}</p>
+        ) : null}
       </div>
-      {selected?.ratesFetchedAt ? (
-        <p className="text-xs text-muted-foreground">
-          Rate fetched <DateTime value={selected.ratesFetchedAt} />
-        </p>
-      ) : null}
       <TooltipProvider delayDuration={150}>
-        <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[7.5rem_7.5rem_14rem_auto]">
+        <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <label htmlFor="dedicated-min-replicas">Min replicas</label>
@@ -367,7 +456,7 @@ function GpuMenu({
               value={maxReplicas}
             />
           </div>
-          <div className="col-span-2 space-y-1 sm:col-span-1">
+          <div className="space-y-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <label htmlFor="dedicated-idle-seconds">Idle timeout (seconds)</label>
               <Hint
@@ -382,7 +471,7 @@ function GpuMenu({
               value={idleSeconds}
             />
           </div>
-          <div className="col-span-2 flex h-8 items-center gap-2 self-end text-sm sm:col-span-1">
+          <div className="flex h-8 items-center gap-2 self-end text-sm ">
             <label className="flex items-center gap-2">
               <Checkbox
                 checked={scaleToZero}
@@ -397,24 +486,21 @@ function GpuMenu({
           </div>
         </div>
       </TooltipProvider>
-      {credits == null ? (
-        <p className="text-sm text-muted-foreground">Price unavailable</p>
-      ) : minimum == null || maxCount == null ? (
-        <p className="text-sm text-muted-foreground">Enter a replica count.</p>
-      ) : minimum > maxCount ? (
-        <p className="text-sm text-muted-foreground">Minimum is above the maximum.</p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {Math.round(minimum * credits)} credits/hour at the minimum.{" "}
-          {Math.round(maxCount * credits)} credits/hour at the maximum. One request uses one
-          replica.
-        </p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-4">
+        <span className="text-sm tabular-nums">
+          {credits != null && minimum != null && maxCount != null
+            ? `${(minimum * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}${minimum !== maxCount ? `–${(maxCount * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""} credits/hour`
+            : "Price unavailable"}
+        </span>
+        <Button disabled={invalid || pending} onClick={submit} size="sm">
+          <Icon.play />
+          {pending ? "Saving" : active ? "Update" : "Deploy"}
+        </Button>
+      </div>
+      {minimum != null && maxCount != null && minimum > maxCount ? (
+        <p className="text-xs text-destructive">Minimum replicas exceeds maximum</p>
+      ) : null}
       {hourWarning ? <p className="text-sm text-warning">{hourWarning}</p> : null}
-      <Button disabled={invalid || pending} onClick={submit} size="sm">
-        <Icon.play className="size-3.5" />
-        {pending ? "Saving" : row ? "Update" : "Deploy"}
-      </Button>
     </div>
   );
 }

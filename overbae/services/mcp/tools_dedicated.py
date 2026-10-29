@@ -2,7 +2,7 @@ from asgiref.sync import sync_to_async
 
 from overbae.core.errors import InputValidationError
 from overbae.models import DeployedModel
-from overbae.services import dedicated
+from overbae.services import dedicated, dedicated_progress
 from overbae.services.dedicated_offer import serving_shape
 from overbae.services.mcp.contracts.dedicated import (
     DedicatedDeploymentOutput,
@@ -51,6 +51,7 @@ def _output(row) -> DedicatedDeploymentOutput:
         credits_per_gpu_hour=str(row.credits_per_gpu_hour),
         accrued_credits=str(row.accrued_credits),
         error=row.error_message[:1_000],
+        startup=dedicated_progress.summary(row),
     )
 
 

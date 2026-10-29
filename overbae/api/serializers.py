@@ -2724,9 +2724,27 @@ class InferenceActivityQuerySerializer(InferenceMonitoringQuerySerializer):
     granularity = serializers.ChoiceField(choices=["minute", "hour", "day"], default="minute")
 
 
+class DedicatedUsagePointSerializer(serializers.Serializer):
+    bucket = serializers.DateTimeField()
+    credits = serializers.FloatField()
+
+
+class DedicatedUsageBreakdownSerializer(serializers.Serializer):
+    gpu_type = serializers.CharField(allow_null=True)
+    credits = serializers.FloatField()
+
+
+class DedicatedUsageSerializer(serializers.Serializer):
+    credits = serializers.FloatField(allow_null=True)
+    gpu_hours = serializers.FloatField(allow_null=True)
+    points = DedicatedUsagePointSerializer(many=True)
+    breakdown = DedicatedUsageBreakdownSerializer(many=True)
+
+
 class InferenceMetricsSerializer(serializers.Serializer):
     """Aggregate usage/latency/cost for a deployed model (from InferenceCall)."""
 
+    dedicated_usage = DedicatedUsageSerializer()
     last_request_at = serializers.DateTimeField(allow_null=True)
     cost_recorded_request_count = serializers.IntegerField()
     failed_request_count = serializers.IntegerField()

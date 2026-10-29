@@ -50,6 +50,7 @@ from overbae.models import (
 )
 from overbae.services import (
     activity,
+    dedicated_progress,
     inference_requests,
     model_workflows,
     operational_progress,
@@ -1090,6 +1091,7 @@ def _dedicated_payload(deployment) -> dict | None:
         "credits_per_gpu_hour": str(row.credits_per_gpu_hour),
         "accrued_credits": str(row.accrued_credits),
         "error": row.error_message[:1_000],
+        "startup": dedicated_progress.summary(row),
     }
 
 

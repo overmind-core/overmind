@@ -1,17 +1,17 @@
 import { useState } from "react";
 
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { ModelLiveAction } from "@/components/finetuning/model-live-action";
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
-import { DedicatedDeploymentCard } from "@/components/inference/dedicated-deployment";
+import { DedicatedDeploymentSection } from "@/components/inference/dedicated-deployment";
 import {
   BaseModelCell,
   CapabilityChip,
   TrainingJobChip,
 } from "@/components/inference/model-identity";
 import { ModelPerformance } from "@/components/inference/model-performance";
-import { ServingStatusBadge } from "@/components/inference/serving-status";
+import { ServingStatusIndicator } from "@/components/inference/serving-status";
 import { DetailErrorState } from "@/components/route-error";
 import {
   AlertDialog,
@@ -71,14 +71,6 @@ function ModelDetailPage() {
 
   const header = (
     <PageHeader
-      actions={
-        model ? (
-          <Button onClick={() => setSnippetOpen(true)} size="sm" variant="secondary">
-            <Icon.terminal className="size-3.5" />
-            View API snippet
-          </Button>
-        ) : null
-      }
       className="flex-wrap"
       icon={
         <Icon.inferenceTitle
@@ -91,7 +83,6 @@ function ModelDetailPage() {
           <span className="flex min-w-0 items-center gap-2.5">
             <span className="min-w-0 truncate">{model.modelId}</span>
             <CopyModelIdButton modelId={model.modelId} />
-            <ServingStatusBadge live={live} status={model.status} />
           </span>
         ) : (
           "Model"
@@ -121,32 +112,32 @@ function ModelDetailPage() {
           {(model.status === "failed" || model.status === "deleted") && model.finetuningJobId ? (
             <RedeployBanner model={model} />
           ) : null}
-          <ServingCard
-            actions={
-              projectId && model.inferenceContract !== "decision" ? (
-                <ModelLiveAction
-                  capabilityId={model.capabilityId}
-                  jobs={jobs}
-                  model={model}
-                  projectId={projectId}
-                  promote
-                >
-                  <Button asChild size="sm" variant="secondary">
-                    <Link
-                      search={{ model: model.modelId, projectId, view: "roots" }}
-                      to="/observability"
-                    >
-                      <Icon.observability />
-                      View traces
-                    </Link>
-                  </Button>
-                </ModelLiveAction>
-              ) : null
-            }
-            model={model}
-          />
-          <DedicatedDeploymentCard model={model} projectId={projectId} />
-          <ModelPerformance modelId={model.id} onConnect={() => setSnippetOpen(true)} />
+          {model.capabilityId ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <CapabilityChip
+                capabilityId={model.capabilityId}
+                capabilityName={model.capabilityName}
+              />
+              <span>Capability alias</span>
+              <code>overmind/{model.capabilityId}</code>
+              <CopyModelIdButton modelId={`overmind/${model.capabilityId}`} />
+            </div>
+          ) : null}
+          <Card aria-label="Serverless endpoint" className="overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-2">
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-medium">Serverless endpoint</h2>
+                <ServingStatusIndicator live={live} status={model.status} />
+              </div>
+              <Button onClick={() => setSnippetOpen(true)} size="sm" variant="secondary">
+                <Icon.terminal />
+                Serverless API snippet
+              </Button>
+            </div>
+            <p className="px-4 py-3 text-xs text-muted-foreground">Scales on demand</p>
+          </Card>
+          <DedicatedDeploymentSection model={model} projectId={projectId} />
+          <ModelPerformance modelId={model.id} />
           <Disclosure onOpenChange={setWeightsOpen} title="Deployment details">
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-4">
@@ -186,6 +177,15 @@ function ModelDetailPage() {
                   modelId={model.modelId}
                 />
               </div>
+              {projectId && model.inferenceContract !== "decision" ? (
+                <ModelLiveAction
+                  capabilityId={model.capabilityId}
+                  jobs={jobs}
+                  model={model}
+                  projectId={projectId}
+                  promote
+                />
+              ) : null}
               <DangerZone id={model.id} modelId={model.modelId} />
             </div>
           </Disclosure>
@@ -239,31 +239,6 @@ function RedeployBanner({ model }: { model: DeployedModel }) {
         {retry.isPending ? "Starting…" : failed ? "Retry" : "Deploy"}
       </Button>
     </div>
-  );
-}
-
-function ServingCard({ model, actions }: { model: DeployedModel; actions?: React.ReactNode }) {
-  const alias = model.inferenceContract !== "decision" && model.capabilityId;
-  const reference = alias ? `overmind/${model.capabilityId}` : model.modelId;
-  return (
-    <Card className="flex flex-wrap items-start justify-between gap-4 p-4">
-      <div className="min-w-0 space-y-2">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{alias ? "Capability alias" : "Model ID"}</span>
-          {model.capabilityId ? (
-            <CapabilityChip
-              capabilityId={model.capabilityId}
-              capabilityName={model.capabilityName}
-            />
-          ) : null}
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <code className="break-all font-mono text-xs">{reference}</code>
-          <CopyModelIdButton modelId={reference} />
-        </div>
-      </div>
-      {actions ? <div className="ml-auto min-w-0 max-w-full">{actions}</div> : null}
-    </Card>
   );
 }
 

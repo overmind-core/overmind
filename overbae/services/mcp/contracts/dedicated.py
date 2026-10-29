@@ -44,6 +44,29 @@ class DedicatedStopInput(MCPModel):
     deployment: str = Field(min_length=1, max_length=255)
 
 
+class DedicatedStartupLog(MCPModel):
+    stage: str
+    message: str
+    at: str
+    worker: str
+    completed: float | None = None
+    total: float | None = None
+    unit: str | None = None
+
+
+class DedicatedStartup(MCPModel):
+    operation_id: str
+    stage: str
+    label: str
+    completed: float | None = None
+    total: float | None = None
+    unit: str | None = None
+    available: bool
+    observed_at: str | None = None
+    logs: list[DedicatedStartupLog]
+    truncated: bool
+
+
 class DedicatedDeploymentOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     id: str
@@ -58,3 +81,4 @@ class DedicatedDeploymentOutput(MCPModel):
     credits_per_gpu_hour: str
     accrued_credits: str
     error: str = ""
+    startup: DedicatedStartup | None = None

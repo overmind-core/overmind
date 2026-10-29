@@ -175,6 +175,7 @@ class FakeModal:
     cancelled: list[tuple[str, dict]] = field(default_factory=list)
     files: dict[str, bytes] = field(default_factory=dict)
     dictionaries: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    app_logs: list[Any] = field(default_factory=list)
     worker_stats: dict[str, Any] | BaseException | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -216,6 +217,23 @@ class FakeModal:
 
     def install(self, monkeypatch) -> FakeModal:
         cloud = self
+
+        def fetch_logs(*, since, until, search_text=""):
+            return [
+                entry
+                for entry in cloud.app_logs
+                if since <= entry.timestamp <= until and search_text in entry.message
+            ]
+
+        monkeypatch.setattr(
+            modal.App,
+            "lookup",
+            _Method(
+                lambda *args, **kwargs: SimpleNamespace(
+                    logs=SimpleNamespace(fetch=_IteratorMethod(fetch_logs))
+                )
+            ),
+        )
 
         class Function:
             @staticmethod

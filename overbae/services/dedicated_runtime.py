@@ -35,7 +35,7 @@ def _drive(result):
     return result
 
 
-def _class_name(deployed, gpu_type: str) -> str:
+def worker_class_name(deployed, gpu_type: str) -> str:
     token = gpu_type.replace("-", "")
     return f"{token}_vllm_lora" if deployed.is_lora else f"{token}_vllm"
 
@@ -84,7 +84,7 @@ def _window(seconds: int) -> int:
 
 def _chat_cls(deployed, gpu_type: str):
     return modal.Cls.from_name(
-        APP_NAME, _class_name(deployed, gpu_type), environment_name=environment()
+        APP_NAME, worker_class_name(deployed, gpu_type), environment_name=environment()
     )
 
 

@@ -15,7 +15,7 @@ from django.utils.dateparse import parse_datetime
 
 from overbae.core.errors import InputValidationError
 from overbae.models import BillingService, DedicatedDeployment, DeployedModel
-from overbae.services import dedicated_runtime
+from overbae.services import dedicated_progress, dedicated_runtime
 from overbae.services.billing_ledger import balance_usd, charge_credits
 from overbae.services.billing_provider import commercial_billing_enabled
 from overbae.services.dedicated_offer import credits_per_hour, hourly_usd, offers, serving_shape
@@ -216,7 +216,6 @@ def stop(row: DedicatedDeployment):
         return row
     DedicatedDeployment.objects.filter(pk=row.pk).update(
         status=DedicatedDeployment.Status.SHUTTING_DOWN,
-        min_replicas=0,
         next_poll_at=timezone.now(),
     )
     row.refresh_from_db()
@@ -279,6 +278,10 @@ def advance(deployment_id: str) -> None:
         )
         if row is None or row.status not in DedicatedDeployment.LIVE:
             return
+        capture_startup = row.status in (
+            DedicatedDeployment.Status.DEPLOYING,
+            DedicatedDeployment.Status.WARMING,
+        )
         decision = row.deployed_model.inference_contract == "decision"
         stopping = row.status == DedicatedDeployment.Status.SHUTTING_DOWN
         try:
@@ -319,7 +322,6 @@ def advance(deployment_id: str) -> None:
                     row.stopped_at = now
                 elif not stopping and _broke(row):
                     row.status = DedicatedDeployment.Status.SHUTTING_DOWN
-                    row.min_replicas = 0
         except InputValidationError as exc:
             _fail(row, exc.detail, now)
         except Exception as exc:
@@ -327,6 +329,8 @@ def advance(deployment_id: str) -> None:
             _fail(row, str(exc).strip() or dedicated_runtime.WORKER_UNAVAILABLE, now)
         row.next_poll_at = now + timedelta(seconds=15)
         row.save()
+    if capture_startup:
+        dedicated_progress.collect(row)
 
 
 def serve_chat(row: DedicatedDeployment, body: bytes):
