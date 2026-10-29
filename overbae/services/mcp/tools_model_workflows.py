@@ -328,7 +328,7 @@ def register_model_workflow_tools(catalog):
         (
             "save_training_plan",
             "Retain training task and evidence",
-            "Save an immutable task/source snapshot for generative or decision training. Add prepared data, a frozen partition and attributed audit/baseline/sanity evidence in a superseding snapshot. Pilot selection is optional; full training requires no pilot. If supplied, selection references a measured development check from a matching plan-bound pilot, not a hardware profile, and full recipes may change only its declared budget fields. Reads use get_job(kind=training_plan). Saving never launches compute or certifies semantics.",
+            "Save immutable generative/decision task and source. Supersede to add prepared data, frozen partition and attributed audit/baseline/sanity evidence. Optional pilot selection requires a measured development check from a matching plan-bound pilot, not a hardware profile; recipes may change only declared budgets. Read get_job(kind=training_plan). No compute or semantic certification.",
             SaveTrainingPlanInput,
             WorkflowOutput,
             save_training_plan,
@@ -361,7 +361,7 @@ def register_model_workflow_tools(catalog):
         (
             "reuse_evaluation_predictions",
             "Reuse verified predictions",
-            "Explicitly reuse completed prediction evidence for a draft participant with identical project, sources, model identity, runtime and inference conditions. Records reuse lineage; does not create an independent repetition.",
+            "Reuse completed predictions for a draft participant: project/sources/model/runtime/inference conditions must match. Records lineage, not an independent repetition.",
             ReusePredictionsInput,
             WorkflowOutput,
             reuse_comparison,
@@ -383,7 +383,7 @@ def register_model_workflow_tools(catalog):
         (
             "create_training_profile",
             "Draft runtime qualification",
-            "Save one bounded training profile using the selected source and recipe, with explicit optimizer-step and provider-attempt time limits and no automatic provider retry. Launch separately through launch_training_experiment. Time bounds cover the GPU attempt, not preprocessing or total invoiced spend.",
+            "Save source/recipe training profile with optimizer-step and provider-attempt time limits; no automatic retry. Launch via launch_training_experiment. Bounds cover GPU attempt, not preprocessing or total billed spend.",
             CreateProfileInput,
             WorkflowOutput,
             create_profile,
@@ -394,7 +394,7 @@ def register_model_workflow_tools(catalog):
         (
             "pause_native_evaluation",
             "Pause comparison submission",
-            "Pause future stage submissions. An already claimed batch or provider call may finish and its receipt is retained; this does not terminate provider work or stop an external notification monitor. Resume through resume_native_evaluation.",
+            "Pause future stages. Claimed batches/provider calls may finish; receipts persist. Does not terminate provider work or external monitors. Resume via resume_native_evaluation.",
             LaunchComparisonInput,
             WorkflowOutput,
             pause_comparison,
@@ -405,7 +405,7 @@ def register_model_workflow_tools(catalog):
         (
             "explore_dataset",
             "Explore source data",
-            "Profile a selected immutable source across all rows with bounded examples and optional sampling feasibility. Refreshes fingerprint-bound cell analytics, also returned by inspect_dataset and REST. Checks declared target balance, coverage, weights and observable inputs; unchecked risks remain explicit. Does not infer label semantics, modify rows or submit provider work; get_job retains evidence across reconnects.",
+            "Profile all immutable source rows: bounded examples, optional sampling feasibility, declared target balance, coverage, weights and observable inputs. Refresh fingerprint-bound analytics (inspect_dataset/REST); get_job retains evidence. Unchecked risks stay explicit. No inferred label semantics, row edits or provider work.",
             ExploreDatasetInput,
             WorkflowOutput,
             explore_data,
@@ -515,7 +515,7 @@ def register_model_workflow_tools(catalog):
         (
             "create_training_experiment",
             "Save training experiment",
-            "Save candidate recipes and frozen data. Bind training_plan with stage=full to train directly, or stage=pilot for an explicitly requested bounded quality experiment. Full training validates task/data/partition and audit/baseline/sanity evidence without requiring a pilot. An optional pilot selection limits recipe changes to declared budget fields. Hardware profiles remain separate. Creation does not launch training.",
+            "Save recipes/frozen data with training_plan. stage=full validates task/data/partition and audit/baseline/sanity evidence; no pilot required. stage=pilot is an explicitly requested bounded quality experiment. Optional pilot selection restricts recipe edits to declared budgets; hardware profiles are separate. Does not launch training.",
             CreateExperimentInput,
             WorkflowOutput,
             create_experiment,

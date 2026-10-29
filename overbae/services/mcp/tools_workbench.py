@@ -190,25 +190,25 @@ def register_workbench_tools(catalog):
             "update_dataset_preparation",
             UpdatePreparationInput,
             False,
-            "Report overall work: preparing resumes; paused waits; cancelled abandons. Complete only after all agent work/jobs/uploads finish, with published output cell UUIDs. Terminal states immutable.",
+            "Overall state: preparing resumes, paused waits, cancelled abandons. Complete after all work/jobs/uploads finish with published output UUIDs. Terminal states immutable.",
         ),
         (
             "inspect_dataset_workbench",
             InspectInput,
             True,
-            "Inspect recipes, runs, bindings and preparation_workflow. pipeline selects exact revision/family history; dataset filters runs/bindings. Resources retain code. Reads never execute.",
+            "Read recipes/runs/bindings/preparation_workflow. pipeline selects revision/family history; dataset filters runs/bindings. Code in resources; no execution.",
         ),
         (
             "save_dataset_pipeline",
             SaveInput,
             False,
-            "Save without execution: upload Python package via overmind dataset pipeline-upload (overmind://dataset-upload). dataset associates/replaces script. Steps: id + input (source/earlier step) or inputs (fan-in); overlapping source_row IDs fail. Last step outputs; inspect flow.unconsumed_steps. Conditions cite expression/entrypoint line. Revise family pipeline + expected_revision, or derive exact derived_from. Changed request-key content conflicts.",
+            "Save package from pipeline-upload (overmind://dataset-upload), without execution. dataset attaches/replaces script. Steps: id + input (source/prior step) or inputs (fan-in); source_row overlap fails. Last step outputs; inspect flow.unconsumed_steps. Conditions cite expression/entrypoint line. Revise pipeline + expected_revision or derive derived_from. Changed request-key payload conflicts.",
         ),
         (
             "run_dataset_pipeline",
             RunInput,
             False,
-            "Run pinned revision/source. Preview bounds input; min/max population checks defer, lineage/preserve_rows apply. Publish appends cells atomically. Isolated runner; semantics unmeasured. Follow poll_after_seconds and recover identical request_key.",
+            "Run pinned revision/source in isolation. Preview bounds input, defers population limits; lineage/preserve_rows apply. Publish appends cells atomically. Semantics unmeasured. Poll after poll_after_seconds; retry same request_key.",
         ),
         (
             "validate_dataset_pipeline",
@@ -226,7 +226,7 @@ def register_workbench_tools(catalog):
             "save_dataset_pipeline_binding",
             SaveBindingInput,
             False,
-            "Save paused binding from dataset active version or trace selection. Rebuilds snapshots including late updates/removals. Pin revision, parameters, interval, run/row limits. Revision requires expected_version and pauses; enable separately.",
+            "Save paused binding to active dataset version or traces; rebuild snapshots with late edits/removals. Pin revision/parameters/interval/run/row limits. Revise with expected_version; pauses until enabled.",
         ),
         (
             "set_dataset_pipeline_binding_state",
@@ -244,13 +244,13 @@ def register_workbench_tools(catalog):
             "import_dataset_version",
             ImportInput,
             False,
-            "Import on pinned source with validated source_row or _overmind_parent_rows. Supply imported_rows (2000 rows/4 MiB), or project artifact_cell + artifact_fingerprint. provenance attributes producer; execution/semantics unverified.",
+            "Import pinned source: validate source_row/_overmind_parent_rows. Supply imported_rows (2000 rows/4 MiB) or project artifact_cell + artifact_fingerprint. provenance names producer; execution/semantics unverified.",
         ),
         (
             "update_dataset",
             UpdateInput,
             False,
-            "Set name, user-selected intent, capability, active cell or future-import Tesseract OCR codes ([] English). Intent/capability freeze after use. Null clears capability/default. Existing consumers/cells unchanged.",
+            "Set name, user intent, capability, active cell or future Tesseract OCR codes ([] English). Intent/capability freeze after use; null clears capability/default. Existing cells/consumers unchanged.",
         ),
     ]
     for name, model, read_only, description in definitions:
