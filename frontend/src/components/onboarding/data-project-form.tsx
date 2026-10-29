@@ -102,7 +102,7 @@ export function DataProjectForm({
         if (!create.isPending && !create.isSuccess) create.mutate();
       }}
     >
-      <p className="text-sm text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         Upload your source files. Then use your coding agent to explore and prepare the data for
         training in the Workshop.
       </p>

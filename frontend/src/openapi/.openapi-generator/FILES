@@ -1,3 +1,4 @@
+apis/ActivityApi.ts
 apis/AgentApi.ts
 apis/AuthApi.ts
 apis/BillingApi.ts
@@ -46,6 +47,12 @@ models/APITokenCreateResponse.ts
 models/APITokenMetadata.ts
 models/APITokenScope.ts
 models/APITokenScopeRequest.ts
+models/Activity.ts
+models/ActivityAsset.ts
+models/ActivityAssetKindEnum.ts
+models/ActivityFeed.ts
+models/ActivitySeenRequest.ts
+models/ActivitySeenResult.ts
 models/AgentGraph.ts
 models/ApiVersionEnum.ts
 models/AuthTokensResponse.ts
@@ -129,6 +136,7 @@ models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DatasetWork.ts
 models/DecisionComparisonRequestRequest.ts
 models/DecisionInputKindEnum.ts
 models/DecisionInputRequest.ts
@@ -139,6 +147,15 @@ models/DecisionModelOption.ts
 models/DecisionParticipantRequest.ts
 models/DecisionPerformance.ts
 models/DecisionTrainingModelOption.ts
+models/DedicatedDeployment.ts
+models/DedicatedDeploymentStatusEnum.ts
+models/DedicatedGpu.ts
+models/DedicatedStartup.ts
+models/DedicatedStartupLog.ts
+models/DedicatedUsage.ts
+models/DedicatedUsageBreakdown.ts
+models/DedicatedUsagePoint.ts
+models/DedicatedWriteRequest.ts
 models/DefinitionSourceEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
@@ -257,6 +274,7 @@ models/NativeModelProgress.ts
 models/NativeMonitor.ts
 models/NativeSample.ts
 models/NativeSamplePrediction.ts
+models/OnboardingMilestone.ts
 models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
 models/OptimizerCandidate.ts
@@ -281,6 +299,7 @@ models/PaginatedConnectorSyncRunList.ts
 models/PaginatedDatasetList.ts
 models/PaginatedDecisionJobListList.ts
 models/PaginatedDecisionPerformanceList.ts
+models/PaginatedDedicatedDeploymentList.ts
 models/PaginatedDeployedModelList.ts
 models/PaginatedEvalMatrixList.ts
 models/PaginatedEvalRunList.ts
@@ -314,6 +333,7 @@ models/PartitionRequestRequest.ts
 models/PatchedCapabilityRequest.ts
 models/PatchedConnectorCredentialRequest.ts
 models/PatchedDatasetRequest.ts
+models/PatchedDedicatedWriteRequest.ts
 models/PatchedEvalSetRequest.ts
 models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts
@@ -357,6 +377,7 @@ models/QuantizationEnum.ts
 models/RepositorySnapshot.ts
 models/RepositorySnapshotRequest.ts
 models/RoleEnum.ts
+models/RolesEnum.ts
 models/RootSpanList.ts
 models/RowsPage.ts
 models/RunPipelineModeEnum.ts

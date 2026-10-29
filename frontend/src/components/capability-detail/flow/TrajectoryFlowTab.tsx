@@ -76,6 +76,7 @@ function FlowCanvas({
   onGraphHeight,
   scrollCaptured,
   showMinimap,
+  trajectoryNode,
 }: {
   canvasActions: React.ReactNode;
   capability: Capability;
@@ -84,6 +85,7 @@ function FlowCanvas({
   onGraphHeight: (height: number) => void;
   scrollCaptured: boolean;
   showMinimap: boolean;
+  trajectoryNode?: string;
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -147,7 +149,12 @@ function FlowCanvas({
     [fullGraph, runPath, query]
   );
   const match = matches[matchIndex % Math.max(1, matches.length)];
-  const searchTarget = match?.id;
+  const [dismissedTarget, setDismissedTarget] = useState<string>();
+  const linkedTarget =
+    trajectoryNode !== dismissedTarget && fullGraph.nodes.some((node) => node.id === trajectoryNode)
+      ? trajectoryNode
+      : undefined;
+  const searchTarget = match?.id ?? linkedTarget;
   const graph = useMemo(
     () => projectTrajectory(runPath?.graph ?? fullGraph, collapsed, searchTarget),
     [fullGraph, runPath, collapsed, searchTarget]
@@ -173,13 +180,12 @@ function FlowCanvas({
     []
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
-  const { fitView, getNodes, getInternalNode, getViewport, setViewport, zoomIn, zoomOut } =
+  const { getNodes, getInternalNode, getViewport, setViewport, zoomIn, zoomOut } =
     useReactFlow<TrajectoryNode>();
   const beforeSearch = useRef<Viewport | null>(null);
   const nodesInitialized = useNodesInitialized();
   const measurementKey = nodes.map((node) => `${node.id}:${node.measured?.height}`).join("|");
   const hasInteracted = useRef(false);
-  const framedSearch = useRef<string | undefined>(undefined);
   const framedRun = useRef<string | undefined>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchTargetRef = useRef(searchTarget);
@@ -203,19 +209,50 @@ function FlowCanvas({
     },
     [getNodes, setViewport]
   );
+  const fitTarget = useCallback(
+    (targetId: string, visible: TrajectoryNode[] = getNodes()) => {
+      const target = visible.find((node) => node.id === targetId);
+      const wrapper = wrapperRef.current;
+      if (!target?.measured?.height || !wrapper?.clientWidth || !wrapper.clientHeight) return;
+      const parents = graph.edges
+        .filter((edge) => edge.target === targetId)
+        .map((edge) => edge.source);
+      const contextBounds = trajectoryBounds(
+        visible
+          .filter((node) => node.id === targetId || parents.includes(node.id))
+          .map((node) =>
+            node.data.kind === "actionGroup"
+              ? { ...node, measured: { ...node.measured, height: 112 } }
+              : node
+          )
+      );
+      // A distant category must not push the linked or searched tool off screen.
+      const bounds =
+        wrapper.clientWidth < 460 || contextBounds.height * 0.65 > wrapper.clientHeight * 0.7
+          ? trajectoryBounds([target])
+          : contextBounds;
+      return setViewport(
+        getViewportForBounds(
+          { ...bounds, height: bounds.height + 84, y: bounds.y - 84 },
+          wrapper.clientWidth,
+          wrapper.clientHeight,
+          0.65,
+          1,
+          0.16
+        ),
+        viewportMotion()
+      );
+    },
+    [getNodes, graph.edges, setViewport]
+  );
   const fitGraph = useCallback(() => {
-    if (searchTargetRef.current)
-      return fitView({
-        maxZoom: 1,
-        minZoom: 0.7,
-        nodes: [{ id: searchTargetRef.current }],
-        padding: 0.25,
-      });
+    if (searchTargetRef.current) return fitTarget(searchTargetRef.current);
     return fitOverview();
-  }, [fitView, fitOverview]);
+  }, [fitTarget, fitOverview]);
 
   const changeQuery = useCallback(
     (value: string) => {
+      setDismissedTarget(trajectoryNode);
       if (value.trim() && !query.trim()) beforeSearch.current = getViewport();
       if (!value.trim() && beforeSearch.current) {
         setViewport(beforeSearch.current);
@@ -224,7 +261,7 @@ function FlowCanvas({
       setQuery(value);
       setMatchIndex(0);
     },
-    [query, getViewport, setViewport]
+    [query, getViewport, setViewport, trajectoryNode]
   );
   const toggleBranch = useCallback(
     (id: string) => {
@@ -324,39 +361,8 @@ function FlowCanvas({
         next = preservePositions(next);
         setNodes(next);
         onGraphHeight(trajectoryBounds(next).height);
-        if (searchTarget && framedSearch.current !== searchTarget) {
-          const target = next.find((node) => node.id === searchTarget);
-          const wrapper = wrapperRef.current;
-          if (target && wrapper) {
-            const parents = graph.edges
-              .filter((edge) => edge.target === searchTarget)
-              .map((edge) => edge.source);
-            const contextBounds = trajectoryBounds(
-              next
-                .filter((node) => node.id === searchTarget || parents.includes(node.id))
-                .map((node) =>
-                  node.data.kind === "actionGroup"
-                    ? { ...node, measured: { ...node.measured, height: 112 } }
-                    : node
-                )
-            );
-            // A distant category must not push the searched tool off screen.
-            const bounds =
-              wrapper.clientWidth < 460 || contextBounds.height * 0.65 > wrapper.clientHeight * 0.7
-                ? trajectoryBounds([target])
-                : contextBounds;
-            setViewport(
-              getViewportForBounds(
-                { ...bounds, height: bounds.height + 84, y: bounds.y - 84 },
-                wrapper.clientWidth,
-                wrapper.clientHeight,
-                0.65,
-                1,
-                0.16
-              )
-            );
-            framedSearch.current = searchTarget;
-          }
+        if (searchTarget) {
+          fitTarget(searchTarget, next);
         } else if (
           run.highlighted &&
           displayedRunId &&
@@ -382,7 +388,7 @@ function FlowCanvas({
         } else if (!run.highlighted && framedRun.current) {
           fitOverview(next, true);
           framedRun.current = undefined;
-        } else if (!hasInteracted.current) {
+        } else if (!searchTarget && !hasInteracted.current) {
           requestAnimationFrame(() => fitOverview(next));
         }
       });
@@ -394,6 +400,7 @@ function FlowCanvas({
     measurementKey,
     graph,
     fitOverview,
+    fitTarget,
     setViewport,
     getNodes,
     getInternalNode,
@@ -405,10 +412,6 @@ function FlowCanvas({
     displayedRunId,
     runPath,
   ]);
-
-  useEffect(() => {
-    if (!searchTarget) framedSearch.current = undefined;
-  }, [searchTarget]);
 
   // Re-fit when the container resizes from hidden/zero-size to visible.
   useEffect(() => {
@@ -670,7 +673,6 @@ function FlowCanvas({
             nodesConnectable={false}
             nodeTypes={trajectoryNodeTypes}
             onEdgesChange={onEdgesChange}
-            onInit={() => fitGraph()}
             onNodeClick={(_, node) => {
               changeQuery("");
               if (node.data.kind !== "evaluations")
@@ -716,12 +718,14 @@ type TrajectoryFlowTabProps = {
   capability: Capability;
   expanded: boolean;
   onExpandedChange: (next: boolean) => void;
+  trajectoryNode?: string;
 };
 
 export function TrajectoryFlowTab({
   capability,
   expanded,
   onExpandedChange,
+  trajectoryNode,
 }: TrajectoryFlowTabProps) {
   const matrix = useEvalMatrixQuery(capability.project, capability.id);
   // Null until the nodes report their bounds; the CSS clamp covers that first paint.
@@ -732,6 +736,24 @@ export function TrajectoryFlowTab({
     : null;
   const [scrollLocked, setScrollLocked] = usePersistedState(FLOW_SCROLL_LOCK_KEY, true);
   const [showMinimap, setShowMinimap] = usePersistedState(FLOW_MINIMAP_KEY, false);
+  const sectionRef = useRef<HTMLElement>(null);
+  const scrolledTarget = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!trajectoryNode) {
+      scrolledTarget.current = undefined;
+      return;
+    }
+    if (graphHeight === null || matrix.isLoading || scrolledTarget.current === trajectoryNode)
+      return;
+    const frame = requestAnimationFrame(() => {
+      sectionRef.current?.scrollIntoView({
+        behavior: viewportMotion().duration ? "smooth" : "instant",
+        block: "start",
+      });
+      scrolledTarget.current = trajectoryNode;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [trajectoryNode, graphHeight, matrix.isLoading]);
 
   // Full screen leaves no page to scroll, so the canvas always takes the wheel.
   const scrollCaptured = expanded || !scrollLocked;
@@ -772,7 +794,12 @@ export function TrajectoryFlowTab({
   }
 
   return (
-    <section aria-label="Trajectory map" className="space-y-2">
+    <section
+      aria-label="Trajectory map"
+      className="scroll-mt-6 space-y-2"
+      id="trajectory"
+      ref={sectionRef}
+    >
       <div
         className={cn(
           "overflow-hidden rounded-md border border-border bg-background",
@@ -861,6 +888,7 @@ export function TrajectoryFlowTab({
                 onGraphHeight={setGraphHeight}
                 scrollCaptured={scrollCaptured}
                 showMinimap={showMinimap && !highlighted}
+                trajectoryNode={trajectoryNode}
               />
             </ReactFlowProvider>
           )}

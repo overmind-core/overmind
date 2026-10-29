@@ -99,7 +99,7 @@ function JobDetail({ jobId, projectId }: { jobId: string; projectId: string }) {
               {tierMeta.label}
             </Badge>
           )}
-          <FtStatusBadge fallback="queued" status={job.status as string} />
+          <FtStatusBadge fallback="queued" status={job.status as string} taskId={job.id} />
         </div>
         <p className="truncate font-semibold">{job.name || job.baseModel}</p>
       </SheetHeader>

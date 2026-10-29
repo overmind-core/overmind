@@ -100,6 +100,126 @@ def test_initialize_uses_official_streamable_http_transport(settings):
     assert parse_qs(console_url.query) == {"projectId": [str(token.project_id)]}
 
 
+def test_stateless_actions_keep_reported_client_identity_and_shared_keys_stay_ambiguous():
+    from overbae.models import Activity
+
+    raw, token = _token(permission=["read", "write"])
+    with TestClient(_application()) as client:
+        for client_name, expected_actor in [("codex", "Codex"), ("claude-code", "Coding agent")]:
+            initialized = _post(
+                client,
+                raw,
+                _rpc(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": client_name, "version": "1.0"},
+                    },
+                ),
+            )
+            assert "result" in initialized.json()
+            created = _post(
+                client,
+                raw,
+                _rpc(
+                    "tools/call",
+                    {
+                        "name": "create_eval_matrix_row",
+                        "arguments": {
+                            "name": f"Rule from {client_name}",
+                            "type": "llm",
+                            "source": "Answer is grounded.",
+                        },
+                    },
+                ),
+            )
+            assert not created.json()["result"].get("isError")
+            event = Activity.objects.filter(project=token.project, kind="evaluation_added").first()
+            assert event.actor_name == expected_actor
+        before = Activity.objects.count()
+        for _ in range(2):
+            response = _post(
+                client, raw, _rpc("resources/read", {"uri": "overmind://activity?limit=1"})
+            )
+            assert response.status_code == 200
+        assert Activity.objects.count() == before
+        renewed, _ = APIToken.create_for_user(
+            token.user, project=token.project, permission=["read", "write"]
+        )
+        initialized = _post(
+            client,
+            renewed,
+            _rpc(
+                "initialize",
+                {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "codex", "version": "1.0"},
+                },
+            ),
+        )
+        assert "result" in initialized.json()
+        assert Activity.objects.count() == before
+
+
+def test_transfer_preflight_does_not_register_an_agent_or_obscure_codex():
+    from overbae.models import Activity, ActivityClient
+
+    raw, token = _token(permission=["read", "write"])
+    with TestClient(_application()) as client:
+        for client_name in ["overmind-transfer", "codex", "overmind-transfer"]:
+            response = _post(
+                client,
+                raw,
+                _rpc(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": client_name, "version": "1"},
+                    },
+                ),
+            )
+            assert "result" in response.json()
+            response = _post(
+                client,
+                raw,
+                _rpc(
+                    "tools/call",
+                    {
+                        "name": "list_projects",
+                        "arguments": {},
+                    },
+                ),
+            )
+            assert not response.json()["result"].get("isError")
+        assert list(
+            ActivityClient.objects.filter(user=token.user).values_list("actor_name", flat=True)
+        ) == ["Codex"]
+        assert Activity.objects.filter(user=token.user).count() == 1
+        response = _post(
+            client,
+            raw,
+            _rpc(
+                "tools/call",
+                {
+                    "name": "create_eval_matrix_row",
+                    "arguments": {
+                        "name": "After upload preflight",
+                        "type": "llm",
+                        "source": "Answer is grounded.",
+                    },
+                },
+            ),
+        )
+        assert not response.json()["result"].get("isError")
+        assert (
+            Activity.objects.get(project=token.project, kind="evaluation_added").actor_name
+            == "Codex"
+        )
+
+
 def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
     raw, _ = _token()
     with TestClient(_application()) as client:

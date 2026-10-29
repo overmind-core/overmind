@@ -19,6 +19,7 @@ class MCPContext:
     project: Project | None
     client_ip: str | None = None
     inference_base_url: str = ""
+    client_name: str = ""
 
     def has_permission(self, permission: str) -> bool:
         scope = self.token.scope if isinstance(self.token.scope, dict) else {}

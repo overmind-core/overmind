@@ -54,6 +54,7 @@ export const Route = createFileRoute("/_auth/capabilities/$capabilityId")({
     projectId: z.string().optional(),
     // `.catch` so links with retired values (`tab=jobs`) fall back quietly.
     tab: z.enum(CAPABILITY_SECTIONS).optional().catch(undefined),
+    trajectoryNode: z.string().optional(),
   }),
 });
 
@@ -86,7 +87,7 @@ function CopyIdButton({ label, value }: { label: string; value: string }) {
 function CapabilityDetailPage() {
   const { capabilityId } = Route.useParams();
   const queryClient = useQueryClient();
-  const { tab, projectId: projectIdParam, flowFull } = Route.useSearch();
+  const { tab, projectId: projectIdParam, flowFull, trajectoryNode } = Route.useSearch();
   const navigate = Route.useNavigate();
   const setFlowFull = (next: boolean) =>
     navigate({
@@ -236,6 +237,7 @@ function CapabilityDetailPage() {
           capability={capability}
           expanded={flowFull === true}
           onExpandedChange={setFlowFull}
+          trajectoryNode={trajectoryNode}
         />
       </div>
 

@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { IntentBadge, SOURCE_KIND_LABEL } from "@/components/datasets/badges";
+import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable } from "@/components/ui/data-table";
@@ -20,23 +21,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useActivityHighlights } from "@/hooks/use-activity";
 import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { parseDrfOrdering } from "@/lib/drf-ordering";
+import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { cn } from "@/lib/utils";
 import type { Dataset } from "@/openapi";
+
+const DATASET_ROLES: Record<string, string> = {
+  calibration: "Calibration",
+  development: "Development",
+  evaluation: "Evaluation",
+  source: "Source",
+  training: "Training",
+};
 
 const NO_CAPABILITY = "__none__";
 
 const filterDatasets = (
   datasets: Dataset[],
   search: string,
-  intentFilter = "all",
+  roleFilter = "all",
   capabilityFilter = "all"
 ): Dataset[] => {
   const q = search.trim().toLowerCase();
   return datasets.filter((ds) => {
-    if (intentFilter !== "all" && ds.intent !== intentFilter) return false;
+    if (
+      roleFilter === "unassigned"
+        ? ds.roles.length > 0
+        : roleFilter !== "all" && !ds.roles.some((role) => role === roleFilter)
+    )
+      return false;
     if (capabilityFilter !== "all" && (ds.capability || NO_CAPABILITY) !== capabilityFilter) {
       return false;
     }
@@ -54,8 +70,8 @@ export interface DatasetsFilterProps {
   datasets: Dataset[];
   search: string;
   setSearch: (v: string) => void;
-  intentFilter: string;
-  setIntentFilter: (v: string) => void;
+  roleFilter: string;
+  setRoleFilter: (v: string) => void;
   capabilityFilter?: string;
   setCapabilityFilter?: (v: string) => void;
   capabilityNameById?: Record<string, string>;
@@ -65,8 +81,8 @@ export function DatasetsToolbar({
   datasets,
   search,
   setSearch,
-  intentFilter,
-  setIntentFilter,
+  roleFilter,
+  setRoleFilter,
   capabilityFilter = "all",
   setCapabilityFilter,
   capabilityNameById = {},
@@ -81,22 +97,24 @@ export function DatasetsToolbar({
       return (capabilityNameById[a] ?? a).localeCompare(capabilityNameById[b] ?? b);
     });
   }, [datasets, capabilityNameById]);
-  const hasActiveFilters = intentFilter !== "all" || capabilityFilter !== "all" || !!search;
+  const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
 
   return (
     <ListToolbar
       filters={
         <>
-          <Select onValueChange={setIntentFilter} value={intentFilter}>
-            <SelectTrigger aria-label="Filter by intent" className="w-[140px]" size="default">
-              <SelectValue placeholder="All intents" />
+          <Select onValueChange={setRoleFilter} value={roleFilter}>
+            <SelectTrigger aria-label="Filter by role" className="w-[140px]" size="default">
+              <SelectValue placeholder="All roles" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All intents</SelectItem>
-              <SelectItem value="train">Train</SelectItem>
-              <SelectItem value="eval">Eval</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="explore">Data exploration</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
+              {Object.entries(DATASET_ROLES).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+              <SelectItem value="unassigned">Unassigned</SelectItem>
             </SelectContent>
           </Select>
           {setCapabilityFilter && (
@@ -119,7 +137,7 @@ export function DatasetsToolbar({
       hasActiveFilters={hasActiveFilters}
       onClearFilters={() => {
         setSearch("");
-        setIntentFilter("all");
+        setRoleFilter("all");
         setCapabilityFilter?.("all");
       }}
       search={
@@ -136,7 +154,7 @@ export function DatasetsToolbar({
   );
 }
 
-type SortKey = "source" | "name" | "intent" | "rows" | "version" | "capability" | "updated";
+type SortKey = "source" | "name" | "role" | "rows" | "version" | "capability" | "updated";
 
 const sortValue = (ds: Dataset, key: SortKey): string | number => {
   switch (key) {
@@ -144,8 +162,8 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
       return SOURCE_KIND_LABEL[ds.sourceKind] ?? ds.sourceKind;
     case "name":
       return datasetDisplayName(ds).toLowerCase();
-    case "intent":
-      return ds.intent ?? "";
+    case "role":
+      return ds.roles.map((role) => DATASET_ROLES[role]).join(", ");
     case "rows":
       return ds.rows ?? 0;
     case "version":
@@ -157,7 +175,49 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
   }
 };
 
+function DatasetStatus({ dataset }: { dataset: Dataset }) {
+  const work = dataset.work;
+  const queued =
+    work?.status === "queued" ||
+    (!work && dataset.state === "landing" && dataset.operation?.state === "queued");
+  const busy = !!work || dataset.state === "running" || dataset.state === "landing";
+  const failed = !work && dataset.state === "error";
+  if (!busy && !failed) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        {dataset.activeVersion ? "Ready" : "Waiting for source"}
+      </span>
+    );
+  }
+  const label = failed
+    ? "Failed"
+    : queued
+      ? "Queued"
+      : (work?.label ?? (dataset.state === "landing" ? "Importing" : "Transforming"));
+  const completed = work?.completed;
+  const total = work?.total;
+  const percent =
+    typeof completed === "number" && typeof total === "number" && total > 0
+      ? (completed / total) * 100
+      : null;
+  return (
+    <span aria-live="polite" className="inline-flex items-center gap-2">
+      <ResolvedStatusBadge
+        actorKind={work?.actorKind ?? undefined}
+        cfg={resolveStatus(
+          failed ? "failed" : (work?.status ?? (queued ? "queued" : "running")),
+          "running"
+        )}
+        label={label}
+        progress={percent}
+      />
+    </span>
+  );
+}
+
 function getColumns(opts: {
+  roleWidth: number;
+  sourceWidth: number;
   onDelete: (ds: Dataset) => void;
   onDeleteClick?: (e: React.MouseEvent) => void;
   deletePendingId?: string | null;
@@ -183,13 +243,32 @@ function getColumns(opts: {
       size: 260,
     },
     {
-      accessorFn: (row) => row.intent ?? "",
-      cell: ({ row }) => <IntentBadge intent={row.original.intent} />,
-      header: "Intent",
-      id: "intent",
-      meta: { label: "Intent", noTruncate: true, orderingField: "intent" },
-      minSize: 110,
-      size: 130,
+      cell: ({ row }) => <DatasetStatus dataset={row.original} />,
+      header: "Status",
+      id: "status",
+      meta: { label: "Status", noTruncate: true },
+      minSize: 140,
+      size: 190,
+    },
+    {
+      accessorFn: (row) => row.roles.join(", "),
+      cell: ({ row }) =>
+        row.original.roles.length ? (
+          <span className="inline-flex flex-nowrap gap-1">
+            {row.original.roles.map((role) => (
+              <Badge key={role} size="chip" variant="outline">
+                {DATASET_ROLES[role]}
+              </Badge>
+            ))}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      header: "Role",
+      id: "role",
+      meta: { label: "Role", noTruncate: true, orderingField: "role" },
+      minSize: opts.roleWidth,
+      size: opts.roleWidth,
     },
     {
       accessorFn: (row) => row.activeVersion ?? "",
@@ -208,7 +287,11 @@ function getColumns(opts: {
       accessorFn: (row) => row.rows ?? 0,
       cell: ({ row }) => (
         <span className="tabular-nums text-sm text-foreground">
-          {(row.original.rows ?? 0).toLocaleString()}
+          {row.original.activeVersion ? (
+            row.original.rows.toLocaleString()
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
         </span>
       ),
       header: "Rows",
@@ -219,16 +302,50 @@ function getColumns(opts: {
     },
     {
       accessorKey: "sourceKind",
-      cell: ({ row }) => (
-        <span className="text-sm text-foreground">
-          {SOURCE_KIND_LABEL[row.original.sourceKind] ?? row.original.sourceKind}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const dataset = row.original;
+        const sources: { filename: string }[] = dataset.sourceSpec?.sources ?? [];
+        const filenames = sources.length
+          ? sources.map((source) => source.filename)
+          : dataset.sourceSpec?.filename
+            ? [String(dataset.sourceSpec.filename)]
+            : [];
+        return filenames.length ? (
+          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+            {filenames.slice(0, 3).map((filename, index) => {
+              const extension = filename.replace(/\.gz$/i, "").match(/\.([^.]+)$/)?.[1];
+              return (
+                <Badge
+                  className="min-w-0 max-w-44 gap-1.5"
+                  key={`${filename}:${index}`}
+                  size="chip"
+                  variant="outline"
+                >
+                  <Icon.file className="size-3 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 truncate">{filename}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {extension?.toUpperCase() ?? "File"}
+                  </span>
+                </Badge>
+              );
+            })}
+            {filenames.length > 3 && (
+              <Badge className="shrink-0" size="chip" variant="outline">
+                +{filenames.length - 3} files
+              </Badge>
+            )}
+          </span>
+        ) : (
+          <span className="text-sm text-foreground">
+            {SOURCE_KIND_LABEL[dataset.sourceKind] ?? dataset.sourceKind}
+          </span>
+        );
+      },
       header: "Source",
       id: "source",
-      meta: { label: "Source", orderingField: "source" },
-      minSize: 80,
-      size: 100,
+      meta: { label: "Source", noTruncate: true, orderingField: "source" },
+      minSize: opts.sourceWidth,
+      size: opts.sourceWidth,
     },
   ];
 
@@ -314,8 +431,8 @@ export function DatasetsBrowser({
   datasets,
   search,
   setSearch,
-  intentFilter,
-  setIntentFilter,
+  roleFilter,
+  setRoleFilter,
   capabilityFilter = "all",
   setCapabilityFilter,
   isLoading,
@@ -330,6 +447,7 @@ export function DatasetsBrowser({
   fill?: boolean;
   rowSearch?: Record<string, string>;
 }) {
+  const highlights = useActivityHighlights();
   const navigate = useNavigate();
   const guard = useGuestGate();
   const deleteMutation = useDeleteDatasetMutation();
@@ -338,8 +456,8 @@ export function DatasetsBrowser({
   const [ordering, setOrdering] = useState<string | undefined>("-updated");
 
   const filtered = useMemo(
-    () => filterDatasets(datasets, search, intentFilter, capabilityFilter),
-    [datasets, search, intentFilter, capabilityFilter]
+    () => filterDatasets(datasets, search, roleFilter, capabilityFilter),
+    [datasets, search, roleFilter, capabilityFilter]
   );
   const sorted = useMemo(() => {
     const parsed = parseDrfOrdering(ordering);
@@ -356,7 +474,23 @@ export function DatasetsBrowser({
   }, [filtered, ordering]);
   const currentPage = Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)));
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const hasActiveFilters = intentFilter !== "all" || capabilityFilter !== "all" || !!search;
+  const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
+
+  const roleWidth = Math.max(
+    130,
+    ...datasets.map(
+      (dataset) =>
+        20 + dataset.roles.reduce((width, role) => width + DATASET_ROLES[role].length * 8 + 22, 0)
+    )
+  );
+
+  const sourceWidth = Math.max(
+    180,
+    ...datasets.map((dataset) => {
+      const count = dataset.sourceSpec?.sources?.length ?? (dataset.sourceSpec?.filename ? 1 : 0);
+      return Math.min(3, count) * 180 + 24 + (count > 3 ? 80 : 0);
+    })
+  );
 
   const columns = useMemo(
     () =>
@@ -365,8 +499,10 @@ export function DatasetsBrowser({
         hideCapabilityColumn,
         onDelete: (ds) => deleteMutation.mutate(ds.id),
         onDeleteClick: guard(() => undefined),
+        roleWidth,
+        sourceWidth,
       }),
-    [deleteMutation, guard, hideCapabilityColumn]
+    [deleteMutation, guard, hideCapabilityColumn, roleWidth, sourceWidth]
   );
 
   return (
@@ -383,7 +519,7 @@ export function DatasetsBrowser({
       isLoading={isLoading}
       onClearFilters={() => {
         setSearch("");
-        setIntentFilter("all");
+        setRoleFilter("all");
         setCapabilityFilter?.("all");
       }}
       onOrderingChange={(o) => {
@@ -405,6 +541,7 @@ export function DatasetsBrowser({
       ordering={ordering}
       page={currentPage}
       pageSize={pageSize}
+      rowClassName={(row) => (highlights[`dataset:${row.id}`] ? "activity-highlight" : undefined)}
       storageKey="datasets-table"
     />
   );

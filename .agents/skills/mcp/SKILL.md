@@ -37,6 +37,23 @@ MCP client
 
 With a PostHog token, the server sends `$mcp_*` analytics. Events carry identity, `project_id` and, on failure, `error_code`: `before_send` drops arguments, results and error text, `$exception` capture is off, and input models forbid extra fields so argument injection stays off. `tests/test_mcp_analytics.py` holds these rules.
 
+Product activity is separate from analytics. Shared activity records back the
+Console bell and onboarding milestones; `overmind://activity` pages those same
+outcomes with `offset`, `limit` and `path=agent|data`. Account credentials add
+`project_id`. `report_onboarding_progress` records the coding agent’s verified completed count
+for one UUID run_id against the current SDK’s ten stages. These progress receipts
+stay out of the notification feed; the landing page renders their roadmap.
+The Console subscribes to `/api/activity/events/` for project-scoped snapshots
+and invalidates asset queries without page reloads. Task status changes
+update the original activity ID; transformation publication reuses that task record.
+Only newly observed changes trigger the brief asset highlight. Reconnects reconcile
+the durable snapshot; onboarding receipts also advance the stream revision.
+Reads and status polls never create action notifications or mark
+them seen. Successful initialization retains credential-bound client identity;
+connection milestones deduplicate by user, project scope and reported client
+family, including across credential refreshes. Unknown or ambiguous identity stays
+generic; client-reported logos never establish continuous agent presence.
+
 ## Layer ownership
 
 | Layer              | Location                                 | Responsibility                                                                         |
@@ -119,3 +136,16 @@ Follow the testing policy in AGENTS.md: prove the change through existing E2E co
 - [ ] The entity has a read path after creation, including polling for background work.
 - [ ] Local-file workflows use CLI guidance, not an MCP byte-transfer workaround.
 - [ ] `CONTRACT_VERSION`, the catalog, prompts, resources, the user-facing skills in `overmind/skills/` and the MCP tests change together. Regenerate the API client when the REST contract changed.
+
+Activity `sequence_key` identifies a project-scoped dataset preparation workflow:
+creation, upload, import, saved transformations, previews and publication. Pipeline
+runs resolve their dataset from the retained run record. Other edits and consumers
+remain separate. The Console connects adjacent matching events without declaring
+whole-task completion.
+
+An explicit `start_dataset_preparation` / `update_dataset_preparation` lifecycle keeps
+the dataset Preparing between jobs until the agent finishes. Inspect it through
+`inspect_dataset_workbench.preparation_workflow`. Child source and pipeline activity
+remains recorded but is folded into its single evolving notification; child updates
+touch the parent timestamp to invalidate Console assets. Pause is explicitly reported,
+not inferred from a client disconnect.

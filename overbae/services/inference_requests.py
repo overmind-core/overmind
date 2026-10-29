@@ -65,13 +65,15 @@ def request_inputs(deployment, payload):
     }
 
 
-def submit(deployment, user, request_key, payload, *, source="mcp"):
+def submit(deployment, user, request_key, payload, *, source="mcp", dedicated=None):
     existing = recover_existing(deployment, request_key, payload)
     if existing:
         return existing
     inputs = request_inputs(deployment, payload)
     if deployment.status != "ready":
         raise InputValidationError("Inference requires a ready deployment.")
+    if dedicated is not None and dedicated.status != "online":
+        raise InputValidationError("Dedicated deployment is not online.")
     if inputs.get("max_tokens", 0) >= deployment.max_model_len:
         raise InputValidationError(CONTEXT_BUDGET_MESSAGE)
     payload = {
@@ -87,6 +89,10 @@ def submit(deployment, user, request_key, payload, *, source="mcp"):
         "inference_contract": deployment.inference_contract,
         "source": source,
     }
+    if dedicated is not None:
+        payload["dedicated_id"] = str(dedicated.id)
+        payload["model_id"] = dedicated.public_model_id
+        payload["gpu_type"] = dedicated.gpu_type
     if deployment.inference_contract == "decision":
         payload.update(
             environment=deployment.serving_runtime["environment"],
@@ -188,6 +194,35 @@ def advance(request_id):
                 "state": "unresolved",
                 "error_code": "observation_deadline",
             }
+        elif request.state == "queued" and request.payload.get("dedicated_id"):
+            from overbae.services.dedicated import complete_request
+
+            try:
+                result = complete_request(request.payload)
+                result = {
+                    key: result.get(key)
+                    for key in (
+                        "content",
+                        "usage",
+                        "finish_reason",
+                        "latency_ms",
+                        "predictions",
+                        "model_identity",
+                    )
+                }
+                changes = {
+                    "state": "succeeded",
+                    "result": result,
+                    "completed_at": now,
+                    "error_code": "",
+                }
+            except Exception:
+                logger.warning("Dedicated inference failed for %s", request.pk, exc_info=False)
+                changes = {
+                    "state": "failed",
+                    "error_code": "provider_failed",
+                    "completed_at": now,
+                }
         elif request.state == "queued":
             owned.update(state="submitting", updated_at=now)
             request.is_cold = is_cold_start(request.deployment)
@@ -290,6 +325,8 @@ def finalize(request_id):
                 outcome=request.state,
                 error_code=request.error_code,
                 source=request.payload.get("source", "mcp"),
+                requested_model=request.payload.get("model_id") or "",
+                bill=not request.payload.get("dedicated_id"),
             )
 
 

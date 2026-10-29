@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from overbae.innermind import default_set
 from overbae.models import Capability, Project
+from overbae.services.activity import repository_synced
 from overbae.services.capabilities import identity
 from overbae.services.capability_card import decision_logic_from_card, tools_summary_from_card
 from overbae.services.codebase.artifacts import normalize_capability_card
@@ -187,6 +188,7 @@ def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
     for cap in leftovers:
         cap.set_status(Capability.Status.LEFTOVER)
 
+    repository_synced(project, snapshot, applied)
     return applied
 
 

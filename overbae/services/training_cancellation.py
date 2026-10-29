@@ -6,6 +6,7 @@ from django.utils import timezone
 from overbae.celery import app as celery_app
 from overbae.models import FinetuningJob, FinetuningJobEvent
 from overbae.services import training_monitoring
+from overbae.services.activity import asset, record, update_task
 from overbae.services.finetuning_eval import cancel_related_evals
 from overbae.services.finetuning_runner import get_runner
 
@@ -21,6 +22,21 @@ def cancel(job):
         FinetuningJob.objects.filter(pk=job.pk).update(
             status=FinetuningJob.Status.CANCELLED,
             completed_at=timezone.now(),
+        )
+
+        update_task(current.project_id, "finetune_job", current.pk, "cancelled")
+        assets = [asset("dataset", current.dataset_id, current.dataset.name)]
+        if current.capability_id:
+            assets.append(asset("capability", current.capability_id, current.capability.name))
+        record(
+            key=f"cancel-training:{current.pk}",
+            project_id=current.project_id,
+            kind="task_cancelled",
+            action="Requested training cancellation",
+            status="cancelled",
+            task_kind="finetune_job",
+            task_id=current.pk,
+            assets=assets,
         )
     remote_error = ""
     if current.remote_job_id:

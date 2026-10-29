@@ -89,6 +89,9 @@ class DecisionEndpoint:
     weights_path: str = modal.parameter()
     artifact_identity: str = modal.parameter()
     max_model_len: int = modal.parameter()
+    # Empty stays the shared serverless pool. A dedicated id is its own pool,
+    # so its autoscaler cannot pin every decision of this artifact.
+    pool: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):

@@ -125,7 +125,7 @@ def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(
     )
     console._browser.call(console._page.set_viewport_size, {"width": 1440, "height": 1100})
     console.goto(f"/inference/{deployed.pk}?projectId={project.pk}")
-    console.press("View API snippet")
+    console.press("Serverless API snippet")
     console.sees("Uses an example from this model’s training version.", exact=False)
 
     def inspect_snippets():
@@ -255,7 +255,7 @@ class TypeSafeClient:
         status="ready",
     )
     console.goto(f"/inference/{varied_model.pk}?projectId={project.pk}")
-    console.press("View API snippet")
+    console.press("Serverless API snippet")
     console.sees("Showing 8 of 10 decision examples.", exact=False)
     console._browser.call(
         lambda: console._page.get_by_role("combobox", name="Decision example").click()

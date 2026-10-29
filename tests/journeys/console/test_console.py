@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 
@@ -6,17 +7,226 @@ from django.utils import timezone
 from modal_shared.training_monitoring import fingerprint
 from overbae.models import (
     Cell,
+    DataPartitionMember,
+    DataPartitionPlan,
     Dataset,
     DatasetContext,
+    DatasetPipeline,
+    DatasetPipelineRun,
+    DedicatedDeployment,
     DeployedModel,
     EvalRun,
     FinetuningJob,
     NativeEvaluationPlan,
+    OperationalRun,
 )
+from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
 
 from ..datasets import tickets, upload
 from ..stack import drain, settle
+
+
+def test_embedded_onboarding_copies_setup_and_switches_to_data(console):
+    console.sees("Overmind works best via the MCP")
+    console._browser.call(
+        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
+    )
+    console.press("Copy onboarding prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    assert prompt == "Set me up on Overmind https://console.overmindlab.ai/setup.md"
+    console.wait_until("""() => {
+        const panel = document.querySelector('section[aria-label="Get started"]');
+        return panel.querySelector('a[href$="/setup.md"]') &&
+            [...panel.querySelectorAll('img')].every(img => img.complete && img.naturalWidth > 0);
+    }""")
+    console.save_evidence("embedded-onboarding-desktop")
+    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
+    console.wait_until("""() => {
+        const panel = document.querySelector('section[aria-label="Get started"]');
+        return panel.scrollWidth <= panel.clientWidth && panel.getBoundingClientRect().right <= innerWidth;
+    }""")
+    console.save_evidence("embedded-onboarding-mobile")
+    console._browser.call(lambda: console._page.get_by_role("tab", name="Data", exact=True).click())
+    console.sees("Create dataset")
+    console.wait_until("() => !document.querySelector('[role=dialog]')")
+    console._browser.call(
+        lambda: console._page.get_by_role("tab", name="Agent", exact=True).click()
+    )
+    console.sees("Copy onboarding prompt")
+    console.healthy()
+
+
+def test_activity_outcomes_and_setup_progress_survive_console_reload(
+    console, workshop, worker, rest_for
+):
+    project = workshop.project()["id"]
+    workshop.call("list_datasets")
+    activity = workshop.read("overmind://activity")
+    assert {item["kind"] for item in activity["results"]} >= {
+        "agent_connected",
+        "repository_synced",
+        "capabilities_available",
+    }
+    before = activity["count"]
+    for _ in range(2):
+        workshop.call("list_datasets")
+    assert workshop.read("overmind://activity")["count"] == before
+
+    console.goto(f"/?projectId={project}")
+    console.press("unread notification")
+    console.sees("connected to Overmind", exact=False)
+    workshop.call(
+        "create_eval_matrix_row",
+        {"name": "Visible activity check", "type": "llm", "source": "The answer is grounded."},
+    )
+    console.sees("added", exact=False)
+    console.sees("Visible activity check")
+    console.press("Mark read")
+    settle(worker, lambda: workshop.read("overmind://activity")["unseen_count"] == 0)
+
+    console.goto(f"/?projectId={project}")
+    console.press("Notifications")
+    console.sees("Visible activity check")
+    console.click("Visible activity check")
+    console.wait_until("() => location.pathname.startsWith('/evaluations')")
+    console.press("Notifications")
+    console.wait_until("() => !document.body.textContent.includes('Setup progress')")
+    onboarding_run = str(uuid.uuid4())
+    progress = workshop.call(
+        "report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 2}
+    )
+    reporter = progress["milestones"][2]["actor_name"]
+    assert reporter
+    console.goto(f"/?projectId={project}")
+    console.wait_until(
+        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Inspect repository')"
+    )
+    console._browser.call(
+        lambda: (
+            console._page.get_by_label("Onboarding agent", exact=True)
+            .get_by_text(reporter, exact=True)
+            .wait_for()
+        )
+    )
+    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 9})
+    console.wait_until(
+        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities')"
+    )
+    rest_for(workshop.api_key).request(
+        "POST",
+        "/api/v1/sync",
+        json={
+            "project_id": project,
+            "version": "1",
+            "capabilities": [
+                {
+                    "slug": "onboarding-capability",
+                    "name": "Onboarding capability",
+                    "entrypoint_fn": "support.run",
+                }
+            ],
+        },
+    )
+    console.wait_until("""() => {
+        return document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities') && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt') && !document.body.textContent.includes('Get started');
+    }""")
+    console.save_evidence("activity-and-onboarding")
+    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
+    console.wait_until("""() => {
+        const panel = document.querySelector('[aria-label="Agent onboarding"]');
+        if (!panel) return false;
+        const rect = panel.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth && panel.scrollWidth <= panel.clientWidth;
+    }""")
+    console.save_evidence("onboarding-mobile")
+    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 10})
+    console.wait_until(
+        "() => document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '10'"
+    )
+    console.wait_until(
+        "() => [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && !document.querySelector('[role=progressbar]')"
+    )
+    console.save_evidence("onboarding-complete-capabilities")
+
+
+def test_agent_changes_update_visible_assets_without_reload(console, workshop):
+    project = workshop.project()["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Datasets", exact=False)
+    console._browser.call(console._page.evaluate, "window.activityDocument = 'unchanged'")
+    dataset = workshop.call(
+        "start_dataset",
+        {"name": "Live agent source", "brief": "Review live agent changes", "intent": "explore"},
+    )["dataset"]["id"]
+    console.sees("Live agent source")
+    console.wait_until(
+        "() => [...document.querySelectorAll('.activity-highlight')].some(row => row.textContent.includes('Live agent source'))"
+    )
+    workshop.call("update_dataset", {"dataset": dataset, "name": "Renamed live source"})
+    console.sees("Renamed live source")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Live agent source') && window.activityDocument === 'unchanged'"
+    )
+    console.save_evidence("agent-live-asset-update")
+    console._browser.call(lambda: console._page.context.set_offline(True))
+    workshop.call("update_dataset", {"dataset": dataset, "name": "Reconnected live source"})
+    console._browser.call(lambda: console._page.context.set_offline(False))
+    console.sees("Reconnected live source")
+    console.wait_until("() => window.activityDocument === 'unchanged'")
+    console.press("unread notification")
+    console.sees("Reconnected live source", exact=False)
+    console.save_evidence("agent-live-notifications")
+
+
+def test_dataset_inventory_follows_upload_bytes_and_publication(
+    console, workshop, rest_for, worker
+):
+    project = workshop.project()["id"]
+    dataset = workshop.call(
+        "start_dataset", {"name": "Live upload", "brief": "Inspect uploaded rows"}
+    )["dataset"]["id"]
+    rest = rest_for(workshop.api_key)
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Waiting for source")
+    data = b'[{"value":1},{"value":2}]'
+    receipt = rest.request(
+        "POST",
+        "/api/dataset-transfers/",
+        json={
+            "project": project,
+            "dataset": dataset,
+            "request_key": "live-upload",
+            "filename": "rows.json",
+            "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        },
+    )
+    console.sees("Uploading", exact=False)
+    rest.request(
+        "PUT",
+        f"/api/dataset-transfers/{receipt['id']}/chunk/?offset=0",
+        data=data[:10],
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    console.wait_until(
+        "() => Number(document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')) > 0"
+    )
+    console.save_evidence("dataset-upload-progress")
+    rest.request(
+        "PUT",
+        f"/api/dataset-transfers/{receipt['id']}/chunk/?offset=10",
+        data=data[10:],
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    rest.request("POST", f"/api/dataset-transfers/{receipt['id']}/complete/", json={})
+    drain(worker)
+    console.sees("Ready")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Uploading') && [...document.querySelectorAll('td')].some(cell => cell.textContent === '2')"
+    )
+    console.save_evidence("dataset-upload-ready")
 
 
 def test_evaluations_share_runs_navigation_and_probability_metrics(console, workshop):
@@ -181,7 +391,7 @@ def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
     console.goto(f"/datasets?projectId={project}")
     console.command("New dataset")
     console.fill("#dataset-name", "Console upload")
-    console.upload('input[type="file"]', tickets(tmp_path))
+    console.upload('[role="dialog"] input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")
     console.choose("#dataset-purpose", "Evaluation")
     console.press("Create dataset")
@@ -402,7 +612,7 @@ def test_decision_deployment_without_training_data_never_invents_an_example(cons
     )
     console.goto(f"/inference/{deployed.pk}?projectId={project}")
     console.sees(deployed.model_id)
-    console.press("View API snippet")
+    console.press("Serverless API snippet")
     console.sees("TypeSafe systemone. Point the SDK base URL at this API.")
     console.sees(
         "A complete example input is unavailable for this model’s pinned training version."
@@ -482,4 +692,329 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
     )
     console.wait_until("() => !location.search.includes('prepare=')")
     console.sees("Training onboarding fixture")
+    console.healthy()
+
+
+def test_empty_dataset_inventory_onboards_into_the_selected_project(console, workshop, tmp_path):
+    project = workshop.project()["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Get started with data")
+    console.upload('input[type="file"]', tickets(tmp_path))
+    console.sees("3 rows")
+    console.save_evidence("dataset-empty-onboarding")
+    console.press("Create dataset")
+    console.sees("Prepare your training data")
+    dataset = Dataset.objects.get(project_id=project)
+    console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
+    console.goto(f"/datasets?projectId={project}&ds_search=no-matching-dataset")
+    console.wait_until("() => !document.body.textContent.includes('Get started with data')")
+    console.healthy()
+
+
+def test_dataset_role_filter_uses_recorded_outputs(console, workshop):
+    project = workshop.project()["id"]
+    source = Dataset.objects.create(project_id=project, name="Raw evidence", intent="explore")
+    source_cell = Cell.objects.create(dataset=source, position=0, state="ok", fingerprint="a" * 64)
+    raw = Dataset.objects.create(project_id=project, name="Unused source", intent="explore")
+    Cell.objects.create(dataset=raw, position=0, state="ok", fingerprint="c" * 64)
+    output = Dataset.objects.create(project_id=project, name="Shared output", intent="explore")
+    output_cell = Cell.objects.create(dataset=output, position=1, state="ok", fingerprint="b" * 64)
+    Dataset.objects.create(project_id=project, name="Training by name only", intent="train")
+    plan = DataPartitionPlan.objects.create(
+        project_id=project,
+        name="Recorded roles",
+        request_key="inventory-roles",
+        source_cell=source_cell,
+        source_fingerprint=source_cell.fingerprint,
+        state="completed",
+    )
+    for role in ("train", "calibration", "final", "development"):
+        DataPartitionMember.objects.create(plan=plan, role=role, cell=output_cell)
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Raw evidence")
+    console.wait_until("() => !document.body.textContent.includes('Shared output')")
+    for label in ("Training", "Calibration", "Evaluation", "Development"):
+        console.choose('[aria-label="Filter by role"]', label)
+        console.sees("Raw evidence")
+        console.wait_until(
+            "() => !document.body.textContent.includes('Training by name only') && !document.body.textContent.includes('Unused source')"
+        )
+    console.save_evidence("dataset-multiple-roles")
+    console.choose('[aria-label="Filter by role"]', "Source")
+    console.sees("Unused source")
+    console.wait_until("() => !document.body.textContent.includes('Shared output')")
+    console.choose('[aria-label="Filter by role"]', "Unassigned")
+    console.sees("Training by name only")
+    console.wait_until(
+        "() => !document.body.textContent.includes('Shared output') && !document.body.textContent.includes('Raw evidence')"
+    )
+    console.save_evidence("dataset-unassigned-role")
+    console.goto(f"/datasets/{output.pk}?projectId={project}")
+    console.sees("Shared output", exact=False)
+
+
+def test_activity_connects_pipeline_sequence(console, workshop):
+    project = workshop.project()["id"]
+    dataset = Dataset.objects.create(project_id=project, name="Connected work")
+    source = Cell.objects.create(dataset=dataset, position=0, state="ok", fingerprint="a" * 64)
+    pipeline = DatasetPipeline.objects.create(
+        project_id=project, name="Features", request_key="features"
+    )
+    for key, kind, action in (
+        ("upload", "source_uploaded", "Uploaded source"),
+        ("import", "source_ready", "Source ready"),
+        ("save", "asset_changed", "Saved a transformation for"),
+    ):
+        activity_service.record(
+            key=key,
+            project_id=project,
+            kind=kind,
+            action=action,
+            assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+        )
+    activity_service.record(
+        key="unrelated-edit",
+        project_id=project,
+        kind="asset_changed",
+        action="Updated dataset",
+        assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+    )
+    for index in range(2):
+        run = DatasetPipelineRun.objects.create(
+            dataset=dataset,
+            source=source,
+            pipeline=pipeline,
+            request_key=f"sequence-{index}",
+            state="completed",
+        )
+        activity_service.record(
+            key=f"sequence-{index}",
+            project_id=project,
+            kind="task_requested",
+            action="Requested a transformation of",
+            actor_kind="codex",
+            actor_name="Codex",
+            task_kind="dataset_pipeline",
+            task_id=run.pk,
+            assets=[activity_service.asset("dataset", dataset.pk, dataset.name)],
+        )
+    records = workshop.read("overmind://activity")["results"]
+    linked = [item for item in records if item["sequence_key"]]
+    assert len(linked) == 5
+    assert len({item["sequence_key"] for item in linked}) == 1
+    assert linked[0]["sequence_key"]
+    assert all(not item["sequence_key"] for item in records if item["action"] == "Updated dataset")
+    console.goto(f"/datasets?projectId={project}")
+    console.press("unread notification")
+    console.wait_until("() => document.querySelectorAll('[data-sequence-key]').length === 5")
+    console.save_evidence("connected-pipeline-events")
+
+
+def test_dataset_preparation_persists_between_jobs_until_agent_finishes(
+    console, workshop, cli, sample_agent, worker, tmp_path
+):
+    project = workshop.project()["id"]
+    dataset = workshop.call(
+        "start_dataset",
+        {"name": "Continuous preparation", "brief": "Prepare support rows", "intent": "train"},
+    )["dataset"]["id"]
+    console.goto(f"/datasets?projectId={project}")
+    console.sees("Continuous preparation")
+    args = {"dataset": dataset, "request_key": "continuous-preparation"}
+    started = workshop.call("start_dataset_preparation", args)["preparation_workflow"]
+    assert (
+        workshop.call("start_dataset_preparation", args)["preparation_workflow"]["id"]
+        == started["id"]
+    )
+    console.sees("Preparing")
+    workflow = {"dataset": dataset, "preparation_id": started["id"]}
+    assert workshop.call_result(
+        "update_dataset_preparation", {**workflow, "state": "completed"}
+    ).isError
+    assert workshop.call_result(
+        "start_dataset_preparation", {**args, "request_key": "another"}
+    ).isError
+    upload(cli, sample_agent, tickets(tmp_path), "--dataset", dataset)
+    drain(worker)
+    source = workshop.call("inspect_dataset", {"dataset": dataset})["active"]
+    console.sees("Preparing")
+    result = workshop.call(
+        "import_dataset_version",
+        {
+            "dataset": dataset,
+            "source_cell": source["id"],
+            "source_fingerprint": source["fingerprint"],
+            "name": "Prepared support",
+            "request_key": "continuous-import",
+            "provenance": "Journey creates source-bound support messages",
+            "imported_rows": [
+                {
+                    "source_row": i,
+                    "messages": [
+                        {"role": "user", "content": f"Refund order {i}"},
+                        {"role": "assistant", "content": "Your refund is ready."},
+                    ],
+                }
+                for i in range(3)
+            ],
+        },
+    )
+    drain(worker)
+    receipt = workshop.call("get_job", {"kind": "dataset_pipeline", "id": result["job"]["id"]})
+    assert receipt["status"] == "completed", receipt
+    console.sees("Preparing")
+    current = workshop.call("inspect_dataset_workbench", {"dataset": dataset})[
+        "preparation_workflow"
+    ]
+    assert current["state"] == "preparing"
+    events = workshop.read("overmind://activity")["results"]
+    preparation_events = [e for e in events if e["kind"] == "dataset_preparation"]
+    assert len(preparation_events) == 1
+    event_id = preparation_events[0]["id"]
+    assert not [e for e in events if e["task_kind"] == "dataset_pipeline"]
+    workshop.call("update_dataset_preparation", {**workflow, "state": "paused"})
+    console.sees("Preparation paused")
+    workshop.call("update_dataset_preparation", {**workflow, "state": "preparing"})
+    console.sees("Preparing")
+    console.press("unread notification")
+    console.wait_until(
+        f"() => document.querySelector('[data-activity-id=\"{event_id}\"]')?.dataset.activityStatus === 'running'"
+    )
+    console.wait_until(
+        "() => document.getAnimations().every(a => a.effect?.getTiming().iterations === Infinity || a.playState !== 'running')"
+    )
+    console.save_evidence("dataset-preparation-active")
+    output = workshop.call("inspect_dataset", {"dataset": dataset})["active"]["id"]
+    completion = {**workflow, "state": "completed", "outputs": [output]}
+    workshop.call("update_dataset_preparation", completion)
+    workshop.call("update_dataset_preparation", completion)
+    console.wait_until(
+        f"() => document.querySelector('[data-activity-id=\"{event_id}\"]')?.dataset.activityStatus === 'completed'"
+    )
+    console.sees("Ready")
+    console.save_evidence("dataset-preparation-completed")
+    assert workshop.call_result(
+        "update_dataset_preparation", {**workflow, "state": "preparing"}
+    ).isError
+    console.healthy()
+
+
+def test_evaluation_scope_link_settles_on_trajectory_and_supports_repeat_clicks(console, workshop):
+    project = workshop.project()["id"]
+    console.goto(f"/evaluations?projectId={project}&view=matrix")
+    link = console._page.locator('a[href*="trajectoryNode="]').first
+    console._browser.call(link.wait_for)
+    href = console._browser.call(link.get_attribute, "href")
+    console._browser.call(link.click)
+    focused = """() => {
+        const target = new URL(location.href).searchParams.get('trajectoryNode');
+        const node = [...document.querySelectorAll('.react-flow__node.selected')].find(n => n.dataset.id === target);
+        const canvas = document.querySelector('[aria-label="Capability trajectory map"]');
+        if (!node || !canvas) return false;
+        const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+        return n.width >= 180 && n.left >= c.left && n.right <= c.right &&
+            n.top >= Math.max(c.top, 64) && n.bottom <= Math.min(c.bottom, innerHeight);
+    }"""
+    console.wait_until(focused)
+    console._browser.call(console._page.locator(f'a[href="{href}"]').first.click)
+    console.wait_until(focused)
+    stable = console._browser.call(
+        console._page.evaluate,
+        """async () => {
+        const positions = [];
+        for (let i = 0; i < 60; i++) {
+            await new Promise(requestAnimationFrame);
+            const r = document.querySelector('.react-flow__node.selected').getBoundingClientRect();
+            positions.push([r.x, r.y, r.width]);
+        }
+        const last = positions.slice(-10);
+        return last.every(p => p.every((v, i) => Math.abs(v - last[0][i]) < 1));
+    }""",
+    )
+    assert stable
+    console.save_evidence("evaluation-scope-focus")
+    console.healthy()
+
+
+def test_dedicated_startup_updates_and_keeps_configuration_after_stop(console, workshop):
+    project = workshop.project()["id"]
+    deployed = DeployedModel.objects.create(
+        project_id=project,
+        model_id="ft-dedicated-startup",
+        status="ready",
+        base_model_id="meta-llama/Llama-3.2-3B-Instruct",
+        gpu_type="H100",
+    )
+    row = DedicatedDeployment.objects.create(
+        project_id=project,
+        deployed_model=deployed,
+        gpu_type="H100",
+        status="warming",
+        min_replicas=2,
+        max_replicas=3,
+        rate_usd_per_gpu_hour=4,
+        credits_per_gpu_hour=400,
+        probe_call_id="fc-console-startup",
+    )
+    run = OperationalRun.objects.create(
+        project_id=project,
+        kind="dedicated_deployment",
+        reference=str(row.pk),
+        attempt=row.probe_call_id,
+        snapshot={"stage": "loading_weights"},
+        provider_state={
+            "available": True,
+            "current": {"message": "Loading model weights"},
+            "logs": [
+                {
+                    "stage": "loading_weights",
+                    "message": "Loading model weights",
+                    "at": timezone.now().isoformat(),
+                    "worker": "ta-console",
+                    "completed": 1,
+                    "total": 2,
+                    "unit": "tensors",
+                }
+            ],
+        },
+    )
+    console.goto(f"/inference/{deployed.pk}?projectId={project}")
+    console.sees("Loading model weights")
+    console.wait_until("() => !document.body.innerText.includes('Startup logs')")
+    console.wait_until("""() => {
+        const bar = document.querySelector('[role=progressbar][aria-label="Startup stages"]');
+        const title = document.querySelector('[aria-label="Dedicated endpoint"] h2');
+        const controls = document.querySelector('[aria-label="GPU controls"]');
+        if (!bar || bar.children.length < 2) return false;
+        const b = bar.getBoundingClientRect(), t = title.getBoundingClientRect(), c = controls.getBoundingClientRect();
+        return b.left > t.right && b.right < c.left && Math.abs(b.y - t.y) < 12;
+    }""")
+    console.save_evidence("dedicated-startup-header")
+    run.snapshot = {"stage": "capturing_graphs"}
+    run.provider_state["current"] = {"message": "Capturing CUDA graphs"}
+    run.save()
+    console.sees("Capturing CUDA graphs")
+    DedicatedDeployment.objects.filter(pk=row.pk).update(status="online", running_replicas=2)
+    console.sees("Online")
+    console.wait_until(
+        """() => !document.querySelector('[role=progressbar][aria-label="Startup stages"]') && !document.body.innerText.includes('Startup logs')"""
+    )
+    console.save_evidence("dedicated-online")
+    DedicatedDeployment.objects.filter(pk=row.pk).update(status="offline", running_replicas=0)
+    console.sees("Offline")
+    console.sees("0 running · 2–3 configured")
+    console.press("Dedicated API snippet")
+    console.sees("Call this model")
+    console.wait_until(
+        "() => document.querySelector('[role=dialog]').innerText.includes('dedicated/ft-dedicated-startup')"
+    )
+    console.save_evidence("dedicated-offline-snippet")
+    console.press("Close")
+    console.press("Configure GPU")
+    console.sees("Dedicated GPU")
+    console.wait_until("""() => {
+        const dialog = document.querySelector('[role=dialog]');
+        return dialog && dialog.querySelector('#dedicated-min-replicas')?.value === '2';
+    }""")
+    console.save_evidence("dedicated-configuration-dialog")
     console.healthy()

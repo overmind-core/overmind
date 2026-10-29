@@ -38,6 +38,28 @@ The roadmap ends at the applied decorators and that sync. Running the applicatio
 verification trace, and server-side scoring of that trace are separate work; do
 not imply they have happened.
 
+## Platform progress (required)
+
+Chat updates alone do not update the Console. Reporting through MCP is required
+for every onboarding run, including reruns and resumed work.
+
+Once MCP is connected, read `overmind://activity?project_id=PROJECT_ID` for the
+same ten-stage roadmap shown on the Console landing page. Generate one UUID
+`run_id` for this onboarding attempt and preserve it across the reload. At each
+stage transition, call `report_onboarding_progress(project_id=PROJECT_ID, run_id=RUN_ID, completed_steps=N)` with the count of consecutively completed
+stages. Report installation and connection only after verifying them. On resume,
+verify retained outputs first and immediately report the verified completed count
+before beginning the next stage. Wait for a successful tool response; if the call
+fails, retry the same run ID and count after resolving the failure. Never claim
+the Console was updated without a successful receipt. Reuse the run ID and count on retries; do not
+advance on a timer. Local-stage completion is the coding agent's report, not
+independent server verification. Stage 10 includes the final sync; for a
+non-Python codebase, report instrumentation as not applicable in the conversation
+before counting that stage as handled. Status reads do not advance progress.
+Progress receipts stay out of the notification feed. Continue the conversation
+updates below even when platform reporting is unavailable, and state that the
+Console progress could not be updated.
+
 ## Stage updates
 
 Use the same names and numbering throughout. At every stage transition, show

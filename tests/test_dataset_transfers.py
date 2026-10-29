@@ -58,6 +58,8 @@ def complete(client, receipt):
 
 
 def test_interrupted_upload_and_lost_publication_ack_recover_exact_source(transfer_client):
+    from overbae.models import Activity
+
     client, project = transfer_client
     receipt, data = reserve(client, project)
     assert chunk(client, receipt, data[:10]).status_code == 200
@@ -83,6 +85,17 @@ def test_interrupted_upload_and_lost_publication_ack_recover_exact_source(transf
     assert after_cleanup["received"] == len(data)
     assert Dataset.objects.filter(project=project).count() == 1
     assert chunk(client, receipt, b"changed").status_code == 409
+    assert Activity.objects.filter(project=project, kind="source_uploaded").count() == 1
+    assert Activity.objects.filter(project=project, kind="source_ready").count() == 1
+    milestones = client.get(
+        "/api/activity/onboarding/", {"project": str(project.pk), "path": "data"}
+    )
+    assert milestones.status_code == 200, milestones.data
+    assert all(
+        step["completed_at"]
+        for step in milestones.data
+        if step["kind"] in {"source_uploaded", "source_ready"}
+    )
 
 
 @pytest.mark.parametrize("existing", [False, True])

@@ -1,3 +1,4 @@
+import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
@@ -78,7 +79,8 @@ export function statusBadgeClassName(cfg: StatusMeta, solidProgress?: boolean): 
   return cn(
     "gap-1",
     solidProgress && "h-7 py-0",
-    solidProgress && cfg.tone === "info" && "border-transparent bg-foreground text-background"
+    cfg.tone === "info" && "border-transparent bg-foreground text-background",
+    cfg.spinning && "job-active-pulse"
   );
 }
 
@@ -88,16 +90,19 @@ export function StatusBadge({
   solidProgress = false,
   progress,
   className,
+  actorKind,
 }: {
   status: string | null | undefined;
   fallback: string;
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
+  actorKind?: string;
 }) {
   const cfg = resolveStatus(status, fallback);
   return (
     <ResolvedStatusBadge
+      actorKind={actorKind}
       cfg={cfg}
       className={className}
       progress={progress}
@@ -113,6 +118,7 @@ export function ResolvedStatusBadge({
   solidProgress = false,
   progress,
   className,
+  actorKind,
 }: {
   cfg: StatusMeta;
   label?: string;
@@ -120,6 +126,7 @@ export function ResolvedStatusBadge({
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
+  actorKind?: string;
 }) {
   const normalizedProgress =
     progress == null || !Number.isFinite(progress) ? null : Math.min(100, Math.max(0, progress));
@@ -145,12 +152,23 @@ export function ResolvedStatusBadge({
       {normalizedProgress != null && (
         <span
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 z-0 bg-info/20 transition-[width] duration-500 motion-reduce:transition-none"
+          className="absolute inset-y-0 left-0 z-0 bg-background/10 transition-[width] duration-500 motion-reduce:transition-none"
           style={{ width: `${normalizedProgress}%` }}
         />
       )}
-      <span className="relative z-10 inline-flex items-center gap-1">
-        {icon}
+      <span
+        className={cn(
+          "inline-flex items-center gap-1",
+          normalizedProgress != null && "relative z-10"
+        )}
+      >
+        {cfg.spinning &&
+        actorKind &&
+        ["codex", "claude", "cursor", "gemini", "coding_agent"].includes(actorKind) ? (
+          <CodingAgentIcon kind={actorKind} />
+        ) : (
+          icon
+        )}
         <span>{label ?? cfg.label}</span>
         {normalizedProgress != null && (
           <span className="font-mono tabular-nums">{Math.round(normalizedProgress)}%</span>

@@ -22,6 +22,7 @@ from overbae.models import (
     ModelRef,
     Project,
 )
+from overbae.services.activity import asset, record
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use
 from overbae.services.datasets.lifecycle import DatasetError
@@ -49,6 +50,23 @@ def require_same_project(project, **objects) -> None:
 
 class EvalMatrixSerializer(serializers.ModelSerializer):
     definition_source = serializers.SerializerMethodField()
+
+    @transaction.atomic
+    def create(self, validated_data):
+
+        row = super().create(validated_data)
+        assets = [asset("evaluation", row.pk, row.name)]
+        if row.capability_id:
+            assets.append(asset("capability", row.capability_id, row.capability.name))
+        record(
+            key=f"evaluation:{row.pk}",
+            project_id=row.project_id,
+            user_id=row.created_by_id,
+            kind="evaluation_added",
+            action="Added an evaluation",
+            assets=assets,
+        )
+        return row
 
     def get_definition_source(self, obj) -> DefinitionSource:
         return definition_source(obj)

@@ -36,6 +36,7 @@ from overbae.models import (
     Span,
 )
 from overbae.models.traces import usage_slice
+from overbae.services.activity import record
 from overbae.services.capabilities import identity
 from overbae.services.span_pricing import (
     COMPLETION_TOKEN_KEYS,
@@ -880,6 +881,14 @@ def otlp_traces(request):
     if all_spans:
         with transaction.atomic():
             all_spans, unscored, rejected = _persist_owned_spans(all_spans)
+
+            for project_id in {span.project_id for span in all_spans}:
+                record(
+                    key=f"first-trace:{project_id}",
+                    project_id=project_id,
+                    kind="first_trace",
+                    action="Received first trace",
+                )
 
     # Spans are already persisted, so one poison span must not 500 the batch:
     # OTel exporters retry a 500 forever, re-ingesting the same payload.

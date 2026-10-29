@@ -1,7 +1,11 @@
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
+import { useQueries } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
+import apiClient from "@/client";
+import { bindTrajectoryEvaluations } from "@/components/capability-detail/flow/bindTrajectoryEvaluations";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { EvaluationMethodBadge } from "@/components/evaluations/evaluation-method-badge";
 import { MATRIX_TYPE_LABEL } from "@/components/evaluations/matrix-row-label";
@@ -10,7 +14,7 @@ import {
   PYTHON_CHECK_HINT,
   type PythonCheckExample,
 } from "@/components/evaluations/python-check-examples";
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -46,9 +50,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TableSectionHeader } from "@/components/ui/table-section-header";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useActivityHighlights } from "@/hooks/use-activity";
 import {
   useCreateEvalMatrixRowMutation,
   useDeleteEvalMatrixRowMutation,
@@ -116,8 +120,8 @@ const JUDGE_PROBABILITY_LABELS = [
 function ScopeIcon({ kind, className }: { kind: ScopeKind; className?: string }) {
   if (kind === "tool") return <Icon.tool className={className} />;
   if (kind === "model") return <Icon.model className={className} />;
-  if (kind === "step") return <Icon.listBox className={className} />;
-  if (kind === "whole") return <Icon.capability className={className} />;
+  if (kind === "step") return <Icon.algorithm className={className} />;
+  if (kind === "whole") return <Icon.agent className={className} />;
   return <Icon.info className={className} />;
 }
 
@@ -147,6 +151,7 @@ export function EvalMatrixTable({
   capability?: Capability;
   actions?: ReactNode;
 }) {
+  const highlights = useActivityHighlights();
   const matrix = useEvalMatrixQuery(projectId, capabilityId);
   const guard = useGuestGate();
   const remove = useDeleteEvalMatrixRowMutation();
@@ -154,10 +159,81 @@ export function EvalMatrixTable({
   const [status, setStatus] = useState("enabled");
   const [part, setPart] = useState("all");
   const [method, setMethod] = useState("all");
-  const presented = useMemo(
-    () => presentEvaluations(matrix.data ?? [], capability),
-    [matrix.data, capability]
-  );
+  const capabilityIds = [
+    ...new Set((matrix.data ?? []).flatMap((row) => (row.capability ? [row.capability] : []))),
+  ];
+  const trajectories = useQueries({
+    queries: capabilityIds.map((id) => ({
+      queryFn: async () => {
+        const detail =
+          capability?.id === id
+            ? capability
+            : await apiClient.capabilities.capabilitiesRetrieve({ id });
+        const { buildTrajectoryGraph } = await import(
+          "@/components/capability-detail/flow/buildTrajectoryGraph"
+        );
+        return {
+          capability: detail,
+          graph: buildTrajectoryGraph(detail.flow, detail.name, [], detail.entrypointFn),
+        };
+      },
+      queryKey: ["evaluation-trajectory", id, capability?.id === id ? capability : undefined],
+      staleTime: 15_000,
+    })),
+  });
+  const nodeTargets = new Map<
+    string,
+    { capabilityId: string; nodeId: string; name: string; kind: ScopeKind }
+  >();
+  for (const trajectory of trajectories) {
+    if (!trajectory.data) continue;
+    const { capability: detail, graph } = trajectory.data;
+    if (!detail.flow.trajectoryMap?.length) continue;
+    const bindings = bindTrajectoryEvaluations(
+      (matrix.data ?? [])
+        .filter((row) => row.capability === detail.id)
+        .map((row) => ({ ...row, enabled: true })),
+      detail.entrypointFn ?? "",
+      graph.nodes.flatMap(({ id, data }) =>
+        data.kind === "step"
+          ? [{ anchors: data.anchors ?? [], id }]
+          : data.kind === "action"
+            ? [{ anchors: [data.tool.name], id }]
+            : []
+      )
+    );
+    for (const node of graph.nodes) {
+      const data = node.data;
+      const name =
+        data.kind === "entry"
+          ? data.capabilityName
+          : data.kind === "step"
+            ? data.label
+            : data.kind === "action"
+              ? data.tool.name
+              : undefined;
+      if (!name) continue;
+      const kind: ScopeKind =
+        data.kind === "entry"
+          ? "whole"
+          : data.kind === "action"
+            ? "tool"
+            : data.kind === "step" && data.actor === "model"
+              ? "model"
+              : "step";
+      for (const row of bindings.byNode.get(node.id) ?? []) {
+        nodeTargets.set(row.id, { capabilityId: detail.id, kind, name, nodeId: node.id });
+      }
+    }
+  }
+  const presented = presentEvaluations(matrix.data ?? [], capability).map((item) => {
+    const target = nodeTargets.get(item.row.id);
+    return {
+      ...item,
+      scope: target ? { ...item.scope, kind: target.kind, label: target.name } : item.scope,
+      target,
+    };
+  });
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<EvalMatrix | null>(null);
   const query = search.trim().toLowerCase();
@@ -188,80 +264,63 @@ export function EvalMatrixTable({
   return (
     <TooltipProvider>
       <div className="space-y-3">
-        <TableSectionHeader
-          actions={
-            <div className="flex items-center gap-2">
+        <ListToolbar
+          filters={
+            <>
+              <Select onValueChange={setPart} value={part}>
+                <SelectTrigger aria-label="Evaluation applies to" className="w-48" size="default">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All parts of the agent</SelectItem>
+                  <SelectItem value="whole">Whole agent</SelectItem>
+                  <SelectItem value="model">Model calls</SelectItem>
+                  <SelectItem value="step">Execution steps</SelectItem>
+                  <SelectItem value="tool">Tool calls</SelectItem>
+                  <SelectItem value="other">Other scopes</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select onValueChange={setMethod} value={method}>
+                <SelectTrigger aria-label="Evaluation method" className="w-36" size="default">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All methods</SelectItem>
+                  <SelectItem value="deterministic">Code checks</SelectItem>
+                  <SelectItem value="llm">Model judges</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select onValueChange={setStatus} value={status}>
+                <SelectTrigger aria-label="Evaluation status" className="w-36" size="default">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="enabled">Enabled</SelectItem>
+                  <SelectItem value="disabled">Disabled</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          }
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={clearFilters}
+          primary={
+            <>
               {actions}
-              <Button onClick={guard(() => setCreating(true))} size="sm">
+              <Button onClick={guard(() => setCreating(true))}>
                 <Icon.add />
                 Add evaluation
               </Button>
-            </div>
+            </>
           }
-          count={presented.length}
-          description="See what is scored, where it runs, and how the score is produced."
-          icon={
-            <Icon.evaluations
-              aria-hidden
-              className="size-6 shrink-0 [image-rendering:pixelated] invert"
-            />
-          }
-          title="Evaluation coverage"
-          toolbar={
-            <ListToolbar
-              filters={
-                <>
-                  <Select onValueChange={setPart} value={part}>
-                    <SelectTrigger
-                      aria-label="Evaluation applies to"
-                      className="w-44"
-                      size="default"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All parts of the agent</SelectItem>
-                      <SelectItem value="whole">Whole agent</SelectItem>
-                      <SelectItem value="model">Model calls</SelectItem>
-                      <SelectItem value="step">Execution steps</SelectItem>
-                      <SelectItem value="tool">Tool calls</SelectItem>
-                      <SelectItem value="other">Other scopes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select onValueChange={setMethod} value={method}>
-                    <SelectTrigger aria-label="Evaluation method" className="w-36" size="default">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All methods</SelectItem>
-                      <SelectItem value="deterministic">Code checks</SelectItem>
-                      <SelectItem value="llm">Model judges</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select onValueChange={setStatus} value={status}>
-                    <SelectTrigger aria-label="Evaluation status" className="w-36" size="default">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="enabled">Enabled</SelectItem>
-                      <SelectItem value="disabled">Disabled</SelectItem>
-                      <SelectItem value="all">All statuses</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </>
-              }
-              hasActiveFilters={hasActiveFilters}
-              onClearFilters={clearFilters}
-              search={
-                <SearchInput
-                  className="min-w-[220px] flex-1"
-                  label="Search evaluations"
-                  onChange={(e) => setSearch(e.target.value)}
-                  onClear={() => setSearch("")}
-                  placeholder="Search rules, steps or tools…"
-                  value={search}
-                />
-              }
+          search={
+            <SearchInput
+              className="min-w-[200px] flex-1"
+              label="Search evaluations"
+              onChange={(e) => setSearch(e.target.value)}
+              onClear={() => setSearch("")}
+              placeholder="Search rules, steps or tools…"
+              value={search}
             />
           }
         />
@@ -318,8 +377,13 @@ export function EvalMatrixTable({
                       </div>
                     </TableCell>
                   </TableRow>
-                  {group.map(({ row, name, scope }) => (
-                    <TableRow key={row.id}>
+                  {group.map(({ row, name, scope, target }) => (
+                    <TableRow
+                      className={
+                        highlights[`evaluation:${row.id}`] ? "activity-highlight" : undefined
+                      }
+                      key={row.id}
+                    >
                       <TableCell className="py-2.5">
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -338,23 +402,52 @@ export function EvalMatrixTable({
                         </Tooltip>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className={`flex size-6 shrink-0 items-center justify-center rounded-sm border ${SCOPE_META[scope.kind].tone}`}
-                              >
-                                <ScopeIcon className="size-3" kind={scope.kind} />
-                              </span>
-                              <span className="truncate text-sm text-foreground">
-                                {scope.label}
-                              </span>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-sm break-words">
-                            {scope.detail} · {row.spanName || row.spanType || "All matching spans"}
-                          </TooltipContent>
-                        </Tooltip>
+                        {target ? (
+                          <Link
+                            className={`${badgeVariants({ size: "chip", variant: "outline" })} max-w-full gap-1.5 hover:bg-accent`}
+                            hash="trajectory"
+                            hashScrollIntoView={{
+                              behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                                .matches
+                                ? "instant"
+                                : "smooth",
+                              block: "start",
+                            }}
+                            onClick={(event) => {
+                              if (
+                                event.button !== 0 ||
+                                event.metaKey ||
+                                event.ctrlKey ||
+                                event.shiftKey ||
+                                event.altKey ||
+                                event.currentTarget.href !== window.location.href
+                              )
+                                return;
+                              document.getElementById("trajectory")?.scrollIntoView({
+                                behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                                  .matches
+                                  ? "instant"
+                                  : "smooth",
+                                block: "start",
+                              });
+                            }}
+                            params={{ capabilityId: target.capabilityId }}
+                            resetScroll={false}
+                            search={{
+                              projectId,
+                              trajectoryNode: target.nodeId,
+                            }}
+                            to="/capabilities/$capabilityId"
+                          >
+                            <ScopeIcon className="size-3" kind={target.kind} />
+                            <span className="truncate">{target.name}</span>
+                          </Link>
+                        ) : (
+                          <Badge className="max-w-full gap-1.5" size="chip" variant="neutral">
+                            <ScopeIcon className="size-3" kind={scope.kind} />
+                            <span className="truncate">{scope.label}</span>
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="py-2.5">
                         <EvaluationMethodBadge type={row.type} />

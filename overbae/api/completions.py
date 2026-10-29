@@ -436,6 +436,9 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
         if key in data:
             extra[key] = data[key]
 
+    if str(model_id).startswith("dedicated/"):
+        return _dedicated_chat(request, model_id, data, started_at)
+
     deployed, alias_error = _resolve_alias(request, model_id)
     if alias_error is not None:
         return alias_error
@@ -756,6 +759,112 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
 _VALID_STATUSES = frozenset(s.value for s in DeployedModel.Status)
 
 
+def _dedicated_chat(request, model_id: str, data: dict, started_at):
+    from overbae.core.errors import InputValidationError
+    from overbae.services.dedicated import lookup, serve_chat
+    from overbae.services.deployed_chat import record_inference_call
+
+    row = lookup(model_id, project_ids_for(request.user, request.auth))
+    if row is None:
+        return Response(
+            {
+                "error": {
+                    "message": f"Model '{model_id}' not found.",
+                    "type": "invalid_request_error",
+                }
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    try:
+        upstream, raw, content_type = serve_chat(row, json.dumps(data).encode())
+    except InputValidationError as exc:
+        code = (
+            status.HTTP_400_BAD_REQUEST
+            if "systemone" in exc.detail
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        return Response(
+            {"error": {"message": exc.detail, "type": "invalid_request_error"}},
+            status=code,
+        )
+    except Exception:
+        logger.exception("Dedicated chat failed for %s", model_id)
+        return Response(
+            {"error": {"message": "Dedicated inference failed.", "type": "server_error"}},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+    usage = None
+    parsed = None
+    if raw and "json" in content_type:
+        try:
+            parsed = json.loads(raw)
+            usage = parsed.get("usage") if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            parsed = None
+    record_inference_call(
+        row.deployed_model,
+        usage,
+        (timezone.now() - started_at).total_seconds() * 1000,
+        user=request.user,
+        outcome="succeeded" if upstream < 400 else "failed",
+        error_code="" if upstream < 400 else "inference_rejected",
+        source="application" if isinstance(request.auth, APIToken) else "internal",
+        requested_model=model_id,
+        bill=False,
+    )
+    if "text/event-stream" in content_type:
+        return StreamingHttpResponse(
+            iter([_present_dedicated_body(raw, row.public_model_id)]),
+            content_type=content_type,
+        )
+    if parsed is None:
+        return Response(
+            {"error": {"message": "Dedicated inference failed.", "type": "server_error"}},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+    if isinstance(parsed, dict):
+        parsed.pop("system_fingerprint", None)
+        if "model" in parsed:
+            parsed["model"] = row.public_model_id
+    return Response(parsed, status=upstream)
+
+
+def _present_dedicated_body(raw: bytes, public_id: str) -> bytes:
+    text = raw.decode()
+    lines = []
+    for line in text.splitlines(keepends=True):
+        if not line.startswith("data:") or "{" not in line:
+            lines.append(line)
+            continue
+        blob = line[line.index("{") :].strip()
+        try:
+            payload = json.loads(blob)
+        except json.JSONDecodeError:
+            lines.append(line)
+            continue
+        if isinstance(payload, dict):
+            payload.pop("system_fingerprint", None)
+            if "model" in payload:
+                payload["model"] = public_id
+        ending = "\n" if line.endswith("\n") else ""
+        lines.append(f"data: {json.dumps(payload)}{ending}")
+    return "".join(lines).encode()
+
+
+def _dedicated_model_dict(row) -> dict:
+    deployed = row.deployed_model
+    return {
+        "id": row.public_model_id,
+        "object": "model",
+        "created": int(row.online_at.timestamp()) if row.online_at else int(time.time()),
+        "owned_by": "dedicated",
+        "finetuned": True,
+        "status": row.status,
+        "base_model": deployed.base_model_id,
+        "inference_contract": deployed.inference_contract,
+    }
+
+
 def _deployed_model_to_dict(m: DeployedModel) -> dict:
     return {
         "id": m.model_id,
@@ -806,6 +915,15 @@ def models_list(request: Request) -> Response:
         )
 
     finetuned = [_deployed_model_to_dict(m) for m in qs]
+    if status_param in ("ready", "all"):
+        from overbae.models import DedicatedDeployment
+
+        dedicated_rows = DedicatedDeployment.objects.select_related("deployed_model").filter(
+            project_id__in=scope
+        )
+        if status_param == "ready":
+            dedicated_rows = dedicated_rows.filter(status=DedicatedDeployment.Status.ONLINE)
+        finetuned.extend(_dedicated_model_dict(row) for row in dedicated_rows)
 
     # An alias only ever resolves to a READY deployment.
     if status_param in ("ready", "all"):
@@ -885,6 +1003,34 @@ def model_detail(request: Request, model_id: str) -> Response:
         if alias_error is not None:
             return alias_error
         return Response(_deployed_model_to_dict(aliased))
+
+    if str(model_id).startswith("dedicated/"):
+        from overbae.services.dedicated import lookup
+
+        row = lookup(model_id, project_ids_for(request.user, request.auth))
+        if row is None:
+            return Response(
+                {
+                    "error": {
+                        "message": f"Model '{model_id}' not found.",
+                        "type": "invalid_request_error",
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if request.method == "DELETE":
+            return Response(
+                {
+                    "error": {
+                        "message": (
+                            f"'{model_id}' is a dedicated deployment. Stop it from the model page."
+                        ),
+                        "type": "invalid_request_error",
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(_dedicated_model_dict(row))
 
     try:
         deployed = DeployedModel.objects.get(

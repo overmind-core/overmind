@@ -10,15 +10,14 @@ import {
   YAxis,
 } from "recharts";
 
+import { ModelUsage } from "@/components/inference/model-usage";
 import { DetailErrorState } from "@/components/route-error";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateTime } from "@/components/ui/datetime";
-import { EmptyState } from "@/components/ui/empty-state";
 import { GraphTooltip } from "@/components/ui/graph-tooltip";
 import { Icon } from "@/components/ui/icons";
-import { SectionCard } from "@/components/ui/section-card";
 import {
   Select,
   SelectContent,
@@ -27,13 +26,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   type InferencePeriod,
   type InferenceTrafficSource,
   useModelActivityQuery,
   useModelMetricsQuery,
 } from "@/hooks/use-inference";
-import { formatCost } from "@/lib/formatters";
 import { TITLE } from "@/lib/typography";
 import type { InferenceActivityPoint } from "@/openapi";
 
@@ -51,13 +50,7 @@ const integer = (value: number | null | undefined) =>
 const latency = (ms: number | null | undefined) =>
   ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 
-export function ModelPerformance({
-  modelId,
-  onConnect,
-}: {
-  modelId: string;
-  onConnect: () => void;
-}) {
+export function ModelPerformance({ modelId }: { modelId: string }) {
   const [period, setPeriod] = useState<InferencePeriod>("24h");
   const [source, setSource] = useState<InferenceTrafficSource>("application");
   const selected = PERIODS.find((item) => item.value === period)!;
@@ -81,15 +74,6 @@ export function ModelPerformance({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h2 className={TITLE.section}>Inference performance</h2>
-          <p className="text-xs text-muted-foreground">
-            {error ? "Refresh interrupted" : "Refreshes every 15 seconds"}
-            {metricsQuery.dataUpdatedAt ? (
-              <>
-                {" "}
-                · Updated <DateTime value={new Date(metricsQuery.dataUpdatedAt)} />
-              </>
-            ) : null}
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -116,15 +100,6 @@ export function ModelPerformance({
               ))}
             </SelectContent>
           </Select>
-          <Button
-            aria-label="Refresh performance"
-            disabled={metricsQuery.isFetching || activityQuery.isFetching}
-            onClick={refresh}
-            size="icon-sm"
-            variant="secondary"
-          >
-            <Icon.refresh />
-          </Button>
         </div>
       </div>
 
@@ -154,47 +129,42 @@ export function ModelPerformance({
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>:last-child]:col-span-2 lg:[&>:last-child]:col-span-1">
-            <Metric
-              detail={`${integer(metrics?.totalTokens)} tokens processed`}
-              label="Requests"
-              loading={loading}
-              value={integer(metrics?.requestCount)}
-            />
-            <Metric
-              detail={`${integer(metrics?.failedRequestCount)} failed requests`}
-              label="Success rate"
-              loading={loading}
-              value={successRate == null ? "—" : `${successRate.toFixed(1)}%`}
-            />
-            <Metric
-              detail={`p95 ${latency(metrics?.endToEndP95Ms)} · end to end`}
-              label="Response time · p50"
-              loading={loading}
-              value={latency(metrics?.endToEndP50Ms)}
-            />
-            <Metric
-              detail="Median · warm requests"
-              label="Generation speed"
-              loading={loading}
-              value={
-                metrics?.avgTokensPerSecond == null
-                  ? "—"
-                  : `${metrics.avgTokensPerSecond.toFixed(1)} tok/s`
-              }
-            />
-            <Metric
-              detail={
-                metrics && metrics.costRecordedRequestCount < metrics.requestCount
-                  ? `Estimated · ${integer(metrics.costRecordedRequestCount)} of ${integer(metrics.requestCount)} requests`
-                  : "Estimated GPU spend"
-              }
-              label="Serving cost"
-              loading={loading}
-              value={metrics?.cost === 0 ? "$0.00" : formatCost(metrics?.cost)}
-            />
-          </div>
-
+          <Card className="overflow-hidden">
+            <div className="grid grid-cols-2 divide-x divide-border/70 lg:grid-cols-4">
+              <Metric
+                detail={
+                  metrics?.lastRequestAt
+                    ? `Last request ${metrics.lastRequestAt.toLocaleDateString()}`
+                    : ""
+                }
+                label="Requests"
+                loading={loading}
+                value={integer(metrics?.requestCount)}
+              />
+              <Metric
+                detail={`${integer(metrics?.failedRequestCount)} failed requests`}
+                label="Success rate"
+                loading={loading}
+                value={successRate == null ? "—" : `${successRate.toFixed(1)}%`}
+              />
+              <Metric
+                detail={`p95 ${latency(metrics?.endToEndP95Ms)} · end to end`}
+                label="Response time · p50"
+                loading={loading}
+                value={latency(metrics?.endToEndP50Ms)}
+              />
+              <Metric
+                detail="Median · warm requests"
+                label="Generation speed"
+                loading={loading}
+                value={
+                  metrics?.avgTokensPerSecond == null
+                    ? "—"
+                    : `${metrics.avgTokensPerSecond.toFixed(1)} tok/s`
+                }
+              />
+            </div>
+          </Card>
           {metrics?.latestFailure ? (
             <Alert variant="destructive">
               <Icon.failed />
@@ -213,25 +183,12 @@ export function ModelPerformance({
           {loading ? (
             <ActivitySkeleton />
           ) : !hasTraffic && !error ? (
-            <Card>
-              <EmptyState
-                action={
-                  <Button onClick={onConnect} size="sm" variant="secondary">
-                    <Icon.terminal />
-                    View API snippet
-                  </Button>
-                }
-                className="py-8"
-                description={
-                  source === "application"
-                    ? "Requests made with an API key to the live alias or this model's pinned ID appear here."
-                    : "Completed inference requests, including internal evaluations, appear here."
-                }
-                icon={Icon.inference}
-                size="section"
-                title={`No ${source === "application" ? "application " : ""}requests ${period === "all" ? "recorded" : `in the ${selected.label.toLowerCase()}`}`}
-              />
-            </Card>
+            <div className="px-1">
+              <p className="text-sm text-muted-foreground">
+                No {source === "application" ? "application " : ""}requests{" "}
+                {period === "all" ? "recorded" : `in the ${selected.label.toLowerCase()}`}
+              </p>
+            </div>
           ) : activityQuery.isPending ? (
             <ActivitySkeleton />
           ) : activityQuery.error && !activityQuery.data ? (
@@ -245,86 +202,67 @@ export function ModelPerformance({
               fallback="Couldn't load inference activity."
             />
           ) : hasTraffic ? (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <PerformanceChart
-                description={`Requests per ${selected.granularity}`}
-                format={integer}
-                granularity={selected.granularity}
-                integerTicks
-                points={points}
-                series={[
-                  { color: "var(--chart-1)", key: "requestCount", label: "Requests" },
-                  { color: "var(--destructive)", key: "failedRequestCount", label: "Failed" },
-                ]}
-                title="Request traffic"
-              />
-              <PerformanceChart
-                description="End-to-end milliseconds · includes cold starts"
-                format={latency}
-                granularity={selected.granularity}
-                points={points}
-                series={[
-                  { color: "var(--chart-1)", key: "endToEndP50Ms", label: "p50" },
-                  { color: "var(--chart-4)", key: "endToEndP95Ms", label: "p95" },
-                ]}
-                title="Response time"
-              />
-              <PerformanceChart
-                description="Median tokens per second · warm requests"
-                format={(value) => (value == null ? "—" : `${value.toFixed(1)} tok/s`)}
-                granularity={selected.granularity}
-                points={points}
-                series={[{ color: "var(--chart-2)", key: "avgTokensPerSecond", label: "tok/s" }]}
-                title="Generation speed"
-              />
-            </div>
-          ) : null}
-
-          {metrics && hasTraffic ? (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              <span>
-                Input tokens{" "}
-                <span className="text-foreground">{integer(metrics.promptTokens)}</span>
-              </span>
-              <span>
-                Output tokens{" "}
-                <span className="text-foreground">{integer(metrics.completionTokens)}</span>
-              </span>
-              <span title="Coldness is estimated from recent inference activity.">
-                Cold requests (estimated){" "}
-                <span className="text-foreground">{integer(metrics.coldRequestCount)}</span>
-              </span>
-              <span>
-                Warm response p50{" "}
-                <span className="text-foreground">{latency(metrics.avgLatencyMs)}</span>
-              </span>
-              {metrics.lastRequestAt ? (
-                <span className="ml-auto">
-                  Last request <DateTime value={metrics.lastRequestAt} />
-                </span>
-              ) : null}
-            </div>
+            <Card className="p-3">
+              <Tabs defaultValue="traffic">
+                <TabsList
+                  aria-label="Performance chart"
+                  className="max-w-full justify-start overflow-x-auto"
+                >
+                  <TabsTrigger value="traffic">Requests</TabsTrigger>
+                  <TabsTrigger value="latency">Response time</TabsTrigger>
+                  <TabsTrigger value="speed">Generation speed</TabsTrigger>
+                </TabsList>
+                <TabsContent value="traffic">
+                  <PerformanceChart
+                    description={`Requests per ${selected.granularity}`}
+                    format={integer}
+                    granularity={selected.granularity}
+                    integerTicks
+                    points={points}
+                    series={[
+                      { color: "var(--chart-1)", key: "requestCount", label: "Requests" },
+                      { color: "var(--destructive)", key: "failedRequestCount", label: "Failed" },
+                    ]}
+                    title="Request traffic"
+                  />
+                </TabsContent>
+                <TabsContent value="latency">
+                  <PerformanceChart
+                    description="End-to-end milliseconds · includes cold starts"
+                    format={latency}
+                    granularity={selected.granularity}
+                    points={points}
+                    series={[
+                      { color: "var(--chart-1)", key: "endToEndP50Ms", label: "p50" },
+                      { color: "var(--chart-4)", key: "endToEndP95Ms", label: "p95" },
+                    ]}
+                    title="Response time"
+                  />
+                </TabsContent>
+                <TabsContent value="speed">
+                  <PerformanceChart
+                    description="Median tokens per second · warm requests"
+                    format={(value) => (value == null ? "—" : `${value.toFixed(1)} tok/s`)}
+                    granularity={selected.granularity}
+                    points={points}
+                    series={[
+                      { color: "var(--chart-2)", key: "avgTokensPerSecond", label: "tok/s" },
+                    ]}
+                    title="Generation speed"
+                  />
+                </TabsContent>
+              </Tabs>
+            </Card>
           ) : null}
         </>
       )}
+      {metrics ? <ModelUsage metrics={metrics} /> : null}
     </section>
   );
 }
 
 function ActivitySkeleton() {
-  return (
-    <div aria-busy="true" aria-label="Loading inference activity" role="status">
-      <span className="sr-only">Loading inference activity</span>
-      <div aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {["Request traffic", "Response time", "Generation speed"].map((title) => (
-          <SectionCard contentClassName="space-y-3" key={title} title={title}>
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-44 w-full" />
-          </SectionCard>
-        ))}
-      </div>
-    </div>
-  );
+  return <Skeleton aria-label="Loading inference activity" className="h-52 w-full" />;
 }
 
 function Metric({
@@ -339,15 +277,15 @@ function Metric({
   loading: boolean;
 }) {
   return (
-    <Card className="min-w-0 space-y-3 p-4">
+    <div className="min-w-0 space-y-1 px-3 py-3">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       {loading ? (
         <Skeleton className="h-7 w-20" />
       ) : (
-        <p className="font-mono text-xl leading-none tabular-nums">{value}</p>
+        <p className="font-mono text-sm tabular-nums">{value}</p>
       )}
-      <p className="text-xs text-muted-foreground">{detail}</p>
-    </Card>
+      {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
+    </div>
   );
 }
 
@@ -390,9 +328,9 @@ function PerformanceChart({
           : { day: "numeric", month: "short" }
     );
   return (
-    <SectionCard contentClassName="space-y-3" title={title}>
+    <div className="space-y-3 pt-2">
       <p className="text-xs text-muted-foreground">{description}</p>
-      <div aria-label={`${title} chart`} className="h-44 min-w-0" role="img">
+      <div aria-label={`${title} chart`} className="h-52 min-w-0" role="img">
         {hasMeasurements ? (
           <ResponsiveContainer height="100%" width="100%">
             <LineChart
@@ -415,12 +353,7 @@ function PerformanceChart({
                 axisLine={false}
                 domain={[0, "auto"]}
                 tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                tickFormatter={(value) =>
-                  Number(value).toLocaleString(undefined, {
-                    maximumFractionDigits: 1,
-                    notation: "compact",
-                  })
-                }
+                tickFormatter={(value) => format(Number(value))}
                 tickLine={false}
                 width={48}
               />
@@ -463,6 +396,6 @@ function PerformanceChart({
           </span>
         ))}
       </div>
-    </SectionCard>
+    </div>
   );
 }

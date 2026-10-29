@@ -913,7 +913,16 @@ def _set_benchmark_sync(
 
 
 def _inference_sync(payload: RunInferenceInput, context: MCPContext) -> RunInferenceOutput:
-    deployment = _resolve_deployment(context, payload.deployment)
+    dedicated_row = None
+    if payload.deployment.startswith("dedicated/"):
+        from overbae.services.dedicated import lookup
+
+        dedicated_row = lookup(payload.deployment, [context.project.id])
+        if dedicated_row is None:
+            raise MCPError("not_found", "Dedicated deployment not found.")
+        deployment = dedicated_row.deployed_model
+    else:
+        deployment = _resolve_deployment(context, payload.deployment)
     inputs = {
         "messages": [message.model_dump() for message in payload.messages]
         if payload.messages
@@ -935,7 +944,11 @@ def _inference_sync(payload: RunInferenceInput, context: MCPContext) -> RunInfer
                 )
             _require_credits(context)
             request = inference_requests.submit(
-                deployment, context.user, payload.request_key, inputs
+                deployment,
+                context.user,
+                payload.request_key,
+                inputs,
+                dedicated=dedicated_row,
             )
     except InputValidationError as exc:
         message = str(exc)
@@ -1144,7 +1157,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "inspect_training_progress",
             "Inspect training progress",
-            "Read durable development checks, coverage, failures and verified checkpoints. Native decision checks report distribution cross entropy/Brier, applicable categorical accuracy and ordinal mean error with separate denominators. Per-question metrics and assessments have collections descriptors: pass their field JSON Pointer to page exact retained values, or append escaped keys/indices to inspect nested values. Pass check for paginated examples. Passive: never invokes a provider. Development evidence is not a final benchmark.",
+            "Read development checks, coverage, failures and verified checkpoints. Page per-question metrics with a field JSON Pointer. Pass check for examples. Never invokes a provider.",
             InspectTrainingProgressInput,
             InspectTrainingProgressOutput,
             inspect_training_progress_sync,
@@ -1300,7 +1313,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "run_inference",
             "Run inference",
-            "Submit inference with a stable request_key; identical retries reuse its durable job. Supply messages for chat deployments or input-only decisions for decision deployments. Read get_job(kind=inference_request) for text or probabilities. Omitted chat max_tokens uses the production default.",
+            "Submit inference with a stable request_key; identical retries reuse its durable job. Pass a deployment id, or dedicated/<trained model id> for a private deployment. Supply messages for chat or input-only decisions. Read get_job(kind=inference_request). Omitted chat max_tokens uses the production default.",
             RunInferenceInput,
             RunInferenceOutput,
             _inference_sync,

@@ -7,6 +7,10 @@ description: Data Workshop internals — source landing and OCR, immutable datas
 
 The native coding agent owns interpretation, code and semantic work. The platform stores evidence and runs explicit, deterministic operations. Landing never diagnoses, starts a chat turn, generates examples or starts preparation. There is no platform chat, mutable cell or replay endpoint; old conversations and provider receipts are archived in `DatasetHistory`, and historical cell scripts, reviews and frames stay readable.
 
+## Preparation lifecycle
+
+Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation.
+
 ## Map
 
 | Path                                                                                                               | Owns                                                                                                               |
@@ -80,3 +84,21 @@ External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-sco
 ## Console canvas
 
 The landing page is a project dataset table; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. There is no chat, funding control, cell search or cell-selector strip.
+
+The dataset inventory exposes current work from retained pipeline and transfer receipts.
+Uploads attached to a dataset report measured bytes; transformations and previews stay
+indeterminate unless measured progress exists. The table retains the published version
+and row count during work, and shows no row count before a version is published.
+
+The inventory Role column and filter derive roles from completed partition memberships
+and recorded training/evaluation consumers, not intent or names. Source datasets
+include every role produced by their completed partition plans. Multiple roles remain
+visible. Raw-only published datasets without a consumer role show Source; other
+unassigned datasets show an em dash. MCP retains its existing partition and consumer
+facts; this Console grouping adds no MCP operation or intent mutation.
+
+The Console inventory groups datasets by `workspace_id`, resolved from completed
+partition and exploration lineage. One source workspace row combines output roles
+and active work; output datasets retain their identities and detail URLs. Counts
+and filters operate on grouped workspace rows. MCP keeps individual output records
+for exact consumer selection; workspace grouping is Console presentation.

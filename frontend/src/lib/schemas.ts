@@ -160,8 +160,8 @@ export const datasetsSearchSchema = projectIdSearchSchema.extend({
     .optional(),
   /** A capability id, or the `NO_CAPABILITY` sentinel for datasets attached to none. */
   ds_capability: z.string().optional().default("all"),
-  ds_intent: z
-    .enum(["all", "train", "eval", "pending", "explore"])
+  ds_role: z
+    .enum(["all", "training", "development", "calibration", "evaluation", "source", "unassigned"])
     .optional()
     .default("all")
     .catch("all"),
@@ -182,6 +182,13 @@ export const inferenceSearchSchema = projectIdSearchSchema.extend({
 });
 
 export type InferenceSearch = z.infer<typeof inferenceSearchSchema>;
+
+export const dedicatedSearchSchema = projectIdSearchSchema.extend({
+  page: z.coerce.number().min(1).optional().default(1),
+  page_size: z.coerce.number().min(5).max(100).optional().default(25),
+});
+
+export type DedicatedSearch = z.infer<typeof dedicatedSearchSchema>;
 
 export const projectsSearchSchema = z.object({
   createProject: z.enum(["new"]).optional(),

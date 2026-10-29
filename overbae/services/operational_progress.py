@@ -7,6 +7,7 @@ from django.db.models.functions import Cast, Replace
 from django.utils import timezone
 
 from overbae.models import FinetuningJob, OperationalEvent, OperationalRun
+from overbae.services.activity import update_task
 
 FACTS = frozenset(
     {
@@ -165,6 +166,8 @@ def record(
             run.last_heartbeat_at = heartbeat_at
         run.snapshot, run.source_at = snapshot, source_at
         run.save()
+        if previous.get("status") != status:
+            update_task(project_id, kind, reference, status)
         return run
 
 

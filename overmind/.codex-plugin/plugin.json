@@ -1,6 +1,6 @@
 {
   "name": "overmind",
-  "version": "1.2.5",
+  "version": "1.2.7",
   "description": "Investigate agent failures, prepare datasets, evaluate models, and manage training and serving with Overmind.",
   "author": {
     "name": "Overmind",

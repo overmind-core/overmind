@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from dataclasses import replace
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
@@ -31,6 +33,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
+from overbae.services.activity import connected
 from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.auth import MCP_PATHS, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
@@ -40,6 +43,8 @@ from overbae.services.mcp.oauth_routes import domain_challenge, oauth_routes
 from overbae.services.mcp.prompts import get_prompt as render_prompt
 from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
+
+logger = logging.getLogger(__name__)
 
 SERVER_NAME = "overmind-platform"
 SERVER_VERSION = CONTRACT_VERSION
@@ -71,6 +76,8 @@ mcp_server = Server(
         "Declare the final step consumer (decision_train, decision_eval, chat_train or model_eval) so previews validate nested targets. Use batch_rows only for row-independent steps; sorting, grouping and deduplication require the full population. Preserve evidenced target semantics and structured provenance; never remove them to bypass a validator. Preview defers absolute min_rows/max_rows bounds to publication; lineage and preserve_rows checks remain enforced. Inspect deferred checks before publishing. Follow poll_after_seconds; queued work alone is not a failure or reason to resubmit. Report format compatibility separately from task suitability, which remains unmeasured without attributable evidence. "
         "Author explicit step IDs and input dependencies. Converge intended branches with inputs=[earlier IDs]; disjoint rows concatenate in declared order, overlapping source_row identities fail. The last step is the output: inspect flow.unconsumed_steps before publication. Training preparation should end in trainable examples with review metadata, not disconnected inspection tables; never invent targets or treat flags as resolved. Script conditions cite their entrypoint line and describe code, not independently verified semantics. Receipts record actual parent cells, counts and fingerprints. Pin sources and use stable request keys. "
         "Use author-dataset-transformation for conditional authoring, retrieval and adaptation. inspect_dataset_workbench(pipeline=revision ID) retrieves an exact recipe and its family history. Only retained packages execute in the approved isolated runtime; other code and semantic/provider work stay in the native environment. Technical format checks do not prove semantic quality or exhaustive/exclusive branches. "
+        "Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation. "
+        "During every repository onboarding run, including reruns and resumes, read overmind://activity for the ten-stage roadmap. Before starting the next stage and after each completion, call report_onboarding_progress using one persistent UUID run_id and the verified consecutive completed count. Await a successful receipt; retry failed reports with the same values and disclose when Console progress cannot be updated. This reporting is required even if older installed skills only describe chat updates. These local-work receipts update the landing page without creating notifications. "
         "Local scanning, file transfers, credentials and repository execution use the CLI "
         "handoffs in the relevant resources/prompts. The server does not edit local files. "
         "When a user wants a visual view, open the ordinary Console for this project; "
@@ -90,6 +97,15 @@ async def _list_tools() -> list[types.Tool]:
 @mcp_server.call_tool(validate_input=False)
 async def _call_tool(name: str, arguments: dict[str, Any] | None) -> types.CallToolResult:
     context = get_context()
+    params = mcp_server.request_context.session.client_params
+    if params:
+        context = replace(context, client_name=params.clientInfo.name[:100])
+    elif hasattr(context.token, "grant"):
+        client_name = await sync_to_async(
+            lambda: context.token.grant.client.metadata.get("client_name", ""),
+            thread_sensitive=True,
+        )()
+        context = replace(context, client_name=str(client_name)[:100])
     return await CATALOG.call(name, arguments or {}, context)
 
 
@@ -341,6 +357,31 @@ class MCPTransportMiddleware:
                 )(scope, replay, send)
                 return
 
+        if isinstance(payload, dict) and payload.get("method") == "initialize":
+            chunks = []
+            succeeded = False
+
+            async def capture(message):
+                nonlocal succeeded
+                if message["type"] == "http.response.body":
+                    chunks.append(message.get("body", b""))
+                    if not message.get("more_body", False):
+                        with suppress(TypeError, ValueError):
+                            succeeded = "result" in json.loads(b"".join(chunks))
+                await send(message)
+
+            await self.app(scope, replay, capture)
+            if succeeded:
+                client_info = (payload.get("params") or {}).get("clientInfo") or {}
+                client_name = client_info.get("name")
+                if isinstance(client_name, str):
+                    try:
+                        await sync_to_async(connected, thread_sensitive=True)(
+                            replace(get_context(), client_name=client_name[:100])
+                        )
+                    except Exception:
+                        logger.exception("Could not retain MCP connection milestone")
+            return
         await self.app(scope, replay, send)
 
 
