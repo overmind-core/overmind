@@ -12,6 +12,7 @@ class BillingService(models.TextChoices):
     FINETUNING_JOB = "finetuning-job", "Finetuning job"
     INFERENCE = "inference", "Inference"
     INFERENCE_FT_MODEL = "inference-ft-model", "Fine-tuned inference"
+    DEDICATED_INFERENCE = "dedicated-inference", "Dedicated inference"
     DATA_WORKSHOP = "data-workshop", "Data workshop"
     EVALUATION = "evaluation", "Evaluation"
 

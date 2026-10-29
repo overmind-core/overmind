@@ -140,11 +140,25 @@ SERVE_CLASS_MAP: dict[tuple[str, str], str] = {
     (gpu, image): cls for (gpu, image), cls in WORKER_CLS.items() if image != SERVE_VLLM
 }
 
+# MiB reserved for the vLLM process. Dedicated quotes use the same table.
+WORKER_CPU = 8
+WORKER_MEMORY_MIB: dict[str, int] = {
+    "L4": 131072,
+    "L40S": 196608,
+    "A100-80GB": 131072,
+    "H100": 131072,
+    "H200": 196608,
+    "B200": 262144,
+    "B300": 393216,
+}
+
 # scaledown bucket + default max_model_len per GPU (used when generating Cls).
 GPU_TIER: dict[str, tuple[str, int]] = {
     "L4": ("short", 8192),
     "L40S": ("short", 16384),
     "A100-80GB": ("large", 16384),
+    # Dedicated only. Serverless workers are still gated by WORKER_ALLOWED.
+    "H100": ("large", 16384),
     "H200": ("large", 32768),
     "B200": ("large", 16384),
     "B300": ("large", 32768),

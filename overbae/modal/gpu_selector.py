@@ -63,11 +63,60 @@ def _smallest_tier_holding_weights(model_cfg: dict[str, Any], tiers: list[dict[s
     return tiers[-1]["name"]
 
 
+# Same VRAM as A100-80GB. Serverless selection omits it; dedicated offers it as a
+# speed and price choice beside A100, not as extra capacity.
+DEDICATED_TIERS: list[dict[str, Any]] = [
+    {"name": "L4", "vram_gb": 24},
+    {"name": "L40S", "vram_gb": 48},
+    {"name": "A100-80GB", "vram_gb": 80},
+    {"name": "H100", "vram_gb": 80},
+    {"name": "H200", "vram_gb": 141},
+    {"name": "B200", "vram_gb": 192},
+    {"name": "B300", "vram_gb": 288},
+]
+
+
 def gpu_vram_gb(gpu_type: str) -> int:
-    for tier in GPU_TIERS:
+    for tier in (*GPU_TIERS, *DEDICATED_TIERS):
         if tier["name"] == gpu_type:
             return tier["vram_gb"]
     return 0
+
+
+def fitting_gpu_names(model_cfg: dict[str, Any], max_model_len: int, *, fp8: bool) -> list[str]:
+    """Enabled serverless tiers that hold this shape, cheapest first. Empty when none fit."""
+    cfg = {**model_cfg, "fp8_supported": fp8}
+    inference = cfg.get("inference") or {}
+    minimum_vram = inference.get("min_vram_gb", 0)
+    tiers = [t for t in GPU_TIERS if t["enabled"] and t["vram_gb"] >= minimum_vram]
+    if not tiers:
+        return []
+    num_attn_layers = cfg.get("num_attn_layers")
+    num_kv_heads = cfg.get("num_kv_heads")
+    head_dim = cfg.get("head_dim")
+    if not all([num_attn_layers, num_kv_heads, head_dim]):
+        fallback = inference.get("gpu_type") or _smallest_tier_holding_weights(cfg, tiers)
+        floor = gpu_vram_gb(fallback)
+        return [tier["name"] for tier in tiers if tier["vram_gb"] >= floor]
+    weights_gb = cfg.get("total_params_b") or 0
+    weights_gb *= 1 if fp8 else 2
+    kv_bytes_per_tok = 2 * num_attn_layers * num_kv_heads * head_dim * KV_DTYPE_BYTES
+    min_kv_1seq_gb = (max_model_len * kv_bytes_per_tok) / (1024**3)
+    names = []
+    for tier in tiers:
+        usable = tier["vram_gb"] * GPU_MEMORY_UTILIZATION
+        if usable - weights_gb - ACTIVATION_OVERHEAD_GB >= min_kv_1seq_gb:
+            names.append(tier["name"])
+    return names
+
+
+def dedicated_gpu_names(model_cfg: dict[str, Any], max_model_len: int, *, fp8: bool) -> list[str]:
+    """Every dedicated GPU at or above the smallest serverless tier that fits, including H100."""
+    fitting = fitting_gpu_names(model_cfg, max_model_len, fp8=fp8)
+    if not fitting:
+        return []
+    floor = gpu_vram_gb(fitting[0])
+    return [tier["name"] for tier in DEDICATED_TIERS if tier["vram_gb"] >= floor]
 
 
 def select_gpu(

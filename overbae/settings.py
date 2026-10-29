@@ -441,6 +441,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.execute_pipeline": {"queue": "interactive"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},
+    "overbae.tasks.dedicated_deployment.advance_dedicated_deployment": {"queue": "io"},
     "overbae.tasks.inference_requests.inspect_inference_request": {"queue": "io"},
     "overbae.tasks.inference_requests.collect_operation_progress": {"queue": "io"},
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},

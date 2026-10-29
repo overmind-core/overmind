@@ -4,6 +4,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { ModelLiveAction } from "@/components/finetuning/model-live-action";
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
+import { DedicatedDeploymentCard } from "@/components/inference/dedicated-deployment";
 import {
   BaseModelCell,
   CapabilityChip,
@@ -144,6 +145,7 @@ function ModelDetailPage() {
             }
             model={model}
           />
+          <DedicatedDeploymentCard model={model} projectId={projectId} />
           <ModelPerformance modelId={model.id} onConnect={() => setSnippetOpen(true)} />
           <Disclosure onOpenChange={setWeightsOpen} title="Deployment details">
             <div className="space-y-5">

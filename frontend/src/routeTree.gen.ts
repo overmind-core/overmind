@@ -19,6 +19,7 @@ import { Route as AuthTrainingRouteImport } from './routes/_auth/training'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
 import { Route as AuthInferenceRouteImport } from './routes/_auth/inference'
+import { Route as AuthDedicatedRouteImport } from './routes/_auth/dedicated'
 import { Route as AuthProjectsIndexRouteImport } from './routes/_auth/projects.index'
 import { Route as AuthOptimiserIndexRouteImport } from './routes/_auth/optimiser.index'
 import { Route as AuthEvaluationsIndexRouteImport } from './routes/_auth/evaluations.index'
@@ -80,6 +81,11 @@ const AuthObservabilityRoute = AuthObservabilityRouteImport.update({
 const AuthInferenceRoute = AuthInferenceRouteImport.update({
   id: '/inference',
   path: '/inference',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthDedicatedRoute = AuthDedicatedRouteImport.update({
+  id: '/dedicated',
+  path: '/dedicated',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthProjectsIndexRoute = AuthProjectsIndexRouteImport.update({
@@ -160,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/dedicated': typeof AuthDedicatedRoute
   '/inference': typeof AuthInferenceRoute
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/dedicated': typeof AuthDedicatedRoute
   '/inference': typeof AuthInferenceRoute
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/_auth/dedicated': typeof AuthDedicatedRoute
   '/_auth/inference': typeof AuthInferenceRoute
   '/_auth/observability': typeof AuthObservabilityRouteWithChildren
   '/_auth/settings': typeof AuthSettingsRoute
@@ -236,6 +245,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/login'
     | '/onboarding'
+    | '/dedicated'
     | '/inference'
     | '/observability'
     | '/settings'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/login'
     | '/onboarding'
+    | '/dedicated'
     | '/inference'
     | '/observability'
     | '/settings'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/login'
     | '/onboarding'
+    | '/_auth/dedicated'
     | '/_auth/inference'
     | '/_auth/observability'
     | '/_auth/settings'
@@ -383,6 +395,13 @@ declare module '@tanstack/react-router' {
       path: '/inference'
       fullPath: '/inference'
       preLoaderRoute: typeof AuthInferenceRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/dedicated': {
+      id: '/_auth/dedicated'
+      path: '/dedicated'
+      fullPath: '/dedicated'
+      preLoaderRoute: typeof AuthDedicatedRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/projects/': {
@@ -491,6 +510,7 @@ const AuthObservabilityRouteWithChildren =
   AuthObservabilityRoute._addFileChildren(AuthObservabilityRouteChildren)
 
 interface AuthRouteChildren {
+  AuthDedicatedRoute: typeof AuthDedicatedRoute
   AuthInferenceRoute: typeof AuthInferenceRoute
   AuthObservabilityRoute: typeof AuthObservabilityRouteWithChildren
   AuthSettingsRoute: typeof AuthSettingsRoute
@@ -511,6 +531,7 @@ interface AuthRouteChildren {
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthDedicatedRoute: AuthDedicatedRoute,
   AuthInferenceRoute: AuthInferenceRoute,
   AuthObservabilityRoute: AuthObservabilityRouteWithChildren,
   AuthSettingsRoute: AuthSettingsRoute,

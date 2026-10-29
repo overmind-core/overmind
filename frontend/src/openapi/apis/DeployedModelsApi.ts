@@ -15,6 +15,9 @@
 
 import * as runtime from '../runtime';
 import type {
+  DedicatedDeployment,
+  DedicatedGpu,
+  DedicatedWriteRequest,
   DeployedModel,
   InferenceActivity,
   InferenceInputRequest,
@@ -22,9 +25,17 @@ import type {
   InferenceMetrics,
   InferenceReceipt,
   ModelCheckpoints,
+  PaginatedDedicatedDeploymentList,
   PaginatedDeployedModelList,
+  PatchedDedicatedWriteRequest,
 } from '../models/index';
 import {
+    DedicatedDeploymentFromJSON,
+    DedicatedDeploymentToJSON,
+    DedicatedGpuFromJSON,
+    DedicatedGpuToJSON,
+    DedicatedWriteRequestFromJSON,
+    DedicatedWriteRequestToJSON,
     DeployedModelFromJSON,
     DeployedModelToJSON,
     InferenceActivityFromJSON,
@@ -39,8 +50,12 @@ import {
     InferenceReceiptToJSON,
     ModelCheckpointsFromJSON,
     ModelCheckpointsToJSON,
+    PaginatedDedicatedDeploymentListFromJSON,
+    PaginatedDedicatedDeploymentListToJSON,
     PaginatedDeployedModelListFromJSON,
     PaginatedDeployedModelListToJSON,
+    PatchedDedicatedWriteRequestFromJSON,
+    PatchedDedicatedWriteRequestToJSON,
 } from '../models/index';
 
 export interface DeployedModelsActivityRetrieveRequest {
@@ -52,6 +67,36 @@ export interface DeployedModelsActivityRetrieveRequest {
 
 export interface DeployedModelsCheckpointsRetrieveRequest {
     id: string;
+}
+
+export interface DeployedModelsDedicatedCreateRequest {
+    deploymentId: string;
+    dedicatedWriteRequest?: DedicatedWriteRequest;
+}
+
+export interface DeployedModelsDedicatedGpusListRequest {
+    deploymentId: string;
+}
+
+export interface DeployedModelsDedicatedListRequest {
+    ordering?: string;
+    page?: number;
+    pageSize?: number;
+    project?: string;
+    search?: string;
+}
+
+export interface DeployedModelsDedicatedPartialUpdateRequest {
+    deploymentId: string;
+    patchedDedicatedWriteRequest?: PatchedDedicatedWriteRequest;
+}
+
+export interface DeployedModelsDedicatedRetrieveRequest {
+    deploymentId: string;
+}
+
+export interface DeployedModelsDedicatedStopCreateRequest {
+    deploymentId: string;
 }
 
 export interface DeployedModelsDeployCreateRequest {
@@ -227,6 +272,366 @@ export class DeployedModelsApi extends runtime.BaseAPI {
      */
     async deployedModelsCheckpointsRetrieve(requestParameters: DeployedModelsCheckpointsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ModelCheckpoints> {
         const response = await this.deployedModelsCheckpointsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Start a dedicated deployment
+     */
+    async deployedModelsDedicatedCreateRaw(requestParameters: DeployedModelsDedicatedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DedicatedDeployment>> {
+        if (requestParameters['deploymentId'] == null) {
+            throw new runtime.RequiredError(
+                'deploymentId',
+                'Required parameter "deploymentId" was null or undefined when calling deployedModelsDedicatedCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/{deployment_id}/dedicated/`;
+        urlPath = urlPath.replace(`{${"deployment_id"}}`, encodeURIComponent(String(requestParameters['deploymentId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DedicatedWriteRequestToJSON(requestParameters['dedicatedWriteRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DedicatedDeploymentFromJSON(jsonValue));
+    }
+
+    /**
+     * Start a dedicated deployment
+     */
+    async deployedModelsDedicatedCreate(requestParameters: DeployedModelsDedicatedCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DedicatedDeployment> {
+        const response = await this.deployedModelsDedicatedCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Dedicated GPU options
+     */
+    async deployedModelsDedicatedGpusListRaw(requestParameters: DeployedModelsDedicatedGpusListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<DedicatedGpu>>> {
+        if (requestParameters['deploymentId'] == null) {
+            throw new runtime.RequiredError(
+                'deploymentId',
+                'Required parameter "deploymentId" was null or undefined when calling deployedModelsDedicatedGpusList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/{deployment_id}/dedicated/gpus/`;
+        urlPath = urlPath.replace(`{${"deployment_id"}}`, encodeURIComponent(String(requestParameters['deploymentId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(DedicatedGpuFromJSON));
+    }
+
+    /**
+     * Dedicated GPU options
+     */
+    async deployedModelsDedicatedGpusList(requestParameters: DeployedModelsDedicatedGpusListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DedicatedGpu>> {
+        const response = await this.deployedModelsDedicatedGpusListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Dedicated deployments
+     */
+    async deployedModelsDedicatedListRaw(requestParameters: DeployedModelsDedicatedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedDedicatedDeploymentList>> {
+        const queryParameters: any = {};
+
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/dedicated/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedDedicatedDeploymentListFromJSON(jsonValue));
+    }
+
+    /**
+     * Dedicated deployments
+     */
+    async deployedModelsDedicatedList(requestParameters: DeployedModelsDedicatedListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedDedicatedDeploymentList> {
+        const response = await this.deployedModelsDedicatedListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Update dedicated replica bounds
+     */
+    async deployedModelsDedicatedPartialUpdateRaw(requestParameters: DeployedModelsDedicatedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DedicatedDeployment>> {
+        if (requestParameters['deploymentId'] == null) {
+            throw new runtime.RequiredError(
+                'deploymentId',
+                'Required parameter "deploymentId" was null or undefined when calling deployedModelsDedicatedPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/{deployment_id}/dedicated/`;
+        urlPath = urlPath.replace(`{${"deployment_id"}}`, encodeURIComponent(String(requestParameters['deploymentId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedDedicatedWriteRequestToJSON(requestParameters['patchedDedicatedWriteRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DedicatedDeploymentFromJSON(jsonValue));
+    }
+
+    /**
+     * Update dedicated replica bounds
+     */
+    async deployedModelsDedicatedPartialUpdate(requestParameters: DeployedModelsDedicatedPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DedicatedDeployment> {
+        const response = await this.deployedModelsDedicatedPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Current dedicated deployment
+     */
+    async deployedModelsDedicatedRetrieveRaw(requestParameters: DeployedModelsDedicatedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DedicatedDeployment>> {
+        if (requestParameters['deploymentId'] == null) {
+            throw new runtime.RequiredError(
+                'deploymentId',
+                'Required parameter "deploymentId" was null or undefined when calling deployedModelsDedicatedRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/{deployment_id}/dedicated/`;
+        urlPath = urlPath.replace(`{${"deployment_id"}}`, encodeURIComponent(String(requestParameters['deploymentId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DedicatedDeploymentFromJSON(jsonValue));
+    }
+
+    /**
+     * Current dedicated deployment
+     */
+    async deployedModelsDedicatedRetrieve(requestParameters: DeployedModelsDedicatedRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DedicatedDeployment> {
+        const response = await this.deployedModelsDedicatedRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Stop dedicated deployment
+     */
+    async deployedModelsDedicatedStopCreateRaw(requestParameters: DeployedModelsDedicatedStopCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DedicatedDeployment>> {
+        if (requestParameters['deploymentId'] == null) {
+            throw new runtime.RequiredError(
+                'deploymentId',
+                'Required parameter "deploymentId" was null or undefined when calling deployedModelsDedicatedStopCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/{deployment_id}/dedicated/stop/`;
+        urlPath = urlPath.replace(`{${"deployment_id"}}`, encodeURIComponent(String(requestParameters['deploymentId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DedicatedDeploymentFromJSON(jsonValue));
+    }
+
+    /**
+     * Stop dedicated deployment
+     */
+    async deployedModelsDedicatedStopCreate(requestParameters: DeployedModelsDedicatedStopCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DedicatedDeployment> {
+        const response = await this.deployedModelsDedicatedStopCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

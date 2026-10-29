@@ -24,7 +24,6 @@ def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
     (tmp_path / "base").mkdir()
     monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
     monkeypatch.setattr(serving, "weights_vol", Mock())
-    monkeypatch.setattr(serving, "vllm_cache_vol", Mock())
     monkeypatch.setattr(
         serving,
         "read_base_manifest",

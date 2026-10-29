@@ -159,6 +159,10 @@ class _FakeInstance:
     def __init__(self, cloud: FakeModal, app: str, cls: str) -> None:
         self._cloud, self._app, self._cls = cloud, app, cls
 
+    def update_autoscaler(self, **kwargs):
+        self._cloud.log.append(("autoscaler", f"{self._app}/{self._cls}", (), kwargs))
+        return None
+
     def __getattr__(self, method: str) -> FakeFunction:
         return FakeFunction(self._cloud, self._app, f"{self._cls}.{method}")
 

@@ -339,7 +339,7 @@ def register_model_workflow_tools(catalog):
         (
             "inspect_native_evaluation",
             "Inspect benchmark progress and samples",
-            "Read recorded model stages, metrics and frozen samples. view=labels pages per-label precision/recall/F1 and counts for hard references with fixed benchmark options; search labels/benchmarks, order by label, benchmark, expected or participant-key:metric (prefix - descending). No key/outcome with labels. Samples search inputs/benchmarks and filter raw outcomes; participant scopes outcomes, otherwise any model may match. Soft targets have no hard correctness. Aggregate metrics stay unfiltered. Exact key excludes filters. Calibration is in-sample. Reads may index retained evidence, never invoke inference.",
+            "Read recorded stages, metrics and frozen samples. view=labels pages precision/recall/F1 for hard references. Samples filter raw outcomes. Soft targets have no hard correctness. Reads never invoke inference.",
             InspectComparisonInput,
             InspectComparisonOutput,
             inspect_comparison,
@@ -504,7 +504,7 @@ def register_model_workflow_tools(catalog):
         (
             "resume_native_evaluation",
             "Resume decision comparison",
-            "Resume stopped collection or saved-response analysis. Transient failures retry automatically; poll get_job while running. Exhausted collection scores verified available predictions with results.completion coverage and issues; missing outputs are not zero scores. Incomplete calibration leaves raw scores available. Saved calls and responses are reused; uncertain costs remain. Unknown external requests remain missing and are not replayed. Unacknowledged native submissions need their existing call ID. On a paused comparison select a local/external stage, or its exact recorded native call_id.",
+            "Resume stopped collection or saved-response analysis. Poll get_job while running. Missing outputs are not zero scores. Saved calls are reused and unknown requests are not replayed. A paused native stage needs its recorded call_id.",
             ResumeComparisonInput,
             WorkflowOutput,
             resume_comparison,
