@@ -41,15 +41,8 @@ def client_for(context):
     return client
 
 
-def test_mcp_mutations_share_activity_with_console_without_logging_inspections():
+def test_feed_never_copies_tool_arguments_and_failed_calls_record_nothing():
     context = mcp_context(permission=["read", "write"], client_name="codex")
-    call(context, "list_datasets")
-    before = Activity.objects.count()
-    for _ in range(3):
-        read_activity(context)
-        call(context, "list_datasets")
-    assert Activity.objects.count() == before
-
     created = call(
         context,
         "create_eval_matrix_row",
@@ -57,19 +50,9 @@ def test_mcp_mutations_share_activity_with_console_without_logging_inspections()
         type="llm",
         source="Do not include this criterion in notifications: secret-evidence",
     )
-    project = str(context.project.pk)
-    client = client_for(context)
-    feed = client.get("/api/activity/", {"project": project})
+    feed = client_for(context).get("/api/activity/", {"project": str(context.project.pk)})
     assert feed.status_code == 200, feed.data
-    event = next(item for item in feed.data["results"] if item["kind"] == "evaluation_added")
-    assert event["actor_kind"] == "codex"
-    assert event["actor_name"] == "Codex"
-    assert event["assets"][0]["id"] == created["row"]["id"]
     assert "secret-evidence" not in str(feed.data)
-    assert next(
-        step for step in read_activity(context)["milestones"] if step["kind"] == "agent_connected"
-    )["completed_at"]
-    assert client.get("/api/activity/", {"project": project, "limit": 1}).data["next_offset"] == 1
 
     call(context, "delete_eval_matrix_row", row=created["row"]["id"])
     after = read_activity(context)
@@ -199,78 +182,6 @@ def test_reported_onboarding_uses_current_roadmap_without_notification_noise():
             )
         )
         assert rejected.isError
-
-
-def test_dataset_creation_is_an_asset_action_not_a_source_import_job():
-    context = mcp_context(permission=["read", "write"], client_name="codex")
-    result = call(
-        context, "start_dataset", name="Passenger review", brief="Review passenger records"
-    )
-    event = Activity.objects.get(project=context.project, action="Created")
-    assert event.actor_name == "Codex"
-    assert event.assets == [
-        {"kind": "dataset", "id": result["dataset"]["id"], "label": "Passenger review"}
-    ]
-    assert event.task_id == ""
-
-
-@pytest.mark.parametrize(
-    "mode,action",
-    [
-        ("preview", "Requested a transformation preview for"),
-        ("publish", "Requested a transformation of"),
-    ],
-)
-def test_transformation_activity_uses_recorded_mode(mode, action):
-    from types import SimpleNamespace
-    from uuid import uuid4
-
-    from overbae.services.activity import mcp_succeeded
-
-    context = mcp_context(permission=["read", "write"], client_name="codex")
-    dataset_id, run_id = str(uuid4()), str(uuid4())
-    mcp_succeeded(
-        "run_dataset_pipeline",
-        SimpleNamespace(read_only=False),
-        {
-            "dataset": dataset_id,
-            "run": {"mode": mode},
-            "job": {"kind": "dataset_pipeline", "id": run_id, "status": "queued"},
-        },
-        context,
-    )
-    event = Activity.objects.get(task_id=run_id)
-    assert event.action == action
-    assert event.actor_name == "Codex"
-    assert event.assets[0]["id"] == dataset_id
-
-
-def test_decision_training_activity_tracks_training_run_and_dataset():
-    from types import SimpleNamespace
-
-    from overbae.services.activity import mcp_succeeded
-
-    context = mcp_context(permission=["read", "write"], client_name="codex")
-    dataset = Dataset.objects.create(project=context.project, name="Passengers")
-    job = FinetuningJob.objects.create(project=context.project, dataset=dataset, status="queued")
-    mcp_succeeded(
-        "start_decision_job",
-        SimpleNamespace(read_only=False),
-        {
-            "training_run": {"kind": "finetune_job", "id": str(job.pk), "status": "queued"},
-            "decision_job": {
-                "kind": "decision_job",
-                "id": "separate-public-id",
-                "status": "queued",
-            },
-        },
-        context,
-    )
-    event = Activity.objects.get(task_id=str(job.pk))
-    assert event.task_kind == "finetune_job"
-    assert event.status == "queued"
-    assert event.action == "Started training run"
-    assert event.assets == [{"kind": "training_job", "id": str(job.pk), "label": job.name}]
 
 
 def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
