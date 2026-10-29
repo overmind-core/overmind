@@ -82,6 +82,7 @@ models/CapabilityList.ts
 models/CapabilityProposalMethodEnum.ts
 models/CapabilityRequest.ts
 models/CapabilityStatusEnum.ts
+models/CapturedError.ts
 models/CatalogModel.ts
 models/Cell.ts
 models/CellStateEnum.ts
@@ -413,6 +414,7 @@ models/TiersEnum.ts
 models/TokenObtainPair.ts
 models/TokenObtainPairRequest.ts
 models/TraceDetail.ts
+models/TraceErrorDetails.ts
 models/TraceProviderEnum.ts
 models/TraceStatusEnum.ts
 models/TraceUsage.ts

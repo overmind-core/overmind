@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TraceErrorDetails } from './TraceErrorDetails';
+import {
+    TraceErrorDetailsFromJSON,
+    TraceErrorDetailsFromJSONTyped,
+    TraceErrorDetailsToJSON,
+    TraceErrorDetailsToJSONTyped,
+} from './TraceErrorDetails';
+
 /**
  * Full span — used both for ``/api/traces/{trace_id}/`` (one span row in
  * the per-trace list) and as the per-row representation for any span query.
@@ -104,6 +112,12 @@ export interface Span {
      * @memberof Span
      */
     readonly statusMessage: string;
+    /**
+     *
+     * @type {TraceErrorDetails}
+     * @memberof Span
+     */
+    readonly errorDetails: TraceErrorDetails | null;
     /**
      *
      * @type {string}
@@ -208,6 +222,7 @@ export function instanceOfSpan(value: object): value is Span {
     if (!('durationNs' in value) || value['durationNs'] === undefined) return false;
     if (!('statusCode' in value) || value['statusCode'] === undefined) return false;
     if (!('statusMessage' in value) || value['statusMessage'] === undefined) return false;
+    if (!('errorDetails' in value) || value['errorDetails'] === undefined) return false;
     if (!('serviceName' in value) || value['serviceName'] === undefined) return false;
     if (!('resourceAttrs' in value) || value['resourceAttrs'] === undefined) return false;
     if (!('scopeName' in value) || value['scopeName'] === undefined) return false;
@@ -249,6 +264,7 @@ export function SpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): Span
         'durationNs': json['duration_ns'],
         'statusCode': json['status_code'],
         'statusMessage': json['status_message'],
+        'errorDetails': TraceErrorDetailsFromJSON(json['error_details']),
         'serviceName': json['service_name'],
         'resourceAttrs': json['resource_attrs'],
         'scopeName': json['scope_name'],
@@ -270,7 +286,7 @@ export function SpanToJSON(json: any): Span {
     return SpanToJSONTyped(json, false);
 }
 
-export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'input_attribute'|'output_attribute'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'eval_attributes'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function SpanToJSONTyped(value?: Omit<Span, 'span_id'|'trace_id'|'parent_span_id'|'is_root'|'project'|'span_type'|'operation'|'name'|'kind'|'start_time_ns'|'end_time_ns'|'duration_ns'|'status_code'|'status_message'|'error_details'|'service_name'|'resource_attrs'|'scope_name'|'scope_version'|'attributes'|'input_attribute'|'output_attribute'|'events'|'links'|'capability'|'conversation'|'feedback_score'|'eval_attributes'|'received_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -6,6 +6,7 @@ import { metricResults } from "@/components/evaluations/metric-list";
 import { ScoreChip } from "@/components/evaluations/run-comparison";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { useTraceData } from "@/components/traces/contexts/TraceDataContext";
+import { TraceErrorDetailsView } from "@/components/traces/trace-error-details";
 import { Badge } from "@/components/ui/badge";
 import { BlockActions } from "@/components/ui/block-actions";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { SpanEvent, SpanRow } from "@/hooks/use-traces";
+import type { SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
 import { formatCost, formatDuration, formatNumber } from "@/lib/formatters";
 import { PROSE } from "@/lib/typography";
@@ -736,45 +737,6 @@ interface SpanDetailViewProps {
   span: SpanRow;
 }
 
-function ExceptionEventsSection({ events }: { events: SpanEvent[] }) {
-  const exceptionEvents = events.filter((e) => e.name === "exception");
-  if (exceptionEvents.length === 0) return null;
-  return (
-    <Section label="Exceptions">
-      <div className="space-y-3">
-        {exceptionEvents.map((ev, idx) => {
-          const attrs = ev.attributes ?? {};
-          const type = attrs["exception.type"] as string | undefined;
-          const message = attrs["exception.message"] as string | undefined;
-          const stacktrace = attrs["exception.stacktrace"] as string | undefined;
-          return (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3" key={idx}>
-              {type && (
-                <p className="mb-1 font-mono text-xs font-semibold text-destructive">{type}</p>
-              )}
-              {message && (
-                <p className="whitespace-pre-wrap break-words font-mono text-xs text-destructive/80">
-                  {message}
-                </p>
-              )}
-              {stacktrace && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                    Stack trace
-                  </summary>
-                  <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                    {stacktrace}
-                  </pre>
-                </details>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </Section>
-  );
-}
-
 export function SpanDetailView({ span }: SpanDetailViewProps) {
   const { projectId } = useTraceData();
   const { groups: overmindGroups, rest: spanAttributeEntries } = groupSpanAttributes(
@@ -824,11 +786,7 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
           {span.totalCost != null && <span>{formatCost(span.totalCost)}</span>}
         </div>
       </div>
-      {isError && span.statusMessage && (
-        <div className="shrink-0 border-y border-destructive/40 bg-destructive/5 px-4 py-2">
-          <p className="break-words text-xs text-destructive">{span.statusMessage}</p>
-        </div>
-      )}
+      {span.errorDetails && <TraceErrorDetailsView details={span.errorDetails} />}
       <Tabs className="flex min-h-0 flex-1 flex-col" defaultValue="preview">
         <TabsList
           aria-label="Span details"
@@ -919,28 +877,23 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
               title="No recorded events"
             />
           ) : (
-            <>
-              <ExceptionEventsSection events={span.events} />
-              {span.events
-                .filter((event) => event.name !== "exception")
-                .map((event, index) => (
-                  <Section key={index} label={event.name}>
-                    <KeyValueRows
-                      entries={[
-                        ...(event.timeUnixNano
-                          ? [
-                              ["Time", new Date(event.timeUnixNano / 1_000_000).toISOString()] as [
-                                string,
-                                unknown,
-                              ],
-                            ]
-                          : []),
-                        ...Object.entries(event.attributes ?? {}),
-                      ]}
-                    />
-                  </Section>
-                ))}
-            </>
+            span.events.map((event, index) => (
+              <Section key={index} label={event.name}>
+                <KeyValueRows
+                  entries={[
+                    ...(event.timeUnixNano
+                      ? [
+                          ["Time", new Date(event.timeUnixNano / 1_000_000).toISOString()] as [
+                            string,
+                            unknown,
+                          ],
+                        ]
+                      : []),
+                    ...Object.entries(event.attributes ?? {}),
+                  ]}
+                />
+              </Section>
+            ))
           )}
         </TabsContent>
       </Tabs>

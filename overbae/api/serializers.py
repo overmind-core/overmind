@@ -52,6 +52,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
+from overbae.services.trace_errors import captured_errors
 from overbae.services.training_contract import (
     baseline_evaluation_enabled,
     contract,
@@ -757,6 +758,19 @@ class CapabilitySerializer(serializers.ModelSerializer):
         return attrs
 
 
+class CapturedErrorSerializer(serializers.Serializer):
+    source = serializers.CharField()
+    type = serializers.CharField(allow_blank=True)
+    message = serializers.CharField(allow_blank=True)
+    stacktrace = serializers.CharField(allow_blank=True)
+
+
+class TraceErrorDetailsSerializer(serializers.Serializer):
+    summary = serializers.CharField()
+    records = CapturedErrorSerializer(many=True)
+    context = serializers.DictField(child=serializers.CharField())
+
+
 class SpanSerializer(serializers.ModelSerializer):
     """Full span — used both for ``/api/traces/{trace_id}/`` (one span row in
     the per-trace list) and as the per-row representation for any span query."""
@@ -764,6 +778,11 @@ class SpanSerializer(serializers.ModelSerializer):
     is_root = serializers.BooleanField(read_only=True)
     input_attribute = serializers.SerializerMethodField()
     output_attribute = serializers.SerializerMethodField()
+    error_details = serializers.SerializerMethodField()
+
+    @extend_schema_field(TraceErrorDetailsSerializer(allow_null=True))
+    def get_error_details(self, obj):
+        return captured_errors(obj)
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_input_attribute(self, obj):
@@ -790,6 +809,7 @@ class SpanSerializer(serializers.ModelSerializer):
             "duration_ns",
             "status_code",
             "status_message",
+            "error_details",
             "service_name",
             "resource_attrs",
             "scope_name",
@@ -867,6 +887,12 @@ class RootSpanListSerializer(serializers.ModelSerializer):
     )
     source = serializers.SerializerMethodField()
     trace_status = serializers.SerializerMethodField()
+    error_summary = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_error_summary(self, obj):
+        details = captured_errors(obj)
+        return details["summary"] if details else None
 
     class Meta:
         model = Span
@@ -883,6 +909,7 @@ class RootSpanListSerializer(serializers.ModelSerializer):
             "kind",
             "status_code",
             "status_message",
+            "error_summary",
             "start_time_ns",
             "end_time_ns",
             "duration_ns",

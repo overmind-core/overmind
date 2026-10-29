@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
-import type { Span, TraceDetail, TracesListRequest } from "@/openapi";
+import type { Span, TraceDetail, TraceErrorDetails, TracesListRequest } from "@/openapi";
 
 export function spanStatusLabel(statusCode: number): string {
   if (statusCode === 2) return "error";
@@ -30,6 +30,7 @@ export interface SpanRow {
   scopeName: string;
   statusCode: number;
   statusMessage: string;
+  errorDetails?: TraceErrorDetails | null;
   durationNano: number;
   startTimeUnixNano: number;
   endTimeUnixNano: number;
@@ -164,9 +165,15 @@ const transformSpan = (span: Span): SpanRow => {
     capabilityName,
     durationNano,
     endTimeUnixNano: endNano,
+    errorDetails: span.errorDetails,
     evalMetrics: evalBlock(span.evalAttributes).metrics ?? null,
     evalScore: finiteOrNull(evalBlock(span.evalAttributes).score),
-    events: Array.isArray(span.events) ? (span.events as SpanEvent[]) : [],
+    events: Array.isArray(span.events)
+      ? span.events.map((event: SpanEvent & { time_unix_nano?: number }) => ({
+          ...event,
+          timeUnixNano: event.time_unix_nano ?? event.timeUnixNano,
+        }))
+      : [],
     inputs: span.inputAttribute ? (attrs[span.inputAttribute] ?? null) : null,
     model: pickModel(attrs),
     name: span.name ?? "",
@@ -222,6 +229,7 @@ export interface TraceRow {
   score?: number;
   evaluations?: number;
   error?: string | null;
+  errorSummary?: string | null;
   source?: string;
   readonly createdAt: string;
   readonly startTimeNs: number;
@@ -308,6 +316,7 @@ function mapTraceListRow(row: {
   receivedAt?: Date | null;
   startTimeNs?: number | null;
   statusMessage?: string | null;
+  errorSummary?: string | null;
   statusCode?: number | null;
   capability?: string | null;
   capabilityName?: string | null;
@@ -335,7 +344,11 @@ function mapTraceListRow(row: {
     capabilityName: row.capabilityName ?? null,
     createdAt,
     durationNs: row.durationNs ?? undefined,
-    error: row.statusCode === 2 ? statusMessage || "error" : null,
+    error:
+      row.statusCode === 2
+        ? row.errorSummary || statusMessage || "No error message captured"
+        : null,
+    errorSummary: row.errorSummary,
     evaluations: Object.keys(extractTraceScores(row.evalAttributes)).length,
     model: row.model ?? null,
     operation: row.operation ?? undefined,
