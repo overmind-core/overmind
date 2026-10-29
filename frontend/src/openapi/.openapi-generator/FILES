@@ -285,6 +285,7 @@ models/PaginatedConnectorSyncRunList.ts
 models/PaginatedDatasetList.ts
 models/PaginatedDecisionJobListList.ts
 models/PaginatedDecisionPerformanceList.ts
+models/PaginatedDedicatedDeploymentList.ts
 models/PaginatedDeployedModelList.ts
 models/PaginatedEvalMatrixList.ts
 models/PaginatedEvalRunList.ts

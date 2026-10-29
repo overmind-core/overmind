@@ -25,6 +25,7 @@ import type {
   InferenceMetrics,
   InferenceReceipt,
   ModelCheckpoints,
+  PaginatedDedicatedDeploymentList,
   PaginatedDeployedModelList,
   PatchedDedicatedWriteRequest,
 } from '../models/index';
@@ -49,6 +50,8 @@ import {
     InferenceReceiptToJSON,
     ModelCheckpointsFromJSON,
     ModelCheckpointsToJSON,
+    PaginatedDedicatedDeploymentListFromJSON,
+    PaginatedDedicatedDeploymentListToJSON,
     PaginatedDeployedModelListFromJSON,
     PaginatedDeployedModelListToJSON,
     PatchedDedicatedWriteRequestFromJSON,
@@ -73,6 +76,14 @@ export interface DeployedModelsDedicatedCreateRequest {
 
 export interface DeployedModelsDedicatedGpusListRequest {
     deploymentId: string;
+}
+
+export interface DeployedModelsDedicatedListRequest {
+    ordering?: string;
+    page?: number;
+    pageSize?: number;
+    project?: string;
+    search?: string;
 }
 
 export interface DeployedModelsDedicatedPartialUpdateRequest {
@@ -378,6 +389,75 @@ export class DeployedModelsApi extends runtime.BaseAPI {
      */
     async deployedModelsDedicatedGpusList(requestParameters: DeployedModelsDedicatedGpusListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<DedicatedGpu>> {
         const response = await this.deployedModelsDedicatedGpusListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Dedicated deployments
+     */
+    async deployedModelsDedicatedListRaw(requestParameters: DeployedModelsDedicatedListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedDedicatedDeploymentList>> {
+        const queryParameters: any = {};
+
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/deployed-models/dedicated/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedDedicatedDeploymentListFromJSON(jsonValue));
+    }
+
+    /**
+     * Dedicated deployments
+     */
+    async deployedModelsDedicatedList(requestParameters: DeployedModelsDedicatedListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedDedicatedDeploymentList> {
+        const response = await this.deployedModelsDedicatedListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

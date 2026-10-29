@@ -175,3 +175,42 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
     assert BillingTelemetry.objects.filter(service=BillingService.INFERENCE_FT_MODEL).count() == 0
     listed = client.get("/api/v1/models")
     assert row.public_model_id in {item["id"] for item in listed.json()["data"]}
+
+
+def test_dedicated_list_returns_the_latest_row_for_each_model():
+    from overbae.models import ProjectMembership
+
+    user = _user()
+    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
+    ProjectMembership.objects.create(user=user, project=project)
+    other = Project.objects.create(name="Other", slug=f"p-{uuid.uuid4().hex[:8]}")
+    first = _ready(project)
+    second = _ready(project)
+    foreign = _ready(other)
+
+    def row(deployed, gpu, status):
+        return DedicatedDeployment.objects.create(
+            project=deployed.project,
+            deployed_model=deployed,
+            gpu_type=gpu,
+            serving_shape="lora_bf16",
+            status=status,
+            rate_usd_per_gpu_hour="1",
+            credits_per_gpu_hour="100",
+        )
+
+    row(first, "L4", DedicatedDeployment.Status.OFFLINE)
+    current = row(first, "H100", DedicatedDeployment.Status.ONLINE)
+    row(second, "L40S", DedicatedDeployment.Status.OFFLINE)
+    row(foreign, "H100", DedicatedDeployment.Status.ONLINE)
+    client = APIClient()
+    client.force_authenticate(user)
+    response = client.get("/api/deployed-models/dedicated/", {"project": str(project.id)})
+    assert response.status_code == 200
+    body = response.json()["results"]
+    assert {item["deployed_model"] for item in body} == {str(first.id), str(second.id)}
+    listed = next(item for item in body if item["deployed_model"] == str(first.id))
+    assert listed["id"] == str(current.id)
+    assert listed["gpu_type"] == "H100"
+    assert listed["model_name"] == first.model_id
+    assert listed["model_id"] == f"dedicated/{first.model_id}"

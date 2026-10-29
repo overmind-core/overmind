@@ -183,7 +183,33 @@ export const useDedicatedGpusQuery = (id: string | undefined, enabled: boolean) 
 
 const refreshDedicated = (qc: ReturnType<typeof useQueryClient>, id: string) => {
   qc.invalidateQueries({ queryKey: ["dedicated-deployment", id] });
+  qc.invalidateQueries({ queryKey: ["dedicated-deployments"] });
 };
+
+export const useDedicatedDeploymentsQuery = ({
+  page,
+  pageSize,
+  projectId,
+}: {
+  page?: number;
+  pageSize?: number;
+  projectId?: string;
+}) =>
+  useQuery({
+    enabled: !!projectId,
+    queryFn: () =>
+      apiClient.deployedModels.deployedModelsDedicatedList({
+        page,
+        pageSize,
+        project: projectId,
+      }),
+    queryKey: ["dedicated-deployments", projectId ?? null, page ?? null, pageSize ?? null],
+    refetchInterval: (q) =>
+      backoffPolling(
+        q,
+        q.state.data?.results.some((row) => DEDICATED_ACTIVE.has(row.status ?? "")) ? 5_000 : false
+      ),
+  });
 
 export const useStartDedicatedMutation = (id: string) => {
   const qc = useQueryClient();

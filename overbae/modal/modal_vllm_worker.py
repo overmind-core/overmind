@@ -79,10 +79,7 @@ from modal_shared.shared import (  # noqa: E402
     worker_cls_name,
 )
 
-VLLM_CACHE_MOUNT = "/root/.cache/vllm"
-
 weights_vol = modal.Volume.from_name("overmind-weights", create_if_missing=True)
-vllm_cache_vol = modal.Volume.from_name("overmind-vllm-cache", create_if_missing=True)
 artifacts_vol = modal.Volume.from_name("overmind-inference-artifacts", create_if_missing=True)
 ARTIFACTS_MOUNT = "/inference-artifacts"
 
@@ -98,10 +95,7 @@ app = modal.App(APP_NAME)
 
 inference_secret = modal.Secret.from_name("overmind-inference")
 
-_volume_mounts = {
-    WEIGHTS_MOUNT: weights_vol,
-    VLLM_CACHE_MOUNT: vllm_cache_vol,
-}
+_volume_mounts = {WEIGHTS_MOUNT: weights_vol}
 
 
 def _wait_for_vllm(
@@ -315,12 +309,9 @@ class _BaseVLLMWorker:
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
-        # uses exactly that ordering — write weights, then drive a worker. The compile
-        # cache Volume is the same: without reload the last boot's inductor artifacts
-        # are invisible and vLLM recompiles from scratch.
+        # uses exactly that ordering — write weights, then drive a worker.
         self._journal.emit("refreshing_volumes")
         weights_vol.reload()
-        vllm_cache_vol.reload()
 
         if not self.enable_lora:
             _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
@@ -409,12 +400,6 @@ class _BaseVLLMWorker:
         self._journal.emit("starting_engine_process")
         self._proc = subprocess.Popen(cmd)  # noqa: S603
         _wait_for_vllm(proc=self._proc, journal=self._journal)
-        # Writes to a Volume are discarded unless this container commits. Concurrent
-        # boots can clobber each other's new files (last commit wins); a lost cache
-        # only means the next cold start recompiles.
-        with contextlib.suppress(Exception):
-            self._journal.emit("committing_compile_cache")
-            vllm_cache_vol.commit()
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -897,6 +882,7 @@ def _register_worker(
     target_app=None,
     pin_resources=False,
     max_containers: int | None = None,
+    owner=None,
 ) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
@@ -930,7 +916,7 @@ def _register_worker(
     worker_kwargs = {**_WORKER_KWARGS}
     if max_containers is not None:
         worker_kwargs["max_containers"] = max_containers
-    globals()[cls_name] = (target_app or app).cls(
+    published = (target_app or app).cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
@@ -951,29 +937,28 @@ def _register_worker(
             ),
         },
     )(cls)
+    (owner if owner is not None else globals())[cls_name] = published
 
 
-def register_dedicated_classes(target_app) -> None:
+def register_dedicated_classes(target_app, owner) -> None:
     """One class per GPU on the dedicated app, including H100. Not the shared inference app."""
     for gpu_type in GPU_TIER:
         token = gpu_type.replace("-", "")
-        _register_worker(
-            f"{token}_vllm",
-            gpu_type,
-            "vllm",
-            target_app=target_app,
-            pin_resources=True,
-            max_containers=8,
-        )
-        _register_worker(
-            f"{token}_vllm_lora",
-            gpu_type,
-            "vllm",
-            lora=True,
-            target_app=target_app,
-            pin_resources=True,
-            max_containers=8,
-        )
+        for lora in (False, True):
+            name = f"{token}_vllm_lora" if lora else f"{token}_vllm"
+            slot = {}
+            _register_worker(
+                name,
+                gpu_type,
+                "vllm",
+                lora=lora,
+                target_app=target_app,
+                pin_resources=True,
+                max_containers=8,
+                owner=slot,
+            )
+            # Keep a serverless class already bound to this module. Add names that loop does not.
+            owner.setdefault(name, slot[name])
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
@@ -981,6 +966,9 @@ for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
     _register_worker(
         worker_cls_name(_gpu, _serve_image, enable_lora=True), _gpu, _serve_image, lora=True
     )
+
+dedicated_app = modal.App("overmind-dedicated")
+register_dedicated_classes(dedicated_app, globals())
 
 
 @app.cls(
@@ -1295,9 +1283,8 @@ def pre_warm(
     worker over Modal RPC.
 
     The single dummy call proves the checkpoint actually serves before the deployment is marked
-    READY. The GPU worker commits ``overmind-vllm-cache`` after that boot so later cold starts
-    reuse torch.compile artifacts (CUDA graphs still recapture). The container is left up —
-    the scaledown window reclaims it — because a warm container is what makes the next request
+    READY. Compile artifacts stay on the container disk. The container is left up — the
+    scaledown window reclaims it — because a warm container is what makes the next request
     fast.
 
     For an adapter, ``weights_path`` is the shared base and the call additionally proves the

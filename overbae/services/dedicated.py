@@ -49,6 +49,20 @@ def latest_for(deployed):
     )
 
 
+def latest_rows(project_ids):
+    latest = (
+        DedicatedDeployment.objects.filter(project_id__in=project_ids)
+        .order_by("deployed_model_id", "-created_at")
+        .distinct("deployed_model_id")
+        .values("id")
+    )
+    return (
+        DedicatedDeployment.objects.filter(id__in=latest)
+        .select_related("deployed_model", "deployed_model__finetuning_job")
+        .order_by("-updated_at")
+    )
+
+
 def live_for(deployed):
     return (
         DedicatedDeployment.objects.select_related("deployed_model")

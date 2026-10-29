@@ -8,10 +8,4 @@ H100 exists only here. Each deployment binds its own model name, so its
 autoscaler cannot pin the shared ``overmind-inference`` pools.
 """
 
-import modal
-
-from overbae.modal.modal_vllm_worker import register_dedicated_classes
-
 APP_NAME = "overmind-dedicated"
-app = modal.App(APP_NAME)
-register_dedicated_classes(app)

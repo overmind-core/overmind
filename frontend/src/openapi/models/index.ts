@@ -244,6 +244,7 @@ export * from './PaginatedConnectorSyncRunList';
 export * from './PaginatedDatasetList';
 export * from './PaginatedDecisionJobListList';
 export * from './PaginatedDecisionPerformanceList';
+export * from './PaginatedDedicatedDeploymentList';
 export * from './PaginatedDeployedModelList';
 export * from './PaginatedEvalMatrixList';
 export * from './PaginatedEvalRunList';

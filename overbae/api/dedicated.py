@@ -1,9 +1,13 @@
+import uuid
+
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import serializers
+from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from overbae.api.config import PageNumberPagination
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.models import DedicatedDeployment, DeployedModel
@@ -29,12 +33,14 @@ class DedicatedGpuSerializer(serializers.Serializer):
 
 class DedicatedDeploymentSerializer(serializers.ModelSerializer):
     model_id = serializers.CharField(source="public_model_id")
+    model_name = serializers.SerializerMethodField()
 
     class Meta:
         model = DedicatedDeployment
         fields = [
             "id",
             "model_id",
+            "model_name",
             "deployed_model",
             "gpu_type",
             "serving_shape",
@@ -51,6 +57,12 @@ class DedicatedDeploymentSerializer(serializers.ModelSerializer):
             "stopped_at",
             "error_message",
         ]
+
+    def get_model_name(self, obj) -> str:
+        job = obj.deployed_model.finetuning_job
+        if job is not None and job.name:
+            return job.name
+        return obj.deployed_model.model_id
 
 
 class DedicatedWriteSerializer(serializers.Serializer):
@@ -146,3 +158,29 @@ class DedicatedStopView(APIView):
         if row is None:
             return Response({"detail": "No dedicated deployment is running."}, status=404)
         return Response(DedicatedDeploymentSerializer(dedicated.stop(row)).data)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Dedicated deployments",
+        parameters=[
+            OpenApiParameter(name="project", type=uuid.UUID, location=OpenApiParameter.QUERY),
+        ],
+    )
+)
+class DedicatedDeploymentListView(ListAPIView):
+    serializer_class = DedicatedDeploymentSerializer
+    pagination_class = PageNumberPagination
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return DedicatedDeployment.objects.none()
+        rows = dedicated.latest_rows(project_ids_for(self.request.user, self.request.auth))
+        project = self.request.query_params.get("project")
+        if not project:
+            return rows
+        try:
+            project_id = uuid.UUID(project)
+        except ValueError:
+            return DedicatedDeployment.objects.none()
+        return rows.filter(project_id=project_id)

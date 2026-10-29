@@ -44,6 +44,12 @@ export interface DedicatedDeployment {
      * @type {string}
      * @memberof DedicatedDeployment
      */
+    readonly modelName: string;
+    /**
+     *
+     * @type {string}
+     * @memberof DedicatedDeployment
+     */
     deployedModel: string;
     /**
      *
@@ -139,6 +145,7 @@ export interface DedicatedDeployment {
 export function instanceOfDedicatedDeployment(value: object): value is DedicatedDeployment {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('modelId' in value) || value['modelId'] === undefined) return false;
+    if (!('modelName' in value) || value['modelName'] === undefined) return false;
     if (!('deployedModel' in value) || value['deployedModel'] === undefined) return false;
     if (!('gpuType' in value) || value['gpuType'] === undefined) return false;
     if (!('servingShape' in value) || value['servingShape'] === undefined) return false;
@@ -158,6 +165,7 @@ export function DedicatedDeploymentFromJSONTyped(json: any, ignoreDiscriminator:
 
         'id': json['id'],
         'modelId': json['model_id'],
+        'modelName': json['model_name'],
         'deployedModel': json['deployed_model'],
         'gpuType': json['gpu_type'],
         'servingShape': json['serving_shape'],
@@ -180,7 +188,7 @@ export function DedicatedDeploymentToJSON(json: any): DedicatedDeployment {
     return DedicatedDeploymentToJSONTyped(json, false);
 }
 
-export function DedicatedDeploymentToJSONTyped(value?: Omit<DedicatedDeployment, 'id'> | null, ignoreDiscriminator: boolean = false): any {
+export function DedicatedDeploymentToJSONTyped(value?: Omit<DedicatedDeployment, 'id'|'model_name'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

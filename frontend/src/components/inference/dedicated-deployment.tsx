@@ -16,11 +16,12 @@ import {
   useStopDedicatedMutation,
   useUpdateDedicatedMutation,
 } from "@/hooks/use-inference";
+import { useCommercialBilling, useCredits } from "@/hooks/use-subscription";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
+import { cn, usdToOvermindCredits } from "@/lib/utils";
 import type { DedicatedDeployment, DedicatedGpu, DeployedModel } from "@/openapi";
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   deploying: "Deploying",
   failed: "Failed",
   offline: "Offline",
@@ -29,7 +30,7 @@ const STATUS_LABEL: Record<string, string> = {
   warming: "Warming up",
 };
 
-const STATUS_TONE = {
+export const STATUS_TONE = {
   deploying: "info",
   failed: "error",
   offline: "neutral",
@@ -67,6 +68,12 @@ function digits(raw: string): string {
 
 function whole(raw: string): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
+function hourShortfall(balance: number, floor: number): string {
+  const owned = balance.toLocaleString("en-US");
+  const rate = floor.toLocaleString("en-US");
+  return `${owned} credits is less than one hour at this minimum (${rate} credits/hour).`;
 }
 
 function Hint({ label, text }: { label: string; text: string }) {
@@ -239,6 +246,8 @@ function GpuMenu({
   const start = useStartDedicatedMutation(model.id);
   const update = useUpdateDedicatedMutation(model.id);
   const pending = start.isPending || update.isPending;
+  const { enabled: commercialBilling } = useCommercialBilling();
+  const { balanceUsd } = useCredits();
 
   const selected = gpus.find((gpu) => gpu.gpuType === gpuType);
   const credits = selected?.creditsPerGpuHour == null ? null : Number(selected.creditsPerGpuHour);
@@ -263,6 +272,17 @@ function GpuMenu({
     maxCount > 8 ||
     idleCount < 300 ||
     idleCount > 24 * 60 * 60;
+  const balanceCredits = balanceUsd == null ? null : usdToOvermindCredits(balanceUsd);
+  const floorCredits = credits != null && minimum != null ? Math.round(minimum * credits) : null;
+  const hourWarning =
+    commercialBilling &&
+    balanceCredits != null &&
+    floorCredits != null &&
+    minimum != null &&
+    minimum > 0 &&
+    floorCredits > balanceCredits
+      ? hourShortfall(balanceCredits, floorCredits)
+      : null;
 
   const submit = () => {
     const onError = (error: unknown) =>
@@ -339,7 +359,7 @@ function GpuMenu({
               <label htmlFor="dedicated-idle-seconds">Idle timeout (seconds)</label>
               <Hint
                 label="Idle timeout"
-                text="With nothing in flight for this long, the count falls to the minimum. 300 to 86400 seconds."
+                text="Replicas above the minimum shut down after this many seconds with no requests. The minimum stays running. A value above 3600 seconds still waits 1 hour."
               />
             </div>
             <Input
@@ -377,6 +397,7 @@ function GpuMenu({
           replica.
         </p>
       )}
+      {hourWarning ? <p className="text-sm text-warning">{hourWarning}</p> : null}
       <Button disabled={invalid || pending} onClick={submit} size="sm">
         <Icon.play className="size-3.5" />
         {pending ? "Saving" : row ? "Update" : "Deploy"}

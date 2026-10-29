@@ -83,6 +83,7 @@ const platformNavTree: NavEntry[] = [
     items: [
       { flag: "finetuning", icon: Icon.training, label: "Training", to: "/training" },
       { flag: "inference", icon: Icon.inference, label: "Inference", to: "/inference" },
+      { flag: "inference", icon: Icon.server, label: "Dedicated", to: "/dedicated" },
     ],
     label: "Models",
   },
