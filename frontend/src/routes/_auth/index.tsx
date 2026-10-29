@@ -91,10 +91,10 @@ function OnboardingStrip({ projectId }: { projectId: string }) {
           className="hidden w-40 gap-0.5 border border-border bg-background p-0.5 sm:flex"
           role="progressbar"
         >
-          {steps.map((step, index) => (
+          {steps.map((step) => (
             <span
               aria-hidden="true"
-              className={cn("h-2 flex-1", index < completed ? "bg-primary" : "bg-muted")}
+              className={cn("h-2 flex-1", step.completedAt ? "bg-primary" : "bg-muted")}
               key={step.kind}
             />
           ))}

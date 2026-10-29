@@ -13,7 +13,8 @@ export function datasetWorkspaces(datasets: Dataset[]): Dataset[] {
     const root = byId.get(id)!;
     const busy = members.find(
       (member) =>
-        member.work && ["running", "queued", "accepted", "paused"].includes(member.work.status)
+        member.work &&
+        ["running", "queued", "accepted", "preparing", "paused"].includes(member.work.status)
     );
     const latest = members.reduce((a, b) => (a.updatedAt > b.updatedAt ? a : b));
     return {

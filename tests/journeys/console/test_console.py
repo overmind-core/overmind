@@ -905,7 +905,7 @@ def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, 
         workshop.call(
             "start_dataset", {"name": name, "brief": "Prepare support rows", "intent": "train"}
         )["dataset"]["id"]
-        for name in ("Abandoned preparation", "Idle preparation")
+        for name in ("Abandoned preparation", "Idle preparation", "Recently active preparation")
     ]
     for dataset in datasets:
         workshop.call(
@@ -919,10 +919,13 @@ def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, 
     assert ended["preparation_workflow"]["state"] == "cancelled"
 
     idle = DatasetPreparation.objects.get(dataset_id=datasets[1])
+    active = DatasetPreparation.objects.get(dataset_id=datasets[2])
     stale = timezone.now() - timedelta(hours=25)
-    DatasetPreparation.objects.filter(pk=idle.pk).update(updated_at=stale)
+    DatasetPreparation.objects.filter(pk__in=[idle.pk, active.pk]).update(updated_at=stale)
     Activity.objects.filter(key=f"preparation:{idle.pk}").update(updated_at=stale)
     assert reap_stuck_runs()["preparations_expired"] == 1
+    kept = workshop.call("inspect_dataset_workbench", {"dataset": datasets[2]})
+    assert kept["preparation_workflow"]["state"] == "preparing"
     expired = workshop.call("inspect_dataset_workbench", {"dataset": datasets[1]})
     assert expired["preparation_workflow"]["state"] == "cancelled"
     restarted = workshop.call(

@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 from django.db import transaction
@@ -16,6 +17,7 @@ from overbae.services import activity
 from overbae.services.datasets.lifecycle import DatasetError
 
 IDLE_LIMIT = timedelta(hours=24)
+logger = logging.getLogger(__name__)
 
 
 def describe(preparation):
@@ -149,16 +151,32 @@ def end(dataset):
     return update(dataset, preparation.pk, "cancelled", [])
 
 
+def _idle(preparation_ids, cutoff):
+    active = Activity.objects.filter(
+        key__in=[f"preparation:{pk}" for pk in preparation_ids], updated_at__gte=cutoff
+    ).values_list("task_id", flat=True)
+    return DatasetPreparation.objects.filter(
+        pk__in=preparation_ids, state__in=["preparing", "paused"], updated_at__lt=cutoff
+    ).exclude(pk__in=[value for value in active if value])
+
+
 def expire():
     cutoff = timezone.now() - IDLE_LIMIT
-    active = Activity.objects.filter(
-        key__startswith="preparation:", updated_at__gte=cutoff
-    ).values_list("task_id", flat=True)
-    stale = list(
-        DatasetPreparation.objects.select_related("dataset")
-        .filter(state__in=["preparing", "paused"], updated_at__lt=cutoff)
-        .exclude(pk__in=[value for value in active if value])
+    candidates = list(
+        DatasetPreparation.objects.filter(
+            state__in=["preparing", "paused"], updated_at__lt=cutoff
+        ).values_list("pk", "dataset_id")
     )
-    for preparation in stale:
-        update(preparation.dataset, preparation.pk, "cancelled", [])
-    return len(stale)
+    expired = 0
+    for preparation_id, dataset_id in candidates:
+        try:
+            with transaction.atomic():
+                # Same lock order as start() and update(); an agent update since the scan wins.
+                dataset = Dataset.objects.select_for_update().filter(pk=dataset_id).first()
+                if dataset is None or not _idle([preparation_id], cutoff).exists():
+                    continue
+                update(dataset, preparation_id, "cancelled", [])
+                expired += 1
+        except Exception:
+            logger.exception("expiring dataset preparation %s failed", preparation_id)
+    return expired

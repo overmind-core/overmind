@@ -331,8 +331,10 @@ function getColumns(opts: {
             })}
             {filenames.length > 1 && (
               <Badge
+                aria-label={`Also ${filenames.slice(1).join(", ")}`}
                 className="shrink-0"
                 size="chip"
+                tabIndex={0}
                 title={filenames.slice(1).join(", ")}
                 variant="outline"
               >

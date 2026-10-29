@@ -83,10 +83,21 @@ def replay(dataset_id: Any, *, client: Any = None) -> list[dict[str, Any]]:
     return out
 
 
+@lru_cache(maxsize=4)
+def _signal_client(pid, url):
+    import redis as redis_lib
+
+    # Runs on the request thread after commit, so an unreachable Redis must not stall it.
+    return redis_lib.from_url(url, socket_connect_timeout=0.2, socket_timeout=0.2)
+
+
 def signal(name: str) -> None:
+    from django.conf import settings
+
+    url = getattr(settings, "CELERY_BROKER_URL", "redis://localhost:6379/0")
+    if not url.startswith(("redis://", "rediss://", "unix://")):
+        return
     try:
-        r = _redis_client()
-        if r is not None:
-            r.publish(name, "1")
+        _signal_client(os.getpid(), url).publish(name, "1")
     except Exception:  # noqa: BLE001 — events are advisory, never fatal
         logger.warning("event signal failed for %s", name, exc_info=True)

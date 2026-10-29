@@ -962,7 +962,7 @@ striped title bar and Figma pixel eye without window controls. It introduces MCP
 and keeps the Agent/Data toggle with the setup prompt and upload form. The empty
 dataset inventory reuses the frame for data onboarding. A project without
 capabilities shows setup progress once its agent reports; a project with
-capabilities keeps its grid and shows a collapsible progress strip above it.
+capabilities keeps its grid and shows a dismissible progress strip above it.
 
 ### Motion (system-wide)
 

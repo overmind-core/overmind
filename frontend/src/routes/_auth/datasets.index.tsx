@@ -125,7 +125,9 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
           <DatasetsBrowser
             {...filters}
             error={query.error}
-            isLoading={query.isPending || (!datasets.length && projects.isPending)}
+            isLoading={
+              query.isPending || (!datasets.length && projects.isPending && !query.isError)
+            }
             key={JSON.stringify([ds_search, ds_role, ds_capability])}
             rowSearch={{ projectId }}
           />

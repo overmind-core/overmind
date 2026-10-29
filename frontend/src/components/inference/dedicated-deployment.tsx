@@ -137,7 +137,7 @@ export function DedicatedDeploymentSection({
   const stop = useStopDedicatedMutation(model.id);
   const ready = model.status === "ready";
   const deployment = useDedicatedDeploymentQuery(model.id, ready);
-  const gpus = useDedicatedGpusQuery(model.id, ready && open);
+  const gpus = useDedicatedGpusQuery(model.id, ready && (open || confirmStart));
   const row = deployment.data ?? null;
   const active = row != null && ACTIVE.has(row.status ?? "");
   const stopping = row?.status === "shutting_down";
@@ -289,7 +289,12 @@ export function DedicatedDeploymentSection({
       {row ? (
         <ConfirmDialog
           confirmLabel="Start"
-          description={`${row.gpuType} · ${price(row.creditsPerGpuHour)} while replicas run.`}
+          description={
+            gpus.isLoading
+              ? `${row.gpuType} · Loading the current rate`
+              : `${row.gpuType} · ${price(gpus.data?.find((gpu) => gpu.gpuType === row.gpuType)?.creditsPerGpuHour)} while replicas run.`
+          }
+          isPending={gpus.isLoading}
           onConfirm={startDeployment}
           onOpenChange={setConfirmStart}
           open={confirmStart}

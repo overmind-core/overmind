@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -21,18 +22,18 @@ from overbae.services.datasets import events
 # Clients name themselves differently in MCP initialize and OAuth registration
 # ("claude-code" / "Claude Code (overmind)", "codex-mcp-client" / "Codex").
 AGENTS = (
-    ("claude", "claude", "Claude Code"),
-    ("codex", "codex", "Codex"),
-    ("cursor", "cursor", "Cursor"),
-    ("gemini", "gemini", "Gemini CLI"),
-    ("opencode", "coding_agent", "OpenCode"),
+    (re.compile(r"^claude[- ]code\b"), "claude", "Claude Code"),
+    (re.compile(r"^(openai-)?codex\b"), "codex", "Codex"),
+    (re.compile(r"^cursor\b"), "cursor", "Cursor"),
+    (re.compile(r"^gemini[- ]cli\b"), "gemini", "Gemini CLI"),
+    (re.compile(r"^opencode\b"), "coding_agent", "OpenCode"),
 )
 
 
 def actor(client_name):
-    name = (client_name or "").lower()
+    name = (client_name or "").strip().lower()
     return next(
-        ((kind, label) for token, kind, label in AGENTS if token in name),
+        ((kind, label) for pattern, kind, label in AGENTS if pattern.match(name)),
         ("coding_agent", "Coding agent"),
     )
 

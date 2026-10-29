@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from overbae.models import Cell, Dataset
 from overbae.models.traces import Span
+from overbae.services.activity import source_ready
 from overbae.services.datasets import (
     alignment,
     contract,
@@ -200,7 +201,10 @@ def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capab
             state=state,
             infer_capability=infer_capability,
         )
-        return publish(dataset, prepared, user=user)
+        dataset = publish(dataset, prepared, user=user)
+    if not {"derived_from", "partition_plan"} & landing.spec.keys():
+        source_ready(dataset, prepared.cell_id, user)
+    return dataset
 
 
 def read_file(path: Path, **options) -> Landing:
