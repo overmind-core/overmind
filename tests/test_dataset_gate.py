@@ -139,7 +139,7 @@ def test_a_live_transformation_on_an_old_dataset_is_not_reaped():
         format="json",
     )
     assert started.status_code == 202, started.data
-    assert dataset_tasks.reap_stuck_runs() == {"reaped": 0}
+    assert dataset_tasks.reap_stuck_runs()["reaped"] == 0
     train.refresh_from_db()
     assert train.state == Dataset.State.RUNNING
 
@@ -151,7 +151,7 @@ def test_the_reaper_fails_a_state_only_after_that_state_own_limit():
     Dataset.objects.filter(pk=evaluation.pk).update(
         state="landing", updated_at=timezone.now() - age
     )
-    assert dataset_tasks.reap_stuck_runs() == {"reaped": 1}
+    assert dataset_tasks.reap_stuck_runs()["reaped"] == 1
     train.refresh_from_db()
     evaluation.refresh_from_db()
     assert (train.state, evaluation.state) == ("running", "error")
