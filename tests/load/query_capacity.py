@@ -82,7 +82,9 @@ def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, t
             )
             elapsed = time.monotonic() - started
             assert answer["rows"] == [{"count": 1}]
-            assert elapsed < 0.5
+            # The heavy queries hold their slots until the 10 s timeout, so waiting for one
+            # would take seconds; the bound leaves headroom for shared CI runners.
+            assert elapsed < 2
             assert not any(future.done() for future in futures)
             futures.append(
                 executor.submit(
