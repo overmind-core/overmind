@@ -9,8 +9,8 @@ Run from the repository root. Every step is safe to repeat.
 1. Install the CLI (Python 3.10+): `python -m pip install --upgrade "overmind>=0.1.106"`.
    If pip reports an externally managed environment, run
    `uv tool install --upgrade "overmind>=0.1.106"` (install `uv` first if it is missing) and use
-   `overmind` wherever this guide says `python -m overmind`. On any other conflict, report it and
-   stop.
+   `overmind` wherever this guide says `python -m overmind`; if `overmind` is not on `PATH`, call it
+   from the directory `uv tool dir --bin` prints. On any other conflict, report it and stop.
 1. Run `python -m overmind init --ide <claude|codex|cursor|opencode>` for the agent you run in.
    Add `--api-url URL` if the message names an API. It edits this agent's config; if your
    sandbox blocks that, ask the user to approve running it outside the sandbox.

@@ -135,7 +135,7 @@ function CapabilitiesSection({
 }) {
   const capabilities: CapabilityList[] = graph?.capabilities ?? [];
   if (isLoading) return <LoadingState fullPage label="Loading agent" />;
-  if (error)
+  if (error && !graph)
     return <Alert variant="destructive">Failed to load capabilities: {error.message}</Alert>;
   if (!capabilities.length)
     return (

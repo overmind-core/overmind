@@ -139,6 +139,7 @@ export function DedicatedDeploymentSection({
   const deployment = useDedicatedDeploymentQuery(model.id, ready);
   const gpus = useDedicatedGpusQuery(model.id, ready && (open || confirmStart));
   const row = deployment.data ?? null;
+  const startRate = gpus.data?.find((gpu) => gpu.gpuType === row?.gpuType)?.creditsPerGpuHour;
   const active = row != null && ACTIVE.has(row.status ?? "");
   const stopping = row?.status === "shutting_down";
   const pending = start.isPending || stop.isPending;
@@ -288,12 +289,16 @@ export function DedicatedDeploymentSection({
       </Dialog>
       {row ? (
         <ConfirmDialog
+          confirmDisabled={startRate == null}
           confirmLabel="Start"
           description={
             gpus.isLoading
               ? `${row.gpuType} · Loading the current rate`
-              : `${row.gpuType} · ${price(gpus.data?.find((gpu) => gpu.gpuType === row.gpuType)?.creditsPerGpuHour)} while replicas run.`
+              : startRate == null
+                ? `${row.gpuType} · The current rate is unavailable, so the endpoint cannot start.`
+                : `${row.gpuType} · ${price(startRate)} while replicas run.`
           }
+          error={gpus.error}
           isPending={gpus.isLoading}
           onConfirm={startDeployment}
           onOpenChange={setConfirmStart}
