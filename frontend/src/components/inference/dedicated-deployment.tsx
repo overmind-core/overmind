@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DateTime } from "@/components/ui/datetime";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useDedicatedDeploymentQuery,
@@ -40,6 +41,20 @@ export const STATUS_TONE = {
 } as const;
 
 const ACTIVE = new Set(["deploying", "warming", "online", "shutting_down"]);
+const STARTING = new Set(["deploying", "warming"]);
+
+export function DedicatedStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge
+      className="gap-1.5"
+      size="chip"
+      variant={STATUS_TONE[status as keyof typeof STATUS_TONE] ?? "neutral"}
+    >
+      {STARTING.has(status) ? <Spinner className="text-current" size="sm" /> : null}
+      {STATUS_LABEL[status] ?? status}
+    </Badge>
+  );
+}
 
 function creditsAmount(raw: string | null | undefined): string {
   if (raw == null || raw === "") return "—";
@@ -173,9 +188,7 @@ function DeploymentStatus({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Badge size="chip" variant={STATUS_TONE[status as keyof typeof STATUS_TONE] ?? "neutral"}>
-            {STATUS_LABEL[status] ?? status}
-          </Badge>
+          <DedicatedStatusBadge status={status} />
           <span className="text-sm font-medium">{row.gpuType}</span>
         </div>
         {actions}

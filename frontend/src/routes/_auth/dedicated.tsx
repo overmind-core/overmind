@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { STATUS_LABEL, STATUS_TONE } from "@/components/inference/dedicated-deployment";
+import { DedicatedStatusBadge } from "@/components/inference/dedicated-deployment";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
@@ -56,14 +56,7 @@ function DedicatedPage() {
     },
     {
       accessorKey: "status",
-      cell: ({ row }) => {
-        const status = row.original.status ?? "";
-        return (
-          <Badge size="chip" variant={STATUS_TONE[status as keyof typeof STATUS_TONE] ?? "neutral"}>
-            {STATUS_LABEL[status] ?? status}
-          </Badge>
-        );
-      },
+      cell: ({ row }) => <DedicatedStatusBadge status={row.original.status ?? ""} />,
       header: "Status",
       meta: { noTruncate: true },
       minSize: 110,
