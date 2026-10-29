@@ -11,7 +11,9 @@ def current_work(datasets):
     )
     actors = dict(
         Activity.objects.filter(
-            task_kind="dataset_pipeline", task_id__in=[str(run.pk) for run in runs]
+            project_id__in={dataset.project_id for dataset in datasets},
+            task_kind="dataset_pipeline",
+            task_id__in=[str(run.pk) for run in runs],
         ).values_list("task_id", "actor_kind")
     )
     for run in runs:
@@ -38,12 +40,15 @@ def current_work(datasets):
     for preparation in DatasetPreparation.objects.filter(
         dataset_id__in=ids, state__in=["preparing", "paused"]
     ):
-        work[str(preparation.dataset_id)] = {
-            "label": "Preparing" if preparation.state == "preparing" else "Preparation paused",
-            "status": "running" if preparation.state == "preparing" else "paused",
-            "actor_kind": preparation.actor_kind,
-            "completed": None,
-            "total": None,
-            "unit": "",
-        }
+        work.setdefault(
+            str(preparation.dataset_id),
+            {
+                "label": "Preparing" if preparation.state == "preparing" else "Preparation paused",
+                "status": preparation.state,
+                "actor_kind": preparation.actor_kind,
+                "completed": None,
+                "total": None,
+                "unit": "",
+            },
+        )
     return work

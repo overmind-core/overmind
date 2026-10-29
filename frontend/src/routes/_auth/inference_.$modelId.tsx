@@ -112,7 +112,7 @@ function ModelDetailPage() {
           {(model.status === "failed" || model.status === "deleted") && model.finetuningJobId ? (
             <RedeployBanner model={model} />
           ) : null}
-          {model.capabilityId ? (
+          {model.capabilityId && model.inferenceContract !== "decision" ? (
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <CapabilityChip
                 capabilityId={model.capabilityId}
@@ -134,7 +134,6 @@ function ModelDetailPage() {
                 Serverless API snippet
               </Button>
             </div>
-            <p className="px-4 py-3 text-xs text-muted-foreground">Scales on demand</p>
           </Card>
           <DedicatedDeploymentSection model={model} projectId={projectId} />
           <ModelPerformance modelId={model.id} />

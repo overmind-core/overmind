@@ -41,7 +41,9 @@ it is ready. Before pushing a model change:
 1. `make check-migrations` — the exact CI check, against `origin/main`.
 
 Never resolve a fork with `makemigrations --merge`. A `_merge_` file or a reused number fails
-the `migrations` job; renumber instead.
+the `migrations` job; renumber instead. The only exceptions are migrations already applied to a
+shared database, pinned by checksum in `scripts/applied-migration-history.json`; never deploy an
+unmerged branch with migrations to staging or production.
 
 ## Completeness — the surfaces a PR must carry with it
 

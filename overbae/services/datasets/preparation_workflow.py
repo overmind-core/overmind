@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -12,6 +14,8 @@ from overbae.models import (
 )
 from overbae.services import activity
 from overbae.services.datasets.lifecycle import DatasetError
+
+IDLE_LIMIT = timedelta(hours=24)
 
 
 def describe(preparation):
@@ -132,4 +136,29 @@ def update(dataset, preparation_id, state, outputs):
     Activity.objects.filter(key=f"preparation:{preparation.pk}").update(
         status=status, action=action, updated_at=timezone.now()
     )
+    activity.changed(dataset.project_id)
     return preparation
+
+
+def end(dataset):
+    preparation = DatasetPreparation.objects.filter(
+        dataset=dataset, state__in=["preparing", "paused"]
+    ).first()
+    if not preparation:
+        raise DatasetError("This dataset has no open preparation.", code="preparation_not_found")
+    return update(dataset, preparation.pk, "cancelled", [])
+
+
+def expire():
+    cutoff = timezone.now() - IDLE_LIMIT
+    active = Activity.objects.filter(
+        key__startswith="preparation:", updated_at__gte=cutoff
+    ).values_list("task_id", flat=True)
+    stale = list(
+        DatasetPreparation.objects.select_related("dataset")
+        .filter(state__in=["preparing", "paused"], updated_at__lt=cutoff)
+        .exclude(pk__in=[value for value in active if value])
+    )
+    for preparation in stale:
+        update(preparation.dataset, preparation.pk, "cancelled", [])
+    return len(stale)

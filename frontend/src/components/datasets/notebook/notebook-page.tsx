@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { CellFlow } from "@/components/datasets/notebook/cell-flow";
@@ -24,11 +25,13 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
+  openPreparation,
   rankOf,
   useCancelDatasetMutation,
   useDatasetEvents,
   useDatasetPreparationQuery,
   useDatasetQuery,
+  useEndPreparationMutation,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
 } from "@/hooks/use-datasets";
@@ -62,6 +65,7 @@ export function DatasetNotebook({
 
   const patch = usePatchDatasetMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
+  const endPreparation = useEndPreparationMutation(datasetId);
   const resumeImport = useResumeDatasetImportMutation(datasetId);
 
   const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
@@ -108,6 +112,7 @@ export function DatasetNotebook({
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
   const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
+  const preparing = openPreparation(dataset);
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
 
@@ -243,6 +248,22 @@ export function DatasetNotebook({
                 variant="secondary"
               >
                 Stop operation
+              </Button>
+            </div>
+          )}
+          {!busy && preparing && (
+            <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
+              <span className="inline-flex items-center gap-1.5">
+                {preparing.actorKind ? <CodingAgentIcon kind={preparing.actorKind} /> : null}
+                {preparing.label}
+              </span>
+              <Button
+                disabled={endPreparation.isPending}
+                onClick={() => endPreparation.mutate()}
+                size="sm"
+                variant="secondary"
+              >
+                End preparation
               </Button>
             </div>
           )}

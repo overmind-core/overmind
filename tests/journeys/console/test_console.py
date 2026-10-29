@@ -1,11 +1,13 @@
 import hashlib
 import json
 import uuid
+from datetime import timedelta
 
 from django.utils import timezone
 
 from modal_shared.training_monitoring import fingerprint
 from overbae.models import (
+    Activity,
     Cell,
     DataPartitionMember,
     DataPartitionPlan,
@@ -13,6 +15,7 @@ from overbae.models import (
     DatasetContext,
     DatasetPipeline,
     DatasetPipelineRun,
+    DatasetPreparation,
     DedicatedDeployment,
     DeployedModel,
     EvalRun,
@@ -22,20 +25,23 @@ from overbae.models import (
 )
 from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
+from overbae.tasks.datasets import reap_stuck_runs
 
 from ..datasets import tickets, upload
 from ..stack import drain, settle
 
 
-def test_embedded_onboarding_copies_setup_and_switches_to_data(console):
-    console.sees("Overmind works best via the MCP")
+def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
     )
     console.press("Copy onboarding prompt")
     console.sees("Prompt copied")
     prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
-    assert prompt == "Set me up on Overmind https://console.overmindlab.ai/setup.md"
+    assert prompt == (
+        f"Set me up on Overmind\n\nusing the API at {live_api.url.rstrip('/')}: "
+        f"{console_url.rstrip('/')}/setup.md"
+    )
     console.wait_until("""() => {
         const panel = document.querySelector('section[aria-label="Get started"]');
         return panel.querySelector('a[href$="/setup.md"]') &&
@@ -100,20 +106,17 @@ def test_activity_outcomes_and_setup_progress_survive_console_reload(
     reporter = progress["milestones"][2]["actor_name"]
     assert reporter
     console.goto(f"/?projectId={project}")
-    console.wait_until(
-        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Inspect repository')"
-    )
+    console.sees("Onboarding · Inspect repository")
+    console.sees("2 of 10")
     console._browser.call(
         lambda: (
-            console._page.get_by_label("Onboarding agent", exact=True)
+            console._page.get_by_label("Onboarding status", exact=True)
             .get_by_text(reporter, exact=True)
             .wait_for()
         )
     )
     workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 9})
-    console.wait_until(
-        "() => document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities')"
-    )
+    console.sees("Onboarding · Instrument capabilities")
     rest_for(workshop.api_key).request(
         "POST",
         "/api/v1/sync",
@@ -130,23 +133,20 @@ def test_activity_outcomes_and_setup_progress_survive_console_reload(
         },
     )
     console.wait_until("""() => {
-        return document.querySelector('[aria-current=step]')?.textContent.includes('Instrument capabilities') && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt') && !document.body.textContent.includes('Get started');
+        return [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt');
     }""")
     console.save_evidence("activity-and-onboarding")
     console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
     console.wait_until("""() => {
-        const panel = document.querySelector('[aria-label="Agent onboarding"]');
-        if (!panel) return false;
-        const rect = panel.getBoundingClientRect();
-        return rect.left >= 0 && rect.right <= innerWidth && panel.scrollWidth <= panel.clientWidth;
+        const strip = document.querySelector('[aria-label="Onboarding status"]');
+        if (!strip) return false;
+        const rect = strip.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth && strip.scrollWidth <= strip.clientWidth;
     }""")
     console.save_evidence("onboarding-mobile")
     workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 10})
     console.wait_until(
-        "() => document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '10'"
-    )
-    console.wait_until(
-        "() => [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && !document.querySelector('[role=progressbar]')"
+        "() => !document.querySelector('[aria-label=\"Onboarding status\"]') && [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability'))"
     )
     console.save_evidence("onboarding-complete-capabilities")
 
@@ -896,6 +896,39 @@ def test_dataset_preparation_persists_between_jobs_until_agent_finishes(
     assert workshop.call_result(
         "update_dataset_preparation", {**workflow, "state": "preparing"}
     ).isError
+    console.healthy()
+
+
+def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, workshop):
+    project = workshop.project()["id"]
+    datasets = [
+        workshop.call(
+            "start_dataset", {"name": name, "brief": "Prepare support rows", "intent": "train"}
+        )["dataset"]["id"]
+        for name in ("Abandoned preparation", "Idle preparation")
+    ]
+    for dataset in datasets:
+        workshop.call(
+            "start_dataset_preparation", {"dataset": dataset, "request_key": f"open-{dataset}"}
+        )
+    console.goto(f"/datasets/{datasets[0]}?projectId={project}")
+    console.sees("Preparing")
+    console.press("End preparation")
+    console.wait_until("() => !document.body.textContent.includes('End preparation')")
+    ended = workshop.call("inspect_dataset_workbench", {"dataset": datasets[0]})
+    assert ended["preparation_workflow"]["state"] == "cancelled"
+
+    idle = DatasetPreparation.objects.get(dataset_id=datasets[1])
+    stale = timezone.now() - timedelta(hours=25)
+    DatasetPreparation.objects.filter(pk=idle.pk).update(updated_at=stale)
+    Activity.objects.filter(key=f"preparation:{idle.pk}").update(updated_at=stale)
+    assert reap_stuck_runs()["preparations_expired"] == 1
+    expired = workshop.call("inspect_dataset_workbench", {"dataset": datasets[1]})
+    assert expired["preparation_workflow"]["state"] == "cancelled"
+    restarted = workshop.call(
+        "start_dataset_preparation", {"dataset": datasets[1], "request_key": "after-expiry"}
+    )
+    assert restarted["preparation_workflow"]["state"] == "preparing"
     console.healthy()
 
 

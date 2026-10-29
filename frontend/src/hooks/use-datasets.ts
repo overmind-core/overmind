@@ -140,7 +140,13 @@ export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null =
 };
 
 export const isBusy = (ds: Dataset | null | undefined): boolean =>
-  !!ds && (!!ds.work || ds.state === "running" || ds.state === "landing");
+  !!ds &&
+  (["queued", "running"].includes(ds.work?.status ?? "") ||
+    ds.state === "running" ||
+    ds.state === "landing");
+
+export const openPreparation = (ds: Dataset | null | undefined) =>
+  ds?.work && ["preparing", "paused"].includes(ds.work.status) ? ds.work : null;
 
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
@@ -252,7 +258,7 @@ export function useProjectDatasetsQuery(projectId: string | undefined) {
     enabled: !!projectId,
     queryFn: ({ signal }) => fetchProjectDatasets(projectId!, signal),
     queryKey: ["datasets", "list", projectId, "inventory"],
-    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 1000 : 3000),
+    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 3000 : 15000),
   });
 }
 
@@ -502,6 +508,15 @@ export const useCancelDatasetMutation = (id: string) => {
   return useMutation({
     mutationFn: () => apiClient.datasets.datasetsCancelCreate({ id }),
     onError: (error) => notify.error(error, "Cancellation request failed"),
+    onSuccess: () => invalidateDataset(qc, id),
+  });
+};
+
+export const useEndPreparationMutation = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.datasets.datasetsEndPreparationCreate({ id }),
+    onError: (error) => notify.error(error, "Couldn't end the preparation"),
     onSuccess: () => invalidateDataset(qc, id),
   });
 };

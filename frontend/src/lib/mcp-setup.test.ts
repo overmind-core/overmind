@@ -28,7 +28,7 @@ describe("mcp setup snippets", () => {
         projectId: PROJECT_ID,
       })
     ).toBe(
-      `Set me up on Overmind with my uploaded data\n(project_id: ${PROJECT_ID},\ndataset_id: d-1)\n\n: https://console.overmindlab.ai/setup.md`
+      `Set me up on Overmind with my uploaded data\n(project_id: ${PROJECT_ID},\ndataset_id: d-1)\n\nhttps://console.overmindlab.ai/setup.md`
     );
   });
 
@@ -36,9 +36,9 @@ describe("mcp setup snippets", () => {
     STAGING,
     LOCAL,
     "https://api.customer.example",
-  ])("uses the hosted setup prompt on %s", (host) => {
+  ])("names a non-hosted API endpoint %s", (host) => {
     expect(onboardingPrompt("http://localhost:5173", `${host}/`)).toBe(
-      "Set me up on Overmind https://console.overmindlab.ai/setup.md"
+      `Set me up on Overmind\n\nusing the API at ${host}: http://localhost:5173/setup.md`
     );
   });
 

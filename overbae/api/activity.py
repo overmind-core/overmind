@@ -1,7 +1,10 @@
 import asyncio
 import json
+import logging
 
+import redis.asyncio as aredis
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import connections
 from django.http import StreamingHttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_serializer
@@ -13,6 +16,9 @@ from rest_framework.response import Response
 
 from overbae.api.scoping import project_ids_for
 from overbae.services import activity
+
+logger = logging.getLogger(__name__)
+STREAM_SECONDS = 300
 
 
 class ActivityAssetSerializer(serializers.Serializer):
@@ -123,18 +129,43 @@ class ActivityViewSet(viewsets.GenericViewSet):
             finally:
                 connections.close_all()
 
+        channels = [activity.channel(user_id=request.user.pk)]
+        if project:
+            channels.append(activity.channel(project))
+
         async def stream():
+            await sync_to_async(connections.close_all)()
+            loop = asyncio.get_running_loop()
+            # The stream ends so the client reconnects and membership is checked again.
+            deadline = loop.time() + STREAM_SECONDS
+            client = aredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+            pubsub = client.pubsub()
             previous = None
-            # Reconnect periodically to revalidate authentication and project membership.
-            for tick in range(60):
-                data, revision = await sync_to_async(snapshot, thread_sensitive=True)()
-                signature = (revision, data["count"], data["unseen_count"])
-                if signature != previous:
-                    yield f"data: {json.dumps(data)}\n\n"
-                    previous = signature
-                elif tick % 15 == 0:
-                    yield ": ping\n\n"
-                await asyncio.sleep(1)
+            try:
+                await pubsub.subscribe(*channels)
+                stale = True
+                while loop.time() < deadline:
+                    if stale:
+                        data, revision = await sync_to_async(snapshot, thread_sensitive=True)()
+                        signature = (revision, data["count"], data["unseen_count"])
+                        if signature != previous:
+                            yield f"data: {json.dumps(data)}\n\n"
+                            previous = signature
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15)
+                    stale = message is not None
+                    if not stale:
+                        yield ": ping\n\n"
+                        continue
+                    await asyncio.sleep(0.5)
+                    while await pubsub.get_message(ignore_subscribe_messages=True, timeout=0):
+                        pass
+            finally:
+                try:
+                    await pubsub.unsubscribe()
+                    await pubsub.aclose()
+                    await client.aclose()
+                except Exception:  # noqa: BLE001
+                    logger.debug("activity stream teardown failed", exc_info=True)
 
         response = StreamingHttpResponse(stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"

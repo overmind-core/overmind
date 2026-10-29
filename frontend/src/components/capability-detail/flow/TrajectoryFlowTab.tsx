@@ -187,6 +187,7 @@ function FlowCanvas({
   const measurementKey = nodes.map((node) => `${node.id}:${node.measured?.height}`).join("|");
   const hasInteracted = useRef(false);
   const framedRun = useRef<string | undefined>(undefined);
+  const framedSearch = useRef<string | undefined>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchTargetRef = useRef(searchTarget);
   searchTargetRef.current = searchTarget;
@@ -361,8 +362,8 @@ function FlowCanvas({
         next = preservePositions(next);
         setNodes(next);
         onGraphHeight(trajectoryBounds(next).height);
-        if (searchTarget) {
-          fitTarget(searchTarget, next);
+        if (searchTarget && framedSearch.current !== searchTarget) {
+          if (fitTarget(searchTarget, next)) framedSearch.current = searchTarget;
         } else if (
           run.highlighted &&
           displayedRunId &&
@@ -412,6 +413,10 @@ function FlowCanvas({
     displayedRunId,
     runPath,
   ]);
+
+  useEffect(() => {
+    if (!searchTarget) framedSearch.current = undefined;
+  }, [searchTarget]);
 
   // Re-fit when the container resizes from hidden/zero-size to visible.
   useEffect(() => {

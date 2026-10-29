@@ -81,3 +81,12 @@ def replay(dataset_id: Any, *, client: Any = None) -> list[dict[str, Any]]:
         except ValueError:
             continue
     return out
+
+
+def signal(name: str) -> None:
+    try:
+        r = _redis_client()
+        if r is not None:
+            r.publish(name, "1")
+    except Exception:  # noqa: BLE001 — events are advisory, never fatal
+        logger.warning("event signal failed for %s", name, exc_info=True)

@@ -9,7 +9,7 @@ The native coding agent owns interpretation, code and semantic work. The platfor
 
 ## Preparation lifecycle
 
-Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation.
+`DatasetPreparation` (`services/datasets/preparation_workflow.py`) groups a coding agent's preparation work under one evolving notification. MCP `start_dataset_preparation` and `update_dataset_preparation` open and close it. The Console's End preparation (`POST /api/datasets/{id}/end-preparation/`) and the dataset reaper (24 h without activity) cancel it. An open preparation labels the dataset; it never locks editing.
 
 ## Map
 

@@ -163,7 +163,7 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
     case "name":
       return datasetDisplayName(ds).toLowerCase();
     case "role":
-      return ds.roles.map((role) => DATASET_ROLES[role]).join(", ");
+      return ds.roles.map((role) => DATASET_ROLES[role] ?? role).join(", ");
     case "rows":
       return ds.rows ?? 0;
     case "version":
@@ -240,15 +240,15 @@ function getColumns(opts: {
       id: "name",
       meta: { label: "Name", orderingField: "name" },
       minSize: 160,
-      size: 260,
+      size: 180,
     },
     {
       cell: ({ row }) => <DatasetStatus dataset={row.original} />,
       header: "Status",
       id: "status",
       meta: { label: "Status", noTruncate: true },
-      minSize: 140,
-      size: 190,
+      minSize: 120,
+      size: 120,
     },
     {
       accessorFn: (row) => row.roles.join(", "),
@@ -257,7 +257,7 @@ function getColumns(opts: {
           <span className="inline-flex flex-nowrap gap-1">
             {row.original.roles.map((role) => (
               <Badge key={role} size="chip" variant="outline">
-                {DATASET_ROLES[role]}
+                {DATASET_ROLES[role] ?? role}
               </Badge>
             ))}
           </span>
@@ -280,8 +280,8 @@ function getColumns(opts: {
       header: "Version",
       id: "version",
       meta: { label: "Version", orderingField: "version" },
-      minSize: 70,
-      size: 90,
+      minSize: 100,
+      size: 100,
     },
     {
       accessorFn: (row) => row.rows ?? 0,
@@ -298,7 +298,7 @@ function getColumns(opts: {
       id: "rows",
       meta: { label: "Rows", orderingField: "rows" },
       minSize: 80,
-      size: 110,
+      size: 80,
     },
     {
       accessorKey: "sourceKind",
@@ -312,7 +312,7 @@ function getColumns(opts: {
             : [];
         return filenames.length ? (
           <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-            {filenames.slice(0, 3).map((filename, index) => {
+            {filenames.slice(0, 1).map((filename, index) => {
               const extension = filename.replace(/\.gz$/i, "").match(/\.([^.]+)$/)?.[1];
               return (
                 <Badge
@@ -329,9 +329,14 @@ function getColumns(opts: {
                 </Badge>
               );
             })}
-            {filenames.length > 3 && (
-              <Badge className="shrink-0" size="chip" variant="outline">
-                +{filenames.length - 3} files
+            {filenames.length > 1 && (
+              <Badge
+                className="shrink-0"
+                size="chip"
+                title={filenames.slice(1).join(", ")}
+                variant="outline"
+              >
+                +{filenames.length - 1}
               </Badge>
             )}
           </span>
@@ -368,7 +373,7 @@ function getColumns(opts: {
       id: "capability",
       meta: { label: "Capability", noTruncate: true, orderingField: "capability" },
       minSize: 120,
-      size: 160,
+      size: 140,
     });
   }
 
@@ -385,7 +390,7 @@ function getColumns(opts: {
       id: "updated",
       meta: { label: "Updated", orderingField: "updated" },
       minSize: 110,
-      size: 120,
+      size: 110,
     },
     {
       cell: ({ row }) => {
@@ -476,21 +481,23 @@ export function DatasetsBrowser({
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
 
+  // Chip widths follow the rendered chip text, so two roles fit without truncation.
   const roleWidth = Math.max(
-    130,
-    ...datasets.map(
-      (dataset) =>
-        20 + dataset.roles.reduce((width, role) => width + DATASET_ROLES[role].length * 8 + 22, 0)
+    100,
+    ...datasets.map((dataset) =>
+      dataset.roles.reduce(
+        (width, role, index) =>
+          width + (DATASET_ROLES[role] ?? role).length * 6.5 + 19 + (index ? 5 : 0),
+        16
+      )
     )
   );
 
-  const sourceWidth = Math.max(
-    180,
-    ...datasets.map((dataset) => {
-      const count = dataset.sourceSpec?.sources?.length ?? (dataset.sourceSpec?.filename ? 1 : 0);
-      return Math.min(3, count) * 180 + 24 + (count > 3 ? 80 : 0);
-    })
-  );
+  const sourceWidth = datasets.some(
+    (dataset) => dataset.sourceSpec?.sources?.length || dataset.sourceSpec?.filename
+  )
+    ? 160
+    : 90;
 
   const columns = useMemo(
     () =>

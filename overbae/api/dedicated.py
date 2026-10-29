@@ -1,5 +1,6 @@
 import uuid
 
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -149,7 +150,8 @@ class DedicatedDeploymentView(APIView):
         deployed = _model(request, deployment_id)
         row = dedicated.latest_for(deployed)
         if row is None:
-            return Response(None)
+            # DRF renders None as an empty body, which the generated client cannot parse.
+            return JsonResponse(None, safe=False)
         return Response(DedicatedDeploymentSerializer(row).data)
 
     @extend_schema(

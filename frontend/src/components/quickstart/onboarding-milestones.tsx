@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/spinner";
 import { useOnboardingMilestones } from "@/hooks/use-activity";
 import { cn } from "@/lib/utils";
-import type { OnboardingMilestone } from "@/openapi";
 
 function StageLabel({ text, active }: { text: string; active: boolean }) {
   const [length, setLength] = useState(0);
@@ -93,61 +91,12 @@ function CapabilityTicker({ value }: { value: number }) {
 export function OnboardingMilestones({
   projectId,
   projectName,
-  devPreview = false,
-  onComplete,
-  autoPlay = false,
 }: {
   projectId?: string;
   projectName?: string;
-  devPreview?: boolean;
-  onComplete?: () => void;
-  autoPlay?: boolean;
 }) {
   const query = useOnboardingMilestones(projectId, "agent");
-  const [simulation, setSimulation] = useState<OnboardingMilestone[] | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const steps = simulation ?? query.data;
-  const autoStarted = useRef(false);
-  useEffect(() => {
-    if (autoPlay && devPreview && query.data && !autoStarted.current) {
-      autoStarted.current = true;
-      setSimulation(
-        query.data.map((step) => ({ ...step, activityId: null, assets: [], completedAt: null }))
-      );
-      setPlaying(true);
-    }
-  }, [autoPlay, devPreview, query.data]);
-  const complete = !!steps?.length && steps.every((step) => step.completedAt);
-  useEffect(() => {
-    if (complete && (!devPreview || simulation)) onComplete?.();
-  }, [complete, devPreview, simulation, onComplete]);
-  useEffect(() => {
-    if (!playing || !simulation) return;
-    const next = simulation.findIndex((step) => !step.completedAt);
-    if (next === -1) {
-      setPlaying(false);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setSimulation(
-        (previous) =>
-          previous?.map((step, index) =>
-            index === next
-              ? {
-                  ...step,
-                  assets: ["capabilities_discovered", "repository_synced"].includes(step.kind)
-                    ? ["Answer questions", "Search knowledge", "Escalate requests"].map(
-                        (label, i) => ({ id: `preview-${i}`, kind: "capability" as const, label })
-                      )
-                    : [],
-                  completedAt: new Date(),
-                }
-              : step
-          ) ?? null
-      );
-    }, 1800);
-    return () => window.clearTimeout(timer);
-  }, [playing, simulation]);
+  const steps = query.data;
 
   if (!steps && query.isLoading) return <LoadingState label="Loading setup progress" />;
   if (!steps) {
@@ -157,11 +106,7 @@ export function OnboardingMilestones({
   const completed = steps.filter((step) => step.completedAt).length;
   const current = steps.find((step) => !step.completedAt);
   const stage = current?.label ?? "Your agent is set up";
-  const reporter = simulation
-    ? { actorKind: "codex", actorName: "Codex" }
-    : current?.actorName
-      ? current
-      : steps.find((step) => step.actorName);
+  const reporter = current?.actorName ? current : steps.find((step) => step.actorName);
   const connected = steps.some((step) => step.kind === "agent_connected" && step.completedAt);
   const synced = steps.some((step) => step.kind === "repository_synced" && step.completedAt);
   const capabilities = new Map(
@@ -173,51 +118,10 @@ export function OnboardingMilestones({
           .map((asset) => [asset.id, asset.label] as const)
       )
   );
-  const name = connected
-    ? simulation
-      ? "Support Copilot"
-      : (projectName ?? "Connected")
-    : "Waiting for connection";
+  const name = connected ? (projectName ?? "Connected") : "Waiting for connection";
 
   return (
     <div className="space-y-2">
-      {import.meta.env.DEV && devPreview && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>{simulation ? "Simulated onboarding · sample data" : "Dev preview"}</span>
-          <div className="flex gap-2">
-            {simulation && (
-              <Button
-                onClick={() => {
-                  setPlaying(false);
-                  setSimulation(null);
-                }}
-                size="xs"
-                variant="secondary"
-              >
-                Live data
-              </Button>
-            )}
-            <Button
-              disabled={playing}
-              onClick={() => {
-                setSimulation(
-                  query.data!.map((step) => ({
-                    ...step,
-                    activityId: null,
-                    assets: [],
-                    completedAt: null,
-                  }))
-                );
-                setPlaying(true);
-              }}
-              size="xs"
-              variant="secondary"
-            >
-              {playing ? "Playing…" : simulation ? "Replay" : "Play full run"}
-            </Button>
-          </div>
-        </div>
-      )}
       <Card className="space-y-3 p-4">
         <div
           aria-atomic="true"
@@ -287,7 +191,7 @@ export function OnboardingMilestones({
           </div>
         </dl>
       </Card>
-      {query.error && !simulation && (
+      {query.error && (
         <Alert variant="destructive">
           Couldn’t refresh progress. Showing the last saved update.
         </Alert>

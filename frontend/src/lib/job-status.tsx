@@ -79,8 +79,7 @@ export function statusBadgeClassName(cfg: StatusMeta, solidProgress?: boolean): 
   return cn(
     "gap-1",
     solidProgress && "h-7 py-0",
-    cfg.tone === "info" && "border-transparent bg-foreground text-background",
-    cfg.spinning && "job-active-pulse"
+    solidProgress && cfg.tone === "info" && "border-transparent bg-foreground text-background"
   );
 }
 
@@ -152,16 +151,11 @@ export function ResolvedStatusBadge({
       {normalizedProgress != null && (
         <span
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 z-0 bg-background/10 transition-[width] duration-500 motion-reduce:transition-none"
+          className="absolute inset-y-0 left-0 z-0 bg-info/20 transition-[width] duration-500 motion-reduce:transition-none"
           style={{ width: `${normalizedProgress}%` }}
         />
       )}
-      <span
-        className={cn(
-          "inline-flex items-center gap-1",
-          normalizedProgress != null && "relative z-10"
-        )}
-      >
+      <span className="relative z-10 inline-flex items-center gap-1">
         {cfg.spinning &&
         actorKind &&
         ["codex", "claude", "cursor", "gemini", "coding_agent"].includes(actorKind) ? (

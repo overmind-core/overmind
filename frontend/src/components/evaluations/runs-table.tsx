@@ -302,7 +302,7 @@ export function RunsTable({
       header: "Name",
       meta: { orderingField: "name" },
       minSize: 160,
-      size: 240,
+      size: 220,
     },
     {
       accessorKey: "status",

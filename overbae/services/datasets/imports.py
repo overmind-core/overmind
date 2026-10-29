@@ -18,7 +18,7 @@ from django.db.models.functions import Least
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, User
-from overbae.services.activity import asset, record, update_task
+from overbae.services.activity import asset, record, source_ready, update_task
 from overbae.services.datasets import events, files, heartbeat, llm_calls, operations, paths
 from overbae.services.datasets import land as landing
 from overbae.services.datasets.lifecycle import DatasetError
@@ -719,6 +719,7 @@ def execute(task_id, inputs):
             rows = 0
             for target, result in prepared:
                 landing.publish(target, result, user=user)
+                source_ready(target, result.cell_id, user)
                 rows += result.cell_fields["rows"]
             locked.state = DatasetImport.State.COMPLETE
 

@@ -12,15 +12,9 @@ import { useOnboardingMilestones } from "@/hooks/use-activity";
 export function QuickstartEmbed({
   projectId,
   projectName,
-  devPreview = false,
-  onComplete,
-  autoPlay = false,
 }: {
   projectId?: string;
   projectName?: string;
-  devPreview?: boolean;
-  onComplete?: () => void;
-  autoPlay?: boolean;
 }) {
   const [source, setSource] = useState<"agent" | "data">("agent");
   const navigate = useNavigate();
@@ -28,16 +22,11 @@ export function QuickstartEmbed({
   const connected = milestones.data?.some(
     (step) => step.kind === "agent_connected" && step.completedAt
   );
-  if (source === "agent" && (connected || devPreview)) {
+  if (projectId && milestones.isLoading) return null;
+  if (source === "agent" && connected) {
     return (
       <section aria-label="Agent onboarding" className="w-full max-w-md">
-        <OnboardingMilestones
-          autoPlay={autoPlay}
-          devPreview={devPreview}
-          onComplete={onComplete}
-          projectId={projectId}
-          projectName={projectName}
-        />
+        <OnboardingMilestones projectId={projectId} projectName={projectName} />
       </section>
     );
   }
@@ -47,9 +36,9 @@ export function QuickstartEmbed({
       <OnboardingWindow title="Onboarding">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-sm font-medium">Overmind works best via the MCP</h2>
+            <h2 className="text-sm font-medium">Set up this project</h2>
             <p className="text-xs text-muted-foreground">
-              Connect your coding agent or upload data to get started.
+              Paste the prompt into a coding agent, or upload data.
             </p>
           </div>
           <Tabs

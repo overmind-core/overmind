@@ -3,6 +3,7 @@ import json
 from urllib.parse import urlsplit
 from uuid import UUID
 
+from django.db import transaction
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
@@ -15,20 +16,25 @@ from overbae.models import (
     DatasetPreparation,
     FinetuningJob,
 )
+from overbae.services.datasets import events
 
-AGENTS = {
-    "codex": ("codex", "Codex"),
-    "openai-codex": ("codex", "Codex"),
-    "codex-mcp-client": ("codex", "Codex"),
-    "claude-code": ("claude", "Claude Code"),
-    "claude code": ("claude", "Claude Code"),
-    "cursor": ("cursor", "Cursor"),
-    "gemini-cli": ("gemini", "Gemini CLI"),
-}
+# Clients name themselves differently in MCP initialize and OAuth registration
+# ("claude-code" / "Claude Code (overmind)", "codex-mcp-client" / "Codex").
+AGENTS = (
+    ("claude", "claude", "Claude Code"),
+    ("codex", "codex", "Codex"),
+    ("cursor", "cursor", "Cursor"),
+    ("gemini", "gemini", "Gemini CLI"),
+    ("opencode", "coding_agent", "OpenCode"),
+)
 
 
 def actor(client_name):
-    return AGENTS.get((client_name or "").lower(), ("coding_agent", "Coding agent"))
+    name = (client_name or "").lower()
+    return next(
+        ((kind, label) for token, kind, label in AGENTS if token in name),
+        ("coding_agent", "Coding agent"),
+    )
 
 
 def credential_identity(context):
@@ -70,6 +76,15 @@ def connected(context):
         actor_kind=actor_kind,
         actor_name=actor_name,
     )
+
+
+def channel(project_id=None, user_id=None):
+    return f"activity:project:{project_id}" if project_id else f"activity:user:{user_id}"
+
+
+def changed(project_id=None, user_id=None):
+    name = channel(project_id, user_id)
+    transaction.on_commit(lambda: events.signal(name))
 
 
 def asset(kind, identity, label):
@@ -189,10 +204,15 @@ def record(
         Activity.objects.filter(key=f"preparation:{preparation.pk}").update(
             updated_at=timezone.now()
         )
-    if event.actor_kind == "overmind" and actor_kind != "overmind":
-        Activity.objects.filter(pk=event.pk, actor_kind="overmind").update(
+    relabelled = (
+        event.actor_kind == "overmind"
+        and actor_kind != "overmind"
+        and Activity.objects.filter(pk=event.pk, actor_kind="overmind").update(
             actor_kind=actor_kind, actor_name=actor_name
         )
+    )
+    if created or relabelled:
+        changed(project_id, user_id)
     return event
 
 
@@ -220,6 +240,8 @@ def mark_seen(query, user, ids, through):
             activity=event, user=user, defaults={"seen_at": through}
         )
         updated += 1
+    if updated:
+        changed(user_id=user.pk)
     return updated
 
 
@@ -238,13 +260,16 @@ def update_task(project_id, kind, identity, status):
     }.get(status, status)
     if normalized not in {"accepted", "running", "completed", "failed", "cancelled"}:
         return
-    changed = Activity.objects.filter(
-        project_id=project_id, task_kind=kind, task_id=str(identity)
-    ).exclude(status=normalized)
-    preparation_ids = list(
-        changed.exclude(preparation=None).values_list("preparation_id", flat=True)
+    # A dataset reuses its id for every import, so only the newest request moves.
+    latest = (
+        Activity.objects.filter(project_id=project_id, task_kind=kind, task_id=str(identity))
+        .order_by("-created_at")
+        .values("pk")[:1]
     )
-    changed.update(status=normalized, updated_at=timezone.now())
+    rows = Activity.objects.filter(pk__in=latest).exclude(status=normalized)
+    preparation_ids = list(rows.exclude(preparation=None).values_list("preparation_id", flat=True))
+    if rows.update(status=normalized, updated_at=timezone.now()):
+        changed(project_id)
     if preparation_ids:
         Activity.objects.filter(
             key__in=[f"preparation:{identity}" for identity in preparation_ids]
@@ -303,7 +328,8 @@ def mcp_succeeded(name, definition, output, context):
             )
         return
     job = output.get("training_run") or output.get("finetune") or output.get("job")
-    if isinstance(job, dict) and job.get("id") and job.get("kind"):
+    # Connector syncs keep polling after the request; no status ever closes the job.
+    if isinstance(job, dict) and job.get("id") and job.get("kind") not in {None, "connector_sync"}:
         assets = output_assets(output)
         training = (
             output.get("training_run") or output.get("finetune") or output.get("training_job")
@@ -412,6 +438,7 @@ def report_onboarding_progress(context, run_id, completed_steps):
 
 
 def milestones(query, path):
+    query = query.filter(project__isnull=False)
     steps = (
         AGENT_ONBOARDING_STEPS
         if path == "agent"
@@ -446,6 +473,11 @@ def milestones(query, path):
                 ).first()
                 or event
             )
+            # Agents sign in per account; their first action in the project connects it.
+            if kind == "agent_connected" and not event:
+                event = (
+                    query.exclude(actor_kind__in=["overmind", "cli"]).order_by("created_at").first()
+                )
         result.append(
             {
                 "kind": kind,

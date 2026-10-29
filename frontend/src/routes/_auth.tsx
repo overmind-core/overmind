@@ -61,6 +61,7 @@ const DYNAMIC_PARENTS = new Set([
   "observability",
   "datasets",
   "optimiser",
+  "inference",
 ]);
 
 const HIDDEN_BREADCRUMB_PATHS = new Set(["/evaluations/runs"]);
@@ -119,6 +120,13 @@ function useCachedName(
     select: (experiment) => `${experiment.capabilityName || "Run"} · ${experiment.id.slice(0, 8)}`,
   });
 
+  const deployedModelNameQuery = useQuery({
+    enabled: kind === "inference" && !!slug,
+    queryFn: () => apiClient.deployedModels.deployedModelsRetrieve({ id: slug ?? "" }),
+    queryKey: ["deployed-model", slug],
+    select: (model) => model.modelId,
+  });
+
   const evaluationNameQuery = useQuery({
     enabled: kind === "evaluations" && evaluationFormat !== "decision" && !!slug,
     queryFn: () => apiClient.evalRuns.evalRunsRetrieve({ id: slug ?? "" }),
@@ -144,6 +152,7 @@ function useCachedName(
   if (kind === "projects") return projectNameQuery.data;
   if (kind === "datasets") return datasetNameQuery.data;
   if (kind === "optimiser") return experimentNameQuery.data;
+  if (kind === "inference") return deployedModelNameQuery.data;
   return undefined;
 }
 

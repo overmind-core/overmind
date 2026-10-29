@@ -935,9 +935,8 @@ indicator and chart navigation.
 
 ### Loading and live updates
 
-Active and queued job chips use a white surface with dark text. Active chips pulse
-subtly, respecting reduced motion. Agent-attributed work uses the recorded coding
-agent logo instead of a spinner; uncredited work retains its normal status icon.
+Agent-attributed work uses the recorded coding agent logo instead of a spinner;
+uncredited work retains its normal status icon.
 
 Initial page loads use the shared `LoadingState` spinner inside the page shell;
 keep the page header and navigation visible. Do not use a generic skeleton page.
@@ -961,8 +960,9 @@ notice.
 Initial onboarding is embedded in the landing page, using a white retro frame,
 striped title bar and Figma pixel eye without window controls. It introduces MCP
 and keeps the Agent/Data toggle with the setup prompt and upload form. The empty
-dataset inventory reuses the frame for data onboarding. Connected agents show
-setup progress instead. Setup and connection evidence use the shared MCP workflow.
+dataset inventory reuses the frame for data onboarding. A project without
+capabilities shows setup progress once its agent reports; a project with
+capabilities keeps its grid and shows a collapsible progress strip above it.
 
 ### Motion (system-wide)
 

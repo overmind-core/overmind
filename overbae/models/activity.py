@@ -25,7 +25,10 @@ class Activity(models.Model):
 
     class Meta:
         ordering = ["-updated_at", "-id"]
-        indexes = [models.Index(fields=["project", "-updated_at"])]
+        indexes = [
+            models.Index(fields=["project", "-updated_at"]),
+            models.Index(fields=["project", "task_kind", "task_id"]),
+        ]
 
 
 class ActivityRead(models.Model):

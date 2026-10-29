@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import desktopMonitorIcon from "@/assets/desktop-monitor.svg";
 import apiClient from "@/client";
 import { CapabilityBrowser } from "@/components/capability-grid";
+import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { CreateProjectDialog } from "@/components/create-project";
 import {
   NoProjectsEmptyState,
@@ -15,10 +16,10 @@ import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { RepositorySnapshot } from "@/components/repository-snapshot";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { LoadingState } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useOnboardingMilestones } from "@/hooks/use-activity";
 import { setStoredProjectId } from "@/hooks/use-project-search-sync";
@@ -32,33 +33,11 @@ export const Route = createFileRoute("/_auth/")({
   component: AgentPage,
 });
 
-function AgentHeader({
-  graph,
-  previewNewUser,
-  onPreviewNewUserChange,
-}: {
-  graph?: AgentGraph;
-  previewNewUser: boolean;
-  onPreviewNewUserChange: (checked: boolean) => void;
-}) {
+function AgentHeader({ graph }: { graph?: AgentGraph }) {
   return (
     <header className="space-y-3">
       <PageHeader
-        actions={
-          <>
-            {graph && <RepositorySnapshot graph={graph} />}
-            {import.meta.env.DEV && (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Switch
-                  checked={previewNewUser}
-                  onCheckedChange={onPreviewNewUserChange}
-                  size="sm"
-                />
-                Dev: new user
-              </label>
-            )}
-          </>
-        }
+        actions={graph && <RepositorySnapshot graph={graph} />}
         className="flex-col sm:flex-row sm:flex-wrap [&>div:last-child]:max-w-full [&>div:last-child]:min-w-0"
         description="Capabilities, prompts, tools and evals."
         icon={
@@ -75,102 +54,98 @@ function AgentHeader({
   );
 }
 
+function OnboardingStrip({ projectId }: { projectId: string }) {
+  const storageKey = `onboarding-dismissed:${projectId}`;
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(storageKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const onboarding = useOnboardingMilestones(projectId, "agent");
+  const steps = onboarding.data ?? [];
+  const completed = steps.filter((step) => step.completedAt).length;
+  const current = steps.find((step) => !step.completedAt);
+  const reporter = current?.actorName ? current : steps.find((step) => step.actorName);
+  if (dismissed || !completed || !current) return null;
+  return (
+    <section
+      aria-label="Onboarding status"
+      className="flex min-h-10 items-center gap-3 border border-border bg-card py-1 pr-1 pl-3 text-xs"
+    >
+      {reporter?.actorKind && reporter.actorName ? (
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-muted-foreground">
+          <CodingAgentIcon kind={reporter.actorKind} />
+          <span className="hidden sm:inline">{reporter.actorName}</span>
+        </span>
+      ) : null}
+      <span className="min-w-0 truncate">Onboarding · {current.label}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-3">
+        <span
+          aria-label="Onboarding progress"
+          aria-valuemax={steps.length}
+          aria-valuemin={0}
+          aria-valuenow={completed}
+          aria-valuetext={`${completed} of ${steps.length} stages complete`}
+          className="hidden w-40 gap-0.5 border border-border bg-background p-0.5 sm:flex"
+          role="progressbar"
+        >
+          {steps.map((step, index) => (
+            <span
+              aria-hidden="true"
+              className={cn("h-2 flex-1", index < completed ? "bg-primary" : "bg-muted")}
+              key={step.kind}
+            />
+          ))}
+        </span>
+        <span className="text-muted-foreground tabular-nums">
+          {completed} of {steps.length}
+        </span>
+        <Button
+          aria-label="Dismiss onboarding progress"
+          onClick={() => {
+            try {
+              localStorage.setItem(storageKey, "1");
+            } catch {}
+            setDismissed(true);
+          }}
+          size="icon-sm"
+          variant="ghost"
+        >
+          <Icon.close />
+        </Button>
+      </span>
+    </section>
+  );
+}
+
 function CapabilitiesSection({
   graph,
   isLoading,
   error,
   projectId,
   projectName,
-  devPreview = false,
 }: {
   graph?: AgentGraph;
   isLoading: boolean;
   error: Error | null;
   projectId: string;
   projectName?: string;
-  devPreview?: boolean;
 }) {
   const capabilities: CapabilityList[] = graph?.capabilities ?? [];
-  const onboarding = useOnboardingMilestones(projectId, "agent");
-  const onboardingActive =
-    !!onboarding.data?.[0]?.completedAt && !onboarding.data?.every((step) => step.completedAt);
-  const [started, setStarted] = useState(false);
-  const [finished, setFinished] = useState(false);
-  const [exiting, setExiting] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-  const [replay, setReplay] = useState(0);
-  const queryClient = useQueryClient();
-  const onComplete = useCallback(() => setFinished(true), []);
-  useEffect(() => {
-    if (onboardingActive) setStarted(true);
-  }, [onboardingActive]);
-  useEffect(() => {
-    if (finished && !devPreview)
-      void queryClient.invalidateQueries({ queryKey: ["agent-graph", projectId] });
-  }, [finished, devPreview, projectId, queryClient]);
-  useEffect(() => {
-    if (!finished || !capabilities.length) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const pause = window.setTimeout(() => setExiting(true), 1100);
-    const reveal = window.setTimeout(() => setRevealed(true), reduced ? 1100 : 1340);
-    return () => {
-      window.clearTimeout(pause);
-      window.clearTimeout(reveal);
-    };
-  }, [finished, capabilities.length]);
-
-  const showOnboarding =
-    !revealed && (devPreview || onboardingActive || started || finished || !capabilities.length);
-  if (isLoading && !graph && !devPreview && !started)
-    return <LoadingState fullPage label="Loading agent" />;
-  if (error && !graph && !devPreview && !started)
+  if (isLoading) return <LoadingState fullPage label="Loading agent" />;
+  if (error)
     return <Alert variant="destructive">Failed to load capabilities: {error.message}</Alert>;
-  if (showOnboarding)
+  if (!capabilities.length)
     return (
-      <div
-        className={cn(
-          "grid min-w-0 flex-1 place-items-center transition-opacity duration-200 motion-reduce:transition-none",
-          exiting && "opacity-0"
-        )}
-      >
-        <QuickstartEmbed
-          autoPlay={replay > 0}
-          devPreview={devPreview}
-          key={replay}
-          onComplete={onComplete}
-          projectId={projectId}
-          projectName={projectName}
-        />
-        {finished && error && (
-          <Alert variant="destructive">Couldn’t load your capabilities. Retrying…</Alert>
-        )}
+      <div className="grid min-w-0 flex-1 place-items-center">
+        <QuickstartEmbed projectId={projectId} projectName={projectName} />
       </div>
     );
   return (
-    <div
-      className={cn(
-        "min-w-0 space-y-4",
-        revealed &&
-          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300"
-      )}
-    >
-      {devPreview && (
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>Preview complete · showing this project’s capabilities</span>
-          <Button
-            onClick={() => {
-              setFinished(false);
-              setExiting(false);
-              setRevealed(false);
-              setReplay((value) => value + 1);
-            }}
-            size="xs"
-            variant="secondary"
-          >
-            Replay onboarding
-          </Button>
-        </div>
-      )}
+    <div className="min-w-0 space-y-4">
+      <OnboardingStrip projectId={projectId} />
       <CapabilityBrowser capabilities={capabilities} projectId={projectId} />
     </div>
   );
@@ -179,7 +154,6 @@ function CapabilitiesSection({
 function AgentPage() {
   const navigate = Route.useNavigate();
   const search = Route.useSearch();
-  const [previewNewUser, setPreviewNewUser] = useState(false);
   const graphQuery = useQuery({
     enabled: !!search.projectId,
     queryFn: () => apiClient.agent.agentRetrieve({ project: search.projectId! }),
@@ -235,15 +209,9 @@ function AgentPage() {
   const createProjectDialog = (
     <CreateProjectDialog onOpenChange={setCreateOpen} open={createOpen} />
   );
-  const header = (
-    <AgentHeader
-      graph={previewNewUser ? undefined : graphQuery.data}
-      onPreviewNewUserChange={setPreviewNewUser}
-      previewNewUser={previewNewUser}
-    />
-  );
+  const header = <AgentHeader graph={graphQuery.data} />;
 
-  if (projectsLoading && !previewNewUser) {
+  if (projectsLoading) {
     return (
       <PageShell header={header} variant="scroll">
         <LoadingState fullPage label="Loading projects" />
@@ -251,7 +219,7 @@ function AgentPage() {
     );
   }
 
-  if (projectsError && !projectsData && !previewNewUser) {
+  if (projectsError && !projectsData) {
     return (
       <PageShell header={header} variant="scroll">
         <Alert variant="destructive">
@@ -261,28 +229,16 @@ function AgentPage() {
     );
   }
 
-  if (previewNewUser || projects.length === 0) {
+  if (projects.length === 0) {
     return (
       <PageShell
         className="flex min-h-full flex-col gap-6 space-y-0"
         header={header}
         variant="scroll"
       >
-        {previewNewUser && search.projectId ? (
-          <CapabilitiesSection
-            devPreview
-            error={graphQuery.error}
-            graph={graphQuery.data}
-            isLoading={graphQuery.isLoading}
-            key={`preview:${search.projectId}`}
-            projectId={search.projectId}
-            projectName={projects.find((project) => project.id === search.projectId)?.name}
-          />
-        ) : (
-          <div className="grid min-w-0 flex-1 place-items-center">
-            <NoProjectsEmptyState />
-          </div>
-        )}
+        <div className="grid min-w-0 flex-1 place-items-center">
+          <NoProjectsEmptyState />
+        </div>
         {createProjectDialog}
       </PageShell>
     );

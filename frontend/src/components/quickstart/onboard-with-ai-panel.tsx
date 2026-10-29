@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { config } from "@/config";
 import { writeClipboardText } from "@/lib/clipboard";
-import { ONBOARDING_GUIDE_URL, onboardingPrompt } from "@/lib/mcp-setup";
+import { onboardingPrompt } from "@/lib/mcp-setup";
 import { cn } from "@/lib/utils";
 
 export function OnboardWithAiPanel({
@@ -32,8 +32,7 @@ export function OnboardWithAiPanel({
     datasetId && projectId ? { datasetId, projectId } : undefined
   );
 
-  const guide =
-    datasetId && projectId ? `${window.location.origin}/setup.md` : ONBOARDING_GUIDE_URL;
+  const guide = `${window.location.origin}/setup.md`;
 
   const copyPrompt = () =>
     writeClipboardText(prompt).then(
@@ -59,12 +58,9 @@ export function OnboardWithAiPanel({
       <p
         aria-label={compact ? "Setup prompt" : undefined}
         className={cn(
-          "rounded-sm border border-border bg-wash-subtle px-2 py-1.5 text-sm text-foreground",
-          compact
-            ? "overflow-x-auto whitespace-nowrap focus-visible:outline focus-visible:outline-ring"
-            : "break-all whitespace-break-spaces rounded-md px-3 py-2"
+          "rounded-sm border border-border bg-wash-subtle px-3 py-2 text-sm text-foreground [overflow-wrap:anywhere]",
+          !compact && "whitespace-break-spaces rounded-md"
         )}
-        tabIndex={compact ? 0 : undefined}
       >
         {compact ? (
           <>

@@ -177,7 +177,11 @@ export function EvalMatrixTable({
           graph: buildTrajectoryGraph(detail.flow, detail.name, [], detail.entrypointFn),
         };
       },
-      queryKey: ["evaluation-trajectory", id, capability?.id === id ? capability : undefined],
+      queryKey: [
+        "evaluation-trajectory",
+        id,
+        capability?.id === id ? capability.updatedAt.getTime() : undefined,
+      ],
       staleTime: 15_000,
     })),
   });
@@ -268,7 +272,7 @@ export function EvalMatrixTable({
           filters={
             <>
               <Select onValueChange={setPart} value={part}>
-                <SelectTrigger aria-label="Evaluation applies to" className="w-48" size="default">
+                <SelectTrigger aria-label="Evaluation applies to" className="w-56" size="default">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

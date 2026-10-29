@@ -38,7 +38,7 @@ export function DedicatedStartupProgress({ row }: { row: DedicatedDeployment }) 
     return () => observer.disconnect();
   }, []);
   const startup = row.startup;
-  const label = startup?.label ?? "Starting worker";
+  const label = startup?.label ?? "Starting";
   const reached = Math.max(
     0,
     ...[row.status, startup?.stage, ...(startup?.logs.map((entry) => entry.stage) ?? [])].map(
