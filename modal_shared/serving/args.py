@@ -130,6 +130,8 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         ctx.gpu_memory_utilization,
         "--max-num-seqs",
         str(ctx.max_num_seqs),
+        "--kv-cache-dtype",
+        "fp8",
         "--enable-force-include-usage",
         "--enable-auto-tool-choice",
         "--tool-call-parser",
@@ -186,7 +188,7 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         "--model-loader-extra-config",
         json.dumps({"distributed": True}, separators=(",", ":")),
         "--cudagraph-capture-sizes",
-        *(str(s) for s in CUDAGRAPH_CAPTURE_SIZES),
+        *([str(s) for s in CUDAGRAPH_CAPTURE_SIZES if s <= ctx.max_num_seqs] or ["1"]),
     ]
 
     chat_tmpl = _serve_chat_template_path(ctx.chat_template_dir or ctx.model_path)

@@ -349,12 +349,20 @@ class _BaseVLLMWorker:
             build_vllm_args,
             multimodal_text_only_args,
         )
+        from modal_shared.serving.capacity import GPU_VRAM_GB, sequence_cap_for_checkpoint
 
         spec = resolve(base_model or self.model_name)
+        vram_gb = GPU_VRAM_GB.get(getattr(self, "gpu_type", ""), 0)
+        cap = sequence_cap_for_checkpoint(
+            Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
+        )
+        # 0 means one full sequence does not fit; still admit one so the boot error is vLLM's.
+        max_num_seqs = MAX_CONCURRENT_INPUTS if cap is None else max(1, cap)
         print(
             f"[vLLM] Serving {full_path} "
             f"(quantization={quantization!r} base_model={base_model!r} "
-            f"tool_parser={spec.tool_call_parser} family={spec.key})"
+            f"tool_parser={spec.tool_call_parser} family={spec.key} "
+            f"max_num_seqs={max_num_seqs} vram_gb={vram_gb})"
         )
         cmd = build_vllm_args(
             VllmServeContext(
@@ -362,7 +370,7 @@ class _BaseVLLMWorker:
                 model_name=self.model_name,
                 max_model_len=self.max_model_len,
                 port=VLLM_PORT,
-                max_num_seqs=MAX_CONCURRENT_INPUTS,
+                max_num_seqs=max_num_seqs,
                 quantization=quantization,
                 base_model=base_model,
                 enable_lora=self.enable_lora,
@@ -899,6 +907,7 @@ def _register_worker(
         "max_model_len": modal.parameter(default=default_len),
         "enable_lora": modal.parameter(default=lora),
         "max_lora_rank": modal.parameter(default=16),
+        "gpu_type": gpu_type,
     }
     if lora:
         parameters["__annotations__"]["base_identity"] = str

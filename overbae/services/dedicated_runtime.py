@@ -10,8 +10,12 @@ from decimal import Decimal
 import modal
 from asgiref.sync import async_to_sync
 
+from modal_shared.serving.capacity import sequence_cap
 from modal_shared.shared import rel_weights_path
 from overbae.core.errors import InputValidationError
+from overbae.modal.gpu_selector import gpu_vram_gb
+from overbae.modal.model_registry import get_model_config_any_backend
+from overbae.services.dedicated_offer import serving_shape
 
 APP_NAME = "overmind-dedicated"
 WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
@@ -88,12 +92,36 @@ def _chat_cls(deployed, gpu_type: str):
     )
 
 
-def _variant(cls, *, maximum: int, idle_seconds: int):
-    if not hasattr(cls, "with_options"):
-        return cls
-    return cls.with_options(
-        max_containers=max(int(maximum), 1), scaledown_window=_window(idle_seconds)
+def chat_sequence_cap(deployment) -> int | None:
+    """Full-context sequences on this deployment's GPU. None when the shape is unknown."""
+    deployed = deployment.deployed_model
+    cfg = get_model_config_any_backend(deployed.base_model_id) or {}
+    params = cfg.get("total_params_b")
+    if not params:
+        return None
+    fp8 = serving_shape(deployed) == "merged_fp8" and bool(cfg.get("fp8_supported"))
+    return sequence_cap(
+        vram_gb=gpu_vram_gb(deployment.gpu_type),
+        weight_gb=float(params) * (1 if fp8 else 2),
+        num_attn_layers=cfg.get("num_attn_layers"),
+        num_kv_heads=cfg.get("num_kv_heads"),
+        head_dim=cfg.get("head_dim"),
+        max_model_len=deployed.max_model_len,
     )
+
+
+def _variant(cls, deployment, *, maximum: int, idle_seconds: int):
+    if hasattr(cls, "with_options"):
+        cls = cls.with_options(
+            max_containers=max(int(maximum), 1), scaledown_window=_window(idle_seconds)
+        )
+    cap = chat_sequence_cap(deployment)
+    # The class default is 32. A lower fit has to be its own input target or Modal
+    # keeps filling a container that can only run a few sequences.
+    if cap is not None and cap < 32 and hasattr(cls, "with_concurrency"):
+        admitted = max(cap, 1)
+        cls = cls.with_concurrency(max_inputs=admitted, target_inputs=max(1, int(admitted * 0.7)))
+    return cls
 
 
 def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
@@ -128,7 +156,7 @@ def release(deployment, gpu_type: str) -> None:
                 continue
             seen.add(key)
             _scale(
-                _variant(cls, maximum=maximum, idle_seconds=idle_seconds),
+                _variant(cls, deployment, maximum=maximum, idle_seconds=idle_seconds),
                 deployment,
                 minimum=0,
                 maximum=1,
@@ -152,7 +180,10 @@ def retire_previous_options(deployment) -> None:
     cls = _chat_cls(deployed, deployment.gpu_type)
     _scale(
         _variant(
-            cls, maximum=deployment.max_replicas, idle_seconds=deployment.idle_shutdown_seconds
+            cls,
+            deployment,
+            maximum=deployment.max_replicas,
+            idle_seconds=deployment.idle_shutdown_seconds,
         ),
         deployment,
         minimum=0,
@@ -184,7 +215,7 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
             )
         cls = _chat_cls(deployed, deployment.gpu_type)
         return _scale(
-            _variant(cls, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
+            _variant(cls, deployment, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
             deployment,
             minimum=minimum,
             maximum=maximum,

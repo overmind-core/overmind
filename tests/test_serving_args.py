@@ -30,6 +30,22 @@ def _args(path: Path, **kw) -> list[str]:
     return build_vllm_args(ctx)
 
 
+def test_kv_cache_is_fp8(tmp_path: Path) -> None:
+    cmd = _args(_checkpoint(tmp_path))
+    assert cmd[cmd.index("--kv-cache-dtype") + 1] == "fp8"
+
+
+def test_capture_sizes_stay_within_the_sequence_cap(tmp_path: Path) -> None:
+    cmd = _args(_checkpoint(tmp_path), max_num_seqs=4)
+    start = cmd.index("--cudagraph-capture-sizes") + 1
+    emitted = []
+    for token in cmd[start:]:
+        if token.startswith("--"):
+            break
+        emitted.append(token)
+    assert emitted == ["1", "2", "4"]
+
+
 def test_graphs_captured_and_never_eager(tmp_path: Path) -> None:
     cmd = _args(_checkpoint(tmp_path))
     assert "--enforce-eager" not in cmd
@@ -66,6 +82,28 @@ def test_base_gets_a_distinct_served_name(tmp_path: Path) -> None:
     """The adapter answers to the deployment name, so the base must not also claim it."""
     cmd = _args(_checkpoint(tmp_path), lora_adapters=(("deploy-1", "/weights/deploy-1"),))
     assert cmd[cmd.index("--served-model-name") + 1] == "deploy-1--base"
+
+
+def test_checkpoint_cap_uses_full_attention_layers(tmp_path: Path) -> None:
+    from modal_shared.serving.capacity import arch_from_config, sequence_cap_for_checkpoint
+
+    arch = arch_from_config(
+        {
+            "num_hidden_layers": 24,
+            "num_key_value_heads": 2,
+            "head_dim": 256,
+            "layer_types": ["linear_attention"] * 18 + ["full_attention"] * 6,
+        }
+    )
+    assert arch == (6, 2, 256)
+
+    checkpoint = tmp_path / "weights"
+    checkpoint.mkdir()
+    (checkpoint / "config.json").write_text(
+        '{"num_hidden_layers": 32, "num_key_value_heads": 8, "head_dim": 128}'
+    )
+    (checkpoint / "model.safetensors").write_bytes(b"x" * 1024)
+    assert sequence_cap_for_checkpoint(checkpoint, vram_gb=24, max_model_len=512) == 32
 
 
 def test_base_keeps_its_name_without_adapters(tmp_path: Path) -> None:
