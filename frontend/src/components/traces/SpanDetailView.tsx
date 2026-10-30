@@ -474,7 +474,7 @@ function MessageRow({ msg }: { msg: TranscriptMessage }) {
   );
 }
 
-type JsonView = "formatted" | "json";
+type JsonView = "formatted" | "tree";
 
 function JsonValue({
   value,
@@ -666,7 +666,7 @@ function ViewToggle({ onChange, value }: { onChange: (next: JsonView) => void; v
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="formatted">Formatted</SelectItem>
-        <SelectItem value="json">JSON</SelectItem>
+        <SelectItem value="tree">Tree</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -706,7 +706,7 @@ function JsonBlock({
     messageList || messageObject || canMarkdown || !isStringValue || stringNeedsToggle
   );
   const [view, setView] = useState<JsonView>(
-    messageList || messageObject || isStringValue ? "formatted" : "json"
+    messageList || messageObject || isStringValue ? "formatted" : "tree"
   );
 
   if (value === null || value === undefined) {
@@ -722,7 +722,7 @@ function JsonBlock({
   const jsonPre = "whitespace-pre-wrap break-words font-mono text-xs leading-5";
 
   let content: React.ReactNode;
-  if (view === "json") {
+  if (view === "tree") {
     content = (
       <div className="font-mono text-xs leading-5">
         <JsonValue value={parsedValue} />
@@ -784,7 +784,7 @@ function JsonBlock({
           <Card className="min-w-0 bg-wash-subtle px-3 py-2">{body}</Card>
         </Section>
       )}
-      text={isStringValue && view !== "json" ? parsedValue : ""}
+      text={isStringValue && view !== "tree" ? parsedValue : ""}
     >
       {content}
     </ExpandableContent>
