@@ -224,16 +224,20 @@ function CreateRunForm({
               <SearchableSelect
                 ariaLabel="Eval dataset"
                 emptyMessage={
-                  <>
-                    No evaluation datasets in this project.{" "}
-                    <Link
-                      className="text-foreground underline underline-offset-2"
-                      search={{ projectId }}
-                      to="/datasets"
-                    >
-                      Open datasets
-                    </Link>
-                  </>
+                  datasets.error ? (
+                    "Couldn't load evaluation datasets."
+                  ) : (
+                    <>
+                      No evaluation datasets in this project.{" "}
+                      <Link
+                        className="text-foreground underline underline-offset-2"
+                        search={{ projectId }}
+                        to="/datasets"
+                      >
+                        Open datasets
+                      </Link>
+                    </>
+                  )
                 }
                 isLoading={datasets.isPending}
                 onChange={(value) => {
