@@ -1277,12 +1277,12 @@ class TestGPUSelectorLogic:
         assert gpu == "L4"
         assert conc >= 1
 
-    def test_8b_fp8_at_131k_context_needs_l40s(self):
-        """L4 has 24 GB; 8 GB FP8 weights + 8×32×128×2 KV at 131 k tokens ≈ 17 GB — doesn't fit."""
+    def test_8b_fp8_at_131k_context_fits_l4(self):
+        """FP8 KV at 131k is 8 GB. L4's 9.6 GB budget holds one sequence."""
         from overbae.modal.gpu_selector import select_gpu
 
         gpu, conc = select_gpu(self._cfg(8.0, True, 32, 8, 128), 131072)
-        assert gpu == "L40S"
+        assert gpu == "L4"
         assert conc >= 1
 
     def test_70b_fp8_at_131k_picks_h200_not_b200(self):
@@ -1292,29 +1292,29 @@ class TestGPUSelectorLogic:
         gpu, conc = select_gpu(self._cfg(70.0, True, 80, 8, 128, static_gpu="B200"), 131072)
         assert gpu == "H200"
 
-    def test_70b_bf16_at_131k_context_needs_b300(self):
-        """BF16 70B weights = 140 GB; KV at 131k ≈ 40 GB → B200 budget only 31 GB, needs B300."""
+    def test_70b_bf16_at_131k_context_fits_b200(self):
+        """BF16 70B weights are 140 GB. FP8 KV at 131k is 20 GB, inside B200's 28.8 GB budget."""
         from overbae.modal.gpu_selector import select_gpu
 
         gpu, conc = select_gpu(self._cfg(70.0, False, 80, 8, 128, static_gpu="B300"), 131072)
-        assert gpu == "B300"
+        assert gpu == "B200"
+        assert conc >= 1
 
-    def test_32b_fp8_at_40k_fits_a100(self):
-        """Qwen3-32B FP8 (32 GB) + KV at 40k tokens fits on A100-80GB with concurrent=3."""
+    def test_32b_fp8_at_40k_fits_l40s(self):
+        """FP8 KV at 40k is 5 GB. L40S's 7.2 GB budget holds one sequence."""
         from overbae.modal.gpu_selector import select_gpu
 
         gpu, conc = select_gpu(self._cfg(32.0, True, 64, 8, 128, static_gpu="A100-80GB"), 40960)
-        assert gpu == "A100-80GB"
-        assert conc >= 2
+        assert gpu == "L40S"
+        assert conc >= 1
 
-    def test_32b_fp8_at_32k_does_not_squeeze_onto_l40s(self):
-        """A 32B at 32k OOMs on an L40S: measured non-KV overhead is 3.25 GiB, and
-        a concurrent=1 fit has zero slack by construction."""
+    def test_32b_fp8_at_32k_fits_l40s(self):
+        """FP8 KV at 32k is 4 GB, leaving slack inside the 4 GB non-KV reserve on an L40S."""
         from overbae.modal.gpu_selector import select_gpu
 
         gpu, conc = select_gpu(self._cfg(32.0, True, 64, 8, 128, static_gpu="A100-80GB"), 32768)
-        assert gpu == "A100-80GB"
-        assert conc >= 2
+        assert gpu == "L40S"
+        assert conc >= 1
 
     def test_hybrid_model_small_kv_due_to_few_attn_layers(self):
         """Qwen3.5-0.8B has 6 full-attention layers (not 24 total) → tiny KV cache → high concurrency."""
@@ -1322,7 +1322,7 @@ class TestGPUSelectorLogic:
 
         gpu, conc = select_gpu(self._cfg(0.8, True, 6, 2, 256), 131072)
         assert gpu == "L4"
-        # KV/tok = 2*6*2*256*2 = 12 288 B; at 131072 tokens = 1.5 GB; L4 budget ≈ 19 GB → ≥ 12 concurrent
+        # KV/tok = 2*6*2*256*1 = 6144 B; at 131072 tokens = 0.75 GB.
         assert conc >= 8
 
     def test_missing_arch_constants_falls_back_to_static_gpu(self):
@@ -1543,19 +1543,19 @@ class TestDeploymentGPUDerivation:
         gpu, _ = self._select("Qwen/Qwen2.5-7B-Instruct", 32768)
         assert gpu == "L4"
 
-    def test_llama_8b_at_131k_picks_l40s(self):
-        """8B at 131k context: KV cache pushes past L4 budget → L40S."""
+    def test_llama_8b_at_131k_picks_l4(self):
+        """8B FP8 weights plus an FP8 KV cache at 131k fit one sequence on an L4."""
         gpu, _ = self._select("meta-llama/Llama-3.1-8B-Instruct", 131072)
-        assert gpu == "L40S"
+        assert gpu == "L4"
 
     def test_llama_70b_at_131k_picks_h200(self):
         """70B FP8 at 131k context fits H200; no need for B200."""
         gpu, _ = self._select("meta-llama/Llama-3.3-70B-Instruct", 131072)
         assert gpu == "H200"
 
-    def test_qwen3_32b_at_40k_picks_a100(self):
+    def test_qwen3_32b_at_40k_picks_l40s(self):
         gpu, _ = self._select("Qwen/Qwen3-32B", 40960)
-        assert gpu == "A100-80GB"
+        assert gpu == "L40S"
 
     def test_zero_training_ctx_falls_back_to_static_max_model_len(self):
         from overbae.modal.gpu_selector import select_gpu

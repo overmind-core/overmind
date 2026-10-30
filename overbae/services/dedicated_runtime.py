@@ -10,8 +10,12 @@ from decimal import Decimal
 import modal
 from asgiref.sync import async_to_sync
 
+from modal_shared.serving.capacity import sequence_cap
 from modal_shared.shared import rel_weights_path
 from overbae.core.errors import InputValidationError
+from overbae.modal.gpu_selector import gpu_vram_gb
+from overbae.modal.model_registry import get_model_config_any_backend
+from overbae.services.dedicated_offer import serving_shape
 
 APP_NAME = "overmind-dedicated"
 WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
@@ -35,21 +39,11 @@ def _drive(result):
     return result
 
 
-def worker_class_name(deployed, gpu_type: str) -> str:
+def worker_class_name(_deployed, gpu_type: str) -> str:
+    # Not `{gpu}_vllm`: that global is the serverless class, and Modal loads a class
+    # with getattr(module, name).
     token = gpu_type.replace("-", "")
-    return f"{token}_vllm_lora" if deployed.is_lora else f"{token}_vllm"
-
-
-def _base_identity(model_path: str) -> str:
-    try:
-        volume = modal.Volume.from_name("overmind-weights", environment_name=environment())
-        raw = b"".join(volume.read_file(f"{model_path}/.base-manifest.json"))
-        identity = json.loads(raw)["identity"]
-    except Exception as exc:
-        raise InputValidationError(WORKER_UNAVAILABLE) from exc
-    if not isinstance(identity, str) or not identity:
-        raise InputValidationError(WORKER_UNAVAILABLE)
-    return identity
+    return f"{token}_vllm_dedicated"
 
 
 def parameters(deployment) -> dict:
@@ -62,19 +56,15 @@ def parameters(deployment) -> dict:
             "pool": str(deployment.id),
         }
     path = rel_weights_path(deployed.weights_path)
-    # Unique model name: a shared base name would put every LoRA of that base
-    # in one pool and one tenant's floor would warm the others.
     params = {
         "model_path": path,
-        "model_name": deployment.served_model_id
-        if not deployed.is_lora
-        else f"dedicated-base-{deployment.id}",
+        "model_name": deployment.served_model_id,
         "max_model_len": deployed.max_model_len,
-        "enable_lora": bool(deployed.is_lora),
+        "enable_lora": False,
         "max_lora_rank": deployed.lora_rank or 16,
     }
     if deployed.is_lora:
-        params["base_identity"] = _base_identity(path)
+        params["adapter_path"] = rel_weights_path(deployed.adapter_path)
     return params
 
 
@@ -88,12 +78,36 @@ def _chat_cls(deployed, gpu_type: str):
     )
 
 
-def _variant(cls, *, maximum: int, idle_seconds: int):
-    if not hasattr(cls, "with_options"):
-        return cls
-    return cls.with_options(
-        max_containers=max(int(maximum), 1), scaledown_window=_window(idle_seconds)
+def chat_sequence_cap(deployment) -> int | None:
+    """Full-context sequences on this deployment's GPU. None when the shape is unknown."""
+    deployed = deployment.deployed_model
+    cfg = get_model_config_any_backend(deployed.base_model_id) or {}
+    params = cfg.get("total_params_b")
+    if not params:
+        return None
+    fp8 = serving_shape(deployed) == "merged_fp8" and bool(cfg.get("fp8_supported"))
+    return sequence_cap(
+        vram_gb=gpu_vram_gb(deployment.gpu_type),
+        weight_gb=float(params) * (1 if fp8 else 2),
+        num_attn_layers=cfg.get("num_attn_layers"),
+        num_kv_heads=cfg.get("num_kv_heads"),
+        head_dim=cfg.get("head_dim"),
+        max_model_len=deployed.max_model_len,
     )
+
+
+def _variant(cls, deployment, *, maximum: int, idle_seconds: int):
+    if hasattr(cls, "with_options"):
+        cls = cls.with_options(
+            max_containers=max(int(maximum), 1), scaledown_window=_window(idle_seconds)
+        )
+    cap = chat_sequence_cap(deployment)
+    # The class default is 32. A lower fit has to be its own input target or Modal
+    # keeps filling a container that can only run a few sequences.
+    if cap is not None and cap < 32 and hasattr(cls, "with_concurrency"):
+        admitted = max(cap, 1)
+        cls = cls.with_concurrency(max_inputs=admitted, target_inputs=max(1, int(admitted * 0.7)))
+    return cls
 
 
 def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
@@ -128,7 +142,7 @@ def release(deployment, gpu_type: str) -> None:
                 continue
             seen.add(key)
             _scale(
-                _variant(cls, maximum=maximum, idle_seconds=idle_seconds),
+                _variant(cls, deployment, maximum=maximum, idle_seconds=idle_seconds),
                 deployment,
                 minimum=0,
                 maximum=1,
@@ -152,13 +166,50 @@ def retire_previous_options(deployment) -> None:
     cls = _chat_cls(deployed, deployment.gpu_type)
     _scale(
         _variant(
-            cls, maximum=deployment.max_replicas, idle_seconds=deployment.idle_shutdown_seconds
+            cls,
+            deployment,
+            maximum=deployment.max_replicas,
+            idle_seconds=deployment.idle_shutdown_seconds,
         ),
         deployment,
         minimum=0,
         maximum=1,
         idle_seconds=2,
     )
+
+
+def connect(deployment):
+    """The container advance() already scaled. A request must not call update_autoscaler:
+    that control-plane round trip is seconds, and the GPU is already warm."""
+    deployed = deployment.deployed_model
+    env = environment()
+    try:
+        if deployed.inference_contract == "decision":
+            runtime = deployed.serving_runtime or {}
+            app_name = runtime.get("app")
+            if not app_name:
+                raise InputValidationError(WORKER_UNAVAILABLE)
+            cls = modal.Cls.from_name(
+                app_name, "DecisionEndpoint", environment_name=runtime.get("environment") or env
+            )
+            if hasattr(cls, "with_options"):
+                cls = cls.with_options(
+                    gpu=deployment.gpu_type,
+                    max_containers=max(deployment.max_replicas, 1),
+                    scaledown_window=_window(deployment.idle_shutdown_seconds),
+                )
+            return cls(**parameters(deployment))
+        cls = _variant(
+            _chat_cls(deployed, deployment.gpu_type),
+            deployment,
+            maximum=_STABLE_MAX,
+            idle_seconds=_STABLE_WINDOW,
+        )
+        return cls(**parameters(deployment))
+    except InputValidationError:
+        raise
+    except Exception as exc:
+        raise InputValidationError(WORKER_UNAVAILABLE) from exc
 
 
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
@@ -184,7 +235,7 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
             )
         cls = _chat_cls(deployed, deployment.gpu_type)
         return _scale(
-            _variant(cls, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
+            _variant(cls, deployment, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
             deployment,
             minimum=minimum,
             maximum=maximum,
@@ -210,12 +261,6 @@ def spawn_probe(instance, deployment) -> str:
             ]
         )
     else:
-        adapter = None
-        if deployed.is_lora:
-            adapter = (
-                deployment.served_model_id,
-                rel_weights_path(deployed.adapter_path),
-            )
         call = instance.infer.spawn(
             method="POST",
             path="/v1/chat/completions",
@@ -227,7 +272,6 @@ def spawn_probe(instance, deployment) -> str:
                 }
             ).encode(),
             headers={"content-type": "application/json"},
-            adapter=adapter,
         )
     return call.object_id
 
@@ -260,7 +304,13 @@ def runner_count(instance, *, decision: bool) -> int | None:
     return int(value) if value is not None else None
 
 
-def _served_body(deployment, body: bytes) -> bytes:
+class ChatStreamError(Exception):
+    def __init__(self, status: int, body: bytes):
+        self.status = status
+        self.body = body
+
+
+def _served_body(deployment, body: bytes, *, stream: bool) -> bytes:
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
@@ -268,27 +318,69 @@ def _served_body(deployment, body: bytes) -> bytes:
     if not isinstance(payload, dict):
         return body
     payload["model"] = deployment.served_model_id
+    payload["stream"] = stream
+    if stream:
+        # Usage and per-request timing ride the last SSE chunk. The view strips both
+        # unless the caller asked to see usage.
+        payload["include_metrics"] = True
+        options = payload.get("stream_options")
+        if not isinstance(options, dict):
+            options = {}
+        options["include_usage"] = True
+        payload["stream_options"] = options
     return json.dumps(payload).encode()
 
 
+def _chat_kwargs(instance, deployment, body: bytes, *, stream: bool) -> tuple[object, dict]:
+    method = instance.infer_stream if stream else instance.infer
+    return method, {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "body": _served_body(deployment, body, stream=stream),
+        "headers": {"content-type": "application/json"},
+    }
+
+
 def chat(instance, deployment, body: bytes) -> tuple[int, bytes, str]:
-    deployed = deployment.deployed_model
-    adapter = None
-    if deployed.is_lora:
-        adapter = (deployment.served_model_id, rel_weights_path(deployed.adapter_path))
-    result = instance.infer.remote(
-        method="POST",
-        path="/v1/chat/completions",
-        body=_served_body(deployment, body),
-        headers={"content-type": "application/json"},
-        adapter=adapter,
-    )
+    method, kwargs = _chat_kwargs(instance, deployment, body, stream=False)
+    result = method.remote(**kwargs)
     status = int(result.get("status") or 502)
     payload = result.get("body") or b""
     if isinstance(payload, str):
         payload = payload.encode()
     content_type = (result.get("headers") or {}).get("content-type") or "application/json"
     return status, payload, content_type
+
+
+def iter_chat_stream(instance, deployment, body: bytes):
+    method, kwargs = _chat_kwargs(instance, deployment, body, stream=True)
+    frames = method.remote_gen(**kwargs)
+    try:
+        try:
+            first = next(frames)
+        except StopIteration as exc:
+            raise InputValidationError(WORKER_UNAVAILABLE) from exc
+        if not isinstance(first, dict):
+            raise InputValidationError(WORKER_UNAVAILABLE)
+        status = int(first.get("status") or 502)
+        if status >= 400:
+            rejected = bytearray()
+            for chunk in frames:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode()
+                rejected.extend(chunk)
+                if len(rejected) > 65536:
+                    break
+            raise ChatStreamError(status, bytes(rejected))
+        for chunk in frames:
+            if isinstance(chunk, str):
+                chunk = chunk.encode()
+            if chunk:
+                yield chunk
+    finally:
+        close = getattr(frames, "close", None)
+        if close is not None:
+            close()
 
 
 def predict(instance, decisions: list) -> dict:

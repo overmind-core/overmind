@@ -7,6 +7,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from conftest import drain_stream
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -84,7 +85,7 @@ def test_missing_rate_refuses_start_and_a_second_start_conflicts(fake_modal):
     deployed = _ready(project)
     with pytest.raises(InputValidationError, match="price is unavailable"):
         dedicated.start(deployed, user, gpu_type="L4")
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100")
     assert row.credits_per_gpu_hour > 0
     with pytest.raises(InputValidationError, match="already has a dedicated"):
@@ -96,7 +97,7 @@ def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal)
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(
         deployed,
         user,
@@ -135,7 +136,7 @@ def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     fake_modal.worker_stats = {"num_total_runners": 2, "backlog": 0, "num_running_inputs": 0}
     row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=2)
     dedicated.advance(str(row.id))
@@ -169,7 +170,7 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=1)
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
@@ -177,7 +178,9 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     drained = [
         kwargs
         for kind, name, _, kwargs in fake_modal.log
-        if kind == "autoscaler" and name.endswith("H100_vllm") and kwargs.get("min_containers") == 0
+        if kind == "autoscaler"
+        and name.endswith("H100_vllm_dedicated")
+        and kwargs.get("min_containers") == 0
     ]
     assert drained
     row.refresh_from_db()
@@ -193,7 +196,7 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
 
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
@@ -214,6 +217,73 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
     assert BillingTelemetry.objects.filter(service=BillingService.INFERENCE_FT_MODEL).count() == 0
     listed = client.get("/api/v1/models")
     assert row.public_model_id in {item["id"] for item in listed.json()["data"]}
+
+
+def test_dedicated_chat_streams_tokens_before_the_reply_finishes(fake_modal):
+    refresh_rates()
+    user = _user()
+    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
+    from overbae.models import ProjectMembership
+
+    ProjectMembership.objects.create(user=user, project=project)
+    deployed = _ready(project)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
+
+    def stream(**kwargs):
+        body = json.loads(kwargs["body"])
+        assert body["stream"] is True
+        piece = json.dumps(
+            {
+                "model": "internal",
+                "system_fingerprint": "vllm",
+                "choices": [{"delta": {"content": "hi"}, "finish_reason": None}],
+            }
+        )
+        usage = json.dumps(
+            {
+                "model": "internal",
+                "choices": [],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                "metrics": {
+                    "time_to_first_token_ms": 20,
+                    "generation_time_ms": 40,
+                    "tokens_per_second": 50,
+                },
+            }
+        )
+        raw = f"data: {piece}\n\ndata: {usage}\n\ndata: [DONE]\n\n".encode()
+        yield {"status": 200, "headers": {"content-type": "text/event-stream"}}
+        yield raw[:12]
+        yield raw[12:]
+
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer_stream", stream)
+    row = dedicated.start(deployed, user, gpu_type="H100")
+    dedicated.advance(str(row.id))
+    dedicated.advance(str(row.id))
+    row.refresh_from_db()
+    client = APIClient()
+    token = RefreshToken.for_user(user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+    response = client.post(
+        "/api/v1/chat/completions",
+        {
+            "model": row.public_model_id,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+        },
+        format="json",
+    )
+    assert response.status_code == 200
+    assert "text/event-stream" in response["Content-Type"]
+    text = drain_stream(response).decode()
+    assert '"content": "hi"' in text
+    assert f'"model": "{row.public_model_id}"' in text
+    assert "system_fingerprint" not in text
+    assert "tokens_per_second" not in text
+    assert text.strip().endswith("data: [DONE]")
+    call = InferenceCall.objects.get(requested_model=row.public_model_id)
+    assert call.tokens_per_second == 50
+    assert call.cost is None
 
 
 def test_dedicated_list_returns_the_latest_row_for_each_model():

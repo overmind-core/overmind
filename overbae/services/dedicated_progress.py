@@ -94,7 +94,7 @@ async def _observe(row, state, since):
     env = dedicated_runtime.environment()
     app = await modal.App.lookup.aio(dedicated_runtime.APP_NAME, environment_name=env)
     workers = set(state.get("workers", []))
-    marker = f"dedicated-base-{row.id}" if row.deployed_model.is_lora else row.served_model_id
+    marker = row.served_model_id
     until = timezone.now()
     discovered = 0
     async for entry in app.logs.fetch.aio(since=since, until=until, search_text=marker):
@@ -132,7 +132,7 @@ async def _observe(row, state, since):
         dedicated_runtime.worker_class_name(deployed, row.gpu_type),
         rel_weights_path(deployed.weights_path),
         deployed.max_model_len,
-        bool(deployed.is_lora),
+        False,
         deployed.lora_rank or 16,
     )
     try:

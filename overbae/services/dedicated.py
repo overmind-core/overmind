@@ -333,20 +333,23 @@ def advance(deployment_id: str) -> None:
         dedicated_progress.collect(row)
 
 
-def serve_chat(row: DedicatedDeployment, body: bytes):
+def _require_chat(row: DedicatedDeployment):
     if row.deployed_model.inference_contract == "decision":
         raise InputValidationError(
             "This model returns decision probabilities. Call POST /api/v1/systemone."
         )
     if row.status != DedicatedDeployment.Status.ONLINE:
         raise InputValidationError(NOT_ONLINE)
-    instance = dedicated_runtime.bind(
-        row,
-        minimum=row.min_replicas,
-        maximum=row.max_replicas,
-        idle_seconds=row.idle_shutdown_seconds,
-    )
-    return dedicated_runtime.chat(instance, row, body)
+
+
+def serve_chat(row: DedicatedDeployment, body: bytes):
+    _require_chat(row)
+    return dedicated_runtime.chat(dedicated_runtime.connect(row), row, body)
+
+
+def serve_chat_stream(row: DedicatedDeployment, body: bytes):
+    _require_chat(row)
+    return dedicated_runtime.iter_chat_stream(dedicated_runtime.connect(row), row, body)
 
 
 def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
@@ -354,13 +357,7 @@ def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
         raise InputValidationError("This dedicated deployment is a chat model.")
     if row.status != DedicatedDeployment.Status.ONLINE:
         raise InputValidationError(NOT_ONLINE)
-    instance = dedicated_runtime.bind(
-        row,
-        minimum=row.min_replicas,
-        maximum=row.max_replicas,
-        idle_seconds=row.idle_shutdown_seconds,
-    )
-    return dedicated_runtime.predict(instance, decisions)
+    return dedicated_runtime.predict(dedicated_runtime.connect(row), decisions)
 
 
 def complete_request(payload: dict) -> dict:

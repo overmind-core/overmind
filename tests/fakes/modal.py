@@ -133,6 +133,15 @@ class FakeFunction:
     def remote(self) -> _Method:
         return _Method(self._remote)
 
+    def remote_gen(self, *args, **kwargs):
+        handler, _ = self._handler()
+        self.cloud.log.append(("remote_gen", self.name, args, kwargs))
+        produced = handler(*args, **kwargs)
+        if isinstance(produced, dict):
+            yield produced
+        else:
+            yield from produced
+
     @property
     def spawn(self) -> _Method:
         return _Method(self._spawn)
