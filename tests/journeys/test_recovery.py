@@ -1,6 +1,5 @@
 import multiprocessing
 import os
-import time
 import uuid
 from datetime import timedelta
 
@@ -15,7 +14,7 @@ from overbae.tasks.utils.task_lock import acquire_task_lock, with_task_lock
 
 from .conftest import GOOD_REPLY
 from .otlp import SWEEP_SPANS, SWEEP_TRAJECTORIES, SWEEP_WAIT, Trace, score_history, trace_spans
-from .stack import drain
+from .stack import drain, settle
 
 pytestmark = pytest.mark.covers("recovery")
 
@@ -41,30 +40,38 @@ def test_a_task_lock_expires_on_its_timeout_and_releases_after_the_task(settings
 
 
 def _hold_and_die(name: str) -> None:
-    with acquire_task_lock(name, timeout=1, renew=True):
+    with acquire_task_lock(name, timeout=2, renew=True):
         os._exit(0)
 
 
-def test_a_renewed_lock_holds_while_its_holder_runs_and_frees_soon_after_it_dies(settings):
+def _server_ms(client) -> int:
+    seconds, microseconds = client.time()
+    return seconds * 1000 + microseconds // 1000
+
+
+def test_a_renewed_lock_holds_while_its_holder_runs_and_frees_soon_after_it_dies(settings, worker):
     settings.CELERY_BROKER_URL = os.environ["TEST_REDIS_URL"]
     name = "journey_renewed_lock"
-    redis.from_url(os.environ["TEST_REDIS_URL"]).delete(f"celery:lock:{name}")
+    client = redis.from_url(os.environ["TEST_REDIS_URL"])
+    key = f"celery:lock:{name}"
+    client.delete(key)
 
-    with acquire_task_lock(name, timeout=1, renew=True) as held:
+    with acquire_task_lock(name, timeout=2, renew=True) as held:
         assert held
-        time.sleep(2.5)
-        with acquire_task_lock(name, timeout=1) as rival:
+        first_expiry = client.pexpiretime(key)
+        settle(worker, lambda: _server_ms(client) > first_expiry, timeout=10)
+        with acquire_task_lock(name, timeout=2) as rival:
             assert not rival
-    with acquire_task_lock(name, timeout=1) as after_release:
+    with acquire_task_lock(name, timeout=2) as after_release:
         assert after_release
 
     killed = multiprocessing.get_context("fork").Process(target=_hold_and_die, args=(name,))
     killed.start()
     killed.join(10)
-    with acquire_task_lock(name, timeout=1) as while_dead_lease_runs:
+    with acquire_task_lock(name, timeout=2) as while_dead_lease_runs:
         assert not while_dead_lease_runs
-    time.sleep(1.5)
-    with acquire_task_lock(name, timeout=1) as after_lease:
+    settle(worker, lambda: not client.exists(key), timeout=5)
+    with acquire_task_lock(name, timeout=2) as after_lease:
         assert after_lease
 
 
