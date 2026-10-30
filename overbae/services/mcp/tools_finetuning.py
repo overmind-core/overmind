@@ -994,7 +994,7 @@ def _model_swap_prompt_sync(
     return GetModelSwapPromptOutput(
         summary=f"Swap prompt ready: {result['old_model']} to {result['new_model']}.",
         finetune=str(job.id),
-        pin=payload.pin,
+        pin=result["pin"],
         prompt=result["prompt"],
         capability_id=result["capability_id"],
         capability_name=result["capability_name"],
