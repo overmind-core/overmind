@@ -1047,7 +1047,7 @@ class ModelSwapPromptRequestSerializer(serializers.Serializer):
         default=False,
         help_text=(
             "Write this one deployment's concrete model id into the code instead of the "
-            "capability's permanent alias. A capability is not required when pinning."
+            "capability's permanent alias. A run without a capability is always pinned."
         ),
     )
 

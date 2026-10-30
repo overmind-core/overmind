@@ -29,16 +29,14 @@ def test_standalone_trained_model_copies_its_setup_prompt(console, rest_for, acc
     console._browser.call(console._page.evaluate, "navigator.clipboard.writeText('')")
     console.goto(f"/training?projectId={project}&groupId={group}&jobId={job.id}")
     console.press("Copy a prompt switching to ft-standalone-browser")
-    console.wait_until("""() => document.body.innerText.includes('Prompt copied') ||
-        document.body.innerText.includes('This training run is not linked')""")
+    console.sees("Prompt copied")
     console.save_evidence("standalone-model-setup-prompt")
     prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
     assert model.model_id in prompt
-    assert "pin" in prompt.lower()
     result = mcp_for(account_key).call(
-        "get_model_swap_prompt",
-        {"project_id": project, "finetune": str(job.id), "pin": True},
+        "get_model_swap_prompt", {"project_id": project, "finetune": str(job.id)}
     )
     assert model.model_id in result["prompt"]
+    assert result["pin"] is True
     assert result["capability_id"] is None
     assert len(result["resource_links"]) == 1

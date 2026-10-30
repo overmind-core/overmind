@@ -29,8 +29,7 @@ export function CopyModelSwapPromptButton({ jobs }: { jobs: FinetuningJobList[] 
   const waitingForTraining = eligibleJobs.length === 0 && hasInProgressModelSwapJobs(jobs);
   const copyPrompt = useMutation({
     mutationFn: async (jobId: string) => {
-      const job = jobs.find((candidate) => candidate.id === jobId);
-      const { prompt } = await modelSwapPrompt({ id: jobId, pin: !job?.capability });
+      const { prompt } = await modelSwapPrompt({ id: jobId, pin: false });
       await navigator.clipboard.writeText(prompt);
     },
     onError: (error) => notify.error(error, "Could not copy prompt"),

@@ -48,17 +48,13 @@ def current_capability_model(job: FinetuningJob, capability: Capability | None =
     return observed_capability_model(capability) or capability.model or job.base_model
 
 
-def resolve_swap_capability(job: FinetuningJob) -> tuple[Capability | None, str | None]:
-    """The capability whose code this prompt retargets — ``(capability, error)``."""
+def resolve_swap_capability(job: FinetuningJob) -> Capability | None:
+    """The run's capability, else the project's only one."""
     if job.capability_id:
-        return job.capability, None
+        return job.capability
 
     candidates = list(Capability.objects.filter(project_id=job.project_id).current()[:2])
-    if len(candidates) == 1:
-        return candidates[0], None
-    if not candidates:
-        return None, "This training run is not linked to a capability and its project has none."
-    return None, "This training run is not linked to a capability and its project has several."
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def target_deployment(
@@ -190,9 +186,9 @@ def model_swap_prompt_for_job(
     if job.status != job.Status.SUCCEEDED:
         return None, "Only successfully trained models can be shipped to the codebase."
 
-    capability, capability_error = resolve_swap_capability(job)
-    if capability is None and not pin:
-        return None, capability_error
+    capability = resolve_swap_capability(job)
+    # Only a capability has an alias; without one the prompt pins the deployment.
+    pin = pin or capability is None
 
     deployed, deployed_error = target_deployment(job, capability)
     if deployed is None:

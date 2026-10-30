@@ -1011,7 +1011,8 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                 OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Write this deployment's concrete model id instead of the capability alias."
+                    "Write this deployment's concrete model id instead of the capability alias. "
+                    "A run without a capability is always pinned."
                 ),
             ),
         ],

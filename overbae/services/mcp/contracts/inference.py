@@ -49,7 +49,7 @@ class GetModelSwapPromptInput(MCPModel):
     finetune: str = Field(min_length=1, max_length=255)
     pin: bool = Field(
         default=False,
-        description="Pin a deployment or use a capability alias (false).",
+        description="False uses the capability alias when one exists.",
     )
 
 

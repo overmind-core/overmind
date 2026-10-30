@@ -33,7 +33,6 @@ import { CopyModelSwapPromptButton } from "./copy-model-swap-prompt-button";
 
 const job = {
   baseModel: "Qwen/Qwen3-1.7B",
-  capability: "capability-1",
   id: "job-a",
   outputModelName: "invoice-v3",
   status: "succeeded",
