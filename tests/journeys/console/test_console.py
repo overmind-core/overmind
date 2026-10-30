@@ -294,6 +294,76 @@ def test_dataset_pagination_starts_at_the_first_row(console, workshop, cli, samp
     }""")
 
 
+def test_evaluation_dataset_picker_waits_for_its_options(
+    console, workshop, cli, sample_agent, tmp_path, fake_llm
+):
+    fake_llm.catalog_payload = [{"id": "qwen/qwen3-8b", "name": "Qwen: Qwen3 8B"}]
+    project = workshop.project()["id"]
+    upload(cli, sample_agent, tickets(tmp_path), "--intent", "eval")
+    pending = []
+
+    def hold_eval_datasets(route):
+        if "intent=eval" in route.request.url:
+            pending.append(route)
+        else:
+            route.continue_()
+
+    console._browser.call(console._page.route, "**/datasets/?*", hold_eval_datasets)
+    try:
+        console.goto(f"/evaluations?projectId={project}")
+        console.press("New evaluation")
+        console._browser.call(
+            lambda: console._page.get_by_role("button", name="Eval dataset", exact=True).click()
+        )
+        assert pending
+        console.sees("Loading options")
+        console.save_evidence("evaluation-dataset-picker-pending")
+        console._browser.call(lambda: pending.pop().continue_())
+        console._browser.call(
+            lambda: console._page.get_by_role("radio", name="tickets.jsonl", exact=True).click()
+        )
+        console._browser.call(
+            lambda: (
+                console._page.get_by_role("button", name="Eval dataset", exact=True)
+                .get_by_text("tickets.jsonl", exact=True)
+                .wait_for()
+            )
+        )
+        console.save_evidence("evaluation-dataset-picker-selected")
+        console._browser.call(
+            lambda: console._page.get_by_role(
+                "button", name="Model being tested", exact=True
+            ).click()
+        )
+        model_picker_id = console._browser.call(
+            lambda: console._page.get_by_role(
+                "button", name="Model being tested", exact=True
+            ).get_attribute("aria-controls")
+        )
+        console._browser.call(
+            lambda: (
+                console._page.locator(f'[id="{model_picker_id}"]')
+                .get_by_role("textbox", name="Search…", exact=True)
+                .fill("qwen")
+            )
+        )
+        console._browser.call(
+            lambda: console._page.get_by_role("radio", name="Qwen3 8B", exact=True).click()
+        )
+        console._browser.call(
+            lambda: (
+                console._page.get_by_role("button", name="Model being tested", exact=True)
+                .get_by_text("Qwen3 8B", exact=True)
+                .wait_for()
+            )
+        )
+        console.save_evidence("evaluation-model-search-selected")
+    finally:
+        for route in pending:
+            console._browser.call(route.continue_)
+        console._browser.call(console._page.unroute, "**/datasets/?*")
+
+
 def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]

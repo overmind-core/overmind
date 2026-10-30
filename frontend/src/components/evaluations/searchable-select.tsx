@@ -19,6 +19,8 @@ export function SearchableSelect({
   ariaLabel,
   triggerClassName,
   renderOption,
+  isLoading = false,
+  emptyMessage = "No options available.",
 }: {
   options: Option[];
   value: string;
@@ -28,6 +30,8 @@ export function SearchableSelect({
   ariaLabel: string;
   triggerClassName?: string;
   renderOption?: (option: Option) => ReactNode;
+  isLoading?: boolean;
+  emptyMessage?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -91,8 +95,14 @@ export function SearchableSelect({
           </div>
         </div>
         <SelectableCardGroup className="max-h-[280px] overflow-y-auto p-1">
-          {filtered.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-muted-foreground">No matches for "{search}".</p>
+          {isLoading ? (
+            <p className="px-2 py-3 text-xs text-muted-foreground" role="status">
+              Loading options
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-muted-foreground">
+              {search.trim() ? `No matches for "${search.trim()}".` : emptyMessage}
+            </p>
           ) : (
             filtered.map((o) => {
               const isSelected = o.value === value;
