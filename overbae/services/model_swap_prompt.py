@@ -122,10 +122,15 @@ def build_model_swap_prompt(
             "model or the training run is appropriate here.\n"
         )
 
-    configuration_target = "this capability" if capability_name else "this application"
-    call_target = (
-        "the capability's LLM calls" if capability_name else "this application's LLM calls"
+    find_step = (
+        "1. Find where this capability configures its LLM client and model (model name "
+        "string, config value, or env-var default).\n"
+        if capability_name
+        else "1. Find the LLM call this model replaces (model name string, config value, or "
+        "env-var default). If several call sites configure a model and the user has not "
+        "named one, stop and ask which call to change.\n"
     )
+    call_target = "the capability's LLM calls" if capability_name else "that LLM call"
     model_hint_label = (
         "Model identifier currently in the code" if capability_name else "Training base model hint"
     )
@@ -143,8 +148,7 @@ def build_model_swap_prompt(
         f"Overmind API key env var: {OVERMIND_API_KEY_ENV} (an 'ovr_...' key, sent as "
         f"'Authorization: Bearer')\n\n"
         "Task — make these LLM calls run through Overmind:\n"
-        f"1. Find where {configuration_target} configures its LLM client and model (model name "
-        f"string, config value, or env-var default).\n"
+        f"{find_step}"
         f'2. Set the model parameter of {call_target} to "{new_model}".\n'
         f"3. The model identifier above is {model_origin}. Whatever model string you "
         f"actually find at that call site is the one to replace — do not stop because "
