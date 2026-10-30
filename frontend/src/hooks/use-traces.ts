@@ -35,6 +35,8 @@ export interface SpanRow {
   startTimeUnixNano: number;
   endTimeUnixNano: number;
   spanAttributes: Record<string, unknown>;
+  inputAttribute: string | null;
+  outputAttribute: string | null;
   inputs: unknown | null;
   outputs: unknown | null;
   events: SpanEvent[];
@@ -185,9 +187,11 @@ const transformSpan = (span: Span): SpanRow => {
           timeUnixNano: event.time_unix_nano ?? event.timeUnixNano,
         }))
       : [],
+    inputAttribute: span.inputAttribute,
     inputs: span.inputAttribute ? (attrs[span.inputAttribute] ?? null) : null,
     model: pickModel(attrs),
     name: span.name ?? "",
+    outputAttribute: span.outputAttribute,
     outputs: span.outputAttribute ? (attrs[span.outputAttribute] ?? null) : null,
     parentSpanId: span.parentSpanId || null,
     policyOutcome: (attrs.policy_outcome as string) ?? null,

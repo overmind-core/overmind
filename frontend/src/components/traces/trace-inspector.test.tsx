@@ -16,9 +16,11 @@ const root: SpanRow = {
   evalMetrics: {},
   evalScore: null,
   events: [],
+  inputAttribute: null,
   inputs: null,
   model: null,
   name: "Agent",
+  outputAttribute: null,
   outputs: null,
   parentSpanId: null,
   policyOutcome: null,
@@ -57,6 +59,25 @@ describe("Trace inspector", () => {
     expect(screen.getAllByText("Not captured")).toHaveLength(1);
     const input = screen.getByRole("button", { name: "Collapse Input" }).closest("section");
     expect(within(input!).getByText(value === "" ? '""' : JSON.stringify(value))).toBeTruthy();
+  });
+  it("lists payload attributes that Preview does not render as input or output", () => {
+    render(
+      <Fixture>
+        <SpanDetailView
+          span={{
+            ...root,
+            inputAttribute: "overmind.input",
+            inputs: "Rendered input",
+            spanAttributes: {
+              "gen_ai.input.messages": "Unrendered messages",
+              "overmind.input": "Rendered input",
+            },
+          }}
+        />
+      </Fixture>
+    );
+    expect(screen.getByText("gen_ai.input.messages")).toBeTruthy();
+    expect(screen.queryByText("overmind.input")).toBeNull();
   });
   it("shows content-block messages as text, with non-text blocks as JSON", () => {
     const request = {

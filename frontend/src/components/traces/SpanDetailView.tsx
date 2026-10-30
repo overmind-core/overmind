@@ -144,14 +144,6 @@ const RETRIEVAL_FIELDS: Array<[string, ...string[]]> = [
 
 // Rendered by dedicated sections; excluded from the generic attributes table.
 const HIDDEN_ATTRIBUTE_KEYS = new Set<string>([
-  "input",
-  "output",
-  "overmind.input",
-  "overmind.output",
-  "input.value",
-  "output.value",
-  "gen_ai.input.messages",
-  "gen_ai.output.messages",
   "overmind.input_data",
   "overmind.input.data",
   "inputs",
@@ -182,7 +174,10 @@ function collectFieldEntries(
   return entries;
 }
 
-function groupSpanAttributes(attributes: Record<string, unknown> | undefined): {
+function groupSpanAttributes(
+  attributes: Record<string, unknown> | undefined,
+  previewKeys: ReadonlyArray<string | null>
+): {
   groups: Array<{ title: string; entries: Array<[string, unknown]> }>;
   rest: Array<[string, unknown]>;
 } {
@@ -192,7 +187,7 @@ function groupSpanAttributes(attributes: Record<string, unknown> | undefined): {
 
   if (attributes && typeof attributes === "object") {
     for (const [key, value] of Object.entries(attributes)) {
-      if (HIDDEN_ATTRIBUTE_KEYS.has(key)) continue;
+      if (HIDDEN_ATTRIBUTE_KEYS.has(key) || previewKeys.includes(key)) continue;
       const match = OVERMIND_GROUPS.find((g) => key.startsWith(g.prefix));
       if (match) {
         const stripped = key.slice(match.prefix.length);
@@ -1002,7 +997,8 @@ interface SpanDetailViewProps {
 export function SpanDetailView({ span }: SpanDetailViewProps) {
   const { projectId } = useTraceData();
   const { groups: overmindGroups, rest: spanAttributeEntries } = groupSpanAttributes(
-    span.spanAttributes
+    span.spanAttributes,
+    [span.inputAttribute, span.outputAttribute]
   );
 
   const modelUsageEntries = collectFieldEntries(span.spanAttributes, MODEL_USAGE_FIELDS);
