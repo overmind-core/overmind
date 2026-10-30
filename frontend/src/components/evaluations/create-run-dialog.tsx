@@ -239,7 +239,9 @@ function CreateRunForm({
                     </>
                   )
                 }
-                isLoading={datasets.isPending}
+                isLoading={
+                  datasets.isPending || (datasets.isFetching && !datasets.data?.results.length)
+                }
                 onChange={(value) => {
                   setDatasetId(value);
                   setEvalSetId("");
