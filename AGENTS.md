@@ -35,7 +35,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Code under `overbae/modal/`, `modal_shared/` and `overbae/services/sft_assets/` reaches Modal only after `modal deploy`; training and serving pin immutable releases.
 - Naming: UI "Optimiser" is backend `optimizer`; UI "Training" is backend `finetuning`; UI "Capability" is the `Capability` model, and the sidebar's "Agent" is the project graph.
 - Overwatch (`/api/internal/overwatch/*`, app in `sales-dashboard/`) only reads product records and runs no user authentication. Its tokens, caches and Slack boundary are in backend-architecture `references/auth-and-billing.md`.
-- `DESIGN.md` and `PRODUCT.md` carry a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the documents.
+- `DESIGN.md` carries a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the document.
 
 Subsystem detail lives in the skills: backend-architecture (Celery, tracing and scoring, evaluation, capabilities, auth and billing, training, serving, data-first), data-workshop, mcp, frontend-design.
 
