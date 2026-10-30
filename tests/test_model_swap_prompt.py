@@ -102,6 +102,7 @@ def test_model_swap_prompt_pin_writes_concrete_id():
     assert payload["new_model"] == "ft-abc12345-qwen2-5-14b"
     assert payload["pin"] is True
     assert "overmind/" not in payload["prompt"]
+    assert 'to "ft-abc12345-qwen2-5-14b"' in payload["prompt"]
 
     resp = _get(auth_client(user), job, pin=True)
     assert resp.status_code == 200
@@ -170,6 +171,7 @@ def test_model_swap_prompt_pins_the_deployment_without_a_capability():
     assert body["capability_id"] is None
     assert body["new_model"] == deployed.model_id
     assert "overmind/" not in body["prompt"]
+    assert f'to "{deployed.model_id}"' in body["prompt"]
 
 
 def test_model_swap_prompt_falls_back_to_sole_capability():
