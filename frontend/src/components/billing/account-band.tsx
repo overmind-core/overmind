@@ -308,7 +308,7 @@ export function AccountBand({
         </div>
       </div>
 
-      {sub.plan === PlanEnum.pro && sub.cancelAtPeriodEnd ? (
+      {sub.plan === PlanEnum.pro && sub.canManageRenewal && sub.cancelAtPeriodEnd ? (
         <p className="border-t border-border/70 px-4 py-2 text-sm text-warning">
           Cancellation scheduled{end ? ` — access ends ${end}` : ""}. Renew to keep Pro.
         </p>
