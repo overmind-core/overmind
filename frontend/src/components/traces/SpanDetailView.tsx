@@ -954,7 +954,7 @@ function TraceScoresSection({ span }: { span: SpanRow }) {
             ) : (
               <p className="text-xs text-muted-foreground">No component results recorded</p>
             )}
-            <Section defaultOpen={false} label="Captured spans">
+            <Section defaultOpen={false} label="Trace spans">
               <div className="divide-y divide-border/70">
                 {spans.map((source) => (
                   <button

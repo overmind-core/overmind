@@ -86,7 +86,7 @@ def test_trace_scores_reveal_the_recorded_reason_and_span_context(console, works
     console.sees("No tool calls were captured.")
     console.press("Inspect score: Provider check")
     console.sees("Judge unavailable")
-    console.press("Expand Captured spans")
+    console.press("Expand Trace spans")
     console.press("Uncaptured answer")
     console._browser.call(lambda: console._page.get_by_role("tab", name="Scores (1)").click())
     console.press("Inspect score: Empty result")
