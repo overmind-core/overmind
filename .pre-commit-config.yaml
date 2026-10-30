@@ -35,6 +35,7 @@ repos:
         entry: uv run python scripts/check_test_seams.py
         language: system
         files: "^tests/.*\\.py$"
+        pass_filenames: false
       - id: coverage-map
         name: every coverage-map entry has an owning test
         entry: uv run python scripts/check_coverage_map.py
