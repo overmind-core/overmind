@@ -30,7 +30,7 @@ from overbae.services.decision_providers import external_step
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.native_evaluation import advance_plan
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("measured-facts")]
 
 
 def call(client, key, name, arguments):

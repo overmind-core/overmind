@@ -16,6 +16,8 @@ from overbae.models import Project, ProjectMembership, User
 from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 from overbae.services.recommendation import tier_models
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "models.json"
 _CATALOG: list[dict] = json.loads(_MODELS_JSON.read_text())["models"]
 

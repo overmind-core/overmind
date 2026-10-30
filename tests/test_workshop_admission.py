@@ -13,6 +13,8 @@ from overbae.models import Cell, Dataset, DatasetPipelineRun
 from overbae.services.datasets import pipeline_runner
 from overbae.tasks.datasets import execute_pipeline
 
+pytestmark = pytest.mark.covers("capacity")
+
 
 def test_scratch_reclaims_dead_workers_but_preserves_active_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))

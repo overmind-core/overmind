@@ -7,6 +7,8 @@ from starlette.testclient import TestClient
 
 from overbae.asgi import application
 
+pytestmark = pytest.mark.covers("http-api")
+
 API_URL = "https://api.overmindlab.ai"
 BLOCKED_PATHS = ("/", "/api/capabilities/", "/api/docs/", "/health")
 FETCHABLE_PATHS = (

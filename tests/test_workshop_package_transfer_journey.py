@@ -18,7 +18,7 @@ from overbae.services.datasets import pipeline_packages
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("sandbox")]
 
 
 def test_cli_package_roundtrip_through_rest_services(tmp_path, monkeypatch, settings):

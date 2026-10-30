@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.covers("identity")
+
 
 @pytest.fixture
 def synced(cli, mcp_for, sample_agent, worker):

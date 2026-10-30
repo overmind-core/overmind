@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.services.transcripts.normalizer import reconstruct_spans
 from overbae.services.transcripts.span_evidence import (
     build_span_tree,
@@ -8,6 +10,8 @@ from overbae.services.transcripts.span_evidence import (
     render_span_tree,
     unwrap_payload,
 )
+
+pytestmark = pytest.mark.covers("otlp-ingest")
 
 
 def _span(**kwargs):

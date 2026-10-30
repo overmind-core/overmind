@@ -21,7 +21,7 @@ from overbae.models import (
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _context() -> tuple[MCPContext, Capability, Dataset]:

@@ -22,7 +22,7 @@ from overbae.models import (
     User,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 
@@ -73,6 +73,7 @@ class _FakeAsyncResult:
         self.id = task_id
 
 
+@pytest.mark.covers("authentication")
 def test_unauthenticated_requests_rejected():
     r = APIClient().get(reverse("finetuningjob-list"))
     assert r.status_code == 401
@@ -96,6 +97,7 @@ def test_create_rejects_dataset_from_other_project():
     mock_apply.assert_not_called()
 
 
+@pytest.mark.covers("authentication")
 def test_create_rejects_when_user_not_project_member():
     u_member, p, _, ds = _setup_project_with_dataset()
     outsider = make_user("outsider@example.com")
@@ -146,6 +148,7 @@ def test_retrieve_404_for_foreign_job():
     assert r.status_code == 404
 
 
+@pytest.mark.covers("state-machines")
 def test_retry_dispatches_celery_for_failed_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(
@@ -168,6 +171,7 @@ def test_retry_dispatches_celery_for_failed_job():
     mock_apply.assert_called_once_with(kwargs={"job_id": str(job.id)})
 
 
+@pytest.mark.covers("state-machines")
 def test_retry_rejects_non_failed_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(
@@ -181,6 +185,7 @@ def test_retry_rejects_non_failed_job():
     mock_apply.assert_not_called()
 
 
+@pytest.mark.covers("http-api")
 def test_events_endpoint_returns_events_for_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")

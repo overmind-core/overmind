@@ -12,6 +12,8 @@ from overbae.modal.modal_vllm_worker import (  # noqa: E402
     _normalize_model_blob,
 )
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_normalize_unifies_separators():
     assert "qwen3-5" in _normalize_model_blob("Qwen/Qwen3.5-0.8B")

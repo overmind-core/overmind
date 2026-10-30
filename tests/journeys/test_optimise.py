@@ -2,9 +2,13 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from .conftest import GOOD_REPLY
 from .stack import drain
 from .surfaces import SDK
+
+pytestmark = pytest.mark.covers("optimise")
 
 TICKETS = ("Refund order 42 please", "Where is order 42?")
 

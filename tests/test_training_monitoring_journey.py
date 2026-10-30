@@ -12,6 +12,8 @@ from overbae.models import APIToken, Dataset, FinetuningJob, Project, ProjectMem
 from overbae.services import training_monitoring
 from overbae.services.mcp.context import MCPContext
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 @pytest.mark.django_db
 def test_many_decision_questions_remain_inspectable_through_paged_receipts():

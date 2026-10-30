@@ -29,7 +29,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource, resource_templates
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 @pytest.fixture(autouse=True)
@@ -66,6 +66,7 @@ def _connector(
     return connector
 
 
+@pytest.mark.covers("privacy")
 def test_catalog_has_three_connector_tools_without_secret_schema_fields():
     names = {definition.name for definition in CATALOG.definitions()}
     connector_names = {name for name in names if "connector" in name}
@@ -146,6 +147,7 @@ def test_inspect_without_configured_connectors_returns_cli_action():
     _assert_available_types(result.structuredContent)
 
 
+@pytest.mark.covers("authentication")
 def test_read_only_key_hides_and_denies_connector_writes():
     context = mcp_context()
     connector = _connector(context)
@@ -159,6 +161,7 @@ def test_read_only_key_hides_and_denies_connector_writes():
         assert result.structuredContent["error"]["code"] == "permission_denied"
 
 
+@pytest.mark.covers("tenancy")
 def test_connector_lookup_is_project_scoped():
     context = mcp_context(permission=["read", "write"])
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
@@ -258,6 +261,7 @@ def test_configure_uses_existing_capabilities_and_rejects_unknown_targets():
     assert auto_create.structuredContent["error"]["code"] == "invalid_input"
 
 
+@pytest.mark.covers("privacy")
 def test_provider_exceptions_are_redacted(langfuse):
     context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
@@ -282,6 +286,7 @@ def test_provider_exceptions_are_redacted(langfuse):
     assert "provider-secret" not in encoded
 
 
+@pytest.mark.covers("privacy")
 def test_connector_resource_is_project_scoped_and_secret_free():
     context = mcp_context()
     connector = _connector(context)
@@ -408,6 +413,7 @@ def test_configure_and_sync_without_keys_still_require_cli():
         assert action["resource"] == "overmind://connector-setup"
 
 
+@pytest.mark.covers("tenancy")
 def test_create_rejects_project_outside_api_key_scope():
     context = mcp_context()
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")

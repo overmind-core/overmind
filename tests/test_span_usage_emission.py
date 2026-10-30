@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
+
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.api.span_usage import usage_span_attributes
 from overbae.services import model_catalog
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 class _Usage:

@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Dataset, FinetuningJob, Project, ProjectMembership, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 RUNS_URL = reverse("finetuningjob-runs")
 LIST_URL = reverse("finetuningjob-list")
@@ -43,6 +43,7 @@ def _job(project, dataset, **kwargs) -> FinetuningJob:
     )
 
 
+@pytest.mark.covers("capacity")
 @pytest.mark.parametrize("endpoint", [LIST_URL, RUNS_URL])
 def test_training_history_reads_dataset_versions_once_per_page(endpoint):
     client, project, dataset = _setup()
@@ -82,6 +83,7 @@ def test_facets_never_leak_another_projects_values():
     assert [row["name"] for row in client.get(reverse("finetuningjob-datasets")).json()] == ["ds"]
 
 
+@pytest.mark.covers("lineage")
 def test_validation_pins_the_requested_cell_and_rejects_another_dataset_cell():
     client, project, dataset = _setup()
     other = frozen_dataset(project, TRAIN_ROWS, contract="train")

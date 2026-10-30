@@ -22,7 +22,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import paths, store, use
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 ROWS = [
     {"question": "q1", "answer": "a1", "tag": "keep"},
@@ -92,6 +92,7 @@ def test_create_from_traces_validates_the_selection_before_creating():
     assert queued.call_args.kwargs["kwargs"]["source"] == {"traces": {"trace_ids": [trace]}}
 
 
+@pytest.mark.covers("tenancy")
 def test_create_rejects_two_sources_and_a_foreign_capability():
     project = _project()
     client = _client(project)
@@ -244,6 +245,7 @@ def test_delete_refused_while_a_version_is_used():
     assert res.status_code == 204
 
 
+@pytest.mark.covers("tenancy")
 def test_another_project_reads_and_writes_nothing():
     project = _project()
     dataset = _create(_client(project), project, intent="eval")

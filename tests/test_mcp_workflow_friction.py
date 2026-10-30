@@ -14,7 +14,7 @@ from overbae.services.datasets.partition_plans import build, prepared_member_row
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.training_forecast import forecast
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 @asgi_db

@@ -35,7 +35,7 @@ from overbae.services.mcp.resources import (
 )
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _project() -> tuple[Project, str]:

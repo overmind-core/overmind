@@ -24,7 +24,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 EVALUATION_TOOLS = {
     "create_eval_matrix_row",
@@ -73,6 +73,7 @@ def _writer() -> MCPContext:
     return mcp_context(permission=["read", "write"])
 
 
+@pytest.mark.covers("authentication")
 def test_catalog_exposes_evaluation_tools_and_hides_writes_from_readers():
     assert {definition.name for definition in CATALOG.definitions()} >= EVALUATION_TOOLS
     readable = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
@@ -136,6 +137,7 @@ def test_matrix_rows_are_created_and_deleted_but_never_edited():
     assert missing.structuredContent["error"]["code"] == "eval_matrix_row_not_found"
 
 
+@pytest.mark.covers("tenancy")
 def test_matrix_rows_cannot_be_deleted_across_projects():
     context = _writer()
     other = _writer()

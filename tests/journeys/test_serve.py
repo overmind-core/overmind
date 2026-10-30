@@ -8,6 +8,8 @@ from overbae.services.provider_pricing import refresh_rates
 
 from .datasets import until
 
+pytestmark = pytest.mark.covers("serve")
+
 DEPLOY = "overbae.tasks.inference_controller.reconcile_deployments"
 MESSAGES = [{"role": "user", "content": "Where is order 42?"}]
 

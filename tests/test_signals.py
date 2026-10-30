@@ -27,7 +27,7 @@ from overbae.models import (
 )
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 
 @pytest.fixture

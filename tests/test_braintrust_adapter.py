@@ -7,7 +7,7 @@ from overbae.models import ConnectorCredential
 from overbae.services.connectors.braintrust.adapter import BraintrustAdapter
 from overbae.services.connectors.braintrust.client import BraintrustError
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 @pytest.fixture

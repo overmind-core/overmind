@@ -7,6 +7,8 @@ import pytest
 from overbae.services.benchmarks.classify import classify_task_type
 from overbae.services.benchmarks.taxonomy import TaskType
 
+pytestmark = pytest.mark.covers("recommendations")
+
 
 def _profile(**overrides: Any) -> dict[str, Any]:
     profile = {

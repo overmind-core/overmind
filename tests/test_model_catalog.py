@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from overbae.core.llms import call_llm
 from overbae.services import model_catalog
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("llm-gateway")]
 
 CATALOG_URL = "/api/models/catalog/"
 

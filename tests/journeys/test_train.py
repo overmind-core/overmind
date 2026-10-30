@@ -1,8 +1,12 @@
 import re
 
+import pytest
+
 from .conftest import GOOD_REPLY, answer_turn
 from .datasets import tickets, training_rows, until, upload
 from .stack import drain
+
+pytestmark = pytest.mark.covers("train")
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
 TRAIN = "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs"

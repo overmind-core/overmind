@@ -15,6 +15,8 @@ from overbae.services.finetuning_policy import (
 from overbae.services.finetuning_runner import ModalRunner
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 
+pytestmark = pytest.mark.covers("plans")
+
 
 def _plan(**overrides):
     kwargs = dict(

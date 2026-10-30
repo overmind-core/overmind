@@ -7,7 +7,7 @@ from django.db import connection
 from .datasets import tickets, upload
 from .stack import drain
 
-pytestmark = pytest.mark.load
+pytestmark = [pytest.mark.load, pytest.mark.covers("capacity")]
 
 
 def _client_connections() -> int:

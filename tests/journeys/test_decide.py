@@ -1,10 +1,13 @@
 import json
 import re
 
+import pytest
 import requests
 
 from .datasets import until, upload
 from .stack import drain
+
+pytestmark = pytest.mark.covers("decide")
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
 TRAIN = "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs"

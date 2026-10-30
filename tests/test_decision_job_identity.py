@@ -17,6 +17,8 @@ from overbae.services.mcp.resources import read_resource
 from overbae.services.training_preparation import begin_preparation
 from overbae.tasks import finetuning
 
+pytestmark = pytest.mark.covers("work-once")
+
 
 def decision_dataset(project):
     return frozen_dataset(

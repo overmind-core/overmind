@@ -23,7 +23,7 @@ from tests.workshop_script_fixtures import (
     script_step,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 
 def decision_step(**settings):

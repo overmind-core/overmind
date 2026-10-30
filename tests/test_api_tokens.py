@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.api.scoping import project_ids_for
 from overbae.models import APIToken, Project, ProjectMembership, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def _jwt(user: User) -> APIClient:

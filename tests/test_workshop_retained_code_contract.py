@@ -10,7 +10,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.mcp.contracts.workbench import SaveInput
 from tests.test_workshop_redesign import workspace
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("sandbox")]
 
 
 def historical_workspace():

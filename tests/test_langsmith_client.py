@@ -8,6 +8,8 @@ from overbae.services.connectors.langsmith.client import (
     validate_project_id,
 )
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _PROJECT = "11111111-1111-1111-1111-111111111111"
 _MIN = datetime(2026, 1, 2, tzinfo=UTC)
 

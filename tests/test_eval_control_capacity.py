@@ -10,7 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from overbae.innermind import generation
 from overbae.models import EvalRun, EvalRunRow, Project
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("capacity")]
 
 
 def examined_history_rows(node):

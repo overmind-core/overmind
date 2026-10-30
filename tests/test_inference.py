@@ -17,7 +17,7 @@ from overbae.models import (
 )
 from overbae.models.inference import DeployedModel, InferenceCall
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 
 def _dataset(capability: Capability) -> Dataset:
@@ -98,6 +98,7 @@ def test_deployed_models_list_rejects_a_malformed_capability_id():
     assert NO_CAPABILITY in str(r.data["capability"])
 
 
+@pytest.mark.covers("tenancy")
 def test_deployed_models_retrieve_forbidden_for_other_user():
     u_a = make_user()
     p_a = make_project()
@@ -109,6 +110,7 @@ def test_deployed_models_retrieve_forbidden_for_other_user():
     assert r.status_code == status.HTTP_404_NOT_FOUND
 
 
+@pytest.mark.covers("identity")
 def test_deployed_models_delete_marks_deleted(scripted):
     gateway = scripted("http://inference.test").reply(json_body={"ok": True})
     u = make_user()
@@ -137,6 +139,7 @@ def test_deploying_a_live_model_keeps_it_serving_without_new_gpu_work(fake_modal
     assert fake_modal.log == []
 
 
+@pytest.mark.covers("recovery")
 def test_retrying_a_failed_deployment_requeues_it_and_clears_the_error(fake_modal):
     u = make_user()
     p = make_project()
@@ -172,6 +175,7 @@ def test_deployed_models_retry_rejects_undeployable_job():
     assert m.status == DeployedModel.Status.FAILED
 
 
+@pytest.mark.covers("ledger")
 def test_inference_pricing_estimate_and_unknown_gpu():
     from overbae.services.inference_pricing import estimate_call_cost, gpu_usd_per_second
 
@@ -185,6 +189,7 @@ def test_inference_pricing_estimate_and_unknown_gpu():
     assert gpu_usd_per_second("nope") is None
 
 
+@pytest.mark.covers("measured-facts")
 def test_model_metrics_endpoint_aggregates():
     u = make_user()
     p = make_project()
@@ -216,6 +221,7 @@ def test_model_metrics_endpoint_aggregates():
     assert r.data["avg_latency_ms"] == pytest.approx(300.0)
 
 
+@pytest.mark.covers("measured-facts")
 def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():
     user, project = make_user(), make_project()
     make_member(user, project)

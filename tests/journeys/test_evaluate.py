@@ -1,5 +1,9 @@
+import pytest
+
 from .datasets import JUDGE, tickets, upload
 from .stack import drain
+
+pytestmark = pytest.mark.covers("evaluate")
 
 WEAK_REPLY = "Your refund is on its way."
 

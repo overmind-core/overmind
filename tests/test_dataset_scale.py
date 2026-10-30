@@ -11,7 +11,7 @@ import pytest
 from overbae.models import Dataset, Project
 from overbae.services.datasets import diff, land, paths, store
 
-pytestmark = [pytest.mark.django_db, pytest.mark.load]
+pytestmark = [pytest.mark.django_db, pytest.mark.load, pytest.mark.covers("capacity")]
 ROWS = 20_000
 
 

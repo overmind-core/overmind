@@ -49,7 +49,7 @@ from overbae.services.recommendation.hyperparams import (
     hyperparam_provenance,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 

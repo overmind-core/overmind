@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fakes.vendors import LangfuseAPI, support_desk_trace
 
 from overbae.models import ConnectorCredential
@@ -9,6 +10,8 @@ from overbae.models import ConnectorCredential
 from .conftest import GOOD_REPLY
 from .otlp import EXPECTATION, RUN_SIGNALS, Trace, score_history, trace_spans
 from .stack import drain, settle
+
+pytestmark = pytest.mark.covers("observe")
 
 TICKETS = ("Refund order 42 please", "Where is order 42?", "Is order 42 refunded?")
 

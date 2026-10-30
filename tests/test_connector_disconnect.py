@@ -13,7 +13,7 @@ from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.api.views import ConnectorCredentialViewSet
 from overbae.models import ConnectorCredential, ConnectorSyncConfig, Project, Span
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 def _cred(project: Project, *, key: str = "pk-same", name: str = "LF") -> ConnectorCredential:

@@ -2,11 +2,15 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.services.connectors.galileo.mapping import GALILEO, tree_to_records
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
 from overbae.services.connectors.profiling import profile_capability_candidates
 from overbae.services.connectors.schema import CONNECTOR_SOURCE_ATTR, CONNECTOR_VERSION_ATTR
 from overbae.services.connectors.spans import span_id_for
+
+pytestmark = pytest.mark.covers("vendor-connectors")
 
 
 def observations_to_span_dicts(observations, **kwargs):

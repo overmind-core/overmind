@@ -16,7 +16,7 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 from overbae.tasks.inference_controller import reconcile_deployments
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 @pytest.fixture

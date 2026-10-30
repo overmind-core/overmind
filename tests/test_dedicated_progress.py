@@ -7,6 +7,8 @@ from overbae.models import DedicatedDeployment, DeployedModel, Project
 from overbae.services import dedicated_progress
 from overbae.services.dedicated_progress import parse_log
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def test_startup_counters_and_compilation_are_measured():
     assert parse_log(

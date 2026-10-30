@@ -8,6 +8,8 @@ from overbae.services import training_release
 from overbae.services.compute_costs import estimate_usage
 from overbae.services.training_forecast import forecast
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def measured_job():
     stats = {

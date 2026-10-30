@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp import server
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("privacy")]
 
 MCP_URL = "/api/mcp/"
 INJECTED_ARGUMENTS = {"context", "conversation_id", "llm_model"}

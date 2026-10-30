@@ -9,7 +9,7 @@ from mcp_fixtures import call_tool, mcp_context
 from overbae.models import Capability, Span
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("sdk-wire")]
 
 TOOLS = ("get_instrumentation_plan", "verify_instrumentation")
 
@@ -54,6 +54,7 @@ def test_plan_without_anchors_asks_for_setup():
     assert output["human_action"]["code"] == "instrumentation_registry_empty"
 
 
+@pytest.mark.covers("tenancy")
 def test_plan_and_verify_are_project_isolated():
     context = mcp_context()
     foreign = _capability(mcp_context(), "Foreign")

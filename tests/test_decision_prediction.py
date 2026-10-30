@@ -8,6 +8,8 @@ import pytest
 from modal_shared.decision_inference import prepare_requests
 from modal_shared.serving.artifacts import digest_json
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 @dataclass
 class EncodedRecord:

@@ -3,6 +3,8 @@ pin the per-training-kind restriction against a dataset's longest row."""
 
 from __future__ import annotations
 
+import pytest
+
 from overbae.modal.training_type import (
     dataset_training_type,
     normalize_training_type,
@@ -10,6 +12,8 @@ from overbae.modal.training_type import (
     training_enabled,
     usable_training_kinds,
 )
+
+pytestmark = pytest.mark.covers("plans")
 
 # Full's smaller context than LoRA's is the exact shape the onboarding skill
 # describes (LoRA's lighter optimizer state leaves more VRAM for activations).

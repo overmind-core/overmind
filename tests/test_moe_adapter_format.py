@@ -4,6 +4,8 @@ import pytest
 
 from modal_shared.serving.args import VllmServeContext, build_vllm_args, lora_load_request
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 @pytest.mark.parametrize("fused", [False, True])
 def test_adapter_request_declares_expert_format(tmp_path, fused):

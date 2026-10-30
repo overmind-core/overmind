@@ -9,6 +9,8 @@ from overbae.services.datasets import contract
 from overbae.services.datasets.rows import row_from_record
 from overbae.services.finetuning_validator import row_to_finetuning_line, validate_rows
 
+pytestmark = pytest.mark.covers("data-logic")
+
 TURNS = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
 TOOLS = [{"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}]
 

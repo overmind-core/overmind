@@ -9,6 +9,8 @@ from rest_framework.test import APIClient
 
 from overbae.models import Dataset, DeployedModel, FinetuningJob, Project, ProjectMembership, User
 
+pytestmark = pytest.mark.covers("tenancy")
+
 
 def _job(*, provider="modal", user_id="user-1", job_id="job-1"):
     return SimpleNamespace(

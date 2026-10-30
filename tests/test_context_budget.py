@@ -20,6 +20,8 @@ from overbae.services.finetuning_eval import sync_eval_scores
 from overbae.services.inference_client import ContextBudgetError, InferenceClient
 from overbae.services.judging import funnel
 
+pytestmark = pytest.mark.covers("plans")
+
 
 @pytest.mark.parametrize("payload", [{}, {"max_tokens": None}, {"max_completion_tokens": None}])
 def test_missing_output_limit_reserves_capacity(payload):

@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from overbae.models import EvalRun, EvalRunRow, Project, ProjectMembership, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 def test_run_rows_include_paired_input_output_and_reference():

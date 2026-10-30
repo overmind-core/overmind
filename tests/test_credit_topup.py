@@ -12,7 +12,7 @@ from overbae.api.billing import CREDIT_TOPUP_PURPOSE
 from overbae.models import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from overbae.services.billing_ledger import FREE_CREDITS_USD, balance_usd
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 User = get_user_model()
 

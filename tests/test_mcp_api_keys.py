@@ -16,7 +16,7 @@ from overbae.models.iam import API_KEY_EXPIRY_DAYS
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.projects import CreateApiKeyInput
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def _context(*, account=False, permission=("read", "write"), guest=False):

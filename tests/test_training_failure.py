@@ -1,4 +1,8 @@
+import pytest
+
 from modal_shared.training_failure import failure_receipt
+
+pytestmark = pytest.mark.covers("privacy")
 
 
 def test_decision_reload_failure_exposes_the_failed_check_without_worker_text(tmp_path):

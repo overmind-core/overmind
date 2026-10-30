@@ -14,6 +14,8 @@ from overbae.services import training_monitoring
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.training_monitoring import TrainingMonitoringPolicy
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 
 def policy(fields):
     declared = TrainingMonitoringPolicy.model_validate(

@@ -10,7 +10,7 @@ from overbae.models import Dataset, DatasetImport, DatasetLandingWork
 from overbae.services.datasets import files, imports
 from overbae.tasks import datasets as dataset_tasks
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("recovery")]
 
 
 def test_retained_first_upload_into_an_existing_draft_recovers_through_mcp():

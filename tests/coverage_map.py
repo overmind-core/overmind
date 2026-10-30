@@ -95,13 +95,11 @@ COVERAGE_MAP: dict[str, Entry] = {
         PROMISE,
         "A coding agent connects and syncs the agent; its traces arrive as rooted trees "
         "bound to capabilities, are scored once per evidence and raise signals.",
-        variants=("sdk", "connector"),
     ),
     "data": Entry(
         S2,
         PROMISE,
         "A source lands, a pipeline publishes a dataset version, and a consumer's use freezes it.",
-        variants=("upload", "traces", "document"),
     ),
     "evaluate": Entry(
         S2,

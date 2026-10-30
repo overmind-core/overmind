@@ -21,7 +21,7 @@ from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_datasets
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:

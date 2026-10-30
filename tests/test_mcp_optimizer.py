@@ -21,7 +21,7 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.contracts.optimizer import InspectOptimizerResultOutput
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -54,6 +54,7 @@ def _experiment(context: MCPContext, *, status: str | None = None) -> OptimizerE
     )
 
 
+@pytest.mark.covers("authentication")
 def test_read_only_key_hides_and_denies_optimizer_writes():
     context = mcp_context()
     visible = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
@@ -87,6 +88,7 @@ def test_readiness_reports_wrong_dataset_intent_and_executioner_state():
     assert output["executioner"]["connected"] is False
 
 
+@pytest.mark.covers("tenancy")
 def test_cross_project_experiment_is_inaccessible():
     context = mcp_context()
     other = mcp_context()
@@ -163,6 +165,7 @@ def test_inspect_is_bounded_typed_and_exposes_winner_state():
     assert output.winner.candidate_id == str(winner.id)
 
 
+@pytest.mark.covers("privacy")
 def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
     context = mcp_context()
     experiment = _experiment(context)

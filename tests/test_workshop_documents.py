@@ -19,7 +19,7 @@ from sandbox.documents import ocr
 from sandbox.documents.extract import DocumentError as ParserError
 from sandbox.documents.extract import extract as parse_document
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("data-logic")]
 
 
 @pytest.fixture

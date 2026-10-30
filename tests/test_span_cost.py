@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import Capability, Project, ProjectMembership, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 # Prices are looked up at the span's start time, so a fixed date keeps them stable.
 _START_NS = int(datetime(2026, 1, 1, tzinfo=UTC).timestamp() * 1e9)

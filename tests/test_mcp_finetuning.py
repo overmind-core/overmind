@@ -27,7 +27,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _context(*, permission: str | list[str] = "read") -> MCPContext:
@@ -49,6 +49,7 @@ def _call(name: str, arguments: dict, context: MCPContext):
     return call_tool(name, arguments, context)
 
 
+@pytest.mark.covers("privacy")
 @pytest.mark.parametrize("tool", ["prepare_training_data", "retry_deployment"])
 @pytest.mark.parametrize("known", [True, False])
 def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool, known):
@@ -83,6 +84,7 @@ def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool
         assert result.structuredContent["error"]["code"] == "internal_error"
 
 
+@pytest.mark.covers("authentication")
 def test_catalog_has_finetuning_tools_and_read_only_keys_hide_writes():
     names = {
         "check_finetune_readiness",
@@ -220,6 +222,7 @@ def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(fa
     assert definition.cost_class == "llm"
 
 
+@pytest.mark.covers("tenancy")
 def test_cross_project_references_are_not_resolved():
     context = _context()
     other = _context()
@@ -363,6 +366,7 @@ def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
     assert capability.benchmark_model_id is None
 
 
+@pytest.mark.covers("privacy")
 def test_run_inference_redacts_service_errors(monkeypatch):
     context = _context(permission=["read", "write"])
     deployment = DeployedModel.objects.create(
@@ -391,6 +395,7 @@ def test_run_inference_redacts_service_errors(monkeypatch):
     assert "provider secret" not in str(result.structuredContent)
 
 
+@pytest.mark.covers("privacy")
 def test_start_rejects_credential_shaped_hyperparameter_keys():
     context = _context(permission=["read", "write"])
     capability, train, _, _ = training_setup(context)
@@ -504,6 +509,7 @@ def test_native_readiness_uses_explicit_full_cell_and_external_validation_withou
     assert str(unrelated_eval.id) not in json.dumps(body["selection"])
 
 
+@pytest.mark.covers("work-once")
 def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypatch):
     context = _context(permission=["read", "write"])
     _, train, _, _ = training_setup(context)

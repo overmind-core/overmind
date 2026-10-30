@@ -12,6 +12,8 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.model_catalog import GetModelCatalogOutput
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 
 @pytest.fixture(autouse=True)
 def openrouter_catalog(monkeypatch):

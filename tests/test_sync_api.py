@@ -17,6 +17,8 @@ from overbae.models import (
 )
 from overbae.services.codebase.flow import build_capability_flow
 
+pytestmark = pytest.mark.covers("identity")
+
 PROJECT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 
@@ -60,6 +62,7 @@ def _snapshot(capabilities):
     }
 
 
+@pytest.mark.covers("lineage")
 @pytest.mark.django_db
 def test_invalid_provenance_does_not_replace_project_snapshot(client, project):
     response = client.post(
@@ -80,6 +83,7 @@ def _quiet_side_effects():
         yield
 
 
+@pytest.mark.covers("authentication")
 @pytest.mark.django_db
 def test_missing_api_key_is_unauthorized():
     resp = APIClient().post("/api/v1/sync", _snapshot([_cap()]), format="json")
@@ -100,6 +104,7 @@ def test_archived_slug_stays_leftover(client):
     assert kept.data["capabilities"][0]["archived"] is True
 
 
+@pytest.mark.covers("tenancy")
 @pytest.mark.django_db
 def test_wrong_project_id_is_403(client):
     other = str(uuid.uuid4())
@@ -113,6 +118,7 @@ def test_wrong_project_id_is_403(client):
     assert pulled.status_code == 403
 
 
+@pytest.mark.covers("authentication")
 @pytest.mark.django_db
 def test_account_key_can_sync_a_membership_project(project):
     user = User.objects.create_user(

@@ -6,6 +6,8 @@ import pytest
 from overbae.services.datasets import documents
 from sandbox.protocol import header_bytes
 
+pytestmark = pytest.mark.covers("sandbox")
+
 
 def test_parser_refuses_scripts_and_mismatched_bytes(sandbox_server):
     url, token = sandbox_server

@@ -15,6 +15,8 @@ from overbae.services.recommendation.ranking import (
     select_default,
 )
 
+pytestmark = pytest.mark.covers("recommendations")
+
 _THIN_EVIDENCE_MODEL = "LiquidAI/LFM2.5-2.6B"
 _MEASURED_MODEL = "Qwen/Qwen3-8B"
 _TWO_SCORE_MODEL = "Qwen/Qwen2.5-7B-Instruct"

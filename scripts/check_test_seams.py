@@ -2,8 +2,9 @@
 
 A test may capture a Celery dispatch (``.delay`` / ``.apply_async``) and fake
 outside services through ``tests/fakes``. It may not patch other ``overbae.*``
-targets or import private ``overbae`` names. Existing seams are counted, not
-listed: a file fails only when a change adds one.
+targets or import private ``overbae`` names, and a journey may not wait on wall
+time, animations or fonts. Existing seams are counted, not listed: a file fails
+only when a change adds one.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 
 PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["'](overbae\.[\w.]+)["']""")
 CELERY_CAPTURES = (".delay", ".apply_async")
+JOURNEY_WAIT = re.compile(r"time\.sleep\(|getAnimations|document\.fonts|fontFamily")
 
 
 def _source(ref: str, path: str) -> str:
@@ -49,12 +51,19 @@ def _private_imports(source: str) -> list[str]:
     ]
 
 
+def _journey_waits(source: str) -> list[str]:
+    return JOURNEY_WAIT.findall(source)
+
+
 def main(paths: list[str]) -> int:
     failures = []
     for path in paths:
         before = _source(os.environ.get("PRE_COMMIT_FROM_REF") or "HEAD", path)
         after = _working(path)
-        for kind, count in (("patch of", _patches), ("private import of", _private_imports)):
+        checks = [("patch of", _patches), ("private import of", _private_imports)]
+        if path.startswith("tests/journeys/"):
+            checks.append(("wait on", _journey_waits))
+        for kind, count in checks:
             added = sorted(set(count(after)) - set(count(before)))
             if len(count(after)) > len(count(before)):
                 failures.append(f"{path}: new {kind} {', '.join(added) or 'our own code'}")
@@ -62,8 +71,8 @@ def main(paths: list[str]) -> int:
         print(failure)
     if failures:
         print(
-            "Fake outside services through tests/fakes and call public entry points; "
-            "see the run-tests skill."
+            "Fake outside services through tests/fakes, call public entry points and wait "
+            "on observable state; see the run-tests skill."
         )
     return 1 if failures else 0
 

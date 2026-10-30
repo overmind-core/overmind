@@ -9,7 +9,7 @@ from factories import make_project
 from overbae.models import Capability, Span
 from overbae.tasks.capability_rebind import rebind_unbound_spans
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("identity")]
 
 
 def _span(project, *, name="", attributes=None, capability=None) -> Span:

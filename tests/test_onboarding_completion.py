@@ -7,7 +7,7 @@ from factories import auth_client, make_user
 
 from overbae.models import Project, ProjectMembership, User, UserOnboarding
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 
 def _me(user: User) -> dict:
@@ -26,6 +26,7 @@ def test_in_progress_overrides_membership_shortcut():
     assert _me(user)["has_completed_onboarding"] is False
 
 
+@pytest.mark.covers("authentication")
 def test_patch_cannot_reassign_onboarding_user():
     user = make_user()
     other = make_user()

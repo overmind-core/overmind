@@ -8,7 +8,7 @@ from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset, import_version, revi
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
 from overbae.services.datasets import diff, land, lifecycle, paths, store, use
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("lineage")]
 
 
 def _project() -> Project:

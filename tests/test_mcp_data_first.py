@@ -8,7 +8,7 @@ from overbae.models import APIToken, DataPartitionPlan, Project
 from overbae.services.decision_providers import catalog
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 def test_agent_creates_and_inspects_project_scoped_partition_without_repository():

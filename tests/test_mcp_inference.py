@@ -25,7 +25,7 @@ from overbae.models import (
 from overbae.services import inference_live, inference_requests
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from factories import make_project
 from overbae.models import Capability, Conversation, Dataset, Span
 from overbae.services.datasets import land, paths, selection
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 NS = 1_700_000_000_000_000_000
 COLUMNS = [spec["name"] for spec in land.TRACE_MANIFEST]

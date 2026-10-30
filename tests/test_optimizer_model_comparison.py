@@ -26,7 +26,7 @@ from overbae.services.optimizer_ledger import (
     post_results,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
 
@@ -71,6 +71,7 @@ def _experiment(*, mode=MODE, model_ids=None, status=None, openrouter_key_source
     return experiment
 
 
+@pytest.mark.covers("tenancy")
 def test_finetuned_deployment_id_requires_ready_in_project():
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ready = DeployedModel.objects.create(

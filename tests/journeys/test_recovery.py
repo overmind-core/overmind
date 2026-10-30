@@ -17,6 +17,8 @@ from .conftest import GOOD_REPLY
 from .otlp import SWEEP_SPANS, SWEEP_TRAJECTORIES, SWEEP_WAIT, Trace, score_history, trace_spans
 from .stack import drain
 
+pytestmark = pytest.mark.covers("recovery")
+
 
 def test_evidence_collection_for_a_missing_training_job_stops(worker, fake_modal):
     app.send_task("overbae.tasks.finetuning.collect_training_evidence", args=[str(uuid.uuid4())])

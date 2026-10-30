@@ -11,7 +11,7 @@ from overbae.models import APIToken, NativeEvaluationPlan, Project
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.native_evaluation import directory
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def completed_report():

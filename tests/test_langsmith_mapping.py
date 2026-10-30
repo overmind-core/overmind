@@ -16,6 +16,8 @@ from overbae.services.connectors.schema import (
 )
 from overbae.services.connectors.spans import span_id_for
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _ROOT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"
 _CHILD = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"
 _TRACE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa0"

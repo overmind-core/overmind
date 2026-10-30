@@ -6,6 +6,8 @@ import pytest
 
 from scripts import validate_shared_base_serving as benchmark
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def test_http_ttft_ignores_idle_pings_and_role_chunks(monkeypatch):
     response = MagicMock()

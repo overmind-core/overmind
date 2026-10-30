@@ -6,7 +6,7 @@ from factories import make_connector
 
 from overbae.services.connectors.langfuse.adapter import LangfuseAdapter
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 _START = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
 

@@ -20,6 +20,8 @@ from overbae.models import (
 from overbae.services import training_monitoring
 from overbae.services.mcp.context import MCPContext
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 @pytest.fixture
 def quality_job():

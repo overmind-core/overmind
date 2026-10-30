@@ -13,7 +13,7 @@ from overbae.models import (
     User,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("http-api")]
 
 
 def test_activity_pages_filters_and_scopes_both_evaluation_formats():

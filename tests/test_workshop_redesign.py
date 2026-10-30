@@ -14,7 +14,7 @@ from tests.workshop_script_fixtures import (
     select_script,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 
 def workspace():
@@ -43,6 +43,7 @@ def call(context, tool, arguments):
     return result.structuredContent
 
 
+@pytest.mark.covers("tenancy")
 def test_pipeline_conflicts_and_project_isolation_preserve_the_source():
     project, client, context = workspace()
     response = client.post(

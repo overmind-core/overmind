@@ -19,7 +19,7 @@ from overbae.models.inference import DeployedModel
 from overbae.services import dedicated
 from overbae.services.provider_pricing import refresh_rates
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 
 def _user() -> User:
@@ -108,6 +108,7 @@ def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal)
     assert restarted.idle_shutdown_seconds == 600
 
 
+@pytest.mark.covers("ledger")
 def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     refresh_rates()
     user = _user()
@@ -165,6 +166,7 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     assert row.status == DedicatedDeployment.Status.DEPLOYING
 
 
+@pytest.mark.covers("ledger")
 def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(fake_modal):
     refresh_rates()
     user = _user()

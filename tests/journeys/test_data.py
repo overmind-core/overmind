@@ -2,11 +2,15 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from overbae.models import Dataset
 from overbae.services.datasets import land
 
 from .datasets import evaluate, tickets, upload
 from .stack import drain, settle
+
+pytestmark = pytest.mark.covers("data")
 
 TICKET = "Refund order 42 please, mail me at jane.doe@example.com"
 SCANNED = Path(__file__).parents[1] / "fixtures/documents/scanned.pdf"

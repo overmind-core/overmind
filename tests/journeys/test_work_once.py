@@ -14,6 +14,8 @@ from .otlp import (
 )
 from .stack import drain
 
+pytestmark = pytest.mark.covers("work-once")
+
 
 @pytest.fixture
 def project(cli, mcp_for, rest_for, sample_agent, worker, judges):

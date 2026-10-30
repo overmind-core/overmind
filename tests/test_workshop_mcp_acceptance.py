@@ -22,7 +22,7 @@ from tests.workshop_script_fixtures import (
     select_script,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("mcp-surface")]
 
 
 @pytest.mark.parametrize("mode", ["preview", "publish"])

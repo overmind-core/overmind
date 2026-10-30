@@ -6,6 +6,8 @@ import pytest
 from overbae.models import Dataset, Project
 from overbae.services.datasets import files, land, paths, store
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def test_stream_writer_checks_late_types_without_retaining_rows(tmp_path):
     class Row(dict):

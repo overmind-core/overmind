@@ -7,6 +7,8 @@ from modal_shared.decision_inference import input_digest
 from modal_shared.training_data import file_digest
 from overbae.services.decision_benchmark_scoring import compare_suite, score_suite
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 
 def fixture(tmp_path):
     suite = tmp_path / "suite"

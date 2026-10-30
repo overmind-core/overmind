@@ -19,7 +19,7 @@ from overbae.models import (
 from overbae.services.mcp.context import bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("live-console")]
 
 
 def call(context, tool, **arguments):
@@ -40,6 +40,7 @@ def client_for(context):
     return client
 
 
+@pytest.mark.covers("privacy")
 def test_feed_never_copies_tool_arguments_and_failed_calls_record_nothing():
     context = mcp_context(permission=["read", "write"], client_name="codex")
     created = call(
@@ -61,6 +62,7 @@ def test_feed_never_copies_tool_arguments_and_failed_calls_record_nothing():
     assert read_activity(context)["count"] == after["count"]
 
 
+@pytest.mark.covers("tenancy")
 def test_activity_read_state_is_per_user_scoped_and_cannot_acknowledge_future_changes():
     context = mcp_context(permission=["read", "write"])
     peer = mcp_context(permission=["read", "write"])

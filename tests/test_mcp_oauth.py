@@ -15,7 +15,7 @@ from starlette.testclient import TestClient
 from overbae.models import MCPOAuthGrant, MCPOAuthToken, Project, ProjectMembership, User
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 RESOURCE = "http://localhost:8000/api/mcp/"
 CALLBACK = "https://client.example.test/callback"
 

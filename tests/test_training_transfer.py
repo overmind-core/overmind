@@ -15,6 +15,8 @@ from overbae.models import FinetuningJob, Project
 from overbae.services import finetuning_runner, training_submission
 from overbae.services.training_preparation import request_preparation
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("objective", ["assistant_cross_entropy", "decision_cross_entropy"])

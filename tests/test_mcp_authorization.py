@@ -11,7 +11,7 @@ from starlette.testclient import TestClient
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 MCP_URL = "/api/mcp/"
 

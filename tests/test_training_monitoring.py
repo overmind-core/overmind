@@ -14,6 +14,8 @@ from modal_shared.training_monitoring import (
 from modal_shared.training_monitoring_runtime import Monitor
 from overbae.services.training_policies import profile_options
 
+pytestmark = pytest.mark.covers("plans")
+
 
 @pytest.mark.parametrize(
     "policy",

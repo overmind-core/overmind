@@ -34,7 +34,7 @@ from tests.workshop_script_fixtures import (
     select_script,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("data-logic")]
 
 
 @pytest.mark.parametrize("eligible", [[True, False, True], [True, True], [False, False]])

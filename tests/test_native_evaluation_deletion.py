@@ -20,7 +20,7 @@ from overbae.services.mcp.contracts.model_workflows import ListWorkflowsInput
 from overbae.services.mcp.tools_model_workflows import list_workflows
 from overbae.tasks.native_evaluation import advance_plan
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("identity")]
 
 
 @pytest.fixture

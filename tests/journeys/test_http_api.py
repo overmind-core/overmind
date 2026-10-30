@@ -1,3 +1,8 @@
+import pytest
+
+pytestmark = pytest.mark.covers("http-api")
+
+
 def test_project_surfaces_render_without_browser_or_server_errors(console, workshop):
     project = workshop.project()["id"]
     for route, text in [

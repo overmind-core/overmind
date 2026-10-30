@@ -4,9 +4,13 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
 
 from families.qwen35 import _seq_len_from_mask_kwargs, hooks
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_qwen35_sdpa_and_flex_off():

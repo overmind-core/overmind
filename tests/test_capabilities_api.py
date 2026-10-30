@@ -18,7 +18,7 @@ from overbae.models import (
 )
 from overbae.services.capabilities import identity
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("identity")]
 
 
 def _trained_model(project, capability, *, status="ready"):
@@ -31,6 +31,7 @@ def _trained_model(project, capability, *, status="ready"):
     )
 
 
+@pytest.mark.covers("tenancy")
 def test_benchmark_rejects_other_projects_and_evaluation_infrastructure():
     project = _project()
     capability = _capability(project, "Support")

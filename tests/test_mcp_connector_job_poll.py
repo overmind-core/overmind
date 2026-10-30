@@ -10,7 +10,7 @@ from mcp_fixtures import call_tool, mcp_context
 from overbae.models import ConnectorCredential, Project
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _call(context: MCPContext, connector_id: str):

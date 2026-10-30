@@ -22,7 +22,7 @@ from overbae.models import APIToken, Capability, Project, ProjectMembership, Spa
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.mcp.tools_projects import accessible_projects
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 MCP_URL = "/api/mcp/"
 
