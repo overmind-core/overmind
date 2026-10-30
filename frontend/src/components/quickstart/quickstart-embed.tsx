@@ -6,6 +6,7 @@ import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { OnboardingWindow } from "@/components/onboarding/onboarding-window";
 import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
 import { OnboardingMilestones } from "@/components/quickstart/onboarding-milestones";
+import { LoadingState } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useOnboardingMilestones } from "@/hooks/use-activity";
 
@@ -22,7 +23,7 @@ export function QuickstartEmbed({
   const connected = milestones.data?.some(
     (step) => step.kind === "agent_connected" && step.completedAt
   );
-  if (projectId && milestones.isLoading) return null;
+  if (projectId && milestones.isLoading) return <LoadingState label="Loading setup progress" />;
   if (source === "agent" && connected) {
     return (
       <section aria-label="Agent onboarding" className="w-full max-w-md">
@@ -53,7 +54,7 @@ export function QuickstartEmbed({
           </Tabs>
         </div>
         {source === "agent" ? (
-          <OnboardWithAiPanel compact />
+          <OnboardWithAiPanel compact key={projectId ?? "new"} projectId={projectId} />
         ) : (
           <DataProjectForm
             onCreated={({ projectId: createdProjectId, datasetId }) =>

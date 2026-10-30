@@ -1,6 +1,5 @@
-import { Navigate } from "@tanstack/react-router";
-
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
+import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/spinner";
@@ -17,16 +16,16 @@ export function ProjectRequiredEmptyState({
   title?: string;
   description?: string;
 }) {
-  const { data, isLoading } = useProjectsList();
+  const { data, isLoading, error } = useProjectsList({ pollWhileEmpty: true });
   const projects = data?.projects ?? [];
 
   if (isLoading) {
     return <LoadingState fullPage label="Loading projects" />;
   }
 
-  if (projects.length === 0) {
-    return <Navigate replace search={{ projectId: undefined }} to="/" />;
-  }
+  if (error && !data) return <Alert variant="destructive">Couldn’t load projects.</Alert>;
+
+  if (projects.length === 0) return <QuickstartEmbed />;
 
   return <EmptyState description={description} icon={Icon.folderAdd} title={title} />;
 }

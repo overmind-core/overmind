@@ -33,6 +33,74 @@ from ..datasets import tickets, upload
 from ..stack import drain, settle
 
 
+def test_project_navigation_keeps_the_destination_without_a_project(console):
+    console.goto("/inference?inf_search=needle")
+    console.sees("Copy onboarding prompt")
+    console.wait_until(
+        "() => location.pathname === '/inference' && "
+        "new URLSearchParams(location.search).get('inf_search') === 'needle'"
+    )
+    console.save_evidence("project-navigation-without-project")
+
+
+def test_translated_onboarding_prompt_can_be_copied(console):
+    console.goto("/inference")
+    console.sees("Copy onboarding prompt")
+    console._browser.call(
+        lambda: console._page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    )
+    console._browser.call(
+        console._page.evaluate,
+        """() => {
+            const button = [...document.querySelectorAll('button')].find(
+                element => element.textContent.includes('Copy onboarding prompt'));
+            const texts = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (texts.nextNode()) nodes.push(texts.currentNode);
+            for (const text of nodes) {
+                if (!text.textContent.includes('Copy onboarding prompt')) continue;
+                const translated = document.createElement('font');
+                translated.textContent = 'Copiar instrucciones';
+                text.replaceWith(translated);
+            }
+        }""",
+    )
+    console.press("Copiar instrucciones")
+    console.sees("Paste the prompt into your coding agent to start setup.")
+    assert "/setup.md" in console._browser.call(
+        lambda: console._page.evaluate("navigator.clipboard.readText()")
+    )
+    console.save_evidence("translated-onboarding-prompt-copied")
+
+
+def test_project_navigation_selects_the_only_project_without_leaving(console, workshop):
+    project = workshop.project()["id"]
+    console._browser.call(console._page.evaluate, "localStorage.removeItem('__selectedProject')")
+    console.goto("/inference?inf_search=needle")
+    console.wait_until(
+        f"() => location.pathname === '/inference' && "
+        f"new URLSearchParams(location.search).get('projectId') === '{project}' && "
+        "new URLSearchParams(location.search).get('inf_search') === 'needle'"
+    )
+    console.save_evidence("project-navigation-destination")
+
+
+def test_onboarding_prompt_retains_the_selected_project(console, rest_for, account_key):
+    project = rest_for(account_key).request(
+        "POST", "/api/projects/", json={"name": "Existing setup", "slug": "existing-setup"}
+    )["id"]
+    console.goto(f"/?projectId={project}")
+    console._browser.call(
+        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
+    )
+    console.press("Copy onboarding prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    assert f"project_id: {project}" in prompt
+    assert "dataset_id" not in prompt
+    console.save_evidence("onboarding-selected-project")
+
+
 @pytest.mark.parametrize("console_url", ["clerk"], indirect=True)
 def test_sign_in_script_failure_offers_a_document_reload(browser, console_url):
     console = browser.page(console_url)

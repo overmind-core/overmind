@@ -36,6 +36,7 @@ export const useDeployedModelsQuery = ({
   status,
 }: DeployedModelsQueryParams = {}) =>
   useQuery({
+    enabled: !!projectId,
     queryFn: () =>
       apiClient.deployedModels.deployedModelsList({
         capability: capability || undefined,

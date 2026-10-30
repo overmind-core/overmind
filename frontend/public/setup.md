@@ -16,6 +16,10 @@ Run from the repository root. Every step is safe to repeat.
    sandbox blocks that, ask the user to approve running it outside the sandbox.
 1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when
    it offers one or else by following the `Next:` line `init` printed, then call it again.
+   If the prompt supplies `project_id`, verify that exact project is in the connected catalogue
+   and use it for setup. Preserve it as `project-id` in `overmind.toml` before repository sync;
+   do not create a different project. If the repository already names another project, ask the
+   user which destination to use before changing it.
 
 # USING OVERMIND
 

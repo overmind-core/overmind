@@ -81,13 +81,15 @@ export function mcpInitCommand(
 export function onboardingPrompt(
   origin: string,
   apiUrl: string,
-  data?: { projectId: string; datasetId: string }
+  data?: { projectId: string; datasetId?: string }
 ): string {
   const guide = `${origin.replace(/\/$/, "")}/setup.md`;
   const url = apiUrl.replace(/\/$/, "");
-  const subject = data
+  const subject = data?.datasetId
     ? `Set me up on Overmind with my uploaded data\n(project_id: ${data.projectId},\ndataset_id: ${data.datasetId})`
-    : "Set me up on Overmind";
+    : data
+      ? `Set me up on Overmind\n(project_id: ${data.projectId})`
+      : "Set me up on Overmind";
   if (url !== HOSTED_API_URL) return `${subject}\n\nusing the API at ${url}: ${guide}`;
   return data ? `${subject}\n\n${guide}` : `${subject} ${guide}`;
 }

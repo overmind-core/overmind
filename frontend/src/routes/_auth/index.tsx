@@ -22,7 +22,6 @@ import { PageShell } from "@/components/ui/page-shell";
 import { LoadingState } from "@/components/ui/spinner";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useOnboardingMilestones } from "@/hooks/use-activity";
-import { setStoredProjectId } from "@/hooks/use-project-search-sync";
 import { useProjectsList } from "@/hooks/use-projects";
 import { getGuestProjectId } from "@/lib/guest";
 import { errorMessage } from "@/lib/notify";
@@ -171,15 +170,6 @@ function AgentPage() {
 
   const { createProject } = search;
 
-  useEffect(() => {
-    if (projects.length !== 1 || search.projectId) return;
-    const id = projects[0].id;
-    setStoredProjectId(id);
-    void navigate({
-      replace: true,
-      search: (prev) => ({ ...prev, projectId: id }),
-    });
-  }, [navigate, projects, search.projectId]);
   useEffect(() => {
     if (!isGuest || search.projectId) return;
     const guestProjectId = getGuestProjectId();

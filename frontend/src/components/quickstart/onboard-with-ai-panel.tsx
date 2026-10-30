@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { trackEvent } from "@/analytics";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
@@ -23,26 +24,30 @@ export function OnboardWithAiPanel({
   projectId?: string;
   waitingHint?: string;
 }) {
-  const [promptCopied, setPromptCopied] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState<string>();
   const [copyError, setCopyError] = useState("");
 
   const prompt = onboardingPrompt(
     window.location.origin,
     config.apiUrl,
-    datasetId && projectId ? { datasetId, projectId } : undefined
+    projectId ? { datasetId, projectId } : undefined
   );
 
   const guide = `${window.location.origin}/setup.md`;
+  const promptCopied = copiedPrompt === prompt;
 
   const copyPrompt = () =>
     writeClipboardText(prompt).then(
       () => {
         setCopyError("");
-        setPromptCopied(true);
+        setCopiedPrompt(prompt);
+        trackEvent("setup_prompt_copied", { dataset_id: datasetId, project_id: projectId });
         onPromptCopied?.();
-        setTimeout(() => setPromptCopied(false), 2000);
       },
-      () => setCopyError("Couldn't copy — select the prompt text and copy it manually.")
+      () => {
+        setCopyError("Couldn't copy — select the prompt text and copy it manually.");
+        trackEvent("setup_prompt_copy_failed", { dataset_id: datasetId, project_id: projectId });
+      }
     );
 
   return (
@@ -80,8 +85,13 @@ export function OnboardWithAiPanel({
       </p>
       <Button className="w-full gap-2" onClick={() => void copyPrompt()} size="sm" type="button">
         {promptCopied ? <Icon.success /> : <Icon.copy />}
-        {promptCopied ? "Prompt copied" : "Copy onboarding prompt"}
+        <span>{promptCopied ? "Prompt copied" : "Copy onboarding prompt"}</span>
       </Button>
+      {promptCopied ? (
+        <p aria-live="polite" className="text-xs text-muted-foreground">
+          Paste the prompt into your coding agent to start setup.
+        </p>
+      ) : null}
       {copyError ? <Alert variant="destructive">{copyError}</Alert> : null}
       {waitingHint ? <p className="text-xs text-muted-foreground">{waitingHint}</p> : null}
     </div>
