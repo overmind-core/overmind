@@ -79,6 +79,17 @@ describe("Trace inspector", () => {
     expect(screen.getByText("gen_ai.input.messages")).toBeTruthy();
     expect(screen.queryByText("overmind.input")).toBeNull();
   });
+  it("renders events whose timestamp is not a valid time", () => {
+    render(
+      <Fixture>
+        <SpanDetailView
+          span={{ ...root, events: [{ name: "provider.retry", timeUnixNano: Number.MAX_VALUE }] }}
+        />
+      </Fixture>
+    );
+    expect(screen.getByText("provider.retry")).toBeTruthy();
+    expect(screen.queryByText("Time")).toBeNull();
+  });
   it("shows content-block messages as text, with non-text blocks as JSON", () => {
     const request = {
       messages: [

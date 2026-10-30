@@ -45,6 +45,12 @@ import type { ToolCallItem, TranscriptMessage } from "@/types/chat";
 
 const NOOP = () => undefined;
 
+function eventDate(timeUnixNano: unknown): Date | null {
+  if (!timeUnixNano) return null;
+  const date = new Date(Number(timeUnixNano) / 1_000_000);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatAttributeValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
@@ -1023,49 +1029,45 @@ export function SpanDetailView({ span }: SpanDetailViewProps) {
         ? Icon.tool
         : Icon.code;
 
-  const eventSections = span.events.map((event, index) => (
-    <Section
-      actions={
-        <BlockActions
-          mode="raw"
-          onToggleMode={NOOP}
-          showToggle={false}
-          text={JSON.stringify(event, null, 2)}
+  const eventSections = span.events.map((event, index) => {
+    const time = eventDate(event.timeUnixNano);
+    return (
+      <Section
+        actions={
+          <BlockActions
+            mode="raw"
+            onToggleMode={NOOP}
+            showToggle={false}
+            text={JSON.stringify(event, null, 2)}
+          />
+        }
+        badge={
+          <>
+            <Badge size="chip" variant="neutral">
+              Event
+            </Badge>
+            {time ? (
+              <time
+                className="font-mono text-xs text-muted-foreground"
+                dateTime={time.toISOString()}
+              >
+                {time.toLocaleString()}
+              </time>
+            ) : null}
+          </>
+        }
+        key={index}
+        label={event.name}
+      >
+        <KeyValueRows
+          entries={[
+            ...(time ? [["Time", time.toISOString()] as [string, unknown]] : []),
+            ...Object.entries(event.attributes ?? {}),
+          ]}
         />
-      }
-      badge={
-        <>
-          <Badge size="chip" variant="neutral">
-            Event
-          </Badge>
-          {event.timeUnixNano ? (
-            <time
-              className="font-mono text-xs text-muted-foreground"
-              dateTime={new Date(event.timeUnixNano / 1_000_000).toISOString()}
-            >
-              {new Date(event.timeUnixNano / 1_000_000).toLocaleString()}
-            </time>
-          ) : null}
-        </>
-      }
-      key={index}
-      label={event.name}
-    >
-      <KeyValueRows
-        entries={[
-          ...(event.timeUnixNano
-            ? [
-                ["Time", new Date(event.timeUnixNano / 1_000_000).toISOString()] as [
-                  string,
-                  unknown,
-                ],
-              ]
-            : []),
-          ...Object.entries(event.attributes ?? {}),
-        ]}
-      />
-    </Section>
-  ));
+      </Section>
+    );
+  });
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden bg-card text-card-foreground">
