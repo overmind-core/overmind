@@ -190,7 +190,7 @@ jobs:
 
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
-        run: uv run pytest tests/ -n auto --dist worksteal -q
+        run: uv run pytest tests/ -m 'not load' -n auto --dist worksteal -q
 
   journeys:
     if: github.event_name == 'push' || github.event.pull_request.draft == false

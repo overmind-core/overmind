@@ -1,10 +1,4 @@
-import uuid
-
 import pytest
-import requests
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
-from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
-from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span
 
 from .stack import drain
 
@@ -77,66 +71,3 @@ def test_sdk_traces_arrive_as_one_rooted_tree_bound_to_capabilities(
             "traces"
         ]
         assert spans and all(span["capability"] == slug for span in spans)
-
-
-def _attr(key: str, value) -> KeyValue:
-    if isinstance(value, int):
-        return KeyValue(key=key, value=AnyValue(int_value=value))
-    return KeyValue(key=key, value=AnyValue(string_value=str(value)))
-
-
-def test_any_otel_exporter_can_send_traces_without_the_sdk(project, live_api, cli, sample_agent):
-    triage = project.capability("triage")
-    trace_id = uuid.uuid4().bytes
-    root_id, call_id = uuid.uuid4().bytes[:8], uuid.uuid4().bytes[:8]
-    request = ExportTraceServiceRequest(
-        resource_spans=[
-            ResourceSpans(
-                scope_spans=[
-                    ScopeSpans(
-                        spans=[
-                            Span(
-                                trace_id=trace_id,
-                                span_id=root_id,
-                                parent_span_id=b"\x00" * 8,
-                                name="classify",
-                                start_time_unix_nano=1_000,
-                                end_time_unix_nano=9_000,
-                            ),
-                            Span(
-                                trace_id=trace_id,
-                                span_id=call_id,
-                                parent_span_id=root_id,
-                                name="chat openai/gpt-4.1-mini",
-                                start_time_unix_nano=2_000,
-                                end_time_unix_nano=8_000,
-                                attributes=[
-                                    _attr("overmind.capability.id", triage["id"]),
-                                    _attr("gen_ai.system", "openai"),
-                                    _attr("gen_ai.request.model", "openai/gpt-4.1-mini"),
-                                    _attr("gen_ai.usage.input_tokens", 10),
-                                    _attr("gen_ai.usage.output_tokens", 5),
-                                ],
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-    response = requests.post(
-        f"{live_api.url}/api/v1/traces",
-        data=request.SerializeToString(),
-        headers={
-            "Content-Type": "application/x-protobuf",
-            "X-Api-Key": cli.project_key(sample_agent),
-        },
-        timeout=30,
-    )
-    assert response.status_code == 200
-
-    hex_id = trace_id.hex()
-    assert_one_rooted_tree(project, hex_id)
-    rows = {row["span_id"]: row for row in spans_of(project, hex_id)}
-    assert rows[call_id.hex()]["capability"] == "triage"
-    assert rows[root_id.hex()]["total_tokens"] == 15

@@ -5,9 +5,13 @@ import time
 import uuid
 from pathlib import Path
 
+import pytest
+
 from overbae.tasks.training_experiments import reconcile
 
 from .conftest import RUNS
+
+pytestmark = pytest.mark.load
 
 ROOT = Path(__file__).resolve().parents[2]
 

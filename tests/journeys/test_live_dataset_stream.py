@@ -1,10 +1,13 @@
 from contextlib import ExitStack
 
 import httpx
+import pytest
 from django.db import connection
 
 from .datasets import tickets, upload
 from .stack import drain
+
+pytestmark = pytest.mark.load
 
 
 def _client_connections() -> int:

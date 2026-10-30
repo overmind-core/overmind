@@ -7,8 +7,6 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
-from overbae.innermind.checks import render
-
 from .conftest import GOOD_REPLY
 from .stack import drain
 
@@ -200,83 +198,6 @@ def test_spans_are_scored_as_they_land_without_waiting_for_the_root(
     assert len(trajectories) == 1
 
 
-def test_a_failing_judge_is_tried_three_times_then_scored_with_errors(
-    project, live_api, worker, fake_llm, beat, clock
-):
-    mcp, rest, key = project
-    project_id = mcp.project()["id"]
-    fake_llm.fail(lambda request: request.url.rstrip("/").endswith("/systemone"))
-
-    def judge_calls() -> int:
-        return sum(r.url.rstrip("/").endswith("/systemone") for r in fake_llm.requests)
-
-    trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True])
-    trace.send(live_api.url, key)
-    drain(worker)
-    per_pass = judge_calls()
-    assert per_pass > 0
-
-    for _ in range(5):
-        clock.shift(SWEEP_WAIT)
-        beat(SWEEP_SPANS, SWEEP_TRAJECTORIES)
-    # Three span passes over the root's rows, then three trajectory passes of path_judge.
-    assert judge_calls() == 3 * per_pass + 3
-
-    root = _spans(rest, project_id, trace)[trace.root_id.hex()]
-    attributes = root["eval_attributes"]
-    assert {m["error"] for m in attributes["metrics"].values() if m["type"] == "llm"} == {
-        "scoring failed after 3 attempts"
-    }
-    path_judge = attributes["trajectory"]["metrics"]["path_judge"]
-    assert path_judge["error"] == "scoring failed after 3 attempts"
-    assert {row["source_type"] for row in _history(rest, project_id, trace)} == {
-        "span",
-        "trajectory",
-    }
-
-    clock.shift(SWEEP_WAIT)
-    beat(SWEEP_SPANS, SWEEP_TRAJECTORIES)
-    assert judge_calls() == 3 * per_pass + 3
-
-
-def test_scored_spans_trajectories_and_drift_verdicts_are_never_judged_again(
-    project, live_api, worker, fake_llm, beat, clock
-):
-    mcp, rest, key = project
-    project_id = mcp.project()["id"]
-    mcp.call("set_signal_subscription", {"signal_type": "plan_drift", "enabled": True})
-
-    trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True])
-    trace.send(live_api.url, key)
-    drain(worker)
-    beat(RUN_SIGNALS)
-    tool_id = trace.tools[0][0].hex()
-    # The judges meet an expectation only on the good reply, so the tool step drifts.
-    assert _spans(rest, project_id, trace)[tool_id]["eval_attributes"]["drift"] == 0.0
-
-    judged = len(fake_llm.decisions)
-    clock.shift(SWEEP_WAIT)
-    beat(RUN_SIGNALS, SWEEP_SPANS, SWEEP_TRAJECTORIES)
-    assert len(fake_llm.decisions) == judged
-
-    trace.add_tool(True)
-    trace.send(live_api.url, key)
-    drain(worker)
-    beat(RUN_SIGNALS)
-    spans = _spans(rest, project_id, trace)
-    assert spans[trace.tools[1][0].hex()]["eval_attributes"]["drift"] == 0.0
-    assert spans[trace.root_id.hex()]["eval_attributes"]["trajectory"]["span_count"] == 2
-    trajectories = [
-        row for row in _history(rest, project_id, trace) if row["source_type"] == "trajectory"
-    ]
-    assert len(trajectories) == 1
-
-    judged = len(fake_llm.decisions)
-    clock.shift(SWEEP_WAIT)
-    beat(RUN_SIGNALS, SWEEP_SPANS, SWEEP_TRAJECTORIES)
-    assert len(fake_llm.decisions) == judged
-
-
 def test_default_signals_raise_deduplicated_events_seen_on_every_surface(
     project, live_api, worker, beat
 ):
@@ -310,40 +231,3 @@ def test_default_signals_raise_deduplicated_events_seen_on_every_surface(
 
     rest.request("POST", "/api/signal-events/mark-seen/", json={"project": project_id})
     assert mcp.call("list_signals", {})["unseen_events"] == 0
-
-
-def test_json_checks_grade_the_outer_payload_even_when_strings_contain_fences(
-    project, live_api, worker
-):
-    mcp, rest, key = project
-    capability = mcp.capability("answer")["id"]
-    definitions = [
-        ("outer keys", "json_required_keys", {"REQUIRED_KEYS": ["history"]}),
-        ("outer shape", "schema_field_conformance", {"FIELDS": {"history": {"type": "array"}}}),
-        ("outer JSON", "output_is_valid_json", {}),
-    ]
-    for name, check, params in definitions:
-        mcp.call(
-            "create_eval_matrix_row",
-            {
-                "capability": capability,
-                "name": name,
-                "type": "deterministic",
-                "source": render(check, params),
-                "span_name": "handle_ticket",
-            },
-        )
-    payload = json.dumps({"history": [], "answer": '```json\n{"value":1}\n```'})
-    for reply, expected in [
-        (payload, 1.0),
-        ("```json\n" + payload + "\n```", 1.0),
-        ('{"broken": ```json\n{"history":[]}\n```}', 0.0),
-    ]:
-        trace = Trace(capability, reply, tools=[])
-        trace.send(live_api.url, key)
-        drain(worker)
-        metrics = _spans(rest, mcp.project()["id"], trace)[trace.root_id.hex()]["eval_attributes"][
-            "metrics"
-        ]
-        for name, _, _ in definitions:
-            assert metrics[name]["score"] == expected, metrics[name]

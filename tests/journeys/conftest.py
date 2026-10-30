@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -19,10 +20,16 @@ from factories import make_user  # noqa: E402
 import overmind  # noqa: E402
 from overbae.models import APIToken  # noqa: E402
 
-from .stack import LiveAPI, celery_worker, drain  # noqa: E402
+from .browser import (  # noqa: E402
+    FRONTEND,
+    PASSWORD,
+    Browser,
+    Console,
+    build_console,
+    serve_console,
+)
+from .stack import RUNS, LiveAPI, celery_worker, drain  # noqa: E402
 from .surfaces import CliSurface, McpSurface, RestSurface, SampleAgent  # noqa: E402
-
-RUNS = Path(__file__).parent / ".runs" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def pytest_configure(config):
@@ -249,3 +256,56 @@ def beat(worker, clock):
         drain(worker)
 
     return tick
+
+
+@pytest.fixture(scope="session")
+def replay_recorder(tmp_path_factory):
+    bundle = tmp_path_factory.mktemp("replay-recorder") / "recorder.js"
+    entry = bundle.with_suffix(".ts")
+    rrweb = FRONTEND / "node_modules/posthog-js/dist/rrweb.js"
+    entry.write_text(
+        f"import {{ record }} from {json.dumps(str(rrweb))};window.ReplayRecorder = {{ record }};"
+    )
+    subprocess.run(
+        ["bun", "build", str(entry), "--format=iife", "--outfile", str(bundle)],
+        cwd=FRONTEND,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    return bundle
+
+
+@pytest.fixture(scope="session")
+def console_url(live_api, tmp_path_factory):
+    # The base temp's parent is shared by every xdist worker, so the Console builds once.
+    built = build_console(tmp_path_factory.getbasetemp().parent / "console")
+    with serve_console(built, tmp_path_factory.mktemp("console"), live_api.url) as url:
+        yield url
+
+
+@pytest.fixture(scope="session")
+def browser():
+    browser = Browser()
+    yield browser
+    browser.close()
+
+
+@pytest.fixture
+def console(browser, console_url, account, settings, request) -> Console:
+    settings.CORS_ALLOW_ALL_ORIGINS = True
+    user, _key = account
+    console = browser.page(console_url)
+    console.goto("/login")
+    console.fill("#local-email", user.email)
+    console.fill("#local-password", PASSWORD)
+    console.press("Continue")
+    console.wait_until("() => !!localStorage.getItem('jwt_access')")
+    console.goto("/onboarding")
+    console.sees("Agent")
+    yield console
+    try:
+        console.save_evidence(re.sub(r"[^\w.-]+", "_", request.node.nodeid))
+        console.healthy()
+    finally:
+        console.close()

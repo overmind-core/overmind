@@ -166,6 +166,7 @@ testpaths = ["tests"]
 # Model-state tables instead of replaying the squashed migration (~4s/worker).
 # Migration-specific tests opt into the migration executor explicitly.
 addopts = "--nomigrations -p tests.journey_xdist"
+markers = ["load: capacity checks with wall-clock bounds; `make test-load` runs them"]
 
 [tool.uv]
 # aiohttp is transitive (litellm, modal); floor it for the CVE fix in 3.14.3.

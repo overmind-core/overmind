@@ -5,11 +5,15 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 
 import uvicorn
 from celery.contrib.testing.worker import start_worker
 from celery.signals import before_task_publish, task_postrun
 from django.conf import settings
+
+RUNS = Path(__file__).parent / ".runs" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 class LiveAPI:

@@ -8,7 +8,7 @@ from factories import make_project
 from overbae.models import Cell, Dataset, DeployedModel, FinetuningJob
 from overbae.services.datasets import land, paths, store, use
 
-from ..conftest import RUNS
+from .conftest import RUNS
 
 
 def test_training_labels_follow_the_pinned_cell_across_console_rest_and_mcp(

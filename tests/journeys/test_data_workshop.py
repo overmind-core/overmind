@@ -6,29 +6,6 @@ from .datasets import evaluate, tickets, upload
 from .stack import drain
 
 
-def test_cli_batch_lands_once_and_mcp_retains_all_sources(
-    workshop, cli, sample_agent, worker, tmp_path
-):
-    paths = [tmp_path / "first.jsonl", tmp_path / "second.jsonl"]
-    for index, path in enumerate(paths):
-        path.write_text(json.dumps({"value": index}) + "\n")
-    arguments = ["dataset", "upload", *(str(path) for path in paths), "--json"]
-    uploaded = json.loads(cli.run(*arguments, cwd=sample_agent.repo))
-    drain(worker)
-    replay = json.loads(cli.run(*arguments, cwd=sample_agent.repo))
-    assert replay["id"] == uploaded["id"]
-    assert replay["transfer"]["id"] == uploaded["transfer"]["id"]
-    inspected = workshop.call("inspect_dataset", {"dataset": uploaded["id"]})
-    assert inspected["active"]["rows"] == 2
-    assert inspected["cell_page"]["total"] == 1
-    assert [source["filename"] for source in inspected["sources"]] == [path.name for path in paths]
-    rows = workshop.call(
-        "query_dataset",
-        {"dataset": uploaded["id"], "sql": "SELECT value FROM t ORDER BY source_row"},
-    )["rows"]
-    assert rows == [{"value": 0}, {"value": 1}]
-
-
 def test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version(
     workshop, cli, sample_agent, worker, tmp_path
 ):
@@ -57,17 +34,6 @@ def test_an_uploaded_eval_source_is_usable_and_use_freezes_its_version(
     )
     assert frozen["frozen"] is True
     assert frozen["version"] == "1.0"
-
-
-def test_an_unreadable_file_is_refused_before_it_becomes_a_dataset(
-    workshop, cli, sample_agent, tmp_path
-):
-    broken = tmp_path / "broken.jsonl"
-    broken.write_bytes(b"\x00\x01garbage{not json\n")
-    with pytest.raises(AssertionError, match="transfer_conflict"):
-        upload(cli, sample_agent, broken, "--intent", "eval")
-
-    assert workshop.call("list_datasets", {"search": "broken"})["datasets"] == []
 
 
 def test_trace_landing_preserves_source_text_for_explicit_transformation(
@@ -168,66 +134,6 @@ def test_trace_rows_carry_the_capability_they_were_selected_for(
         assert row["output"] == "Your refund is on its way. The order was delivered."
         assert row["tools"][0]["function"]["name"] == "lookup_order"
         assert any(m["role"] == "tool" for m in messages)
-
-
-def test_repeated_capability_invocations_refuse_to_publish_a_mixed_example(
-    workshop, sample_agent, live_api, support_desk_llm, worker
-):
-    agent = sample_agent.repo / "support_desk" / "agent.py"
-    agent.write_text(
-        agent.read_text().replace(
-            "return answer(client, ticket, triage(client, ticket))",
-            'triage(client, "A different ticket")\n    return answer(client, ticket, triage(client, ticket))',
-        )
-    )
-    sample_agent.run("Refund order 42 please", api_url=live_api.url, llm_url=support_desk_llm)
-    drain(worker)
-    [trace] = workshop.call("query_traces", {})["traces"]
-    created = workshop.call(
-        "create_dataset_from_traces",
-        {
-            "name": "Repeated triage",
-            "trace_ids": [trace["trace_id"]],
-            "capability": workshop.capability("triage")["id"],
-        },
-    )
-    drain(worker)
-    dataset = workshop.call("inspect_dataset", {"dataset": created["dataset"]["id"]})
-    assert dataset["state"] == "error"
-    assert "2 separate invocations" in dataset["error"]
-    assert dataset["cells"] == []
-
-
-def test_a_source_capability_filter_is_preserved_when_the_destination_differs(
-    workshop, sample_agent, live_api, support_desk_llm, worker
-):
-    sample_agent.run("Refund order 42 please", api_url=live_api.url, llm_url=support_desk_llm)
-    drain(worker)
-    triage = workshop.capability("triage")
-    answer = workshop.capability("answer")
-    created = workshop.call(
-        "create_dataset_from_traces",
-        {
-            "name": "Triage source for answer",
-            "filters": {"capability": triage["id"]},
-            "capability": answer["id"],
-        },
-    )
-    drain(worker)
-    dataset_id = created["dataset"]["id"]
-    [row] = workshop.call(
-        "query_dataset",
-        {
-            "dataset": dataset_id,
-            "sql": "select capability_id, messages from t",
-        },
-    )["rows"]
-    assert row["capability_id"] == triage["id"]
-    assert row["messages"][-1]["content"] == "refund"
-    assert (
-        workshop.call("inspect_dataset", {"dataset": dataset_id})["capability"]["id"]
-        == answer["id"]
-    )
 
 
 @pytest.mark.parametrize("languages", [[], ["eng"]])

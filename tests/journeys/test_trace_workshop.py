@@ -3,7 +3,7 @@ import pytest
 from overbae.models import Dataset
 from overbae.services.datasets import land
 
-from ..stack import drain, settle
+from .stack import drain, settle
 
 
 @pytest.mark.parametrize("selection", ["selected", "all"])

@@ -76,6 +76,18 @@ def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog(
     if forwarded_proto:
         headers["X-Forwarded-Proto"] = forwarded_proto
     with TestClient(create_mcp_application(), base_url=base_url) as client:
+        server = client.post(
+            "/api/mcp/",
+            json=_rpc(
+                "initialize",
+                {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"},
+                },
+            ),
+            headers=headers,
+        ).json()["result"]["serverInfo"]
         tools = client.post("/api/mcp/", json=_rpc("tools/list"), headers=headers).json()["result"][
             "tools"
         ]
@@ -92,6 +104,7 @@ def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog(
     identity = json.loads(interface["contents"][0]["text"])
     assert identity["connection"]["mcp_url"] == f"{expected_scheme}://testserver/api/mcp/"
     assert identity["tool_count"] == len(tools)
+    assert identity["contract_version"] == server["version"]
     assert projects["connection"] == identity["connection"]
     assert projects["catalog_sha256"] == identity["catalog_sha256"]
     assert key not in json.dumps(identity)

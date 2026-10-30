@@ -12,8 +12,8 @@ from overbae.services import native_evaluation
 from overbae.services.datasets import land
 from overbae.services.decision_benchmark_scoring import records
 
-from ..conftest import RUNS
-from ..stack import settle
+from .conftest import RUNS
+from .stack import settle
 
 
 @pytest.mark.parametrize("participant_count", [1, 3, 6])
