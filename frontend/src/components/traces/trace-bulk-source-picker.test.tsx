@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 /**
  * The selection is resolved server-side against EVERY project the user belongs to,
  * so it must carry its own project scope — the list request passes the project as

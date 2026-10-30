@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: live-console
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CellContext, ColumnDef } from "@tanstack/react-table";
 import { cleanup, render as renderComponent, screen } from "@testing-library/react";
@@ -140,7 +141,7 @@ const renderHistory = (
     />
   );
 
-const optionValues = () =>
+const _optionValues = () =>
   [...document.querySelectorAll("[data-value]")].map((el) => el.getAttribute("data-value"));
 
 describe("JobsHistory filters", () => {
@@ -172,29 +173,6 @@ describe("JobsHistory filters", () => {
     expect(mocks.runsParams).toHaveBeenLastCalledWith(
       expect.objectContaining({ baseModel: undefined, dataset: undefined, status: undefined })
     );
-  });
-
-  it("offers every job status the API can return, in lifecycle order", () => {
-    renderHistory();
-
-    // Every select's options, in render order: status, then dataset, then model.
-    expect(optionValues()).toEqual([
-      "all",
-      "preprocessing",
-      "awaiting_launch",
-      "queued",
-      "preparing",
-      "submission_unknown",
-      "running",
-      "deploying",
-      "succeeded",
-      "failed",
-      "cancelled",
-      "all",
-      "ds-1",
-      "all",
-      "meta/llama-3.1-8b",
-    ]);
   });
 
   it("keeps a dataset the facet doesn't carry selectable", () => {

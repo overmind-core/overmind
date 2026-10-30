@@ -1,3 +1,4 @@
+// covers: console-logic
 import { expect, it } from "vitest";
 
 import type { TrajectoryNode } from "./buildTrajectoryGraph";

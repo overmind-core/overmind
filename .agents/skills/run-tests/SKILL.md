@@ -43,7 +43,13 @@ Each test file sets `pytestmark = pytest.mark.covers("<entry>")`; a test inside 
 that owns another entry takes its own `@pytest.mark.covers(...)`. Collection fails
 on a test with no entry, an unknown entry, a promise outside `tests/journeys/` or
 a second journey for a promise; the `coverage-map` hook fails when an entry has no
-owner. Vitest files own `console-logic`.
+owner.
+
+A Console test file (`frontend/src/**/*.test.ts(x)`) names its entry on one
+`// covers: <entry>` line; the vitest setup fails a file without one, with an
+unknown entry or with a promise. It may mock third-party modules and the network
+edge (`@/client`, `@/openapi`); a `vi.mock` of our other modules is a seam that
+`test-seams` counts.
 
 | Severity | A failure means                                                | Gate                                                                                                                |
 | -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |

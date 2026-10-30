@@ -1,3 +1,4 @@
+// covers: console-logic
 import { describe, expect, it, vi } from "vitest";
 
 import type { ClassMetrics, FinetuningJudgeEvalRow } from "@/hooks/use-finetuning";

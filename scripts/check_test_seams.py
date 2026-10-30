@@ -3,7 +3,8 @@
 A test may capture a Celery dispatch (``.delay`` / ``.apply_async``) and fake
 outside services through ``tests/fakes``. It may not patch other ``overbae.*``
 targets or import private ``overbae`` names, and a journey may not wait on wall
-time, animations or fonts. Existing seams are counted, not listed: a change fails
+time, animations or fonts. A Console test may mock third-party modules and the
+network edge (``@/client``, ``@/openapi``), not our other modules. Existing seams are counted, not listed: a change fails
 only when it raises a count across all test files, so moving a test passes.
 """
 
@@ -21,15 +22,24 @@ from pathlib import Path
 PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["'](overbae\.[\w.]+)["']""")
 CELERY_CAPTURES = (".delay", ".apply_async")
 JOURNEY_WAIT = re.compile(r"time\.sleep\(|getAnimations|document\.fonts|fontFamily")
+VITEST_MOCK = re.compile(r"""vi\.mock\(\s*["']((?:@/|\.{1,2}/)[^"']+)["']""")
+NETWORK_EDGE = ("@/client", "@/openapi")
+CONSOLE_TESTS = (".test.ts", ".test.tsx")
 
 
 def _git(*args: str, stdin: bytes | None = None) -> bytes:
     return subprocess.run(["git", *args], input=stdin, capture_output=True, check=True).stdout
 
 
+def _tracked(path: str) -> bool:
+    if path.startswith("frontend/src/"):
+        return path.endswith(CONSOLE_TESTS)
+    return path.startswith("tests/") and path.endswith(".py")
+
+
 def _committed(ref: str) -> dict[str, str]:
-    listed = _git("ls-tree", "-r", "-z", "--name-only", ref, "--", "tests").decode().split("\0")
-    paths = [path for path in listed if path.endswith(".py")]
+    listed = _git("ls-tree", "-r", "-z", "--name-only", ref, "--", "tests", "frontend/src")
+    paths = [path for path in listed.decode().split("\0") if _tracked(path)]
     blobs = _git("cat-file", "--batch", stdin="".join(f"{ref}:{p}\n" for p in paths).encode())
     sources, offset = {}, 0
     for path in paths:
@@ -41,11 +51,20 @@ def _committed(ref: str) -> dict[str, str]:
 
 
 def _working() -> dict[str, str]:
-    listed = _git("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "tests")
+    listed = _git(
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "tests",
+        "frontend/src",
+    )
     return {
         path: Path(path).read_text(encoding="utf-8")
         for path in listed.decode().split("\0")
-        if path.endswith(".py") and Path(path).is_file()
+        if _tracked(path) and Path(path).is_file()
     }
 
 
@@ -71,10 +90,15 @@ def _journey_waits(source: str) -> list[str]:
     return JOURNEY_WAIT.findall(source)
 
 
+def _console_mocks(source: str) -> list[str]:
+    return [t for t in VITEST_MOCK.findall(source) if not t.startswith(NETWORK_EDGE)]
+
+
 KINDS = (
     ("patch of", _patches, "tests/"),
     ("private import of", _private_imports, "tests/"),
     ("wait on", _journey_waits, "tests/journeys/"),
+    ("mock of", _console_mocks, "frontend/src/"),
 )
 
 

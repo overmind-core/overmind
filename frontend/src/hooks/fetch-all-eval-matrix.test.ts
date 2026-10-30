@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/client", () => ({

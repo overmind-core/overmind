@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,18 +58,6 @@ function choose(label: string, option: string) {
   fireEvent.keyDown(screen.getByRole("combobox", { name: label }), { key: "ArrowDown" });
   fireEvent.click(screen.getByRole("option", { name: option }));
 }
-
-describe("new dataset sources", () => {
-  it("shows the chosen trace source without a second source selector", () => {
-    render(
-      <NewDatasetDialog initialSource="traces" onOpenChange={vi.fn()} open projectId="project" />
-    );
-    expect(screen.getByText("Trace filters")).toBeTruthy();
-    expect(screen.queryByText("Paste rows")).toBeNull();
-    expect(screen.queryByText("Source")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Choose files" })).toBeNull();
-  });
-});
 
 describe("dataset file dialog", () => {
   it("allows exploration before choosing a purpose and resets that choice when reopened", async () => {

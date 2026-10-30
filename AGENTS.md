@@ -71,7 +71,7 @@ Name by behavior. Plan-phase labels (P0/P1, "Phase N") stay out of code, comment
 
 ## Workflow
 
-- Every test covers one entry of `tests/coverage_map.py` through `pytest.mark.covers`; collection refuses a test that covers nothing. A promise is a product vertical with exactly one journey; an edge case is an invariant, contract or logic entry, never a new journey. Severity (S1–S4) sets the gate (run-tests skill).
+- Every test covers one entry of `tests/coverage_map.py` through `pytest.mark.covers`, or a `// covers: <entry>` line in a Console test file; collection refuses a test that covers nothing. A promise is a product vertical with exactly one journey; an edge case is an invariant, contract or logic entry, never a new journey. Severity (S1–S4) sets the gate (run-tests skill).
 - Test at the lowest tier that reproduces the behaviour, with one owning test per behaviour. A fix ships with a test that fails before it and passes after it. No assertions that mirror the implementation, pin incidental text or restate declarations. Each journey run leaves a run record in `tests/journeys/.runs/`.
 - Tests fake only what we do not own, and only at the network (`tests/fakes`: FakeLLM, FakeModal, vendor, Stripe and Clerk APIs, `scripted` HTTP). Patch `overbae.*` only to capture a Celery `.delay`/`.apply_async`; call public entry points. Each contract has one owning test. The `test-seams` check (pre-commit and CI) refuses a rise in seams across all test files; moving a test passes. Detail: run-tests skill.
 - Stay in the asked scope: fix the stated thing plus genuine prerequisites, and list adjacent findings as "found but did not change". If the task is much bigger than framed, say so before editing.

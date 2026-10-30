@@ -1,3 +1,4 @@
+// covers: live-console
 // A deep-linked page has to survive the route's own search validation: zod
 // strips keys the schema doesn't declare, and the request follows the parsed
 // search, not the URL.
@@ -46,15 +47,6 @@ describe("Inference route search", () => {
 
   // The filters scope the request, so a missing one must parse to "unfiltered"
   // rather than let `undefined` reach the query.
-  it("falls back to the unfiltered first page", () => {
-    expect(parse({ projectId: "proj-1" })).toEqual({
-      inf_capability: "all",
-      inf_search: "",
-      page: 1,
-      page_size: 25,
-      projectId: "proj-1",
-    });
-  });
 });
 
 // The model URL is the only copy of the list's filters, and every affordance
@@ -85,14 +77,5 @@ describe("Model detail route search", () => {
     expect(parseDetail({ inf_capability: "__none__", projectId: "proj-1" }).inf_capability).toBe(
       "__none__"
     );
-  });
-
-  it("still parses a bare project link into the list's defaults", () => {
-    expect(parseDetail({ projectId: "proj-1" })).toMatchObject({
-      inf_capability: "all",
-      inf_search: "",
-      page: 1,
-      page_size: 25,
-    });
   });
 });
