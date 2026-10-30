@@ -85,7 +85,7 @@ def test_missing_rate_refuses_start_and_a_second_start_conflicts(fake_modal):
     deployed = _ready(project)
     with pytest.raises(InputValidationError, match="price is unavailable"):
         dedicated.start(deployed, user, gpu_type="L4")
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100")
     assert row.credits_per_gpu_hour > 0
     with pytest.raises(InputValidationError, match="already has a dedicated"):
@@ -97,7 +97,7 @@ def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal)
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(
         deployed,
         user,
@@ -136,7 +136,7 @@ def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     fake_modal.worker_stats = {"num_total_runners": 2, "backlog": 0, "num_running_inputs": 0}
     row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=2)
     dedicated.advance(str(row.id))
@@ -170,7 +170,7 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     user = _user()
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=1)
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
@@ -178,7 +178,9 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     drained = [
         kwargs
         for kind, name, _, kwargs in fake_modal.log
-        if kind == "autoscaler" and name.endswith("H100_vllm") and kwargs.get("min_containers") == 0
+        if kind == "autoscaler"
+        and name.endswith("H100_vllm_dedicated")
+        and kwargs.get("min_containers") == 0
     ]
     assert drained
     row.refresh_from_db()
@@ -194,7 +196,7 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
 
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     row = dedicated.start(deployed, user, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
@@ -225,7 +227,7 @@ def test_dedicated_chat_streams_tokens_before_the_reply_finishes(fake_modal):
 
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _ok)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
 
     def stream(**kwargs):
         body = json.loads(kwargs["body"])
@@ -254,7 +256,7 @@ def test_dedicated_chat_streams_tokens_before_the_reply_finishes(fake_modal):
         yield raw[:12]
         yield raw[12:]
 
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer_stream", stream)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer_stream", stream)
     row = dedicated.start(deployed, user, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))

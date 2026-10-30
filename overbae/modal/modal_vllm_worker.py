@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -96,6 +97,18 @@ app = modal.App(APP_NAME)
 inference_secret = modal.Secret.from_name("overmind-inference")
 
 _volume_mounts = {WEIGHTS_MOUNT: weights_vol}
+
+
+def _vllm_control(path: str):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{VLLM_PORT}{path}",
+        data=b"",
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=WORKER_TIMEOUT_SECONDS) as response:
+        body = response.read()
+        return json.loads(body) if body else None
 
 
 def _wait_for_vllm(
@@ -313,9 +326,6 @@ class _BaseVLLMWorker:
         self._journal.emit("refreshing_volumes")
         weights_vol.reload()
 
-        if not self.enable_lora:
-            _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
-
         # Fail before allocating GPU/vLLM when the weights are genuinely gone, or a bad
         # param-set crash-loops the input backlog for minutes per attempt.
         self._journal.emit("validating_weights")
@@ -324,6 +334,20 @@ class _BaseVLLMWorker:
                 f"weights missing at {full_path} (model_name={self.model_name!r}); "
                 "refusing to start — re-register the deployment"
             )
+
+        adapter_rel = getattr(self, "adapter_path", "") or ""
+        if adapter_rel:
+            from modal_shared.serving.stage import stage_base
+
+            adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
+            base_path = full_path
+            staged = stage_base(Path(base_path), adapter_dir, Path("/tmp/overmind-serve"))
+            _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
+            full_path = str(staged)
+            print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
+
+        if not self.enable_lora:
+            _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
 
         meta_path = f"{full_path}/.meta.json"
         quantization = None
@@ -388,6 +412,8 @@ class _BaseVLLMWorker:
                 "--worker-extension-cls",
                 "modal_shared.serving.weights.SharedBaseWeights",
             ]
+        elif getattr(self, "snapshot_engine", False):
+            cmd.append("--enable-sleep-mode")
         if "--chat-template" in cmd:
             print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
 
@@ -401,6 +427,8 @@ class _BaseVLLMWorker:
             )
             cmd += multimodal_text_only_args()
 
+        if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
+            cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
         print("Starting vLLM:", " ".join(cmd))
         self._serve_command = cmd
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
@@ -408,6 +436,24 @@ class _BaseVLLMWorker:
         self._journal.emit("starting_engine_process")
         self._proc = subprocess.Popen(cmd)  # noqa: S603
         _wait_for_vllm(proc=self._proc, journal=self._journal)
+        if getattr(self, "snapshot_engine", False):
+            # Level 1 copies weights into CPU memory so the snapshot keeps them.
+            # Level 2 discards the weights, and the next container has nothing to wake.
+            _vllm_control("/sleep?level=1")
+            print("[vLLM] slept engine for snapshot", flush=True)
+
+    def wake(self) -> None:
+        if not getattr(self, "snapshot_engine", False) or getattr(self, "_startup_error", None):
+            return
+        print("[vLLM] waking snapshot", flush=True)
+        try:
+            _vllm_control("/wake_up?tags=weights")
+            _vllm_control("/wake_up?tags=kv_cache")
+            _wait_for_vllm(proc=getattr(self, "_proc", None))
+        except Exception as error:
+            self._fail_startup(error)
+            return
+        print("[vLLM] snapshot restore ready", flush=True)
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -915,7 +961,16 @@ def _register_worker(
     else:
         # Modal discovers hooks separately by snapshot phase across the entire MRO.
         # A post-snapshot hook on the common base would also run for LoRA restores.
-        parameters["startup"] = modal.enter()(_BaseVLLMWorker.startup)
+        # Dedicated containers snapshot the slept engine, so startup runs before the
+        # snapshot and wake runs after every restore.
+        parameters["startup"] = modal.enter(snap=bool(pin_resources))(_BaseVLLMWorker.startup)
+        if pin_resources:
+            # Empty serves the base. A path folds that one adapter while the shards are read.
+            parameters["__annotations__"]["adapter_path"] = str
+            parameters["adapter_path"] = modal.parameter(default="")
+            parameters["__annotations__"]["snapshot_engine"] = bool
+            parameters["snapshot_engine"] = modal.parameter(default=True)
+            parameters["wake"] = modal.enter(snap=False)(_BaseVLLMWorker.wake)
     cls = type(
         cls_name,
         (_SharedBaseVLLMWorker if lora else _BaseVLLMWorker,),
@@ -942,7 +997,18 @@ def _register_worker(
                     "experimental_options": {"enable_gpu_snapshot": True},
                 }
                 if lora
-                else ({"cpu": 8, "memory": WORKER_MEMORY_MIB[gpu_type]} if pin_resources else {})
+                else (
+                    {
+                        "cpu": 8,
+                        "memory": WORKER_MEMORY_MIB[gpu_type],
+                        # Modal rejects a GPU snapshot below this disk floor.
+                        "ephemeral_disk": 524288,
+                        "enable_memory_snapshot": True,
+                        "experimental_options": {"enable_gpu_snapshot": True},
+                    }
+                    if pin_resources
+                    else {}
+                )
             ),
         },
     )(cls)
@@ -953,21 +1019,19 @@ def register_dedicated_classes(target_app, owner) -> None:
     """One class per GPU on the dedicated app, including H100. Not the shared inference app."""
     for gpu_type in GPU_TIER:
         token = gpu_type.replace("-", "")
-        for lora in (False, True):
-            name = f"{token}_vllm_lora" if lora else f"{token}_vllm"
-            slot = {}
-            _register_worker(
-                name,
-                gpu_type,
-                "vllm",
-                lora=lora,
-                target_app=target_app,
-                pin_resources=True,
-                max_containers=8,
-                owner=slot,
-            )
-            # Keep a serverless class already bound to this module. Add names that loop does not.
-            owner.setdefault(name, slot[name])
+        # `{gpu}_vllm` is the serverless global. Modal loads classes by attribute.
+        name = f"{token}_vllm_dedicated"
+        slot = {}
+        _register_worker(
+            name,
+            gpu_type,
+            "vllm",
+            target_app=target_app,
+            pin_resources=True,
+            max_containers=8,
+            owner=slot,
+        )
+        owner[name] = slot[name]
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():

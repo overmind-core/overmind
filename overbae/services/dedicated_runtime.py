@@ -19,7 +19,6 @@ from overbae.services.dedicated_offer import serving_shape
 
 APP_NAME = "overmind-dedicated"
 WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
-_IDENTITIES: dict[str, str] = {}
 # with_options() builds a separate autoscaler. Keep one option set and change
 # min, max, and idle through update_autoscaler, or a GPU change leaves the old set running.
 _STABLE_MAX = 8
@@ -40,25 +39,11 @@ def _drive(result):
     return result
 
 
-def worker_class_name(deployed, gpu_type: str) -> str:
+def worker_class_name(_deployed, gpu_type: str) -> str:
+    # Not `{gpu}_vllm`: that global is the serverless class, and Modal loads a class
+    # with getattr(module, name).
     token = gpu_type.replace("-", "")
-    return f"{token}_vllm_lora" if deployed.is_lora else f"{token}_vllm"
-
-
-def _base_identity(model_path: str) -> str:
-    cached = _IDENTITIES.get(model_path)
-    if cached:
-        return cached
-    try:
-        volume = modal.Volume.from_name("overmind-weights", environment_name=environment())
-        raw = b"".join(volume.read_file(f"{model_path}/.base-manifest.json"))
-        identity = json.loads(raw)["identity"]
-    except Exception as exc:
-        raise InputValidationError(WORKER_UNAVAILABLE) from exc
-    if not isinstance(identity, str) or not identity:
-        raise InputValidationError(WORKER_UNAVAILABLE)
-    _IDENTITIES[model_path] = identity
-    return identity
+    return f"{token}_vllm_dedicated"
 
 
 def parameters(deployment) -> dict:
@@ -71,19 +56,15 @@ def parameters(deployment) -> dict:
             "pool": str(deployment.id),
         }
     path = rel_weights_path(deployed.weights_path)
-    # Unique model name: a shared base name would put every LoRA of that base
-    # in one pool and one tenant's floor would warm the others.
     params = {
         "model_path": path,
-        "model_name": deployment.served_model_id
-        if not deployed.is_lora
-        else f"dedicated-base-{deployment.id}",
+        "model_name": deployment.served_model_id,
         "max_model_len": deployed.max_model_len,
-        "enable_lora": bool(deployed.is_lora),
+        "enable_lora": False,
         "max_lora_rank": deployed.lora_rank or 16,
     }
     if deployed.is_lora:
-        params["base_identity"] = _base_identity(path)
+        params["adapter_path"] = rel_weights_path(deployed.adapter_path)
     return params
 
 
@@ -280,12 +261,6 @@ def spawn_probe(instance, deployment) -> str:
             ]
         )
     else:
-        adapter = None
-        if deployed.is_lora:
-            adapter = (
-                deployment.served_model_id,
-                rel_weights_path(deployed.adapter_path),
-            )
         call = instance.infer.spawn(
             method="POST",
             path="/v1/chat/completions",
@@ -297,7 +272,6 @@ def spawn_probe(instance, deployment) -> str:
                 }
             ).encode(),
             headers={"content-type": "application/json"},
-            adapter=adapter,
         )
     return call.object_id
 
@@ -358,17 +332,12 @@ def _served_body(deployment, body: bytes, *, stream: bool) -> bytes:
 
 
 def _chat_kwargs(instance, deployment, body: bytes, *, stream: bool) -> tuple[object, dict]:
-    deployed = deployment.deployed_model
-    adapter = None
-    if deployed.is_lora:
-        adapter = (deployment.served_model_id, rel_weights_path(deployed.adapter_path))
     method = instance.infer_stream if stream else instance.infer
     return method, {
         "method": "POST",
         "path": "/v1/chat/completions",
         "body": _served_body(deployment, body, stream=stream),
         "headers": {"content-type": "application/json"},
-        "adapter": adapter,
     }
 
 
