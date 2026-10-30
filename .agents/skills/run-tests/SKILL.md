@@ -45,12 +45,12 @@ on a test with no entry, an unknown entry, a promise outside `tests/journeys/` o
 a second journey for a promise; the `coverage-map` hook fails when an entry has no
 owner. Vitest files own `console-logic`.
 
-| Severity | A failure means | Gate |
-|---|---|---|
-| S1 | A security breach, a wrong charge, or lost or changed data | One owning test at the lowest tier that reproduces; never quarantined; a fix ships with a test that fails before it |
-| S2 | A vertical or the platform stops for every customer | One journey per promise; one owning test per platform invariant |
-| S3 | One path, integration, model family or displayed fact is wrong | Contract tables (one row per dialect, vendor, provider) and logic tests |
-| S4 | A heuristic or a presentation detail is wrong | A logic test only for a real edge case or a fixed bug |
+| Severity | A failure means                                                | Gate                                                                                                                |
+| -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| S1       | A security breach, a wrong charge, or lost or changed data     | One owning test at the lowest tier that reproduces; never quarantined; a fix ships with a test that fails before it |
+| S2       | A vertical or the platform stops for every customer            | One journey per promise; one owning test per platform invariant                                                     |
+| S3       | One path, integration, model family or displayed fact is wrong | Contract tables (one row per dialect, vendor, provider) and logic tests                                             |
+| S4       | A heuristic or a presentation detail is wrong                  | A logic test only for a real edge case or a fixed bug                                                               |
 
 A new behaviour joins an existing entry. A new entry or a new journey variant is a
 change to the map, and so is a new promise.
