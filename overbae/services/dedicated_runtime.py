@@ -291,7 +291,13 @@ def runner_count(instance, *, decision: bool) -> int | None:
     return int(value) if value is not None else None
 
 
-def _served_body(deployment, body: bytes) -> bytes:
+class ChatStreamError(Exception):
+    def __init__(self, status: int, body: bytes):
+        self.status = status
+        self.body = body
+
+
+def _served_body(deployment, body: bytes, *, stream: bool) -> bytes:
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
@@ -299,27 +305,74 @@ def _served_body(deployment, body: bytes) -> bytes:
     if not isinstance(payload, dict):
         return body
     payload["model"] = deployment.served_model_id
+    payload["stream"] = stream
+    if stream:
+        # Usage and per-request timing ride the last SSE chunk. The view strips both
+        # unless the caller asked to see usage.
+        payload["include_metrics"] = True
+        options = payload.get("stream_options")
+        if not isinstance(options, dict):
+            options = {}
+        options["include_usage"] = True
+        payload["stream_options"] = options
     return json.dumps(payload).encode()
 
 
-def chat(instance, deployment, body: bytes) -> tuple[int, bytes, str]:
+def _chat_kwargs(instance, deployment, body: bytes, *, stream: bool) -> tuple[object, dict]:
     deployed = deployment.deployed_model
     adapter = None
     if deployed.is_lora:
         adapter = (deployment.served_model_id, rel_weights_path(deployed.adapter_path))
-    result = instance.infer.remote(
-        method="POST",
-        path="/v1/chat/completions",
-        body=_served_body(deployment, body),
-        headers={"content-type": "application/json"},
-        adapter=adapter,
-    )
+    method = instance.infer_stream if stream else instance.infer
+    return method, {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "body": _served_body(deployment, body, stream=stream),
+        "headers": {"content-type": "application/json"},
+        "adapter": adapter,
+    }
+
+
+def chat(instance, deployment, body: bytes) -> tuple[int, bytes, str]:
+    method, kwargs = _chat_kwargs(instance, deployment, body, stream=False)
+    result = method.remote(**kwargs)
     status = int(result.get("status") or 502)
     payload = result.get("body") or b""
     if isinstance(payload, str):
         payload = payload.encode()
     content_type = (result.get("headers") or {}).get("content-type") or "application/json"
     return status, payload, content_type
+
+
+def iter_chat_stream(instance, deployment, body: bytes):
+    method, kwargs = _chat_kwargs(instance, deployment, body, stream=True)
+    frames = method.remote_gen(**kwargs)
+    try:
+        try:
+            first = next(frames)
+        except StopIteration as exc:
+            raise InputValidationError(WORKER_UNAVAILABLE) from exc
+        if not isinstance(first, dict):
+            raise InputValidationError(WORKER_UNAVAILABLE)
+        status = int(first.get("status") or 502)
+        if status >= 400:
+            rejected = bytearray()
+            for chunk in frames:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode()
+                rejected.extend(chunk)
+                if len(rejected) > 65536:
+                    break
+            raise ChatStreamError(status, bytes(rejected))
+        for chunk in frames:
+            if isinstance(chunk, str):
+                chunk = chunk.encode()
+            if chunk:
+                yield chunk
+    finally:
+        close = getattr(frames, "close", None)
+        if close is not None:
+            close()
 
 
 def predict(instance, decisions: list) -> dict:

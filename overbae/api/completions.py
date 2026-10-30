@@ -27,7 +27,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from modal_shared.context_budget import reserve_output
+from modal_shared.context_budget import is_context_limit_error, reserve_output
 from overbae.api.scoping import project_ids_for
 from overbae.api.streaming import (
     JSON_IDLE_PING,
@@ -775,6 +775,8 @@ def _dedicated_chat(request, model_id: str, data: dict, started_at):
             },
             status=status.HTTP_404_NOT_FOUND,
         )
+    if data.get("stream"):
+        return _dedicated_chat_stream(request, row, data, started_at)
     try:
         upstream, raw, content_type = serve_chat(row, json.dumps(data).encode())
     except InputValidationError as exc:
@@ -827,6 +829,115 @@ def _dedicated_chat(request, model_id: str, data: dict, started_at):
         if "model" in parsed:
             parsed["model"] = row.public_model_id
     return Response(parsed, status=upstream)
+
+
+def _dedicated_sse_lines(chunks):
+    pending = ""
+    for chunk in chunks:
+        pending += chunk.decode(errors="replace") if isinstance(chunk, bytes) else chunk
+        while "\n" in pending:
+            line, pending = pending.split("\n", 1)
+            if line.endswith("\r"):
+                line = line[:-1]
+            if line:
+                yield line + "\n\n"
+    if pending.strip():
+        yield pending + "\n\n"
+
+
+def _with_public_model(line: str, public_id: str) -> str:
+    stripped = line.strip()
+    if not stripped.startswith("data:") or stripped[5:].strip() == "[DONE]":
+        return line
+    try:
+        payload = json.loads(stripped[5:].strip())
+    except json.JSONDecodeError:
+        return line
+    if not isinstance(payload, dict):
+        return line
+    payload.pop("system_fingerprint", None)
+    if "model" in payload:
+        payload["model"] = public_id
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def _dedicated_stream_error(message: str, error_type: str) -> str:
+    return "data: " + json.dumps({"error": {"message": message, "type": error_type}}) + "\n\n"
+
+
+def _dedicated_chat_stream(request, row, data: dict, started_at):
+    from overbae.core.errors import InputValidationError
+    from overbae.services.dedicated import serve_chat_stream
+    from overbae.services.dedicated_runtime import ChatStreamError
+
+    include_usage = bool((data.get("stream_options") or {}).get("include_usage"))
+    public_id = row.public_model_id
+    try:
+        upstream = serve_chat_stream(row, json.dumps(data).encode())
+    except InputValidationError as exc:
+        code = (
+            status.HTTP_400_BAD_REQUEST
+            if "systemone" in exc.detail
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        return Response(
+            {"error": {"message": exc.detail, "type": "invalid_request_error"}},
+            status=code,
+        )
+
+    def events():
+        captured: dict[str, Any] = {"usage": None, "metrics": None}
+        outcome, error_code = "failed", "incomplete_stream"
+        try:
+            lines = iter_keeping_idle_alive(
+                _dedicated_sse_lines(upstream),
+                ping=SSE_IDLE_PING,
+            )
+            for line in lines:
+                if line.strip() == "data: [DONE]":
+                    outcome, error_code = "succeeded", ""
+                forwarded = _process_stream_chunk(line, captured, include_usage)
+                if forwarded is not None:
+                    yield _with_public_model(forwarded, public_id)
+            if outcome != "succeeded":
+                raise RuntimeError("incomplete dedicated stream")
+        except InputValidationError as exc:
+            outcome, error_code = "failed", "inference_rejected"
+            yield _dedicated_stream_error(exc.detail, "invalid_request_error")
+            yield "data: [DONE]\n\n"
+        except ChatStreamError as exc:
+            context_error = is_context_limit_error(exc.status, exc.body)
+            outcome = "failed"
+            error_code = "context_length_exceeded" if context_error else "inference_rejected"
+            yield _dedicated_stream_error(
+                CONTEXT_BUDGET_MESSAGE if context_error else "Dedicated inference failed.",
+                error_code,
+            )
+            yield "data: [DONE]\n\n"
+        except Exception:
+            logger.exception("Dedicated chat stream failed for %s", public_id)
+            outcome, error_code = "failed", "server_error"
+            yield _dedicated_stream_error("Dedicated inference failed.", "server_error")
+            yield "data: [DONE]\n\n"
+        finally:
+            record_inference_call(
+                row.deployed_model,
+                captured["usage"],
+                (timezone.now() - started_at).total_seconds() * 1000,
+                user=request.user,
+                metrics=captured.get("metrics"),
+                outcome=outcome,
+                error_code=error_code,
+                source="application" if isinstance(request.auth, APIToken) else "internal",
+                requested_model=public_id,
+                bill=False,
+            )
+
+    return StreamingHttpResponse(
+        AsyncStream(events()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _present_dedicated_body(raw: bytes, public_id: str) -> bytes:

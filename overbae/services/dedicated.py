@@ -333,13 +333,17 @@ def advance(deployment_id: str) -> None:
         dedicated_progress.collect(row)
 
 
-def serve_chat(row: DedicatedDeployment, body: bytes):
+def _require_chat(row: DedicatedDeployment):
     if row.deployed_model.inference_contract == "decision":
         raise InputValidationError(
             "This model returns decision probabilities. Call POST /api/v1/systemone."
         )
     if row.status != DedicatedDeployment.Status.ONLINE:
         raise InputValidationError(NOT_ONLINE)
+
+
+def serve_chat(row: DedicatedDeployment, body: bytes):
+    _require_chat(row)
     instance = dedicated_runtime.bind(
         row,
         minimum=row.min_replicas,
@@ -347,6 +351,17 @@ def serve_chat(row: DedicatedDeployment, body: bytes):
         idle_seconds=row.idle_shutdown_seconds,
     )
     return dedicated_runtime.chat(instance, row, body)
+
+
+def serve_chat_stream(row: DedicatedDeployment, body: bytes):
+    _require_chat(row)
+    instance = dedicated_runtime.bind(
+        row,
+        minimum=row.min_replicas,
+        maximum=row.max_replicas,
+        idle_seconds=row.idle_shutdown_seconds,
+    )
+    return dedicated_runtime.iter_chat_stream(instance, row, body)
 
 
 def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
