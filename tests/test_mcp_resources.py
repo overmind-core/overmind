@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 
 import pytest
+from asgiref.sync import async_to_sync
 from mcp import types
+from mcp_fixtures import asgi_db, call_tool
 from starlette.testclient import TestClient
 
 from overbae.models import (
@@ -25,7 +26,6 @@ from overbae.models import (
     Span,
     User,
 )
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import (
     read_resource,
@@ -35,7 +35,7 @@ from overbae.services.mcp.resources import (
 )
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _project() -> tuple[Project, str]:
@@ -57,6 +57,7 @@ def _rpc(method: str, params: dict | None = None) -> dict:
     return payload
 
 
+@asgi_db
 @pytest.mark.parametrize(
     ("base_url", "forwarded_proto", "trust_proxy", "expected_scheme"),
     [
@@ -128,7 +129,7 @@ def test_project_resource_exposes_scan_provenance():
             contents = list(await read_resource("overmind://project/current"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["repository_snapshot"] == project.settings["repository_snapshot"]
     assert resource["last_synced_at"] == project.settings["last_synced_at"]
 
@@ -170,7 +171,7 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
             contents = list(await read_resource("overmind://dataset-upload"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["extensions"] == [
         ".csv",
         ".tsv",
@@ -208,7 +209,7 @@ def test_dataset_export_resource_describes_local_download_and_trace_flow():
             contents = list(await read_resource("overmind://dataset-export"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["command"] == "overmind dataset export DATASET --json"
     assert resource["formats"] == ["jsonl", "csv"]
     assert "dataset id" in resource["dataset"]
@@ -233,7 +234,7 @@ def test_checkpoint_download_resource_describes_cli_boundary_and_availability():
             contents = list(await read_resource("overmind://checkpoint-download"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["command"] == "overmind model download-checkpoint DEPLOYMENT --json"
     assert "deployment id supplied by MCP" in resource["deployment"]
     assert "OVERMIND_API_KEY" in resource["auth"]
@@ -259,7 +260,7 @@ def test_connector_setup_resource_describes_human_cli_boundary():
             contents = list(await read_resource("overmind://connector-setup"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     encoded = json.dumps(resource)
     assert resource["command"] == "overmind connector add langfuse --json"
     assert resource["types"][0]["env"] == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
@@ -332,7 +333,7 @@ def test_resource_reads_are_json_and_project_scoped():
                 assert contents[0].mime_type == "application/json"
                 assert '"uri":' in contents[0].content
 
-    asyncio.run(read_all())
+    async_to_sync(read_all)()
 
 
 @pytest.mark.parametrize(("span_count", "truncated"), [(100, False), (101, True)])
@@ -460,7 +461,7 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
             contents = list(await read_resource(f"overmind://finetunes/{job.id}"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["cost_usd"] == 0.25
     assert resource["group_id"] == str(job.group_id)
     assert resource["training_objective"] == "decision_cross_entropy"
@@ -480,11 +481,12 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
             "Measuring the starting model on the development set before training begins."
         ),
     }
-    result = asyncio.run(CATALOG.call("get_job", {"kind": "finetune", "id": str(job.id)}, context))
+    result = call_tool("get_job", {"kind": "finetune", "id": str(job.id)}, context)
     assert result.isError is False, result.structuredContent
     assert result.structuredContent["progress"] == resource["progress"]
 
 
+@asgi_db
 def test_resource_read_through_transport_returns_safe_not_found_error():
     project, raw_key = _project()
     del project
@@ -511,7 +513,7 @@ def _read(project, uri: str) -> dict:
             contents = list(await read_resource(uri))
         return json.loads(contents[0].content)
 
-    return asyncio.run(read())
+    return async_to_sync(read)()
 
 
 def _tool_context(project) -> MCPContext:
@@ -595,9 +597,7 @@ def test_get_job_dataset_run_tracks_state_and_emits_job_resource_link():
         Dataset.objects.filter(pk=dataset.pk).update(
             state=state, error="clipped-secret" if state == Dataset.State.ERROR else ""
         )
-        result = asyncio.run(
-            CATALOG.call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
-        )
+        result = call_tool("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
         assert result.isError is False, result.structuredContent
         body = result.structuredContent
         assert body["kind"] == "dataset_run"
@@ -630,12 +630,8 @@ def test_dataset_run_job_is_project_scoped():
     foreign = Dataset.objects.create(project=other, name="Foreign")
     context = _tool_context(project)
 
-    missing = asyncio.run(
-        CATALOG.call("get_job", {"kind": "dataset_run", "id": str(foreign.id)}, context)
-    )
-    retired = asyncio.run(
-        CATALOG.call("get_job", {"kind": "dataset_build", "id": str(foreign.id)}, context)
-    )
+    missing = call_tool("get_job", {"kind": "dataset_run", "id": str(foreign.id)}, context)
+    retired = call_tool("get_job", {"kind": "dataset_build", "id": str(foreign.id)}, context)
 
     assert missing.isError is True
     assert missing.structuredContent["error"]["code"] == "resource_not_found"
@@ -675,7 +671,7 @@ def test_native_running_resource_retains_latest_metrics_and_contract():
             contents = list(await read_resource(f"overmind://finetunes/{job.id}"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     assert resource["inference_contract"] == "decision"
     assert resource["loss"][-1]["step"] == 250
     assert resource["progress"]["metrics_history"][-1]["step"] == 250
@@ -715,11 +711,12 @@ def test_capability_resource_exposes_tool_branches_and_execution_steps():
             contents = list(await read_resource(f"overmind://capabilities/{capability.id}"))
         return json.loads(contents[0].content)
 
-    result = asyncio.run(read())
+    result = async_to_sync(read)()
     assert result["tool_spec"][0]["branches"] == [branch]
     assert result["trajectory_map"] == []
 
 
+@asgi_db
 def test_eval_set_pages_preserve_complete_sources_and_project_scope():
     project, key = _project()
     _, other_key = _project()

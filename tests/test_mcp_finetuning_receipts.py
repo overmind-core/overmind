@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from types import SimpleNamespace
 
 import pytest
 from django.urls import reverse
-from mcp_fixtures import training_setup
+from mcp_fixtures import call_tool, training_setup
 from rest_framework.test import APIClient
 
 from overbae.api.credit_gate import PaymentRequired
@@ -20,10 +19,9 @@ from overbae.models import (
     User,
 )
 from overbae.services.finetuning_validator import ValidationResult
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _context() -> MCPContext:
@@ -39,7 +37,7 @@ def _context() -> MCPContext:
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 @pytest.mark.parametrize("training_type", ["Lora", ["Lora"], 1, {"type": "unknown"}])

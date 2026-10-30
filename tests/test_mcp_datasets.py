@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from datetime import timedelta
 
 import pytest
+from mcp_fixtures import call_tool
 
 from overbae.models import (
     APIToken,
@@ -19,10 +19,9 @@ from overbae.models import (
 )
 from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_datasets
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
@@ -45,7 +44,7 @@ def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _dataset(context: MCPContext, name: str = "Eval", **kwargs) -> Dataset:

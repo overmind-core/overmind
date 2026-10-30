@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 from mcp.server.lowlevel import Server
+from mcp_fixtures import asgi_db
 from posthog import Posthog
 from posthog.mcp import instrument
 from starlette.testclient import TestClient
@@ -15,7 +16,7 @@ from starlette.testclient import TestClient
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp import server
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 MCP_URL = "/api/mcp/"
 INJECTED_ARGUMENTS = {"context", "conversation_id", "llm_model"}
@@ -87,6 +88,7 @@ def _rpc(client, headers, method, params=None, request_id=1):
     return response
 
 
+@asgi_db
 def test_every_tool_call_reaches_posthog_as_metadata_only(instrumented):
     user, project, headers = _member(project_key=False)
     expected = {}
@@ -160,6 +162,7 @@ def test_every_tool_call_reaches_posthog_as_metadata_only(instrumented):
     assert events["$mcp_resource_read"]["properties"]["project_id"] == str(project.id)
 
 
+@asgi_db
 def test_project_key_events_carry_the_key_project(instrumented):
     _, project, headers = _member(project_key=True)
 
@@ -170,6 +173,7 @@ def test_project_key_events_carry_the_key_project(instrumented):
     assert event["properties"]["project_id"] == str(project.id)
 
 
+@asgi_db
 def test_failed_ingest_does_not_fail_tool_calls(instrumented):
     instrumented.status = 500
     _, _, headers = _member(project_key=True)

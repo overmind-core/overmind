@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 
 import pytest
 from django.utils import timezone
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.models import ConnectorCredential, Project
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _call(context: MCPContext, connector_id: str):
-    return asyncio.run(
-        CATALOG.call(
-            "get_job",
-            {"kind": "connector_sync", "id": connector_id},
-            context,
-        )
-    )
+    return call_tool("get_job", {"kind": "connector_sync", "id": connector_id}, context)
 
 
 def test_connector_sync_get_job_uses_connector_receipt_id_and_resource():

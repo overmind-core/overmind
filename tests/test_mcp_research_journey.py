@@ -5,7 +5,9 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.test import TestCase
 from django.utils import timezone
+from mcp_fixtures import asgi_db
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
@@ -28,7 +30,7 @@ from overbae.services.decision_providers import external_step
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.native_evaluation import advance_plan
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def call(client, key, name, arguments):
@@ -48,6 +50,7 @@ def call(client, key, name, arguments):
     return result.get("structuredContent") or json.loads(result["content"][0]["text"])
 
 
+@asgi_db
 def test_training_draft_validation_names_the_recipe_correction_without_log_access(settings):
     settings.FINETUNING_BACKEND = "modal"
     project, _, dataset = workspace()
@@ -92,6 +95,7 @@ def test_training_draft_validation_names_the_recipe_correction_without_log_acces
         assert job["progress"]["jobs"] == []
 
 
+@asgi_db
 def test_unmeasured_forecast_explains_budget_stop_before_a_launch_attempt(settings):
     settings.FINETUNING_BACKEND = "modal"
     project, _, dataset = workspace()
@@ -133,6 +137,7 @@ def test_unmeasured_forecast_explains_budget_stop_before_a_launch_attempt(settin
         assert quote["trained_tokens"] >= 0
 
 
+@asgi_db
 def test_fresh_mcp_client_derives_and_profiles_exact_parent_without_changing_it():
 
     project, _, dataset = workspace()
@@ -247,6 +252,7 @@ def test_target_sampling_profiles_mean_and_probability_supervision():
     ]
 
 
+@asgi_db
 def test_mcp_comparison_draft_requires_explicit_launch_and_resumes_after_reconnect():
 
     project, _, dataset = workspace()
@@ -364,7 +370,10 @@ def test_expired_stage_lease_is_reconciled_after_worker_loss():
         }
     }
     plan.save()
-    with patch.object(advance_plan, "apply_async") as queued:
+    with (
+        patch.object(advance_plan, "apply_async") as queued,
+        TestCase.captureOnCommitCallbacks(execute=True),
+    ):
         advance_plan(str(plan.pk))
     assert queued.call_count >= 1
     native_evaluation.advance(plan.pk, stage="verify_inputs")
@@ -407,6 +416,7 @@ def test_exploration_reports_allocation_and_can_retry_failed_local_work():
     assert op.report["measurement"]["population"] == "whole_source"
 
 
+@asgi_db
 def test_label_breakdown_is_shared_by_rest_and_mcp_without_soft_target_accuracy(tmp_path, settings):
     settings.MEDIA_ROOT = tmp_path
     settings.STRIPE_SECRET_KEY = ""

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
 from factories import make_matrix_row
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.models import Capability, Span
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 TOOLS = ("get_instrumentation_plan", "verify_instrumentation")
 
@@ -43,7 +41,7 @@ def _span(
 
 
 def _call(name: str, context: MCPContext, arguments: dict):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def test_plan_without_anchors_asks_for_setup():

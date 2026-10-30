@@ -6,13 +6,14 @@ import uuid
 import pytest
 from mcp import types
 from mcp.shared.exceptions import McpError
+from mcp_fixtures import asgi_db
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp.prompts import PROMPTS, get_prompt, list_prompts
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 MCP_URL = "/api/mcp/"
 
@@ -61,6 +62,7 @@ def _arguments(prompt: types.Prompt) -> dict[str, str]:
     return {argument.name: values.get(argument.name, "") for argument in prompt.arguments or []}
 
 
+@asgi_db
 def test_lists_the_small_prompt_manifest_over_transport():
     raw_key = _token()
 

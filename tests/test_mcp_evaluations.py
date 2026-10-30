@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 
 import pytest
+from asgiref.sync import async_to_sync
 from factories import make_matrix_row
 from mcp.shared.exceptions import McpError
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.innermind import runs
 from overbae.models import (
@@ -24,7 +24,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 EVALUATION_TOOLS = {
     "create_eval_matrix_row",
@@ -38,12 +38,12 @@ EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _read(context: MCPContext, uri: str) -> dict:
     with bind_context(context):
-        return json.loads(asyncio.run(read_resource(uri))[0].content)
+        return json.loads(async_to_sync(read_resource)(uri)[0].content)
 
 
 def _dataset(context: MCPContext, rows: int = 2) -> Dataset:
@@ -165,7 +165,7 @@ def test_eval_sets_are_project_scoped_and_can_be_activated():
     assert [entry["name"] for entry in resource["rows"]] == ["Accuracy"]
     other = _writer()
     with bind_context(other), pytest.raises(McpError):
-        asyncio.run(read_resource(result.structuredContent["resource_links"][0]["uri"]))
+        async_to_sync(read_resource)(result.structuredContent["resource_links"][0]["uri"])
     foreign = _call("create_eval_set", {"name": "Foreign", "rows": [str(row.id)]}, other)
     assert foreign.structuredContent["error"]["code"] == "eval_matrix_row_not_found"
 

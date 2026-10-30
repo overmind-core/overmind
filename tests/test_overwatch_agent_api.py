@@ -12,7 +12,7 @@ from factories import (
 )
 from rest_framework.test import APIClient
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 URL = "/api/internal/overwatch/agent/query/"
 TOKEN = "agent-test-service-token"
 

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from asgiref.sync import async_to_sync
 from conftest import TRAIN_ROWS, frozen_dataset
-from mcp_fixtures import training_setup
+from mcp_fixtures import call_tool, training_setup
 
 from modal_shared.preparation import preparation_failure
 from overbae.core.errors import InputValidationError
@@ -27,7 +27,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _context(*, permission: str | list[str] = "read") -> MCPContext:
@@ -46,7 +46,7 @@ def _context(*, permission: str | list[str] = "read") -> MCPContext:
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 @pytest.mark.parametrize("tool", ["prepare_training_data", "retry_deployment"])
@@ -135,7 +135,7 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
             )
         return json.loads(contents[0].content)
 
-    assert asyncio.run(resource())["status"] == "queued"
+    assert async_to_sync(resource)()["status"] == "queued"
     failure = preparation_failure("worker_out_of_date")
     TrainingPreparation.objects.filter(pk=receipt["id"]).update(
         state="failed", report=failure, error=failure["error"]
@@ -145,7 +145,7 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
     assert failed.structuredContent["status"] == "failed"
     assert failed.structuredContent["job_error"] == failure["error"]
     assert failed.structuredContent["progress"] == failure
-    assert asyncio.run(resource())["error"] == failure["error"]
+    assert async_to_sync(resource)()["error"] == failure["error"]
     other = _context()
     denied = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, other)
     assert denied.isError
@@ -333,7 +333,7 @@ def test_benchmark_tool_and_capability_resource_preserve_serving():
             contents = list(await read_resource(f"overmind://capabilities/{capability.id}"))
         return json.loads(contents[0].content)
 
-    state = asyncio.run(resource())
+    state = async_to_sync(resource)()
     assert state["benchmark_model"]["id"] == str(benchmark.id)
     assert [candidate["id"] for candidate in state["benchmark_candidates"]] == [str(benchmark.id)]
     result = _call("set_benchmark_model", {"capability": str(capability.id)}, context)

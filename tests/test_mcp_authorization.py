@@ -5,12 +5,13 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from mcp_fixtures import asgi_db
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 MCP_URL = "/api/mcp/"
 
@@ -51,12 +52,14 @@ def _call(raw_key: str, headers: dict[str, str] | None = None):
         )
 
 
+@asgi_db
 def test_requires_api_key_and_rejects_jwt():
     response = _call("not-a-key")
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "authentication_failed"
 
 
+@asgi_db
 def test_unconfigured_oauth_does_not_advertise_a_bearer_challenge(settings):
     settings.MCP_SERVER_URL = ""
     with TestClient(create_mcp_application()) as client:
@@ -75,6 +78,7 @@ def test_unconfigured_oauth_does_not_advertise_a_bearer_challenge(settings):
     assert "bearer" not in response.headers.get("www-authenticate", "").casefold()
 
 
+@asgi_db
 def test_rejects_account_scope_with_project_binding():
     raw, _ = _token(scope={"scope": "account", "permission": ["read", "write"]})
     response = _call(raw)
@@ -82,6 +86,7 @@ def test_rejects_account_scope_with_project_binding():
     assert response.json()["error"]["code"] == "project_required"
 
 
+@asgi_db
 def test_rejects_inactive_and_expired_keys():
     raw, token = _token()
     token.is_active = False
@@ -98,6 +103,7 @@ def test_rejects_inactive_and_expired_keys():
     assert expired.json()["error"]["code"] == "authentication_failed"
 
 
+@asgi_db
 def test_enforces_allowed_ips():
     raw, _ = _token(allowed_ips=["203.0.113.10"])
     response = _call(raw)
@@ -105,6 +111,7 @@ def test_enforces_allowed_ips():
     assert response.json()["error"]["code"] == "authentication_failed"
 
 
+@asgi_db
 def test_rejects_unknown_permissions():
     raw, token = _token()
     token.scope = {
@@ -119,6 +126,7 @@ def test_rejects_unknown_permissions():
     assert response.json()["error"]["code"] == "permission_denied"
 
 
+@asgi_db
 def test_accepts_bearer_api_key():
     raw, _ = _token()
     response = _call(raw, {"Authorization": f"Bearer {raw}"})

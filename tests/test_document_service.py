@@ -43,7 +43,7 @@ def test_parser_configuration_has_no_in_process_fallback(settings, tmp_path):
         documents.extract(path, filename=path.name)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_completed_ocr_pages_survive_interruption_and_stay_project_scoped():
     import uuid
 
@@ -158,7 +158,7 @@ def test_progress_backpressure_preserves_checkpoint_and_does_not_block_watchdog(
     assert received == [{"ocr_checkpoint": {"page": 1}}]
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_corrupt_checkpoint_is_recomputed_and_expiry_is_bounded():
     import uuid
     from datetime import timedelta

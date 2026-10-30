@@ -10,7 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from overbae.innermind import generation
 from overbae.models import EvalRun, EvalRunRow, Project
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def examined_history_rows(node):

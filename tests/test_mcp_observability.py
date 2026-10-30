@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
+from asgiref.sync import async_to_sync
+from mcp_fixtures import call_tool
 
 from overbae.models import (
     APIToken,
@@ -20,7 +21,7 @@ from overbae.models import (
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _context() -> tuple[MCPContext, Capability, Dataset]:
@@ -74,7 +75,7 @@ def test_all_tools_return_structured_content_and_project_scoped_rows():
             results.append(await CATALOG.call(name, args, context))
         return results
 
-    results = asyncio.run(invoke())
+    results = async_to_sync(invoke)()
     for (name, _), result in zip(calls, results, strict=True):
         assert result.isError is False, (name, result.content, result.structuredContent)
     assert all(result.structuredContent for result in results)
@@ -112,7 +113,7 @@ def test_query_failures_includes_failed_check_when_span_average_passes():
         },
     )
 
-    result = asyncio.run(CATALOG.call("query_failures", {"capability": "support"}, context))
+    result = call_tool("query_failures", {"capability": "support"}, context)
 
     assert result.isError is False
     assert result.structuredContent["failures"][0]["failed_scores"] == [
@@ -170,7 +171,7 @@ def test_query_traces_exact_session_counts_root_traces():
             context,
         )
 
-    result = asyncio.run(invoke())
+    result = async_to_sync(invoke)()
 
     assert result.isError is False
     assert result.structuredContent["page"]["total"] == 2

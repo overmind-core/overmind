@@ -9,7 +9,7 @@ from overbae.services.datasets import land
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def test_missing_query_admission_backend_is_retryable_and_does_not_change_the_source(settings):

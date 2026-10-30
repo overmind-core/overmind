@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from django.core.cache import cache
 from django.utils import timezone
+from mcp_fixtures import asgi_db
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 
@@ -24,7 +25,7 @@ from overbae.models import (
 from overbae.services import inference_live, inference_requests
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -72,6 +73,7 @@ def infer(serving, **overrides):
     return result
 
 
+@asgi_db
 def test_decision_rest_and_mcp_share_typed_durable_inference(serving, fake_modal):
     model = serving.model
     model.inference_contract = "decision"
@@ -135,6 +137,7 @@ def test_decision_rest_and_mcp_share_typed_durable_inference(serving, fake_modal
     )
 
 
+@asgi_db
 def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budget(
     serving, monkeypatch
 ):
@@ -170,6 +173,7 @@ def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budg
     assert InferenceRequest.objects.get(pk=request_id).payload["max_tokens"] == 16000
 
 
+@asgi_db
 def test_worker_resource_checks_project_before_remote_measurements(serving, monkeypatch):
     foreign = Project.objects.create(name="Other", slug="other-serving")
     model = DeployedModel.objects.create(
@@ -182,6 +186,7 @@ def test_worker_resource_checks_project_before_remote_measurements(serving, monk
     stats.assert_not_awaited()
 
 
+@asgi_db
 def test_job_poll_exposes_deployment_stage_and_status_change_time(serving):
     now = timezone.now()
     serving.model.status = "warming"

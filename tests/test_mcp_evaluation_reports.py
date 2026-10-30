@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from mcp_fixtures import asgi_db
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
@@ -10,7 +11,7 @@ from overbae.models import APIToken, NativeEvaluationPlan, Project
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.native_evaluation import directory
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def completed_report():
@@ -59,6 +60,7 @@ def completed_report():
     return plan, key
 
 
+@asgi_db
 def test_mcp_summary_counts_every_benchmark_and_links_complete_project_scoped_reports():
     plan, key = completed_report()
     with TestClient(create_mcp_application()) as client:

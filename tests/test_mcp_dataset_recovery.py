@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
 from django.utils import timezone
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.models import Dataset, DatasetImport, DatasetLandingWork
 from overbae.services.datasets import files, imports
-from overbae.services.mcp.catalog import CATALOG
 from overbae.tasks import datasets as dataset_tasks
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def test_retained_first_upload_into_an_existing_draft_recovers_through_mcp():
@@ -44,11 +42,11 @@ def test_retained_first_upload_into_an_existing_draft_recovers_through_mcp():
             "attachment_request": attachment_request,
         },
     )
-    inspected = asyncio.run(CATALOG.call("inspect_dataset", {"dataset": str(dataset.pk)}, context))
+    inspected = call_tool("inspect_dataset", {"dataset": str(dataset.pk)}, context)
     assert not inspected.isError
     action = inspected.structuredContent["next_actions"][0]
     assert action["tool"] == "resume_dataset_import"
-    recovered = asyncio.run(CATALOG.call(action["tool"], action["arguments"], context))
+    recovered = call_tool(action["tool"], action["arguments"], context)
     assert not recovered.isError, recovered.structuredContent
     dataset.refresh_from_db()
     assert dataset.state == "idle" and dataset.source.rows == 2
@@ -93,13 +91,13 @@ def test_inspection_leads_to_source_recovery_through_existing_tool(monkeypatch, 
 
     target.refresh_from_db()
     assert target.state == Dataset.State.ERROR
-    inspected = asyncio.run(CATALOG.call("inspect_dataset", {"dataset": str(target.pk)}, context))
+    inspected = call_tool("inspect_dataset", {"dataset": str(target.pk)}, context)
     assert not inspected.isError, inspected.structuredContent
     actions = inspected.structuredContent["next_actions"]
     assert len(actions) == 1
     action = actions[0]
     assert action["tool"] == "resume_dataset_import"
-    recovered = asyncio.run(CATALOG.call(action["tool"], action["arguments"], context))
+    recovered = call_tool(action["tool"], action["arguments"], context)
 
     assert not recovered.isError, recovered.structuredContent
     assert recovered.structuredContent["dataset"]["id"] == str(target.pk)
@@ -131,7 +129,7 @@ def test_inspection_does_not_suggest_a_refused_action_after_import_attempts_are_
         queued_at=timezone.now(),
     )
 
-    inspected = asyncio.run(CATALOG.call("inspect_dataset", {"dataset": str(dataset.pk)}, context))
+    inspected = call_tool("inspect_dataset", {"dataset": str(dataset.pk)}, context)
 
     assert not inspected.isError, inspected.structuredContent
     assert inspected.structuredContent["next_actions"] == []

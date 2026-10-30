@@ -2,6 +2,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from mcp_fixtures import asgi_db
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
 from test_mcp_research_journey import call
@@ -13,9 +14,10 @@ from overbae.services.datasets.partition_plans import build, prepared_member_row
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.training_forecast import forecast
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
+@asgi_db
 def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatch):
     project, _, dataset = workspace()
     cell = dataset.active_cell
@@ -140,6 +142,7 @@ def test_forecast_distinguishes_current_price_from_missing_duration():
     assert quote["estimate_blockers"] == ["duration_unmeasured"]
 
 
+@asgi_db
 def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     project, _, dataset = workspace()
     cell = dataset.active_cell

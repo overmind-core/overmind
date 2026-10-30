@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from datetime import timedelta
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.utils import timezone
 from fakes.vendors import LangfuseAPI, Step
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 from rest_framework.test import APIClient
 
 from overbae.models import (
@@ -29,7 +29,7 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource, resource_templates
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +40,7 @@ def langfuse(fake_llm) -> LangfuseAPI:
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _connector(
@@ -297,7 +297,7 @@ def test_connector_resource_is_project_scoped_and_secret_free():
             contents = list(await read_resource(f"overmind://connectors/{connector.id}"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read())
+    resource = async_to_sync(read)()
     encoded = json.dumps(resource)
     assert resource["kind"] == "connector"
     assert resource["sync_runs"][0]["has_error"] is True

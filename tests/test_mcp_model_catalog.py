@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import Mock
 
 import pytest
 from django.test import override_settings
+from mcp_fixtures import call_tool
 
 from overbae.models import APIToken, Project, User
 from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
@@ -29,7 +29,7 @@ def _context(permission: str = "read") -> MCPContext:
 
 
 def _call(arguments: dict, *, permission: str = "read"):
-    return asyncio.run(CATALOG.call("get_model_catalog", arguments, _context(permission)))
+    return call_tool("get_model_catalog", arguments, _context(permission))
 
 
 def test_catalog_metadata_and_input_schema_are_read_only_and_bounded():

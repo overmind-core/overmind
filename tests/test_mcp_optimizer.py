@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 
 import pytest
+from asgiref.sync import async_to_sync
 from conftest import EVAL_ROWS, frozen_dataset
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.models import (
     Capability,
@@ -21,11 +21,11 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.contracts.optimizer import InspectOptimizerResultOutput
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _ready_objects(context: MCPContext):
@@ -176,7 +176,7 @@ def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
             contents = list(await read_resource(uri))
         return contents[0].content
 
-    payload = json.loads(asyncio.run(read()))
+    payload = json.loads(async_to_sync(read)())
     assert "secret-value" not in json.dumps(payload)
     assert "iterations" in payload
     assert "executioner" in payload
