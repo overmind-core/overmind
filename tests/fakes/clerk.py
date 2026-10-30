@@ -20,6 +20,27 @@ _KID = "ins_fake"
 _ids = itertools.count(1)
 
 
+PENDING_BROWSER_FORM_SCRIPT = """
+window.Clerk = {
+    loaded: true,
+    user: null,
+    session: null,
+    organization: null,
+    client: { signIn: {}, signUp: {} },
+    load: async () => {},
+    addListener(listener) {
+        listener({ client: this.client, user: null, session: null, organization: null });
+        return () => {};
+    },
+    mountSignIn() { fetch('https://clerk.example.invalid/pending-form'); },
+    mountSignUp() { fetch('https://clerk.example.invalid/pending-form'); },
+    unmountSignIn() {},
+    unmountSignUp() {},
+    __unstable__updateProps() {},
+};
+"""
+
+
 def _json(body: Any, status: int = 200) -> tuple[int, dict, bytes]:
     return status, {"content-type": "application/json"}, json.dumps(body).encode()
 

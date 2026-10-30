@@ -39,7 +39,7 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <form
-      className="animate-fade-in-up flex w-full max-w-sm flex-col gap-4 rounded-md border border-auth-border bg-auth-panel/90 p-6 [animation-delay:400ms]"
+      className="flex w-full max-w-sm flex-col gap-4 rounded-md border border-auth-border bg-auth-panel/90 p-6"
       onSubmit={(e) => void onSubmit(e)}
     >
       <div className="flex flex-col gap-1">

@@ -3,8 +3,8 @@ import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { LocalLoginForm } from "@/components/local-login-form";
+import { AuthenticationLoadingState } from "@/components/route-error";
 import { SplashBackground } from "@/components/splash-background";
-import { LoadingState } from "@/components/ui/spinner";
 import { config } from "@/config";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useLoginGate } from "@/hooks/use-login-gate";
@@ -23,7 +23,6 @@ const CLERK_APPEARANCE = {
   elements: {
     card: "bg-transparent shadow-none",
     cardBox: "rounded-md border border-auth-border bg-auth-panel/90 shadow-none",
-    rootBox: "animate-fade-in-up [animation-delay:400ms]",
   },
 };
 
@@ -43,7 +42,7 @@ function RouteComponent() {
   if (gate.kind === "loading") {
     return (
       <SplashBackground>
-        <LoadingState className="max-w-sm" label="Loading sign in" />
+        <AuthenticationLoadingState />
       </SplashBackground>
     );
   }
@@ -74,6 +73,7 @@ function RouteComponent() {
         {mode === "signup" ? (
           <SignUp
             appearance={CLERK_APPEARANCE}
+            fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
             oauthFlow="popup"
             routing="hash"
@@ -82,6 +82,7 @@ function RouteComponent() {
         ) : (
           <SignIn
             appearance={CLERK_APPEARANCE}
+            fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
             oauthFlow="popup"
             routing="hash"

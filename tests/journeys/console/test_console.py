@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.utils import timezone
 
 from modal_shared.training_monitoring import fingerprint
@@ -26,9 +27,124 @@ from overbae.models import (
 from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
 from overbae.tasks.datasets import reap_stuck_runs
+from tests.fakes.clerk import PENDING_BROWSER_FORM_SCRIPT
 
 from ..datasets import tickets, upload
 from ..stack import drain, settle
+
+
+@pytest.mark.parametrize("console_url", ["clerk"], indirect=True)
+def test_sign_in_script_failure_offers_a_document_reload(browser, console_url):
+    console = browser.page(console_url)
+    attempts = []
+
+    def external_request(route):
+        if route.request.url.startswith(console_url):
+            route.continue_()
+        else:
+            attempts.append(route.request.url)
+            route.abort()
+
+    console._browser.call(console._page.route, "**/*", external_request)
+    try:
+        console.goto("/login")
+        console.sees("Sign in unavailable")
+        before = len(attempts)
+        console.press("Reload sign in")
+        console.sees("Sign in unavailable")
+        assert len(attempts) > before
+        assert any("clerk" in url for url in attempts)
+        console.save_evidence("sign-in-script-failure")
+    finally:
+        console.close()
+
+
+@pytest.mark.parametrize("console_url", ["clerk"], indirect=True)
+def test_pending_sign_in_offers_a_document_reload(browser, console_url):
+    console = browser.page(console_url)
+    pending = []
+
+    def external_request(route):
+        if route.request.url.startswith(console_url):
+            route.continue_()
+        elif "clerk" in route.request.url:
+            pending.append(route)
+        else:
+            route.abort()
+
+    console._browser.call(console._page.route, "**/*", external_request)
+    try:
+        console._browser.call(lambda: console._page.goto("/login", wait_until="domcontentloaded"))
+        console.sees("Loading sign in")
+        console.save_evidence("sign-in-pending")
+        console._browser.call(
+            lambda: console._page.get_by_role("button", name="Reload sign in").wait_for(
+                state="visible", timeout=15000
+            )
+        )
+        before = len(pending)
+
+        def reload_sign_in():
+            with console._page.expect_request(lambda request: "clerk" in request.url):
+                console._page.get_by_role("button", name="Reload sign in").click()
+
+        console._browser.call(reload_sign_in)
+        console.sees("Loading sign in")
+        assert len(pending) > before
+        console.save_evidence("sign-in-pending-recovery")
+    finally:
+        console.close()
+
+
+@pytest.mark.parametrize("console_url", ["clerk"], indirect=True)
+@pytest.mark.parametrize("mode", ["signin", "signup"])
+def test_pending_authentication_form_offers_recovery(browser, console_url, mode):
+    console = browser.page(console_url)
+    pending = []
+
+    def external_request(route):
+        if route.request.url.startswith(console_url):
+            route.continue_()
+        elif "clerk.browser.js" in route.request.url:
+            route.fulfill(content_type="application/javascript", body=PENDING_BROWSER_FORM_SCRIPT)
+        elif route.request.url.endswith("/pending-form"):
+            pending.append(route)
+        else:
+            route.abort()
+
+    console._browser.call(console._page.route, "**/*", external_request)
+    try:
+
+        def open_form():
+            with console._page.expect_request("**/pending-form"):
+                console._page.goto("/login?mode=signup" if mode == "signup" else "/login")
+
+        console._browser.call(open_form)
+        console.sees("Set up locally")
+        assert pending
+        console.save_evidence(f"authentication-form-pending-{mode}")
+        console.sees("Loading sign in")
+
+        def reload_form():
+            with console._page.expect_request("**/pending-form"):
+                console._page.get_by_role("button", name="Reload sign in").click()
+
+        console._browser.call(reload_form)
+        console.sees("Loading sign in")
+        console.save_evidence(f"authentication-form-recovery-{mode}")
+    finally:
+        console._browser.call(lambda: console._page.unroute_all(behavior="ignoreErrors"))
+        console.close()
+
+
+def test_route_error_home_action_reloads_the_document(console):
+    console.goto("/inference?page=broken")
+    console.sees("Invalid link")
+    console._browser.call(console._page.evaluate, "window.failedDocument = true")
+    console._browser.call(lambda: console._page.get_by_role("link", name="Go to home").click())
+    console.sees("Copy onboarding prompt")
+    console.wait_until("() => location.pathname === '/' && !window.failedDocument")
+    console.save_evidence("route-error-home-recovery")
 
 
 def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
@@ -510,6 +626,40 @@ def test_decision_data_selects_native_training_controls(
     console.wait_until("""() => !document.body.innerText.includes("Can't be trained on yet")
         && !document.body.innerText.includes("Validating")""")
     assert not FinetuningJob.objects.filter(project_id=project).exists()
+
+
+def test_api_key_remains_private_in_session_replay(console, workshop, replay_recorder):
+    project = workshop.project()["id"]
+    console.goto(f"/projects/{project}?projectId={project}")
+    console.press("New API key")
+    console._browser.call(lambda: console._page.add_script_tag(path=str(replay_recorder)))
+    console._browser.call(
+        console._page.evaluate,
+        """() => {
+            window.replayEvents = [];
+            window.stopReplay = ReplayRecorder.record({
+                emit: event => window.replayEvents.push(event),
+                blockClass: 'ph-no-capture', maskTextClass: 'ph-mask', maskAllInputs: true
+            });
+        }""",
+    )
+    console.press("Create API key")
+    console.sees("Your new API key:")
+    console.wait_until("() => window.replayEvents.some(event => event.type === 3)")
+    leaked = console._browser.call(
+        console._page.evaluate,
+        """() => {
+            ReplayRecorder.record.takeFullSnapshot();
+            const key = document.querySelector('[role="dialog"] code').textContent;
+            const leaked = JSON.stringify(window.replayEvents).includes(key);
+            window.stopReplay();
+            return leaked;
+        }""",
+    )
+    console.press("Done")
+    console.wait_until("() => !document.querySelector('[role=\"dialog\"]')")
+    console.save_evidence("api-key-replay-privacy")
+    assert leaked is False, "Session replay captured the API key"
 
 
 def test_native_monitoring_evidence_remains_readable_after_cancellation(console, workshop):

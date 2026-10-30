@@ -121,7 +121,7 @@ export function CreateApiKeyDialog({
         </DialogHeader>
         <DialogBody>
           {newToken ? (
-            <div className="space-y-4">
+            <div className="ph-no-capture space-y-4">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Your new API key:</p>
                 <div className="overflow-x-auto rounded-md border border-dashed border-warning/50 bg-warning/10 p-3 font-mono text-sm">

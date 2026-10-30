@@ -17,6 +17,7 @@ describe("isChunkLoadError", () => {
     "Importing a module script failed.",
     "error loading dynamically imported module",
     "ChunkLoadError: Loading chunk 42 failed.",
+    "Loading chunk 9573 failed. (error: https://example.com/ui-common.js)",
     'Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html".',
   ])("detects %s", (message) => {
     expect(isChunkLoadError(new TypeError(message))).toBe(true);

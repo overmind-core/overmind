@@ -17,6 +17,31 @@ FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
 PASSWORD = "test-pass-123"
 
 
+@pytest.fixture(scope="session")
+def replay_recorder(tmp_path_factory):
+    bundle = tmp_path_factory.mktemp("replay-recorder") / "recorder.js"
+    entry = bundle.with_suffix(".ts")
+    entry.write_text(
+        f"import {{ record }} from {json.dumps(str(FRONTEND / 'node_modules/posthog-js/dist/rrweb.js'))};"
+        "window.ReplayRecorder = { record };"
+    )
+    subprocess.run(
+        [
+            "bun",
+            "build",
+            str(entry),
+            "--format=iife",
+            "--outfile",
+            str(bundle),
+        ],
+        cwd=FRONTEND,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    return bundle
+
+
 class _SinglePageApp(SimpleHTTPRequestHandler):
     def send_head(self):
         if not Path(self.translate_path(self.path)).exists():
@@ -28,7 +53,7 @@ class _SinglePageApp(SimpleHTTPRequestHandler):
 
 
 @pytest.fixture(scope="session")
-def console_url(live_api, tmp_path_factory):
+def console_url(live_api, tmp_path_factory, request):
     dist = tmp_path_factory.mktemp("console")
     env = {
         **os.environ,
@@ -38,6 +63,9 @@ def console_url(live_api, tmp_path_factory):
         "VITE_PUBLIC_POSTHOG_KEY": "",
         "VITE_FEATURE_SIGNALS": "true",
     }
+    if getattr(request, "param", None) == "clerk":
+        env["VITE_SELF_HOSTED"] = "false"
+        env["VITE_CLERK_PUBLISHABLE_KEY"] = "pk_test_Y2xlcmsuZXhhbXBsZS5pbnZhbGlkJA"
     subprocess.run(
         ["bun", "run", "build", "--outDir", str(dist), "--emptyOutDir"],
         cwd=FRONTEND,
