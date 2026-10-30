@@ -1,11 +1,11 @@
-import asyncio
 import json
 import re
 from pathlib import Path
 
 import pytest
+from asgiref.sync import async_to_sync
 from mcp.shared.exceptions import McpError
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 from rest_framework.test import APIClient
 
 from overbae.models import (
@@ -16,15 +16,14 @@ from overbae.models import (
     FinetuningJob,
     ProjectMembership,
 )
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def call(context, tool, **arguments):
-    result = asyncio.run(CATALOG.call(tool, arguments, context))
+    result = call_tool(tool, arguments, context)
     assert not result.isError, result.content
     return result.structuredContent
 
@@ -32,7 +31,7 @@ def call(context, tool, **arguments):
 def read_activity(context, project_id=None):
     with bind_context(context):
         uri = "overmind://activity" + (f"?project_id={project_id}" if project_id else "")
-        return json.loads(asyncio.run(read_resource(uri))[0].content)
+        return json.loads(async_to_sync(read_resource)(uri)[0].content)
 
 
 def client_for(context):
@@ -57,7 +56,7 @@ def test_feed_never_copies_tool_arguments_and_failed_calls_record_nothing():
     call(context, "delete_eval_matrix_row", row=created["row"]["id"])
     after = read_activity(context)
     assert any(item["action"] == "Deleted an evaluation" for item in after["results"])
-    rejected = asyncio.run(CATALOG.call("create_eval_matrix_row", {"name": "Invalid"}, context))
+    rejected = call_tool("create_eval_matrix_row", {"name": "Invalid"}, context)
     assert rejected.isError
     assert read_activity(context)["count"] == after["count"]
 
@@ -176,10 +175,8 @@ def test_reported_onboarding_uses_current_roadmap_without_notification_noise():
     reset = call(context, "report_onboarding_progress", run_id=str(uuid4()), completed_steps=2)
     assert sum(bool(step["completed_at"]) for step in reset["milestones"]) == 2
     for count in (-1, 11):
-        rejected = asyncio.run(
-            CATALOG.call(
-                "report_onboarding_progress", {"run_id": run_id, "completed_steps": count}, context
-            )
+        rejected = call_tool(
+            "report_onboarding_progress", {"run_id": run_id, "completed_steps": count}, context
         )
         assert rejected.isError
 
@@ -204,7 +201,7 @@ def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
         "state": "completed",
         "outputs": [str(foreign_cell.pk)],
     }
-    assert asyncio.run(CATALOG.call("update_dataset_preparation", args, context)).isError
+    assert call_tool("update_dataset_preparation", args, context).isError
     args["outputs"] = [str(source.pk)]
     DatasetPipelineRun.objects.create(
         dataset=dataset,
@@ -213,8 +210,8 @@ def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
         request_key="pending",
         state="queued",
     )
-    assert asyncio.run(CATALOG.call("update_dataset_preparation", args, context)).isError
-    assert asyncio.run(CATALOG.call("update_dataset_preparation", args, peer)).isError
+    assert call_tool("update_dataset_preparation", args, context).isError
+    assert call_tool("update_dataset_preparation", args, peer).isError
     assert (
         call(context, "inspect_dataset_workbench", dataset=str(dataset.pk))["preparation_workflow"][
             "state"
@@ -228,4 +225,4 @@ def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
         preparation_id=workflow["id"],
         state="cancelled",
     )
-    assert asyncio.run(CATALOG.call("update_dataset_preparation", args, context)).isError
+    assert call_tool("update_dataset_preparation", args, context).isError

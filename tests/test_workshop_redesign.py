@@ -1,13 +1,12 @@
-import asyncio
 from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from overbae.models import APIToken, Dataset, Project, ProjectMembership
 from overbae.services.datasets import paths, store, use
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from tests.workshop_script_fixtures import (
     execute_fixture,
@@ -39,7 +38,7 @@ def workspace():
 
 
 def call(context, tool, arguments):
-    result = asyncio.run(CATALOG.call(tool, arguments, context))
+    result = call_tool(tool, arguments, context)
     assert not result.isError, result
     return result.structuredContent
 
@@ -68,27 +67,23 @@ def test_pipeline_conflicts_and_project_isolation_preserve_the_source():
             "package": retained_package(context.project, context.user, [select_script(["text"])]),
         },
     )
-    result = asyncio.run(
-        CATALOG.call(
-            "run_dataset_pipeline",
-            {
-                "dataset": str(dataset.pk),
-                "pipeline": recipe["pipeline"]["id"],
-                "source_cell": str(source.pk),
-                "source_fingerprint": "0" * 64,
-                "request_key": "stale",
-            },
-            context,
-        )
+    result = call_tool(
+        "run_dataset_pipeline",
+        {
+            "dataset": str(dataset.pk),
+            "pipeline": recipe["pipeline"]["id"],
+            "source_cell": str(source.pk),
+            "source_fingerprint": "0" * 64,
+            "request_key": "stale",
+        },
+        context,
     )
     assert result.isError
     foreign = Project.objects.create(name="Other", slug="other-workshop")
-    denied = asyncio.run(
-        CATALOG.call(
-            "inspect_dataset_workbench",
-            {"dataset": str(dataset.pk)},
-            MCPContext(user=context.user, token=context.token, project=foreign),
-        )
+    denied = call_tool(
+        "inspect_dataset_workbench",
+        {"dataset": str(dataset.pk)},
+        MCPContext(user=context.user, token=context.token, project=foreign),
     )
     assert denied.isError
     dataset.refresh_from_db()
@@ -206,9 +201,7 @@ def test_external_output_records_attribution_and_preserves_frozen_inputs():
         next(store.iter_rows(paths.cell_path(dataset.pk, source.pk)))["expected_output"]
         == "Source answer"
     )
-    conflict = asyncio.run(
-        CATALOG.call("import_dataset_version", {**args, "name": "Different request"}, context)
-    )
+    conflict = call_tool("import_dataset_version", {**args, "name": "Different request"}, context)
     assert conflict.isError
     selected = call(
         context, "update_dataset", {"dataset": str(dataset.pk), "active": str(source.pk)}

@@ -1,13 +1,12 @@
-import asyncio
 import uuid
 from unittest.mock import patch
 
 import pytest
+from mcp_fixtures import call_tool
 
 from overbae.models import Dataset, DatasetPipeline, DatasetPipelineBinding, DatasetPipelineRun
 from overbae.services.datasets import pipeline_bindings, workbench
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.contracts.workbench import SaveInput
 from tests.test_workshop_redesign import workspace
 
@@ -37,12 +36,8 @@ def historical_workspace():
 @pytest.mark.parametrize("extra", [{}, {"steps": [{"operation": "select", "columns": ["text"]}]}])
 def test_mcp_requires_retained_package_before_creating_revision(extra):
     project, _, context = workspace()
-    result = asyncio.run(
-        CATALOG.call(
-            "save_dataset_pipeline",
-            {"name": "Selection", "request_key": "missing", **extra},
-            context,
-        )
+    result = call_tool(
+        "save_dataset_pipeline", {"name": "Selection", "request_key": "missing", **extra}, context
     )
     assert result.isError, result
     assert "package" in str(result.structuredContent).lower()

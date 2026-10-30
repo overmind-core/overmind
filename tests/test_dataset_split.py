@@ -6,6 +6,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -184,10 +185,8 @@ def test_split_endpoint_returns_the_pair_and_validates_the_cut():
 
 @pytest.mark.django_db(transaction=True)
 def test_mcp_create_from_traces_with_split_returns_both_datasets():
-    import asyncio
 
     from overbae.models import APIToken
-    from overbae.services.mcp.catalog import CATALOG
     from overbae.services.mcp.context import MCPContext
 
     project, user = _project(), _user()
@@ -217,7 +216,7 @@ def test_mcp_create_from_traces_with_split_returns_both_datasets():
         )
 
     def call(arguments):
-        return asyncio.run(CATALOG.call("create_dataset_from_traces", arguments, context))
+        return call_tool("create_dataset_from_traces", arguments, context)
 
     refused = call({"name": "T", "trace_ids": traces, "intent": "train", "split": {}})
     assert refused.isError is True

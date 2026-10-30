@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import importlib.util
 import io
@@ -8,6 +7,7 @@ from urllib.parse import urlsplit
 
 import pytest
 import requests
+from asgiref.sync import async_to_sync
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from typer.testing import CliRunner
@@ -18,7 +18,7 @@ from overbae.services.datasets import pipeline_packages
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def test_cli_package_roundtrip_through_rest_services(tmp_path, monkeypatch, settings):
@@ -205,10 +205,8 @@ def test_cli_package_roundtrip_through_rest_services(tmp_path, monkeypatch, sett
         query = {"file": "unicode.py", "offset": offset, "limit": 16000}
         rest = client.get(f"/api/dataset-pipeline-packages/{receipt['id']}/source/", query)
         with bind_context(context):
-            resource = asyncio.run(
-                read_resource(
-                    f"overmind://dataset-pipeline-packages/{receipt['id']}?file=unicode.py&offset={offset}&limit=16000"
-                )
+            resource = async_to_sync(read_resource)(
+                f"overmind://dataset-pipeline-packages/{receipt['id']}?file=unicode.py&offset={offset}&limit=16000"
             )
         assert json.loads(resource[0].content)["file"] == rest.data
         recovered += rest.data["content"]

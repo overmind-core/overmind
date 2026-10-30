@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 from datetime import timedelta
@@ -6,12 +5,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.utils import timezone
+from mcp_fixtures import call_tool
 from test_workshop_redesign import call, workspace
 
 from overbae.models import Dataset, DatasetPipelineRun
 from overbae.services.datasets import dispatch, paths, store, workbench
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import bind_context
 from overbae.services.mcp.resources import read_resource
 from overbae.tasks.datasets import land
@@ -76,7 +76,7 @@ def test_pipeline_poll_and_replay_keep_examples_in_drilldown_not_status(mode):
             contents = list(await read_resource(job["resource"]["uri"]))
         return json.loads(contents[0].content)
 
-    retained = asyncio.run(evidence())
+    retained = async_to_sync(evidence)()
     assert retained["result"] == recorded.result
     recorded.refresh_from_db()
     assert json.dumps(recorded.result, sort_keys=True) == original_result
@@ -92,12 +92,10 @@ def test_query_deadline_preserves_source_and_next_read(settings):
     dataset = Dataset.objects.get(pk=created.data["id"])
     original = dataset.active_cell.fingerprint
     settings.DATASET_QUERY_TIMEOUT_SECONDS = 0.001
-    result = asyncio.run(
-        CATALOG.call(
-            "query_dataset",
-            {"dataset": str(dataset.pk), "sql": "SELECT sum(hash(i)) FROM range(10000000) t(i)"},
-            context,
-        )
+    result = call_tool(
+        "query_dataset",
+        {"dataset": str(dataset.pk), "sql": "SELECT sum(hash(i)) FROM range(10000000) t(i)"},
+        context,
     )
     assert result.isError, result.structuredContent
     assert result.structuredContent["error"]["code"] == "query_timeout"
@@ -128,9 +126,7 @@ def test_unsafe_query_and_llm_call_source_return_public_mcp_contracts():
         "SELECT * FROM read_csv_auto('/etc/passwd')",
         "DELETE FROM t",
     ):
-        result = asyncio.run(
-            CATALOG.call("query_dataset", {"dataset": str(dataset.pk), "sql": sql}, context)
-        )
+        result = call_tool("query_dataset", {"dataset": str(dataset.pk), "sql": sql}, context)
         assert result.isError
         assert result.structuredContent["error"]["code"] == "query_invalid"
     Dataset.objects.filter(pk=dataset.pk).update(source_kind=Dataset.SourceKind.LLM_CALLS)
@@ -619,10 +615,8 @@ def test_wide_query_fails_with_actionable_size_error_without_clipping_values():
         format="json",
     )
     dataset = Dataset.objects.get(pk=created.data["id"])
-    result = asyncio.run(
-        CATALOG.call(
-            "query_dataset", {"dataset": str(dataset.pk), "sql": "SELECT text FROM t"}, context
-        )
+    result = call_tool(
+        "query_dataset", {"dataset": str(dataset.pk), "sql": "SELECT text FROM t"}, context
     )
     assert result.isError
     assert result.structuredContent["error"]["code"] == "query_result_too_large"
@@ -644,10 +638,8 @@ def test_wide_schema_query_does_not_omit_column_metadata():
         "/api/datasets/", {"project": str(project.pk), "source": {"rows": [row]}}, format="json"
     )
     dataset = Dataset.objects.get(pk=created.data["id"])
-    result = asyncio.run(
-        CATALOG.call(
-            "query_dataset", {"dataset": str(dataset.pk), "sql": "SELECT * FROM t"}, context
-        )
+    result = call_tool(
+        "query_dataset", {"dataset": str(dataset.pk), "sql": "SELECT * FROM t"}, context
     )
     assert result.isError
     assert result.structuredContent["error"]["code"] == "query_result_too_large"

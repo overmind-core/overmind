@@ -1,20 +1,19 @@
-import asyncio
 import json
 import uuid
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from modal_shared.training_monitoring import fingerprint, freeze_plan, resolve_policy, row_identity
 from overbae.models import APIToken, Dataset, FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_monitoring
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_many_decision_questions_remain_inspectable_through_paged_receipts():
     user = User.objects.create_user(email=f"families-{uuid.uuid4()}@example.com", password="test")
     project = Project.objects.create(name="Question families")
@@ -69,9 +68,7 @@ def test_many_decision_questions_remain_inspectable_through_paged_receipts():
     client = APIClient()
     client.force_authenticate(user)
     with patch("modal.Function.from_name", side_effect=AssertionError("read invoked provider")):
-        result = asyncio.run(
-            CATALOG.call("inspect_training_progress", {"job": str(job.pk), "limit": 1}, context)
-        )
+        result = call_tool("inspect_training_progress", {"job": str(job.pk), "limit": 1}, context)
         assert not result.isError, result.structuredContent
         overview = result.structuredContent["progress"]
         assert len(json.dumps(overview).encode()) < 128 * 1024
@@ -82,7 +79,7 @@ def test_many_decision_questions_remain_inspectable_through_paged_receipts():
         collected, offset = {}, 0
         while offset is not None:
             args = {"job": str(job.pk), "field": field, "offset": offset, "limit": 20}
-            page = asyncio.run(CATALOG.call("inspect_training_progress", args, context))
+            page = call_tool("inspect_training_progress", args, context)
             assert not page.isError, page.structuredContent
             detail = page.structuredContent["progress"]
             rest = client.get(
@@ -93,42 +90,36 @@ def test_many_decision_questions_remain_inspectable_through_paged_receipts():
             collected.update({item["key"]: item["value"] for item in detail["items"]})
             offset = detail["next_offset"]
         assert collected == families
-        findings = asyncio.run(
-            CATALOG.call(
-                "inspect_training_progress",
-                {
-                    "job": str(job.pk),
-                    "field": f"/checks/{check.pk}/facts/assessment/findings",
-                    "limit": 1,
-                },
-                context,
-            )
+        findings = call_tool(
+            "inspect_training_progress",
+            {
+                "job": str(job.pk),
+                "field": f"/checks/{check.pk}/facts/assessment/findings",
+                "limit": 1,
+            },
+            context,
         )
         assert not findings.isError and findings.structuredContent["progress"]["count"] == 1600
-        matrix = asyncio.run(
-            CATALOG.call(
-                "inspect_training_progress",
-                {
-                    "job": str(job.pk),
-                    "field": f"/checkpoints/{checkpoint.pk}/metrics/categorical_families/{next(iter(families))}/confusion_matrix",
-                    "limit": 1,
-                },
-                context,
-            )
+        matrix = call_tool(
+            "inspect_training_progress",
+            {
+                "job": str(job.pk),
+                "field": f"/checkpoints/{checkpoint.pk}/metrics/categorical_families/{next(iter(families))}/confusion_matrix",
+                "limit": 1,
+            },
+            context,
         )
         assert not matrix.isError and matrix.structuredContent["progress"]["items"] == [[0, 1]]
         foreign = FinetuningJob.objects.create(project=project, dataset=job.dataset)
-        denied = asyncio.run(
-            CATALOG.call(
-                "inspect_training_progress", {"job": str(foreign.pk), "field": field}, context
-            )
+        denied = call_tool(
+            "inspect_training_progress", {"job": str(foreign.pk), "field": field}, context
         )
         assert denied.isError
     check.refresh_from_db()
     assert check.metrics == metrics
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_frozen_monitoring_rows_are_paged_without_provider_access():
     user = User.objects.create_user(email=f"probe-{uuid.uuid4()}@example.com", password="test")
     project = Project.objects.create(name="Frozen monitoring")
@@ -152,12 +143,10 @@ def test_frozen_monitoring_rows_are_paged_without_provider_access():
     with patch(
         "modal.Function.from_name", side_effect=AssertionError("inspection invoked provider")
     ):
-        result = asyncio.run(
-            CATALOG.call(
-                "inspect_training_progress",
-                {"job": str(job.id), "probe": "development", "limit": 2},
-                context,
-            )
+        result = call_tool(
+            "inspect_training_progress",
+            {"job": str(job.id), "probe": "development", "limit": 2},
+            context,
         )
     assert not result.isError, result.structuredContent
     assert (
