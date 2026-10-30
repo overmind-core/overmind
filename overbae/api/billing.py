@@ -317,6 +317,7 @@ def _subscription_payload(user: User) -> dict:
             "start_date": None,
             "end_date": None,
             "cancel_at_period_end": False,
+            "can_manage_renewal": False,
             "usage": usage,
         }
 
@@ -330,6 +331,11 @@ def _subscription_payload(user: User) -> dict:
         "start_date": sub.start_date,
         "end_date": sub.end_date,
         "cancel_at_period_end": sub.cancel_at_period_end,
+        "can_manage_renewal": (
+            billing.enabled
+            and sub.status == SubscriptionStatus.ACTIVE
+            and bool(sub.stripe_subscription_id)
+        ),
         "usage": usage,
     }
 
@@ -614,7 +620,7 @@ class CheckoutSessionView(APIView):
                 customer=customer_id,
                 line_items=[{"price": price_id, "quantity": 1}],
                 success_url=f"{frontend}/settings?billing=success",
-                cancel_url=f"{frontend}/pricing?checkout=cancel",
+                cancel_url=f"{frontend}/settings?billing=cancel",
                 client_reference_id=str(user.pk),
                 metadata={"user_id": str(user.pk)},
                 subscription_data={"metadata": {"user_id": str(user.pk)}},

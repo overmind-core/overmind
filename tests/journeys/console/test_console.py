@@ -23,6 +23,7 @@ from overbae.models import (
     FinetuningJob,
     NativeEvaluationPlan,
     OperationalRun,
+    Subscription,
 )
 from overbae.services import activity as activity_service
 from overbae.services import training_monitoring
@@ -213,6 +214,39 @@ def test_route_error_home_action_reloads_the_document(console):
     console.sees("Copy onboarding prompt")
     console.wait_until("() => location.pathname === '/' && !window.failedDocument")
     console.save_evidence("route-error-home-recovery")
+
+
+def test_cancelled_plan_checkout_returns_to_account_settings(
+    console, console_url, settings, stripe_api, rest_for, account_key
+):
+    settings.STRIPE_PRO_PRICE_ID = "price_journey"
+    settings.FRONTEND_URL = console_url
+    rest_for(account_key).request("POST", "/api/billing/checkout/")
+    cancel_url = stripe_api.sessions[-1]["cancel_url"]
+    console.goto(cancel_url)
+    console.save_evidence("plan-checkout-cancel-return")
+    console.sees("Settings")
+    console.sees("Buy Pro")
+
+
+@pytest.mark.parametrize("linked_to_stripe", [False, True])
+def test_account_settings_only_offer_renewal_controls_for_managed_plans(
+    console, account, linked_to_stripe
+):
+    user, _ = account
+    Subscription.objects.create(
+        user=user,
+        status="active",
+        stripe_subscription_id="sub_console" if linked_to_stripe else "",
+        end_date=timezone.now() + timedelta(days=30),
+    )
+    console.goto("/settings")
+    console.sees("Plan")
+    console.sees("Pro")
+    console.save_evidence(f"plan-renewal-controls-{linked_to_stripe}")
+    assert console._browser.call(
+        lambda: console._page.get_by_role("button", name="Cancel plan", exact=True).count()
+    ) == int(linked_to_stripe)
 
 
 def test_dataset_pagination_waits_for_the_requested_rows(

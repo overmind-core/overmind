@@ -2599,6 +2599,7 @@ class SubscriptionSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(allow_null=True)
     end_date = serializers.DateTimeField(allow_null=True)
     cancel_at_period_end = serializers.BooleanField()
+    can_manage_renewal = serializers.BooleanField()
     usage = PlanUsageSerializer()
 
 
