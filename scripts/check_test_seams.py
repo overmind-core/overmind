@@ -2,7 +2,7 @@
 
 A test may capture a Celery dispatch (``.delay`` / ``.apply_async``) and fake
 outside services through ``tests/fakes``. It may not patch other ``overbae.*``
-targets or import private ``overbae`` names, and a journey may not wait on wall
+or ``overmind.*`` targets or import their private names, and a journey may not wait on wall
 time, animations or fonts. A Console test may mock third-party modules and the
 network edge (``@/client``, ``@/openapi``), not our other modules. Existing seams are counted, not listed: a change fails
 only when it raises a count across all test files, so moving a test passes.
@@ -19,12 +19,14 @@ from collections import Counter
 from itertools import chain
 from pathlib import Path
 
-PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["'](overbae\.[\w.]+)["']""")
+PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["']((?:overbae|overmind)\.[\w.]+)["']""")
 CELERY_CAPTURES = (".delay", ".apply_async")
 JOURNEY_WAIT = re.compile(r"time\.sleep\(|getAnimations|document\.fonts|fontFamily")
 VITEST_MOCK = re.compile(r"""vi\.mock\(\s*["']((?:@/|\.{1,2}/)[^"']+)["']""")
 NETWORK_EDGE = ("@/client", "@/openapi")
 CONSOLE_TESTS = (".test.ts", ".test.tsx")
+PYTHON_TESTS = ("tests/", "overmind/tests/")
+ROOTS = ("tests", "overmind/tests", "frontend/src")
 
 
 def _git(*args: str, stdin: bytes | None = None) -> bytes:
@@ -34,11 +36,11 @@ def _git(*args: str, stdin: bytes | None = None) -> bytes:
 def _tracked(path: str) -> bool:
     if path.startswith("frontend/src/"):
         return path.endswith(CONSOLE_TESTS)
-    return path.startswith("tests/") and path.endswith(".py")
+    return path.startswith(PYTHON_TESTS) and path.endswith(".py")
 
 
 def _committed(ref: str) -> dict[str, str]:
-    listed = _git("ls-tree", "-r", "-z", "--name-only", ref, "--", "tests", "frontend/src")
+    listed = _git("ls-tree", "-r", "-z", "--name-only", ref, "--", *ROOTS)
     paths = [path for path in listed.decode().split("\0") if _tracked(path)]
     blobs = _git("cat-file", "--batch", stdin="".join(f"{ref}:{p}\n" for p in paths).encode())
     sources, offset = {}, 0
@@ -80,7 +82,8 @@ def _private_imports(source: str) -> list[str]:
     return [
         f"{node.module}.{alias.name}"
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("overbae")
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").startswith(("overbae", "overmind"))
         for alias in node.names
         if alias.name.startswith("_")
     ]
@@ -95,8 +98,8 @@ def _console_mocks(source: str) -> list[str]:
 
 
 KINDS = (
-    ("patch of", _patches, "tests/"),
-    ("private import of", _private_imports, "tests/"),
+    ("patch of", _patches, PYTHON_TESTS),
+    ("private import of", _private_imports, PYTHON_TESTS),
     ("wait on", _journey_waits, "tests/journeys/"),
     ("mock of", _console_mocks, "frontend/src/"),
 )

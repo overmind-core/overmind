@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.coverage_map import COVERAGE_MAP, Kind
+from .coverage_map import COVERAGE_MAP, Kind
 
 JOURNEYS = Path(__file__).parent / "journeys"
 

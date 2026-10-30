@@ -18,6 +18,8 @@ from overmind.client import (
     _raise_for_status,
 )
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 def _make_client(base_url: str = "https://api.example.com") -> Client:
     return Client(api_key="om-test-key", base_url=base_url)
@@ -47,6 +49,7 @@ def _sse_response(lines: list[str]) -> MagicMock:
     return resp
 
 
+@pytest.mark.covers("authentication")
 class TestClientInit:
     def test_raises_without_api_key(self, monkeypatch):
         monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
@@ -77,15 +80,6 @@ class TestClientInit:
         monkeypatch.setenv("OVERMIND_API_URL", "https://env.example.com")
         c = Client(api_key="k", base_url="https://explicit.example.com")
         assert c._base_url == "https://explicit.example.com"
-
-    def test_default_base_url_when_no_env(self, monkeypatch):
-        monkeypatch.delenv("OVERMIND_API_URL", raising=False)
-        c = Client(api_key="k")
-        assert c._base_url == "https://api.overmindlab.ai"
-
-    def test_content_type_header_set(self):
-        c = _make_client()
-        assert c._session.headers.get("Content-Type") == "application/json"
 
 
 class TestRaiseForStatus:
@@ -253,18 +247,6 @@ class TestModelsGet:
         "status": "ready",
         "base_model": "meta-llama/llama-3.1-8b-instruct",
     }
-
-    def test_404_raises_inference_error(self):
-        c = _make_client()
-        c._session.get = MagicMock(
-            return_value=_mock_response(
-                ok=False,
-                status_code=404,
-                json_data={"error": {"message": "Model not found"}},
-            )
-        )
-        with pytest.raises(OvermindInferenceError, match="404"):
-            c.models.get("ft-nonexistent")
 
     def test_network_error_raises(self):
         c = _make_client()

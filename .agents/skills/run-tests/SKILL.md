@@ -45,6 +45,10 @@ on a test with no entry, an unknown entry, a promise outside `tests/journeys/` o
 a second journey for a promise; the `coverage-map` hook fails when an entry has no
 owner.
 
+The SDK suite (`overmind/tests`, `make -C overmind test`) uses the same markers,
+and its conftest loads the same collection guard; an SDK test never covers a
+promise.
+
 A Console test file (`frontend/src/**/*.test.ts(x)`) names its entry on one
 `// covers: <entry>` line; the vitest setup fails a file without one, with an
 unknown entry or with a promise. It may mock third-party modules and the network

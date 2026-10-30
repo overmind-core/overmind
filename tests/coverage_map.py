@@ -158,6 +158,13 @@ COVERAGE_MAP: dict[str, Entry] = {
         "OTLP never creates a capability, a scan never deletes one, rebinding is by ID "
         "only, and DELETE is soft.",
     ),
+    "sdk-install": Entry(
+        S2,
+        INVARIANT,
+        "The published SDK never breaks its host: the default install imports and runs, and "
+        "a missing extra, provider library, key or analytics backend degrades to a no-op or "
+        "an install hint.",
+    ),
     "measured-facts": Entry(
         S3,
         INVARIANT,
@@ -175,8 +182,15 @@ COVERAGE_MAP: dict[str, Entry] = {
     "sdk-wire": Entry(
         S3,
         CONTRACT,
-        "The SDK and the server agree on span attributes, usage keys, model names and "
-        "scanned codebase cards.",
+        "SDK decorators and scopes build the trace the server reads (run boundaries, turns, "
+        "handoffs, capability scope), and the SDK and the server agree on span attributes, "
+        "usage keys, model names and scanned codebase cards.",
+    ),
+    "cli-contract": Entry(
+        S3,
+        CONTRACT,
+        "Each CLI command validates its input before any request, changes only its own files, "
+        "and exits non-zero with a machine-readable error.",
     ),
     "vendor-connectors": Entry(
         S3,
@@ -225,6 +239,12 @@ COVERAGE_MAP: dict[str, Entry] = {
         LOGIC,
         "Transforms, splits, partitions, fan-in, fingerprints, file typing and the train "
         "and eval row contracts.",
+    ),
+    "agent-code": Entry(
+        S3,
+        LOGIC,
+        "The CLI reads agent code into the call graphs, anchors and trajectories that exist, "
+        "never overwrites config from an incomplete scan, and rewrites entrypoints that still run.",
     ),
     "plans": Entry(
         S3,

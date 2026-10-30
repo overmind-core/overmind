@@ -1,6 +1,6 @@
 """Every test file names one coverage-map entry, and every entry has an owning test.
 
-Pytest collection checks backend markers; Console test files carry a
+Pytest collection checks the platform and SDK markers; Console test files carry a
 ``// covers: <entry>`` line that the vitest setup and this script check.
 """
 
@@ -21,11 +21,14 @@ VITEST_COVERS = re.compile(r"^// covers: (\S+)$", re.M)
 
 def main() -> int:
     problems = []
-    owned = {
-        entry
-        for path in (ROOT / "tests").rglob("test_*.py")
-        for entry in COVERS.findall(path.read_text())
-    }
+    owned = set()
+    for tests in (ROOT / "tests", ROOT / "overmind/tests"):
+        for path in sorted(tests.rglob("test_*.py")):
+            for entry in COVERS.findall(path.read_text()):
+                if entry in COVERAGE_MAP:
+                    owned.add(entry)
+                else:
+                    problems.append(f"{path.relative_to(ROOT)}: {entry!r} is not a map entry")
     for path in sorted((ROOT / "frontend/src").rglob("*.test.ts*")):
         name = path.relative_to(ROOT)
         covers = VITEST_COVERS.findall(path.read_text())

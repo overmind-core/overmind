@@ -11,6 +11,8 @@ from overmind.__main__ import app
 from overmind.config import Config, dump
 from overmind.connector_cmd import ConnectorAddError, add_connector
 
+pytestmark = pytest.mark.covers("privacy")
+
 
 class FakeResponse:
     def __init__(self, payload: dict, status_code: int = 201):
@@ -37,6 +39,7 @@ class FakeSession:
         pass
 
 
+@pytest.mark.covers("cli-contract")
 def test_add_connector_rejects_unknown_type():
     with pytest.raises(ConnectorAddError, match="Unsupported connector type"):
         add_connector(
@@ -48,6 +51,7 @@ def test_add_connector_rejects_unknown_type():
         )
 
 
+@pytest.mark.covers("cli-contract")
 def test_add_connector_surfaces_http_detail():
     session = FakeSession(FakeResponse({"detail": "Verify failed"}, status_code=400))
 

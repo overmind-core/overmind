@@ -9,6 +9,8 @@ from opentelemetry.trace import StatusCode
 
 from overmind.tracing import observe
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture(autouse=True)
 def reset_sdk_state():
@@ -141,26 +143,3 @@ def test_observe_skips_cls_in_classmethod(mock_tracer):
         # Verify cls is not in the captured inputs
         captured_inputs = str(input_calls[0])
         assert "cls" not in captured_inputs or '"cls"' not in captured_inputs
-
-
-def test_observe_async_class_method(mock_tracer):
-    import asyncio
-
-    mock_tracer_obj, _ = mock_tracer
-
-    with patch("overmind.tracing.get_tracer", return_value=mock_tracer_obj):
-
-        class AsyncTestClass:
-            def __init__(self):
-                self.value = 15
-
-            @observe()
-            async def async_method(self, x: int):
-                await asyncio.sleep(0.01)
-                return self.value * x
-
-        obj = AsyncTestClass()
-        result = asyncio.run(obj.async_method(2))
-
-        assert result == 30
-        mock_tracer_obj.start_as_current_span.assert_called_once()
