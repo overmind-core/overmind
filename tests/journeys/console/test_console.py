@@ -215,6 +215,85 @@ def test_route_error_home_action_reloads_the_document(console):
     console.save_evidence("route-error-home-recovery")
 
 
+def test_dataset_pagination_waits_for_the_requested_rows(
+    console, workshop, cli, sample_agent, tmp_path
+):
+    project = workshop.project()["id"]
+    dataset = upload(cli, sample_agent, tickets(tmp_path, n=25))
+    console.goto(f"/datasets/{dataset}?projectId={project}")
+    console.sees("1–10 of 25 rows")
+    pending = []
+    console._browser.call(
+        console._page.route, "**/rows/?*offset=10*", lambda route: pending.append(route)
+    )
+    try:
+        console.press("Go to next page")
+        console.sees("Loading page 2")
+        assert console._browser.call(
+            lambda: console._page.get_by_role("button", name="Go to next page").is_disabled()
+        )
+        assert pending
+        console._browser.call(lambda: pending.pop().continue_())
+        console.sees("11–20 of 25 rows")
+        console.sees("Refund order 10 please", exact=False)
+        console.save_evidence("dataset-pagination-next-page")
+    finally:
+        for route in pending:
+            console._browser.call(route.continue_)
+        console._browser.call(console._page.unroute, "**/rows/?*offset=10*")
+
+
+def test_dataset_navigation_keeps_rows_with_their_source(
+    console, workshop, cli, sample_agent, tmp_path, worker
+):
+    project = workshop.project()["id"]
+    first_path = tickets(tmp_path, n=25).rename(tmp_path / "large-source.jsonl")
+    first = upload(cli, sample_agent, first_path)
+    second_path = tickets(tmp_path, n=3).rename(tmp_path / "small-source.jsonl")
+    second = upload(cli, sample_agent, second_path)
+    drain(worker)
+    console.goto(f"/datasets/{first}?projectId={project}")
+    console.sees("1–10 of 25 rows")
+    console._browser.call(
+        lambda: console._page.get_by_role("link", name="Datasets", exact=True).first.click()
+    )
+    console.click("small-source.jsonl")
+    console.wait_until(f"() => location.pathname === '/datasets/{second}'")
+    console.sees("3 rows × 2")
+    console.wait_until("() => !document.body.innerText.includes('of 25 rows')")
+    console.sees("Refund order 2 please", exact=False)
+    console.save_evidence("dataset-navigation-matching-source")
+
+
+def test_dataset_pagination_starts_at_the_first_row(console, workshop, cli, sample_agent, tmp_path):
+    project = workshop.project()["id"]
+    dataset = upload(cli, sample_agent, tickets(tmp_path, n=225))
+    console.goto(f"/datasets/{dataset}?projectId={project}")
+    console.sees("1–10 of 225 rows")
+    console._browser.call(lambda: console._page.get_by_role("combobox").click())
+    console._browser.call(
+        lambda: console._page.get_by_role("option", name="100", exact=True).click()
+    )
+    console.sees("1–100 of 225 rows")
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "button", name="Inspect row 99", exact=True
+        ).scroll_into_view_if_needed()
+    )
+    console.save_evidence("dataset-pagination-before-next")
+    console.press("Go to next page")
+    console.sees("101–200 of 225 rows")
+    console._browser.call(
+        lambda: console._page.get_by_role("button", name="Inspect row 100", exact=True).wait_for()
+    )
+    console.save_evidence("dataset-pagination-first-row")
+    console.wait_until("""() => {
+        const row = document.querySelector('button[aria-label="Inspect row 100"]');
+        const rect = row.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= innerHeight;
+    }""")
+
+
 def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
