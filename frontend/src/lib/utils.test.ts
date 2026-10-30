@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { paginationItems, usdToOvermindCredits, usdToOvermindCreditsWithLabel } from "./utils";
+import {
+  formatOvermindCredits,
+  paginationItems,
+  usdToOvermindCredits,
+  usdToOvermindCreditsWithLabel,
+} from "./utils";
 
 describe("usdToOvermindCredits", () => {
   it("converts at 100 credits per USD", () => {
@@ -8,6 +13,13 @@ describe("usdToOvermindCredits", () => {
     expect(usdToOvermindCredits(40)).toBe(4000);
     expect(usdToOvermindCredits(0.126)).toBe(13);
     expect(usdToOvermindCreditsWithLabel(2.5)).toBe("250 credits");
+  });
+
+  it("keeps fractions only below one credit", () => {
+    expect(formatOvermindCredits(0.0000312)).toBe("0.00312");
+    expect(formatOvermindCredits(-0.0000312)).toBe("-0.00312");
+    expect(formatOvermindCredits(12.3456)).toBe("1,235");
+    expect(usdToOvermindCreditsWithLabel(0.0000312)).toBe("0.00312 credits");
   });
 });
 

@@ -70,7 +70,10 @@ export function usdToOvermindCredits(usd: number): number {
 }
 
 export function formatOvermindCredits(usd: number): string {
-  return (usd / 0.01).toLocaleString("en-US", { maximumFractionDigits: 5 });
+  const credits = usd / 0.01;
+  return Math.abs(credits) < 1
+    ? credits.toLocaleString("en-US", { maximumFractionDigits: 5 })
+    : usdToOvermindCredits(usd).toLocaleString("en-US");
 }
 
 export function usdToOvermindCreditsWithLabel(usd: number): string {
