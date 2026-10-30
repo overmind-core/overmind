@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from overbae.models import BillingService, BillingTelemetry, User
 from overbae.services import model_catalog
@@ -21,6 +22,37 @@ FREE_CREDITS_USD = Decimal("50")
 CREDITS_PER_USD = 100
 MIN_TOPUP_USD = 1
 MAX_TOPUP_USD = 1000
+
+
+def credit_report(
+    user: User,
+    *,
+    since: datetime | None,
+    observed_at: datetime,
+) -> dict[str, Any]:
+    entries = BillingTelemetry.objects.filter(user=user, timestamp__lte=observed_at)
+    window = entries.filter(timestamp__gte=since) if since is not None else entries
+    totals = entries.aggregate(
+        balance=Sum("amount", default=Decimal("0")),
+        granted=Sum("amount", filter=Q(amount__gt=0), default=Decimal("0")),
+        spent=Sum("amount", filter=Q(amount__lt=0), default=Decimal("0")),
+    )
+    by_service = [
+        {"service": row["service"], "spent_credits": -row["total"] * CREDITS_PER_USD}
+        for row in window.filter(amount__lt=0)
+        .values("service")
+        .annotate(total=Sum("amount"))
+        .order_by("service")
+    ]
+    return {
+        "balance_credits": totals["balance"] * CREDITS_PER_USD,
+        "granted_credits": totals["granted"] * CREDITS_PER_USD,
+        "spent_credits": -totals["spent"] * CREDITS_PER_USD,
+        "usage": {
+            "spent_credits": sum((row["spent_credits"] for row in by_service), Decimal("0")),
+            "by_service": by_service,
+        },
+    }
 
 
 class InsufficientCredits(Exception):  # noqa: N818

@@ -1460,6 +1460,12 @@ def interface_resource():
         "transfer_protocol_version": 1,
         "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
         "tool_count": len(manifest),
+        "credit_reporting": {
+            "tool": "get_credit_balance",
+            "units": "100 credits = 1 USD; decimal values are exact JSON strings.",
+            "scope": "Account and project credentials expose the connection owner's account balance, lifetime grants/spending and account-wide usage by service. No project_id is required; since filters usage, not lifetime totals.",
+            "task_budget": "Save observed_at before work, reuse it as since, and compare usage.spent_credits with the agreed budget before further paid work. Concurrent spending in the reported scope is included; unposted charges and external coding-agent costs are excluded. No reservation or hard spending cap is created. A zero recorded total does not prove pending work is free. With billing_enabled=false, metering is uncapped.",
+        },
         "training_measurements": {
             "planning": "save_training_plan retains immutable source/task, prepared versions, partition and attributed audit/baseline/sanity evidence. Full training requires no pilot; bind create_training_experiment with stage full directly. Stage pilot and measured pilot selection are optional. Primary metric is a JSON Pointer into check metrics; optional pilot selection requires finite task metrics and a verified checkpoint from matching data, and limits full recipes to declared budget-field changes. Hardware profiles are not quality pilots. New upstream identities require new matching evidence; old snapshots stay reproducible.",
             "monitoring": "A frozen monitoring policy controls bounded development checks, generation scoring, checkpoint selection and optional early stopping. inspect_training_progress pages durable checks and exact evidence without invoking workers. cancel_finetune preserves completed evidence and records remote acknowledgement separately. Development metrics are not final benchmarks. Native target distributions and mean-only denominators remain distinct.",

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import time
+from decimal import Decimal
 
 import pytest
 import requests
@@ -90,19 +91,28 @@ def test_retired_service_receipts_remain_readable(account, rest_for):
 
 @pytest.mark.parametrize("billed", ["hosted"], indirect=True)
 def test_hosted_credits_meter_spend_stop_at_zero_and_top_up_once(
-    billed, live_api, cli, sample_agent, account, rest_for
+    billed, live_api, cli, sample_agent, account, rest_for, mcp_for
 ):
     user, account_key = account
     key = cli.project_key(sample_agent)
+    mcp = mcp_for(account_key)
+    baseline = mcp.call("get_credit_balance")
+    assert Decimal(baseline["balance_credits"]) == 5000
 
     assert complete(live_api, key) == 200
     assert complete(live_api, key) == 200
     assert ledger(rest_for(account_key)) == [-30.0, -30.0, 50.0]
     assert complete(live_api, key) == 402
+    report = mcp.call("get_credit_balance", {"since": baseline["observed_at"]})
+    assert Decimal(report["balance_credits"]) == -1000
+    assert Decimal(report["usage"]["spent_credits"]) == 6000
 
     assert top_up(live_api, user, 20) == 204
     assert top_up(live_api, user, 20) == 204
     assert ledger(rest_for(account_key)) == [-30.0, -30.0, 20.0, 50.0]
+    topped_up = mcp.call("get_credit_balance", {"since": baseline["observed_at"]})
+    assert Decimal(topped_up["balance_credits"]) == 1000
+    assert topped_up["usage"] == report["usage"]
     assert complete(live_api, key) == 200
 
 

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AwareDatetime, Field
 
 from overbae.services.mcp.contracts.common import MCPModel
 
@@ -36,12 +37,27 @@ class CreateApiKeyOutput(MCPModel):
 
 
 class GetCreditBalanceInput(MCPModel):
-    pass
+    since: AwareDatetime | None = Field(
+        default=None, description="Inclusive ledger timestamp; omit for lifetime usage."
+    )
+
+
+class ServiceCreditUsage(MCPModel):
+    service: str = Field(max_length=32)
+    spent_credits: Decimal
+
+
+class CreditUsage(MCPModel):
+    spent_credits: Decimal
+    by_service: list[ServiceCreditUsage] = Field(max_length=100)
 
 
 class GetCreditBalanceOutput(MCPModel):
     billing_enabled: bool
-    balance_credits: str
-    granted_credits: str
-    spent_credits: str
-    credits_per_usd: int
+    balance_credits: Decimal
+    granted_credits: Decimal
+    spent_credits: Decimal
+    credits_per_usd: Literal[100] = 100
+    observed_at: datetime
+    since: datetime | None
+    usage: CreditUsage
