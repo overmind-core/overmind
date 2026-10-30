@@ -94,10 +94,20 @@ def test_captured_errors_survive_ingest_and_reach_trace_list_and_detail(wire_for
     [row] = client.get("/api/traces/", {"project": str(project.pk)}).json()["results"]
     assert "404" in row["error_summary"]
     assert "not_found_error" in row["error_summary"]
+    assert "Model unavailable" in row["error_summary"]
 
 
 @pytest.mark.parametrize(
-    "attrs", [{"error.type": "not_found_error", "http.response.status_code": 404}, {}]
+    "attrs",
+    [
+        {"error.type": "not_found_error", "http.response.status_code": 404},
+        {
+            "error.type": "not_found_error",
+            "http.response.status_code": None,
+            "http.status_code": 404,
+        },
+        {},
+    ],
 )
 def test_errors_without_messages_use_captured_context_without_inventing_a_cause(attrs):
     project, user = make_project(), make_user()
@@ -121,3 +131,26 @@ def test_errors_without_messages_use_captured_context_without_inventing_a_cause(
     assert span["error_details"]["summary"] == (
         "not_found_error · HTTP 404" if attrs else "No error message captured"
     )
+
+
+def test_spans_without_error_status_report_no_error_despite_http_status_or_exception_event():
+    project, user = make_project(), make_user()
+    make_member(user, project)
+    trace_id = uuid.uuid4().hex
+    make_span(
+        project,
+        trace_id=trace_id,
+        status_code=0,
+        attributes={"http.response.status_code": 404},
+        events=[
+            {
+                "name": "exception",
+                "attributes": {"exception.type": "NotFound", "exception.message": "No route"},
+            }
+        ],
+    )
+    client = api_key_client(user, project)
+    [span] = client.get(f"/api/traces/{trace_id}/").json()["spans"]
+    assert span["error_details"] is None
+    [row] = client.get("/api/traces/", {"project": str(project.pk)}).json()["results"]
+    assert row["error_summary"] is None

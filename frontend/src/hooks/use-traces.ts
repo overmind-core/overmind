@@ -241,7 +241,6 @@ export interface TraceRow {
   score?: number;
   evaluations?: number;
   error?: string | null;
-  errorSummary?: string | null;
   source?: string;
   readonly createdAt: string;
   readonly startTimeNs: number;
@@ -360,7 +359,6 @@ function mapTraceListRow(row: {
       row.statusCode === 2
         ? row.errorSummary || statusMessage || "No error message captured"
         : null,
-    errorSummary: row.errorSummary,
     evaluations: Object.keys(extractTraceScores(row.evalAttributes)).length,
     model: row.model ?? null,
     operation: row.operation ?? undefined,

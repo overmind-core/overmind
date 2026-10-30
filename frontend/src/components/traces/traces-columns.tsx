@@ -231,7 +231,7 @@ export const tracesColumns: ColumnDef<TraceRow>[] = [
   {
     accessorKey: "error",
     cell: ({ row }) => {
-      const msg = row.original.errorSummary || row.original.error;
+      const msg = row.original.error;
       if (!msg) return <span className="text-muted-foreground">—</span>;
       const truncated = msg.length > 60 ? `${msg.slice(0, 60)}…` : msg;
       return (
