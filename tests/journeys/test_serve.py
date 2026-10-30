@@ -68,7 +68,7 @@ def test_serve(
         client.models.get("ft-nobody")
 
     refresh_rates()
-    fake_modal.deploy("overmind-dedicated", "H100_vllm.infer", _dedicated_reply)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _dedicated_reply)
     fake_modal.worker_stats = {"num_total_runners": 1, "backlog": 0, "num_running_inputs": 0}
     started = mcp.call(
         "start_dedicated_deployment",

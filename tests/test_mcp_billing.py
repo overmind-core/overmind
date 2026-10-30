@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from django.utils import timezone
+from mcp_fixtures import asgi_db
 from starlette.testclient import TestClient
 from test_mcp_account_access import account, rpc
 
@@ -10,7 +11,7 @@ from overbae.models import APIToken, BillingService, BillingTelemetry
 from overbae.services.billing_ledger import append_entry
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [asgi_db, pytest.mark.covers("ledger")]
 
 
 def report(client, key, **arguments):
