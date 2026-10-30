@@ -986,8 +986,11 @@ def _model_swap_prompt_sync(
         raise MCPError("model_swap_prompt_not_ready", error or "The swap prompt is unavailable.")
     links = [
         resource_link("finetunes", str(job.id), job.name or "Fine-tuning job"),
-        resource_link("capabilities", result["capability_id"], result["capability_name"]),
     ]
+    if result["capability_id"]:
+        links.append(
+            resource_link("capabilities", result["capability_id"], result["capability_name"])
+        )
     return GetModelSwapPromptOutput(
         summary=f"Swap prompt ready: {result['old_model']} to {result['new_model']}.",
         finetune=str(job.id),

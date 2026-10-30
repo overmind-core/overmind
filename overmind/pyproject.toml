@@ -46,7 +46,7 @@ license = { text = "MIT" }
 name = "overmind"
 readme = "README.md"
 requires-python = ">=3.10,<4" # todo; remove the upper bound
-version = "0.1.112"
+version = "0.1.113"
 
     [project.urls]
     "Agent setup" = "https://console.overmindlab.ai/setup.md"

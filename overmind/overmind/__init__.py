@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.1.111"
+__version__ = "0.1.113"
 
 from .client import Client, ModelDeleted, OvermindInferenceError
 
