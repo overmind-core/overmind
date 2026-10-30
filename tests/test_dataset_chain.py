@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS, import_version, review_fixture
+from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset, import_version, review_fixture
 
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
 from overbae.services.datasets import diff, land, lifecycle, paths, store, use
@@ -140,6 +140,14 @@ def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
             later.id: "2.1",
         }
         assert dataset.versions(chain=[]) == {}
+
+
+def test_versions_see_a_use_made_after_the_cells_were_prefetched():
+    dataset = frozen_dataset(_project(), contract="train")
+    child = Cell.objects.create(dataset=dataset, position=1, title="step", state="ok")
+    loaded = Dataset.objects.prefetch_related("cells").get(pk=dataset.pk)
+    use.freeze(child)
+    assert loaded.versions()[child.id] == "2.0"
 
 
 def test_a_used_cell_is_protected_and_blocks_deletion():

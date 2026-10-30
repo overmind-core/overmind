@@ -299,10 +299,6 @@ class DatasetSerializer(serializers.ModelSerializer):
             work = list_activity.current_work([obj])
         return work.get(str(obj.pk))
 
-    def _chain(self, obj) -> list[Cell]:
-        cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
-        return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
-
     @extend_schema_field(serializers.DictField())
     def get_operation(self, obj):
         if self.context.get("summary"):
@@ -338,7 +334,7 @@ class DatasetSerializer(serializers.ModelSerializer):
     def get_cells(self, obj) -> list[dict]:
         if self.context.get("summary"):
             return []
-        chain = self._chain(obj)
+        chain = obj.prefetched_chain()
         versions = obj.versions(chain=chain)
         frozen = max((c.position for c in chain if c.used_at is not None), default=-1)
         return CellSerializer(
@@ -355,7 +351,7 @@ class DatasetSerializer(serializers.ModelSerializer):
         ).data
 
     def _active(self, obj) -> Cell | None:
-        chain = self._chain(obj)
+        chain = obj.prefetched_chain()
         ran = [c for c in chain if c.state == Cell.State.OK and c.fingerprint]
         if obj.active_id is not None:
             for cell in ran:
@@ -365,7 +361,7 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def get_active_version(self, obj) -> str:
         cell = self._active(obj)
-        return obj.versions(chain=self._chain(obj)).get(cell.id, "") if cell else ""
+        return obj.versions(chain=obj.prefetched_chain()).get(cell.id, "") if cell else ""
 
     def get_rows(self, obj) -> int:
         cell = self._active(obj)

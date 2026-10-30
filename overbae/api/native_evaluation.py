@@ -57,7 +57,7 @@ class NativeEvaluationSuiteSerializer(serializers.Serializer):
         dataset = cell.dataset
         return super().to_representation(
             {
-                **use.describe(cell),
+                **use.describe(cell, chain=dataset.prefetched_chain()),
                 "dataset_name": dataset.name,
                 "capability_id": dataset.capability_id,
                 "capability_name": dataset.capability.name if dataset.capability_id else "",

@@ -526,13 +526,6 @@ class StartDatasetInput(MCPModel):
     capability: str | None = Field(default=None, max_length=255)
 
 
-def _chain(dataset) -> list[Cell]:
-    cached = getattr(dataset, "_prefetched_objects_cache", {}).get("cells")
-    if cached is not None:
-        return sorted(cached, key=lambda cell: cell.position)
-    return dataset.chain
-
-
 def _active_cell(dataset, chain: list[Cell]) -> Cell | None:
     ran = [cell for cell in chain if cell.state == Cell.State.OK and cell.fingerprint]
     if dataset.active_id is not None:
@@ -592,7 +585,7 @@ def _list_fields(dataset, chain: list[Cell]) -> dict[str, Any]:
 
 
 def serialize_dataset_list_item(dataset) -> DatasetListItem:
-    return DatasetListItem.model_validate(_list_fields(dataset, _chain(dataset)))
+    return DatasetListItem.model_validate(_list_fields(dataset, dataset.prefetched_chain()))
 
 
 def _cell_summary(
@@ -800,7 +793,7 @@ def serialize_dataset_detail(
     source_offset: int = 0,
     source_limit: int = 10,
 ) -> DatasetDetail:
-    chain = _chain(dataset)
+    chain = dataset.prefetched_chain()
     versions = dataset.versions(chain=chain)
     frozen_before = _frozen_before(chain)
     active = _active_cell(dataset, chain)

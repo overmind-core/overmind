@@ -1062,9 +1062,9 @@ class ModelSwapPromptSerializer(serializers.Serializer):
 
 
 def _describe_cell(job: FinetuningJob) -> dict | None:
-    from overbae.services.datasets import use  # noqa: PLC0415 — avoid import cycle
-
-    return use.describe(job.cell if job.cell_id else None)
+    if not job.cell_id:
+        return None
+    return dataset_use.describe(job.cell, chain=job.cell.dataset.prefetched_chain())
 
 
 class FinetuningJobListSerializer(serializers.ModelSerializer):
