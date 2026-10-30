@@ -259,4 +259,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
 
       - name: Run journeys
-        run: make test-journeys
+        run: make test-journeys test_args="--junitxml=journeys.xml -o junit_duration_report=call"
+
+      - name: Check the journeys budget
+        run: uv run python scripts/check_journey_budget.py journeys.xml

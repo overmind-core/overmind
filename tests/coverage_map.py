@@ -37,6 +37,9 @@ class Entry:
     variants: tuple[str, ...] = ()
 
 
+# Pytest wall time of the journeys run on a 4-vCPU CI runner; one journey may take a third.
+JOURNEY_BUDGET_SECONDS = 300
+
 S1, S2, S3, S4 = Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW
 PROMISE, INVARIANT, CONTRACT, LOGIC = Kind.PROMISE, Kind.INVARIANT, Kind.CONTRACT, Kind.LOGIC
 

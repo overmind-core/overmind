@@ -74,6 +74,8 @@ A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` contr
 
 A journey waits on observable state (`drain`, `settle`, `until`, `console.sees`), never on wall time, animations or fonts; the `test-seams` hook refuses new ones.
 
+CI fails when the journeys run takes longer than `JOURNEY_BUDGET_SECONDS` (`tests/coverage_map.py`) or one test takes more than a third of it. Make a slow journey cheaper by moving its edge cases to a lower tier.
+
 ## Database transactions
 
 Tests run inside a rolled-back transaction by default. Call MCP tools with `mcp_fixtures.call_tool`: it runs thread-sensitive handlers on the test thread and runs on-commit work. Use `django_db(transaction=True)` only when another thread or process must see the rows (the ASGI MCP app takes `mcp_fixtures.asgi_db`, sandboxes, admission races). After such a test, only the tables it wrote are emptied.
