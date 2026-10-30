@@ -9,7 +9,7 @@ from overbae.models import ConnectorCredential
 
 from .conftest import GOOD_REPLY
 from .otlp import EXPECTATION, RUN_SIGNALS, Trace, score_history, trace_spans
-from .stack import drain, settle
+from .stack import drain, drain_scoring, settle
 
 pytestmark = pytest.mark.covers("observe")
 
@@ -201,7 +201,7 @@ def name_the_silent_capability_and_its_fix(
     agent.write_text(agent.read_text().replace("def triage(", f"{fix}\ndef triage(", 1))
 
     sample_agent.run(TICKETS[2], api_url=live_api.url, llm_url=support_desk_llm)
-    drain(worker)
+    drain_scoring(worker)
     assert coverage() == {"triage": 2, "answer": 3}
 
 
@@ -236,7 +236,7 @@ def score_once_per_evidence(mcp, rest, project, key, live_api, fake_llm, worker)
     bad = Trace(answer["id"], "Your refund is on its way.", tools=[True])
     good.send(live_api.url, key)
     bad.send(live_api.url, key)
-    drain(worker)
+    drain_scoring(worker)
 
     roots = {
         row["trace_id"]: row
@@ -255,13 +255,13 @@ def score_once_per_evidence(mcp, rest, project, key, live_api, fake_llm, worker)
     assert {row["source_type"] for row in first} == {"span", "trajectory"}
     judged = len(fake_llm.decisions)
     good.send(live_api.url, key)
-    drain(worker)
+    drain_scoring(worker)
     assert score_history(rest, project, good) == first
     assert len(fake_llm.decisions) == judged
 
     good.reply = "Your refund is on its way."
     good.send(live_api.url, key)
-    drain(worker)
+    drain_scoring(worker)
     assert len(score_history(rest, project, good)) > len(first)
 
     health = mcp.call("inspect_capability_health", {"capability": "answer"})
@@ -275,7 +275,7 @@ def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
 
     failing = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[False, False, True])
     failing.send(live_api.url, key)
-    drain(worker)
+    drain_scoring(worker)
     beat(RUN_SIGNALS)
     beat(RUN_SIGNALS)
 
@@ -299,7 +299,7 @@ def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
 def score_spans_before_their_root(mcp, rest, project, key, live_api, worker):
     trace = Trace(mcp.capability("answer")["id"], GOOD_REPLY, tools=[True, False])
     trace.send(live_api.url, key, root=False)
-    drain(worker)
+    drain_scoring(worker)
     tool_ids = [span_id.hex() for span_id, _ in trace.tools]
     before = {
         span_id: span["eval_attributes"]
@@ -310,7 +310,7 @@ def score_spans_before_their_root(mcp, rest, project, key, live_api, worker):
     assert score_history(rest, project, trace)
 
     trace.send(live_api.url, key, tools=False)
-    drain(worker)
+    drain_scoring(worker)
     spans = trace_spans(rest, project, trace)
     assert {span_id: spans[span_id]["eval_attributes"] for span_id in tool_ids} == before
     assert spans[trace.root_id.hex()]["eval_attributes"]["trajectory"]["span_count"] == 3

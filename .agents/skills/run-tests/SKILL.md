@@ -72,7 +72,7 @@ A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` contr
 
 `make test-journeys` runs `tests/journeys/` against the live stack with xdist (`--dist loadfile`, one Redis DB pair per worker; DB 12 stays with the load subprocess). It needs the compose `postgres` and `redis` services. The Console builds once per run into a shared folder and each worker serves it against its own API; `uv run playwright install chromium-headless-shell` once per machine. Each journey writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the LLM requests, background task failures and the error. `make test` never collects journeys. `make test-journeys test_args="-k <name>"` runs one.
 
-A journey waits on observable state (`drain`, `settle`, `until`, `console.sees`), never on wall time, animations or fonts; the `test-seams` hook refuses new ones.
+A journey waits on observable state (`drain`, `drain_scoring` before it reads scores, `settle`, `until`, `console.sees`), never on wall time, animations or fonts; the `test-seams` hook refuses new ones.
 
 CI fails when the journeys run takes longer than `JOURNEY_BUDGET_SECONDS` (`tests/coverage_map.py`) or one test takes more than a third of it. Make a slow journey cheaper by moving its edge cases to a lower tier.
 

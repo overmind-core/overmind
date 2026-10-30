@@ -141,6 +141,22 @@ def drain(ledger: TaskLedger, timeout: float = 120) -> None:
         time.sleep(0.05)
 
 
+def drain_scoring(ledger: TaskLedger, timeout: float = 120) -> None:
+    """Drain, then run scoring admission while live scoring work waits. A dispatch that
+    finds another one admitting admits nothing and leaves the work to the periodic tick,
+    which no beat runs in journeys."""
+    from overbae.celery import app
+    from overbae.models import LiveScoringWork
+
+    drain(ledger, timeout)
+    for _ in range(10):
+        if not LiveScoringWork.objects.filter(state="waiting").exists():
+            return
+        app.send_task("overbae.tasks.innermind.dispatch_live_scoring")
+        drain(ledger, timeout)
+    raise TimeoutError("Live scoring work still waits after 10 admissions")
+
+
 def settle(ledger: TaskLedger, condition, timeout: float = 60):
     """Drain until ``condition()`` holds. A browser action returns before its request
     commits, so the work it publishes may not exist yet when a single drain runs."""
