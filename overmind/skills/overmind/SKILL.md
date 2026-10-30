@@ -177,6 +177,7 @@ group's owning skill carries its workflow.
   `run_inference`, `get_model_swap_prompt`.
 - Optimization: `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`.
 - Connectors: `inspect_connectors`, `configure_connector`, `sync_connector`.
+- Account: `get_credit_balance`.
 
 ## How the workflows chain
 

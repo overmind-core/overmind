@@ -27,6 +27,10 @@ class InsufficientCredits(Exception):  # noqa: N818
     """Raised when the user has no credits left for paid work."""
 
 
+def to_credits(amount_usd: Decimal) -> Decimal:
+    return (amount_usd * CREDITS_PER_USD).quantize(Decimal("0.01"))
+
+
 def balance_usd(user: User) -> Decimal:
     total = BillingTelemetry.objects.filter(user=user).aggregate(s=Sum("amount"))["s"]
     return total if total is not None else Decimal("0")

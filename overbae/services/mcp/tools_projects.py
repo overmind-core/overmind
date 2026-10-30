@@ -7,9 +7,22 @@ from pydantic import BaseModel, ConfigDict, Field
 from overbae.models import APIToken
 from overbae.models.iam import delegation_denial
 from overbae.services import activity
+from overbae.services.billing_ledger import (
+    CREDITS_PER_USD,
+    balance_usd,
+    granted_usd,
+    spent_usd,
+    to_credits,
+)
+from overbae.services.billing_provider import get_billing
 from overbae.services.mcp.context import accessible_projects
 from overbae.services.mcp.contracts.activity import ReportOnboardingInput, ReportOnboardingOutput
-from overbae.services.mcp.contracts.projects import CreateApiKeyInput, CreateApiKeyOutput
+from overbae.services.mcp.contracts.projects import (
+    CreateApiKeyInput,
+    CreateApiKeyOutput,
+    GetCreditBalanceInput,
+    GetCreditBalanceOutput,
+)
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import interface_resource
 
@@ -59,6 +72,17 @@ def list_projects(payload, context):
         ],
         total=total,
         next_offset=end if end < total else None,
+    )
+
+
+@sync_to_async(thread_sensitive=True)
+def get_credit_balance(payload, context):
+    return GetCreditBalanceOutput(
+        billing_enabled=get_billing().enabled,
+        balance_credits=str(to_credits(balance_usd(context.user))),
+        granted_credits=str(to_credits(granted_usd(context.user))),
+        spent_credits=str(to_credits(spent_usd(context.user))),
+        credits_per_usd=CREDITS_PER_USD,
     )
 
 
@@ -146,6 +170,23 @@ def register_project_tools(catalog):
             project_scoped=False,
         ),
         list_projects,
+    )
+    catalog.register(
+        ToolDefinition(
+            name="get_credit_balance",
+            title="Get credit balance",
+            description="Credit balance, granted and spent for the connection's account, which pays for work it starts. credits_per_usd converts *_usd costs. billing_enabled=false: credits never block work.",
+            input_model=GetCreditBalanceInput,
+            output_model=GetCreditBalanceOutput,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:read"}),
+            cost_class="free",
+            async_mode="sync",
+            project_scoped=False,
+        ),
+        get_credit_balance,
     )
 
     catalog.register(

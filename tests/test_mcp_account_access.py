@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from decimal import Decimal
 
 import pytest
 from starlette.testclient import TestClient
 
-from overbae.models import APIToken, Project, ProjectMembership, User
+from overbae.models import APIToken, BillingService, Project, ProjectMembership, User
+from overbae.services.billing_ledger import charge_credits
 from overbae.services.mcp.server import create_mcp_application
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -130,3 +132,21 @@ def test_account_read_key_cannot_call_write_tools():
         )["result"]
         assert result["isError"]
         assert result["structuredContent"]["error"]["code"] == "permission_denied"
+
+
+def test_account_and_project_keys_read_the_account_credit_balance():
+    user, projects, raw = account()
+    project_raw, _ = APIToken.create_for_user(user, project=projects[0])
+    charge_credits(user, Decimal("1.25"), BillingService.EVALUATION, project_id=projects[0].pk)
+    other, _, _ = account()
+    charge_credits(other, Decimal("9"), BillingService.EVALUATION)
+    with TestClient(create_mcp_application()) as client:
+        for key in [raw, project_raw]:
+            result = rpc(client, key, "tools/call", {"name": "get_credit_balance"})["result"]
+            assert result["structuredContent"] == {
+                "billing_enabled": True,
+                "balance_credits": "4875.00",
+                "granted_credits": "5000.00",
+                "spent_credits": "125.00",
+                "credits_per_usd": 100,
+            }

@@ -33,3 +33,15 @@ class CreateApiKeyOutput(MCPModel):
     project_id: str | None
     expires_at: datetime | None
     created_at: datetime
+
+
+class GetCreditBalanceInput(MCPModel):
+    pass
+
+
+class GetCreditBalanceOutput(MCPModel):
+    billing_enabled: bool
+    balance_credits: str
+    granted_credits: str
+    spent_credits: str
+    credits_per_usd: int
