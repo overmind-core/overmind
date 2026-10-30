@@ -176,3 +176,22 @@ def test_an_invoice_without_a_subscription_does_not_activate_pro(stripe):
     user.refresh_from_db()
     assert user.subscription.status == SubscriptionStatus.INCOMPLETE
     assert balance_usd(user) == FREE_CREDITS_USD
+
+
+def test_plan_checkout_opens_one_subscription_and_refuses_an_active_plan(stripe, settings):
+    settings.STRIPE_PRO_PRICE_ID = "price_pro"
+    settings.FRONTEND_URL = "https://console.example"
+    user = _make_user("plan-checkout")
+
+    r = auth_client(user).post(reverse("billing-checkout"))
+
+    assert r.status_code == 200
+    [session] = stripe.sessions
+    assert r.data["checkout_url"] == session["url"]
+    assert session["mode"] == "subscription"
+    assert session["line_items"] == [{"price": "price_pro", "quantity": "1"}]
+    assert session["cancel_url"] == "https://console.example/settings?billing=cancel"
+    assert session["subscription_data"]["metadata"]["user_id"] == str(user.pk)
+    Subscription.objects.create(user=user, status=SubscriptionStatus.ACTIVE)
+    assert auth_client(user).post(reverse("billing-checkout")).status_code == 400
+    assert len(stripe.sessions) == 1

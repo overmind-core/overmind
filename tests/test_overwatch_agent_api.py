@@ -12,6 +12,8 @@ from factories import (
 )
 from rest_framework.test import APIClient
 
+from overbae.services.overwatch_privacy import model_question, posthog_url
+
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 URL = "/api/internal/overwatch/agent/query/"
 TOKEN = "agent-test-service-token"
@@ -127,3 +129,16 @@ def usage(days=7):
     )
     assert response.status_code == 200
     return json.loads(response.data["content"])
+
+
+@pytest.mark.covers("privacy")
+def test_agent_questions_drop_credentials_emails_and_links_and_reads_stay_on_posthog():
+    with pytest.raises(ValueError, match="credential_like_input"):
+        model_question("Why does sk-live_abcdefghijkl fail?")
+    question, identities = model_question(
+        "Did jane@example.com and <mailto:Jane@Example.com|Jane> open https://x.example/a?"
+    )
+    assert question == "Did customer_1 and customer_1 open [link omitted]"
+    assert identities == {"customer_1": "jane@example.com"}
+    with pytest.raises(ValueError, match="unapproved_posthog_host"):
+        posthog_url("https://posthog.example", "/api/projects/1/query/")
