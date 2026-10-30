@@ -40,6 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # HEAD^1 is the base this change merges into; test-seams counts against it.
+          fetch-depth: 2
 
       - uses: astral-sh/setup-uv@v6
         with:
@@ -52,6 +55,13 @@ jobs:
 
       - name: Run ruff
         run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Check the coverage map, test seams and agent docs
+        run: |
+          uv run python scripts/check_coverage_map.py
+          uv run python scripts/check_agent_docs.py
+          git diff --name-only --diff-filter=AM HEAD^1 HEAD -- 'tests/*.py' \
+            | PRE_COMMIT_FROM_REF=HEAD^1 xargs -r uv run python scripts/check_test_seams.py
 
   # Frontend install once, then biome / tsc / vitest in parallel.
   # Add this job as a required status check if branch protection still only lists `lint`.

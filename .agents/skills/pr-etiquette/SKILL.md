@@ -9,13 +9,13 @@ description: How to open a complete pull request on overmind-core/overmind — t
 
 `.github/workflows/ci.yml` runs five jobs on every non-draft PR; pushes to `main` run all but `migrations`. Run the equivalents locally rather than discovering them in CI:
 
-| CI job       | What it runs                                                                                                                                  | Local equivalent                                           |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `lint`       | `uv run ruff check .` and `uv run ruff format --check .`                                                                                      | the same two commands (`make lint-backend` fixes in place) |
-| `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/`                                |
-| `test`       | `uv run pytest tests/ -m 'not load' -n auto --dist worksteal -q`                                                                              | `make test`                                                |
-| `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract, then the journeys budget                                                             | `make test-journeys`                                       |
-| `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`                                    |
+| CI job       | What it runs                                                                                                                                  | Local equivalent                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `lint`       | ruff check and format, then the `coverage-map`, `agent-docs-size` and `test-seams` checks                                                     | `make lint-backend`, then `pre-commit run --from-ref origin/main --to-ref HEAD` |
+| `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/`                                                     |
+| `test`       | `uv run pytest tests/ -m 'not load' -n auto --dist worksteal -q`                                                                              | `make test`                                                                     |
+| `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract, then the journeys budget                                                             | `make test-journeys`                                                            |
+| `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`                                                         |
 
 `pre-commit run --files <changed files>` before committing substantial work. Note that `mdformat` reflows markdown, so commit its output rather than fighting it.
 
