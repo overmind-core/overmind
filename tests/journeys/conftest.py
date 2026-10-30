@@ -277,9 +277,10 @@ def replay_recorder(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def console_url(live_api, tmp_path_factory):
-    # The base temp's parent is shared by every xdist worker, so the Console builds once.
-    built = build_console(tmp_path_factory.getbasetemp().parent / "console")
+def console_url(live_api, tmp_path_factory, worker_id):
+    # xdist workers share this run's base temp parent; a serial run's parent outlives it.
+    run = tmp_path_factory.getbasetemp()
+    built = build_console((run if worker_id == "master" else run.parent) / "console")
     with serve_console(built, tmp_path_factory.mktemp("console"), live_api.url) as url:
         yield url
 
