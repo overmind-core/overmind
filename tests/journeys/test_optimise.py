@@ -43,7 +43,7 @@ def _candidate_diff(repo) -> str:
     return diff
 
 
-def test_failing_traces_become_a_measured_winning_diff(
+def test_optimise(
     cli,
     mcp_for,
     sample_agent,
