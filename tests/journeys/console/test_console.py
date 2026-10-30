@@ -958,6 +958,7 @@ def test_native_monitoring_evidence_remains_readable_after_cancellation(console,
         status="running",
         group_id=group,
         hyperparameters={"objective": "decision_cross_entropy"},
+        progress={"activity": [{"ts": 1, "message": "Booting and verifying"}]},
     )
     examples = [
         {
@@ -997,6 +998,7 @@ def test_native_monitoring_evidence_remains_readable_after_cancellation(console,
     console.goto(f"/training?projectId={project}&groupId={group}&jobId={job.pk}")
     console.sees("Development loss")
     console.sees("0.6250")
+    console.sees("Running — Booting and verifying")
     check = job.validation_runs.get()
     evidence = workshop.call(
         "inspect_training_progress", {"job": str(job.pk), "check": str(check.pk)}
@@ -1006,6 +1008,7 @@ def test_native_monitoring_evidence_remains_readable_after_cancellation(console,
     console.sees("Requests cancellation. Completed checks and saved checkpoints remain available.")
     console.press("Cancel Job")
     console.sees("Cancelled")
+    console.wait_until("() => !document.body.innerText.includes('Booting and verifying')")
     job.refresh_from_db()
     assert job.status == "cancelled"
     console.goto(f"/training?projectId={project}&groupId={group}&jobId={job.pk}")

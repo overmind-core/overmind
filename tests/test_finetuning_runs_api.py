@@ -5,6 +5,8 @@ from datetime import timedelta
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -55,6 +57,24 @@ def test_group_id_filter_finds_a_run_regardless_of_its_age():
     body = r.json()
     assert body["count"] == 2
     assert {row["id"] for row in body["results"]} == {str(j.id) for j in wanted}
+
+
+@pytest.mark.parametrize("endpoint", [LIST_URL, RUNS_URL])
+def test_training_history_reads_dataset_versions_once_per_page(endpoint):
+    client, project, dataset = _setup()
+    cell = dataset.active_cell
+    assert cell is not None
+    _job(project, dataset, cell=cell)
+    with CaptureQueriesContext(connection) as first:
+        response = client.get(endpoint, {"project": str(project.id), "page_size": 25})
+    assert response.status_code == 200, response.content
+    for _ in range(9):
+        _job(project, dataset, cell=cell)
+    with CaptureQueriesContext(connection) as many:
+        response = client.get(endpoint, {"project": str(project.id), "page_size": 25})
+    assert response.status_code == 200, response.content
+    assert response.json()["count"] == 10
+    assert len(many) <= len(first) + 1, (len(first), len(many))
 
 
 def test_runs_returns_whole_runs_and_counts_runs_not_jobs():

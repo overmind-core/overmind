@@ -88,7 +88,7 @@ class Dataset(models.Model):
     @property
     def chain(self) -> list["Cell"]:
         """Every cell in position order."""
-        return list(self.cells.order_by("position"))
+        return list(self.cells.all())
 
     @property
     def source(self) -> "Cell | None":

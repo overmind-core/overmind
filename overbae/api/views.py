@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Q, Subquery, Sum
+from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Coalesce
@@ -721,22 +721,34 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return FinetuningJob.objects.none()
-        return FinetuningJob.objects.filter(
-            project_id__in=_user_project_ids(self.request.user)
-        ).select_related(
-            "project",
-            "capability",
-            "dataset",
-            "cell__dataset",
-            "eval_cell__dataset",
-            "eval_set",
-            "native_evaluation",
-            "native_evaluation__final_cell__dataset__capability",
-            "native_evaluation__calibration_cell__dataset__capability",
-            "validation_cell__dataset",
-            "triggered_by",
-            "deployed_model",
-            "decision_job",
+        version_cells = Cell.objects.only("id", "dataset_id", "position", "used_at")
+        return (
+            FinetuningJob.objects.filter(project_id__in=_user_project_ids(self.request.user))
+            .select_related(
+                "project",
+                "capability",
+                "dataset",
+                "cell__dataset",
+                "eval_cell__dataset",
+                "eval_set",
+                "native_evaluation",
+                "native_evaluation__final_cell__dataset__capability",
+                "native_evaluation__calibration_cell__dataset__capability",
+                "validation_cell__dataset",
+                "triggered_by",
+                "deployed_model",
+                "decision_job",
+            )
+            .prefetch_related(
+                *(
+                    Prefetch(f"{relation}__dataset__cells", queryset=version_cells)
+                    for relation in (
+                        "cell",
+                        "native_evaluation__final_cell",
+                        "native_evaluation__calibration_cell",
+                    )
+                )
+            )
         )
 
     def perform_create(self, serializer):
