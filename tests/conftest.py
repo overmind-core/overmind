@@ -15,7 +15,7 @@ from django.db import connections, transaction
 from fakes.clerk import ClerkAPI
 from fakes.http import ScriptedAPI
 from fakes.llm import FakeLLM, Network
-from fakes.modal import FakeModal, ServingBackend, SftBackend
+from fakes.modal import DecisionBackend, FakeModal, ServingBackend, SftBackend
 from fakes.stripe import StripeAPI
 
 
@@ -159,6 +159,11 @@ def sft(fake_modal) -> SftBackend:
 @pytest.fixture
 def serving(fake_modal) -> ServingBackend:
     return ServingBackend(fake_modal, url="http://inference.test").install()
+
+
+@pytest.fixture
+def decisions(fake_modal) -> DecisionBackend:
+    return DecisionBackend(fake_modal).install()
 
 
 @pytest.fixture(autouse=True)
