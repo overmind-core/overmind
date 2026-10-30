@@ -45,6 +45,7 @@ export function OnboardWithAiPanel({
         onPromptCopied?.();
       },
       () => {
+        setCopiedPrompt(undefined);
         setCopyError("Couldn't copy — select the prompt text and copy it manually.");
         trackEvent("setup_prompt_copy_failed", { dataset_id: datasetId, project_id: projectId });
       }
