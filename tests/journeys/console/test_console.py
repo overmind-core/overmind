@@ -9,6 +9,7 @@ from django.utils import timezone
 from modal_shared.training_monitoring import fingerprint
 from overbae.models import (
     Activity,
+    BillingTelemetry,
     Cell,
     DataPartitionMember,
     DataPartitionPlan,
@@ -247,6 +248,18 @@ def test_account_settings_only_offer_renewal_controls_for_managed_plans(
     assert console._browser.call(
         lambda: console._page.get_by_role("button", name="Cancel plan", exact=True).count()
     ) == int(linked_to_stripe)
+
+
+def test_usage_history_keeps_small_charges_visible(console, account):
+    user, _ = account
+    BillingTelemetry.objects.create(user=user, service="inference", amount="-0.0000312")
+    console.goto("/settings")
+    console.sees("Usage history")
+    console.sees("0.00312")
+    console._browser.call(
+        lambda: console._page.get_by_label("0.00312 credits", exact=True).wait_for()
+    )
+    console.save_evidence("usage-small-charge")
 
 
 def test_dataset_pagination_waits_for_the_requested_rows(
