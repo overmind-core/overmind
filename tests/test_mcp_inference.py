@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from django.core.cache import cache
 from django.utils import timezone
-from mcp_fixtures import asgi_db
+from mcp_fixtures import asgi_db, call_tool, mcp_context
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 
@@ -171,6 +171,67 @@ def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budg
     assert job["details"]["retry_safe"] is False
     assert "secret provider body" not in json.dumps(job)
     assert InferenceRequest.objects.get(pk=request_id).payload["max_tokens"] == 16000
+
+
+@pytest.fixture
+def chat(settings):
+    settings.STRIPE_SECRET_KEY = ""
+    context = mcp_context(permission=["read", "write"])
+    model = DeployedModel.objects.create(
+        project=context.project, model_id="ft-mcp-chat", status="ready", max_model_len=16384
+    )
+    return context, model
+
+
+def run_chat(chat, **arguments):
+    context, model = chat
+    return call_tool(
+        "run_inference",
+        {
+            "deployment": str(model.pk),
+            "request_key": uuid.uuid4().hex,
+            "messages": [{"role": "user", "content": "Hello"}],
+            **arguments,
+        },
+        context,
+    )
+
+
+@pytest.mark.parametrize("budget", [16384, 20000])
+def test_an_output_budget_that_fills_the_context_is_refused_before_a_request_exists(chat, budget):
+    error = run_chat(chat, max_tokens=budget).structuredContent["error"]
+    assert error["code"] == "context_length_exceeded"
+    assert error["retryable"] is False
+    assert not InferenceRequest.objects.exists()
+
+
+@pytest.mark.parametrize(
+    ("content", "finish_reason", "truncated", "clipped"),
+    [("partial", "length", True, False), ("x" * 32001, "stop", False, True)],
+    ids=["truncated", "clipped"],
+)
+def test_a_truncated_generation_and_a_clipped_reply_read_differently(
+    chat, fake_modal, content, finish_reason, truncated, clipped
+):
+    fake_modal.deploy(
+        "overmind-inference",
+        "inference_request",
+        lambda request_id, payload: {
+            "content": content,
+            "finish_reason": finish_reason,
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            "latency_ms": 10,
+        },
+    )
+    job = run_chat(chat, max_tokens=12000).structuredContent["job"]
+    inference_requests.advance(job["id"])
+    inference_requests.advance(job["id"])
+    read = call_tool("get_job", {"kind": "inference_request", "id": job["id"]}, chat[0])
+    result = read.structuredContent["details"]["result"]
+    assert result["finish_reason"] == finish_reason
+    assert result["truncated"] is truncated
+    assert result["content_clipped"] is clipped
+    assert result["content"] == content[:32000]
 
 
 @asgi_db
