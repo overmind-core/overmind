@@ -20,6 +20,7 @@ from overbae.models import (
     DatasetPipelineRun,
     DatasetTransfer,
     DecisionJob,
+    DedicatedDeployment,
     DeployedModel,
     FinetuningJob,
     InferenceRequest,
@@ -29,6 +30,7 @@ from overbae.models import (
     TrainingPreparation,
 )
 from overbae.services import (
+    dedicated,
     inference_requests,
     model_workflows,
     operational_progress,
@@ -363,6 +365,20 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         for field in ("id", "eval_id"):
             if job.result.get(field):
                 underlying.append(_link("datasets", job.result[field], "Transferred dataset"))
+    elif kind == "dedicated_deployment":
+        job = (
+            DedicatedDeployment.objects.select_related("deployed_model")
+            .filter(project=context.project, pk=normalized_id)
+            .first()
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "Dedicated deployment not found in this project.")
+        created_at, updated_at, completed_at = job.created_at, job.updated_at, job.stopped_at
+        label, status, job_error = "Dedicated deployment", job.status, job.error_message or None
+        details = dedicated.snapshot(job)
+        progress = details.get("startup")
+        primary = _link("dedicated-deployments", str(job.pk), label)
+        underlying.append(_link("deployments", str(job.deployed_model_id), "Served model"))
     elif kind == "inference_request":
         job = InferenceRequest.objects.filter(project=context.project, pk=normalized_id).first()
         if job is None:

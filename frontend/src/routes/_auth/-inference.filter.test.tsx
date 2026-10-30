@@ -30,7 +30,6 @@ vi.mock("@/hooks/use-inference", () => ({
     deployedModelsQuery(params);
     return { data: { count: 0, results: [] }, isLoading: false };
   },
-  useModelLiveQuery: () => ({ data: undefined }),
 }));
 
 // The table isn't under test — only the props it is handed.

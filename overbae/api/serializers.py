@@ -2666,6 +2666,7 @@ class DeploymentProgressSerializer(serializers.Serializer):
 
 
 class DeployedModelSerializer(serializers.ModelSerializer):
+    has_dedicated_endpoint = serializers.BooleanField(read_only=True)
     deployment_progress = serializers.SerializerMethodField()
     finetuning_job_id = serializers.UUIDField(read_only=True)
     finetuning_job_name = serializers.SerializerMethodField()
@@ -2689,6 +2690,7 @@ class DeployedModelSerializer(serializers.ModelSerializer):
             "model_id",
             "deployment_progress",
             "inference_contract",
+            "has_dedicated_endpoint",
             "status",
             "quantization",
             "base_model_id",

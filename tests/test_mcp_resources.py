@@ -137,6 +137,7 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://eval-sets/{eval_set}",
         "overmind://finetunes/{job_id}",
         "overmind://deployments/{deployment}",
+        "overmind://dedicated-deployments/{id}",
         "overmind://optimizer-runs/{experiment}",
         "overmind://jobs/{kind}/{id}",
         "overmind://operations/{id}",

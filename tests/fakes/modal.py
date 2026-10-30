@@ -149,6 +149,8 @@ class FakeFunction:
     def _current_stats(self):
         self.cloud.log.append(("stats", self.name, (), {}))
         stats = self.cloud.worker_stats
+        if callable(stats):
+            stats = stats()
         if isinstance(stats, BaseException):
             raise stats
         if stats is None:
@@ -185,7 +187,7 @@ class FakeModal:
     files: dict[str, bytes] = field(default_factory=dict)
     dictionaries: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     app_logs: list[Any] = field(default_factory=list)
-    worker_stats: dict[str, Any] | BaseException | None = None
+    worker_stats: dict[str, Any] | BaseException | Callable[[], dict[str, Any]] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def deploy(

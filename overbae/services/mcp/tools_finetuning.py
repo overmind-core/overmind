@@ -1264,7 +1264,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "deploy_finetune",
             "Deploy trained model",
-            "Ensure a successful fine-tune has an inference deployment, including historical decision checkpoints. Reuses existing deployments; failed/deleted deployments require retry_deployment. Does not activate application routing.",
+            "Backfill a trained deployment; reuse existing records. Failed/deleted records need retry_deployment. Does not route traffic.",
             DeployFinetuneInput,
             DeployFinetuneOutput,
             _deploy_finetune_sync,
@@ -1290,7 +1290,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "set_active_model",
             "Set active model",
-            "Verify a ready deployment and switch the alias. Poll model_activation. Omit deployment to clear routing.",
+            "Verify and switch a ready alias; poll model_activation. Omit deployment to clear routing.",
             SetActiveModelInput,
             SetActiveModelOutput,
             _set_active_sync,
@@ -1303,7 +1303,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "set_benchmark_model",
             "Set benchmark model",
-            "Set the capability benchmark to a ready trained deployment, or omit it for the codebase incumbent. Does not change serving.",
+            "Set a trained benchmark; omit deployment for incumbent. Leaves serving unchanged.",
             SetBenchmarkModelInput,
             SetBenchmarkModelOutput,
             _set_benchmark_sync,
@@ -1316,7 +1316,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "run_inference",
             "Run inference",
-            "Submit inference with a stable request_key; identical retries reuse its durable job. Pass a deployment id, or dedicated/<trained model id> for a private deployment. Supply messages for chat or input-only decisions. Read get_job(kind=inference_request). Omitted chat max_tokens uses the production default.",
+            "Submit chat messages or input-only decisions. deployment: ID or dedicated/<trained model id>. request_key retries reuse the job; poll get_job(kind=inference_request).",
             RunInferenceInput,
             RunInferenceOutput,
             _inference_sync,
@@ -1329,8 +1329,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "get_model_swap_prompt",
             "Get model swap prompt",
-            "Return a copy-paste prompt that points the capability's code at a successful "
-            "fine-tune. Apply it locally; the MCP server does not edit the repository.",
+            "Get a local code handoff for a trained model.",
             GetModelSwapPromptInput,
             GetModelSwapPromptOutput,
             _model_swap_prompt_sync,

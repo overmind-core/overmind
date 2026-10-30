@@ -56,6 +56,39 @@ retrain the model. `retry_deployment` accepts a deployment UUID or serving model
 and durably queues a new deployment generation, for a failed or deleted deployment
 with a linked successful or deploying fine-tuning job.
 
+## Dedicated inference
+
+Dedicated setup currently supports eligible chat deployments only. Decision
+models, including Clef and Clef Flash, do not support dedicated setup.
+
+Use `inspect_dedicated_inference` to list project models or inspect one deployment.
+It returns eligibility, a reason when unavailable, fitting GPU types and the latest
+saved dedicated state. Page with `offset` and `limit`; reads do not wake workers.
+Use `list_dedicated_gpus` for current credits per GPU-hour and measured speed;
+missing prices or measurements remain unknown.
+
+For authorized setup, call `start_dedicated_deployment` with the selected deployment,
+GPU, replica bounds, idle timeout and a stable project-scoped `request_key`.
+Identical retries return the original deployment even after it stops; changed
+settings under that key conflict. A deliberate restart uses a new key.
+Poll `get_job(kind="dedicated_deployment", id=...)` or follow the returned
+`overmind://dedicated-deployments/{id}` resource until online
+or failed. Stopped and failed attempts remain readable. Page retained startup logs
+with `log_offset` and `log_limit` (1–100), following `next_log_offset` and
+`logs_total`; preserve the `truncated` flag. Startup operation IDs
+can be inspected with `inspect_operation` for retained events.
+
+Pass the returned dedicated `id` as `dedicated_deployment` to
+`update_dedicated_deployment` or `stop_dedicated_deployment`; this pins the exact
+attempt, so a stale retry cannot affect a newer endpoint. Omit unchanged settings;
+explicit null settings are invalid. `stop_dedicated_deployment` is repeatable and
+drains replicas; charges end when running replicas reach zero. Dedicated GPU
+costs accrue while replicas run, including idle replicas above the minimum.
+
+For a requested inference test, pass the returned `dedicated/<trained model id>`
+to `run_inference`, with its own request key and the deployment's input contract.
+Dedicated setup does not switch capability aliases or benchmark selection.
+
 ## Test or activate
 
 Successful training automatically starts deployment using the model's inference

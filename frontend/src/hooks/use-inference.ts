@@ -216,6 +216,7 @@ export const useStartDedicatedMutation = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: {
+      requestKey: string;
       gpuType: string;
       minReplicas: number;
       maxReplicas: number;
@@ -223,7 +224,7 @@ export const useStartDedicatedMutation = (id: string) => {
       idleShutdownSeconds: number;
     }) =>
       apiClient.deployedModels.deployedModelsDedicatedCreate({
-        dedicatedWriteRequest: body,
+        dedicatedStartRequest: body,
         deploymentId: id,
       }),
     onSuccess: () => refreshDedicated(qc, id),
@@ -261,7 +262,8 @@ export const useStopDedicatedMutation = (id: string) => {
 export const useModelLiveQuery = (id: string | undefined, enabled = false, pollMs = 5_000) =>
   useQuery({
     enabled: !!id && enabled,
-    queryFn: () => apiClient.deployedModels.deployedModelsLiveRetrieve({ id: id! }),
+    queryFn: ({ signal }) =>
+      apiClient.deployedModels.deployedModelsLiveRetrieve({ id: id! }, { signal }),
     queryKey: ["model-live", id],
     refetchInterval: (q) => backoffPolling(q, enabled && pollMs ? pollMs : false),
     staleTime: pollMs ? 0 : 30_000,

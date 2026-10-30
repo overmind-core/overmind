@@ -5,13 +5,15 @@ from __future__ import annotations
 from decimal import Decimal
 
 from modal_shared.stacks import WORKER_CPU, WORKER_MEMORY_MIB
-from overbae.modal.gpu_selector import DEDICATED_TIERS, dedicated_gpu_names, gpu_vram_gb
+from overbae.core.errors import InputValidationError
+from overbae.modal.gpu_selector import dedicated_gpu_names
 from overbae.modal.model_registry import get_model_config_any_backend
 from overbae.services.billing_ledger import to_credits
-from overbae.services.provider_pricing import gpu_rate
+from overbae.services.provider_pricing import current_rates, gpu_rate
 from overbae.services.serving_benchmarks import measurement
 
 SHAPES = ("lora_bf16", "merged_fp8", "decision")
+MODEL_UNAVAILABLE = "This model doesn't currently support dedicated inference."
 
 
 def serving_shape(deployed) -> str:
@@ -23,12 +25,17 @@ def serving_shape(deployed) -> str:
 
 
 def gpu_names_for(deployed) -> list[str]:
-    cfg = get_model_config_any_backend(deployed.base_model_id) or {}
+    cfg = get_model_config_any_backend(deployed.base_model_id)
+    if (
+        deployed.inference_contract != "chat"
+        or not cfg
+        or cfg.get("backend") == "decision"
+        or cfg.get("disabled")
+        or not cfg.get("inference")
+    ):
+        raise InputValidationError(MODEL_UNAVAILABLE)
     fp8 = serving_shape(deployed) == "merged_fp8" and bool(cfg.get("fp8_supported", False))
-    if cfg:
-        return dedicated_gpu_names(cfg, deployed.max_model_len, fp8=fp8)
-    floor = gpu_vram_gb(deployed.gpu_type) or gpu_vram_gb("L4")
-    return [tier["name"] for tier in DEDICATED_TIERS if tier["vram_gb"] >= floor]
+    return dedicated_gpu_names(cfg, deployed.max_model_len, fp8=fp8)
 
 
 def hourly_usd(card: dict, gpu_type: str) -> Decimal | None:
@@ -54,10 +61,12 @@ def credits_per_hour(amount_usd: Decimal | None) -> Decimal | None:
     return to_credits(amount_usd)
 
 
-def offers(deployed, card: dict) -> list[dict]:
+def offers(deployed) -> list[dict]:
+    names = gpu_names_for(deployed)
+    card = current_rates() if names else {}
     shape = serving_shape(deployed)
     rows = []
-    for gpu_type in gpu_names_for(deployed):
+    for gpu_type in names:
         measured = measurement(deployed.base_model_id, shape, gpu_type) or {}
         price = hourly_usd(card, gpu_type)
         rows.append(

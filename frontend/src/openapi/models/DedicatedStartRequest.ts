@@ -16,53 +16,60 @@ import { mapValues } from '../runtime';
 /**
  *
  * @export
- * @interface DedicatedWriteRequest
+ * @interface DedicatedStartRequest
  */
-export interface DedicatedWriteRequest {
+export interface DedicatedStartRequest {
     /**
      *
      * @type {string}
-     * @memberof DedicatedWriteRequest
+     * @memberof DedicatedStartRequest
      */
     gpuType?: string;
     /**
      *
      * @type {number}
-     * @memberof DedicatedWriteRequest
+     * @memberof DedicatedStartRequest
      */
     minReplicas?: number;
     /**
      *
      * @type {number}
-     * @memberof DedicatedWriteRequest
+     * @memberof DedicatedStartRequest
      */
     maxReplicas?: number;
     /**
      *
      * @type {boolean}
-     * @memberof DedicatedWriteRequest
+     * @memberof DedicatedStartRequest
      */
     scaleToZero?: boolean;
     /**
      *
      * @type {number}
-     * @memberof DedicatedWriteRequest
+     * @memberof DedicatedStartRequest
      */
     idleShutdownSeconds?: number;
+    /**
+     *
+     * @type {string}
+     * @memberof DedicatedStartRequest
+     */
+    requestKey: string;
 }
 
 /**
- * Check if a given object implements the DedicatedWriteRequest interface.
+ * Check if a given object implements the DedicatedStartRequest interface.
  */
-export function instanceOfDedicatedWriteRequest(value: object): value is DedicatedWriteRequest {
+export function instanceOfDedicatedStartRequest(value: object): value is DedicatedStartRequest {
+    if (!('requestKey' in value) || value['requestKey'] === undefined) return false;
     return true;
 }
 
-export function DedicatedWriteRequestFromJSON(json: any): DedicatedWriteRequest {
-    return DedicatedWriteRequestFromJSONTyped(json, false);
+export function DedicatedStartRequestFromJSON(json: any): DedicatedStartRequest {
+    return DedicatedStartRequestFromJSONTyped(json, false);
 }
 
-export function DedicatedWriteRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): DedicatedWriteRequest {
+export function DedicatedStartRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): DedicatedStartRequest {
     if (json == null) {
         return json;
     }
@@ -73,14 +80,15 @@ export function DedicatedWriteRequestFromJSONTyped(json: any, ignoreDiscriminato
         'maxReplicas': json['max_replicas'] == null ? undefined : json['max_replicas'],
         'scaleToZero': json['scale_to_zero'] == null ? undefined : json['scale_to_zero'],
         'idleShutdownSeconds': json['idle_shutdown_seconds'] == null ? undefined : json['idle_shutdown_seconds'],
+        'requestKey': json['request_key'],
     };
 }
 
-export function DedicatedWriteRequestToJSON(json: any): DedicatedWriteRequest {
-    return DedicatedWriteRequestToJSONTyped(json, false);
+export function DedicatedStartRequestToJSON(json: any): DedicatedStartRequest {
+    return DedicatedStartRequestToJSONTyped(json, false);
 }
 
-export function DedicatedWriteRequestToJSONTyped(value?: DedicatedWriteRequest | null, ignoreDiscriminator: boolean = false): any {
+export function DedicatedStartRequestToJSONTyped(value?: DedicatedStartRequest | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -92,5 +100,6 @@ export function DedicatedWriteRequestToJSONTyped(value?: DedicatedWriteRequest |
         'max_replicas': value['maxReplicas'],
         'scale_to_zero': value['scaleToZero'],
         'idle_shutdown_seconds': value['idleShutdownSeconds'],
+        'request_key': value['requestKey'],
     };
 }

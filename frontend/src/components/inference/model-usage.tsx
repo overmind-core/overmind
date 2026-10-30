@@ -72,6 +72,7 @@ export function ModelUsage({ metrics }: { metrics: InferenceMetrics }) {
                         valueFormatter={(value) => credits(value)}
                       />
                     )}
+                    cursor={false}
                   />
                   <Bar
                     dataKey="credits"

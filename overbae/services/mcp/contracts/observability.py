@@ -175,6 +175,7 @@ class QueryTracesOutput(MCPModel):
 
 
 JobKind = Literal[
+    "dedicated_deployment",
     "dataset_transfer",
     "inference_request",
     "decision_performance",

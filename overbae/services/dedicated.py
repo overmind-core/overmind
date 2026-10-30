@@ -14,7 +14,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from overbae.core.errors import InputValidationError
-from overbae.models import BillingService, DedicatedDeployment, DeployedModel
+from overbae.models import BillingService, DedicatedDeployment, DeployedModel, Project
 from overbae.services import dedicated_progress, dedicated_runtime
 from overbae.services.billing_ledger import balance_usd, charge_credits
 from overbae.services.billing_provider import commercial_billing_enabled
@@ -36,8 +36,12 @@ BALANCE_TOO_LOW = "Not enough credits for one minute at this replica floor."
 NOT_ONLINE = "Dedicated deployment is not online."
 
 
+class RequestKeyConflictError(InputValidationError):
+    pass
+
+
 def gpu_offers(deployed):
-    return offers(deployed, current_rates())
+    return offers(deployed)
 
 
 def latest_for(deployed):
@@ -47,6 +51,40 @@ def latest_for(deployed):
         .order_by("-created_at")
         .first()
     )
+
+
+def snapshot(row, *, log_offset=0, log_limit=100) -> dict:
+    if log_offset < 0 or not 1 <= log_limit <= 100:
+        raise InputValidationError("Use a non-negative log_offset and log_limit from 1 to 100.")
+    startup = dedicated_progress.summary(row)
+    if startup:
+        logs = startup["logs"]
+        end = log_offset + log_limit
+        startup = {
+            **startup,
+            "logs": logs[log_offset:end],
+            "logs_total": len(logs),
+            "next_log_offset": end if end < len(logs) else None,
+            "truncated": startup["truncated"] or log_offset > 0 or end < len(logs),
+        }
+    return {
+        "id": str(row.pk),
+        "deployment": str(row.deployed_model_id),
+        "model_id": row.public_model_id,
+        "status": row.status,
+        "gpu_type": row.gpu_type,
+        "serving_shape": row.serving_shape,
+        "min_replicas": row.min_replicas,
+        "max_replicas": row.max_replicas,
+        "scale_to_zero": row.scale_to_zero,
+        "idle_shutdown_seconds": row.idle_shutdown_seconds,
+        "running_replicas": row.running_replicas,
+        "credits_per_gpu_hour": str(row.credits_per_gpu_hour),
+        "accrued_credits": str(row.accrued_credits),
+        "rates_fetched_at": row.rates_fetched_at.isoformat() if row.rates_fetched_at else None,
+        "error": row.error_message[:1_000],
+        "startup": startup,
+    }
 
 
 def latest_rows(project_ids):
@@ -128,40 +166,62 @@ def start(
     deployed,
     user,
     *,
+    request_key: str,
     gpu_type: str,
     min_replicas: int = 1,
     max_replicas: int = 1,
     scale_to_zero: bool = False,
     idle_shutdown_seconds: int = DEFAULT_IDLE_SECONDS,
 ):
-    if deployed.status != DeployedModel.Status.READY:
-        raise InputValidationError(NOT_READY)
-    if gpu_type not in offered_gpus(deployed):
-        raise InputValidationError(GPU_UNAVAILABLE)
+    if not request_key.strip() or len(request_key) > 128:
+        raise InputValidationError("Supply a request_key of 1–128 characters.")
     minimum, maximum, idle = _bounds(
         min_replicas, max_replicas, scale_to_zero, idle_shutdown_seconds
     )
-    price, credits, fetched = _quote(gpu_type)
-    _require_floor(user, price, minimum)
-    try:
-        return DedicatedDeployment.objects.create(
-            project_id=deployed.project_id,
-            deployed_model=deployed,
-            started_by=user,
-            gpu_type=gpu_type,
-            serving_shape=serving_shape(deployed),
-            min_replicas=minimum,
-            max_replicas=maximum,
-            scale_to_zero=minimum == 0,
-            idle_shutdown_seconds=idle,
-            modal_app=dedicated_runtime.APP_NAME,
-            rate_usd_per_gpu_hour=price,
-            credits_per_gpu_hour=credits,
-            rates_fetched_at=fetched,
-            next_poll_at=timezone.now(),
-        )
-    except IntegrityError as exc:
-        raise InputValidationError(ALREADY_RUNNING) from exc
+    config = {
+        "deployment": str(deployed.pk),
+        "gpu_type": gpu_type,
+        "min_replicas": minimum,
+        "max_replicas": maximum,
+        "scale_to_zero": minimum == 0,
+        "idle_shutdown_seconds": idle,
+    }
+    with transaction.atomic():
+        Project.objects.select_for_update().get(pk=deployed.project_id)
+        existing = DedicatedDeployment.objects.filter(
+            project_id=deployed.project_id, request_key=request_key
+        ).first()
+        if existing is not None:
+            if existing.request_config != config:
+                raise RequestKeyConflictError(
+                    "Request key is already bound to a different dedicated deployment configuration."
+                )
+            return existing
+        deployed.refresh_from_db()
+        if deployed.status != DeployedModel.Status.READY:
+            raise InputValidationError(NOT_READY)
+        if gpu_type not in offered_gpus(deployed):
+            raise InputValidationError(GPU_UNAVAILABLE)
+        price, credits, fetched = _quote(gpu_type)
+        _require_floor(user, price, minimum)
+        try:
+            with transaction.atomic():
+                return DedicatedDeployment.objects.create(
+                    project_id=deployed.project_id,
+                    deployed_model=deployed,
+                    started_by=user,
+                    request_key=request_key,
+                    request_config=config,
+                    **{key: value for key, value in config.items() if key != "deployment"},
+                    serving_shape=serving_shape(deployed),
+                    modal_app=dedicated_runtime.APP_NAME,
+                    rate_usd_per_gpu_hour=price,
+                    credits_per_gpu_hour=credits,
+                    rates_fetched_at=fetched,
+                    next_poll_at=timezone.now(),
+                )
+        except IntegrityError as exc:
+            raise InputValidationError(ALREADY_RUNNING) from exc
 
 
 def update(
@@ -174,7 +234,7 @@ def update(
     idle_shutdown_seconds: int | None = None,
 ):
     if row.status not in DedicatedDeployment.LIVE:
-        raise InputValidationError(ALREADY_RUNNING)
+        raise InputValidationError("Only a running dedicated deployment can be updated.")
     gpu = gpu_type or row.gpu_type
     if gpu not in offered_gpus(row.deployed_model):
         raise InputValidationError(GPU_UNAVAILABLE)
@@ -324,9 +384,9 @@ def advance(deployment_id: str) -> None:
                     row.status = DedicatedDeployment.Status.SHUTTING_DOWN
         except InputValidationError as exc:
             _fail(row, exc.detail, now)
-        except Exception as exc:
+        except Exception:
             logger.exception("Dedicated deployment %s failed", row.pk)
-            _fail(row, str(exc).strip() or dedicated_runtime.WORKER_UNAVAILABLE, now)
+            _fail(row, dedicated_runtime.WORKER_UNAVAILABLE, now)
         row.next_poll_at = now + timedelta(seconds=15)
         row.save()
     if capture_startup:

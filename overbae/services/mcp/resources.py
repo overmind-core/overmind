@@ -34,6 +34,7 @@ from overbae.models import (
     DatasetPipelineRun,
     DatasetTransfer,
     DecisionJob,
+    DedicatedDeployment,
     DeployedModel,
     EvalMatrix,
     EvalRun,
@@ -50,7 +51,7 @@ from overbae.models import (
 )
 from overbae.services import (
     activity,
-    dedicated_progress,
+    dedicated,
     inference_requests,
     model_workflows,
     operational_progress,
@@ -1073,26 +1074,35 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
 
 
 def _dedicated_payload(deployment) -> dict | None:
-    from overbae.services.dedicated import live_for
-
-    row = live_for(deployment)
+    row = dedicated.latest_for(deployment)
     if row is None:
         return None
     return {
-        "id": str(row.id),
-        "model_id": row.public_model_id,
-        "status": row.status,
-        "gpu_type": row.gpu_type,
-        "min_replicas": row.min_replicas,
-        "max_replicas": row.max_replicas,
-        "scale_to_zero": row.scale_to_zero,
-        "idle_shutdown_seconds": row.idle_shutdown_seconds,
-        "running_replicas": row.running_replicas,
-        "credits_per_gpu_hour": str(row.credits_per_gpu_hour),
-        "accrued_credits": str(row.accrued_credits),
-        "error": row.error_message[:1_000],
-        "startup": dedicated_progress.summary(row),
+        **dedicated.snapshot(row),
+        "resource": resource_link("dedicated-deployments", str(row.pk), "Dedicated deployment"),
     }
+
+
+def _dedicated_resource(project, value: str, uri: str) -> dict:
+    row = (
+        DedicatedDeployment.objects.select_related("deployed_model")
+        .filter(project=project, pk=uuid_reference(value))
+        .first()
+    )
+    if row is None:
+        raise _not_found("dedicated deployment", value)
+    params = parse_qs(urlparse(uri).query)
+    try:
+        snapshot = dedicated.snapshot(
+            row,
+            log_offset=int(params.get("log_offset", [0])[0]),
+            log_limit=int(params.get("log_limit", [100])[0]),
+        )
+    except (ValueError, InputValidationError):
+        raise MCPError(
+            "invalid_input", "Use a non-negative log_offset and log_limit from 1 to 100."
+        ) from None
+    return {"uri": uri, "kind": "dedicated_deployment", **snapshot}
 
 
 def _deployment_resource(project, value: str, uri: str) -> dict:
@@ -1404,6 +1414,8 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         }
     if kind in {"deployment", "model_deployment"}:
         return _deployment_resource(project, value, uri)
+    if kind == "dedicated_deployment":
+        return _dedicated_resource(project, value, uri)
     if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
         return _optimizer_resource(project, value, uri)
     normalized_id = uuid_reference(value)
@@ -1672,6 +1684,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "eval-sets",
             "finetunes",
             "deployments",
+            "dedicated-deployments",
             "optimizer-runs",
             "connectors",
         }
@@ -1686,6 +1699,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "eval-sets": _eval_set_resource,
             "finetunes": _finetune_resource,
             "deployments": _deployment_resource,
+            "dedicated-deployments": _dedicated_resource,
             "optimizer-runs": _optimizer_resource,
             "connectors": _connector_resource,
         }
@@ -1817,6 +1831,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
         ("deployment", "overmind://deployments/{deployment}", "Deployment status"),
+        (
+            "dedicated-deployment",
+            "overmind://dedicated-deployments/{id}",
+            "Saved dedicated deployment state, including stopped and failed attempts",
+        ),
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),
         ("connector", "overmind://connectors/{connector}", "Connector metadata and sync status"),
         ("job", "overmind://jobs/{kind}/{id}", "Project job status"),

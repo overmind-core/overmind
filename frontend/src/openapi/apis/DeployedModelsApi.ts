@@ -17,7 +17,7 @@ import * as runtime from '../runtime';
 import type {
   DedicatedDeployment,
   DedicatedGpu,
-  DedicatedWriteRequest,
+  DedicatedStartRequest,
   DeployedModel,
   InferenceActivity,
   InferenceInputRequest,
@@ -34,8 +34,8 @@ import {
     DedicatedDeploymentToJSON,
     DedicatedGpuFromJSON,
     DedicatedGpuToJSON,
-    DedicatedWriteRequestFromJSON,
-    DedicatedWriteRequestToJSON,
+    DedicatedStartRequestFromJSON,
+    DedicatedStartRequestToJSON,
     DeployedModelFromJSON,
     DeployedModelToJSON,
     InferenceActivityFromJSON,
@@ -71,7 +71,7 @@ export interface DeployedModelsCheckpointsRetrieveRequest {
 
 export interface DeployedModelsDedicatedCreateRequest {
     deploymentId: string;
-    dedicatedWriteRequest?: DedicatedWriteRequest;
+    dedicatedStartRequest: DedicatedStartRequest;
 }
 
 export interface DeployedModelsDedicatedGpusListRequest {
@@ -286,6 +286,13 @@ export class DeployedModelsApi extends runtime.BaseAPI {
             );
         }
 
+        if (requestParameters['dedicatedStartRequest'] == null) {
+            throw new runtime.RequiredError(
+                'dedicatedStartRequest',
+                'Required parameter "dedicatedStartRequest" was null or undefined when calling deployedModelsDedicatedCreate().'
+            );
+        }
+
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -321,7 +328,7 @@ export class DeployedModelsApi extends runtime.BaseAPI {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: DedicatedWriteRequestToJSON(requestParameters['dedicatedWriteRequest']),
+            body: DedicatedStartRequestToJSON(requestParameters['dedicatedStartRequest']),
         }, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => DedicatedDeploymentFromJSON(jsonValue));

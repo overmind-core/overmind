@@ -125,6 +125,10 @@ class DedicatedWriteSerializer(serializers.Serializer):
     )
 
 
+class DedicatedStartSerializer(DedicatedWriteSerializer):
+    request_key = serializers.CharField(max_length=128)
+
+
 def _model(request, deployment_id) -> DeployedModel:
     return get_object_or_404(
         DeployedModel,
@@ -134,14 +138,21 @@ def _model(request, deployment_id) -> DeployedModel:
 
 
 def _invalid(exc: InputValidationError):
-    return Response({"detail": exc.detail}, status=400)
+    return Response(
+        {"detail": exc.detail},
+        status=409 if isinstance(exc, dedicated.RequestKeyConflictError) else 400,
+    )
 
 
 class DedicatedGpusView(APIView):
     @extend_schema(responses=DedicatedGpuSerializer(many=True), summary="Dedicated GPU options")
     def get(self, request, deployment_id):
         deployed = _model(request, deployment_id)
-        return Response(DedicatedGpuSerializer(dedicated.gpu_offers(deployed), many=True).data)
+        try:
+            offers = dedicated.gpu_offers(deployed)
+        except InputValidationError as exc:
+            return _invalid(exc)
+        return Response(DedicatedGpuSerializer(offers, many=True).data)
 
 
 class DedicatedDeploymentView(APIView):
@@ -155,13 +166,13 @@ class DedicatedDeploymentView(APIView):
         return Response(DedicatedDeploymentSerializer(row).data)
 
     @extend_schema(
-        request=DedicatedWriteSerializer,
+        request=DedicatedStartSerializer,
         responses=DedicatedDeploymentSerializer,
         summary="Start a dedicated deployment",
     )
     def post(self, request, deployment_id):
         deployed = _model(request, deployment_id)
-        body = DedicatedWriteSerializer(data=request.data)
+        body = DedicatedStartSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
         if "gpu_type" not in data:
@@ -170,6 +181,7 @@ class DedicatedDeploymentView(APIView):
             row = dedicated.start(
                 deployed,
                 request.user,
+                request_key=data["request_key"],
                 gpu_type=data["gpu_type"],
                 min_replicas=data.get("min_replicas", 1),
                 max_replicas=data.get("max_replicas", 1),

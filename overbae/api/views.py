@@ -2,7 +2,19 @@ import logging
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import (
+    Avg,
+    Count,
+    Exists,
+    FloatField,
+    Max,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+)
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Coalesce
@@ -109,6 +121,7 @@ from overbae.models import (
     Span,
     User,
 )
+from overbae.models.inference import DedicatedDeployment
 from overbae.services import native_evaluation as native_evaluation_service
 from overbae.services import training_monitoring
 from overbae.services.datasets.lifecycle import DatasetError
@@ -1958,6 +1971,11 @@ class DeployedModelViewSet(
         return (
             queryset.select_related("finetuning_job", "finetuning_job__capability")
             .annotate(
+                has_dedicated_endpoint=Exists(
+                    DedicatedDeployment.objects.filter(
+                        deployed_model_id=OuterRef("pk"), status__in=DedicatedDeployment.LIVE
+                    )
+                ),
                 request_count=Count("inference_calls"),
                 last_active_at=Max("inference_calls__created_at"),
                 total_tokens=Sum("inference_calls__prompt_tokens")

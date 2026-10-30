@@ -151,12 +151,12 @@ models/DecisionTrainingModelOption.ts
 models/DedicatedDeployment.ts
 models/DedicatedDeploymentStatusEnum.ts
 models/DedicatedGpu.ts
+models/DedicatedStartRequest.ts
 models/DedicatedStartup.ts
 models/DedicatedStartupLog.ts
 models/DedicatedUsage.ts
 models/DedicatedUsageBreakdown.ts
 models/DedicatedUsagePoint.ts
-models/DedicatedWriteRequest.ts
 models/DefinitionSourceEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts

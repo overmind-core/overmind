@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
 import { DedicatedStartupProgress } from "@/components/inference/dedicated-startup";
 import { EndpointStatus } from "@/components/inference/serving-status";
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -36,7 +37,7 @@ import {
   useUpdateDedicatedMutation,
 } from "@/hooks/use-inference";
 import { useCommercialBilling, useCredits } from "@/hooks/use-subscription";
-import { notify } from "@/lib/notify";
+import { errorMessage, notify } from "@/lib/notify";
 import { usdToOvermindCredits } from "@/lib/utils";
 import type { DedicatedDeployment, DedicatedGpu, DeployedModel } from "@/openapi";
 
@@ -137,7 +138,14 @@ export function DedicatedDeploymentSection({
   const stop = useStopDedicatedMutation(model.id);
   const ready = model.status === "ready";
   const deployment = useDedicatedDeploymentQuery(model.id, ready);
-  const gpus = useDedicatedGpusQuery(model.id, ready && (open || confirmStart));
+  const gpus = useDedicatedGpusQuery(model.id, ready);
+  const unavailableReason = gpus.isPending
+    ? "Checking dedicated inference availability"
+    : gpus.error
+      ? errorMessage(gpus.error, "GPU options could not load")
+      : gpus.data?.length === 0
+        ? "No supported GPU has enough memory for this model at its serving context."
+        : null;
   const row = deployment.data ?? null;
   const startRate = gpus.data?.find((gpu) => gpu.gpuType === row?.gpuType)?.creditsPerGpuHour;
   const active = row != null && ACTIVE.has(row.status ?? "");
@@ -161,6 +169,7 @@ export function DedicatedDeploymentSection({
         idleShutdownSeconds: row.idleShutdownSeconds ?? 900,
         maxReplicas: row.maxReplicas ?? 1,
         minReplicas: row.scaleToZero ? 0 : Math.max(1, row.minReplicas ?? 1),
+        requestKey: crypto.randomUUID(),
         scaleToZero: row.scaleToZero ?? false,
       },
       { onError: (error) => notify.error(error, "Couldn't start the deployment") }
@@ -215,20 +224,35 @@ export function DedicatedDeploymentSection({
                 className="inline-flex shrink-0 items-center"
                 role="group"
               >
-                <DialogTrigger asChild>
-                  <Button
-                    className={row ? "rounded-r-none" : undefined}
-                    disabled={stopping || pending || deployment.isLoading || !!deployment.error}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    Configure GPU
-                  </Button>
-                </DialogTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex" tabIndex={unavailableReason ? 0 : undefined}>
+                      <DialogTrigger asChild>
+                        <Button
+                          className={row ? "rounded-r-none" : undefined}
+                          disabled={
+                            stopping ||
+                            pending ||
+                            deployment.isLoading ||
+                            !!deployment.error ||
+                            !!unavailableReason
+                          }
+                          size="sm"
+                          variant="secondary"
+                        >
+                          Configure GPU
+                        </Button>
+                      </DialogTrigger>
+                    </span>
+                  </TooltipTrigger>
+                  {unavailableReason ? <TooltipContent>{unavailableReason}</TooltipContent> : null}
+                </Tooltip>
                 {row ? (
                   <Button
                     className="rounded-l-none border-l-border"
-                    disabled={stopping || pending || !!deployment.error}
+                    disabled={
+                      stopping || pending || !!deployment.error || (!active && !!unavailableReason)
+                    }
                     onClick={toggleDeployment}
                     size="sm"
                     variant="secondary"
@@ -274,9 +298,11 @@ export function DedicatedDeploymentSection({
               <p className="text-sm text-muted-foreground">Loading GPUs</p>
             ) : null}
             {gpus.error ? (
-              <p className="text-sm text-destructive">GPU options could not load</p>
+              <Alert variant="warning">
+                {errorMessage(gpus.error, "GPU options could not load")}
+              </Alert>
             ) : null}
-            {deployment.isFetched && gpus.data && row?.status !== "shutting_down" ? (
+            {deployment.isFetched && !gpus.error && gpus.data && row?.status !== "shutting_down" ? (
               <GpuMenu
                 decision={model.inferenceContract === "decision"}
                 gpus={gpus.data}
@@ -289,7 +315,7 @@ export function DedicatedDeploymentSection({
       </Dialog>
       {row ? (
         <ConfirmDialog
-          confirmDisabled={startRate == null}
+          confirmDisabled={startRate == null || !!unavailableReason}
           confirmLabel="Start"
           description={
             gpus.isLoading
@@ -422,11 +448,16 @@ function GpuMenu({
         active ? "Couldn't update the deployment" : "Couldn't start the deployment"
       );
     if (active) update.mutate(body, { onError });
-    else start.mutate(body, { onError });
+    else start.mutate({ ...body, requestKey: crypto.randomUUID() }, { onError });
   };
 
   if (gpus.length === 0) {
-    return <p className="text-sm text-muted-foreground">No GPU fits this model.</p>;
+    return (
+      <Alert variant="warning">
+        Dedicated inference is not currently available for this model at its serving context. No
+        supported GPU has enough memory.
+      </Alert>
+    );
   }
 
   return (

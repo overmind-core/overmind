@@ -11,15 +11,15 @@ import {
   FineTunedModelIdentity,
   TrainingJobChip,
 } from "@/components/inference/model-identity";
-import { ServingStatusBadge } from "@/components/inference/serving-status";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
+import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
 import { DateTime } from "@/components/ui/datetime";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { useDeployedModelsQuery, useModelLiveQuery } from "@/hooks/use-inference";
+import { useDeployedModelsQuery } from "@/hooks/use-inference";
 import { type InferenceSearch, inferenceSearchSchema } from "@/lib/schemas";
 import type { DeployedModel } from "@/openapi";
 
@@ -169,10 +169,15 @@ function InferencePage() {
       size: 180,
     },
     {
-      accessorKey: "status",
-      cell: ({ row }) => <ModelStatusCell id={row.original.id} status={row.original.status} />,
-      header: "Status",
-      meta: { noTruncate: true, orderingField: "status" },
+      accessorKey: "hasDedicatedEndpoint",
+      cell: ({ row }) => (
+        <Badge variant="neutral">
+          {row.original.hasDedicatedEndpoint ? "Dedicated" : "Serverless"}
+        </Badge>
+      ),
+      enableSorting: false,
+      header: "Serving",
+      meta: { noTruncate: true },
       minSize: 110,
       size: 130,
     },
@@ -308,9 +313,4 @@ function InferencePage() {
       </div>
     </PageShell>
   );
-}
-
-function ModelStatusCell({ id, status }: { id: string; status: string }) {
-  const { data: live } = useModelLiveQuery(id, status === "ready");
-  return <ServingStatusBadge live={live} status={status} />;
 }

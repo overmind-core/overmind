@@ -63,7 +63,7 @@ function ModelDetailPage() {
   const { data: model, isLoading, error, refetch } = useDeployedModelQuery(modelId);
   const [weightsOpen, setWeightsOpen] = useState(false);
   const checkpoints = useModelCheckpointsQuery(modelId, weightsOpen);
-  const { data: live } = useModelLiveQuery(modelId, true);
+  const { data: live } = useModelLiveQuery(modelId, model?.status === "ready");
 
   // The copy-prompt path operates on the originating finetuning job.
   const { data: ftJobs } = useFinetuningJobsQuery(projectId);

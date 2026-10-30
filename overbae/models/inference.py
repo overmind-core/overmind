@@ -182,6 +182,8 @@ class DedicatedDeployment(models.Model):
     started_by = models.ForeignKey(
         "overbae.User", null=True, on_delete=models.SET_NULL, related_name="+"
     )
+    request_key = models.CharField(max_length=128, null=True, blank=True)
+    request_config = models.JSONField(default=dict)
     gpu_type = models.CharField(max_length=20)
     serving_shape = models.CharField(max_length=16)
     status = models.CharField(
@@ -212,7 +214,10 @@ class DedicatedDeployment(models.Model):
                 fields=["deployed_model"],
                 condition=models.Q(status__in=["deploying", "warming", "online", "shutting_down"]),
                 name="one_live_dedicated_deployment",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="dedicated_project_request_unique"
+            ),
         ]
 
     @property

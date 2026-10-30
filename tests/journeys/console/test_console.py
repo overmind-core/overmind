@@ -1,9 +1,11 @@
 import hashlib
 import json
+import threading
 import uuid
 from datetime import timedelta
 
 import pytest
+import requests
 from django.utils import timezone
 
 from modal_shared.training_monitoring import fingerprint
@@ -431,6 +433,109 @@ def test_inference_search_clear_restores_models(console, workshop, clear_action)
     console.sees("ft-search-result")
     console.wait_until("() => !new URLSearchParams(location.search).get('inf_search')")
     console.save_evidence(f"inference-{clear_action.lower().replace(' ', '-')}")
+
+
+def test_model_detail_only_inspects_the_selected_worker(console, workshop, fake_modal):
+    project = workshop.project()["id"]
+    dataset = Dataset.objects.create(project_id=project, name="Model navigation")
+    models = []
+    for index in range(6):
+        job = FinetuningJob.objects.create(
+            project_id=project, dataset=dataset, base_model="Qwen/Qwen3-8B", status="succeeded"
+        )
+        models.append(
+            DeployedModel.objects.create(
+                project_id=project,
+                finetuning_job=job,
+                model_id=f"ft-navigation-{index}",
+                status="ready",
+                base_model_id=job.base_model,
+                gpu_type="L4",
+                weights_path=f"/weights/navigation-{index}",
+            )
+        )
+    release = threading.Event()
+    started = threading.Condition()
+    pending = []
+
+    def slow_stats():
+        with started:
+            pending.append(True)
+            started.notify_all()
+        release.wait(20)
+        return {"num_total_runners": 0, "num_running_inputs": 0, "backlog": 0}
+
+    fake_modal.worker_stats = slow_stats
+    for model, status in [(models[1], "online"), (models[2], "offline")]:
+        DedicatedDeployment.objects.create(
+            project_id=project,
+            deployed_model=model,
+            gpu_type="L4",
+            status=status,
+            rate_usd_per_gpu_hour=1,
+            credits_per_gpu_hour=100,
+        )
+    live_requests = []
+    cancelled = []
+    console._browser.call(
+        console._page.on,
+        "request",
+        lambda request: (
+            live_requests.append(request.url) if request.url.endswith("/live/") else None
+        ),
+    )
+    console._browser.call(
+        console._page.on,
+        "requestfailed",
+        lambda request: cancelled.append(request.url) if request.url.endswith("/live/") else None,
+    )
+    try:
+        console.goto(f"/inference?projectId={project}")
+        console.sees("ft-navigation-0")
+        for index, label in [(0, "Serverless"), (1, "Dedicated"), (2, "Serverless")]:
+            console._browser.call(
+                lambda index=index, label=label: (
+                    console._page.get_by_role("row")
+                    .filter(has_text=f"ft-navigation-{index}")
+                    .get_by_text(label, exact=True)
+                    .wait_for()
+                )
+            )
+        assert not live_requests
+        console._browser.call(
+            lambda: (
+                console._page.get_by_role("row")
+                .filter(has_text="ft-navigation-0")
+                .locator("td")
+                .first.click()
+            )
+        )
+        console._browser.call(
+            lambda: console._page.get_by_role("heading", name="ft-navigation-0").wait_for(
+                timeout=3000
+            )
+        )
+        with started:
+            assert started.wait_for(lambda: len(pending) >= 1, timeout=3)
+        assert len(live_requests) == 1
+        assert live_requests[0].endswith(f"/{models[0].pk}/live/")
+        assert not release.is_set()
+        console.save_evidence("model-navigation-before-worker-status")
+
+        def back_to_list():
+            with console._page.expect_event(
+                "requestfailed",
+                predicate=lambda request: request.url.endswith(f"/{models[0].pk}/live/"),
+                timeout=3000,
+            ):
+                console._page.get_by_role("link", name="Inference", exact=True).first.click()
+
+        console._browser.call(back_to_list)
+        console.sees("ft-navigation-0")
+        assert cancelled == live_requests
+        console.healthy()
+    finally:
+        release.set()
 
 
 def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
@@ -1411,7 +1516,65 @@ def test_evaluation_scope_link_settles_on_trajectory_and_supports_repeat_clicks(
     console.healthy()
 
 
-def test_dedicated_startup_updates_and_keeps_configuration_after_stop(console, workshop):
+@pytest.mark.parametrize(
+    ("base_model_id", "inference_contract"),
+    [
+        ("external/unsupported-model", "chat"),
+        ("LiquidAI/LFM2.5-2.6B", "chat"),
+        ("Cloudflare/clef", "decision"),
+        ("Cloudflare/clef-flash", "decision"),
+        ("Cloudflare/clef-flash", "chat"),
+    ],
+)
+def test_unsupported_dedicated_model_explains_why_before_start(
+    console, workshop, live_api, fake_modal, base_model_id, inference_contract
+):
+    project = workshop.project()["id"]
+    deployed = DeployedModel.objects.create(
+        project_id=project,
+        model_id="ft-unsupported-dedicated",
+        status="ready",
+        base_model_id=base_model_id,
+        inference_contract=inference_contract,
+        serving_runtime={
+            "app": "overmind-decision-serve-test-release",
+            "environment": "overmind-dev",
+            "release": "test-release",
+        }
+        if inference_contract == "decision"
+        else {},
+        gpu_type="L4",
+    )
+    reason = "This model doesn't currently support dedicated inference."
+    console.goto(f"/inference/{deployed.pk}?projectId={project}")
+    console.wait_until(
+        "() => [...document.querySelectorAll('button')].some("
+        "b => b.textContent === 'Configure GPU' && b.disabled)"
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("button", name="Configure GPU").locator("..").hover()
+    )
+    console.sees(reason)
+    console.wait_until("() => !document.querySelector('[role=dialog]')")
+    response = requests.post(
+        f"{live_api.url}/api/deployed-models/{deployed.pk}/dedicated/",
+        headers={"X-Api-Key": workshop.api_key},
+        json={"request_key": "unsupported-model", "gpu_type": "L4"},
+        timeout=30,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == reason
+    result = workshop.call_result("list_dedicated_gpus", {"deployment": str(deployed.pk)})
+    assert result.isError
+    assert json.loads(result.content[0].text)["error"]["message"] == reason
+    assert not DedicatedDeployment.objects.filter(deployed_model=deployed).exists()
+    console.save_evidence(f"dedicated-unavailable-{base_model_id.split('/')[-1]}")
+    console.healthy()
+
+
+def test_dedicated_startup_updates_and_keeps_configuration_after_stop(
+    console, workshop, fake_modal
+):
     project = workshop.project()["id"]
     deployed = DeployedModel.objects.create(
         project_id=project,

@@ -17,6 +17,7 @@ EXPECTED_TOOL_NAMES = {
     "save_training_plan",
     "deploy_finetune",
     "list_dedicated_gpus",
+    "inspect_dedicated_inference",
     "start_dedicated_deployment",
     "update_dedicated_deployment",
     "stop_dedicated_deployment",

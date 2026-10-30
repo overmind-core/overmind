@@ -84,12 +84,12 @@ def test_missing_rate_refuses_start_and_a_second_start_conflicts(fake_modal):
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
     with pytest.raises(InputValidationError, match="price is unavailable"):
-        dedicated.start(deployed, user, gpu_type="L4")
+        dedicated.start(deployed, user, request_key=uuid.uuid4().hex, gpu_type="L4")
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
-    row = dedicated.start(deployed, user, gpu_type="H100")
+    row = dedicated.start(deployed, user, request_key=uuid.uuid4().hex, gpu_type="H100")
     assert row.credits_per_gpu_hour > 0
     with pytest.raises(InputValidationError, match="already has a dedicated"):
-        dedicated.start(deployed, user, gpu_type="H100")
+        dedicated.start(deployed, user, request_key=uuid.uuid4().hex, gpu_type="H100")
 
 
 def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal):
@@ -101,6 +101,7 @@ def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal)
     row = dedicated.start(
         deployed,
         user,
+        request_key=uuid.uuid4().hex,
         gpu_type="H100",
         min_replicas=2,
         max_replicas=3,
@@ -120,6 +121,7 @@ def test_stopped_deployment_can_restart_with_its_saved_configuration(fake_modal)
     restarted = dedicated.start(
         deployed,
         user,
+        request_key=uuid.uuid4().hex,
         gpu_type=row.gpu_type,
         min_replicas=row.min_replicas,
         max_replicas=row.max_replicas,
@@ -138,7 +140,14 @@ def test_running_replicas_are_metered_and_idle_replicas_are_not(fake_modal):
     deployed = _ready(project)
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     fake_modal.worker_stats = {"num_total_runners": 2, "backlog": 0, "num_running_inputs": 0}
-    row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=2)
+    row = dedicated.start(
+        deployed,
+        user,
+        request_key=uuid.uuid4().hex,
+        gpu_type="H100",
+        min_replicas=1,
+        max_replicas=2,
+    )
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
     row.refresh_from_db()
@@ -171,7 +180,14 @@ def test_gpu_change_scales_the_previous_gpu_to_zero(fake_modal):
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     deployed = _ready(project)
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
-    row = dedicated.start(deployed, user, gpu_type="H100", min_replicas=1, max_replicas=1)
+    row = dedicated.start(
+        deployed,
+        user,
+        request_key=uuid.uuid4().hex,
+        gpu_type="H100",
+        min_replicas=1,
+        max_replicas=1,
+    )
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
     dedicated.update(row, gpu_type="H200")
@@ -197,7 +213,7 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
-    row = dedicated.start(deployed, user, gpu_type="H100")
+    row = dedicated.start(deployed, user, request_key=uuid.uuid4().hex, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
     row.refresh_from_db()
@@ -257,7 +273,7 @@ def test_dedicated_chat_streams_tokens_before_the_reply_finishes(fake_modal):
         yield raw[12:]
 
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer_stream", stream)
-    row = dedicated.start(deployed, user, gpu_type="H100")
+    row = dedicated.start(deployed, user, request_key=uuid.uuid4().hex, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
     row.refresh_from_db()
