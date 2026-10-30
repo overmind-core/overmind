@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 from celery.contrib.testing.worker import start_worker
 from celery.signals import before_task_publish, task_postrun
+from celery.worker.state import revoked
 from django.conf import settings
 
 RUNS = Path(__file__).parent / ".runs" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -94,11 +95,20 @@ class TaskLedger:
 
     def failed(self) -> dict[str, str]:
         with self._lock:
+            known = {**self.scheduled, **self.published}
             return {
-                task_id: self.published.get(task_id, "")
+                task_id: known.get(task_id, "")
                 for task_id, state in self.finished.items()
                 if state not in ("SUCCESS", "IGNORED")
             }
+
+    def revoke_scheduled(self) -> None:
+        # A countdown task outlives its test and would run against the next test's rows.
+        with self._lock:
+            waiting = [task_id for task_id in self.scheduled if task_id not in self.finished]
+            for task_id in waiting:
+                del self.scheduled[task_id]
+        revoked.update(waiting)
 
 
 @contextmanager

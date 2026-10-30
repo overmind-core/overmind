@@ -96,6 +96,7 @@ def worker(_worker_ledger):
     yield _worker_ledger
     _release_connector_chunks(_worker_ledger)
     drain(_worker_ledger)
+    _worker_ledger.revoke_scheduled()
     failed = {k: v for k, v in _worker_ledger.failed().items() if k not in failed_before}
     assert not failed, f"Background tasks failed: {failed}"
 
