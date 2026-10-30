@@ -2,14 +2,22 @@ from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.utils import timezone
 from pydantic import BaseModel, ConfigDict, Field
 
 from overbae.models import APIToken
 from overbae.models.iam import delegation_denial
 from overbae.services import activity
+from overbae.services.billing_ledger import credit_report
+from overbae.services.billing_provider import get_billing
 from overbae.services.mcp.context import accessible_projects
 from overbae.services.mcp.contracts.activity import ReportOnboardingInput, ReportOnboardingOutput
-from overbae.services.mcp.contracts.projects import CreateApiKeyInput, CreateApiKeyOutput
+from overbae.services.mcp.contracts.projects import (
+    CreateApiKeyInput,
+    CreateApiKeyOutput,
+    GetCreditBalanceInput,
+    GetCreditBalanceOutput,
+)
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import interface_resource
 
@@ -59,6 +67,19 @@ def list_projects(payload, context):
         ],
         total=total,
         next_offset=end if end < total else None,
+    )
+
+
+@sync_to_async(thread_sensitive=True)
+def get_credit_balance(payload, context):
+    observed_at = timezone.now()
+    if payload.since is not None and payload.since > observed_at:
+        raise MCPError("invalid_input", "since must not be in the future.")
+    return GetCreditBalanceOutput(
+        billing_enabled=get_billing().enabled,
+        observed_at=observed_at,
+        since=payload.since,
+        **credit_report(context.user, since=payload.since, observed_at=observed_at),
     )
 
 
@@ -146,6 +167,29 @@ def register_project_tools(catalog):
             project_scoped=False,
         ),
         list_projects,
+    )
+    catalog.register(
+        ToolDefinition(
+            name="get_credit_balance",
+            title="Get credit balance",
+            description=(
+                "Read account balance, lifetime grants/spending and usage by service in credits "
+                "(100/USD). Works with account and project keys; no project_id. since filters "
+                "usage only; save observed_at before a budgeted task. Reporting excludes unposted "
+                "charges and does not enforce a cap. Read credit_reporting in "
+                "overmind://interface/current for budget tracking limits."
+            ),
+            input_model=GetCreditBalanceInput,
+            output_model=GetCreditBalanceOutput,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:read"}),
+            cost_class="free",
+            async_mode="sync",
+            project_scoped=False,
+        ),
+        get_credit_balance,
     )
 
     catalog.register(

@@ -164,6 +164,7 @@ group's owning skill carries its workflow.
 
 - Observability: `inspect_capability_health`, `query_failures`, `query_traces`, `get_job`.
 - Signals: `list_signals`, `set_signal_subscription`.
+- Credits: `get_credit_balance` reports account balance and usage by service, with `since` for task budgets. Read the `credit_reporting` field of `overmind://interface/current` for scope and budget limits.
 - Instrumentation: `get_instrumentation_plan`, `verify_instrumentation`.
 - Datasets: `list_datasets`, `inspect_dataset`, `query_dataset`,
   `start_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`,

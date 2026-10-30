@@ -7,7 +7,7 @@ from decimal import Decimal
 from modal_shared.stacks import WORKER_CPU, WORKER_MEMORY_MIB
 from overbae.modal.gpu_selector import DEDICATED_TIERS, dedicated_gpu_names, gpu_vram_gb
 from overbae.modal.model_registry import get_model_config_any_backend
-from overbae.services.billing_ledger import CREDITS_PER_USD
+from overbae.services.billing_ledger import to_credits
 from overbae.services.provider_pricing import gpu_rate
 from overbae.services.serving_benchmarks import measurement
 
@@ -51,7 +51,7 @@ def hourly_usd(card: dict, gpu_type: str) -> Decimal | None:
 def credits_per_hour(amount_usd: Decimal | None) -> Decimal | None:
     if amount_usd is None:
         return None
-    return (amount_usd * CREDITS_PER_USD).quantize(Decimal("0.01"))
+    return to_credits(amount_usd)
 
 
 def offers(deployed, card: dict) -> list[dict]:
