@@ -22,25 +22,25 @@ export function TraceErrorDetailsView({ details }: { details: TraceErrorDetails 
   ].join("\n\n");
   const { copied, copy } = useCopy(text || "No error message captured");
   return (
-    <section aria-label="Error details" className="max-h-[40vh] shrink-0 overflow-auto px-3 py-3">
-      <Alert className="gap-3 border-0 bg-destructive/5" variant="destructive">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-destructive/10">
-          <Icon.warning className="size-4" />
+    <section aria-label="Error details" className="max-h-[40vh] shrink-0 overflow-auto px-3 py-1">
+      <Alert className="gap-2 border-0 bg-destructive/5 px-3 py-2 text-xs" variant="destructive">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-destructive/10">
+          <Icon.warning className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1">
           {messages.length === 0 && (
             <>
               {details.summary !== "No error message captured" && (
-                <p className="mt-1 whitespace-pre-wrap break-words font-mono text-sm leading-6">
+                <p className="whitespace-pre-wrap break-words font-mono text-xs leading-5">
                   {details.summary}
                 </p>
               )}
-              <p className="mt-1 text-sm">No error message captured</p>
+              <p className="text-xs">No error message captured</p>
             </>
           )}
           {messages.map((message) =>
             message.length > 300 ? (
-              <details className="group mt-1 font-mono text-sm leading-6" key={message}>
+              <details className="group font-mono text-xs leading-5" key={message}>
                 <summary className="cursor-pointer break-words">
                   <span className="group-open:hidden">{message.slice(0, 300)}… </span>
                   <span className="underline underline-offset-4">Full message</span>
@@ -49,42 +49,44 @@ export function TraceErrorDetailsView({ details }: { details: TraceErrorDetails 
               </details>
             ) : (
               <p
-                className="mt-1 whitespace-pre-wrap break-words font-mono text-sm leading-6"
+                className="whitespace-pre-wrap break-words font-mono text-xs leading-5"
                 key={message}
               >
                 {message}
               </p>
             )
           )}
-          {(Object.keys(details.context).length > 0 || types.length > 0) && (
-            <details className="mt-3 text-xs text-foreground">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Technical details
-              </summary>
-              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-                {types.length > 0 && (
-                  <>
-                    <dt className="text-muted-foreground">Error type</dt>
-                    <dd className="break-words font-mono">{types.join(" · ")}</dd>
-                  </>
-                )}
-                {Object.entries(details.context).map(([key, value]) => (
-                  <div className="contents" key={key}>
-                    <dt className="break-all text-muted-foreground">{key}</dt>
-                    <dd className="whitespace-pre-wrap break-all font-mono">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          )}
-          {stacks.map((stack, index) => (
-            <details className="mt-3 text-xs text-foreground" key={stack}>
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Stack trace{stacks.length > 1 ? ` ${index + 1}` : ""}
-              </summary>
-              <pre className="mt-2 whitespace-pre-wrap break-words font-mono">{stack}</pre>
-            </details>
-          ))}
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+            {(Object.keys(details.context).length > 0 || types.length > 0) && (
+              <details className="text-xs text-foreground open:w-full">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Technical details
+                </summary>
+                <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+                  {types.length > 0 && (
+                    <>
+                      <dt className="text-muted-foreground">Error type</dt>
+                      <dd className="break-words font-mono">{types.join(" · ")}</dd>
+                    </>
+                  )}
+                  {Object.entries(details.context).map(([key, value]) => (
+                    <div className="contents" key={key}>
+                      <dt className="break-all text-muted-foreground">{key}</dt>
+                      <dd className="whitespace-pre-wrap break-all font-mono">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
+            {stacks.map((stack, index) => (
+              <details className="text-xs text-foreground open:w-full" key={stack}>
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Stack trace{stacks.length > 1 ? ` ${index + 1}` : ""}
+                </summary>
+                <pre className="mt-2 whitespace-pre-wrap break-words font-mono">{stack}</pre>
+              </details>
+            ))}
+          </div>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

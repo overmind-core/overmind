@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { SpanRow } from "@/hooks/use-traces";
@@ -55,7 +55,8 @@ describe("Trace inspector", () => {
       </Fixture>
     );
     expect(screen.getAllByText("Not captured")).toHaveLength(1);
-    expect(screen.getByText(value === "" ? '""' : JSON.stringify(value))).toBeTruthy();
+    const input = screen.getByRole("button", { name: "Collapse Input" }).closest("section");
+    expect(within(input!).getByText(value === "" ? '""' : JSON.stringify(value))).toBeTruthy();
   });
   it("shows content-block messages as text, with non-text blocks as JSON", () => {
     const request = {

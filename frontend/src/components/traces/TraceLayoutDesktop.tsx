@@ -11,8 +11,8 @@ const HANDLE_ID = "trace-layout-handle";
 const NAV_PANEL_ID = "trace-layout-nav";
 const DETAIL_PANEL_ID = "trace-layout-detail";
 
-const NAV_DEFAULT_PCT = 35;
-const NAV_MIN_PCT = 25;
+const NAV_DEFAULT_PCT = 28;
+const NAV_MIN_PCT = 20;
 const NAV_COLLAPSED_PCT = 5;
 
 interface TraceLayoutDesktopContextValue {
@@ -97,7 +97,7 @@ TraceLayoutDesktop.ResizeHandle = function ResizeHandle() {
 
 TraceLayoutDesktop.DetailPanel = function DetailPanel({ children }: { children: ReactNode }) {
   return (
-    <Panel defaultSize={65} id={DETAIL_PANEL_ID} minSize={40}>
+    <Panel defaultSize={72} id={DETAIL_PANEL_ID} minSize={40}>
       {children}
     </Panel>
   );

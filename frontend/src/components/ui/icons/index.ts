@@ -14,6 +14,7 @@ import {
   OvermindEyeMono,
   Chart as TitleChart,
 } from "./page-title";
+import { PythonIcon } from "./python";
 
 export const Icon = {
   add: glyph("plus"),
@@ -105,6 +106,7 @@ export const Icon = {
   play: glyph("play"),
   project: glyph("box"),
   projectAdd: glyph("box-plus"),
+  python: PythonIcon,
   refresh: glyph("reload"),
   search: glyph("search"),
   send: glyph("send"),

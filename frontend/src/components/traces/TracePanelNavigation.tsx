@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { SearchInput } from "@/components/ui/search-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,32 +68,22 @@ export function TracePanelNavigation() {
           <span className="text-destructive">
             {failedSpans.length} failed {failedSpans.length === 1 ? "span" : "spans"}
           </span>
-          <Button
-            onClick={() => {
-              const current = failedSpans.findIndex((span) => span.spanId === selectedSpanId);
-              setSelectedSpanId(failedSpans[(current + 1) % failedSpans.length].spanId);
-              setSearch("");
-              expandAll();
-              setViewMode("tree");
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Next failed span
-            <Icon.chevronRight />
-          </Button>
         </div>
       )}
       {viewMode === "tree" && (
-        <div className="shrink-0 border-b border-border/70 px-2 py-1.5">
-          <SearchInput
-            label="Search spans"
-            onChange={(e) => setSearch(e.target.value)}
-            onClear={() => setSearch("")}
-            placeholder="Search spans…"
-            size="sm"
-            value={search}
-            variant="subtle"
+        <div className="shrink-0 border-b border-border/70 px-2 py-2">
+          <ListToolbar
+            search={
+              <SearchInput
+                aria-keyshortcuts="/"
+                className="min-w-0 flex-1"
+                label="Search spans"
+                onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
+                placeholder="Search spans…"
+                value={search}
+              />
+            }
           />
         </div>
       )}

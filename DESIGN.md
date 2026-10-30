@@ -1022,26 +1022,43 @@ they name a symbol or quote a wire value.
 
 ## Don't
 
+- Add floating or inset decorative dividers between content sections. Use spacing
+  and aligned labels. Borders belong to container edges, table rows or data-tree
+  guides, not freestanding rules inside padded content.
+
 - Write a hex, `hsl()`, `rgb()` or a raw Tailwind palette class
   (`bg-blue-500`, `text-zinc-400`) anywhere in app code.
+
 - Use the brand copper outside `overmind-eye-copper.svg`. Orange in the UI
   means warning.
+
 - Add a shadow outside confirmation dialogs. Use tone, border or ring for
   every other surface; the only elevation token is `shadow-confirmation`.
+
 - Use `rounded-lg`, `rounded-xl`, `rounded-full`, bare `rounded`, or an
   arbitrary `rounded-[Npx]`.
+
 - Pair a title class with a `text-*` size or a weight utility. Mondwest has one
   master, so a weight utility renders synthesized bold.
+
 - Apply `uppercase`, `text-transform`, or `tracking-wide/wider/widest`.
+
 - Use `text-[Npx]`; the tokenized ramp bottoms out at `text-xs` (12px).
+
 - Put a label inside a ghost button. A labelled button takes a filled variant.
+
 - Import from `lucide-react` or the raw glyph modules under `ui/icons/`; render
   a semantic name from the `Icon` registry so one concept maps to one glyph.
+
 - Hand-roll a spinner (`animate-spin`), a `window.confirm()`, or a second
   score-tier map. Use `Spinner`, `ConfirmDialog`, and `scoreTone`.
+
 - Add `dark:` variants. Components use the single semantic palette directly.
+
 - Correct alignment with `mt-px` or `pt-0.5`. Fix the line boxes.
+
 - Animate on hover with scale, lift or shadow growth.
+
 - Anglicise a contract to match the prose. CSS properties, DOM and library
   APIs, API routes, query keys, OTel attributes and wire enum values keep their
   American spelling; only the words a user reads change.

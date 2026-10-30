@@ -55,6 +55,13 @@ export interface SpanRow {
   evalMetrics: unknown;
   evalScore: number | null;
   trajectoryScore: number | null;
+  trajectory?: {
+    score?: number | null;
+    span_count?: number;
+    passed?: boolean | null;
+    metrics?: unknown;
+  };
+  evalIntent?: string;
 }
 
 function evalBlock(evalAttributes: unknown): Record<string, unknown> {
@@ -166,6 +173,10 @@ const transformSpan = (span: Span): SpanRow => {
     durationNano,
     endTimeUnixNano: endNano,
     errorDetails: span.errorDetails,
+    evalIntent:
+      typeof evalBlock(span.evalAttributes).intent === "string"
+        ? (evalBlock(span.evalAttributes).intent as string)
+        : undefined,
     evalMetrics: evalBlock(span.evalAttributes).metrics ?? null,
     evalScore: finiteOrNull(evalBlock(span.evalAttributes).score),
     events: Array.isArray(span.events)
@@ -201,6 +212,7 @@ const transformSpan = (span: Span): SpanRow => {
       (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null),
     traceId: span.traceId ?? "",
     traceScores: extractTraceScores(span.evalAttributes),
+    trajectory: evalBlock(span.evalAttributes).trajectory as SpanRow["trajectory"],
     trajectoryScore: extractTrajectoryScore(span.evalAttributes),
   };
 };

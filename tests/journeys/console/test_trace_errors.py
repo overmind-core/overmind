@@ -49,7 +49,21 @@ def test_trace_errors_expose_captured_context_and_failed_children(console, works
     )
     console.goto(f"/observability/{trace_id}?projectId={project.pk}&view=roots&timeRange=all")
     console.sees("1 failed span")
-    console.press("Next failed span")
+    console._browser.call(lambda: console._page.get_by_role("tab", name="Tree", exact=True).click())
+    console._browser.call(lambda: console._page.keyboard.press("/"))
+    console.wait_until(
+        "() => document.activeElement?.getAttribute('aria-label') === 'Search spans'"
+    )
+    console.fill('input[aria-label="Search spans"]', "Provider")
+    console._browser.call(lambda: console._page.keyboard.press("/"))
+    assert (
+        console._browser.call(
+            lambda: console._page.get_by_role("searchbox", name="Search spans").input_value()
+        )
+        == "Provider/"
+    )
+    console.press("Clear search")
+    console.click("Provider request")
     console.sees(message, exact=False)
     console.click("Technical details")
     console.sees("req_browser_fixture")
