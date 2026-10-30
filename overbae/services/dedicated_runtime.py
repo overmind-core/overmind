@@ -19,6 +19,7 @@ from overbae.services.dedicated_offer import serving_shape
 
 APP_NAME = "overmind-dedicated"
 WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
+_IDENTITIES: dict[str, str] = {}
 # with_options() builds a separate autoscaler. Keep one option set and change
 # min, max, and idle through update_autoscaler, or a GPU change leaves the old set running.
 _STABLE_MAX = 8
@@ -45,6 +46,9 @@ def worker_class_name(deployed, gpu_type: str) -> str:
 
 
 def _base_identity(model_path: str) -> str:
+    cached = _IDENTITIES.get(model_path)
+    if cached:
+        return cached
     try:
         volume = modal.Volume.from_name("overmind-weights", environment_name=environment())
         raw = b"".join(volume.read_file(f"{model_path}/.base-manifest.json"))
@@ -53,6 +57,7 @@ def _base_identity(model_path: str) -> str:
         raise InputValidationError(WORKER_UNAVAILABLE) from exc
     if not isinstance(identity, str) or not identity:
         raise InputValidationError(WORKER_UNAVAILABLE)
+    _IDENTITIES[model_path] = identity
     return identity
 
 
@@ -190,6 +195,40 @@ def retire_previous_options(deployment) -> None:
         maximum=1,
         idle_seconds=2,
     )
+
+
+def connect(deployment):
+    """The container advance() already scaled. A request must not call update_autoscaler:
+    that control-plane round trip is seconds, and the GPU is already warm."""
+    deployed = deployment.deployed_model
+    env = environment()
+    try:
+        if deployed.inference_contract == "decision":
+            runtime = deployed.serving_runtime or {}
+            app_name = runtime.get("app")
+            if not app_name:
+                raise InputValidationError(WORKER_UNAVAILABLE)
+            cls = modal.Cls.from_name(
+                app_name, "DecisionEndpoint", environment_name=runtime.get("environment") or env
+            )
+            if hasattr(cls, "with_options"):
+                cls = cls.with_options(
+                    gpu=deployment.gpu_type,
+                    max_containers=max(deployment.max_replicas, 1),
+                    scaledown_window=_window(deployment.idle_shutdown_seconds),
+                )
+            return cls(**parameters(deployment))
+        cls = _variant(
+            _chat_cls(deployed, deployment.gpu_type),
+            deployment,
+            maximum=_STABLE_MAX,
+            idle_seconds=_STABLE_WINDOW,
+        )
+        return cls(**parameters(deployment))
+    except InputValidationError:
+        raise
+    except Exception as exc:
+        raise InputValidationError(WORKER_UNAVAILABLE) from exc
 
 
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
