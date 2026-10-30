@@ -13,7 +13,7 @@ description: How to open a complete pull request on overmind-core/overmind — t
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `lint`       | `uv run ruff check .` and `uv run ruff format --check .`                                                                                      | the same two commands (`make lint-backend` fixes in place) |
 | `frontend`   | `bun run check`, `bun run typecheck`, `bun run check:all`, `bun run test` — in parallel, all must pass                                        | same four, from `frontend/`                                |
-| `test`       | `uv run pytest tests/ -n auto --dist worksteal -q`                                                                                            | `make test`                                                |
+| `test`       | `uv run pytest tests/ -m 'not load' -n auto --dist worksteal -q`                                                                              | `make test`                                                |
 | `journeys`   | `make test-journeys` with Postgres, Redis and Tesseract                                                                                       | `make test-journeys`                                       |
 | `migrations` | `makemigrations --check` on the merge commit plus `scripts/check_migrations.py`; only when `overbae/models/` or `overbae/migrations/` changed | `make check-migrations`                                    |
 

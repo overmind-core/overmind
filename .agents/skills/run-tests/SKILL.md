@@ -5,7 +5,7 @@ description: How to run the platform test suites without wasting minutes — log
 
 # Running tests on this repo
 
-Test runs here are expensive (`make test` about 75 s, frontend about 40 s, journeys about 6 min). Two rules:
+Test runs here are expensive (`make test` about a minute, frontend about 40 s, journeys a few minutes). Two rules:
 
 ## 1. Decide whether to run at all
 
@@ -36,27 +36,47 @@ changing code, scoped to the failing files/tests:
 uv run pytest tests/test_foo.py::test_bar 2>&1 | tee "$SCRATCHPAD/pytest-rerun.log"
 ```
 
-## Journeys
+## Coverage map
 
-`make test-journeys` runs `tests/journeys/` against the live stack. It needs
-the compose `postgres` and `redis` services, and uses Redis DB 15. Each journey
-writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
-LLM requests, background task failures and the error. `make test` never
-collects journeys: a parallel run without `OVERMIND_JOURNEY_XDIST` skips them, and so does any run without `TEST_REDIS_URL`. `make test-journeys` sets both and runs them with xdist (`-v`, `--dist loadfile`); each worker gets its own Redis DB, and DB 12 stays with the load subprocess. The journeys take several minutes, and CI runs them as their own job beside `test`;
-`make test-journeys test_args="-k <name>"` runs one. `test_kit_*.py` files run one
-journey per vendor (`tests/journeys/test_kit_connectors.py`, `test_kit_gpu_training.py`): a new
-vendor joins its kit's parametrize list.
+`tests/coverage_map.py` lists every entry a test may cover, ordered by severity.
+Each test file sets `pytestmark = pytest.mark.covers("<entry>")`; a test inside it
+that owns another entry takes its own `@pytest.mark.covers(...)`. Collection fails
+on a test with no entry, an unknown entry, a promise outside `tests/journeys/` or
+a second journey for a promise; the `coverage-map` hook fails when an entry has no
+owner. Vitest files own `console-logic`.
+
+| Severity | A failure means | Gate |
+|---|---|---|
+| S1 | A security breach, a wrong charge, or lost or changed data | One owning test at the lowest tier that reproduces; never quarantined; a fix ships with a test that fails before it |
+| S2 | A vertical or the platform stops for every customer | One journey per promise; one owning test per platform invariant |
+| S3 | One path, integration, model family or displayed fact is wrong | Contract tables (one row per dialect, vendor, provider) and logic tests |
+| S4 | A heuristic or a presentation detail is wrong | A logic test only for a real edge case or a fixed bug |
+
+A new behaviour joins an existing entry. A new entry or a new journey variant is a
+change to the map, and so is a new promise.
 
 ## Where a test belongs
 
-- **Journey** (`tests/journeys/`): a customer promise across CLI, MCP, REST, SDK, worker and Console on the live stack. `tests/journeys/console/` builds the self-hosted Console (`bun run build`, ~4 s) and drives it with Playwright on its own thread; `uv run playwright install chromium-headless-shell` once per machine.
-- **Contract kit** (`tests/test_*_contract.py`, `test_otlp_dialects.py`): one table over every vendor or dialect, the real client talking to a network fake.
-- **Unit test**: pure logic with many edge cases, through a public entry point.
+- **Journey** (`tests/journeys/test_<promise>.py`): the one end-to-end run of a product vertical across CLI, MCP, REST, SDK, worker and Console on the live stack. An edge case never gets its own journey; fold the assertion into the journey or test it at a lower tier.
+- **Stack owner** (`tests/journeys/test_<entry>.py`): an invariant that needs the live worker, beat or API to reproduce, such as tenancy over every route or a cancelled GPU call.
+- **Contract table** (`tests/test_*_contract.py`, `test_otlp_dialects.py`): one table over every vendor, dialect or provider, the real client talking to a network fake.
+- **Unit test**: pure logic with real edge cases, through a public entry point.
+- **Load check** (`pytest.mark.load`): capacity with wall-clock bounds. `make test` and `make test-journeys` skip them; `make test-load` runs them.
 - **Migration replay**: a data migration that rewrites rows ships a replay test on `tests/migration_replay.scratch_database`. Delete the test once a published release has applied the migration.
 
-The unit suite runs behind the same outbound guard as the journeys: sockets reach loopback only, and every HTTP call must be answered by `tests/fakes` (`fake_llm` is autouse; `fake_modal`, `sft`, `serving`, `clerk`, `stripe_api`, `scripted(host)`, `slept` on request). FakeLLM serves chat, streaming (`stream_rounds`), the OpenRouter catalog (`catalog_payload`, `limits`, `prices`), and Jev decisions (`decide`; the Jev path needs Redis, so point `CACHES` at `TEST_REDIS_URL`).
+The unit suite runs behind the same outbound guard as the journeys: sockets reach loopback only, and every HTTP call must be answered by `tests/fakes` (`fake_llm` is autouse; `fake_modal`, `sft`, `serving`, `decisions`, `clerk`, `stripe_api`, `scripted(host)`, `slept` on request). FakeLLM serves chat, streaming (`stream_rounds`), the OpenRouter catalog (`catalog_payload`, `limits`, `prices`), and Jev decisions (`decide`; the Jev path needs Redis, so point `CACHES` at `TEST_REDIS_URL`).
 
 A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` control that asserts the correct behaviour; it turns red when the fix lands, and the marker goes.
+
+## Journeys
+
+`make test-journeys` runs `tests/journeys/` against the live stack with xdist (`--dist loadfile`, one Redis DB pair per worker; DB 12 stays with the load subprocess). It needs the compose `postgres` and `redis` services. The Console builds once per run into a shared folder and each worker serves it against its own API; `uv run playwright install chromium-headless-shell` once per machine. Each journey writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the LLM requests, background task failures and the error. `make test` never collects journeys. `make test-journeys test_args="-k <name>"` runs one.
+
+A journey waits on observable state (`drain`, `settle`, `until`, `console.sees`), never on wall time, animations or fonts; the `test-seams` hook refuses new ones.
+
+## Database transactions
+
+Tests run inside a rolled-back transaction by default. Call MCP tools with `mcp_fixtures.call_tool`: it runs thread-sensitive handlers on the test thread and runs on-commit work. Use `django_db(transaction=True)` only when another thread or process must see the rows (the ASGI MCP app takes `mcp_fixtures.asgi_db`, sandboxes, admission races). After such a test, only the tables it wrote are emptied.
 
 ## Gotchas
 
