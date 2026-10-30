@@ -411,6 +411,28 @@ def test_evaluation_dataset_picker_waits_for_its_options(
         console._browser.call(console._page.unroute, "**/datasets/?*")
 
 
+@pytest.mark.parametrize("clear_action", ["Clear search", "Clear filters"])
+def test_inference_search_clear_restores_models(console, workshop, clear_action):
+    project = workshop.project()["id"]
+    dataset = Dataset.objects.create(project_id=project, name="Search fixture")
+    job = FinetuningJob.objects.create(
+        project_id=project,
+        dataset=dataset,
+        base_model="Qwen/Qwen3-8B",
+        status="succeeded",
+        output_model_name="ft-search-result",
+    )
+    DeployedModel.objects.create(
+        project_id=project, finetuning_job=job, model_id="ft-search-result", status="ready"
+    )
+    console.goto(f"/inference?projectId={project}&inf_search=missing-model")
+    console.sees("No results")
+    console.press(clear_action)
+    console.sees("ft-search-result")
+    console.wait_until("() => !new URLSearchParams(location.search).get('inf_search')")
+    console.save_evidence(f"inference-{clear_action.lower().replace(' ', '-')}")
+
+
 def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
