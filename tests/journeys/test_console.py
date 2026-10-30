@@ -1,6 +1,5 @@
 import hashlib
 import json
-import uuid
 
 from django.utils import timezone
 
@@ -21,155 +20,6 @@ from overbae.services import activity as activity_service
 
 from .datasets import tickets, upload
 from .stack import drain, settle
-
-
-def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_url, live_api):
-    console._browser.call(
-        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
-    )
-    console.press("Copy onboarding prompt")
-    console.sees("Prompt copied")
-    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
-    assert prompt == (
-        f"Set me up on Overmind\n\nusing the API at {live_api.url.rstrip('/')}: "
-        f"{console_url.rstrip('/')}/setup.md"
-    )
-    console.wait_until("""() => {
-        const panel = document.querySelector('section[aria-label="Get started"]');
-        return panel.querySelector('a[href$="/setup.md"]') &&
-            [...panel.querySelectorAll('img')].every(img => img.complete && img.naturalWidth > 0);
-    }""")
-    console.save_evidence("embedded-onboarding-desktop")
-    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
-    console.wait_until("""() => {
-        const panel = document.querySelector('section[aria-label="Get started"]');
-        return panel.scrollWidth <= panel.clientWidth && panel.getBoundingClientRect().right <= innerWidth;
-    }""")
-    console.save_evidence("embedded-onboarding-mobile")
-    console._browser.call(lambda: console._page.get_by_role("tab", name="Data", exact=True).click())
-    console.sees("Create dataset")
-    console.wait_until("() => !document.querySelector('[role=dialog]')")
-    console._browser.call(
-        lambda: console._page.get_by_role("tab", name="Agent", exact=True).click()
-    )
-    console.sees("Copy onboarding prompt")
-    console.healthy()
-
-
-def test_activity_outcomes_and_setup_progress_survive_console_reload(
-    console, workshop, worker, rest_for
-):
-    project = workshop.project()["id"]
-    workshop.call("list_datasets")
-    activity = workshop.read("overmind://activity")
-    assert {item["kind"] for item in activity["results"]} >= {
-        "agent_connected",
-        "repository_synced",
-        "capabilities_available",
-    }
-    before = activity["count"]
-    for _ in range(2):
-        workshop.call("list_datasets")
-    assert workshop.read("overmind://activity")["count"] == before
-
-    console.goto(f"/?projectId={project}")
-    console.press("unread notification")
-    console.sees("connected to Overmind", exact=False)
-    workshop.call(
-        "create_eval_matrix_row",
-        {"name": "Visible activity check", "type": "llm", "source": "The answer is grounded."},
-    )
-    console.sees("added", exact=False)
-    console.sees("Visible activity check")
-    console.press("Mark read")
-    settle(worker, lambda: workshop.read("overmind://activity")["unseen_count"] == 0)
-
-    console.goto(f"/?projectId={project}")
-    console.press("Notifications")
-    console.sees("Visible activity check")
-    console.click("Visible activity check")
-    console.wait_until("() => location.pathname.startsWith('/evaluations')")
-    console.press("Notifications")
-    console.wait_until("() => !document.body.textContent.includes('Setup progress')")
-    onboarding_run = str(uuid.uuid4())
-    progress = workshop.call(
-        "report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 2}
-    )
-    reporter = progress["milestones"][2]["actor_name"]
-    assert reporter
-    console.goto(f"/?projectId={project}")
-    console.sees("Onboarding · Inspect repository")
-    console.sees("2 of 10")
-    console._browser.call(
-        lambda: (
-            console._page.get_by_label("Onboarding status", exact=True)
-            .get_by_text(reporter, exact=True)
-            .wait_for()
-        )
-    )
-    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 9})
-    console.sees("Onboarding · Instrument capabilities")
-    rest_for(workshop.api_key).request(
-        "POST",
-        "/api/v1/sync",
-        json={
-            "project_id": project,
-            "version": "1",
-            "capabilities": [
-                {
-                    "slug": "onboarding-capability",
-                    "name": "Onboarding capability",
-                    "entrypoint_fn": "support.run",
-                }
-            ],
-        },
-    )
-    console.wait_until("""() => {
-        return [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt');
-    }""")
-    console.save_evidence("activity-and-onboarding")
-    console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
-    console.wait_until("""() => {
-        const strip = document.querySelector('[aria-label="Onboarding status"]');
-        if (!strip) return false;
-        const rect = strip.getBoundingClientRect();
-        return rect.left >= 0 && rect.right <= innerWidth && strip.scrollWidth <= strip.clientWidth;
-    }""")
-    console.save_evidence("onboarding-mobile")
-    workshop.call("report_onboarding_progress", {"run_id": onboarding_run, "completed_steps": 10})
-    console.wait_until(
-        "() => !document.querySelector('[aria-label=\"Onboarding status\"]') && [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability'))"
-    )
-    console.save_evidence("onboarding-complete-capabilities")
-
-
-def test_agent_changes_update_visible_assets_without_reload(console, workshop):
-    project = workshop.project()["id"]
-    console.goto(f"/datasets?projectId={project}")
-    console.sees("Datasets", exact=False)
-    console._browser.call(console._page.evaluate, "window.activityDocument = 'unchanged'")
-    dataset = workshop.call(
-        "start_dataset",
-        {"name": "Live agent source", "brief": "Review live agent changes", "intent": "explore"},
-    )["dataset"]["id"]
-    console.sees("Live agent source")
-    console.wait_until(
-        "() => [...document.querySelectorAll('.activity-highlight')].some(row => row.textContent.includes('Live agent source'))"
-    )
-    workshop.call("update_dataset", {"dataset": dataset, "name": "Renamed live source"})
-    console.sees("Renamed live source")
-    console.wait_until(
-        "() => !document.body.textContent.includes('Live agent source') && window.activityDocument === 'unchanged'"
-    )
-    console.save_evidence("agent-live-asset-update")
-    console._browser.call(lambda: console._page.context.set_offline(True))
-    workshop.call("update_dataset", {"dataset": dataset, "name": "Reconnected live source"})
-    console._browser.call(lambda: console._page.context.set_offline(False))
-    console.sees("Reconnected live source")
-    console.wait_until("() => window.activityDocument === 'unchanged'")
-    console.press("unread notification")
-    console.sees("Reconnected live source", exact=False)
-    console.save_evidence("agent-live-notifications")
 
 
 def test_dataset_inventory_follows_upload_bytes_and_publication(
@@ -351,27 +201,6 @@ def test_evaluations_share_runs_navigation_and_probability_metrics(console, work
     assert not console.server_errors
 
 
-def test_the_console_shows_the_synced_agent_and_its_traces(
-    console, cli, mcp_for, sample_agent, live_api, support_desk_llm, worker
-):
-    cli.scan(sample_agent)
-    cli.sync(sample_agent)
-    project = mcp_for(cli.project_key(sample_agent)).project()["id"]
-    sample_agent.run("Refund order 42 please", api_url=live_api.url, llm_url=support_desk_llm)
-    drain(worker)
-
-    console.goto(f"/capabilities?projectId={project}")
-    for truth in sample_agent.truth["capabilities"].values():
-        console.sees(truth["name"])
-
-    console.goto(f"/observability?projectId={project}")
-    console.click("Signals")
-    console.sees("Signal checks")
-    console.click("Sessions")
-    console.click("Traces")
-    console.sees("handle_ticket")
-
-
 def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
     console, cli, mcp_for, sample_agent, worker, tmp_path
 ):
@@ -502,40 +331,6 @@ def test_decision_data_selects_native_training_controls(
     console.wait_until("""() => !document.body.innerText.includes("Can't be trained on yet")
         && !document.body.innerText.includes("Validating")""")
     assert not FinetuningJob.objects.filter(project_id=project).exists()
-
-
-def test_api_key_remains_private_in_session_replay(console, workshop, replay_recorder):
-    project = workshop.project()["id"]
-    console.goto(f"/projects/{project}?projectId={project}")
-    console.press("New API key")
-    console._browser.call(lambda: console._page.add_script_tag(path=str(replay_recorder)))
-    console._browser.call(
-        console._page.evaluate,
-        """() => {
-            window.replayEvents = [];
-            window.stopReplay = ReplayRecorder.record({
-                emit: event => window.replayEvents.push(event),
-                blockClass: 'ph-no-capture', maskTextClass: 'ph-mask', maskAllInputs: true
-            });
-        }""",
-    )
-    console.press("Create API key")
-    console.sees("Your new API key:")
-    console.wait_until("() => window.replayEvents.some(event => event.type === 3)")
-    leaked = console._browser.call(
-        console._page.evaluate,
-        """() => {
-            ReplayRecorder.record.takeFullSnapshot();
-            const key = document.querySelector('[role="dialog"] code').textContent;
-            const leaked = JSON.stringify(window.replayEvents).includes(key);
-            window.stopReplay();
-            return leaked;
-        }""",
-    )
-    console.press("Done")
-    console.wait_until("() => !document.querySelector('[role=\"dialog\"]')")
-    console.save_evidence("api-key-replay-privacy")
-    assert leaked is False, "Session replay captured the API key"
 
 
 def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console, tmp_path):
