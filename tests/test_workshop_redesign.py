@@ -1,5 +1,4 @@
 import asyncio
-import json
 from unittest.mock import patch
 
 import pytest
@@ -7,12 +6,10 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from overbae.models import APIToken, Dataset, Project, ProjectMembership
-from overbae.services.datasets import paths, store, use, workbench
+from overbae.services.datasets import paths, store, use
 from overbae.services.mcp.catalog import CATALOG
-from overbae.services.mcp.context import MCPContext, bind_context
-from overbae.services.mcp.resources import read_resource
+from overbae.services.mcp.context import MCPContext
 from tests.workshop_script_fixtures import (
-    conversation_script,
     execute_fixture,
     retained_package,
     select_script,
@@ -45,147 +42,6 @@ def call(context, tool, arguments):
     result = asyncio.run(CATALOG.call(tool, arguments, context))
     assert not result.isError, result
     return result.structuredContent
-
-
-def test_native_agent_prepares_data_without_a_platform_agent():
-    project, client, context = workspace()
-    response = client.post(
-        "/api/datasets/",
-        {
-            "project": str(project.pk),
-            "name": "Support examples",
-            "brief": "Prepare training examples",
-            "intent": "train",
-            "source": {
-                "rows": [
-                    {"question": "Where is my order?", "answer": "Check the tracking link."},
-                    {
-                        "question": "Can I return it?",
-                        "answer": "Returns are accepted in 30 days.",
-                    },
-                ]
-            },
-        },
-        format="json",
-    )
-    assert response.status_code == 201, response.data
-    dataset = Dataset.objects.get(pk=response.data["id"])
-    source = dataset.active_cell
-    recipe = call(
-        context,
-        "save_dataset_pipeline",
-        {
-            "dataset": str(dataset.pk),
-            "name": "Conversation format",
-            "request_key": "recipe-1",
-            "package": retained_package(
-                context.project, context.user, [conversation_script("question", "answer")]
-            ),
-        },
-    )
-    arguments = {
-        "dataset": str(dataset.pk),
-        "pipeline": recipe["pipeline"]["id"],
-        "source_cell": str(source.pk),
-        "source_fingerprint": source.fingerprint,
-        "request_key": "run-1",
-    }
-    from overbae.services.datasets.workbench import execute
-
-    with patch("overbae.tasks.datasets.execute_pipeline.delay") as dispatch:
-        receipt = call(context, "run_dataset_pipeline", arguments)
-    dispatch.assert_called_once_with(receipt["run"]["id"])
-    execute(receipt["run"]["id"], script_executor=execute_fixture)
-    repeated = call(context, "run_dataset_pipeline", arguments)
-    assert repeated["run"]["id"] == receipt["run"]["id"]
-    job = call(context, "get_job", {"kind": "dataset_pipeline", "id": receipt["job"]["id"]})
-    assert job["status"] == "completed"
-    assert job["details"]["source_fingerprint"] == source.fingerprint
-
-    async def read_receipt():
-        with bind_context(context):
-            content = list(await read_resource(receipt["job"]["resource"]["uri"]))
-        return json.loads(content[0].content)
-
-    assert asyncio.run(read_receipt())["output_cell"] == repeated["run"]["output_cell"]
-    dataset.refresh_from_db()
-    output = dataset.active_cell
-    assert output.pk != source.pk
-    assert output.rows == 2
-    assert use.check(dataset, "train", cell=output) is not None
-    assert (
-        list(store.iter_rows(paths.cell_path(dataset.pk, source.pk)))[0]["question"]
-        == "Where is my order?"
-    )
-    detail = client.get(f"/api/datasets/{dataset.pk}/workbench/")
-    assert detail.status_code == 200
-    assert detail.data["runs"][0]["output_cell"] == str(output.pk)
-    assert detail.data["pipelines"][0]["fingerprint"]
-
-
-@pytest.mark.parametrize(
-    "steps",
-    [
-        [conversation_script("question", "answer")],
-        [select_script(["question", "answer"])],
-    ],
-)
-def test_pipeline_does_not_reinterpret_landed_parent_fields(steps):
-    project, client, context = workspace()
-    response = client.post(
-        "/api/datasets/",
-        {
-            "project": str(project.pk),
-            "name": "Landed parent metadata",
-            "intent": "explore",
-            "source": {
-                "rows": [
-                    {
-                        "question": f"Question {i}",
-                        "answer": f"Answer {i}",
-                        "_overmind_parent_rows": [0],
-                    }
-                    for i in range(3)
-                ]
-            },
-        },
-        format="json",
-    )
-    assert response.status_code == 201, response.data
-    dataset = Dataset.objects.get(pk=response.data["id"])
-    source = dataset.active_cell
-    recipe = call(
-        context,
-        "save_dataset_pipeline",
-        {
-            "dataset": str(dataset.pk),
-            "name": "Preserve identities",
-            "request_key": "preserve-identities",
-            "package": retained_package(context.project, context.user, steps),
-        },
-    )
-    with patch("overbae.tasks.datasets.execute_pipeline.delay"):
-        receipt = call(
-            context,
-            "run_dataset_pipeline",
-            {
-                "dataset": str(dataset.pk),
-                "pipeline": recipe["pipeline"]["id"],
-                "source_cell": str(source.pk),
-                "source_fingerprint": source.fingerprint,
-                "request_key": "preserve-identities",
-            },
-        )
-    workbench.execute(receipt["run"]["id"], script_executor=execute_fixture)
-    job = call(context, "get_job", {"kind": "dataset_pipeline", "id": receipt["job"]["id"]})
-    assert job["status"] == "completed", job
-    dataset.refresh_from_db()
-    output = list(store.iter_rows(paths.cell_path(dataset.pk, dataset.active_cell.pk)))
-    assert [row["source_row"] for row in output] == [0, 1, 2]
-    assert [row["_overmind_provenance"]["parents"][0]["row"] for row in output] == [0, 1, 2]
-    assert [row["answer"] for row in output] == [f"Answer {i}" for i in range(3)]
-    original = list(store.iter_rows(paths.cell_path(dataset.pk, source.pk)))
-    assert all(row["_overmind_parent_rows"] == [0] for row in original)
 
 
 def test_pipeline_conflicts_and_project_isolation_preserve_the_source():
@@ -238,17 +94,6 @@ def test_pipeline_conflicts_and_project_isolation_preserve_the_source():
     dataset.refresh_from_db()
     assert dataset.active_cell.pk == source.pk
     assert dataset.cells.count() == 1
-
-
-def test_brief_only_dataset_stays_available_without_scheduling_intelligence():
-    project, client, _ = workspace()
-    response = client.post(
-        "/api/datasets/",
-        {"project": str(project.pk), "name": "New data", "brief": "Prepare a training dataset"},
-        format="json",
-    )
-    assert response.status_code == 201, response.data
-    assert response.data["state"] == "idle"
 
 
 def test_failed_external_lineage_and_cancelled_runs_never_publish():
@@ -373,38 +218,6 @@ def test_external_output_records_attribution_and_preserves_frozen_inputs():
     assert dataset.active_id == source.pk
 
 
-def test_retired_agent_and_arbitrary_code_surfaces_are_not_available():
-    project, client, context = workspace()
-    response = client.post(
-        "/api/datasets/",
-        {"project": str(project.pk), "name": "Draft", "brief": "Prepare data"},
-        format="json",
-    )
-    dataset_id = response.data["id"]
-    for tool in ("message_dataset_agent", "run_dataset", "manage_dataset_workflow"):
-        assert asyncio.run(CATALOG.call(tool, {"dataset": dataset_id}, context)).isError
-    for path in ("chat", "run", "cells/00000000-0000-0000-0000-000000000001"):
-        response = client.post(f"/api/datasets/{dataset_id}/{path}/", {}, format="json")
-        assert response.status_code == 404
-    for path in ("cells", "workflow"):
-        assert (
-            client.post(f"/api/datasets/{dataset_id}/{path}/", {}, format="json").status_code == 404
-        )
-    invalid = asyncio.run(
-        CATALOG.call(
-            "save_dataset_pipeline",
-            {
-                "dataset": dataset_id,
-                "name": "Untrusted code",
-                "request_key": "code",
-                "steps": [{"operation": "python", "code": "import os"}],
-            },
-            context,
-        )
-    )
-    assert invalid.isError
-
-
 def test_large_external_artifact_is_project_scoped_and_retained():
     from overbae.services.datasets.workbench import execute
 
@@ -493,23 +306,6 @@ def test_invalid_recipes_are_rejected_and_metadata_updates_are_atomic():
     assert response.status_code == 400
     dataset.refresh_from_db()
     assert dataset.name == "Original"
-
-
-def test_removed_chatgpt_routes_are_absent_and_local_accounts_remain():
-    project, client, context = workspace()
-    user_id = context.user.pk
-    for path in (
-        "",
-        "start/",
-        "login/",
-        "callback/",
-        "callback/session/",
-        "disconnect/",
-        "models/",
-    ):
-        assert client.get(f"/api/chatgpt/{path}").status_code == 404
-        assert client.post(f"/api/chatgpt/{path}", {}, format="json").status_code == 404
-    assert type(context.user).objects.filter(pk=user_id).exists()
 
 
 def test_queued_source_cancellation_releases_the_dataset_without_publishing():

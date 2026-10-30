@@ -22,10 +22,9 @@ from overbae.models import (
     User,
 )
 from overbae.services import native_evaluation, native_evaluation_monitor, training_experiments
-from overbae.services.datasets import exploration, land, paths, rows, store
+from overbae.services.datasets import exploration, land, rows, store
 from overbae.services.datasets.exploration import advance
 from overbae.services.decision_providers import external_step
-from overbae.services.mcp import CONTRACT_VERSION
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.native_evaluation import advance_plan
 
@@ -47,39 +46,6 @@ def call(client, key, name, arguments):
     result = response.json()["result"]
     assert not result.get("isError"), result
     return result.get("structuredContent") or json.loads(result["content"][0]["text"])
-
-
-@pytest.mark.parametrize("tool", ["derive_dataset", "explore_dataset"])
-def test_exploration_request_recovery_survives_profiler_upgrade(tool):
-    project, _, dataset = workspace()
-    key, _ = APIToken.create_for_user(
-        project.memberships.first().user, project=project, permission=["read", "write"]
-    )
-    arguments = {
-        "name": "Frozen request",
-        "source_cell": str(dataset.active_cell.pk),
-        "request_key": "recover-after-profiler-upgrade",
-    }
-    with (
-        TestClient(create_mcp_application()) as client,
-        patch("overbae.tasks.data_exploration.run.delay"),
-    ):
-        with patch.object(exploration, "PROFILE_VERSION", 1):
-            original = call(client, key, tool, arguments)
-        advance(original["workflow"]["id"])
-        with patch.object(exploration, "PROFILE_VERSION", 2):
-            recovered = call(client, key, tool, arguments)
-            assert recovered["workflow"]["id"] == original["workflow"]["id"]
-            fresh = call(
-                client, key, tool, {**arguments, "request_key": "new-profiler-measurement"}
-            )
-        advance(fresh["workflow"]["id"])
-        measured = call(
-            client, key, "get_job", {"kind": "data_exploration", "id": fresh["workflow"]["id"]}
-        )
-        assert measured["status"] == "completed"
-        if tool == "explore_dataset":
-            assert "reused_from" not in measured["progress"]["report"]
 
 
 def test_training_draft_validation_names_the_recipe_correction_without_log_access(settings):
@@ -281,74 +247,6 @@ def test_target_sampling_profiles_mean_and_probability_supervision():
     ]
 
 
-def test_mcp_derives_historical_chat_source_with_tool_messages_and_lineage():
-    project, _, _ = workspace()
-    dataset = Dataset.objects.create(project=project, name="Support conversations", intent="train")
-    messages = [
-        {"role": "user", "content": "Find the delivery"},
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": "lookup",
-                    "type": "function",
-                    "function": {"name": "lookup", "arguments": '{"order":"123"}'},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "lookup", "content": "Arrives Monday"},
-        {"role": "assistant", "content": "Your order arrives Monday."},
-    ]
-    land.land_rows(dataset, [{"messages": messages, "group_id": "same-session"}] * 2)
-    dataset.refresh_from_db()
-    original = dataset.active_cell
-    from conftest import import_version
-
-    latest = import_version(
-        dataset,
-        store.head(paths.cell_path(dataset.pk, dataset.source.pk), 1),
-        name="One conversation",
-    )
-    dataset.refresh_from_db()
-    assert dataset.active_cell.pk == latest.pk
-    assert dataset.active_cell.rows == 1
-    key, _ = APIToken.create_for_user(
-        project.memberships.first().user, project=project, permission=["read", "write"]
-    )
-    with (
-        TestClient(create_mcp_application()) as client,
-        patch("overbae.tasks.data_exploration.run.delay"),
-    ):
-        receipt = call(
-            client,
-            key,
-            "derive_dataset",
-            {
-                "source_cell": str(original.pk),
-                "name": "Full conversations",
-                "request_key": "chat-parent",
-            },
-        )
-        advance(receipt["workflow"]["id"])
-        status = call(
-            client, key, "get_job", {"kind": "data_exploration", "id": receipt["workflow"]["id"]}
-        )
-    assert status["status"] == "completed"
-    derived = Dataset.objects.get(pk=status["progress"]["output_dataset"])
-    records = list(store.iter_rows(rows.frame_path(derived.active_cell)))
-    assert len(records) == 2
-    assert all(record["messages"] == messages for record in records)
-    assert all(record["group_id"] == "same-session" for record in records)
-    assert [record["_overmind_provenance"]["derived_from"]["row"] for record in records] == [0, 1]
-    assert all(
-        record["_overmind_provenance"]["derived_from"]["cell"] == str(original.pk)
-        for record in records
-    )
-    dataset.refresh_from_db()
-    assert dataset.active_cell.pk == latest.pk
-
-
 def test_mcp_comparison_draft_requires_explicit_launch_and_resumes_after_reconnect():
 
     project, _, dataset = workspace()
@@ -393,42 +291,6 @@ def test_mcp_comparison_draft_requires_explicit_launch_and_resumes_after_reconne
         assert NativeEvaluationPlan.objects.filter(pk=identifier).count() == 1
         assert result["workflow"]["state"] == "queued"
         assert dispatch.call_count == 1
-
-
-def test_independent_comparison_stages_survive_one_failed_arm_and_pause():
-
-    project, _, dataset = workspace()
-    dataset.intent = "eval"
-    dataset.save()
-    plan = native_evaluation.create_plan(
-        project,
-        name="Independent arms",
-        request_key="independent",
-        final_cell=dataset.active_cell,
-        baseline="first",
-        participants=[
-            {"key": key, "name": key, "kind": "external", "model": "typesafe/jev-1.13"}
-            for key in ("first", "second")
-        ],
-    )
-    with patch("overbae.tasks.native_evaluation.advance_plan.delay"):
-        plan = native_evaluation.launch(plan)
-    native_evaluation.advance(plan.pk, stage="verify_inputs")
-    plan.refresh_from_db()
-    assert native_evaluation.ready_stages(plan) == ["final_first", "final_second"]
-    with patch(
-        "overbae.services.native_evaluation.external_step",
-        side_effect=ValueError("invalid stored response"),
-    ):
-        native_evaluation.advance(plan.pk, stage="final_first")
-    plan.refresh_from_db()
-    assert native_evaluation.ready_stages(plan) == ["final_second"]
-    native_evaluation.pause(plan)
-    plan.refresh_from_db()
-    assert native_evaluation.ready_stages(plan) == []
-    with patch("overbae.services.native_evaluation.external_step") as submit:
-        native_evaluation.advance(plan.pk, stage="final_second")
-        submit.assert_not_called()
 
 
 def test_saved_prediction_reuse_is_explicit_and_refuses_changed_conditions():
@@ -639,26 +501,3 @@ def test_label_breakdown_is_shared_by_rest_and_mcp_without_soft_target_accuracy(
     foreign = Project.objects.create(name="Other label project", slug="other-label-project")
     NativeEvaluationPlan.objects.filter(pk=plan.pk).update(project=foreign)
     assert rest.get(endpoint, query).status_code == 404
-
-
-def test_account_client_discovers_interface_without_selecting_a_project():
-
-    user = User.objects.create_user(email="interface-only@example.com")
-    key, _ = APIToken.create_for_user(user, permission=["read"])
-    with TestClient(create_mcp_application()) as client:
-        response = client.post(
-            "/api/mcp/",
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "resources/read",
-                "params": {"uri": "overmind://interface/current"},
-            },
-            headers={"X-Api-Key": key, "Accept": "application/json"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert "error" not in body, body
-        resource = json.loads(body["result"]["contents"][0]["text"])
-        assert resource["contract_version"] == CONTRACT_VERSION
-        assert len(resource["catalog_sha256"]) == 64

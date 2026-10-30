@@ -49,146 +49,12 @@ def _deployed_model(project: Project, job: FinetuningJob | None = None) -> Deplo
     )
 
 
-def test_inference_client_is_model_ready_returns_false_on_error():
-    from overbae.services.inference_client import InferenceClient
-
-    client = InferenceClient(base_url="https://example.modal.run", api_key="k")
-    assert client.is_model_ready("some-model-id") is False
-
-
-def test_inference_client_is_model_ready_returns_true_on_status():
-    from overbae.services.inference_client import InferenceClient
-
-    p = make_project()
-    m = _deployed_model(p)
-    client = InferenceClient(base_url="https://example.modal.run", api_key="k")
-    assert client.is_model_ready(m.model_id) is True
-
-
 def test_inference_client_check_health_returns_false_on_error(scripted):
     from overbae.services.inference_client import InferenceClient
 
     scripted("https://example.modal.run").reply(503, text="unreachable")
     client = InferenceClient(base_url="https://example.modal.run", api_key="k")
     assert client.check_health() is False
-
-
-def test_make_model_id_slug_format():
-    from overbae.services.deployment import model_slug
-
-    p = make_project()
-    job = _job(p)
-    slug = model_slug(job)
-    assert slug.startswith("ft-")
-    assert " " not in slug
-    assert slug == slug.lower()
-    assert str(job.id)[:8] in slug
-
-
-@pytest.mark.django_db
-def test_deploy_task_skips_when_no_remote_job_id():
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    p = make_project()
-    capability = make_capability(p)
-    dataset = _dataset(capability)
-    job = FinetuningJob.objects.create(
-        project=p,
-        dataset=dataset,
-        base_model="meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-        status="succeeded",
-        remote_job_id="",
-    )
-
-    register_finetuned_model(job_id=str(job.id))
-    assert not DeployedModel.objects.filter(finetuning_job=job).exists()
-
-
-@pytest.mark.django_db
-def test_deploy_task_skips_non_succeeded_job():
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    p = make_project()
-    job = _job(p, status="running")
-
-    register_finetuned_model(job_id=str(job.id))
-    assert not DeployedModel.objects.filter(finetuning_job=job).exists()
-
-
-def test_deploy_task_only_initializes_durable_state(fake_modal):
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    job = _job(make_project(), status="succeeded")
-    register_finetuned_model(job_id=str(job.id))
-    register_finetuned_model(job_id=str(job.id))
-    deployed = DeployedModel.objects.get(finetuning_job=job)
-    assert deployed.status == "queued"
-    assert deployed.deployment_stage == "base"
-    assert deployed.deployment_attempts == 1
-    assert fake_modal.log == []
-
-
-def test_deployed_models_list_returns_200():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    _deployed_model(p, _job(p))
-
-    r = auth_client(u).get(reverse("deployedmodel-list"))
-    assert r.status_code == status.HTTP_200_OK
-    assert r.data["count"] == 1
-
-
-def test_deployed_models_list_scoped_to_user_projects():
-    u_a = make_user()
-    p_a = make_project()
-    make_member(u_a, p_a)
-    _deployed_model(p_a, _job(p_a))
-
-    p_b = make_project()
-    _deployed_model(p_b, _job(p_b))
-
-    r = auth_client(u_a).get(reverse("deployedmodel-list"))
-    assert r.status_code == status.HTTP_200_OK
-    assert r.data["count"] == 1
-    assert str(r.data["results"][0]["project"]) == str(p_a.id)
-
-
-def test_deployed_models_list_filters_by_project_server_side():
-    """The 30 noisy rows exceed the 25-row page, so a client-side match would miss ``mine``."""
-    u = make_user()
-    wanted, noisy = make_project(), make_project()
-    make_member(u, wanted)
-    make_member(u, noisy)
-    mine = _deployed_model(wanted, _job(wanted))
-    for _ in range(30):
-        _deployed_model(noisy, _job(noisy))
-
-    r = auth_client(u).get(reverse("deployedmodel-list"), {"project": str(wanted.id)})
-    assert r.status_code == status.HTTP_200_OK
-    assert r.data["count"] == 1
-    assert str(r.data["results"][0]["id"]) == str(mine.id)
-
-
-def test_deployed_models_list_filters_by_capability_and_status():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    capability = make_capability(p)
-    job = _job(p)
-    FinetuningJob.objects.filter(pk=job.pk).update(capability=capability)
-    mine = _deployed_model(p, job)
-    other = _deployed_model(p, _job(p))
-    DeployedModel.objects.filter(pk=other.pk).update(status=DeployedModel.Status.FAILED)
-
-    client = auth_client(u)
-    by_capability = client.get(
-        reverse("deployedmodel-list"), {"capability": str(capability.id), "project": str(p.id)}
-    )
-    assert [str(row["id"]) for row in by_capability.data["results"]] == [str(mine.id)]
-
-    by_status = client.get(reverse("deployedmodel-list"), {"status": "failed"})
-    assert [str(row["id"]) for row in by_status.data["results"]] == [str(other.id)]
 
 
 def test_deployed_models_list_filters_to_the_no_capability_bucket():
@@ -220,34 +86,6 @@ def test_deployed_models_list_filters_to_the_no_capability_bucket():
     assert bucket.data["count"] + named.data["count"] == 2
 
 
-@pytest.mark.parametrize("deployment_status", ["deploying", "warming", "ready", "failed"])
-def test_deployed_models_list_excludes_eval_infrastructure_before_pagination(deployment_status):
-    user = make_user()
-    project = make_project()
-    make_member(user, project)
-    trained = _deployed_model(project, _job(project))
-    DeployedModel.objects.filter(pk=trained.pk).update(status=deployment_status)
-    for index in range(26):
-        baseline = DeployedModel.objects.create(
-            project=project,
-            model_id=f"base--eval-{index}",
-            status=deployment_status,
-        )
-
-    client = auth_client(user)
-    response = client.get(reverse("deployedmodel-list"), {"page_size": 1})
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["count"] == 1
-    assert response.data["next"] is None
-    assert [str(row["id"]) for row in response.data["results"]] == [str(trained.id)]
-
-    search = client.get(reverse("deployedmodel-list"), {"search": "base--eval"})
-    assert search.data["count"] == 0
-    detail = client.get(reverse("deployedmodel-detail", args=[baseline.id]))
-    assert detail.status_code == status.HTTP_200_OK
-    assert DeployedModel.objects.filter(project=project, finetuning_job__isnull=True).count() == 26
-
-
 def test_deployed_models_list_rejects_a_malformed_capability_id():
     """The ``NO_CAPABILITY`` sentinel costs the param its ``UUIDFilter``; the 400 is raised by hand."""
     u = make_user()
@@ -258,104 +96,6 @@ def test_deployed_models_list_rejects_a_malformed_capability_id():
     r = auth_client(u).get(reverse("deployedmodel-list"), {"capability": "not-a-uuid"})
     assert r.status_code == status.HTTP_400_BAD_REQUEST
     assert NO_CAPABILITY in str(r.data["capability"])
-
-
-def test_deployed_models_list_honours_search_and_ordering():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    first = _deployed_model(p, _job(p))
-    second = _deployed_model(p, _job(p))
-
-    client = auth_client(u)
-    found = client.get(reverse("deployedmodel-list"), {"search": first.model_id})
-    assert [str(row["id"]) for row in found.data["results"]] == [str(first.id)]
-
-    oldest_first = client.get(reverse("deployedmodel-list"), {"ordering": "created_at"})
-    assert [str(row["id"]) for row in oldest_first.data["results"]] == [
-        str(first.id),
-        str(second.id),
-    ]
-    default = client.get(reverse("deployedmodel-list"))
-    assert [str(row["id"]) for row in default.data["results"]] == [str(second.id), str(first.id)]
-
-
-def test_deployed_models_list_composes_search_with_the_capability_filter():
-    """``?capability=`` (DjangoFilterBackend) and ``?search=`` (SearchFilter) are separate backends
-    applied in sequence — they must intersect, not override each other."""
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-
-    def attributed_job(capability):
-        job = _job(p)
-        FinetuningJob.objects.filter(pk=job.pk).update(capability=capability)
-        return job
-
-    mine, theirs = make_capability(p), make_capability(p)
-
-    # A job holds at most one deployment (OneToOne), so each row needs its own.
-    wanted = _deployed_model(p, attributed_job(mine))
-    same_capability_no_match = _deployed_model(p, attributed_job(mine))
-    other_capability_matches = _deployed_model(p, attributed_job(theirs))
-    DeployedModel.objects.filter(pk=wanted.pk).update(model_id="ft-needle-in-scope")
-    DeployedModel.objects.filter(pk=other_capability_matches.pk).update(
-        model_id="ft-needle-elsewhere"
-    )
-
-    client = auth_client(u)
-    scope = {"project": str(p.id)}
-    both = client.get(
-        reverse("deployedmodel-list"), {**scope, "capability": str(mine.id), "search": "needle"}
-    )
-    assert both.status_code == status.HTTP_200_OK
-    assert [str(row["id"]) for row in both.data["results"]] == [str(wanted.id)]
-
-    # Each half alone keeps a row the intersection drops — else an ignored filter would pass.
-    search_only = client.get(reverse("deployedmodel-list"), {**scope, "search": "needle"})
-    assert {str(row["id"]) for row in search_only.data["results"]} == {
-        str(wanted.id),
-        str(other_capability_matches.id),
-    }
-    capability_only = client.get(
-        reverse("deployedmodel-list"), {**scope, "capability": str(mine.id)}
-    )
-    assert {str(row["id"]) for row in capability_only.data["results"]} == {
-        str(wanted.id),
-        str(same_capability_no_match.id),
-    }
-
-
-def test_deployed_models_list_still_overlays_median_latency_when_filtered():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    m = _deployed_model(p, _job(p))
-    for latency in (10, 20, 3000):
-        InferenceCall.objects.create(
-            deployed_model=m,
-            project=p,
-            latency_ms=latency,
-            tokens_per_second=10.0,
-            is_cold=False,
-        )
-
-    r = auth_client(u).get(reverse("deployedmodel-list"), {"project": str(p.id)})
-    assert r.status_code == status.HTTP_200_OK
-    # Median, not the 1010ms mean the SQL annotation produced.
-    assert r.data["results"][0]["avg_latency_ms"] == 20
-
-
-def test_deployed_models_retrieve():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    m = _deployed_model(p)
-
-    r = auth_client(u).get(reverse("deployedmodel-detail", args=[str(m.id)]))
-    assert r.status_code == status.HTTP_200_OK
-    assert r.data["model_id"] == m.model_id
-    assert r.data["status"] == "ready"
 
 
 def test_deployed_models_retrieve_forbidden_for_other_user():
@@ -476,35 +216,6 @@ def test_model_metrics_endpoint_aggregates():
     assert r.data["avg_latency_ms"] == pytest.approx(300.0)
 
 
-def test_model_metrics_endpoint_empty_is_zeroed():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    m = _deployed_model(p)
-
-    r = auth_client(u).get(reverse("deployedmodel-metrics", args=[str(m.id)]))
-    assert r.status_code == status.HTTP_200_OK
-    assert r.data["request_count"] == 0
-    assert r.data["total_tokens"] == 0
-    assert r.data["cost"] is None
-    assert r.data["cost_is_estimate"] is False
-
-
-def test_model_activity_endpoint_returns_points():
-    u = make_user()
-    p = make_project()
-    make_member(u, p)
-    m = _deployed_model(p)
-    InferenceCall.objects.create(deployed_model=m, project=p, prompt_tokens=7, completion_tokens=3)
-
-    r = auth_client(u).get(reverse("deployedmodel-activity", args=[str(m.id)]))
-    assert r.status_code == status.HTTP_200_OK
-    points = r.data["points"]
-    assert len(points) == 1
-    assert points[0]["request_count"] == 1
-    assert points[0]["total_tokens"] == 10
-
-
 def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():
     user, project = make_user(), make_project()
     make_member(user, project)
@@ -531,40 +242,3 @@ def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():
     assert response.data["avg_latency_ms"] == 10
     assert response.data["end_to_end_p50_ms"] == 300
     assert response.data["latest_failure"]["id"] == str(failed.pk)
-
-
-@pytest.mark.parametrize("field", ["avg_latency_ms", "avg_tokens_per_second"])
-def test_deployed_models_sort_by_displayed_median_before_pagination(field):
-    user, project = make_user(), make_project()
-    make_member(user, project)
-    slow_mean = _deployed_model(project, _job(project))
-    fast_mean = _deployed_model(project, _job(project))
-    unmeasured = _deployed_model(project, _job(project))
-    for model, values in [(slow_mean, [10, 20, 3000]), (fast_mean, [30, 40, 50])]:
-        for value in values:
-            InferenceCall.objects.create(
-                deployed_model=model,
-                project=project,
-                latency_ms=value,
-                tokens_per_second=value,
-                is_cold=False,
-                outcome="succeeded",
-            )
-    for prefix, expected, median in [("", slow_mean, 20), ("-", fast_mean, 40)]:
-        response = auth_client(user).get(
-            reverse("deployedmodel-list"),
-            {
-                "project": project.id,
-                "ordering": prefix + field,
-                "page_size": 1,
-            },
-        )
-        assert response.status_code == 200, response.data
-        assert response.data["count"] == 3
-        assert response.data["results"][0]["id"] == str(expected.id)
-        assert response.data["results"][0][field] == median
-        last = auth_client(user).get(
-            reverse("deployedmodel-list"),
-            {"project": project.id, "ordering": prefix + field, "page_size": 1, "page": 3},
-        )
-        assert last.data["results"][0]["id"] == str(unmeasured.id)

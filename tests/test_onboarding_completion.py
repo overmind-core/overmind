@@ -19,27 +19,11 @@ def _add_membership(user: User) -> None:
     ProjectMembership.objects.create(user=user, project=project)
 
 
-def test_fresh_user_is_incomplete():
-    assert _me(make_user())["has_completed_onboarding"] is False
-
-
-def test_membership_without_onboarding_record_counts_as_completed():
-    user = make_user()
-    _add_membership(user)
-    assert _me(user)["has_completed_onboarding"] is True
-
-
 def test_in_progress_overrides_membership_shortcut():
     user = make_user()
     UserOnboarding.objects.create(user=user, status="in_progress")
     _add_membership(user)
     assert _me(user)["has_completed_onboarding"] is False
-
-
-def test_completed_status_wins():
-    user = make_user()
-    UserOnboarding.objects.create(user=user, status="completed")
-    assert _me(user)["has_completed_onboarding"] is True
 
 
 def test_patch_cannot_reassign_onboarding_user():

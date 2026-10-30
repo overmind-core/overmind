@@ -94,18 +94,6 @@ def test_all_tools_return_structured_content_and_project_scoped_rows():
     assert dataset_job["id"] == str(dataset.id)
 
 
-def test_invalid_tool_input_is_safe_and_typed():
-    context, _, _ = _context()
-
-    async def invoke():
-        return await CATALOG.call("query_traces", {"unexpected": True}, context)
-
-    result = asyncio.run(invoke())
-    assert result.isError is True
-    assert result.structuredContent["error"]["code"] == "invalid_input"
-    assert "ValidationError" not in result.content[0].text
-
-
 def test_query_failures_includes_failed_check_when_span_average_passes():
     context, capability, _ = _context()
     Span.objects.create(

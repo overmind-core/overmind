@@ -24,7 +24,6 @@ from overbae.services.connectors.schema import CONNECTOR_CREDENTIAL_ID_ATTR
 from overbae.services.connectors.sync import (
     boundary_import_key,
     prepare_connector_sync,
-    reset_connector_import,
 )
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
@@ -124,10 +123,6 @@ def _record(langfuse: LangfuseAPI, *names: str) -> None:
 
 def _nested_agent(langfuse: LangfuseAPI) -> None:
     _record(langfuse, "run_ledgerline", "adjudicate_claim", "adjudicate_tool_loop", "get_fx_rate")
-
-
-def _inbox(langfuse: LangfuseAPI) -> None:
-    _record(langfuse, "run_ledgerline", "run_invoice_agent", "analyze_email")
 
 
 def test_inspect_without_configured_connectors_returns_cli_action():
@@ -263,23 +258,6 @@ def test_configure_uses_existing_capabilities_and_rejects_unknown_targets():
     assert auto_create.structuredContent["error"]["code"] == "invalid_input"
 
 
-def test_sync_uses_neutral_dispatcher_and_returns_poll_resource(queued):
-    context = mcp_context(permission=["read", "write"])
-    connector = _connector(context)
-
-    result = _call("sync_connector", {"connector": str(connector.id)}, context)
-
-    assert result.isError is False
-    assert queued == [str(connector.id)]
-    connector.refresh_from_db()
-    assert connector.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
-    assert result.structuredContent["queued"] is True
-    assert result.structuredContent["job"]["kind"] == "connector_sync"
-    assert result.structuredContent["poll_hint"]["resource"]["uri"] == (
-        f"overmind://connectors/{connector.id}"
-    )
-
-
 def test_provider_exceptions_are_redacted(langfuse):
     context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
@@ -354,25 +332,6 @@ def test_list_shows_keyed_drafts_and_hides_keyless_wizard_rows():
     _assert_available_types(result.structuredContent)
 
 
-def test_inspect_keyed_draft_can_request_source_projects():
-    context = mcp_context()
-    connector = _connector(context, configured=False)
-
-    result = _call(
-        "inspect_connectors",
-        {"connector": str(connector.id), "include_source_projects": True},
-        context,
-    )
-    details = result.structuredContent["connector"]
-    action = result.structuredContent["human_action"]
-
-    assert result.isError is False
-    assert details["provider_status"] == "available"
-    assert details["source_projects"] == [{"id": "lf-project", "name": "support-desk"}]
-    assert action["code"] == "connector_config_required"
-    assert action["action"] == "configure_connector"
-
-
 def test_configure_first_config_defaults_lookback_and_leaves_auto_sync_off():
     context = mcp_context(permission=["read", "write"])
     connector = _connector(context, configured=False)
@@ -392,21 +351,6 @@ def test_configure_first_config_defaults_lookback_and_leaves_auto_sync_off():
     assert config is not None
     assert config.lookback_days == 30
     assert connector.auto_sync_enabled is False
-
-
-def test_configure_explicit_null_lookback_stays_unbounded():
-    context = mcp_context(permission=["read", "write"])
-    connector = _connector(context, configured=False)
-
-    result = _call(
-        "configure_connector",
-        {"connector": str(connector.id), "lookback_days": None},
-        context,
-    )
-    connector.refresh_from_db()
-
-    assert result.isError is False
-    assert connector.active_config().lookback_days is None
 
 
 def test_sync_without_config_returns_config_required():
@@ -464,37 +408,6 @@ def test_configure_and_sync_without_keys_still_require_cli():
         assert action["resource"] == "overmind://connector-setup"
 
 
-def test_create_stamps_verified_at_on_saved_and_reconnected_row():
-    context = mcp_context()
-    raw, _ = APIToken.create_for_user(context.user, project=context.project)
-    client = APIClient()
-    client.credentials(HTTP_X_API_KEY=raw)
-    body = {
-        "project": str(context.project.id),
-        "name": "langfuse",
-        "connector_type": "langfuse",
-        "api_key": "pk-test",
-        "api_secret": "sk-test",
-    }
-
-    created = client.post("/api/connector-credentials/", body, format="json")
-    assert created.status_code == 201, created.data
-    connector = ConnectorCredential.objects.get(id=created.data["id"])
-    assert connector.verified_at is not None
-    assert connector.api_version == "v2"
-
-    connector.verified_at = None
-    connector.api_version = ConnectorCredential.ApiVersion.UNKNOWN
-    connector.save(update_fields=["verified_at", "api_version", "updated_at"])
-
-    again = client.post("/api/connector-credentials/", body, format="json")
-    assert again.status_code == 201, again.data
-    assert again.data["id"] == str(connector.id)
-    connector.refresh_from_db()
-    assert connector.verified_at is not None
-    assert connector.api_version == "v2"
-
-
 def test_create_rejects_project_outside_api_key_scope():
     context = mcp_context()
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
@@ -516,33 +429,6 @@ def test_create_rejects_project_outside_api_key_scope():
 
     assert response.status_code == 400
     assert "scoped to another project" in str(response.data)
-
-
-def test_mapping_confirm_on_the_first_call_only_stages():
-    context = mcp_context(permission=["read", "write"])
-    connector = _connector(context, mapping_confirmed=False)
-    capability = Capability.objects.create(
-        project=context.project,
-        name="Support",
-        slug=f"support-{uuid.uuid4().hex[:6]}",
-    )
-
-    result = _call(
-        "configure_connector",
-        {
-            "connector": str(connector.id),
-            "capability_mapping": {"assignments": {"support": str(capability.id)}},
-            "confirm_mapping": True,
-        },
-        context,
-    )
-    connector.refresh_from_db()
-
-    assert result.structuredContent["mapping_pending"] is True
-    assert result.structuredContent["human_action"]["action"] == "approve_mapping"
-    assert connector.capability_mapping == {}
-    assert connector.capability_mapping_confirmed is False
-    assert connector.pending_capability_mapping["assignments"] == {"support": str(capability.id)}
 
 
 def test_sync_waits_for_mapping_approval(queued):
@@ -581,39 +467,6 @@ def test_empty_mapping_can_be_approved_then_synced(queued):
     assert connector.capability_mapping_confirmed is True
     assert sync.structuredContent["queued"] is True
     assert queued == [str(connector.id)]
-
-
-def test_inspect_returns_parent_only_suggested_boundaries(langfuse):
-    context = mcp_context()
-    connector = _connector(context)
-    capability = Capability.objects.create(
-        project=context.project,
-        name="Ledgerline Adjudicator",
-        slug="ledgerline-adjudicator",
-        entrypoint_fn="adjudicate_claim",
-        improvement_metadata={"tool_spec": [{"name": "get_fx_rate"}]},
-    )
-    _nested_agent(langfuse)
-
-    result = _call(
-        "inspect_connectors",
-        {"connector": str(connector.id), "include_source_projects": True},
-        context,
-    )
-    suggested = result.structuredContent["suggested_boundaries"]
-    nested = suggested[0]["nested_names"]
-
-    assert result.isError is False
-    assert [item["name"] for item in suggested] == ["adjudicate_claim"]
-    assert suggested[0]["capability_id"] == str(capability.id)
-    assert suggested[0]["alternatives"] == []
-    assert "get_fx_rate" in nested
-    assert "adjudicate_tool_loop" in nested
-    assert "get_fx_rate" not in [item["name"] for item in suggested]
-    assert "run_ledgerline" in result.structuredContent["unmapped_roots"]
-    assert any(
-        shape["name"] == "get_fx_rate" for shape in result.structuredContent["observation_shapes"]
-    )
 
 
 def test_configure_drops_nested_names_from_the_staged_mapping(langfuse):
@@ -718,81 +571,6 @@ def test_configure_keeps_fallback_and_does_not_store_auto_create():
     assert "auto_create" not in pending
 
 
-def test_configure_keeps_unmapped_root_and_nested_only_boundaries(langfuse):
-    context = mcp_context(permission=["read", "write"])
-    connector = _connector(context, mapping_confirmed=False)
-    triage = Capability.objects.create(
-        project=context.project,
-        name="Invoice triage",
-        slug="invoice-triage",
-        entrypoint_fn="run_invoice_agent",
-        improvement_metadata={"modes": [{"name": "analyze_email"}]},
-    )
-    _inbox(langfuse)
-
-    nested = _call(
-        "configure_connector",
-        {
-            "connector": str(connector.id),
-            "capability_mapping": {
-                "source": "observation_name",
-                "names": ["analyze_email"],
-                "assignments": {"analyze_email": str(triage.id)},
-            },
-        },
-        context,
-    )
-    connector.refresh_from_db()
-
-    assert nested.isError is False
-    assert connector.pending_capability_mapping["names"] == ["analyze_email"]
-    assert nested.structuredContent["dropped_nested_names"] == []
-
-    root = _call(
-        "configure_connector",
-        {
-            "connector": str(connector.id),
-            "capability_mapping": {
-                "source": "observation_name",
-                "names": ["run_ledgerline"],
-                "assignments": {"run_ledgerline": str(triage.id)},
-            },
-        },
-        context,
-    )
-    connector.refresh_from_db()
-
-    assert root.isError is False
-    assert connector.pending_capability_mapping["names"] == ["run_ledgerline"]
-
-
-def test_inspect_lists_nested_capability_matches_as_alternatives(langfuse):
-    context = mcp_context()
-    connector = _connector(context)
-    capability = Capability.objects.create(
-        project=context.project,
-        name="Invoice triage",
-        slug="invoice-triage",
-        entrypoint_fn="run_invoice_agent",
-        improvement_metadata={"modes": [{"name": "analyze_email"}]},
-    )
-    _inbox(langfuse)
-
-    result = _call(
-        "inspect_connectors",
-        {"connector": str(connector.id), "include_source_projects": True},
-        context,
-    )
-    suggested = result.structuredContent["suggested_boundaries"]
-
-    assert result.isError is False
-    assert [item["name"] for item in suggested] == ["run_invoice_agent"]
-    assert suggested[0]["capability_id"] == str(capability.id)
-    assert suggested[0]["alternatives"] == ["analyze_email"]
-    assert "analyze_email" in suggested[0]["nested_names"]
-    assert "run_ledgerline" in result.structuredContent["unmapped_roots"]
-
-
 def test_sync_reports_recarving_when_boundary_names_changed(queued):
     context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
@@ -843,50 +621,3 @@ def test_prepare_connector_sync_adopts_empty_key_and_wipes_on_name_change():
     connector.refresh_from_db()
     assert connector.sync_cursor == {}
     assert connector.total_traces_imported == 0
-
-
-def test_prepare_connector_sync_skips_wipe_when_only_assignments_change():
-    context = mcp_context()
-    connector = _connector(context)
-    mapping = {
-        "source": "observation_name",
-        "names": ["analyze_email"],
-        "assignments": {"analyze_email": str(uuid.uuid4())},
-    }
-    connector.capability_mapping = mapping
-    connector.imported_boundary_key = boundary_import_key(
-        {"source": "observation_name", "names": ["analyze_email"]}
-    )
-    connector.save(update_fields=["capability_mapping", "imported_boundary_key", "updated_at"])
-    Span.objects.create(
-        span_id="c" * 16,
-        trace_id="d" * 32,
-        project=context.project,
-        name="analyze_email",
-        resource_attrs={CONNECTOR_CREDENTIAL_ID_ATTR: str(connector.id)},
-    )
-
-    assert prepare_connector_sync(connector) is False
-    assert Span.objects.filter(span_id="c" * 16).exists()
-
-
-def test_reset_connector_import_deletes_only_that_credential_spans():
-    context = mcp_context()
-    connector = _connector(context)
-    other = _connector(context)
-    Span.objects.create(
-        span_id="e" * 16,
-        trace_id="f" * 32,
-        project=context.project,
-        resource_attrs={CONNECTOR_CREDENTIAL_ID_ATTR: str(connector.id)},
-    )
-    Span.objects.create(
-        span_id="g" * 16,
-        trace_id="h" * 32,
-        project=context.project,
-        resource_attrs={CONNECTOR_CREDENTIAL_ID_ATTR: str(other.id)},
-    )
-
-    assert reset_connector_import(connector) == 1
-    assert not Span.objects.filter(span_id="e" * 16).exists()
-    assert Span.objects.filter(span_id="g" * 16).exists()

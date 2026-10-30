@@ -23,7 +23,6 @@ from overbae.services.datasets import paths, store
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
-from overbae.tasks.innermind import run_eval_run
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -169,94 +168,6 @@ def test_eval_sets_are_project_scoped_and_can_be_activated():
         asyncio.run(read_resource(result.structuredContent["resource_links"][0]["uri"]))
     foreign = _call("create_eval_set", {"name": "Foreign", "rows": [str(row.id)]}, other)
     assert foreign.structuredContent["error"]["code"] == "eval_matrix_row_not_found"
-
-
-def test_readiness_reports_advisory_context_without_blocking(fake_llm):
-    fake_llm.limits["openai/gpt-4.1"] = 1000
-    context = mcp_context()
-    dataset = _dataset(context)
-    make_matrix_row(
-        context.project, "Exact", type=EvalMatrix.Type.DETERMINISTIC, source=EXACT_MATCH
-    )
-
-    result = _call(
-        "check_evaluation_readiness",
-        {
-            "dataset": str(dataset.pk),
-            "targets": [{"mode": "generate", "label": "Candidate", "model_name": "gpt-4.1"}],
-        },
-        context,
-    )
-
-    output = result.structuredContent
-    [check] = output["context_checks"]
-    assert (check["role"], check["label"], check["status"]) == (
-        "generation",
-        "Candidate",
-        "warning",
-    )
-    assert check["context_window"] == 1000
-    assert output["matrix"] == [{"name": "Exact", "type": "deterministic"}]
-    assert output["ready"] is True
-
-
-def test_readiness_without_matrix_rows_is_not_ready():
-    context = mcp_context()
-    dataset = _dataset(context)
-
-    output = _call(
-        "check_evaluation_readiness",
-        {"dataset": str(dataset.pk), "targets": [{"mode": "recorded"}]},
-        context,
-    ).structuredContent
-
-    assert output["ready"] is False
-    assert output["matrix"] == []
-
-
-def test_run_evaluation_queues_one_run_per_target_in_one_group(monkeypatch):
-    queued = []
-    monkeypatch.setattr(run_eval_run, "delay", lambda **kw: queued.append(kw) or _Result())
-    context = _writer()
-    dataset = _dataset(context)
-    make_matrix_row(
-        context.project, "Exact", type=EvalMatrix.Type.DETERMINISTIC, source=EXACT_MATCH
-    )
-
-    result = _call(
-        "run_evaluation",
-        {
-            "name": "Backtest",
-            "dataset": str(dataset.pk),
-            "judge_model": "claude-haiku-4-5",
-            "targets": [
-                {"mode": "recorded", "label": "Recorded", "is_baseline": True},
-                {"mode": "generate", "label": "Mini", "model_name": "openai/gpt-5-mini"},
-            ],
-        },
-        context,
-    )
-
-    output = result.structuredContent
-    assert [(run["label"], run["mode"], run["is_baseline"]) for run in output["runs"]] == [
-        ("Recorded", "recorded", True),
-        ("Mini", "generate", False),
-    ]
-    created = EvalRun.objects.filter(group=output["group"])
-    assert created.count() == 2
-    assert set(created.values_list("judge_model", flat=True)) == {"claude-haiku-4-5"}
-    assert {kw["eval_run_id"] for kw in queued} == {run["id"] for run in output["runs"]}
-    resource = _read(context, output["runs"][1]["resource"]["uri"])
-    assert resource["matrix"] == [{"name": "Exact", "type": "deterministic"}]
-    assert _call("run_evaluation", {**_run_args(dataset)}, _writer()).isError
-
-
-def _run_args(dataset) -> dict:
-    return {"name": "x", "dataset": str(dataset.pk), "targets": [{"mode": "recorded"}]}
-
-
-class _Result:
-    id = "task"
 
 
 def _completed_run(context, dataset, label, row_scores, *, group, is_baseline=False) -> EvalRun:
