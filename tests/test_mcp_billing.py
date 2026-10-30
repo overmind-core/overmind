@@ -50,6 +50,7 @@ def test_credit_report_scopes_balance_usage_and_window(settings):
         service=BillingService.EVALUATION,
     )
     BillingTelemetry.objects.filter(pk=old.pk).update(timestamp=since - timedelta(seconds=1))
+    BillingTelemetry.objects.filter(service=BillingService.FINETUNING_JOB).update(timestamp=since)
     count = BillingTelemetry.objects.count()
     with TestClient(create_mcp_application()) as client:
         result = report(client, raw, since=since.isoformat())
