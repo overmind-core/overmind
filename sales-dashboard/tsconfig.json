@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/*": ["../frontend/src/*"],
+      "~/*": ["./src/*"],
+      "class-variance-authority": ["./node_modules/class-variance-authority"],
+      "clsx": ["./node_modules/clsx"],
+      "radix-ui": ["./node_modules/radix-ui"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "tailwind-merge": ["./node_modules/tailwind-merge"]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["vite/client", "node"],
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useActivityHighlights } from "@/hooks/use-activity";
 import { LABEL } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { CapabilityList } from "@/openapi";
@@ -66,12 +67,18 @@ function MetricRow({
 }
 
 function CapabilityCard({ capability }: { capability: CapabilityList }) {
+  const highlights = useActivityHighlights();
   const toolNames = capability.toolNames ?? [];
 
   return (
     // The wash, not bg-card: these cards sit on the shell's card surface, which
     // bg-card would give them no separation from.
-    <div className="flex h-full w-full min-w-0 cursor-pointer flex-col rounded-md border border-border bg-wash-subtle px-5 pb-4 pt-4 transition-all hover:border-[var(--accent-warm)] hover:bg-wash-raised">
+    <div
+      className={cn(
+        "flex h-full w-full min-w-0 cursor-pointer flex-col rounded-md border border-border bg-wash-subtle px-5 pb-4 pt-4 transition-all hover:border-[var(--accent-warm)] hover:bg-wash-raised",
+        highlights[`capability:${capability.id}`] && "activity-highlight"
+      )}
+    >
       <div className="mb-1.5 flex items-start justify-between gap-2">
         <h3
           className={cn(

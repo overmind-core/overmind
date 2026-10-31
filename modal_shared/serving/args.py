@@ -24,8 +24,24 @@ CUDAGRAPH_CAPTURE_SIZES: tuple[int, ...] = (1, 2, 4, 8, 16, 32)
 # batching win.
 MAX_LORA_SLOTS = 8
 
-# vLLM only accepts these values for --max-lora-rank; anything else is rejected at startup.
-_LORA_RANK_STEPS: tuple[int, ...] = (1, 8, 16, 32, 64, 128, 256, 320, 512)
+# vLLM rejects any other --max-lora-rank at startup. Rank 1 is a kernel size,
+# not a training choice.
+LORA_RANK_STEPS: tuple[int, ...] = (1, 8, 16, 32, 64, 128, 256, 320, 512)
+TRAINING_LORA_RANKS: tuple[int, ...] = (8, 16, 32, 64, 128, 256, 320, 512)
+
+
+def require_lora_rank(rank: object) -> int:
+    if type(rank) is not int or rank not in TRAINING_LORA_RANKS:
+        allowed = ", ".join(str(step) for step in TRAINING_LORA_RANKS)
+        raise ValueError(f"lora_r must be one of {allowed}.")
+    return rank
+
+
+def require_lora_alpha(rank: int, alpha: object) -> int:
+    expected = rank * 2
+    if type(alpha) is not int or alpha != expected:
+        raise ValueError(f"lora_alpha must be {expected}, twice lora_r.")
+    return alpha
 
 
 def snap_lora_rank(rank: int) -> int:
@@ -35,10 +51,10 @@ def snap_lora_rank(rank: int) -> int:
     measured 59% slower and 15.9x larger — so this rounds up to the next step, never to a
     blanket maximum.
     """
-    for step in _LORA_RANK_STEPS:
+    for step in LORA_RANK_STEPS:
         if rank <= step:
             return step
-    return _LORA_RANK_STEPS[-1]
+    return LORA_RANK_STEPS[-1]
 
 
 def lora_load_request(name: str, path: str) -> dict:
@@ -114,6 +130,8 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         ctx.gpu_memory_utilization,
         "--max-num-seqs",
         str(ctx.max_num_seqs),
+        "--kv-cache-dtype",
+        "fp8",
         "--enable-force-include-usage",
         "--enable-auto-tool-choice",
         "--tool-call-parser",
@@ -170,7 +188,7 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         "--model-loader-extra-config",
         json.dumps({"distributed": True}, separators=(",", ":")),
         "--cudagraph-capture-sizes",
-        *(str(s) for s in CUDAGRAPH_CAPTURE_SIZES),
+        *([str(s) for s in CUDAGRAPH_CAPTURE_SIZES if s <= ctx.max_num_seqs] or ["1"]),
     ]
 
     chat_tmpl = _serve_chat_template_path(ctx.chat_template_dir or ctx.model_path)

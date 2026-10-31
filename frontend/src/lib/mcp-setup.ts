@@ -10,7 +10,7 @@ export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[
 ];
 
 export const API_KEY_PLACEHOLDER = "<your-api-key>";
-export const MIN_ONBOARDING_SDK_VERSION = "0.1.104";
+export const MIN_ONBOARDING_SDK_VERSION = "0.1.106";
 export const SDK_PREFLIGHT_COMMAND = "python -m overmind --version";
 
 const HOSTED_API_URL = "https://api.overmindlab.ai";
@@ -78,26 +78,27 @@ export function mcpInitCommand(
   ].join(" &&\n");
 }
 
-/** One line that hands the coding agent the hosted setup guide; sign-in happens through MCP OAuth. */
 export function onboardingPrompt(
   origin: string,
   apiUrl: string,
-  data?: { projectId: string; datasetId: string }
+  data?: { projectId: string; datasetId?: string }
 ): string {
   const guide = `${origin.replace(/\/$/, "")}/setup.md`;
   const url = apiUrl.replace(/\/$/, "");
-  const subject = data
+  const subject = data?.datasetId
     ? `Set me up on Overmind with my uploaded data\n(project_id: ${data.projectId},\ndataset_id: ${data.datasetId})`
-    : "Set me up on Overmind";
-  const endpoint = url === HOSTED_API_URL ? "" : `using the API at ${url}`;
-  return `${subject}\n\n${endpoint}: ${guide}`;
+    : data
+      ? `Set me up on Overmind\n(project_id: ${data.projectId})`
+      : "Set me up on Overmind";
+  if (url !== HOSTED_API_URL) return `${subject}\n\nusing the API at ${url}: ${guide}`;
+  return data ? `${subject}\n\n${guide}` : `${subject} ${guide}`;
 }
 
 /** Instruction handed to the coding agent, addressed to the agent the user picked. */
 export function telemetrySetupPrompt(client: McpClient): string {
   const meta = mcpClientMeta(client);
   return [
-    `Instrument this repository using the Overmind MCP and skill setup in ${meta.label}. Do not rerun \`overmind init\` for an already configured client. If ${meta.label} has no Overmind MCP entry and onboarding sync has completed, run \`overmind init --ide ${client}\` once; it reuses the saved project credential. If MCP authentication is pending, stop and ask the user to complete onboarding with \`overmind sync\`, then reload ${meta.label} once; never configure MCP with the temporary account bootstrap key.`,
+    `Instrument this repository using the Overmind MCP and skill setup in ${meta.label}. Do not rerun \`overmind init\` for an already configured client. If ${meta.label} has no Overmind MCP entry and onboarding sync has completed, run \`overmind init --ide ${client}\` once. If MCP authentication is pending, stop and ask the user to complete the sign-in step \`overmind init\` printed.`,
     "Install `overmind[tracing]` if tracing is not already importable, with the installer the project already uses.",
     "For local runs, the tracing SDK reuses the credential saved by `overmind sync`; deployed processes still require `OVERMIND_API_KEY` in their runtime secret configuration.",
     "Follow the “Instrumentation” section of the installed overmind-observability skill. Call `get_instrumentation_plan` with no capability for project-wide work or the supplied capability for scoped work. If it returns `human_action` or no placements, report the instruction and stop this attempt.",

@@ -9,6 +9,8 @@ import pytest
 
 from overbae.core.llms import ModelSpec, call_llm
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 @pytest.fixture
 def heartbeat_provider():

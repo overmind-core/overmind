@@ -3,6 +3,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport
+from overbae.services.activity import update_task
 from overbae.services.datasets.lifecycle import DatasetError
 
 
@@ -76,6 +77,8 @@ def cancel(dataset_id):
     if receipts or dataset.operation.get("state") != "running":
         fields.update(state=Dataset.State.IDLE, error="")
     Dataset.objects.filter(pk=dataset_id).update(**fields)
+
+    update_task(dataset.project_id, "dataset_run", dataset_id, operation["state"])
     return operation
 
 
@@ -98,4 +101,6 @@ def finished(dataset_id, *, task_id=None):
     if cancelled:
         fields.update(state=Dataset.State.IDLE, error="")
     Dataset.objects.filter(pk=dataset_id).update(**fields)
+
+    update_task(dataset.project_id, "dataset_run", dataset_id, operation["state"])
     return operation

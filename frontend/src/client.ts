@@ -22,6 +22,7 @@ import {
 import { emitPlanLimitToast, PlanLimitError, planLimitFromBody } from "./lib/plan-limits";
 import type { ModelSwapPrompt } from "./openapi";
 import {
+  ActivityApi,
   AgentApi,
   AuthApi,
   BillingApi,
@@ -458,8 +459,10 @@ export class API {
   evalScores: EvalScoresApi;
   signalEvents: SignalEventsApi;
   signalSubscriptions: SignalSubscriptionsApi;
+  activity: ActivityApi;
 
   constructor(private cfg: Configuration) {
+    this.activity = new ActivityApi(this.cfg);
     this.mcpOauth = new McpOauthApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);

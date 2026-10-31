@@ -1,4 +1,3 @@
-import asyncio
 import io
 import json
 import os
@@ -9,6 +8,8 @@ import zipfile
 from unittest.mock import patch
 
 import pytest
+from asgiref.sync import async_to_sync
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from overbae.models import APIToken, Dataset, Project, ProjectMembership, Span, User
@@ -21,7 +22,6 @@ from overbae.services.datasets import (
     workbench,
 )
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 from tests.workshop_script_fixtures import (
@@ -34,7 +34,7 @@ from tests.workshop_script_fixtures import (
     select_script,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("data-logic")]
 
 
 @pytest.mark.parametrize("eligible", [[True, False, True], [True, True], [False, False]])
@@ -212,18 +212,16 @@ def test_conditional_revision_retrieval_adaptation_and_conflict_recovery():
     assert run["status"] == "completed"
     scoped = call(context, "inspect_dataset_workbench", pipeline=revised["id"])
     assert scoped["runs"] == []
-    stale = asyncio.run(
-        CATALOG.call(
-            "save_dataset_pipeline",
-            {
-                "name": "Stale",
-                "request_key": "stale",
-                "pipeline": first["pipeline_id"],
-                "expected_revision": 1,
-                "package": first["package"],
-            },
-            context,
-        )
+    stale = call_tool(
+        "save_dataset_pipeline",
+        {
+            "name": "Stale",
+            "request_key": "stale",
+            "pipeline": first["pipeline_id"],
+            "expected_revision": 1,
+            "package": first["package"],
+        },
+        context,
     )
     assert stale.isError and stale.structuredContent["error"]["code"] == "revision_conflict"
     unrelated = Project.objects.create(name="Other project", slug="conditional-other")
@@ -234,9 +232,7 @@ def test_conditional_revision_retrieval_adaptation_and_conflict_recovery():
         request_key="private",
         package=retained_package(unrelated, context.user, [filter_script("eligible", True)]),
     )
-    denied = asyncio.run(
-        CATALOG.call("inspect_dataset_workbench", {"pipeline": str(foreign.pk)}, context)
-    )
+    denied = call_tool("inspect_dataset_workbench", {"pipeline": str(foreign.pk)}, context)
     assert denied.isError
 
 
@@ -276,7 +272,7 @@ def test_agent_authored_branches_are_retained_executed_and_read_back(settings):
     assert [cell.review["step_id"] for cell in cells] == ["eligible", "ineligible"]
     with bind_context(context):
         retained = json.loads(
-            asyncio.run(read_resource(f"overmind://dataset-pipelines/{recipe['id']}"))[0].content
+            async_to_sync(read_resource)(f"overmind://dataset-pipelines/{recipe['id']}")[0].content
         )
     assert retained["flow"] == recipe["flow"]
     with pytest.raises(DatasetError, match="Cycles"):
@@ -291,7 +287,7 @@ def test_agent_authored_branches_are_retained_executed_and_read_back(settings):
 
 
 def call(context, tool_name, **arguments):
-    result = asyncio.run(CATALOG.call(tool_name, arguments, context))
+    result = call_tool(tool_name, arguments, context)
     assert not result.isError, result.structuredContent
     return result.structuredContent
 
@@ -831,20 +827,16 @@ def test_revisions_conflicts_tenancy_and_resources():
         ),
     )["pipeline"]
     assert revised["revision"] == 2 and revised["parent"] == recipe["id"]
-    stale = asyncio.run(
-        CATALOG.call(
-            "save_dataset_pipeline",
-            {
-                "name": "Stale",
-                "request_key": "stale",
-                "pipeline": recipe["pipeline_id"],
-                "expected_revision": 1,
-                "package": retained_package(
-                    context.project, context.user, [select_script(["value"])]
-                ),
-            },
-            context,
-        )
+    stale = call_tool(
+        "save_dataset_pipeline",
+        {
+            "name": "Stale",
+            "request_key": "stale",
+            "pipeline": recipe["pipeline_id"],
+            "expected_revision": 1,
+            "package": retained_package(context.project, context.user, [select_script(["value"])]),
+        },
+        context,
     )
     assert stale.isError
     other = Project.objects.create(name="Other", slug="other")
@@ -855,48 +847,40 @@ def test_revisions_conflicts_tenancy_and_resources():
         request_key="private",
         package=retained_package(other, context.user, [select_script(["value"])]),
     )
-    rejected = asyncio.run(
-        CATALOG.call(
-            "run_dataset_pipeline",
-            {
-                "dataset": str(dataset.pk),
-                "pipeline": str(outside.pk),
-                "source_cell": str(dataset.active_cell.pk),
-                "source_fingerprint": dataset.active_cell.fingerprint,
-                "request_key": "outside",
-            },
-            context,
-        )
+    rejected = call_tool(
+        "run_dataset_pipeline",
+        {
+            "dataset": str(dataset.pk),
+            "pipeline": str(outside.pk),
+            "source_cell": str(dataset.active_cell.pk),
+            "source_fingerprint": dataset.active_cell.fingerprint,
+            "request_key": "outside",
+        },
+        context,
     )
     assert rejected.isError
     assert dataset.cells.count() == 1
-    conflict = asyncio.run(
-        CATALOG.call(
-            "save_dataset_pipeline",
-            {
-                "name": "Changed",
-                "request_key": "original",
-                "package": retained_package(
-                    context.project, context.user, [select_script(["value"])]
-                ),
-            },
-            context,
-        )
+    conflict = call_tool(
+        "save_dataset_pipeline",
+        {
+            "name": "Changed",
+            "request_key": "original",
+            "package": retained_package(context.project, context.user, [select_script(["value"])]),
+        },
+        context,
     )
     assert conflict.isError
     assert conflict.structuredContent["error"]["code"] == "request_key_conflict"
-    wrong_source = asyncio.run(
-        CATALOG.call(
-            "run_dataset_pipeline",
-            {
-                "dataset": str(dataset.pk),
-                "pipeline": recipe["id"],
-                "source_cell": str(dataset.active_cell.pk),
-                "source_fingerprint": "0" * 64,
-                "request_key": "wrong-fingerprint",
-            },
-            context,
-        )
+    wrong_source = call_tool(
+        "run_dataset_pipeline",
+        {
+            "dataset": str(dataset.pk),
+            "pipeline": recipe["id"],
+            "source_cell": str(dataset.active_cell.pk),
+            "source_fingerprint": "0" * 64,
+            "request_key": "wrong-fingerprint",
+        },
+        context,
     )
     assert wrong_source.isError
     assert wrong_source.structuredContent["error"]["code"] == "source_conflict"
@@ -907,7 +891,7 @@ def test_revisions_conflicts_tenancy_and_resources():
             result = list(await read_resource(f"overmind://dataset-pipelines/{recipe['id']}"))
             return json.loads(result[0].content)
 
-    assert asyncio.run(read())["revision"] == 1
+    assert async_to_sync(read)()["revision"] == 1
     job = execute(context, dataset, recipe, "original-still-works")
     assert job["status"] == "completed"
     assert job["details"]["operation"]["event_count"] > 0

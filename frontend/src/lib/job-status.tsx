@@ -1,3 +1,4 @@
+import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
@@ -88,16 +89,19 @@ export function StatusBadge({
   solidProgress = false,
   progress,
   className,
+  actorKind,
 }: {
   status: string | null | undefined;
   fallback: string;
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
+  actorKind?: string;
 }) {
   const cfg = resolveStatus(status, fallback);
   return (
     <ResolvedStatusBadge
+      actorKind={actorKind}
       cfg={cfg}
       className={className}
       progress={progress}
@@ -113,6 +117,7 @@ export function ResolvedStatusBadge({
   solidProgress = false,
   progress,
   className,
+  actorKind,
 }: {
   cfg: StatusMeta;
   label?: string;
@@ -120,6 +125,7 @@ export function ResolvedStatusBadge({
   solidProgress?: boolean;
   progress?: number | null;
   className?: string;
+  actorKind?: string;
 }) {
   const normalizedProgress =
     progress == null || !Number.isFinite(progress) ? null : Math.min(100, Math.max(0, progress));
@@ -150,7 +156,13 @@ export function ResolvedStatusBadge({
         />
       )}
       <span className="relative z-10 inline-flex items-center gap-1">
-        {icon}
+        {cfg.spinning &&
+        actorKind &&
+        ["codex", "claude", "cursor", "gemini", "coding_agent"].includes(actorKind) ? (
+          <CodingAgentIcon kind={actorKind} />
+        ) : (
+          icon
+        )}
         <span>{label ?? cfg.label}</span>
         {normalizedProgress != null && (
           <span className="font-mono tabular-nums">{Math.round(normalizedProgress)}%</span>

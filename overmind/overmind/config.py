@@ -179,6 +179,11 @@ def _safe_local_target(path: Path, repo_root: Path) -> Path:
 
 def protect_secret_file(path: Path, *, repo_root: Path) -> None:
     path = _safe_local_target(path, repo_root)
+    # A directory-local ignore file needs no write under .git/, which agent sandboxes protect.
+    ignore = path.parent / ".gitignore"
+    if not ignore.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ignore.write_text("*\n")
     try:
         root_result = subprocess.run(
             ["git", "-C", str(repo_root.resolve()), "rev-parse", "--show-toplevel"],
@@ -203,22 +208,6 @@ def protect_secret_file(path: Path, *, repo_root: Path) -> None:
             )
             if tracked.returncode == 0:
                 raise SecretFileError(f"Refusing to write an API key to tracked file {relative.as_posix()}")
-
-            exclude_result = subprocess.run(
-                ["git", "-C", str(git_root), "rev-parse", "--git-path", "info/exclude"],
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            if exclude_result.returncode == 0:
-                exclude_path = Path(exclude_result.stdout.strip())
-                if not exclude_path.is_absolute():
-                    exclude_path = git_root / exclude_path
-                entry = f"/{relative.as_posix()}"
-                existing = exclude_path.read_text() if exclude_path.exists() else ""
-                if entry not in existing.splitlines():
-                    exclude_path.parent.mkdir(parents=True, exist_ok=True)
-                    exclude_path.write_text(f"{existing.rstrip()}\n{entry}\n" if existing.strip() else f"{entry}\n")
 
     if path.exists():
         path.chmod(0o600)

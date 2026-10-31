@@ -31,12 +31,23 @@ INPUT_KEYS = (
     "overmind.input_data",
     "traceloop.entity.input",
     "inputs",
+    # OTel GenAI: the single-attribute prompt, tool spans; then Claude Code's keys.
+    "gen_ai.prompt",
+    "gen_ai.tool.call.arguments",
+    "user_prompt",
+    "tool_input",
 )
 OUTPUT_KEYS = (
     "overmind.output.data",
     "overmind.output_data",
     "traceloop.entity.output",
     "outputs",
+    # OTel GenAI: the single-attribute completion, tool spans; then the Claude
+    # API's tool result and Claude Code's answer.
+    "gen_ai.completion",
+    "gen_ai.tool.call.result",
+    "anthropic.tool_result.content",
+    "response.model_output",
 )
 
 # OTel GenAI semconv (opentelemetry-instrumentation-* ≥0.6x): one JSON attr each.
@@ -232,7 +243,9 @@ def _parts_to_message(role: str, parts: list[Any]) -> dict[str, Any]:
         elif ptype == "tool_call_response":
             tool_call_id = str(part.get("id") or tool_call_id or "")
             response = part.get("response")
-            if response is not None:
+            # Server tools (Claude web search) return results inside the assistant
+            # message; they are not the assistant's words.
+            if response is not None and role != "assistant":
                 content_chunks.append(
                     response if isinstance(response, str) else json.dumps(response, default=str)
                 )

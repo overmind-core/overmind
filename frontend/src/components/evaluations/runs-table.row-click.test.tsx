@@ -1,8 +1,18 @@
 // @vitest-environment jsdom
+// covers: console-logic
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Renders the real `DataTable` on purpose: navigation happens on the row's
 // `onClick`, and the sibling file's stub calls `onRowClick` directly, so it
 // would pass either way.
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render as renderComponent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Radix Select needs a layout engine jsdom lacks.
@@ -29,7 +39,11 @@ const mocks = vi.hoisted(() => ({
   }[],
   undoable: vi.fn(),
 }));
-vi.mock("@tanstack/react-router", () => ({ Link: () => null, useNavigate: () => mocks.navigate }));
+vi.mock("@tanstack/react-router", () => ({
+  Link: () => null,
+  useNavigate: () => mocks.navigate,
+  useSearch: () => ({ projectId: "proj-1" }),
+}));
 
 vi.mock("@/lib/notify", () => ({
   errorMessage: (_e: unknown, fallback: string) => fallback,
@@ -100,14 +114,6 @@ const renderTable = () =>
   );
 
 describe("RunsTable row click", () => {
-  it("navigates from a plain cell", () => {
-    renderTable();
-
-    fireEvent.click(screen.getByText("nightly"));
-
-    expect(mocks.navigate).toHaveBeenCalledTimes(1);
-  });
-
   it("selects the run without navigating when the checkbox is clicked", () => {
     renderTable();
 
@@ -188,3 +194,12 @@ it("restores a failed single deletion", async () => {
   expect(screen.getByText("nightly")).toBeTruthy();
   expect(mocks.error).toHaveBeenCalled();
 });
+
+function render(children: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderComponent(children, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}

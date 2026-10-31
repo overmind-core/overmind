@@ -13,6 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DatasetWork } from './DatasetWork';
+import {
+    DatasetWorkFromJSON,
+    DatasetWorkFromJSONTyped,
+    DatasetWorkToJSON,
+    DatasetWorkToJSONTyped,
+} from './DatasetWork';
+import type { RolesEnum } from './RolesEnum';
+import {
+    RolesEnumFromJSON,
+    RolesEnumFromJSONTyped,
+    RolesEnumToJSON,
+    RolesEnumToJSONTyped,
+} from './RolesEnum';
 import type { DatasetSourceKindEnum } from './DatasetSourceKindEnum';
 import {
     DatasetSourceKindEnumFromJSON,
@@ -55,6 +69,24 @@ import {
  * @interface Dataset
  */
 export interface Dataset {
+    /**
+     *
+     * @type {DatasetWork}
+     * @memberof Dataset
+     */
+    readonly work: DatasetWork | null;
+    /**
+     *
+     * @type {Array<RolesEnum>}
+     * @memberof Dataset
+     */
+    readonly roles: Array<RolesEnum>;
+    /**
+     *
+     * @type {string}
+     * @memberof Dataset
+     */
+    readonly workspaceId: string;
     /**
      *
      * @type {string}
@@ -201,6 +233,9 @@ export interface Dataset {
  * Check if a given object implements the Dataset interface.
  */
 export function instanceOfDataset(value: object): value is Dataset {
+    if (!('work' in value) || value['work'] === undefined) return false;
+    if (!('roles' in value) || value['roles'] === undefined) return false;
+    if (!('workspaceId' in value) || value['workspaceId'] === undefined) return false;
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
@@ -233,6 +268,9 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
     }
     return {
 
+        'work': DatasetWorkFromJSON(json['work']),
+        'roles': ((json['roles'] as Array<any>).map(RolesEnumFromJSON)),
+        'workspaceId': json['workspace_id'],
         'id': json['id'],
         'project': json['project'],
         'name': json['name'],
@@ -263,7 +301,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'operation'|'state'|'error'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'work'|'roles'|'workspace_id'|'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'operation'|'state'|'error'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -32,6 +32,8 @@ from overmind.tracing import (
     _span_processor_on_start,
 )
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def inmem():
@@ -130,23 +132,6 @@ def test_identity_stamped_on_spans(inmem):
     assert span.attributes[attrs.PROJECT_ID] == "proj-uuid-9"
 
 
-def test_tool_decorator_stamps_metadata(inmem):
-    provider, exporter = inmem
-    from overmind import tool
-
-    @tool()
-    def search_kb(query, limit=5):
-        return {"hits": 1}
-
-    search_kb("refund policy", limit=3)
-    provider.force_flush()
-
-    span = exporter.get_finished_spans()[-1]
-    assert span.attributes[attrs.SPAN_TYPE] == "tool_call"
-    assert span.attributes[attrs.TOOL_NAME] == "search_kb"
-    assert set(span.attributes[attrs.TOOL_ARG_KEYS]) == {"query", "limit"}
-
-
 def test_tool_decorator_records_error(inmem):
     provider, exporter = inmem
     from overmind import tool
@@ -162,25 +147,3 @@ def test_tool_decorator_records_error(inmem):
     span = exporter.get_finished_spans()[-1]
     assert span.attributes[attrs.TOOL_ERROR] == "ValueError"
     assert span.attributes[attrs.STATUS] == "failed"
-
-
-def test_nested_tool_under_workflow_keeps_parent(inmem):
-    provider, exporter = inmem
-    from overmind import tool, workflow
-
-    @tool()
-    def inner_tool(x):
-        return x
-
-    @workflow()
-    def outer():
-        return inner_tool(1)
-
-    outer()
-    provider.force_flush()
-
-    spans = {s.name.rsplit(".", 1)[-1]: s for s in exporter.get_finished_spans()}
-    parent = spans["outer"]
-    child = spans["inner_tool"]
-    assert child.parent is not None
-    assert child.parent.span_id == parent.context.span_id

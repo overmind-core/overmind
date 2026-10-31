@@ -1,0 +1,46 @@
+name: Deploy Overwatch User Insights
+on:
+  workflow_dispatch:
+  # Ships with the production API (deploy-api.yml); main only reaches staging.
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-overwatch:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sales-dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            sales-dashboard/node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-sales-${{ hashFiles('sales-dashboard/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-sales-
+
+      # sales-dashboard/.env.production holds the API it reads.
+      - run: bun install --frozen-lockfile
+      - run: bun run build --mode production
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: 061081d3722064fa8f3bd5340b55eb7a
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bun run wrangler pages deploy dist --project-name=sales-dashboard-overmind --branch=main

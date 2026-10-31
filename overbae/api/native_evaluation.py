@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Prefetch
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -57,7 +58,7 @@ class NativeEvaluationSuiteSerializer(serializers.Serializer):
         dataset = cell.dataset
         return super().to_representation(
             {
-                **use.describe(cell),
+                **use.describe(cell, chain=dataset.prefetched_chain()),
                 "dataset_name": dataset.name,
                 "capability_id": dataset.capability_id,
                 "capability_name": dataset.capability.name if dataset.capability_id else "",
@@ -272,6 +273,15 @@ class NativeEvaluationViewSet(
             )
             .order_by("-created_at")
         )
+        if self.action == "list":
+            # Actions freeze cells after loading the plan, so only the list reuses prefetched cells.
+            version_cells = Cell.objects.only("id", "dataset_id", "position", "used_at")
+            queryset = queryset.prefetch_related(
+                *(
+                    Prefetch(f"{relation}__dataset__cells", queryset=version_cells)
+                    for relation in ("final_cell", "calibration_cell")
+                )
+            )
         return (
             queryset if self.action in {"destroy", "report"} else queryset.filter(deleted_at=None)
         )

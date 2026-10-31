@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 from django.test import override_settings
+from rest_framework.exceptions import ValidationError
 
+from overbae.api.serializers import FinetuningJobSerializer
 from overbae.services.finetuning_policy import (
     TrainingPlanError,
     default_epochs,
@@ -12,6 +14,8 @@ from overbae.services.finetuning_policy import (
 )
 from overbae.services.finetuning_runner import ModalRunner
 from overbae.services.recommendation.hyperparams import compute_hyperparams
+
+pytestmark = pytest.mark.covers("plans")
 
 
 def _plan(**overrides):
@@ -80,6 +84,7 @@ class TestExplicitValuesWin:
         assert plan.token_budget == 32768
         env = ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")
         assert env["PADDED_TOKEN_BUDGET"] == "32768"
+        assert env["UNSLOTH_BLOCK_COMPILE"] == "0"
 
     @pytest.mark.parametrize("enabled", [True, False])
     def test_native_baseline_choice_reaches_worker_environment(self, enabled):
@@ -121,6 +126,28 @@ class TestExplicitValuesWin:
         assert plan.weight_decay == 0.02
         assert (plan.lora_r, plan.lora_alpha, plan.lora_dropout) == (8, 16, 0.0)
         assert plan.lora_target_modules == "q_proj,v_proj"
+
+    def test_lora_rank_must_be_a_serving_step(self):
+        with pytest.raises(TrainingPlanError, match="lora_r must be one of"):
+            _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 4}})
+        high = _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 512}})
+        assert high.lora_r == 512
+        assert high.lora_alpha == 1024
+        with pytest.raises(TrainingPlanError, match="twice lora_r"):
+            _plan(hyperparameters={"training_type": {"type": "Lora", "lora_r": 8, "lora_alpha": 8}})
+        full = _plan(hyperparameters={"training_type": {"type": "Full", "lora_r": 4}})
+        assert full.lora_r == 4
+        serializer = FinetuningJobSerializer()
+        with pytest.raises(ValidationError, match="twice lora_r"):
+            serializer.validate_hyperparameters(
+                {"training_type": {"type": "Lora", "lora_r": 16, "lora_alpha": 16}}
+            )
+        with pytest.raises(ValidationError, match="lora_r must be one of"):
+            serializer.validate_hyperparameters({"training_type": {"type": "Lora", "lora_r": 12}})
+        accepted = serializer.validate_hyperparameters(
+            {"training_type": {"type": "Lora", "lora_r": 32}}
+        )
+        assert accepted["training_type"]["lora_r"] == 32
 
     @override_settings(FINETUNING_BACKEND="baseten")
     def test_recommender_output_is_reproduced_exactly(self):

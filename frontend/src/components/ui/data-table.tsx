@@ -621,6 +621,7 @@ export function DataTable<T>({
             <div className="shrink-0 border-border/70 border-t">
               <TablePagination
                 count={count}
+                loading={unsettled || isLoading}
                 onPageChange={onPageChange}
                 onPageSizeChange={onPageSizeChange}
                 page={page}

@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { describe, expect, it } from "vitest";
 
 import type { WinnerCandidate } from "./experiment-winner";

@@ -675,6 +675,7 @@ export function RowsGrid({
         <div className="border-t border-border/60">
           <TablePagination
             count={data.total}
+            loading={rowsQuery.isPlaceholderData}
             onPageChange={setPage}
             onPageSizeChange={(s) => {
               setLimit(s);

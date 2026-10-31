@@ -5,6 +5,7 @@ const CHUNK_LOAD_PATTERNS = [
   /importing a module script failed/i,
   /error loading dynamically imported module/i,
   /chunkloaderror/i,
+  /loading chunk \S+ failed/i,
   // SPA fallback serves index.html for missing hashed chunks.
   /expected a javascript.*text\/html/i,
 ];

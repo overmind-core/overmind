@@ -93,17 +93,18 @@ function SpanTreeNodeRow({
           type="button"
         >
           <span className="flex items-center gap-2 text-xs">
-            <TypeIcon
-              aria-hidden
+            <span
               className={cn(
-                "size-3.5 shrink-0",
+                "flex size-5 shrink-0 items-center justify-center rounded-sm",
                 node.span.spanType === "tool_call"
-                  ? "text-cat-2"
+                  ? "bg-cat-2/10 text-cat-2"
                   : node.span.spanType === "llm_call"
-                    ? "text-cat-1"
-                    : "text-muted-foreground"
+                    ? "bg-cat-1/10 text-cat-1"
+                    : "bg-muted text-muted-foreground"
               )}
-            />
+            >
+              <TypeIcon aria-hidden className="size-3.5" />
+            </span>
             <span
               className={cn("truncate", isSelected && "font-medium text-foreground")}
               title={name}

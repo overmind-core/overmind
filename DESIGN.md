@@ -935,6 +935,9 @@ indicator and chart navigation.
 
 ### Loading and live updates
 
+Agent-attributed work uses the recorded coding agent logo instead of a spinner;
+uncredited work retains its normal status icon.
+
 Initial page loads use the shared `LoadingState` spinner inside the page shell;
 keep the page header and navigation visible. Do not use a generic skeleton page.
 Skeletons belong to known component or asset slots: keep the actual table headers,
@@ -951,6 +954,15 @@ an existing cell and moves affected cells and their connectors together over 200
 reduced motion places them immediately. It never refits the camera on a background
 update. Preparation refresh failures keep the last available graph beside a retry
 notice.
+
+### Onboarding
+
+Initial onboarding is embedded in the landing page, using a white retro frame,
+striped title bar and Figma pixel eye without window controls. It introduces MCP
+and keeps the Agent/Data toggle with the setup prompt and upload form. The empty
+dataset inventory reuses the frame for data onboarding. A project without
+capabilities shows setup progress once its agent reports; a project with
+capabilities keeps its grid and shows a dismissible progress strip above it.
 
 ### Motion (system-wide)
 
@@ -1010,6 +1022,9 @@ they name a symbol or quote a wire value.
 
 ## Don't
 
+- Add floating or inset decorative dividers between content sections. Use spacing
+  and aligned labels. Borders belong to container edges, table rows or data-tree
+  guides, not freestanding rules inside padded content.
 - Write a hex, `hsl()`, `rgb()` or a raw Tailwind palette class
   (`bg-blue-500`, `text-zinc-400`) anywhere in app code.
 - Use the brand copper outside `overmind-eye-copper.svg`. Orange in the UI

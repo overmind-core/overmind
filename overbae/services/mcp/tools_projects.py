@@ -2,11 +2,22 @@ from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.utils import timezone
 from pydantic import BaseModel, ConfigDict, Field
 
 from overbae.models import APIToken
+from overbae.models.iam import delegation_denial
+from overbae.services import activity
+from overbae.services.billing_ledger import credit_report
+from overbae.services.billing_provider import get_billing
 from overbae.services.mcp.context import accessible_projects
-from overbae.services.mcp.contracts.projects import CreateApiKeyInput, CreateApiKeyOutput
+from overbae.services.mcp.contracts.activity import ReportOnboardingInput, ReportOnboardingOutput
+from overbae.services.mcp.contracts.projects import (
+    CreateApiKeyInput,
+    CreateApiKeyOutput,
+    GetCreditBalanceInput,
+    GetCreditBalanceOutput,
+)
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import interface_resource
 
@@ -59,21 +70,26 @@ def list_projects(payload, context):
     )
 
 
+@sync_to_async(thread_sensitive=True)
+def get_credit_balance(payload, context):
+    observed_at = timezone.now()
+    if payload.since is not None and payload.since > observed_at:
+        raise MCPError("invalid_input", "since must not be in the future.")
+    return GetCreditBalanceOutput(
+        billing_enabled=get_billing().enabled,
+        observed_at=observed_at,
+        since=payload.since,
+        **credit_report(context.user, since=payload.since, observed_at=observed_at),
+    )
+
+
 def _key_project(payload: CreateApiKeyInput, context):
     scope = context.token.scope if isinstance(context.token.scope, dict) else {}
-    account = scope.get("scope") == "account"
+    denial = delegation_denial(scope, payload.project_id)
+    if denial:
+        raise MCPError("permission_denied", denial)
     if payload.project_id is None:
-        if account:
-            return None
-        raise MCPError(
-            "permission_denied",
-            "A project API key can only create a key for its own project.",
-        )
-    if not account and str(payload.project_id) != str(context.project.id):
-        raise MCPError(
-            "permission_denied",
-            "A project API key can only create a key for its own project.",
-        )
+        return None
     try:
         selected = UUID(str(payload.project_id))
     except ValueError:
@@ -107,6 +123,14 @@ def _create_api_key(payload: CreateApiKeyInput, context) -> CreateApiKeyOutput:
     )
 
 
+@sync_to_async(thread_sensitive=True)
+def report_onboarding_progress(payload, context):
+
+    activity.report_onboarding_progress(context, payload.run_id, payload.completed_steps)
+    query = activity.visible(context.user, [context.project.pk], context.project.pk)
+    return ReportOnboardingOutput(milestones=activity.milestones(query, "agent"))
+
+
 def register_project_tools(catalog):
     from overbae.services.mcp.catalog import ToolDefinition
 
@@ -114,12 +138,7 @@ def register_project_tools(catalog):
         ToolDefinition(
             name="create_api_key",
             title="Create API key",
-            description=(
-                "Create an API key. name, description and expires_in_days (0, 30, 90, 180, 365; "
-                "0 does not expire) match the Console dialog. Omit project_id for an account key; "
-                "pass project_id for a project key. The plaintext is returned once. A project "
-                "connection can only create a key for its own project."
-            ),
+            description="Create a key: name, description, expiry (0=never or 30/90/180/365 days). Plaintext once. Omit project_id for account scope; project keys mint only same-project keys.",
             input_model=CreateApiKeyInput,
             output_model=CreateApiKeyOutput,
             read_only=False,
@@ -136,7 +155,7 @@ def register_project_tools(catalog):
         ToolDefinition(
             name="list_projects",
             title="List accessible projects",
-            description="List active projects this connection may access. Pass the chosen id as project_id on subsequent tools and resources; selection is per request.",
+            description="List accessible active projects. Pass project_id per tool/resource; no shared selection.",
             input_model=ListProjectsInput,
             output_model=ListProjectsOutput,
             read_only=True,
@@ -148,4 +167,44 @@ def register_project_tools(catalog):
             project_scoped=False,
         ),
         list_projects,
+    )
+    catalog.register(
+        ToolDefinition(
+            name="get_credit_balance",
+            title="Get credit balance",
+            description=(
+                "Read account balance, lifetime grants/spending and usage by service in credits "
+                "(100/USD). Works with account and project keys; no project_id. since filters "
+                "usage only; save observed_at before a budgeted task. Reporting excludes unposted "
+                "charges and does not enforce a cap. Read credit_reporting in "
+                "overmind://interface/current for budget tracking limits."
+            ),
+            input_model=GetCreditBalanceInput,
+            output_model=GetCreditBalanceOutput,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:read"}),
+            cost_class="free",
+            async_mode="sync",
+            project_scoped=False,
+        ),
+        get_credit_balance,
+    )
+
+    catalog.register(
+        ToolDefinition(
+            name="report_onboarding_progress",
+            title="Report onboarding progress",
+            description="Report verified onboarding stages (0–10); reuse run_id. Roadmap: overmind://activity. No notifications.",
+            input_model=ReportOnboardingInput,
+            output_model=ReportOnboardingOutput,
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:account:write"}),
+            cost_class="free",
+            async_mode="sync",
+        ),
+        report_onboarding_progress,
     )

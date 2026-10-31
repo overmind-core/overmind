@@ -26,6 +26,7 @@ function ConfirmDialog({
   destructive = false,
   error = null,
   isPending = false,
+  confirmDisabled = false,
   keepOpenOnError = false,
   onConfirm,
 }: {
@@ -40,6 +41,7 @@ function ConfirmDialog({
   /** Restated inside the dialog, since a toast can fade before it is read. */
   error?: Error | null;
   isPending?: boolean;
+  confirmDisabled?: boolean;
   /** Await `onConfirm` and keep the dialog open if it rejects. Requires an awaitable
    *  `onConfirm`. */
   keepOpenOnError?: boolean;
@@ -61,7 +63,7 @@ function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            disabled={isPending}
+            disabled={isPending || confirmDisabled}
             onClick={(e) => {
               // Block the default auto-close so the `isPending` spinner stays visible.
               if (isPending) e.preventDefault();

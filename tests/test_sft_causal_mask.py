@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.services.sft_assets.causal_mask import install_training_causal_mask
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def _model(module: str, model_type: str = "qwen3"):

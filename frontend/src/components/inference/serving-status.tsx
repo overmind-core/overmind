@@ -1,6 +1,7 @@
 import { DeployedModelStatusBadge } from "@/components/inference/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { domainStatus, type StatusTone, TONE_BADGE_VARIANT } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 import type { InferenceLiveStats } from "@/openapi";
 
 export type LiveState = "live" | "warming" | "dormant" | "unknown";
@@ -46,5 +47,60 @@ export function ServingStatusBadge({
     >
       {LIVE_LABEL[state]}
     </Badge>
+  );
+}
+
+export function EndpointStatus({
+  label,
+  state,
+}: {
+  label: string;
+  state: "online" | "busy" | "asleep" | "offline" | "error";
+}) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-2 border-l border-border pl-3 text-xs font-normal text-muted-foreground"
+      role="status"
+    >
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 shrink-0 rounded-xs", {
+          "bg-destructive": state === "error",
+          "bg-foreground motion-safe:animate-pulse": state === "busy",
+          "bg-success": state === "online",
+          "border border-muted-foreground": state === "offline",
+          "border border-warning": state === "asleep",
+        })}
+      />
+      {label}
+    </span>
+  );
+}
+
+export function ServingStatusIndicator({
+  status,
+  live,
+}: {
+  status: string;
+  live: InferenceLiveStats | undefined;
+}) {
+  const state = deriveLiveState(live);
+  return (
+    <EndpointStatus
+      label={status === "ready" ? LIVE_LABEL[state] : status}
+      state={
+        status === "failed"
+          ? "error"
+          : status === "deleted"
+            ? "offline"
+            : status !== "ready" || state === "warming"
+              ? "busy"
+              : state === "live"
+                ? "online"
+                : state === "dormant"
+                  ? "asleep"
+                  : "offline"
+      }
+    />
   );
 }

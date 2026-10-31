@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.api.scoping import project_ids_for
 from overbae.models import APIToken, Project, ProjectMembership, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def _jwt(user: User) -> APIClient:
@@ -91,6 +91,59 @@ def test_account_api_key_can_mint_project_scoped_key():
     assert r.data["scope"]["scope"] == "project"
     assert r.data["scope"]["resourceIds"] == [str(project.id)]
     assert r.data["key"].startswith("ovr_")
+
+
+def test_project_api_key_mints_only_for_its_own_project():
+    user, own, sibling = make_user(), make_project(), make_project()
+    ProjectMembership.objects.create(user=user, project=own)
+    ProjectMembership.objects.create(user=user, project=sibling)
+    client, _ = _api_key_client(user, project=own)
+
+    account = {"name": "x", "scope": {"scope": "account", "permission": ["read", "write"]}}
+    pinned = {
+        "name": "x",
+        "scope": {"scope": "project", "resourceIds": [str(sibling.id)], "permission": ["read"]},
+    }
+    for body in (account, {"name": "x", "project": str(sibling.id)}, pinned):
+        r = client.post("/api/auth/api-keys/", body, format="json")
+        assert r.status_code == status.HTTP_403_FORBIDDEN, body
+
+    r = client.post("/api/auth/api-keys/", {"name": "x", "project": str(own.id)}, format="json")
+    assert r.status_code == status.HTTP_201_CREATED
+    assert r.data["scope"]["resourceIds"] == [str(own.id)]
+    assert APIToken.objects.filter(user=user).count() == 2
+
+
+def test_read_only_api_key_cannot_write():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+    raw, _ = APIToken.create_for_user(user, project=project, permission=["read"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
+    assert client.get(f"/api/projects/{project.id}/").status_code == status.HTTP_200_OK
+    r = client.patch(f"/api/projects/{project.id}/", {"name": "renamed"}, format="json")
+    assert r.status_code == status.HTTP_403_FORBIDDEN
+    project.refresh_from_db()
+    assert project.name != "renamed"
+
+
+def test_api_key_mints_only_permissions_it_holds():
+    user, project = make_user(), make_project()
+    ProjectMembership.objects.create(user=user, project=project)
+    raw, _ = APIToken.create_for_user(user, project=project, permission=["write"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
+    wider = client.post("/api/auth/api-keys/", {"project": str(project.id)}, format="json")
+    assert wider.status_code == status.HTTP_403_FORBIDDEN
+
+    same = {
+        "scope": {"scope": "project", "resourceIds": [str(project.id)], "permission": ["write"]}
+    }
+    r = client.post("/api/auth/api-keys/", same, format="json")
+    assert r.status_code == status.HTTP_201_CREATED
+    assert r.data["scope"]["permission"] == ["write"]
 
 
 def test_api_key_current_returns_scope():

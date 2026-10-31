@@ -7,6 +7,8 @@ import pytest
 
 from overbae.api.streaming import aiter_keeping_idle_alive, iter_keeping_idle_alive
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 def test_first_item_is_ping():
     def source():

@@ -1,10 +1,10 @@
-import asyncio
 import copy
 import uuid
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from modal_shared.training_monitoring import classification_metrics, fingerprint, resolve_policy
@@ -18,8 +18,9 @@ from overbae.models import (
     User,
 )
 from overbae.services import training_monitoring
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
+
+pytestmark = pytest.mark.covers("measured-facts")
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def record(job, *, step=2, examples=None):
     }
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_collector_retains_quality_assessment_and_later_loss_does_not_hide_it(quality_job):
     job, user = quality_job
     source = record(job)
@@ -114,12 +115,8 @@ def test_collector_retains_quality_assessment_and_later_loss_does_not_hide_it(qu
     client = APIClient()
     client.force_authenticate(user)
     with patch("modal.Function.from_name", side_effect=AssertionError("read invoked provider")):
-        result = asyncio.run(
-            CATALOG.call("get_job", {"kind": "finetune_job", "id": str(job.id)}, context)
-        )
-        snapshot = asyncio.run(
-            CATALOG.call("inspect_training_progress", {"job": str(job.id)}, context)
-        )
+        result = call_tool("get_job", {"kind": "finetune_job", "id": str(job.id)}, context)
+        snapshot = call_tool("inspect_training_progress", {"job": str(job.id)}, context)
         rest = client.get(reverse("finetuningjob-monitoring", kwargs={"id": job.id}))
     assert not result.isError, result.structuredContent
     summary = result.structuredContent["details"]["monitoring"]

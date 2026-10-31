@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import api from "@/client";
 import { JudgeModelSelect } from "@/components/evaluations/judge-model-select";
@@ -223,6 +223,25 @@ function CreateRunForm({
             <Field label="Eval dataset">
               <SearchableSelect
                 ariaLabel="Eval dataset"
+                emptyMessage={
+                  datasets.error ? (
+                    "Couldn't load evaluation datasets."
+                  ) : (
+                    <>
+                      No evaluation datasets in this project.{" "}
+                      <Link
+                        className="text-foreground underline underline-offset-2"
+                        search={{ projectId }}
+                        to="/datasets"
+                      >
+                        Open datasets
+                      </Link>
+                    </>
+                  )
+                }
+                isLoading={
+                  datasets.isPending || (datasets.isFetching && !datasets.data?.results.length)
+                }
                 onChange={(value) => {
                   setDatasetId(value);
                   setEvalSetId("");
@@ -236,10 +255,12 @@ function CreateRunForm({
                 triggerClassName="w-full"
                 value={datasetId}
               />
+              <p className="text-xs text-muted-foreground">Only evaluation datasets are listed.</p>
             </Field>
             <Field label="Model being tested">
               <SearchableSelect
                 ariaLabel="Model being tested"
+                isLoading={catalog.isPending}
                 onChange={setModel}
                 options={(catalog.data?.models ?? [])
                   .filter((row) => !row.id.includes(":batch"))
@@ -258,6 +279,7 @@ function CreateRunForm({
             <Field label="Eval set">
               <SearchableSelect
                 ariaLabel="Eval set"
+                isLoading={sets.isPending}
                 onChange={(value) => {
                   setEvalSetId(value);
                   setJudgeModel("");

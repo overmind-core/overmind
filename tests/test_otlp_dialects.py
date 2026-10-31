@@ -1,13 +1,21 @@
 """Every exporter dialect lands as the same native span through the public OTLP endpoint."""
 
+import json
 import uuid
 
 import pytest
-from factories import ingest_spans, make_capability, make_project
+from factories import (
+    api_key_client,
+    ingest_spans,
+    make_capability,
+    make_member,
+    make_project,
+    make_user,
+)
 
 from overbae.models import Span
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("otlp-ingest")]
 
 
 def _ingested(name: str, attributes: dict) -> Span:
@@ -90,3 +98,124 @@ def test_a_capability_accumulates_derived_or_reported_cost(attrs, cost):
         assert not stats.get("cost_usd")
     else:
         assert stats["cost_usd"] == cost
+
+
+def test_an_otlp_json_export_lands_like_protobuf():
+    project = make_project()
+    owner = make_user()
+    make_member(owner, project)
+    trace_id, root_id, child_id = uuid.uuid4().hex, uuid.uuid4().hex[:16], uuid.uuid4().hex[:16]
+    # OTLP/JSON: hex ids, integer enums, 64-bit integers as strings, unknown fields.
+    export = {
+        "resourceSpans": [
+            {
+                "extension": {"spanId": "opaque"},
+                "resource": {
+                    "attributes": [{"key": "service.name", "value": {"stringValue": "web"}}]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": trace_id,
+                                "spanId": root_id,
+                                "parentSpanId": "",
+                                "name": "agent",
+                                "kind": 2,
+                                "startTimeUnixNano": "1000",
+                                "endTimeUnixNano": "9000",
+                            },
+                            {
+                                "traceId": trace_id,
+                                "spanId": child_id,
+                                "parentSpanId": root_id,
+                                "name": "chat",
+                                "startTimeUnixNano": "2000",
+                                "endTimeUnixNano": "8000",
+                                "attributes": [
+                                    {"key": "gen_ai.request.model", "value": {"stringValue": "m"}},
+                                    {
+                                        "key": "gen_ai.usage.input_tokens",
+                                        "value": {"intValue": "12"},
+                                    },
+                                ],
+                            },
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+
+    response = api_key_client(owner, project).post(
+        "/api/v1/traces", data=json.dumps(export), content_type="application/json"
+    )
+
+    assert response.status_code == 200, response.content
+    root = Span.objects.get(project=project, span_id=root_id)
+    child = Span.objects.get(project=project, span_id=child_id)
+    assert (root.trace_id, root.parent_span_id, root.service_name) == (trace_id, None, "web")
+    assert (child.parent_span_id, child.duration_ns) == (root_id, 6000)
+    assert child.attributes["gen_ai.usage.input_tokens"] == 12
+
+
+@pytest.mark.parametrize(
+    ("attributes", "input_attribute", "output_attribute"),
+    [
+        (
+            {"gen_ai.input.messages": "[]", "gen_ai.output.messages": "[]"},
+            "gen_ai.input.messages",
+            "gen_ai.output.messages",
+        ),
+        (
+            {"gen_ai.tool.call.arguments": '{"q": "w"}', "gen_ai.tool.call.result": "Result"},
+            "gen_ai.tool.call.arguments",
+            "gen_ai.tool.call.result",
+        ),
+        (
+            {"gen_ai.tool.call.arguments": '{"q": "w"}', "anthropic.tool_result.content": "[]"},
+            "gen_ai.tool.call.arguments",
+            "anthropic.tool_result.content",
+        ),
+        (
+            {"gen_ai.prompt": '{"messages": []}', "gen_ai.completion": '{"completion": "A"}'},
+            "gen_ai.prompt",
+            "gen_ai.completion",
+        ),
+        ({"user_prompt": "Who won?"}, "user_prompt", None),
+        (
+            {"tool_input": '{"query": "w"}', "response.model_output": "Team A."},
+            "tool_input",
+            "response.model_output",
+        ),
+        (
+            {"overmind.input.data": "q", "gen_ai.input.messages": "[]"},
+            "overmind.input.data",
+            None,
+        ),
+    ],
+    ids=[
+        "genai messages (Claude API)",
+        "genai tool span",
+        "Claude API tool span",
+        "single-attribute prompt (OpenRouter)",
+        "Claude Code prompt",
+        "Claude Code detailed",
+        "native payload wins",
+    ],
+)
+def test_a_span_names_the_attributes_holding_its_input_and_output(
+    attributes, input_attribute, output_attribute
+):
+    project = make_project()
+    viewer = make_user()
+    make_member(viewer, project)
+    trace_id = uuid.uuid4().hex
+    ingest_spans(project, [{"name": "span", "trace_id": trace_id, "attributes": attributes}])
+
+    (span,) = api_key_client(viewer, project).get(f"/api/traces/{trace_id}/").json()["spans"]
+
+    assert (span["input_attribute"], span["output_attribute"]) == (
+        input_attribute,
+        output_attribute,
+    )

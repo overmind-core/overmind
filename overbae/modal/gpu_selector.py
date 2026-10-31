@@ -10,26 +10,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from modal_shared.serving.capacity import (
+    ACTIVATION_OVERHEAD_GB,
+    GPU_MEMORY_UTILIZATION,
+    GPU_VRAM_GB,
+    MAX_CONCURRENT,
+    sequence_cap,
+)
 from overbae.core.errors import InputValidationError
 
 logger = logging.getLogger(__name__)
 
-GPU_MEMORY_UTILIZATION = 0.90
-# Non-KV memory vLLM holds beyond the weights: peak activations, CUDA context,
-# NCCL/allocator slack, and captured CUDA graphs. Measured at 3.25 GiB on
-# Qwen2.5-72B-Instruct FP8 / H200; capturing CUDAGRAPH_CAPTURE_SIZES adds
-# 0.16-0.22 GiB of graphs plus ~0.15 GiB of activation on L4/L40S/H100, so 4.0
-# keeps the same margin the eager 3.5 had. Widening the capture list costs
-# 1.0-1.43 GiB instead and would need this raised again.
-#
-# MoE bases run higher — Qwen3-Coder-30B-A3B measured ~5.1 GiB even eager, from
-# expert-routing buffers rather than graphs. That gap predates graph capture and
-# only skews the concurrency estimate, since vLLM sizes KV from actual free VRAM.
-ACTIVATION_OVERHEAD_GB = 4.0
-# KV cache dtype bytes: vLLM uses BF16 KV cache by default even for FP8 models.
-KV_DTYPE_BYTES = 2
-# Hard ceiling on concurrent inputs — matches MAX_CONCURRENT_INPUTS in modal_vllm_worker.py
-MAX_CONCURRENT = 32
 # KV allowance used only by the missing-arch-constants fallback, where the real
 # per-token KV size is unknown. Roughly one mid-length sequence.
 FALLBACK_KV_RESERVE_GB = 4.0
@@ -39,14 +30,14 @@ FALLBACK_KV_RESERVE_GB = 4.0
 # H100 (same VRAM as A100-80GB, dearer — selection is capacity-only), RTX PRO 6000
 # (96 GB but ~1.8 TB/s against H200's 4.8).
 GPU_TIERS: list[dict[str, Any]] = [
-    {"name": "L4", "vram_gb": 24, "enabled": True},
-    {"name": "L40S", "vram_gb": 48, "enabled": True},
-    {"name": "A100-80GB", "vram_gb": 80, "enabled": True},
-    {"name": "H200", "vram_gb": 141, "enabled": True},
-    {"name": "B200", "vram_gb": 192, "enabled": True},
+    {"name": "L4", "vram_gb": GPU_VRAM_GB["L4"], "enabled": True},
+    {"name": "L40S", "vram_gb": GPU_VRAM_GB["L40S"], "enabled": True},
+    {"name": "A100-80GB", "vram_gb": GPU_VRAM_GB["A100-80GB"], "enabled": True},
+    {"name": "H200", "vram_gb": GPU_VRAM_GB["H200"], "enabled": True},
+    {"name": "B200", "vram_gb": GPU_VRAM_GB["B200"], "enabled": True},
     # Needs vLLM 0.19.0+: earlier builds hang on SM103 TRTLLM attention, where it
     # now falls back to FlashInfer.
-    {"name": "B300", "vram_gb": 288, "enabled": True},
+    {"name": "B300", "vram_gb": GPU_VRAM_GB["B300"], "enabled": True},
 ]
 
 
@@ -63,11 +54,59 @@ def _smallest_tier_holding_weights(model_cfg: dict[str, Any], tiers: list[dict[s
     return tiers[-1]["name"]
 
 
+# Same VRAM as A100-80GB. Serverless selection omits it; dedicated offers it as a
+# speed and price choice beside A100, not as extra capacity.
+DEDICATED_TIERS: list[dict[str, Any]] = [
+    {"name": name, "vram_gb": GPU_VRAM_GB[name]}
+    for name in ("L4", "L40S", "A100-80GB", "H100", "H200", "B200", "B300")
+]
+
+
 def gpu_vram_gb(gpu_type: str) -> int:
-    for tier in GPU_TIERS:
+    for tier in (*GPU_TIERS, *DEDICATED_TIERS):
         if tier["name"] == gpu_type:
             return tier["vram_gb"]
     return 0
+
+
+def fitting_gpu_names(model_cfg: dict[str, Any], max_model_len: int, *, fp8: bool) -> list[str]:
+    """Enabled serverless tiers that hold this shape, cheapest first. Empty when none fit."""
+    cfg = {**model_cfg, "fp8_supported": fp8}
+    inference = cfg.get("inference") or {}
+    minimum_vram = inference.get("min_vram_gb", 0)
+    tiers = [t for t in GPU_TIERS if t["enabled"] and t["vram_gb"] >= minimum_vram]
+    if not tiers:
+        return []
+    num_attn_layers = cfg.get("num_attn_layers")
+    num_kv_heads = cfg.get("num_kv_heads")
+    head_dim = cfg.get("head_dim")
+    if not all([num_attn_layers, num_kv_heads, head_dim]):
+        fallback = inference.get("gpu_type") or _smallest_tier_holding_weights(cfg, tiers)
+        floor = gpu_vram_gb(fallback)
+        return [tier["name"] for tier in tiers if tier["vram_gb"] >= floor]
+    weights_gb = (cfg.get("total_params_b") or 0) * (1 if fp8 else 2)
+    names = []
+    for tier in tiers:
+        cap = sequence_cap(
+            vram_gb=tier["vram_gb"],
+            weight_gb=weights_gb,
+            num_attn_layers=num_attn_layers,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            max_model_len=max_model_len,
+        )
+        if cap:
+            names.append(tier["name"])
+    return names
+
+
+def dedicated_gpu_names(model_cfg: dict[str, Any], max_model_len: int, *, fp8: bool) -> list[str]:
+    """Every dedicated GPU at or above the smallest serverless tier that fits, including H100."""
+    fitting = fitting_gpu_names(model_cfg, max_model_len, fp8=fp8)
+    if not fitting:
+        return []
+    floor = gpu_vram_gb(fitting[0])
+    return [tier["name"] for tier in DEDICATED_TIERS if tier["vram_gb"] >= floor]
 
 
 def select_gpu(
@@ -102,30 +141,26 @@ def select_gpu(
         return fallback_gpu, MAX_CONCURRENT
 
     fp8 = model_cfg.get("fp8_supported", False)
-    bytes_per_param = 1 if fp8 else 2
-    weights_gb = model_cfg["total_params_b"] * bytes_per_param
-
-    # KV cache bytes per token for full-attention layers only.
-    kv_bytes_per_tok = 2 * num_attn_layers * num_kv_heads * head_dim * KV_DTYPE_BYTES
-    min_kv_1seq_gb = (max_model_len * kv_bytes_per_tok) / (1024**3)
+    weights_gb = model_cfg["total_params_b"] * (1 if fp8 else 2)
 
     for tier in tiers:
-        usable = tier["vram_gb"] * GPU_MEMORY_UTILIZATION
-        kv_budget = usable - weights_gb - ACTIVATION_OVERHEAD_GB
-        if kv_budget < min_kv_1seq_gb:
+        max_concurrent = sequence_cap(
+            vram_gb=tier["vram_gb"],
+            weight_gb=weights_gb,
+            num_attn_layers=num_attn_layers,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            max_model_len=max_model_len,
+        )
+        if not max_concurrent:
             continue
-        raw_concurrent = int(kv_budget / min_kv_1seq_gb)
-        max_concurrent = max(1, min(MAX_CONCURRENT, raw_concurrent))
         logger.info(
-            "gpu_selector: model=%s max_model_len=%d → gpu=%s concurrent=%d "
-            "(weights=%.1fGB kv_budget=%.1fGB min_kv=%.2fGB)",
+            "gpu_selector: model=%s max_model_len=%d → gpu=%s concurrent=%d (weights=%.1fGB)",
             model_cfg.get("id"),
             max_model_len,
             tier["name"],
             max_concurrent,
             weights_gb,
-            kv_budget,
-            min_kv_1seq_gb,
         )
         return tier["name"], max_concurrent
 

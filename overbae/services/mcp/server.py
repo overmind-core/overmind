@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from dataclasses import replace
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
@@ -31,8 +33,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
+from overbae.services.activity import connected
 from overbae.services.mcp import CONTRACT_VERSION
-from overbae.services.mcp.auth import MCP_PATH, MCPAuthMiddleware
+from overbae.services.mcp.auth import MCP_PATHS, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.errors import MCPError, error_payload
@@ -40,6 +43,8 @@ from overbae.services.mcp.oauth_routes import domain_challenge, oauth_routes
 from overbae.services.mcp.prompts import get_prompt as render_prompt
 from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
+
+logger = logging.getLogger(__name__)
 
 SERVER_NAME = "overmind-platform"
 SERVER_VERSION = CONTRACT_VERSION
@@ -65,12 +70,15 @@ mcp_server = Server(
         "the returned kind and id for asynchronous work. Preserve pagination, truncation, "
         "missing scores, metric errors and pinned dataset/model identities in conclusions. "
         "Inspection does not authorize mutations or paid runs. Check readiness and costs "
-        "before an authorized evaluation or training launch. The calling coding agent owns dataset interpretation, transformation authoring and semantic work. "
+        "before an authorized evaluation or training launch. Use get_credit_balance for balances and "
+        "budget monitoring; read credit_reporting in overmind://interface/current for limits. "
+        "The calling coding agent owns dataset interpretation, transformation authoring and semantic work. "
         "The platform has no Workshop planning agent. Retain scripts automatically with save_dataset_pipeline(dataset=..., package=...); never ask users whether to keep them. Retain scoped uncertainties and their evidence in the script and output; successful formatting and execution do not establish suitability. Discover reusable project revisions with inspect_dataset_workbench; prefer reuse or an attributed derived_from variant. Upload original source bytes once, pin upstream dataset revisions, and retain transformation code before full-data processing. Never upload locally transformed derivatives as unrelated source datasets. New transformations require a retained Python package; package-free historical revisions are read-only. Upload scripts using overmind dataset pipeline-upload, register with save_dataset_pipeline, validate_dataset_pipeline, preview then run_dataset_pipeline. Each successful run replaces the displayed preparation with its selected end-to-end process. Corrections update the same recipe family and rerun from its original source; do not append repair cells or create prepared-v2 datasets. Pinned consumer inputs remain immutable internally. Enable saved source bindings explicitly for repeated snapshot rebuilds. import_dataset_version is for genuine external results, not a substitute for retaining transformation code. "
         "When asked to prepare data in Overmind, local files alone are not completion: publish and inspect the requested dataset or report an explicit blocker. Inspect the named capability's contract and examples before choosing target semantics; link it explicitly. Preserve unknown meaning rather than inventing task labels. Separate meaningful preparation stages and review branches from final formatting. Use the returned upload argv and identifiers verbatim, replacing only documented placeholders. "
         "Declare the final step consumer (decision_train, decision_eval, chat_train or model_eval) so previews validate nested targets. Use batch_rows only for row-independent steps; sorting, grouping and deduplication require the full population. Preserve evidenced target semantics and structured provenance; never remove them to bypass a validator. Preview defers absolute min_rows/max_rows bounds to publication; lineage and preserve_rows checks remain enforced. Inspect deferred checks before publishing. Follow poll_after_seconds; queued work alone is not a failure or reason to resubmit. Report format compatibility separately from task suitability, which remains unmeasured without attributable evidence. "
         "Author explicit step IDs and input dependencies. Converge intended branches with inputs=[earlier IDs]; disjoint rows concatenate in declared order, overlapping source_row identities fail. The last step is the output: inspect flow.unconsumed_steps before publication. Training preparation should end in trainable examples with review metadata, not disconnected inspection tables; never invent targets or treat flags as resolved. Script conditions cite their entrypoint line and describe code, not independently verified semantics. Receipts record actual parent cells, counts and fingerprints. Pin sources and use stable request keys. "
         "Use author-dataset-transformation for conditional authoring, retrieval and adaptation. inspect_dataset_workbench(pipeline=revision ID) retrieves an exact recipe and its family history. Only retained packages execute in the approved isolated runtime; other code and semantic/provider work stay in the native environment. Technical format checks do not prove semantic quality or exhaustive/exclusive branches. "
+        "Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation. An open preparation ends after 24 hours without activity or when the user ends it in the Console. "
         "Local scanning, file transfers, credentials and repository execution use the CLI "
         "handoffs in the relevant resources/prompts. The server does not edit local files. "
         "When a user wants a visual view, open the ordinary Console for this project; "
@@ -90,6 +98,15 @@ async def _list_tools() -> list[types.Tool]:
 @mcp_server.call_tool(validate_input=False)
 async def _call_tool(name: str, arguments: dict[str, Any] | None) -> types.CallToolResult:
     context = get_context()
+    params = mcp_server.request_context.session.client_params
+    if params:
+        context = replace(context, client_name=params.clientInfo.name[:100])
+    elif hasattr(context.token, "grant"):
+        client_name = await sync_to_async(
+            lambda: context.token.grant.client.metadata.get("client_name", ""),
+            thread_sensitive=True,
+        )()
+        context = replace(context, client_name=str(client_name)[:100])
     return await CATALOG.call(name, arguments or {}, context)
 
 
@@ -279,10 +296,7 @@ class MCPTransportMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http" or scope.get("path") not in {
-            MCP_PATH,
-            MCP_PATH.rstrip("/"),
-        }:
+        if scope.get("type") != "http" or scope.get("path") not in MCP_PATHS:
             await self.app(scope, receive, send)
             return
 
@@ -344,6 +358,31 @@ class MCPTransportMiddleware:
                 )(scope, replay, send)
                 return
 
+        if isinstance(payload, dict) and payload.get("method") == "initialize":
+            chunks = []
+            succeeded = False
+
+            async def capture(message):
+                nonlocal succeeded
+                if message["type"] == "http.response.body":
+                    chunks.append(message.get("body", b""))
+                    if not message.get("more_body", False):
+                        with suppress(TypeError, ValueError):
+                            succeeded = "result" in json.loads(b"".join(chunks))
+                await send(message)
+
+            await self.app(scope, replay, capture)
+            if succeeded:
+                client_info = (payload.get("params") or {}).get("clientInfo") or {}
+                client_name = client_info.get("name")
+                if isinstance(client_name, str):
+                    try:
+                        await sync_to_async(connected, thread_sensitive=True)(
+                            replace(get_context(), client_name=client_name[:100])
+                        )
+                    except Exception:
+                        logger.exception("Could not retain MCP connection milestone")
+            return
         await self.app(scope, replay, send)
 
 
@@ -380,10 +419,9 @@ def create_mcp_application() -> Starlette:
         routes=[
             *oauth_routes(),
             Route("/.well-known/openai-apps-challenge", endpoint=domain_challenge, methods=["GET"]),
-            Route(
-                MCP_PATH,
-                endpoint=endpoint,
-                methods=["GET", "POST", "DELETE"],
+            *(
+                Route(path, endpoint=endpoint, methods=["GET", "POST", "DELETE"])
+                for path in MCP_PATHS
             ),
         ],
         middleware=[

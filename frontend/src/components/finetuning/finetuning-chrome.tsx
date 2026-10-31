@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DeltaChip } from "@/components/ui/delta-chip";
 import { Icon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useActivityActor } from "@/hooks/use-activity";
 import { scoreChipClass } from "@/lib/colors";
 import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { PROSE } from "@/lib/typography";
@@ -71,6 +72,7 @@ export function EvalScoreChip({ value }: { value: number | null | undefined }) {
 /** Scoped to fine-tuning on purpose: the skull glyph is local, every other
  *  page uses the neutral StatusBadge. */
 export function FtStatusBadge({
+  taskId,
   status,
   fallback,
   label,
@@ -78,6 +80,7 @@ export function FtStatusBadge({
   progress,
   className,
 }: {
+  taskId?: string;
   status: string | null | undefined;
   fallback: string;
   label?: string;
@@ -85,6 +88,7 @@ export function FtStatusBadge({
   progress?: number | null;
   className?: string;
 }) {
+  const actorKind = useActivityActor("finetune_job", taskId);
   const cfg = resolveStatus(status, fallback);
   const icon =
     cfg.tone === "success" ? (
@@ -96,6 +100,7 @@ export function FtStatusBadge({
     );
   return (
     <ResolvedStatusBadge
+      actorKind={actorKind}
       cfg={cfg}
       className={className}
       icon={icon}

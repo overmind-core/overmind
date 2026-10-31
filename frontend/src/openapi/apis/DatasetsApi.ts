@@ -89,6 +89,10 @@ export interface DatasetsDestroyRequest {
     id: string;
 }
 
+export interface DatasetsEndPreparationCreateRequest {
+    id: string;
+}
+
 export interface DatasetsEventsRetrieveRequest {
     id: string;
     format?: DatasetsEventsRetrieveFormatEnum;
@@ -425,6 +429,61 @@ export class DatasetsApi extends runtime.BaseAPI {
      */
     async datasetsDestroy(requestParameters: DatasetsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.datasetsDestroyRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     */
+    async datasetsEndPreparationCreateRaw(requestParameters: DatasetsEndPreparationCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Dataset>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsEndPreparationCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/end-preparation/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async datasetsEndPreparationCreate(requestParameters: DatasetsEndPreparationCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
+        const response = await this.datasetsEndPreparationCreateRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**

@@ -69,8 +69,15 @@ export function usdToOvermindCredits(usd: number): number {
   return Math.round(usd / 0.01);
 }
 
+export function formatOvermindCredits(usd: number): string {
+  const credits = usd / 0.01;
+  return Math.abs(credits) < 1
+    ? credits.toLocaleString("en-US", { maximumFractionDigits: 5 })
+    : usdToOvermindCredits(usd).toLocaleString("en-US");
+}
+
 export function usdToOvermindCreditsWithLabel(usd: number): string {
-  return `${usdToOvermindCredits(usd)} credits`;
+  return `${formatOvermindCredits(usd)} credits`;
 }
 
 export const plural = (count: number, noun: string): string =>

@@ -12,7 +12,7 @@ from django.utils import timezone
 from overbae.innermind import generation, runs
 from overbae.models import EvalGenerationScheduler, EvalRun, EvalRunRow, Project
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("capacity")]
 
 
 @pytest.mark.django_db(transaction=True)

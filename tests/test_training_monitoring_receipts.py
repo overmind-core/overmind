@@ -15,6 +15,8 @@ from overbae.models import (
 from overbae.services import training_monitoring
 from overbae.services.training_cancellation import cancel
 
+pytestmark = pytest.mark.covers("work-once")
+
 
 @pytest.fixture
 def monitoring_job():

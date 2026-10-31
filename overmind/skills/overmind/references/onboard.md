@@ -28,11 +28,11 @@ Isolation does not install application tracing. Verify the tracing SDK in the ap
 
 ## Connect project
 
-1. `python -m overmind init --ide <client>` writes `overmind.toml`, prepares the IDE's MCP config and installs this skill.
-1. `python -m overmind sync` creates the Console project from `project-name` in `overmind.toml` (seeded from the repo directory), writes `project-id` into the toml, stores the project credential in `.overmind/credentials.toml` and updates every configured IDE's MCP entry. Empty capabilities are fine.
-1. Report that the project is connected and a coding-agent reload is required. In Claude Code, ask the user to exit and run `claude -c`; elsewhere, reload the IDE. Stop until the user reloads. Do not print credentials or run init again.
+1. `python -m overmind init --ide <client>`. If your sandbox blocks it, ask the user to approve running it outside the sandbox.
+1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when it offers one or else by following the `Next:` line `init` printed, then call it again.
+1. Call `create_api_key` without `project_id`, then run `OVERMIND_API_KEY=<key> python -m overmind sync --api-url <saved-base-url>` once. Do not print the key or rerun init.
 
-After reload, read `overmind://project/current` to confirm the project and resume scanning without repeating sync. If authentication is still unavailable, keep this stage blocked and report it.
+Then read `overmind://project/current?project_id=ID` to confirm the project. If authentication is still unavailable, keep this stage blocked and report it.
 
 **Do not run `/overmind setup` or read [setup.md](setup.md) until sync succeeds.** If `overmind.toml` exists, merge: do not overwrite `base-url`, `project-id` or capability ids without reading first. To recreate a project, delete it in the Console, clear `project-id` in the toml, keep `project-name` as the repo directory name, then repeat sync.
 

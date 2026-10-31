@@ -22,7 +22,7 @@ from overbae.services.optimizer_ledger import (
     set_command_template,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 
 def _capability_with_eval_dataset():

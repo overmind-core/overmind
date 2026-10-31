@@ -50,13 +50,20 @@ export const TIER_META: Record<string, { label: string; color: string; descripti
 export const TIER_ORDER = ["compact", "small", "mid", "large"] as const;
 export const MAX_MODELS = 4;
 
-const TIER_DEFAULTS: Record<string, { learning_rate: number; lora_r: number; lora_alpha: number }> =
-  {
-    compact: { learning_rate: 2e-4, lora_alpha: 32, lora_r: 16 },
-    large: { learning_rate: 2e-5, lora_alpha: 16, lora_r: 8 },
-    mid: { learning_rate: 5e-5, lora_alpha: 32, lora_r: 16 },
-    small: { learning_rate: 1e-4, lora_alpha: 16, lora_r: 8 },
-  };
+// Keep aligned with modal_shared/serving/args.py TRAINING_LORA_RANKS.
+export const LORA_RANKS = [8, 16, 32, 64, 128, 256, 320, 512] as const;
+
+export function loraRank(value: unknown, fallback: number): number {
+  const rank = typeof value === "number" ? value : Number(value);
+  return LORA_RANKS.some((step) => step === rank) ? rank : fallback;
+}
+
+const TIER_DEFAULTS: Record<string, { learning_rate: number; lora_r: number }> = {
+  compact: { learning_rate: 2e-4, lora_r: 16 },
+  large: { learning_rate: 2e-5, lora_r: 8 },
+  mid: { learning_rate: 5e-5, lora_r: 16 },
+  small: { learning_rate: 1e-4, lora_r: 8 },
+};
 
 export function clampBatchSize(
   value: number | string | undefined,
@@ -205,7 +212,7 @@ export function draftFromRecommendation(
   const useLora = supportsLora && (!supportsFull || r.useLora || tt.type === "Lora");
   const minBs = catalogModel?.minBatchSize ?? r.minBatchSize ?? 1;
   const maxBs = catalogModel?.maxBatchSize ?? r.maxBatchSize ?? 64;
-  const rank = Number(tt.lora_r) || TIER_DEFAULTS[r.tier]?.lora_r || 16;
+  const rank = loraRank(tt.lora_r, TIER_DEFAULTS[r.tier]?.lora_r || 16);
   const contextLength =
     typeof hp.context_length === "number" && hp.context_length > 0 ? hp.context_length : undefined;
   const batch = clampBatchSize(hp.batch_size as number | string | undefined, minBs, maxBs);
@@ -226,7 +233,7 @@ export function draftFromRecommendation(
     learningRateFull: r.learningRateFull,
     learningRateLora: r.learningRateLora,
     loraParams: {
-      lora_alpha: Number(tt.lora_alpha) || rank * 2,
+      lora_alpha: rank * 2,
       lora_dropout: Number(tt.lora_dropout) || 0,
       lora_r: rank,
     },
@@ -251,7 +258,7 @@ export function draftFromCatalogModel(tier: string, m: ModelEntry): ModelDraft {
   const supportsLora = catalogTrainingEnabled(m, "lora");
   const supportsFull = catalogTrainingEnabled(m, "full");
   const td = TIER_DEFAULTS[tier];
-  const loraR = td?.lora_r ?? 16;
+  const loraR = loraRank(td?.lora_r, 16);
   return {
     ...ungraded(),
     contextLengthSft: m.contextLengthSft,
@@ -267,7 +274,7 @@ export function draftFromCatalogModel(tier: string, m: ModelEntry): ModelDraft {
     id: crypto.randomUUID(),
     learningRateFull: td?.learning_rate ? td.learning_rate / 10 : 1e-5,
     learningRateLora: td?.learning_rate ?? 1e-4,
-    loraParams: { lora_alpha: td?.lora_alpha ?? loraR * 2, lora_dropout: 0, lora_r: loraR },
+    loraParams: { lora_alpha: loraR * 2, lora_dropout: 0, lora_r: loraR },
     maxBatchSize: m.maxBatchSize ?? 64,
     minBatchSize: m.minBatchSize ?? 1,
     model: m.id,
@@ -310,9 +317,9 @@ export function draftWithModel(draft: ModelDraft, tier: string, m: ModelEntry): 
     learningRateFull: td?.learning_rate ? td.learning_rate / 10 : draft.learningRateFull,
     learningRateLora: td?.learning_rate ?? draft.learningRateLora,
     loraParams: {
-      lora_alpha: td?.lora_alpha ?? draft.loraParams.lora_alpha,
+      lora_alpha: loraRank(td?.lora_r, draft.loraParams.lora_r) * 2,
       lora_dropout: draft.loraParams.lora_dropout,
-      lora_r: td?.lora_r ?? draft.loraParams.lora_r,
+      lora_r: loraRank(td?.lora_r, draft.loraParams.lora_r),
     },
     maxBatchSize: maxBs,
     minBatchSize: minBs,

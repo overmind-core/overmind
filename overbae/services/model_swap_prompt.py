@@ -48,30 +48,26 @@ def current_capability_model(job: FinetuningJob, capability: Capability | None =
     return observed_capability_model(capability) or capability.model or job.base_model
 
 
-def resolve_swap_capability(job: FinetuningJob) -> tuple[Capability | None, str | None]:
-    """The capability whose code this prompt retargets — ``(capability, error)``."""
+def resolve_swap_capability(job: FinetuningJob) -> Capability | None:
+    """The run's capability, else the project's only one."""
     if job.capability_id:
-        return job.capability, None
+        return job.capability
 
     candidates = list(Capability.objects.filter(project_id=job.project_id).current()[:2])
-    if len(candidates) == 1:
-        return candidates[0], None
-    if not candidates:
-        return None, "This training run is not linked to a capability and its project has none."
-    return None, "This training run is not linked to a capability and its project has several."
+    return candidates[0] if len(candidates) == 1 else None
 
 
-def alias_target_deployment(
-    job: FinetuningJob, capability: Capability
+def target_deployment(
+    job: FinetuningJob, capability: Capability | None
 ) -> tuple[DeployedModel | None, str | None]:
-    """The deployment the alias will answer with — ``(deployed, error)``."""
     deployed = _job_deployed_model(job)
     if deployed is None:
         return None, "This training run has no deployed model."
     if deployed.status != DeployedModel.Status.READY:
         return None, f"{deployed.model_id} is not ready to serve (status: {deployed.status})."
-    if str(deployed.project_id) != str(capability.project_id):
-        return None, "The deployed model belongs to a different project than the capability."
+    project_id = capability.project_id if capability else job.project_id
+    if str(deployed.project_id) != str(project_id):
+        return None, "The deployed model belongs to a different project."
     if deployed.inference_contract != "chat":
         return None, "Decision models use typed inference, not an OpenAI chat model swap."
     return deployed, None
@@ -111,34 +107,50 @@ def build_model_swap_prompt(
             f'welcome; anything that reads as "update me later" is wrong.\n'
         )
     else:
+        target = f"AI agent '{capability_name}'" if capability_name else "application's LLM calls"
         headline = (
-            f"You are pinning the AI agent '{capability_name}' in this repository to one exact "
+            f"You are pinning the {target} in this repository to one exact "
             f"fine-tuned model served by Overmind's OpenAI-compatible inference API."
         )
         identifier_note = (
             f'Exact model identifier to pin: "{new_model}"\n'
             f"This names one specific deployment. It is a deliberate hard pin, so it will "
-            f"need a new change whenever the capability should run a different model.\n"
+            f"need a new change to use a different model.\n"
         )
         stability_rules = (
             "6. This is an intentional pin to one exact model, so a comment naming the "
             "model or the training run is appropriate here.\n"
         )
 
+    find_step = (
+        "1. Find where this capability configures its LLM client and model (model name "
+        "string, config value, or env-var default).\n"
+        if capability_name
+        else "1. Find the LLM call this model replaces (model name string, config value, or "
+        "env-var default). If several call sites configure a model and the user has not "
+        "named one, stop and ask which call to change.\n"
+    )
+    call_target = "the capability's LLM calls" if capability_name else "that LLM call"
+    model_hint_label = (
+        "Model identifier currently in the code" if capability_name else "Training base model hint"
+    )
+    model_origin = (
+        "derived from this capability's observed traffic and may be stale or missing"
+        if capability_name
+        else "the training run's base model and may differ from the application's current model"
+    )
     return (
         f"{headline}\n\n"
-        f"Capability source location hint: {source_path or '(unknown — search the repo)'}\n"
-        f'Model identifier currently in the code: "{old_model}"\n'
+        f"Source location hint: {source_path or '(unknown — search the repo)'}\n"
+        f'{model_hint_label}: "{old_model}"\n'
         f"{identifier_note}"
         f"Overmind inference base URL: {base_url}\n"
         f"Overmind API key env var: {OVERMIND_API_KEY_ENV} (an 'ovr_...' key, sent as "
         f"'Authorization: Bearer')\n\n"
-        "Task — make the capability's LLM calls run through Overmind:\n"
-        f"1. Find where this capability configures its LLM client and model (model name "
-        f"string, config value, or env-var default).\n"
-        f'2. Set the model parameter of the capability\'s LLM calls to "{new_model}".\n'
-        f'3. The "currently in the code" identifier above is derived from this capability\'s '
-        f"observed traffic and may be stale or missing. Whatever model string you "
+        "Task — make these LLM calls run through Overmind:\n"
+        f"{find_step}"
+        f'2. Set the model parameter of {call_target} to "{new_model}".\n'
+        f"3. The model identifier above is {model_origin}. Whatever model string you "
         f"actually find at that call site is the one to replace — do not stop because "
         f'"{old_model}" is not present verbatim.\n'
         f"4. Point the OpenAI(-compatible) client at Overmind: in Python, "
@@ -178,11 +190,11 @@ def model_swap_prompt_for_job(
     if job.status != job.Status.SUCCEEDED:
         return None, "Only successfully trained models can be shipped to the codebase."
 
-    capability, capability_error = resolve_swap_capability(job)
-    if capability is None:
-        return None, capability_error
+    capability = resolve_swap_capability(job)
+    # Only a capability has an alias; without one the prompt pins the deployment.
+    pin = pin or capability is None
 
-    deployed, deployed_error = alias_target_deployment(job, capability)
+    deployed, deployed_error = target_deployment(job, capability)
     if deployed is None:
         return None, deployed_error
 
@@ -191,8 +203,8 @@ def model_swap_prompt_for_job(
     old_model = current_capability_model(job, capability)
     prompt = build_model_swap_prompt(
         base_url=base_url,
-        capability_name=capability.name,
-        source_path=capability.source_path or "",
+        capability_name=capability.name if capability else "",
+        source_path=(capability.source_path or "") if capability else "",
         old_model=old_model,
         new_model=new_model,
         is_alias=not pin,
@@ -200,8 +212,8 @@ def model_swap_prompt_for_job(
     return {
         "prompt": prompt,
         "pin": pin,
-        "capability_id": str(capability.id),
-        "capability_name": capability.name,
+        "capability_id": str(capability.id) if capability else None,
+        "capability_name": capability.name if capability else "",
         "old_model": old_model,
         "new_model": new_model,
     }, None

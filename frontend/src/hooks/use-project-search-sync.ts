@@ -64,7 +64,11 @@ export function useProjectSearchSync() {
     if (projects.length === 0) {
       clearStoredProjectId();
       if (projectId) {
-        navigate({ replace: true, search: {}, to: "/" });
+        navigate({
+          replace: true,
+          search: (prev) => ({ ...prev, projectId: undefined }),
+          to: ".",
+        });
       }
       return;
     }
@@ -79,19 +83,28 @@ export function useProjectSearchSync() {
     if (projectId && !isValid(projectId)) {
       if (isFetching) return;
       clearStoredProjectId();
-      navigate({ replace: true, search: {}, to: "/" });
+      navigate({
+        replace: true,
+        search: (prev) => ({ ...prev, projectId: undefined }),
+        to: ".",
+      });
       return;
     }
 
     const storedId = getStoredProjectId();
-    if (storedId && isValid(storedId)) {
+    const selectedId = isValid(storedId)
+      ? storedId
+      : projects.length === 1
+        ? projects[0].projectId
+        : undefined;
+    if (selectedId) {
       // Pathname can flip to /datasets before this hook sees the new projectId.
       // The navigation already in flight carries that id; keep it.
       navigate({
         replace: true,
         search: (prev) => {
           if ("projectId" in prev && prev.projectId) return prev;
-          return { ...prev, projectId: storedId };
+          return { ...prev, projectId: selectedId };
         },
         to: ".",
       });
@@ -100,9 +113,6 @@ export function useProjectSearchSync() {
 
     if (storedId) {
       clearStoredProjectId();
-    }
-    if (projectId || pathname !== "/") {
-      navigate({ replace: true, search: {}, to: "/" });
     }
   }, [projectId, pathname, navigate, data, isFetching]);
 }

@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -79,10 +80,7 @@ from modal_shared.shared import (  # noqa: E402
     worker_cls_name,
 )
 
-VLLM_CACHE_MOUNT = "/root/.cache/vllm"
-
 weights_vol = modal.Volume.from_name("overmind-weights", create_if_missing=True)
-vllm_cache_vol = modal.Volume.from_name("overmind-vllm-cache", create_if_missing=True)
 artifacts_vol = modal.Volume.from_name("overmind-inference-artifacts", create_if_missing=True)
 ARTIFACTS_MOUNT = "/inference-artifacts"
 
@@ -91,17 +89,26 @@ from modal_shared.images.serve import (  # noqa: E402
     SERVE_IMAGES,
     api_server_image,
 )
-from modal_shared.stacks import GPU_TIER, WORKER_CLS  # noqa: E402
+from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_MEMORY_MIB  # noqa: E402
 
 APP_NAME = INFERENCE_APP_NAME
 app = modal.App(APP_NAME)
 
 inference_secret = modal.Secret.from_name("overmind-inference")
 
-_volume_mounts = {
-    WEIGHTS_MOUNT: weights_vol,
-    VLLM_CACHE_MOUNT: vllm_cache_vol,
-}
+_volume_mounts = {WEIGHTS_MOUNT: weights_vol}
+
+
+def _vllm_control(path: str):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{VLLM_PORT}{path}",
+        data=b"",
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=WORKER_TIMEOUT_SECONDS) as response:
+        body = response.read()
+        return json.loads(body) if body else None
 
 
 def _wait_for_vllm(
@@ -315,15 +322,9 @@ class _BaseVLLMWorker:
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
-        # uses exactly that ordering — write weights, then drive a worker. The compile
-        # cache Volume is the same: without reload the last boot's inductor artifacts
-        # are invisible and vLLM recompiles from scratch.
+        # uses exactly that ordering — write weights, then drive a worker.
         self._journal.emit("refreshing_volumes")
         weights_vol.reload()
-        vllm_cache_vol.reload()
-
-        if not self.enable_lora:
-            _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
 
         # Fail before allocating GPU/vLLM when the weights are genuinely gone, or a bad
         # param-set crash-loops the input backlog for minutes per attempt.
@@ -333,6 +334,20 @@ class _BaseVLLMWorker:
                 f"weights missing at {full_path} (model_name={self.model_name!r}); "
                 "refusing to start — re-register the deployment"
             )
+
+        adapter_rel = getattr(self, "adapter_path", "") or ""
+        if adapter_rel:
+            from modal_shared.serving.stage import stage_base
+
+            adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
+            base_path = full_path
+            staged = stage_base(Path(base_path), adapter_dir, Path("/tmp/overmind-serve"))
+            _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
+            full_path = str(staged)
+            print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
+
+        if not self.enable_lora:
+            _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
 
         meta_path = f"{full_path}/.meta.json"
         quantization = None
@@ -358,12 +373,20 @@ class _BaseVLLMWorker:
             build_vllm_args,
             multimodal_text_only_args,
         )
+        from modal_shared.serving.capacity import GPU_VRAM_GB, sequence_cap_for_checkpoint
 
         spec = resolve(base_model or self.model_name)
+        vram_gb = GPU_VRAM_GB.get(getattr(self, "gpu_type", ""), 0)
+        cap = sequence_cap_for_checkpoint(
+            Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
+        )
+        # 0 means one full sequence does not fit; still admit one so the boot error is vLLM's.
+        max_num_seqs = MAX_CONCURRENT_INPUTS if cap is None else max(1, cap)
         print(
             f"[vLLM] Serving {full_path} "
             f"(quantization={quantization!r} base_model={base_model!r} "
-            f"tool_parser={spec.tool_call_parser} family={spec.key})"
+            f"tool_parser={spec.tool_call_parser} family={spec.key} "
+            f"max_num_seqs={max_num_seqs} vram_gb={vram_gb})"
         )
         cmd = build_vllm_args(
             VllmServeContext(
@@ -371,7 +394,7 @@ class _BaseVLLMWorker:
                 model_name=self.model_name,
                 max_model_len=self.max_model_len,
                 port=VLLM_PORT,
-                max_num_seqs=MAX_CONCURRENT_INPUTS,
+                max_num_seqs=max_num_seqs,
                 quantization=quantization,
                 base_model=base_model,
                 enable_lora=self.enable_lora,
@@ -389,6 +412,8 @@ class _BaseVLLMWorker:
                 "--worker-extension-cls",
                 "modal_shared.serving.weights.SharedBaseWeights",
             ]
+        elif getattr(self, "snapshot_engine", False):
+            cmd.append("--enable-sleep-mode")
         if "--chat-template" in cmd:
             print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
 
@@ -402,6 +427,8 @@ class _BaseVLLMWorker:
             )
             cmd += multimodal_text_only_args()
 
+        if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
+            cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
         print("Starting vLLM:", " ".join(cmd))
         self._serve_command = cmd
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
@@ -409,12 +436,24 @@ class _BaseVLLMWorker:
         self._journal.emit("starting_engine_process")
         self._proc = subprocess.Popen(cmd)  # noqa: S603
         _wait_for_vllm(proc=self._proc, journal=self._journal)
-        # Writes to a Volume are discarded unless this container commits. Concurrent
-        # boots can clobber each other's new files (last commit wins); a lost cache
-        # only means the next cold start recompiles.
-        with contextlib.suppress(Exception):
-            self._journal.emit("committing_compile_cache")
-            vllm_cache_vol.commit()
+        if getattr(self, "snapshot_engine", False):
+            # Level 1 copies weights into CPU memory so the snapshot keeps them.
+            # Level 2 discards the weights, and the next container has nothing to wake.
+            _vllm_control("/sleep?level=1")
+            print("[vLLM] slept engine for snapshot", flush=True)
+
+    def wake(self) -> None:
+        if not getattr(self, "snapshot_engine", False) or getattr(self, "_startup_error", None):
+            return
+        print("[vLLM] waking snapshot", flush=True)
+        try:
+            _vllm_control("/wake_up?tags=weights")
+            _vllm_control("/wake_up?tags=kv_cache")
+            _wait_for_vllm(proc=getattr(self, "_proc", None))
+        except Exception as error:
+            self._fail_startup(error)
+            return
+        print("[vLLM] snapshot restore ready", flush=True)
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -888,7 +927,17 @@ _SCALEDOWN = {
 }
 
 
-def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=False) -> None:
+def _register_worker(
+    cls_name: str,
+    gpu_type: str,
+    serve_image: str,
+    *,
+    lora=False,
+    target_app=None,
+    pin_resources=False,
+    max_containers: int | None = None,
+    owner=None,
+) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
     parameters = {
@@ -904,6 +953,7 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
         "max_model_len": modal.parameter(default=default_len),
         "enable_lora": modal.parameter(default=lora),
         "max_lora_rank": modal.parameter(default=16),
+        "gpu_type": gpu_type,
     }
     if lora:
         parameters["__annotations__"]["base_identity"] = str
@@ -911,41 +961,77 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
     else:
         # Modal discovers hooks separately by snapshot phase across the entire MRO.
         # A post-snapshot hook on the common base would also run for LoRA restores.
-        parameters["startup"] = modal.enter()(_BaseVLLMWorker.startup)
+        # Dedicated containers snapshot the slept engine, so startup runs before the
+        # snapshot and wake runs after every restore.
+        parameters["startup"] = modal.enter(snap=bool(pin_resources))(_BaseVLLMWorker.startup)
+        if pin_resources:
+            # Empty serves the base. A path folds that one adapter while the shards are read.
+            parameters["__annotations__"]["adapter_path"] = str
+            parameters["adapter_path"] = modal.parameter(default="")
+            parameters["__annotations__"]["snapshot_engine"] = bool
+            parameters["snapshot_engine"] = modal.parameter(default=True)
+            parameters["wake"] = modal.enter(snap=False)(_BaseVLLMWorker.wake)
     cls = type(
         cls_name,
         (_SharedBaseVLLMWorker if lora else _BaseVLLMWorker,),
         parameters,
     )
     cls = _worker_concurrency(cls)
-    globals()[cls_name] = app.cls(
+    worker_kwargs = {**_WORKER_KWARGS}
+    if max_containers is not None:
+        worker_kwargs["max_containers"] = max_containers
+    published = (target_app or app).cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
         **{
-            **_WORKER_KWARGS,
+            **worker_kwargs,
             **(
                 {
                     "cpu": 8,
                     # Restore maps the saved process while rebuilding it. Below this the
                     # container is SIGKILL'd (137) and Modal retries with a cold boot.
-                    "memory": {
-                        "L4": 131072,
-                        "L40S": 196608,
-                        "A100-80GB": 131072,
-                        "H200": 196608,
-                        "B200": 262144,
-                        "B300": 393216,
-                    }[gpu_type],
+                    "memory": WORKER_MEMORY_MIB[gpu_type],
                     "volumes": {**_volume_mounts, ARTIFACTS_MOUNT: artifacts_vol},
                     "enable_memory_snapshot": True,
                     "experimental_options": {"enable_gpu_snapshot": True},
                 }
                 if lora
-                else {}
+                else (
+                    {
+                        "cpu": 8,
+                        "memory": WORKER_MEMORY_MIB[gpu_type],
+                        # Modal rejects a GPU snapshot below this disk floor.
+                        "ephemeral_disk": 524288,
+                        "enable_memory_snapshot": True,
+                        "experimental_options": {"enable_gpu_snapshot": True},
+                    }
+                    if pin_resources
+                    else {}
+                )
             ),
         },
     )(cls)
+    (owner if owner is not None else globals())[cls_name] = published
+
+
+def register_dedicated_classes(target_app, owner) -> None:
+    """One class per GPU on the dedicated app, including H100. Not the shared inference app."""
+    for gpu_type in GPU_TIER:
+        token = gpu_type.replace("-", "")
+        # `{gpu}_vllm` is the serverless global. Modal loads classes by attribute.
+        name = f"{token}_vllm_dedicated"
+        slot = {}
+        _register_worker(
+            name,
+            gpu_type,
+            "vllm",
+            target_app=target_app,
+            pin_resources=True,
+            max_containers=8,
+            owner=slot,
+        )
+        owner[name] = slot[name]
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
@@ -953,6 +1039,9 @@ for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
     _register_worker(
         worker_cls_name(_gpu, _serve_image, enable_lora=True), _gpu, _serve_image, lora=True
     )
+
+dedicated_app = modal.App("overmind-dedicated")
+register_dedicated_classes(dedicated_app, globals())
 
 
 @app.cls(
@@ -1267,9 +1356,8 @@ def pre_warm(
     worker over Modal RPC.
 
     The single dummy call proves the checkpoint actually serves before the deployment is marked
-    READY. The GPU worker commits ``overmind-vllm-cache`` after that boot so later cold starts
-    reuse torch.compile artifacts (CUDA graphs still recapture). The container is left up —
-    the scaledown window reclaims it — because a warm container is what makes the next request
+    READY. Compile artifacts stay on the container disk. The container is left up — the
+    scaledown window reclaims it — because a warm container is what makes the next request
     fast.
 
     For an adapter, ``weights_path`` is the shared base and the call additionally proves the

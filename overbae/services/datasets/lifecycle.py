@@ -120,8 +120,15 @@ def usage(cell: Cell) -> dict[str, list[dict[str, Any]]]:
         ]
     )
     experiments = [
-        {"id": str(e.id), "name": e.name, "status": e.status, "created_at": e.created_at}
-        for e in cell.optimizer_experiments.order_by("-created_at")[:50]
+        {
+            "id": str(e.id),
+            "name": e.capability.name,
+            "status": e.status,
+            "created_at": e.created_at,
+        }
+        for e in cell.optimizer_experiments.select_related("capability").order_by("-created_at")[
+            :50
+        ]
     ]
     return {"eval_runs": eval_runs, "finetuning_jobs": jobs, "optimizer_experiments": experiments}
 

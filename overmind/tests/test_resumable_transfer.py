@@ -10,6 +10,8 @@ from overmind.__main__ import app
 from overmind.dataset_cmd import upload_file
 from overmind.transfer_connection import TransferError
 
+pytestmark = pytest.mark.covers("work-once")
+
 
 class Response:
     def __init__(self, data, status=200):
@@ -260,6 +262,7 @@ def test_recovered_upload_does_not_present_saved_landing_state_as_current(tmp_pa
     assert server.publications == 1
 
 
+@pytest.mark.covers("privacy")
 @pytest.mark.parametrize("code", ["file_too_large", ["file_too_large"]])
 def test_document_limit_has_actionable_safe_error_without_a_transfer(tmp_path, code):
     path = tmp_path / "large.pdf"
@@ -282,6 +285,7 @@ def test_document_limit_has_actionable_safe_error_without_a_transfer(tmp_path, c
     assert server.receipt is None and server.publications == 0
 
 
+@pytest.mark.covers("privacy")
 def test_readiness_reports_denied_transport_without_mutation_or_secrets(monkeypatch):
     server = TransferServer()
 
@@ -364,6 +368,7 @@ def test_readiness_preserves_auth_permission_and_redirect_failures(monkeypatch, 
     assert "secret-key" not in result.output
 
 
+@pytest.mark.covers("authentication")
 def test_global_setup_uses_one_connection_without_pinning_a_project(tmp_path, monkeypatch):
     from pathlib import Path
 

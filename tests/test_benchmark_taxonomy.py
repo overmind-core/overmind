@@ -11,6 +11,8 @@ from overbae.services.benchmarks.taxonomy import (
     weights_for,
 )
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 _LEGAL_AXES = {str(skill) for skill in Skill} | {str(domain) for domain in Domain}
 
 _TASK_TYPES = list(TaskType)

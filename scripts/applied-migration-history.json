@@ -65,5 +65,11 @@
   ],
   "0049_document_ocr_checkpoints.py": [
     "01cf1a3b25b05f3b6119bf494d1e6ea2e69f89901d925e188f1fde0e3e776012"
+  ],
+  "0051_activity_feed.py": [
+    "a79e4643d6c728f7694c41fd06b953fdb4f8add2195897eda153db696ac84f82"
+  ],
+  "0054_merge_dedicated_and_preparation.py": [
+    "234a2459e2fb3cc27de12d0526bee38211f7ae86cd2f150906db0541d3b166bd"
   ]
 }

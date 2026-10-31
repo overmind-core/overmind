@@ -1,3 +1,4 @@
+// covers: console-logic
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { formatSmart } from "./datetime";

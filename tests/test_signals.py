@@ -1,10 +1,11 @@
-import asyncio
 import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.utils import timezone
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from overbae.innermind.signals import (
@@ -24,10 +25,9 @@ from overbae.models import (
     Span,
     User,
 )
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def context():
 
 
 def call(context, name, arguments):
-    result = asyncio.run(CATALOG.call(name, arguments, context))
+    result = call_tool(name, arguments, context)
     assert not result.isError, result.content
     return result.structuredContent
 
@@ -66,8 +66,8 @@ def test_leak_signal_does_not_treat_timing_decimals_as_card_numbers():
     def output(value):
         return SimpleNamespace(name="run", attributes={"output": value})
 
-    assert asyncio.run(signal.check([output('"step_interval": 3.8305869102478027')])) is None
-    assert asyncio.run(signal.check([output("card 4242 4242 4242 4242")])) == (
+    assert async_to_sync(signal.check)([output('"step_interval": 3.8305869102478027')]) is None
+    assert async_to_sync(signal.check)([output("card 4242 4242 4242 4242")]) == (
         "sensitive data in outputs: run (card number)"
     )
 
@@ -94,8 +94,8 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     other_project = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4()}")
     other = span(other_project)
     assert ctx.project.id in projects_with_recent_spans()
-    asyncio.run(SignalRunner(ctx.project.id).run())
-    asyncio.run(SignalRunner(ctx.project.id).run())
+    async_to_sync(SignalRunner(ctx.project.id).run)()
+    async_to_sync(SignalRunner(ctx.project.id).run)()
     event = SignalEvent.objects.get(project=ctx.project, conversation=session, signal_type="errors")
     assert set(event.details["trace_ids"]) == {first.trace_id, second.trace_id}
     assert event.subscription_id is None
@@ -137,14 +137,14 @@ def test_project_and_capability_mutes_override_defaults(context):
     assert not next(
         s for s in call(ctx, "list_signals", {})["signals"] if s["signal_type"] == "errors"
     )["enabled"]
-    asyncio.run(SignalRunner(ctx.project.id).run())
+    async_to_sync(SignalRunner(ctx.project.id).run)()
     assert not SignalEvent.objects.filter(signal_type="errors").exists()
     call(
         ctx,
         "set_signal_subscription",
         {"signal_type": "errors", "capability": "answer", "enabled": True},
     )
-    asyncio.run(SignalRunner(ctx.project.id).run())
+    async_to_sync(SignalRunner(ctx.project.id).run)()
     assert list(
         SignalEvent.objects.filter(signal_type="errors").values_list("trace_id", flat=True)
     ) == [scoped.trace_id]
@@ -155,7 +155,7 @@ def test_project_and_capability_mutes_override_defaults(context):
         {"signal_type": "errors", "capability": "answer", "enabled": False},
     )
     another = span(ctx.project, capability=cap)
-    asyncio.run(SignalRunner(ctx.project.id).run())
+    async_to_sync(SignalRunner(ctx.project.id).run)()
     assert set(
         SignalEvent.objects.filter(signal_type="errors").values_list("trace_id", flat=True)
     ) == {scoped.trace_id, unscoped.trace_id}
@@ -192,7 +192,7 @@ def test_signal_scan_releases_payloads_between_complete_groups(context):
 
     post_init.connect(observe, sender=Span)
     try:
-        asyncio.run(SignalRunner(ctx.project.id).run())
+        async_to_sync(SignalRunner(ctx.project.id).run)()
     finally:
         post_init.disconnect(observe, sender=Span)
     assert peak <= 2
@@ -212,7 +212,7 @@ def test_signal_scan_reports_oversized_group_without_dropping_other_groups(conte
         Span.objects.filter(pk=item.pk).update(attributes={"padding": "x" * (5 * 1024 * 1024)})
     small = span(ctx.project)
     with pytest.raises(SignalInputTooLargeError, match="1 signal groups exceed"):
-        asyncio.run(SignalRunner(ctx.project.id).run())
+        async_to_sync(SignalRunner(ctx.project.id).run)()
     assert not SignalEvent.objects.filter(conversation=session).exists()
     assert SignalEvent.objects.filter(trace_id=small.trace_id, signal_type="errors").exists()
 
@@ -233,10 +233,8 @@ def test_signal_batch_rechecks_bytes_before_materializing_payloads(context):
     post_init.connect(observe, sender=Span)
     try:
         with pytest.raises(SignalInputTooLargeError, match="changed or exceeded"):
-            asyncio.run(
-                SignalRunner(ctx.project.id).run_batch(
-                    {item.pk: f"trace:{item.trace_id}"}, [], [], "2026-10-17"
-                )
+            async_to_sync(SignalRunner(ctx.project.id).run_batch)(
+                {item.pk: f"trace:{item.trace_id}"}, [], [], "2026-10-17"
             )
     finally:
         post_init.disconnect(observe, sender=Span)
@@ -265,7 +263,7 @@ def test_signal_scan_continues_after_concurrent_payload_growth(context):
                 yield ids
 
     with pytest.raises(SignalInputTooLargeError, match="1 signal groups changed"):
-        asyncio.run(ConcurrentGrowthRunner(ctx.project.id).run())
+        async_to_sync(ConcurrentGrowthRunner(ctx.project.id).run)()
     assert set(
         SignalEvent.objects.filter(signal_type="errors").values_list("trace_id", flat=True)
     ) == {item.trace_id for item in items[1:]}

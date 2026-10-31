@@ -36,7 +36,7 @@ export interface ModelSwapPrompt {
      * @type {string}
      * @memberof ModelSwapPrompt
      */
-    capabilityId: string;
+    capabilityId: string | null;
     /**
      *
      * @type {string}

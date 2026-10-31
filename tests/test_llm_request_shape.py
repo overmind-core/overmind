@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 from overbae.core.llms import call_llm, call_llm_tools
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 class _Answer(BaseModel):
     answer: str

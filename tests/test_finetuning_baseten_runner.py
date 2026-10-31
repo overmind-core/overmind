@@ -14,6 +14,8 @@ from overbae.services.finetuning_runner import (
     progress_from_snapshot,
 )
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 _REMOTE_ID = "proj-1:job-9"
 
 

@@ -6,6 +6,11 @@ cannot scan or edit a repository.
 
 **Prerequisite:** project connection in [onboard.md](onboard.md) finished (`python -m overmind init` then `python -m overmind sync`, followed by the coding-agent reload). Do not start this scan before the Console project exists.
 
+Before local scanning, report the verified completed stage count through
+`report_onboarding_progress` with the selected `project_id` and one persistent
+UUID `run_id`. Report again after each completed stage; chat updates alone are
+not platform progress. Follow [onboarding-progress.md](onboarding-progress.md).
+
 ## Workflow
 
 **Language first.** Before anything else, detect whether the repository is Python or

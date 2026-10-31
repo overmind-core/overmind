@@ -90,6 +90,12 @@ export interface Subscription {
     cancelAtPeriodEnd: boolean;
     /**
      *
+     * @type {boolean}
+     * @memberof Subscription
+     */
+    canManageRenewal: boolean;
+    /**
+     *
      * @type {PlanUsage}
      * @memberof Subscription
      */
@@ -111,6 +117,7 @@ export function instanceOfSubscription(value: object): value is Subscription {
     if (!('startDate' in value) || value['startDate'] === undefined) return false;
     if (!('endDate' in value) || value['endDate'] === undefined) return false;
     if (!('cancelAtPeriodEnd' in value) || value['cancelAtPeriodEnd'] === undefined) return false;
+    if (!('canManageRenewal' in value) || value['canManageRenewal'] === undefined) return false;
     if (!('usage' in value) || value['usage'] === undefined) return false;
     return true;
 }
@@ -134,6 +141,7 @@ export function SubscriptionFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'startDate': (json['start_date'] == null ? null : new Date(json['start_date'])),
         'endDate': (json['end_date'] == null ? null : new Date(json['end_date'])),
         'cancelAtPeriodEnd': json['cancel_at_period_end'],
+        'canManageRenewal': json['can_manage_renewal'],
         'usage': PlanUsageFromJSON(json['usage']),
     };
 }
@@ -158,6 +166,7 @@ export function SubscriptionToJSONTyped(value?: Subscription | null, ignoreDiscr
         'start_date': value['startDate'] == null ? value['startDate'] : value['startDate'].toISOString(),
         'end_date': value['endDate'] == null ? value['endDate'] : value['endDate'].toISOString(),
         'cancel_at_period_end': value['cancelAtPeriodEnd'],
+        'can_manage_renewal': value['canManageRenewal'],
         'usage': PlanUsageToJSON(value['usage']),
     };
 }

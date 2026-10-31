@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
-import type { Span, TraceDetail, TracesListRequest } from "@/openapi";
+import type { Span, TraceDetail, TraceErrorDetails, TracesListRequest } from "@/openapi";
 
 export function spanStatusLabel(statusCode: number): string {
   if (statusCode === 2) return "error";
@@ -30,10 +30,13 @@ export interface SpanRow {
   scopeName: string;
   statusCode: number;
   statusMessage: string;
+  errorDetails?: TraceErrorDetails | null;
   durationNano: number;
   startTimeUnixNano: number;
   endTimeUnixNano: number;
   spanAttributes: Record<string, unknown>;
+  inputAttribute: string | null;
+  outputAttribute: string | null;
   inputs: unknown | null;
   outputs: unknown | null;
   events: SpanEvent[];
@@ -54,6 +57,13 @@ export interface SpanRow {
   evalMetrics: unknown;
   evalScore: number | null;
   trajectoryScore: number | null;
+  trajectory?: {
+    score?: number | null;
+    span_count?: number;
+    passed?: boolean | null;
+    metrics?: unknown;
+  };
+  evalIntent?: string;
 }
 
 function evalBlock(evalAttributes: unknown): Record<string, unknown> {
@@ -164,23 +174,25 @@ const transformSpan = (span: Span): SpanRow => {
     capabilityName,
     durationNano,
     endTimeUnixNano: endNano,
+    errorDetails: span.errorDetails,
+    evalIntent:
+      typeof evalBlock(span.evalAttributes).intent === "string"
+        ? (evalBlock(span.evalAttributes).intent as string)
+        : undefined,
     evalMetrics: evalBlock(span.evalAttributes).metrics ?? null,
     evalScore: finiteOrNull(evalBlock(span.evalAttributes).score),
-    events: Array.isArray(span.events) ? (span.events as SpanEvent[]) : [],
-    inputs:
-      attrs["overmind.input_data"] ??
-      attrs["overmind.input.data"] ??
-      attrs.inputs ??
-      attrs["traceloop.entity.input"] ??
-      null,
+    events: Array.isArray(span.events)
+      ? span.events.map((event: SpanEvent & { time_unix_nano?: number }) => ({
+          ...event,
+          timeUnixNano: event.time_unix_nano ?? event.timeUnixNano,
+        }))
+      : [],
+    inputAttribute: span.inputAttribute,
+    inputs: span.inputAttribute ? (attrs[span.inputAttribute] ?? null) : null,
     model: pickModel(attrs),
     name: span.name ?? "",
-    outputs:
-      attrs["overmind.output_data"] ??
-      attrs["overmind.output.data"] ??
-      attrs.outputs ??
-      attrs["traceloop.entity.output"] ??
-      null,
+    outputAttribute: span.outputAttribute,
+    outputs: span.outputAttribute ? (attrs[span.outputAttribute] ?? null) : null,
     parentSpanId: span.parentSpanId || null,
     policyOutcome: (attrs.policy_outcome as string) ?? null,
     scopeName,
@@ -204,6 +216,7 @@ const transformSpan = (span: Span): SpanRow => {
       (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null),
     traceId: span.traceId ?? "",
     traceScores: extractTraceScores(span.evalAttributes),
+    trajectory: evalBlock(span.evalAttributes).trajectory as SpanRow["trajectory"],
     trajectoryScore: extractTrajectoryScore(span.evalAttributes),
   };
 };
@@ -318,6 +331,7 @@ function mapTraceListRow(row: {
   receivedAt?: Date | null;
   startTimeNs?: number | null;
   statusMessage?: string | null;
+  errorSummary?: string | null;
   statusCode?: number | null;
   capability?: string | null;
   capabilityName?: string | null;
@@ -345,7 +359,10 @@ function mapTraceListRow(row: {
     capabilityName: row.capabilityName ?? null,
     createdAt,
     durationNs: row.durationNs ?? undefined,
-    error: row.statusCode === 2 ? statusMessage || "error" : null,
+    error:
+      row.statusCode === 2
+        ? row.errorSummary || statusMessage || "No error message captured"
+        : null,
     evaluations: Object.keys(extractTraceScores(row.evalAttributes)).length,
     model: row.model ?? null,
     operation: row.operation ?? undefined,

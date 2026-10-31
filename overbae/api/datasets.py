@@ -38,6 +38,7 @@ from overbae.services.datasets import (
     lifecycle,
     paths,
     preparation,
+    preparation_workflow,
     selection,
     store,
     workbench,
@@ -234,6 +235,16 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=202)
+
+    @extend_schema(request=None, responses={200: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="end-preparation")
+    def end_preparation(self, request, id=None):
+        dataset = self.get_object()
+        try:
+            preparation_workflow.end(dataset)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetSerializer(Dataset.objects.get(pk=dataset.pk)).data)
 
     @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
     @action(detail=True, methods=["get"], url_path=r"sources/(?P<artifact_id>[0-9a-f]{64})")

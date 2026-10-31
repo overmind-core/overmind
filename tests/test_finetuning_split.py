@@ -4,8 +4,12 @@ import uuid
 import weakref
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.services.datasets.rows import DatasetRow
 from overbae.services.finetuning_split import split_datapoint_ids
+
+pytestmark = pytest.mark.covers("data-logic")
 
 
 def _dp(

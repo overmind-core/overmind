@@ -27,7 +27,7 @@ from overbae.services.finetuning_pricing import (
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.capability_context import collect_capability_context
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("plans")]
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 

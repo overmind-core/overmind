@@ -153,7 +153,7 @@ class CheckFinetuneReadinessOutput(MCPModel):
 class EstimateFinetuneInput(FinetuneSelectionInput):
     hyperparameters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size.",
+        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size. lora_r must be 8, 16, 32, 64, 128, 256, 320, or 512. lora_alpha is twice lora_r.",
     )
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
@@ -258,7 +258,7 @@ class StartFinetuneInput(MCPModel):
     use_case: str = Field(default="", max_length=10_000)
     hyperparameters: dict[str, Any] | None = Field(
         default=None,
-        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
+        description="Model recipe. batch_size is the effective optimizer batch; do not supply gradient_accumulation_steps or per_device_train_batch_size. lora_r must be 8, 16, 32, 64, 128, 256, 320, or 512. lora_alpha is twice lora_r. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
     )
     group_id: UUID | None = None
 

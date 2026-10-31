@@ -31,7 +31,7 @@ from overbae.models import (
 )
 from overbae.tasks import connector_sync
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("otlp-ingest")]
 
 SESSIONS_URL = "/api/sessions/"
 TRACES_URL = "/api/traces/"

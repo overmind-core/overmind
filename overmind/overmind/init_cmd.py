@@ -15,12 +15,10 @@ from rich.console import Console
 from overmind.config import (
     DEFAULT_PATH,
     Config,
-    SecretFileError,
     default_project_name,
     dump,
     ensure_project_name,
     load,
-    protect_secret_file,
     saved_project_api_key,
 )
 from overmind.skills import get_destination_dir, sync_skills
@@ -36,6 +34,13 @@ MCP_CONFIG_PATHS: dict[Ide, Path] = {
     "cursor": Path(".cursor/mcp.json"),
     "opencode": Path("opencode.json"),
     "codex": Path(".codex/config.toml"),
+}
+
+SIGN_IN: dict[Ide, str] = {
+    "claude": "Restart Claude Code, run /mcp, select overmind, then Authenticate.",
+    "codex": "Run `codex mcp login overmind`, then restart Codex.",
+    "cursor": "Enable overmind in Cursor Settings > MCP (or restart Cursor), then click Authenticate.",
+    "opencode": "Run `opencode mcp auth overmind`, then restart OpenCode.",
 }
 
 MCP_URLS = {
@@ -141,7 +146,8 @@ def _write_text(path: Path, content: str, *, contains_secret: bool) -> None:
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
-        os.chmod(temp_name, 0o600 if contains_secret else 0o644)
+        mode = 0o600 if contains_secret else (path.stat().st_mode & 0o777 if path.exists() else 0o644)
+        os.chmod(temp_name, mode)
         os.replace(temp_name, path)
     except BaseException:
         Path(temp_name).unlink(missing_ok=True)
@@ -172,17 +178,10 @@ def claude_config_path() -> Path:
     return (Path(config_dir).expanduser() if config_dir else Path.home()) / ".claude.json"
 
 
-def _claude_servers(config: dict, cwd: Path) -> dict | None:
-    servers = config.get("projects", {}).get(cwd.resolve().as_posix(), {}).get("mcpServers")
-    return servers if isinstance(servers, dict) else None
-
-
-def write_claude_mcp(cwd: Path, url: str, api_key: str | None) -> Path:
+def write_claude_mcp(cwd: Path, url: str) -> Path:
     path = claude_config_path().resolve()
     config = json.loads(path.read_text()) if path.exists() else {}
-    server: dict = {"type": "http", "url": url}
-    if api_key:
-        server["headers"] = {"X-Api-Key": api_key}
+    server = {"type": "http", "url": url}
     project = config.setdefault("projects", {}).setdefault(cwd.resolve().as_posix(), {})
     project.setdefault("mcpServers", {})["overmind"] = server
     _write_text(path, json.dumps(config, indent=2) + "\n", contains_secret=True)
@@ -223,79 +222,21 @@ def seed_toml(path: Path, *, base_url: str) -> Path | None:
     return path
 
 
-def write_mcp_config(ide: Ide, cwd: Path, mcp_url: str, api_key: str | None) -> Path:
+def write_mcp_config(ide: Ide, cwd: Path, mcp_url: str) -> Path:
     if ide == "claude":
-        return write_claude_mcp(cwd, mcp_url, api_key)
+        return write_claude_mcp(cwd, mcp_url)
     path = cwd / MCP_CONFIG_PATHS[ide]
-    if api_key:
-        protect_secret_file(path, repo_root=cwd)
     if ide == "codex":
-        write_codex_mcp(path, mcp_url, api_key)
+        write_codex_mcp(path, mcp_url)
         return path
-
     if ide == "opencode":
         config = json.loads(path.read_text()) if path.exists() else {"$schema": "https://opencode.ai/config.json"}
-        server = {
-            "type": "remote",
-            "url": mcp_url,
-            "enabled": True,
-        }
-        if api_key:
-            server["headers"] = {"X-Api-Key": api_key}
-        config.setdefault("mcp", {})["overmind"] = server
+        config.setdefault("mcp", {})["overmind"] = {"type": "remote", "url": mcp_url, "enabled": True}
     else:
         config = json.loads(path.read_text()) if path.exists() else {}
-        server = {"url": mcp_url}
-        if api_key:
-            server["headers"] = {"X-Api-Key": api_key}
-        config.setdefault("mcpServers", {})["overmind"] = server
-
-    _write_text(path, json.dumps(config, indent=2) + "\n", contains_secret=bool(api_key))
+        config.setdefault("mcpServers", {})["overmind"] = {"url": mcp_url}
+    _write_text(path, json.dumps(config, indent=2) + "\n", contains_secret=False)
     return path
-
-
-def configured_ides(cwd: Path) -> list[Ide]:
-    configured: list[Ide] = []
-    for ide in SUPPORTED_IDES:
-        if ide == "claude":
-            path = claude_config_path()
-            if path.exists() and "overmind" in (_claude_servers(json.loads(path.read_text()), cwd) or {}):
-                configured.append(ide)
-            continue
-        path = cwd / MCP_CONFIG_PATHS[ide]
-        if not path.exists():
-            continue
-        text = path.read_text()
-        if ide == "codex":
-            if re.search(r"(?m)^\[\[?mcp_servers\.overmind(?:\.|\])", text):
-                configured.append(ide)
-            continue
-        if '"overmind"' not in text:
-            continue
-        config = json.loads(text)
-        servers = config.get("mcp") if ide == "opencode" else config.get("mcpServers")
-        if isinstance(servers, dict) and "overmind" in servers:
-            configured.append(ide)
-    return configured
-
-
-def preflight_mcp_configs(cwd: Path) -> list[Ide]:
-    ides = configured_ides(cwd)
-    for ide in ides:
-        if ide == "claude":
-            continue
-        path = cwd / MCP_CONFIG_PATHS[ide]
-        protect_secret_file(path, repo_root=cwd)
-        if ide != "codex":
-            json.loads(path.read_text())
-    return ides
-
-
-def refresh_mcp_configs(cwd: Path, mcp_url: str, api_key: str) -> list[Ide]:
-    ides = preflight_mcp_configs(cwd)
-    for ide in ides:
-        write_mcp_config(ide, cwd, mcp_url, api_key)
-    return ides
 
 
 def run_init(
@@ -316,7 +257,7 @@ def run_init(
         and config_path.exists()
     ):
         configured_url = load(config_path).base_url
-    mcp_url, base_url = resolve_mcp_url(env, configured_url)  # noqa: F841
+    mcp_url, base_url = resolve_mcp_url(env, configured_url)
 
     sync_skills([skill.slug for skill in skills], ide=ide)
     dest = get_destination_dir(ide)
@@ -325,32 +266,20 @@ def run_init(
     for path in write_slash_commands(ide, root):
         console.print(f"Command → {path.relative_to(root)}")
 
+    created = seed_toml(config_path, base_url=base_url)
+    mcp_path = write_mcp_config(ide, root, mcp_url)
     try:
-        created = seed_toml(config_path, base_url=base_url)
-        saved_key = saved_project_api_key(config_path)
-        # mcp_path = write_mcp_config(ide, root, mcp_url, saved_key or None)
-    except SecretFileError as exc:
-        raise typer.BadParameter(str(exc), param_hint="MCP config") from exc
-    # try:
-    #     mcp_display = str(mcp_path.relative_to(root))
-    # except ValueError:
-    #     mcp_display = str(mcp_path)
-    # console.print(f"MCP → {mcp_display}")
+        mcp_display = str(mcp_path.relative_to(root))
+    except ValueError:
+        mcp_display = str(mcp_path)
+    console.print(f"MCP → {mcp_display}")
 
     if created:
         console.print(f"Seeded {created.relative_to(root)}")
     else:
         console.print(f"{DEFAULT_PATH.name} already present — left unchanged")
 
-    if saved_key:
-        console.print(
-            "\nMCP configured with the saved project credential. Run overmind connection check --project-id PROJECT --json in this coding environment to verify MCP and local transfer readiness."
-        )
-    else:
-        console.print(
-            "\nMCP authentication pending. Run [bold]overmind sync[/bold] to create the console project "
-            "and install its credential, then reload this coding agent once."
-        )
+    console.print(f"\nNext: {SIGN_IN[ide]}")
 
 
 def init(

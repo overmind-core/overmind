@@ -26,7 +26,8 @@ project by slug (plus the retired Undermind demo slugs), the `@ledgerline.dev`
 team users, and the owner's non-free-credit ledger rows before it seeds. The
 project belongs to `--owner` (default `frey@overmindlab.ai`); the
 account is created with password `password` when it does not exist. Plaintext
-API keys print at the end.
+API keys print at the end. Activity and onboarding examples are terminal receipts
+labelled Demo; they never imply that a real coding agent performed the seeded work.
 
 ## Beat-safety invariants — never break these
 
@@ -54,7 +55,7 @@ workers to re-drive seeded rows against **real providers** and spend credits:
 
 - `auto_now_add`/`auto_now` columns are backdated via the raw-SQL `backdate()`
   helper (executemany), not via the ORM.
-- Datasets land through `services/datasets/land`. Explicit fixture transformations
+- Datasets land through `services/datasets/land.py`. Explicit fixture transformations
   publish measured, provenance-preserving frames directly; no platform agent or
   script runner exists. Every dataset has a real active frame. Historical demo consumption stamps `used_at` directly and pins cells,
   including each training job's `eval_cell`; it does not fabricate a semantic

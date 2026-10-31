@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DedicatedUsage } from './DedicatedUsage';
+import {
+    DedicatedUsageFromJSON,
+    DedicatedUsageFromJSONTyped,
+    DedicatedUsageToJSON,
+    DedicatedUsageToJSONTyped,
+} from './DedicatedUsage';
 import type { InferenceFailure } from './InferenceFailure';
 import {
     InferenceFailureFromJSON,
@@ -27,6 +34,12 @@ import {
  * @interface InferenceMetrics
  */
 export interface InferenceMetrics {
+    /**
+     *
+     * @type {DedicatedUsage}
+     * @memberof InferenceMetrics
+     */
+    dedicatedUsage: DedicatedUsage;
     /**
      *
      * @type {Date}
@@ -159,6 +172,7 @@ export interface InferenceMetrics {
  * Check if a given object implements the InferenceMetrics interface.
  */
 export function instanceOfInferenceMetrics(value: object): value is InferenceMetrics {
+    if (!('dedicatedUsage' in value) || value['dedicatedUsage'] === undefined) return false;
     if (!('lastRequestAt' in value) || value['lastRequestAt'] === undefined) return false;
     if (!('costRecordedRequestCount' in value) || value['costRecordedRequestCount'] === undefined) return false;
     if (!('failedRequestCount' in value) || value['failedRequestCount'] === undefined) return false;
@@ -193,6 +207,7 @@ export function InferenceMetricsFromJSONTyped(json: any, ignoreDiscriminator: bo
     }
     return {
 
+        'dedicatedUsage': DedicatedUsageFromJSON(json['dedicated_usage']),
         'lastRequestAt': (json['last_request_at'] == null ? null : new Date(json['last_request_at'])),
         'costRecordedRequestCount': json['cost_recorded_request_count'],
         'failedRequestCount': json['failed_request_count'],
@@ -228,6 +243,7 @@ export function InferenceMetricsToJSONTyped(value?: InferenceMetrics | null, ign
 
     return {
 
+        'dedicated_usage': DedicatedUsageToJSON(value['dedicatedUsage']),
         'last_request_at': value['lastRequestAt'] == null ? value['lastRequestAt'] : value['lastRequestAt'].toISOString(),
         'cost_recorded_request_count': value['costRecordedRequestCount'],
         'failed_request_count': value['failedRequestCount'],

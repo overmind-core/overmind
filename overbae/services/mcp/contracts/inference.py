@@ -47,8 +47,10 @@ class RunInferenceOutput(MCPModel):
 
 class GetModelSwapPromptInput(MCPModel):
     finetune: str = Field(min_length=1, max_length=255)
-    # False points the code at the capability alias, so later swaps need no code change.
-    pin: bool = False
+    pin: bool = Field(
+        default=False,
+        description="False uses the capability alias when one exists.",
+    )
 
 
 class GetModelSwapPromptOutput(MCPModel):
@@ -56,7 +58,7 @@ class GetModelSwapPromptOutput(MCPModel):
     finetune: str
     pin: bool
     prompt: str = Field(min_length=1, max_length=16_000)
-    capability_id: str
+    capability_id: str | None
     capability_name: str = Field(max_length=255)
     old_model: str = Field(max_length=255)
     new_model: str = Field(max_length=255)

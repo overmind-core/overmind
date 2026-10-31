@@ -3,7 +3,7 @@
 Usage: python scripts/check_migrations.py [BASE_REF]   (default: origin/main)
 
 Django checks the migration graph. New migrations must have fresh numbers;
-only the checksum-pinned applied histories retain their original identities.
+only checksum-pinned applied histories and their integration joins retain their identities.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def number(name: str) -> int | None:
 
 
 def applied_histories():
-    # These exact histories were applied before integration; renumbering would replay them.
+    # Pin applied histories and their joins: renumbering would replay existing operations.
     return json.loads(Path(__file__).with_name("applied-migration-history.json").read_text())
 
 

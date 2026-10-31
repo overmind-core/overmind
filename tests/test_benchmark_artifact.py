@@ -14,6 +14,8 @@ from overbae.services.benchmarks.schema import (
     parse_artifact,
 )
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 _LEGAL_PROVENANCE = {p.value for p in Provenance}
 
 

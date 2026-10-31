@@ -10,6 +10,7 @@ from drf_spectacular.views import (
 from rest_framework.permissions import AllowAny
 from rest_framework.routers import DefaultRouter
 
+from overbae.api.activity import ActivityViewSet
 from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APITokenListCreateView
 from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
@@ -30,6 +31,12 @@ from overbae.api.dataset_transfers import DatasetTransferViewSet
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.decision import DecisionJobViewSet, DecisionModelListView
 from overbae.api.decision_performance import DecisionPerformanceViewSet
+from overbae.api.dedicated import (
+    DedicatedDeploymentListView,
+    DedicatedDeploymentView,
+    DedicatedGpusView,
+    DedicatedStopView,
+)
 from overbae.api.eval_views import (
     EvalMatrixViewSet,
     EvalRunRowViewSet,
@@ -49,7 +56,9 @@ from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
+from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
+from overbae.api.robots import robots_txt
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
@@ -103,6 +112,7 @@ router.register(
     basename="project-invite",
 )
 router.register(r"projects", ProjectViewSet, basename="project")
+router.register(r"activity", ActivityViewSet, basename="activity")
 router.register(r"capabilities", CapabilityViewSet, basename="capability")
 router.register(r"datasets", DatasetViewSet, basename="dataset")
 router.register(
@@ -132,12 +142,69 @@ router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
 router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
 router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 
-urlpatterns = [
+
+urlpatterns = []
+# Register internal Overwatch metrics only when an admin token is configured.
+if settings.SALES_DASHBOARD_TOKEN:
+    from overbae.api.overwatch_dashboard import (
+        ActivationView,
+        OverviewView,
+        ProductUsageView,
+        UserActivityView,
+        UsersView,
+    )
+
+    urlpatterns += [
+        path("api/internal/overwatch/overview/", OverviewView.as_view(), name="overwatch-overview"),
+        path(
+            "api/internal/overwatch/activation/",
+            ActivationView.as_view(),
+            name="overwatch-activation",
+        ),
+        path(
+            "api/internal/overwatch/product-usage/",
+            ProductUsageView.as_view(),
+            name="overwatch-product-usage",
+        ),
+        path("api/internal/overwatch/users/", UsersView.as_view(), name="overwatch-users"),
+        path(
+            "api/internal/overwatch/users/<int:pk>/",
+            UserActivityView.as_view(),
+            name="overwatch-user-activity",
+        ),
+    ]
+
+urlpatterns += [
+    path(
+        "api/internal/overwatch/agent/query/",
+        OverwatchQueryView.as_view(),
+        name="overwatch-agent-query",
+    ),
     path("api/decision-models/", DecisionModelListView.as_view(), name="decision-model-list"),
     path(
         "api/deployed-models/<uuid:deployment_id>/inference/",
         DeploymentInferenceView.as_view(),
         name="deployment-inference",
+    ),
+    path(
+        "api/deployed-models/dedicated/",
+        DedicatedDeploymentListView.as_view(),
+        name="dedicated-deployment-list",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/gpus/",
+        DedicatedGpusView.as_view(),
+        name="dedicated-gpus",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/",
+        DedicatedDeploymentView.as_view(),
+        name="dedicated-deployment",
+    ),
+    path(
+        "api/deployed-models/<uuid:deployment_id>/dedicated/stop/",
+        DedicatedStopView.as_view(),
+        name="dedicated-stop",
     ),
     path(
         "api/inference-requests/<uuid:request_id>/",
@@ -147,6 +214,7 @@ urlpatterns = [
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
+    path("robots.txt", robots_txt, name="robots-txt"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
     path("v1/traces", otlp_traces, name="otlp-traces-compat"),
     # OpenAI-compatible inference API

@@ -17,6 +17,8 @@ from overbae.services.connectors.schema import (
 )
 from overbae.services.connectors.spans import span_id_for
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 # 2026-01-02T00:00:00Z and one second later, as Braintrust logs them.
 _START = 1767312000.0
 

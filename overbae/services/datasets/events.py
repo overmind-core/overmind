@@ -10,6 +10,9 @@ import os
 from functools import lru_cache
 from typing import Any
 
+import redis as redis_lib
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
 
 _REPLAY_CAP = 300
@@ -17,8 +20,6 @@ _REPLAY_TTL_SECONDS = 6 * 3600
 
 
 def _redis_client():
-    from django.conf import settings
-
     url = getattr(settings, "CELERY_BROKER_URL", "redis://localhost:6379/0")
     if not url.startswith(("redis://", "rediss://", "unix://")):
         return None
@@ -27,8 +28,6 @@ def _redis_client():
 
 @lru_cache(maxsize=4)
 def _client(pid, url):
-    import redis as redis_lib
-
     return redis_lib.from_url(
         url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
     )
@@ -81,3 +80,19 @@ def replay(dataset_id: Any, *, client: Any = None) -> list[dict[str, Any]]:
         except ValueError:
             continue
     return out
+
+
+@lru_cache(maxsize=4)
+def _signal_client(pid, url):
+    # Runs on the request thread after commit, so an unreachable Redis must not stall it.
+    return redis_lib.from_url(url, socket_connect_timeout=0.2, socket_timeout=0.2)
+
+
+def signal(name: str) -> None:
+    url = getattr(settings, "CELERY_BROKER_URL", "redis://localhost:6379/0")
+    if not url.startswith(("redis://", "rediss://", "unix://")):
+        return
+    try:
+        _signal_client(os.getpid(), url).publish(name, "1")
+    except Exception:  # noqa: BLE001 — events are advisory, never fatal
+        logger.warning("event signal failed for %s", name, exc_info=True)

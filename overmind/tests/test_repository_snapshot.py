@@ -2,10 +2,12 @@ import json
 import subprocess
 
 import pytest
+
 from overmind.config import Config, dump, load
 from overmind.repository_snapshot import begin_repository_scan, capture_repository_snapshot, finish_repository_scan
-
 from overmind.utils import convert_json_to_toml
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 def git(root, *args):
@@ -23,6 +25,7 @@ def repo(tmp_path):
     return tmp_path
 
 
+@pytest.mark.covers("privacy")
 @pytest.mark.parametrize(
     "remote", ["https://user:secret@github.com/acme/agent.git?token=hidden", "git@github.com:acme/agent.git"]
 )

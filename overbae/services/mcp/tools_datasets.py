@@ -417,7 +417,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect dataset versions, extraction metadata, progress, profiles and consumer requirements. Cell analytics expose fingerprint-bound server measurements, class counts, majority baselines, warnings and explicitly unchecked risks; unmeasured versions can be scanned with explore_dataset. Inspect the exact consumer cell before training handoff. Cells expose receipt-backed transformation execution, exact revision/package/entrypoint, distinguishing external imports and unrecorded history. Read all package files through dataset-pipeline-packages resources. Page cells and sources with offsets and next_cursor.",
+            "Read versions, extraction, progress, profiles and consumer requirements. Cell analytics are fingerprint-bound; scan unmeasured versions with explore_dataset. Read the consumer cell before training. Page cells and sources with offsets and next_cursor.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -427,13 +427,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "query_dataset",
             "Query dataset",
-            "Read-only SELECT over table t on one ran cell (active unless cell is an id or version). "
-            "At most 100 rows; truncated when more matched. Results over 200 columns or 32 KiB of JSON fail "
-            "with query_result_too_large; project smaller columns, aggregate, or use the "
-            "dataset-export resource for complete data. Values are never clipped. "
-            "SQL execution has bounded global and per-project capacity. Retryable "
-            "query_capacity_busy/query_capacity_unavailable returns the exact cell and retry delay; "
-            "retry the same SQL on that cell. Use a retained pipeline for bulk analysis.",
+            "Read-only SELECT over table t on one ran cell. At most 100 rows. Over 200 columns or 32 KiB returns query_result_too_large; values are not clipped. Capacity errors name the cell and retry delay. Use a pipeline for bulk analysis.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,

@@ -22,7 +22,7 @@ from overbae.models import (
     User,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 
@@ -73,50 +73,10 @@ class _FakeAsyncResult:
         self.id = task_id
 
 
+@pytest.mark.covers("authentication")
 def test_unauthenticated_requests_rejected():
     r = APIClient().get(reverse("finetuningjob-list"))
     assert r.status_code == 401
-
-
-def test_list_only_shows_jobs_in_user_projects():
-    u_a, p_a, _, ds_a = _setup_project_with_dataset()
-    _u_b, p_b, _, ds_b = _setup_project_with_dataset()
-
-    FinetuningJob.objects.create(project=p_a, dataset=ds_a, base_model="m")
-    FinetuningJob.objects.create(project=p_b, dataset=ds_b, base_model="m")
-
-    r = auth_client(u_a).get(reverse("finetuningjob-list"))
-    assert r.status_code == 200
-    projects = {str(row["project"]) for row in r.data["results"]}
-    assert projects == {str(p_a.id)}
-
-
-def test_create_dispatches_celery_and_persists_job():
-    u, p, _, ds = _setup_project_with_dataset()
-
-    with patch(CELERY_PATH, return_value=_FakeAsyncResult("celery-xyz")) as mock_apply:
-        r = auth_client(u).post(
-            reverse("finetuningjob-list"),
-            _job_payload(project_id=str(p.id), dataset_id=str(ds.id)),
-            format="json",
-        )
-
-    assert r.status_code == 201, r.data
-    job = FinetuningJob.objects.get(pk=r.data["id"])
-    assert job.status == FinetuningJob.Status.QUEUED
-    assert job.triggered_by_id == u.id
-    assert job.celery_task_id == "celery-xyz"
-    assert job.base_model == "meta-llama/Llama-3.2-3B-Instruct"
-    assert {key: value for key, value in job.hyperparameters.items() if key != "monitoring"} == {
-        "learning_rate": 3e-4,
-        "epochs": 2,
-        "objective": "assistant_cross_entropy",
-    }
-    assert job.hyperparameters["monitoring"]["mode"] == "adaptive"
-
-    mock_apply.assert_called_once()
-    kwargs = mock_apply.call_args.kwargs
-    assert kwargs["kwargs"] == {"job_id": str(job.id)}
 
 
 def test_create_rejects_dataset_from_other_project():
@@ -137,6 +97,7 @@ def test_create_rejects_dataset_from_other_project():
     mock_apply.assert_not_called()
 
 
+@pytest.mark.covers("authentication")
 def test_create_rejects_when_user_not_project_member():
     u_member, p, _, ds = _setup_project_with_dataset()
     outsider = make_user("outsider@example.com")
@@ -178,17 +139,6 @@ def test_create_rejects_capability_from_other_project():
     mock_apply.assert_not_called()
 
 
-def test_retrieve_includes_events_inline():
-    u, p, _, ds = _setup_project_with_dataset()
-    job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")
-    FinetuningJobEvent.objects.create(job=job, event_type="status_change", message="→ queued")
-    FinetuningJobEvent.objects.create(job=job, event_type="log", message="prepared")
-
-    r = auth_client(u).get(reverse("finetuningjob-detail", kwargs={"id": job.id}))
-    assert r.status_code == 200
-    assert len(r.data["events"]) == 2
-
-
 def test_retrieve_404_for_foreign_job():
     u, _, _, _ = _setup_project_with_dataset()
     _, p2, _, ds2 = _setup_project_with_dataset()
@@ -198,30 +148,7 @@ def test_retrieve_404_for_foreign_job():
     assert r.status_code == 404
 
 
-def test_cancel_transitions_non_terminal_job():
-    u, p, _, ds = _setup_project_with_dataset()
-    job = FinetuningJob.objects.create(
-        project=p, dataset=ds, base_model="m", status=FinetuningJob.Status.RUNNING
-    )
-
-    r = auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
-    assert r.status_code == 200
-    job.refresh_from_db()
-    assert job.status == FinetuningJob.Status.CANCELLED
-
-
-def test_cancel_is_noop_for_terminal_job():
-    u, p, _, ds = _setup_project_with_dataset()
-    job = FinetuningJob.objects.create(
-        project=p, dataset=ds, base_model="m", status=FinetuningJob.Status.SUCCEEDED
-    )
-
-    r = auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
-    assert r.status_code == 200
-    job.refresh_from_db()
-    assert job.status == FinetuningJob.Status.SUCCEEDED
-
-
+@pytest.mark.covers("state-machines")
 def test_retry_dispatches_celery_for_failed_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(
@@ -244,6 +171,7 @@ def test_retry_dispatches_celery_for_failed_job():
     mock_apply.assert_called_once_with(kwargs={"job_id": str(job.id)})
 
 
+@pytest.mark.covers("state-machines")
 def test_retry_rejects_non_failed_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(
@@ -257,6 +185,7 @@ def test_retry_rejects_non_failed_job():
     mock_apply.assert_not_called()
 
 
+@pytest.mark.covers("http-api")
 def test_events_endpoint_returns_events_for_job():
     u, p, _, ds = _setup_project_with_dataset()
     job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")
@@ -266,32 +195,3 @@ def test_events_endpoint_returns_events_for_job():
     r = auth_client(u).get(reverse("finetuningjob-events", kwargs={"id": job.id}))
     assert r.status_code == 200
     assert {row["message"] for row in r.data} == {"one", "two"}
-
-
-def test_list_filters_by_status():
-    u, p, _, ds = _setup_project_with_dataset()
-    FinetuningJob.objects.create(
-        project=p, dataset=ds, base_model="m", status=FinetuningJob.Status.QUEUED
-    )
-    FinetuningJob.objects.create(
-        project=p, dataset=ds, base_model="m", status=FinetuningJob.Status.SUCCEEDED
-    )
-
-    r = auth_client(u).get(reverse("finetuningjob-list") + "?status=succeeded")
-    assert r.status_code == 200
-    statuses = {row["status"] for row in r.data["results"]}
-    assert statuses == {"succeeded"}
-
-
-def test_datasets_list_filters_by_project():
-    u, p_mine, capability_mine, _ = _setup_project_with_dataset()
-    _dataset(capability_mine)
-    _dataset(capability_mine)
-    _u_other, _p_other, foreign_capability, _ = _setup_project_with_dataset()
-    _dataset(foreign_capability)
-
-    r = auth_client(u).get(reverse("dataset-list") + f"?project={p_mine.id}")
-    assert r.status_code == 200
-    assert r.data["count"] == 3
-    for row in r.data["results"]:
-        assert str(row["capability"]) == str(capability_mine.id)

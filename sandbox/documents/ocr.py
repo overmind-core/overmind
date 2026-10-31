@@ -27,6 +27,7 @@ PAGE_TIMEOUT = 60
 DOCUMENT_TIMEOUT = 1200
 MAX_PIXELS = 16_000_000
 MAX_EDGE = 8000
+PAGE_SEGMENTATION = (1, 6)
 MAX_INPUT_PIXELS = 64_000_000
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -131,18 +132,32 @@ def _recipe(path, engine, kind):
             "max_pixels": MAX_PIXELS,
             "max_edge": MAX_EDGE,
             "scale": 3,
-            "psm": 1,
+            "psm": PAGE_SEGMENTATION,
             "mask_padding": 1,
         }
     )
 
 
+def _has_words(tsv):
+    return any(
+        word["level"] == "5" and word["text"].strip()
+        for word in csv.DictReader(io.StringIO(tsv), delimiter="\t", quoting=csv.QUOTE_NONE)
+    )
+
+
 def _recognize(path, engine, timeout):
     selected = engine["requested_languages"] or ["eng"]
-    tsv = _tesseract(
-        [str(path), "stdout", "-l", "+".join(selected), "--psm", "1", "tsv"], timeout=timeout
-    )
-    return tsv, {**engine, "languages": selected}
+    deadline = time.monotonic() + timeout
+    # Automatic layout analysis returns nothing when orientation detection finds too few
+    # characters, as on photographed receipts; a single-block pass still reads them.
+    for psm in PAGE_SEGMENTATION:
+        tsv = _tesseract(
+            [str(path), "stdout", "-l", "+".join(selected), "--psm", str(psm), "tsv"],
+            timeout=max(1, deadline - time.monotonic()),
+        )
+        if _has_words(tsv):
+            break
+    return tsv, {**engine, "languages": selected, "psm": psm}
 
 
 def _cached(cached, recipe, page):

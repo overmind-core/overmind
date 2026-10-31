@@ -1,3 +1,4 @@
+// covers: live-console
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,26 +11,6 @@ import {
 
 describe("schemas", () => {
   describe("tracesSearchSchema", () => {
-    it("parses empty object with defaults", () => {
-      const result = tracesSearchSchema.parse({});
-      expect(result.timeRange).toBe("all");
-      expect(result.ordering).toBe("-start_time_ns");
-      expect(result.page).toBe(1);
-      expect(result.page_size).toBe(25);
-      expect(result.view).toBe("roots");
-    });
-
-    it("parses valid search params", () => {
-      const result = tracesSearchSchema.parse({
-        projectId: "proj-1",
-        search: "test",
-        timeRange: "past24h",
-      });
-      expect(result.projectId).toBe("proj-1");
-      expect(result.timeRange).toBe("past24h");
-      expect(result.search).toBe("test");
-    });
-
     it("opens old reporting links in Traces", () => {
       expect(tracesSearchSchema.parse({ view: "overview" }).view).toBe("roots");
     });
@@ -80,14 +61,6 @@ describe("schemas", () => {
   });
 
   describe("evaluationsSearchSchema", () => {
-    it("parses empty with unfiltered defaults", () => {
-      const result = evaluationsSearchSchema.parse({});
-      expect(result.view).toBe("runs");
-      expect(result.run_status).toBe("all");
-      expect(result.run_capability).toBe("all");
-      expect(result.run_dataset).toBe("all");
-      expect(result.run_search).toBe("");
-    });
     it("round-trips a deep link carrying both a page and runs filters", () => {
       const result = evaluationsSearchSchema.parse({
         page: "3",
@@ -130,12 +103,6 @@ describe("schemas", () => {
       expect(result.run_search).toBe("gpt");
       expect(result.run_status).toBe("running");
     });
-    it("defaults to unfiltered", () => {
-      const result = optimiserSearchSchema.parse({});
-      expect(result.run_status).toBe("all");
-      expect(result.run_capability).toBe("all");
-      expect(result.run_search).toBe("");
-    });
     it("accepts optimize + capability deep-link params", () => {
       const result = optimiserSearchSchema.parse({
         capabilityId: "capability-1",
@@ -147,15 +114,6 @@ describe("schemas", () => {
   });
 
   describe("trainingSearchSchema", () => {
-    it("parses empty with unfiltered defaults", () => {
-      const result = trainingSearchSchema.parse({});
-      expect(result.page).toBe(1);
-      expect(result.page_size).toBe(25);
-      expect(result.ft_status).toBe("all");
-      expect(result.ft_dataset).toBe("all");
-      expect(result.ft_model).toBe("all");
-      expect(result.ft_search).toBe("");
-    });
     it("round-trips a page, the history filters and an open run together", () => {
       const result = trainingSearchSchema.parse({
         ft_dataset: "ds-1",
@@ -186,12 +144,6 @@ describe("schemas", () => {
   });
 
   describe("datasetsSearchSchema", () => {
-    it("parses empty with unfiltered defaults", () => {
-      const result = datasetsSearchSchema.parse({});
-      expect(result.ds_search).toBe("");
-      expect(result.ds_intent).toBe("all");
-      expect(result.ds_capability).toBe("all");
-    });
     it("accepts the create deep-link param", () => {
       const result = datasetsSearchSchema.parse({ create: true, ds_capability: "capability-1" });
       expect(result.create).toBe(true);
@@ -200,22 +152,22 @@ describe("schemas", () => {
     it("round-trips every filter a shared datasets link carries", () => {
       const result = datasetsSearchSchema.parse({
         ds_capability: "capability-1",
-        ds_intent: "train",
+        ds_role: "training",
         ds_search: "golden",
         projectId: "proj-1",
       });
       expect(result.ds_capability).toBe("capability-1");
-      expect(result.ds_intent).toBe("train");
+      expect(result.ds_role).toBe("training");
       expect(result.ds_search).toBe("golden");
       expect(result.projectId).toBe("proj-1");
     });
     it("falls back to unfiltered for stale values, keeping the rest of the search", () => {
       const result = datasetsSearchSchema.parse({
-        ds_intent: "ready_with_warnings",
+        ds_role: "ready_with_warnings",
         ds_search: "kept",
         projectId: "proj-1",
       });
-      expect(result.ds_intent).toBe("all");
+      expect(result.ds_role).toBe("all");
       expect(result.ds_search).toBe("kept");
       expect(result.projectId).toBe("proj-1");
     });

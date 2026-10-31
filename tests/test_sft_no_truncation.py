@@ -6,6 +6,8 @@ import pytest
 
 from overbae.services.sft_assets.truncation import refuse_truncation
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_refuse_truncation_raises_on_overlong_row():
     with pytest.raises(RuntimeError, match="refusing to truncate"):

@@ -90,6 +90,12 @@ class Dataset(models.Model):
         """Every cell in position order."""
         return list(self.cells.order_by("position"))
 
+    def prefetched_chain(self) -> list["Cell"]:
+        """``chain`` from a ``prefetch_related("cells")`` cache when one exists.
+        The cache does not see writes made after the prefetch."""
+        cached = getattr(self, "_prefetched_objects_cache", {}).get("cells")
+        return sorted(cached, key=lambda cell: cell.position) if cached is not None else self.chain
+
     @property
     def source(self) -> "Cell | None":
         return self.cells.filter(position=0).first()

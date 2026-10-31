@@ -23,6 +23,10 @@ file. Resume the identical command after interruption; do not upload each file
 as a separate attachment unless separate versions are intended. A changed order
 or recipe requires a new request key. `--json-rows-field` applies to a single file.
 
+## Preparation lifecycle
+
+Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation.
+
 ## Intent and contracts
 
 A dataset is a landed source and a linear chain of cells; every cell that ran is a

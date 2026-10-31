@@ -18,6 +18,7 @@ from modal.call_graph import InputStatus
 
 from modal_shared.decision_artifact import verify_report
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.serving.args import snap_lora_rank
 from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import gpu_vram_gb, select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
@@ -336,6 +337,74 @@ def retry_deployment(deployment_id) -> DeployedModel:
         ).delete()
         FinetuningJob.objects.filter(pk=job.pk).update(status="deploying", error_message="")
         return deployed
+
+
+def _launch_archive(deployed: DeployedModel) -> None:
+    runtime = dict(deployed.serving_runtime or {})
+    if runtime.get("archive_call_id"):
+        return
+    job = deployed.finetuning_job
+    if not job or job.provider != "modal":
+        return
+    env = (
+        deployed.serving_runtime["environment"]
+        if deployed.inference_contract == "decision"
+        else modal_environment()
+    )
+    try:
+        call_id = _bounded(
+            modal.Function.from_name(
+                "overmind-register", "sync_modal_checkpoint_to_s3", environment_name=env
+            ).spawn.aio,
+            remote_id=job.remote_job_id,
+            user_id=str(job.triggered_by_id) if job.triggered_by_id else "",
+            job_id=str(job.id),
+            job_result=job.result if isinstance(job.result, dict) else {},
+        ).object_id
+    except Exception:
+        logger.exception("Checkpoint archive did not start for deployment %s", deployed.pk)
+        return
+    runtime["archive_call_id"] = call_id
+    DeployedModel.objects.filter(pk=deployed.pk).update(serving_runtime=runtime)
+    deployed.serving_runtime = runtime
+
+
+def start_serving_snapshot(job, *, base: dict, rank: int) -> None:
+    """Boot the shared-base pool while training runs.
+
+    The snapshot holds the base engine only. A pool that already matches this
+    base, GPU, context and rank is reused; a failure leaves the post-training
+    boot to capture it.
+    """
+    if not serves_as_adapter(job) or not isinstance(base, dict):
+        return
+    try:
+        from modal_shared.shared import base_pool_name
+        from modal_shared.stacks import worker_cls_name
+
+        length = int(job_serving_plan(job)["max_model_len"])
+        snapped = snap_lora_rank(int(rank or 16))
+        cfg = dict(get_model_config_any_backend(job.base_model) or {})
+        cfg["fp8_supported"] = False
+        gpu, _ = select_gpu(cfg, length)
+        rel = str(base.get("base_model_path") or "").removeprefix("/weights/").lstrip("/")
+        identity = str(base.get("base_identity") or "")
+        if not rel or not identity:
+            return
+        modal.Cls.from_name(
+            "overmind-inference",
+            worker_cls_name(gpu, "vllm", enable_lora=True),
+            environment_name=modal_environment(),
+        )(
+            model_path=rel,
+            model_name=base_pool_name(rel),
+            max_model_len=length,
+            enable_lora=True,
+            max_lora_rank=snapped,
+            base_identity=identity,
+        ).startup_info.spawn()
+    except Exception:
+        logger.exception("Serving snapshot did not start for job %s", job.pk)
 
 
 def _remote_operation(deployed: DeployedModel):
@@ -718,11 +787,11 @@ def _complete_stage(deployed: DeployedModel, result) -> None:
     values = {"deployment_call_id": "", "deployment_dispatching": False, "error_message": ""}
     stage = deployed.deployment_stage
     if stage == "base":
-        values["deployment_stage"] = (
-            "archive"
-            if deployed.finetuning_job and deployed.finetuning_job.provider == "modal"
-            else "weights"
-        )
+        # The zip is the download and rebuild copy. Serving reads final/ on the
+        # training volume, so the archive runs beside the rest of the deploy.
+        if deployed.finetuning_job and deployed.finetuning_job.provider == "modal":
+            _launch_archive(deployed)
+        values["deployment_stage"] = "weights"
     elif stage == "archive":
         values["deployment_stage"] = "weights"
     elif stage == "weights":
@@ -742,7 +811,7 @@ def _complete_stage(deployed: DeployedModel, result) -> None:
             values.update(
                 weights_path="/weights/" + result["base_path"].removeprefix("/weights/"),
                 adapter_path="/weights/.adapters/" + deployed.model_id,
-                lora_rank=int(result.get("lora_rank") or 16),
+                lora_rank=snap_lora_rank(int(result.get("lora_rank") or 16)),
                 is_lora=True,
                 quantization="bf16",
             )
@@ -840,6 +909,8 @@ def advance_deployment(deployment_id) -> None:
                     logger.exception("Invalid result for deployment %s", deployed.pk)
                     state = "failed"
                     result = "Remote operation returned an invalid result."
+                else:
+                    deployed.refresh_from_db()
             if state == "failed":
                 message = f"{STAGE_LABELS[deployed.deployment_stage]} failed."
                 if isinstance(result, str):
@@ -868,7 +939,9 @@ def advance_deployment(deployment_id) -> None:
                         error_message=message,
                         deployment_next_poll_at=next_poll,
                     )
-            return
+                return
+            if state != "complete" or deployed.status not in ACTIVE_STATUSES:
+                return
         if deployed.deployment_dispatching:
             _finish(
                 deployed,

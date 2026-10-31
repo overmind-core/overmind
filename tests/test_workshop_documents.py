@@ -19,7 +19,7 @@ from sandbox.documents import ocr
 from sandbox.documents.extract import DocumentError as ParserError
 from sandbox.documents.extract import extract as parse_document
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("data-logic")]
 
 
 @pytest.fixture
@@ -353,7 +353,7 @@ def test_image_upload_extracts_text_with_upright_evidence_and_original_download(
     assert b"".join(download.streaming_content) == content
 
 
-@pytest.mark.parametrize("failure", ["corrupt", "blank", "animated", "disguised", "oversized"])
+@pytest.mark.parametrize("failure", ["corrupt", "animated", "disguised", "oversized"])
 def test_invalid_image_does_not_partially_append_a_batch(
     workshop, django_capture_on_commit_callbacks, monkeypatch, failure, in_process_parser
 ):
@@ -374,7 +374,7 @@ def test_invalid_image_does_not_partially_append_a_batch(
         if failure == "disguised"
         else image_bytes("WEBP", variant="animated")
         if failure == "animated"
-        else image_bytes("PNG", variant="blank" if failure == "blank" else "plain")
+        else image_bytes("PNG")
     )
     name = "broken.webp" if failure == "animated" else "broken.png"
     good, _ = upload(client, "more.txt", b"This must not land on its own.")
@@ -393,12 +393,58 @@ def test_invalid_image_does_not_partially_append_a_batch(
     assert not dataset.source_spec.get("sources")
     expected = {
         "corrupt": "image could not be read",
-        "blank": "No text was found after OCR",
         "animated": "Animated images",
         "disguised": "PNG, JPEG or WebP",
         "oversized": "64 megapixels",
     }
     assert expected[failure] in dataset.error
+
+
+def test_image_without_text_lands_as_an_empty_recorded_part_of_a_batch(workshop):
+    client, project = workshop
+    good, _ = upload(client, "policy.png", image_bytes("PNG"))
+    blank, _ = upload(client, "blank.png", image_bytes("PNG", variant="blank"))
+    created = client.post(
+        "/api/datasets/",
+        {"project": str(project.id), "source": {"uploads": [good, blank]}},
+        format="json",
+    )
+    assert created.status_code == 201, created.data
+    dataset = Dataset.objects.get(pk=created.data["id"])
+    assert dataset.source is not None, dataset.error
+    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    assert "Returns are accepted for thirty days." in " ".join(frame["text"])
+    assert {p["evidence"][0]["filename"] for p in frame["_overmind_provenance"]} == {"policy.png"}
+    by_name = {source["filename"]: source for source in dataset.source_spec["sources"]}
+    assert by_name["blank.png"]["rows"] == 0
+    assert by_name["blank.png"]["extraction"]["status"] == "no_text"
+    assert "No text was found after OCR" in by_name["blank.png"]["extraction"]["limitations"][-1]
+    assert by_name["policy.png"]["extraction"]["status"] == "extracted"
+
+
+def test_photographed_page_falls_back_to_single_block_ocr(workshop, monkeypatch, in_process_parser):
+    # Automatic layout analysis can return no words where a single-block pass reads them.
+    run = subprocess.run
+
+    def layout_finds_nothing(command, *args, **kwargs):
+        result = run(command, *args, **kwargs)
+        if "--psm" in command and command[command.index("--psm") + 1] == "1":
+            result.stdout = result.stdout.splitlines()[0] + "\n"
+        return result
+
+    monkeypatch.setattr(subprocess, "run", layout_finds_nothing)
+    client, project = workshop
+    upload_id, _ = upload(client, "receipt.png", image_bytes("PNG"))
+    created = client.post(
+        "/api/datasets/",
+        {"project": str(project.id), "source": {"uploads": [upload_id]}},
+        format="json",
+    )
+    dataset = Dataset.objects.get(pk=created.data["id"])
+    assert dataset.source is not None, dataset.error
+    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    assert "Returns are accepted for thirty days." in " ".join(frame["text"])
+    assert {p["extraction"]["psm"] for p in frame["_overmind_provenance"]} == {6}
 
 
 def test_image_can_be_added_to_an_existing_workshop(workshop, django_capture_on_commit_callbacks):

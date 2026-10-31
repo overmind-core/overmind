@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+// covers: console-logic
+
 import type { ReactNode } from "react";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render as renderComponent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CapabilityList } from "@/openapi";
@@ -53,3 +56,12 @@ describe("CapabilityGrid routed badge", () => {
     expect(screen.getByText("gpt-4o-mini")).toBeTruthy();
   });
 });
+
+function render(children: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderComponent(children, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}

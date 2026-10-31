@@ -118,6 +118,8 @@ def oauth_routes():
     routes = create_protected_resource_routes(
         AnyHttpUrl(resource_url()), [issuer], SCOPES, "Overmind"
     )
+    # Some clients derive this path from the MCP URL without its trailing slash, as in MCP_PATHS.
+    routes += [Route(r.path.rstrip("/"), endpoint=r.endpoint, methods=r.methods) for r in routes]
     for path, handler, methods in [
         (
             "/.well-known/oauth-authorization-server",

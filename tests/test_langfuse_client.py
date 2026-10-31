@@ -5,6 +5,8 @@ import pytest
 from overbae.services.connectors.langfuse.client import LangFuseClient, LangFuseError
 from overbae.services.connectors.windows import TimeWindow, plan_windows
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _WINDOW = TimeWindow(start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 2, tzinfo=UTC))
 
 

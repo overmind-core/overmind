@@ -154,6 +154,77 @@ class DeployedModel(models.Model):
         return self.status in (self.Status.READY, self.Status.FAILED, self.Status.DELETED)
 
 
+class DedicatedDeployment(models.Model):
+    """A private always-on pool beside the scale-to-zero DeployedModel."""
+
+    class Status(models.TextChoices):
+        DEPLOYING = "deploying", "Deploying"
+        WARMING = "warming", "Warming up"
+        ONLINE = "online", "Online"
+        SHUTTING_DOWN = "shutting_down", "Shutting down"
+        FAILED = "failed", "Failed"
+        OFFLINE = "offline", "Offline"
+
+    LIVE = (
+        Status.DEPLOYING,
+        Status.WARMING,
+        Status.ONLINE,
+        Status.SHUTTING_DOWN,
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="dedicated_deployments"
+    )
+    deployed_model = models.ForeignKey(
+        DeployedModel, on_delete=models.CASCADE, related_name="dedicated_deployments"
+    )
+    started_by = models.ForeignKey(
+        "overbae.User", null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    gpu_type = models.CharField(max_length=20)
+    serving_shape = models.CharField(max_length=16)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DEPLOYING, db_index=True
+    )
+    min_replicas = models.PositiveSmallIntegerField(default=1)
+    max_replicas = models.PositiveSmallIntegerField(default=1)
+    scale_to_zero = models.BooleanField(default=False)
+    idle_shutdown_seconds = models.PositiveIntegerField(default=900)
+    modal_app = models.CharField(max_length=200, blank=True)
+    running_replicas = models.PositiveSmallIntegerField(default=0)
+    rate_usd_per_gpu_hour = models.DecimalField(max_digits=12, decimal_places=6)
+    credits_per_gpu_hour = models.DecimalField(max_digits=12, decimal_places=2)
+    rates_fetched_at = models.DateTimeField(null=True, blank=True)
+    online_at = models.DateTimeField(null=True, blank=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    last_billed_at = models.DateTimeField(null=True, blank=True)
+    accrued_credits = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    error_message = models.TextField(blank=True)
+    probe_call_id = models.CharField(max_length=100, blank=True)
+    next_poll_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["deployed_model"],
+                condition=models.Q(status__in=["deploying", "warming", "online", "shutting_down"]),
+                name="one_live_dedicated_deployment",
+            )
+        ]
+
+    @property
+    def served_model_id(self) -> str:
+        # vLLM and the loaded adapter keep this name for the life of the container.
+        return f"dedicated/{self.id}"
+
+    @property
+    def public_model_id(self) -> str:
+        return f"dedicated/{self.deployed_model.model_id}"
+
+
 class ModelActivation(models.Model):
     class Stage(models.TextChoices):
         CHECKING = "checking", "Checking deployment"

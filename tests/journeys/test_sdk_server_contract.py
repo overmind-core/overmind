@@ -1,6 +1,10 @@
+import pytest
+
 from overbae.api import overmind_attrs
 from overbae.models.traces import USAGE_ATTR_KEYS
 from overmind import attrs
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 def _constants(module) -> dict[str, str]:

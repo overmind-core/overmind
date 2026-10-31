@@ -35,7 +35,6 @@ from overmind.config import (
     load,
     protect_secret_file,
 )
-from overmind.init_cmd import preflight_mcp_configs, refresh_mcp_configs, resolve_mcp_url
 
 SYNC_PATH = "/api/v1/sync"
 PROJECTS_PATH = "/api/projects/"
@@ -164,7 +163,7 @@ def ensure_mcp_project_key(
     config.api_key = new_key
     dump(config, path)
     if scope == "account":
-        console.print("Minted project-scoped API key for MCP.")
+        console.print("Saved a project-scoped API key for this repository.")
     return config, new_key
 
 
@@ -230,7 +229,6 @@ def run_up(path: Path, api_key: str, api_url: str) -> Config:
         raise SyncError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
     try:
         protect_secret_file(credentials_path(path), repo_root=path.resolve().parent)
-        preflight_mcp_configs(path.resolve().parent)
     except (SecretFileError, OSError, ValueError) as exc:
         raise SyncError(str(exc)) from exc
     key_scope = _api_key_scope(key, url)
@@ -253,16 +251,6 @@ def run_up(path: Path, api_key: str, api_url: str) -> Config:
         config, key = ensure_mcp_project_key(config, path, key, url, key_scope=key_scope)
     except (SecretFileError, OSError, ValueError) as exc:
         raise SyncError(f"Local sync persistence failed; a project credential may have been saved: {exc}") from exc
-    mcp_url, _ = resolve_mcp_url("production", url)
-    try:
-        updated = refresh_mcp_configs(path.resolve().parent, mcp_url, key)
-    except (SecretFileError, OSError, ValueError) as exc:
-        raise SyncError(f"Project credential saved, but MCP config update failed: {exc}") from exc
-    if updated:
-        console.print(f"Updated MCP authentication: {', '.join(updated)}.")
-        console.print("Reload the coding agent once. No re-export or re-init is required.")
-    else:
-        console.print("No Overmind MCP config found. Run `overmind init --ide <client>` to add one.")
     return config
 
 

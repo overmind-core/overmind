@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";

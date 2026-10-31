@@ -15,6 +15,8 @@ import pytest
 
 from modal_shared.training_telemetry import record_stage
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 ASSETS = Path(__file__).resolve().parents[1] / "overbae/services/sft_assets"
 
 

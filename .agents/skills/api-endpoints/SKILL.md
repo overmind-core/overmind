@@ -31,7 +31,7 @@ or in `urlpatterns` for plain views.
 make generate_api_client
 ```
 
-Settings refuse to load without Modal tokens when `.env` has none: prefix with `MODAL_TOKEN_ID=dummy MODAL_TOKEN_SECRET=dummy` — the schema step never talks to Modal.
+Settings refuse to load when any key in `_REQUIRED_KEYS` (`overbae/settings.py`: sandbox, OpenRouter, Modal, inference, AWS, Hugging Face) is unset. If `.env` lacks some, prefix the command with dummy values for those keys — the schema step calls none of these services.
 
 Runs `manage.py spectacular` → dockerized `openapi-generator-cli` → rewrites `frontend/src/openapi/{apis,models}`.
 
@@ -63,5 +63,5 @@ Hardcoded URLs and bare `fetch`/`axios` bypass auth middleware and typing. Respo
 
 ## Rules
 
-- Never hand-edit anything under `frontend/src/openapi/` — a hook blocks it under Claude Code, and the next regeneration would overwrite it anyway.
+- Never hand-edit anything under `frontend/src/openapi/` — the `protect_generated` hook blocks it in Claude Code, Codex and Cursor, and the next regeneration would overwrite it anyway.
 - A DRF view docstring becomes the OpenAPI operation `description`, so editing one changes the generated client. Prefer an explicit `@extend_schema(summary=...)`.

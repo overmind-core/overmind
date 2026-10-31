@@ -12,10 +12,11 @@ import httpx
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections, transaction
+from django.test import TransactionTestCase
 from fakes.clerk import ClerkAPI
 from fakes.http import ScriptedAPI
 from fakes.llm import FakeLLM, Network
-from fakes.modal import FakeModal, ServingBackend, SftBackend
+from fakes.modal import DecisionBackend, FakeModal, ServingBackend, SftBackend
 from fakes.stripe import StripeAPI
 
 
@@ -28,6 +29,39 @@ def pytest_ignore_collect(collection_path, config):
         return None if os.environ.get("TEST_REDIS_URL") else True
     parallel = hasattr(config, "workerinput") or config.getoption("numprocesses", default=None)
     return True if parallel or not os.environ.get("TEST_REDIS_URL") else None
+
+
+# Static rows that post_migrate creates once per test database.
+_KEPT_TABLES = {"django_content_type", "auth_permission", "django_migrations"}
+
+
+def _truncate_written_tables(self):
+    # Django's flush truncates every table and re-runs post_migrate (about 3 s a test);
+    # emptying only the tables a test wrote leaves the database in the same state.
+    for alias in self._databases_names(include_mirrors=False):
+        connection = connections[alias]
+        quote = connection.ops.quote_name
+        tables = sorted(
+            set(connection.introspection.django_table_names(only_existing=True)) - _KEPT_TABLES
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                " UNION ALL ".join(
+                    f"SELECT %s WHERE EXISTS (SELECT 1 FROM {quote(table)})" for table in tables
+                ),
+                tables,
+            )
+            written = [row[0] for row in cursor.fetchall()]
+            if written:
+                # DELETE skips TRUNCATE's per-table file work; replica mode skips FK order.
+                cursor.execute(
+                    "SET session_replication_role = replica;"
+                    + "".join(f"DELETE FROM {quote(table)};" for table in written)
+                    + "SET session_replication_role = DEFAULT;"
+                )
+
+
+TransactionTestCase._fixture_teardown = _truncate_written_tables
 
 
 def drain_stream(response) -> bytes:
@@ -159,6 +193,11 @@ def sft(fake_modal) -> SftBackend:
 @pytest.fixture
 def serving(fake_modal) -> ServingBackend:
     return ServingBackend(fake_modal, url="http://inference.test").install()
+
+
+@pytest.fixture
+def decisions(fake_modal) -> DecisionBackend:
+    return DecisionBackend(fake_modal).install()
 
 
 @pytest.fixture(autouse=True)

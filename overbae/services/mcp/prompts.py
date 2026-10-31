@@ -47,6 +47,7 @@ PROMPTS = (
             ),
         ),
         template=(
+            "Before dataset preparation work, inspect_dataset_workbench and resume its preparation_workflow or call start_dataset_preparation with a stable request_key. Keep it preparing across local authoring, previews and publications. Use update_dataset_preparation with state=completed and verified published output cell UUIDs only when all requested agent work is finished; use paused when stopping temporarily or cancelled when abandoning. Individual job completion does not finish preparation. "
             "Transform dataset {dataset} for this request: {task}. Optional starting revision: {pipeline}. "
             "Discover list_projects and pass project_id explicitly. Read overmind://interface/current and "
             "overmind://dataset-upload. Inspect the exact source cell, fingerprint, columns and values with "
@@ -146,7 +147,7 @@ PROMPTS = (
             "coverage, overlap and identity evidence through get_job(kind=native_evaluation). "
             "Use create_training_experiment to save purpose, explicit variants (base_model, cell, optional "
             "development_cell, hyperparameters) and optional evaluation protocol. Hyperparameters use n_epochs, "
-            'learning_rate, lora_r and seed; LoRA uses training_type={{"type":"Lora"}}. checkpoint_policy has fractions ending at 1 and selection last '
+            'learning_rate, lora_r and seed; lora_r must be 8, 16, 32, 64, 128, 256, 320, or 512. lora_alpha is twice lora_r. LoRA uses training_type={{"type":"Lora"}}. checkpoint_policy has fractions ending at 1 and selection last '
             "or development_loss; final scores never select checkpoints. Inspect requested/effective settings "
             "and authorization after prepare_training_experiment returns a configuration-bound forecast. Pass its quote_id to launch_training_experiment where saved constraints require it. Novel recipes can use create_training_profile for explicitly authorized bounded measurement. Reuse completed compatible predictions only through reuse_evaluation_predictions or an explicit experiment reuse_existing_predictions choice. Poll existing jobs without duplicate starts. "
             "Transient evaluation interruptions recover automatically; poll get_job while running. Use resume_native_evaluation only for stopped work. Saved call IDs and completed responses are reused; missing external predictions have bounded retries with uncertain prior costs retained. "

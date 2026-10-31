@@ -1,13 +1,27 @@
-<img alt="Overmind" src="https://github.com/user-attachments/assets/4a5caceb-49e8-4b8e-a6aa-511222a94381" />
+<img alt="Overmind" src="https://github.com/user-attachments/assets/8ba6a64f-0819-47bd-9d58-af89ee3e7bad" />
 
 # Overmind
 
-Overmind is two things in one package:
+Overmind turns any company into an AI lab. Have your coding agent train a model
+on your data, test it, and serve it through an OpenAI-compatible API. Start from
+a dataset you upload or from your app's recorded LLM calls. This package is the
+CLI and Python SDK for [Overmind](https://www.overmindlab.ai), the model
+training platform for AI teams.
 
-- **Tracing SDK** — drop-in observability for LLM agents. Decorate your code, get structured traces of every LLM call and tool invocation.
-- **Inference client and CLI** — `overmind.Client` calls models you deployed on Overmind through the OpenAI-compatible API; the `overmind` command scans, syncs, and moves datasets and checkpoints.
+**To start**, ask your coding agent to read
+[setup.md](https://console.overmindlab.ai/setup.md) and follow it. If you are
+that coding agent, read it now. It installs this package, connects Claude Code,
+Codex, Cursor or OpenCode, and asks the person to sign in once.
 
-**Documentation:** [Overmind guide](https://docs.overmindlab.ai/core/observability)
+- `overmind init --ide claude` connects your coding agent (or `codex`, `cursor`,
+  `opencode`). The same `overmind` command scans, syncs, and moves datasets and
+  checkpoints.
+- `overmind.Client` calls models you deployed on Overmind through the
+  OpenAI-compatible API.
+- `overmind[tracing]` records each LLM call and tool call in your app, so its
+  runs can become training and test data.
+
+**Documentation:** [docs.overmindlab.ai](https://docs.overmindlab.ai)
 
 **Console:** [console.overmindlab.ai](https://console.overmindlab.ai/)
 
@@ -48,9 +62,10 @@ overmind sync
 ```
 
 The pasted account key is a bootstrap credential for the current shell only.
-`init` installs the skill and prepares the selected IDE; `sync` creates the
-project, stores its project-scoped key in `.overmind/credentials.toml`, and
-updates the local MCP config. Reload the IDE once after the first sync.
+`init` installs the skill, adds the Overmind MCP server and prints the client's
+sign-in step; `sync` creates the project and stores its project-scoped key in
+`.overmind/credentials.toml`. Complete the `Next:` step `init` prints before
+using MCP tools.
 
 Then in your coding harness:
 
@@ -255,8 +270,8 @@ overmind skills sync overmind-observability overmind-datasets --ide codex
 overmind init --ide codex
 ```
 
-`init` prepares each vendor's project-scoped MCP config, leaving any other
-configured servers untouched. `sync` installs the final project key:
+`init` adds a URL-only Overmind server, leaving any other configured servers
+untouched. The client signs in through OAuth; `sync` never edits MCP config:
 
 | `--ide`                  | MCP config                     | Skill install      |
 | ------------------------ | ------------------------------ | ------------------ |
@@ -266,12 +281,10 @@ configured servers untouched. `sync` installs the final project key:
 | `codex`                  | `.codex/config.toml`           | `.agents/skills`   |
 
 Claude Code gets a local-scope server for this directory in `~/.claude.json`
-(or `$CLAUDE_CONFIG_DIR/.claude.json`), so the key never enters the repository
-and a committed `.mcp.json` is left untouched. Other MCP configs containing the
-project key and `.overmind/credentials.toml` are added to the clone-local Git
-exclude file and written with owner-only permissions. Sync refuses to put a key
-in a tracked config. Codex loads project configuration only for trusted
-repositories.
+(or `$CLAUDE_CONFIG_DIR/.claude.json`), and a committed `.mcp.json` is left
+untouched. Codex loads project configuration only for trusted repositories.
+`.overmind/` holds local state; its own `.gitignore` keeps it out of Git, and
+`credentials.toml` is owner-only.
 
 `overmind init` installs the complete skill set. Plugins bundle the same source;
 `overmind skills sync` refreshes selected skills in an existing installation.

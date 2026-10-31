@@ -35,7 +35,7 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 function planBadge(sub: Subscription) {
-  if (sub.plan === PlanEnum.pro && sub.cancelAtPeriodEnd) {
+  if (sub.plan === PlanEnum.pro && sub.canManageRenewal && sub.cancelAtPeriodEnd) {
     return <Badge variant="warning">Cancels soon</Badge>;
   }
   if (sub.plan === PlanEnum.pro) {
@@ -91,6 +91,10 @@ function PlanActions({ sub }: { sub: Subscription }) {
     } catch (err) {
       notify.error(err, "Could not renew plan");
     }
+  }
+
+  if (sub.plan === PlanEnum.pro && !sub.canManageRenewal) {
+    return <SharedActions />;
   }
 
   if (sub.plan === PlanEnum.pro && sub.cancelAtPeriodEnd) {
@@ -284,7 +288,7 @@ export function AccountBand({
             {planBadge(sub)}
             {end ? (
               <span className="text-muted-foreground">
-                {sub.cancelAtPeriodEnd ? `until ${end}` : `renews ${end}`}
+                {sub.canManageRenewal && !sub.cancelAtPeriodEnd ? `renews ${end}` : `until ${end}`}
               </span>
             ) : null}
           </span>
@@ -304,7 +308,7 @@ export function AccountBand({
         </div>
       </div>
 
-      {sub.plan === PlanEnum.pro && sub.cancelAtPeriodEnd ? (
+      {sub.plan === PlanEnum.pro && sub.canManageRenewal && sub.cancelAtPeriodEnd ? (
         <p className="border-t border-border/70 px-4 py-2 text-sm text-warning">
           Cancellation scheduled{end ? ` — access ends ${end}` : ""}. Renew to keep Pro.
         </p>

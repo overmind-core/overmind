@@ -19,7 +19,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useDeployedModelsQuery, useModelLiveQuery } from "@/hooks/use-inference";
 import { type InferenceSearch, inferenceSearchSchema } from "@/lib/schemas";
 import type { DeployedModel } from "@/openapi";
@@ -63,18 +62,18 @@ function InferencePage() {
   const navigate = Route.useNavigate();
   const [ordering, setOrdering] = useState<string | undefined>();
   const [searchText, setSearchText] = useState(search);
-  const debouncedSearch = useDebouncedValue(searchText, 400);
-
-  // Publish settled draft → URL. No-op when equal so mount doesn't reset page.
   useEffect(() => {
-    const next = debouncedSearch.trim();
+    const next = searchText.trim();
     if (next === search) return;
-    void navigate({
-      replace: true,
-      resetScroll: false,
-      search: (prev) => ({ ...prev, inf_search: next, page: 1 }),
-    });
-  }, [debouncedSearch, search, navigate]);
+    const timer = setTimeout(() => {
+      void navigate({
+        replace: true,
+        resetScroll: false,
+        search: (prev) => ({ ...prev, inf_search: next, page: 1 }),
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchText, search, navigate]);
 
   // Back/forward wins over stale keystrokes; trim-equal keeps in-flight typing.
   useEffect(() => {

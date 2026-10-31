@@ -5,6 +5,7 @@ import { Column, FactLine, type Segment, SplitBar } from "@/components/finetunin
 import {
   clampBatchSize,
   draftWithModel,
+  LORA_RANKS,
   MAX_MODELS,
   type ModelDraft,
   TIER_META,
@@ -313,37 +314,20 @@ function TuneFields({
             <TuningField
               id={`lora-r-${draft.id}`}
               label="Rank"
-              min={1}
               onCommit={(v) => {
-                const r = Number.parseInt(v, 10) || 1;
+                const r = Number.parseInt(v, 10);
                 onChange({
                   ...draft,
                   loraParams: {
                     ...draft.loraParams,
-                    lora_alpha: Math.max(draft.loraParams.lora_alpha, r),
+                    lora_alpha: r * 2,
                     lora_r: r,
                   },
                 });
               }}
-              parse="int"
+              options={LORA_RANKS}
               recommended={draft.recommendedValues?.lora_r}
               value={String(draft.loraParams.lora_r)}
-            />
-            <TuningField
-              id={`lora-alpha-${draft.id}`}
-              label="Alpha"
-              min={1}
-              onCommit={(v) =>
-                onChange({
-                  ...draft,
-                  loraParams: {
-                    ...draft.loraParams,
-                    lora_alpha: Number.parseInt(v, 10) || 1,
-                  },
-                })
-              }
-              parse="int"
-              value={String(draft.loraParams.lora_alpha)}
             />
             <TuningField
               id={`lora-dropout-${draft.id}`}

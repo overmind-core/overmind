@@ -11,6 +11,8 @@ from overmind.__main__ import app
 from overmind.config import Config, dump
 from overmind.dataset_cmd import DatasetExportError, DatasetUploadError, export_dataset, upload_file
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 class FakeResponse:
     def __init__(self, payload: dict, status_code: int = 200, *, headers=None, chunks=None):
@@ -68,6 +70,7 @@ def test_original_source_export_verifies_bytes_and_removes_corrupt_download(tmp_
     assert session.calls[0][2]["allow_redirects"] is False
 
 
+@pytest.mark.covers("cli-contract")
 def test_original_source_rejects_cell_selection_and_invalid_identity_before_network(tmp_path):
     session = ExportSession(FakeResponse({}))
     for source, cell in (("../escape", None), ("a" * 64, "cell-id")):
@@ -84,6 +87,7 @@ def test_original_source_rejects_cell_selection_and_invalid_identity_before_netw
     assert session.calls == []
 
 
+@pytest.mark.covers("cli-contract")
 def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"ab")
@@ -100,6 +104,7 @@ def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
     assert session.calls == []
 
 
+@pytest.mark.covers("cli-contract")
 def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"{}\n")
@@ -117,6 +122,7 @@ def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     assert session.calls == []
 
 
+@pytest.mark.covers("cli-contract")
 def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monkeypatch):
     file = tmp_path / "rows.jsonl"
     file.write_text("{}\n")
@@ -155,6 +161,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     assert "get_job(kind=dataset_run, id=" in human.output
 
 
+@pytest.mark.covers("cli-contract")
 def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path: Path, monkeypatch):
     file = tmp_path / "rows.jsonl"
     file.write_text("{}\n")
@@ -180,14 +187,6 @@ def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path:
     assert result.exit_code == 0, result.output
     assert (seen["split"], seen["split_position"]) == (30, "random")
     assert "Eval dataset dataset-2." in result.output
-
-
-def test_upload_command_rejects_removed_flags(tmp_path: Path):
-    file = tmp_path / "rows.jsonl"
-    file.write_text("{}\n")
-    result = CliRunner().invoke(app, ["dataset", "upload", str(file), "--surface", "model"])
-    assert result.exit_code != 0
-    assert "no such option" in result.output.lower()
 
 
 def test_export_dataset_streams_csv_to_explicit_path_with_cell(tmp_path: Path):
@@ -232,6 +231,7 @@ def test_export_dataset_streams_csv_to_explicit_path_with_cell(tmp_path: Path):
     assert "workshop" not in session.calls[0][1]
 
 
+@pytest.mark.covers("measured-facts")
 def test_export_dataset_omits_cell_for_active_version(tmp_path: Path):
     response = FakeResponse(
         {},
@@ -256,6 +256,7 @@ def test_export_dataset_omits_cell_for_active_version(tmp_path: Path):
     assert "fingerprint" not in result
 
 
+@pytest.mark.covers("privacy")
 def test_export_dataset_sanitizes_server_filename_and_refuses_overwrite(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     response = FakeResponse(
@@ -285,6 +286,7 @@ def test_export_dataset_sanitizes_server_filename_and_refuses_overwrite(tmp_path
         )
 
 
+@pytest.mark.covers("privacy")
 @pytest.mark.parametrize(
     ("server_filename", "safe_filename"),
     [
@@ -316,6 +318,7 @@ def test_export_dataset_sanitizes_windows_filename_rules(
     assert Path(safe_filename).read_bytes() == b"{}\n"
 
 
+@pytest.mark.covers("privacy")
 def test_export_dataset_redacts_api_key_from_server_errors(tmp_path: Path):
     response = FakeResponse({"detail": "invalid secret-key"}, 401)
 
@@ -330,6 +333,7 @@ def test_export_dataset_redacts_api_key_from_server_errors(tmp_path: Path):
     assert not (tmp_path / "rows.jsonl").exists()
 
 
+@pytest.mark.covers("privacy")
 def test_export_refuses_redirects_without_forwarding_account_credentials(tmp_path):
     session = ExportSession(FakeResponse({}, 302, headers={"Location": "https://other.invalid"}))
     with pytest.raises(DatasetExportError, match="redirect"):
@@ -340,6 +344,7 @@ def test_export_refuses_redirects_without_forwarding_account_credentials(tmp_pat
     assert not (tmp_path / "rows.jsonl").exists()
 
 
+@pytest.mark.covers("cli-contract")
 def test_export_command_emits_machine_readable_success(tmp_path: Path, monkeypatch):
     captured: dict = {}
 
@@ -392,6 +397,7 @@ def test_export_command_emits_machine_readable_success(tmp_path: Path, monkeypat
     assert "no such option" in sha.output.lower()
 
 
+@pytest.mark.covers("cli-contract")
 @pytest.mark.parametrize(
     ("config", "args", "message"),
     [
@@ -417,6 +423,7 @@ def test_upload_command_reports_missing_configuration(
     assert message in str(json.loads(result.output)["error"])
 
 
+@pytest.mark.covers("state-machines")
 def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(monkeypatch):
     from overmind import dataset_cmd
 

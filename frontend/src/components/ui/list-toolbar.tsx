@@ -34,17 +34,19 @@ export function useListShortcuts({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key !== "/" && e.key !== "r" && e.key !== "c") return;
 
-      // Never steal a keystroke from a field, or act on the list behind an open dialog.
+      // Only the active dialog's search may handle shortcuts over a covered list.
       const target = e.target as HTMLElement | null;
       if (target?.isContentEditable) return;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-
       const current = latest.current;
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"]')).at(
+        -1
+      );
+      if (dialog && !dialog.contains(current.searchRef?.current ?? null)) return;
       if (e.key === "/") {
         const el = current.searchRef?.current;
         if (!el) return;

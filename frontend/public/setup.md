@@ -4,63 +4,38 @@ These are instructions for you, an AI coding agent, to set the human up on
 Overmind. Read them once, then act on them. The human who handed you this
 document wants you to do the setup and execute workflows, not to explain it back to them.
 
-There are 2 prerequisites to start this:
+Run from the repository root. Every step is safe to repeat.
 
-1. **MCP config for Overmind**
-
-```json
-{
-  ...
-  "overmind": {
-    "url": "https://api.overmindlab.ai/api/mcp/"
-  }
-}
-```
-
-**DO NOT forget the slash in the end for the url**
-
-2. **PyPI package overmind**
-
-- Ensure python version is alteast 3.10, if the version is lower, report the conflict to the user and stop.
-
-Use any of the following to install overmind, depending on what is available on the host machine:
-
-- pip: `pip install --upgrade "overmind>=0.1.104"`
-- uv: `uv pip install "overmind>=0.1.104"`
-- Poetry or anything else: `<PYTHON> -m pip install "overmind>=0.1.104"`
-
-2.1 The overmind SDK comes with a set of loaded skills, run the command below using the coding agent you are being called within.
-
-```bash
-overmind init --ide=<cursor | claude | codex | opencode>
-```
-
-Ensure that the project's `python version is >= 3.10`, and `overmind --version is >= 0.1.104`
-
-If the project's Python is older than 3.10 or the install conflicts with the environment,
-report the exact conflict and stop; do not change the project's supported Python range.
-
-The command above should add a `overmind.toml` file, which will also act as a source of truth for users' resources in Overmind.
-
-Ask the user to reload their coding agent if needed to enable MCP,
-otherwise they will not be able to invoke the MCP.
-
-Now we can move onto getting started with overmind.
+1. Install the CLI (Python 3.10+): `python -m pip install --upgrade "overmind>=0.1.106"`.
+   If pip reports an externally managed environment, run
+   `uv tool install --upgrade "overmind>=0.1.106"` (install `uv` first if it is missing) and use
+   `overmind` wherever this guide says `python -m overmind`; if `overmind` is not on `PATH`, call it
+   from the directory `uv tool dir --bin` prints. On any other conflict, report it and stop.
+1. Run `python -m overmind init --ide <claude|codex|cursor|opencode>` for the agent you run in.
+   Add `--api-url URL` if the message names an API. It edits this agent's config; if your
+   sandbox blocks that, ask the user to approve running it outside the sandbox.
+1. Call `list_projects`. If it fails, have the user sign in, through the client's own prompt when
+   it offers one or else by following the `Next:` line `init` printed, then call it again.
+   If the prompt supplies `project_id`, verify that exact project is in the connected catalogue
+   and use it for setup. Preserve it as `project-id` in `overmind.toml` before repository sync;
+   do not create a different project. If the repository already names another project, ask the
+   user which destination to use before changing it.
 
 # USING OVERMIND
 
 Overmind can be used in 2 ways, onboarding from a codebase or onboarding using a dataset,
 ASK the USER which one they want to continue with, if it hasn't already been configured.
 
-> Use Overmind MCP to issue an OVERMIND_API_KEY
+> Connect the project once: call the MCP tool `create_api_key` without `project_id`, then run
+> `OVERMIND_API_KEY=<key> python -m overmind sync --api-url <base-url>`. Sync creates the project and saves its key;
+> later syncs need no key. Never print or store the account key. Skip this if `overmind.toml`
+> has a `project-id` and `.overmind/credentials.toml` exists.
 
 ## Onboarding using codebase or repository
 
 Overmind has skills to scan through a respository with agentic codebase written either in Python or Typescript/Javascript
 
 > If codebase is any other Language, avoid runnning `overmind chassis` command and just use the coding agent's output file and use it to run `overmind sync`
-
-See (overmind://prompts/onboaring-using-codebase) Prompt on the Overmind MCP
 
 - Use the `/overmind setup` skill to start scanning the codebase.
 

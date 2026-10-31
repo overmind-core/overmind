@@ -176,19 +176,14 @@ def public_library_filters() -> dict[str, Any]:
 def public_model_catalog() -> list[dict[str, Any]]:
     """Every model available on the platform: open-weight + frontier.
 
-    One entry per enabled models.json id, deduped across backends — the ``baseten``
-    entry wins over ``together`` because it is the live serving backend
-    (``settings.FINETUNING_BACKEND``).
+    ``together`` entries are left out: training runs on Modal from the Baseten
+    catalog, so a Together-only id can be neither trained nor served.
     """
-    by_id: dict[str, dict[str, Any]] = {}
-    for cfg in all_model_entries():
-        if cfg.get("disabled"):
-            continue
-        existing = by_id.get(cfg["id"])
-        if existing is None or (
-            cfg.get("backend") == "baseten" and existing.get("backend") != "baseten"
-        ):
-            by_id[cfg["id"]] = cfg
+    by_id = {
+        cfg["id"]: cfg
+        for cfg in all_model_entries()
+        if not cfg.get("disabled") and cfg.get("backend") != "together"
+    }
 
     open_weight = [_open_weight_entry(cfg) for cfg in by_id.values()]
     frontier = [_frontier_entry(m) for m in library_models()]

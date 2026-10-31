@@ -1,3 +1,4 @@
+// covers: console-logic
 import { describe, expect, it } from "vitest";
 
 import { formatPayload, renderPayload, toFormatted } from "./payload-format";

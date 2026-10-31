@@ -14,7 +14,7 @@ from django.utils import timezone
 from overbae.models.finetuning import FinetuningJob
 from overbae.tasks.finetuning_reconciler import _reconcile
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("recovery")]
 
 
 def _job(status: str) -> FinetuningJob:

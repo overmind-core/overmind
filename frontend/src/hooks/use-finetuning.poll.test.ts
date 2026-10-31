@@ -1,3 +1,4 @@
+// covers: console-logic
 /** The poll must terminate: the key carries page and filters, so a
  * never-stopping interval means one live 5s loop per visited page. */
 import { describe, expect, it } from "vitest";

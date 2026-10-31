@@ -34,7 +34,20 @@ repos:
         name: no new patches of our own code or private imports in tests
         entry: uv run python scripts/check_test_seams.py
         language: system
-        files: "^tests/.*\\.py$"
+        files: "^(tests/.*\\.py|overmind/tests/.*\\.py|frontend/src/.*\\.test\\.tsx?)$"
+        pass_filenames: false
+      - id: coverage-map
+        name: every coverage-map entry has an owning test
+        entry: uv run python scripts/check_coverage_map.py
+        language: system
+        files: "^(tests/.*\\.py|overmind/tests/.*\\.py|frontend/src/.*\\.test\\.tsx?)$"
+        pass_filenames: false
+      - id: agent-docs-size
+        name: AGENTS.md and skills stay within agent load limits
+        entry: uv run python scripts/check_agent_docs.py
+        language: system
+        files: "^(AGENTS\\.md|\\.agents/skills/.*\\.md)$"
+        pass_filenames: false
       - id: biome
         name: biome check --write
         entry: bash -c 'cd frontend && bun run biome check --write "${@#frontend/}"' --

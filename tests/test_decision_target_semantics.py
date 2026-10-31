@@ -6,6 +6,8 @@ import pytest
 from modal_shared.decisions import decision_line, decision_request
 from overbae.services.datasets.contract import measure
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def request():
     return {

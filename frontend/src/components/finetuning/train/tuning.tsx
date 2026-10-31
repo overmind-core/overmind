@@ -4,6 +4,13 @@ import { formatLr } from "@/components/finetuning/train/model-config";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function TuningField({
@@ -17,6 +24,7 @@ export function TuningField({
   step,
   hint,
   recommended,
+  options,
 }: {
   id: string;
   label: string;
@@ -28,6 +36,7 @@ export function TuningField({
   step?: number;
   hint?: string;
   recommended?: number;
+  options?: readonly number[];
 }) {
   const [draft, setDraft] = useState(value);
   const focused = useRef(false);
@@ -77,28 +86,43 @@ export function TuningField({
           </Tooltip>
         )}
       </div>
-      <Input
-        className="font-mono"
-        id={id}
-        max={max}
-        min={min}
-        onBlur={() => {
-          focused.current = false;
-          commit();
-        }}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => {
-          focused.current = true;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-        placeholder={value === "" ? "auto" : undefined}
-        size="sm"
-        step={step}
-        type="number"
-        value={draft}
-      />
+      {options ? (
+        <Select onValueChange={onCommit} value={value}>
+          <SelectTrigger className="w-full font-mono" id={id} size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          className="font-mono"
+          id={id}
+          max={max}
+          min={min}
+          onBlur={() => {
+            focused.current = false;
+            commit();
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => {
+            focused.current = true;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          placeholder={value === "" ? "auto" : undefined}
+          size="sm"
+          step={step}
+          type="number"
+          value={draft}
+        />
+      )}
     </div>
   );
 }

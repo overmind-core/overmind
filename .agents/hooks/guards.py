@@ -2,6 +2,11 @@
 
 import re
 
+_PUSH_MAIN = "Direct push to main is not allowed. Push to the current feature branch and open a PR."
+_PUSH = re.compile(
+    r"(^|[;&|\n(){}])\s*git(\s+-[Cc]\s+[^\s-]\S*|\s+-(?![Cc]\s)[^\s=]*(=\S*)?)*\s+push\b"
+)
+
 _RULES = [
     (
         # gh pr edit aborts on this repo (Projects-classic GraphQL deprecation)
@@ -21,7 +26,7 @@ _RULES = [
     (
         r"git push[^;&|]*[\s:/](main|master)(?=$|[\s;&|])",
         "deny",
-        "Direct push to main is not allowed. Push to the current feature branch and open a PR.",
+        _PUSH_MAIN,
     ),
     (
         r"(^|[;&|]\s*)make clean\b|docker compose down[^;&|]*-v\b",
@@ -51,15 +56,18 @@ _RULES = [
 _QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 
 
-def check_command(command):
+def check_command(command, branch=None):
     """Return (decision, reason) for a shell command, or None to stay out of the way.
 
     Quoted strings are blanked first so a grep for a guarded phrase is not itself denied.
     The commit-trailer rule reads the raw command because the trailer lives in the message.
+    ``branch`` is the checked-out branch, so a bare ``git push`` from main is denied too.
     """
     if not command:
         return None
     bare = _QUOTED.sub("''", command)
+    if branch in ("main", "master") and _PUSH.search(bare):
+        return "deny", _PUSH_MAIN
     for pattern, decision, reason in _RULES:
         haystack = command if "Co-" in pattern else bare
         if re.search(pattern, haystack):

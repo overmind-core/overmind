@@ -1,7 +1,7 @@
 name: SDK Build and Publish
 
-# Publishes the in-repo SDK. Never runs on ordinary pushes to platform main —
-# only on explicit version tags or published releases.
+# Publishes the in-repo SDK on every push to main that touches overmind/ and on
+# published releases.
 on:
   push:
     branches: [main]

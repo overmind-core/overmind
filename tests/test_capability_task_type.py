@@ -11,6 +11,8 @@ from django.core.cache import cache
 from overbae.services.benchmarks.taxonomy import TaskType
 from overbae.services.codebase import task_type
 
+pytestmark = pytest.mark.covers("recommendations")
+
 
 @pytest.fixture
 def capability():

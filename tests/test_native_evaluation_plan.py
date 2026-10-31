@@ -12,7 +12,7 @@ from overbae.models import Dataset, FinetuningJob, Project
 from overbae.services import native_evaluation, native_evaluation_monitor
 from overbae.services.datasets import land
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 
 def setup_plan(*, prepare=True, question_count=None, targets=None):

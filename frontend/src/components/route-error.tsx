@@ -8,9 +8,21 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
+import { LoadingState } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api-error";
 import { hasChunkReloadFlag, isChunkLoadError, tryReloadOnceOnChunkError } from "@/lib/chunk-error";
 import { errorMessage } from "@/lib/notify";
+
+export function AuthenticationLoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4">
+      <LoadingState label="Loading sign in" />
+      <Button onClick={() => window.location.reload()} variant="outline">
+        Reload sign in
+      </Button>
+    </div>
+  );
+}
 
 export function DetailErrorState({
   action,
@@ -46,15 +58,12 @@ export function RouteErrorFallback({ error, reset }: { error: unknown; reset?: (
   const router = useRouter();
   const chunkError = isChunkLoadError(error);
   const awaitingChunkReload = chunkError && !hasChunkReloadFlag();
-  const [reloading, setReloading] = useState(awaitingChunkReload);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!awaitingChunkReload) return;
     tryReloadOnceOnChunkError(error);
-    setReloading(true);
   }, [awaitingChunkReload, error]);
-
-  if (reloading || awaitingChunkReload) return null;
 
   const notFound = error instanceof ApiError && error.status === 404;
   // A `validateSearch` failure carries the raw issue array as its `.message`,
@@ -71,7 +80,7 @@ export function RouteErrorFallback({ error, reset }: { error: unknown; reset?: (
               <>
                 <Button onClick={() => window.location.reload()}>Refresh page</Button>
                 <Button asChild variant="outline">
-                  <Link to="/">Go to home</Link>
+                  <a href="/">Go to home</a>
                 </Button>
               </>
             }
@@ -92,17 +101,23 @@ export function RouteErrorFallback({ error, reset }: { error: unknown; reset?: (
             <>
               {!invalidLink && (
                 <Button
-                  onClick={() => {
-                    reset?.();
-                    router.invalidate();
+                  disabled={retrying}
+                  onClick={async () => {
+                    setRetrying(true);
+                    try {
+                      await router.invalidate();
+                      reset?.();
+                    } finally {
+                      setRetrying(false);
+                    }
                   }}
                   variant="outline"
                 >
-                  Try again
+                  {retrying ? "Retrying" : "Try again"}
                 </Button>
               )}
               <Button asChild>
-                <Link to="/">Go to home</Link>
+                <a href="/">Go to home</a>
               </Button>
             </>
           }
@@ -139,6 +154,19 @@ export function RouteNotFound() {
         description="This page doesn't exist or has moved."
         icon={Icon.warning}
         title="Page not found"
+      />
+    </div>
+  );
+}
+
+export function AuthenticationLoadError() {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6">
+      <EmptyState
+        action={<Button onClick={() => window.location.reload()}>Reload sign in</Button>}
+        description="The sign-in service could not load. Check your connection and reload."
+        icon={Icon.warning}
+        title="Sign in unavailable"
       />
     </div>
   );

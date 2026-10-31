@@ -4,6 +4,8 @@ import pytest
 
 from modal_shared.decisions import compare_predictions
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 def predictions():
     return [

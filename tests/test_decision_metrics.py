@@ -4,6 +4,8 @@ import pytest
 
 from modal_shared.decision_metrics import score_decision
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 
 def request(kind="choice", count=2):
     return {

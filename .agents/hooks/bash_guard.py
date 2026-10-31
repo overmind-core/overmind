@@ -9,7 +9,9 @@ from guards import check_command
 
 
 def main():
-    verdict = check_command(payload.command(payload.read()))
+    data = payload.read()
+    command = payload.command(data)
+    verdict = check_command(command, payload.branch(data) if "push" in command else None)
     if not verdict:
         return
     decision, reason = verdict

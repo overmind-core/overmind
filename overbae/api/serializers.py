@@ -12,11 +12,13 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from modal_shared.decision_checkpoint_policy import validate_policy
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.serving.args import require_lora_alpha, require_lora_rank
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.native_evaluation import NativeEvaluationSerializer
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.core.model_registry import CATALOG, judge_picker_models
+from overbae.innermind import evidence
 from overbae.models import (
     APIToken,
     BillingTelemetry,
@@ -50,6 +52,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
+from overbae.services.trace_errors import captured_errors
 from overbae.services.training_contract import (
     baseline_evaluation_enabled,
     contract,
@@ -755,11 +758,39 @@ class CapabilitySerializer(serializers.ModelSerializer):
         return attrs
 
 
+class CapturedErrorSerializer(serializers.Serializer):
+    source = serializers.CharField()
+    type = serializers.CharField(allow_blank=True)
+    message = serializers.CharField(allow_blank=True)
+    stacktrace = serializers.CharField(allow_blank=True)
+
+
+class TraceErrorDetailsSerializer(serializers.Serializer):
+    summary = serializers.CharField()
+    records = CapturedErrorSerializer(many=True)
+    context = serializers.DictField(child=serializers.CharField())
+
+
 class SpanSerializer(serializers.ModelSerializer):
     """Full span — used both for ``/api/traces/{trace_id}/`` (one span row in
     the per-trace list) and as the per-row representation for any span query."""
 
     is_root = serializers.BooleanField(read_only=True)
+    input_attribute = serializers.SerializerMethodField()
+    output_attribute = serializers.SerializerMethodField()
+    error_details = serializers.SerializerMethodField()
+
+    @extend_schema_field(TraceErrorDetailsSerializer(allow_null=True))
+    def get_error_details(self, obj):
+        return captured_errors(obj)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_input_attribute(self, obj):
+        return evidence.input_attribute(obj)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_output_attribute(self, obj):
+        return evidence.output_attribute(obj)
 
     class Meta:
         model = Span
@@ -778,11 +809,14 @@ class SpanSerializer(serializers.ModelSerializer):
             "duration_ns",
             "status_code",
             "status_message",
+            "error_details",
             "service_name",
             "resource_attrs",
             "scope_name",
             "scope_version",
             "attributes",
+            "input_attribute",
+            "output_attribute",
             "events",
             "links",
             "capability",
@@ -853,6 +887,12 @@ class RootSpanListSerializer(serializers.ModelSerializer):
     )
     source = serializers.SerializerMethodField()
     trace_status = serializers.SerializerMethodField()
+    error_summary = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_error_summary(self, obj):
+        details = captured_errors(obj)
+        return details["summary"] if details else None
 
     class Meta:
         model = Span
@@ -869,6 +909,7 @@ class RootSpanListSerializer(serializers.ModelSerializer):
             "kind",
             "status_code",
             "status_message",
+            "error_summary",
             "start_time_ns",
             "end_time_ns",
             "duration_ns",
@@ -1033,7 +1074,7 @@ class ModelSwapPromptRequestSerializer(serializers.Serializer):
         default=False,
         help_text=(
             "Write this one deployment's concrete model id into the code instead of the "
-            "capability's permanent alias."
+            "capability's permanent alias. A run without a capability is always pinned."
         ),
     )
 
@@ -1041,16 +1082,16 @@ class ModelSwapPromptRequestSerializer(serializers.Serializer):
 class ModelSwapPromptSerializer(serializers.Serializer):
     prompt = serializers.CharField()
     pin = serializers.BooleanField()
-    capability_id = serializers.UUIDField()
-    capability_name = serializers.CharField()
+    capability_id = serializers.UUIDField(allow_null=True)
+    capability_name = serializers.CharField(allow_blank=True)
     old_model = serializers.CharField()
     new_model = serializers.CharField()
 
 
 def _describe_cell(job: FinetuningJob) -> dict | None:
-    from overbae.services.datasets import use  # noqa: PLC0415 — avoid import cycle
-
-    return use.describe(job.cell if job.cell_id else None)
+    if not job.cell_id:
+        return None
+    return dataset_use.describe(job.cell, chain=job.cell.dataset.prefetched_chain())
 
 
 class FinetuningJobListSerializer(serializers.ModelSerializer):
@@ -1293,6 +1334,33 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 )
             if training_type.get("type", "Lora") not in ("Lora", "Full"):
                 raise serializers.ValidationError('training_type.type must be "Lora" or "Full".')
+        full = isinstance(training_type, dict) and training_type.get("type") == "Full"
+        if full:
+            rank = None
+        elif isinstance(training_type, dict) and "lora_r" in training_type:
+            rank = training_type["lora_r"]
+        elif "lora_r" in value:
+            rank = value["lora_r"]
+        else:
+            rank = None
+        if rank is not None:
+            try:
+                require_lora_rank(rank)
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+        if isinstance(training_type, dict) and "lora_alpha" in training_type:
+            alpha = training_type["lora_alpha"]
+        elif "lora_alpha" in value:
+            alpha = value["lora_alpha"]
+        else:
+            alpha = None
+        if alpha is not None and not full:
+            if not isinstance(rank, int):
+                raise serializers.ValidationError("lora_alpha is twice lora_r.")
+            try:
+                require_lora_alpha(rank, alpha)
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
         return value
 
     def validate_eval_judge_model(self, value):
@@ -2558,6 +2626,7 @@ class SubscriptionSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(allow_null=True)
     end_date = serializers.DateTimeField(allow_null=True)
     cancel_at_period_end = serializers.BooleanField()
+    can_manage_renewal = serializers.BooleanField()
     usage = PlanUsageSerializer()
 
 
@@ -2683,9 +2752,27 @@ class InferenceActivityQuerySerializer(InferenceMonitoringQuerySerializer):
     granularity = serializers.ChoiceField(choices=["minute", "hour", "day"], default="minute")
 
 
+class DedicatedUsagePointSerializer(serializers.Serializer):
+    bucket = serializers.DateTimeField()
+    credits = serializers.FloatField()
+
+
+class DedicatedUsageBreakdownSerializer(serializers.Serializer):
+    gpu_type = serializers.CharField(allow_null=True)
+    credits = serializers.FloatField()
+
+
+class DedicatedUsageSerializer(serializers.Serializer):
+    credits = serializers.FloatField(allow_null=True)
+    gpu_hours = serializers.FloatField(allow_null=True)
+    points = DedicatedUsagePointSerializer(many=True)
+    breakdown = DedicatedUsageBreakdownSerializer(many=True)
+
+
 class InferenceMetricsSerializer(serializers.Serializer):
     """Aggregate usage/latency/cost for a deployed model (from InferenceCall)."""
 
+    dedicated_usage = DedicatedUsageSerializer()
     last_request_at = serializers.DateTimeField(allow_null=True)
     cost_recorded_request_count = serializers.IntegerField()
     failed_request_count = serializers.IntegerField()

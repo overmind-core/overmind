@@ -23,8 +23,9 @@ def _seq_len_from_mask_kwargs(*args: Any, **kwargs: Any) -> int | None:
 
 class Qwen35Hooks(DefaultHooks):
     def env_overrides(self, *, use_lora: bool) -> dict[str, str]:
-        # Unsloth flex patch falls through to eager_attention_forward on this family.
-        return {"UNSLOTH_ENABLE_FLEX_ATTENTION": "0"}
+        # Flex falls through to eager attention. Block compile then reads
+        # __closure__ on a string and fails once per Qwen3_5DecoderLayer.
+        return {"UNSLOTH_ENABLE_FLEX_ATTENTION": "0", "UNSLOTH_BLOCK_COMPILE": "0"}
 
     def load_kwargs(self, *, use_lora: bool) -> dict[str, Any]:
         # Image has no FA2. SDPA + is_causal still uses Hopper flash; Unsloth's

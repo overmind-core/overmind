@@ -1,11 +1,17 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, serializers, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from overbae.models import APIToken
-from overbae.models.iam import API_KEY_EXPIRY_DAYS, account_scope, project_scope
+from overbae.models.iam import (
+    API_KEY_EXPIRY_DAYS,
+    account_scope,
+    delegation_denial,
+    project_scope,
+)
 
 
 class APITokenScopeSerializer(serializers.Serializer):
@@ -123,6 +129,12 @@ class APITokenListCreateView(generics.ListCreateAPIView):
         project, scope_doc = _resolve_create_scope(ser.validated_data, request.user)
         if isinstance(project, Response):
             return project
+        if isinstance(request.auth, APIToken):
+            denial = delegation_denial(
+                request.auth.scope, project.id if project else None, scope_doc["permission"]
+            )
+            if denial:
+                raise PermissionDenied(denial)
 
         raw, instance = APIToken.create_for_user(
             request.user,

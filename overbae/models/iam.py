@@ -182,6 +182,17 @@ def project_scope(project_id, *, permission: list[str] | None = None) -> dict:
     }
 
 
+def delegation_denial(scope: dict, project_id, permission: list[str] | None = None) -> str | None:
+    """Why a key holding ``scope`` cannot create a key for ``project_id`` (None: account)."""
+    if scope.get("scope") != "account" and (
+        project_id is None or str(project_id) not in scope.get("resourceIds", [])
+    ):
+        return "A project API key can only create a key for its own project."
+    if not set(permission or ["read", "write"]) <= set(scope.get("permission", [])):
+        return "An API key can only create a key with permissions it holds."
+    return None
+
+
 class APIToken(models.Model):
     """Only the SHA-256 hash is stored; the plaintext key is returned once.
 

@@ -6,6 +6,8 @@ import pytest
 
 from modal_shared.compute_usage import ComputeMeter
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def test_worker_without_cgroups_includes_finished_child_resource_usage():
     counters = {

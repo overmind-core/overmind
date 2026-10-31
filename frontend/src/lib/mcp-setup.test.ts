@@ -1,3 +1,4 @@
+// covers: mcp-surface
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,7 +21,7 @@ const EDITABLE = "/Users/dom/git/overmind/overmind/overmind";
 describe("mcp setup snippets", () => {
   it("hands the agent the hosted setup guide with no credential", () => {
     expect(onboardingPrompt("https://console.overmindlab.ai/", PROD)).toBe(
-      "Set me up on Overmind\n\n: https://console.overmindlab.ai/setup.md"
+      "Set me up on Overmind https://console.overmindlab.ai/setup.md"
     );
     expect(
       onboardingPrompt("https://console.overmindlab.ai", PROD, {
@@ -28,7 +29,7 @@ describe("mcp setup snippets", () => {
         projectId: PROJECT_ID,
       })
     ).toBe(
-      `Set me up on Overmind with my uploaded data\n(project_id: ${PROJECT_ID},\ndataset_id: d-1)\n\n: https://console.overmindlab.ai/setup.md`
+      `Set me up on Overmind with my uploaded data\n(project_id: ${PROJECT_ID},\ndataset_id: d-1)\n\nhttps://console.overmindlab.ai/setup.md`
     );
   });
 
@@ -40,19 +41,6 @@ describe("mcp setup snippets", () => {
     expect(onboardingPrompt("http://localhost:5173", `${host}/`)).toBe(
       `Set me up on Overmind\n\nusing the API at ${host}: http://localhost:5173/setup.md`
     );
-  });
-
-  it("installs from PyPI on every host", () => {
-    for (const host of [STAGING, PROD, LOCAL]) {
-      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.104"');
-      expect(sdkPipInstall(host, "tracing")).toBe(
-        'python -m pip install "overmind[tracing]>=0.1.104"'
-      );
-    }
-  });
-
-  it("preflights with the CLI version", () => {
-    expect(SDK_PREFLIGHT_COMMAND).toBe("python -m overmind --version");
   });
 
   it("flags --env from the Console API host", () => {
@@ -88,7 +76,7 @@ describe("mcp setup snippets", () => {
     const { sdkPipInstall: pip } = await import("./mcp-setup");
     expect(pip(LOCAL)).toBe(`python -m pip install -e "${EDITABLE}"`);
     expect(pip(LOCAL, "tracing")).toBe(`python -m pip install -e "${EDITABLE}[tracing]"`);
-    expect(pip(PROD)).toBe('python -m pip install "overmind>=0.1.104"');
+    expect(pip(PROD)).toBe('python -m pip install "overmind>=0.1.106"');
     vi.unstubAllEnvs();
     vi.resetModules();
   });

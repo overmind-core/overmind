@@ -1,3 +1,4 @@
+// covers: boot
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("clerkReady derivation", () => {

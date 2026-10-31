@@ -44,10 +44,22 @@ class APITokenBackend(BaseAuthentication):
     """``X-Api-Key: <key>`` or ``Authorization: Bearer <key>``.
 
     Must stay ahead of JWT in the auth class list: an unmatched JWT-shaped value
-    returns None so simplejwt gets its turn.
+    returns None so simplejwt gets its turn. A key without ``write`` may only read;
+    the check lives here for the same reason as the guest gate.
     """
 
     def authenticate(self, request):
+        result = self.resolve(request)
+        if (
+            result
+            and request.method not in SAFE_METHODS
+            and "write" not in result[1].scope.get("permission", [])
+        ):
+            raise exceptions.PermissionDenied("This API key is read-only.")
+        return result
+
+    def resolve(self, request):
+        """The key's (user, token) without the method check; MCP filters tools by permission."""
         raw = self._extract_key(request)
         if raw is None:
             return None

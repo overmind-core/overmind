@@ -4,6 +4,8 @@ import pytest
 
 from modal_shared.decision_artifact import read_artifact, seal_artifact
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 def checkpoint(path):
     path.mkdir()

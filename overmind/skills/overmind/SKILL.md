@@ -107,7 +107,7 @@ coding environment with `overmind connection check --project-id PROJECT --json`;
 configuration alone is not readiness. Follow the Datasets skill for durable
 upload recovery and scoped host approvals.
 
-Use the connected catalog and `overmind://interface/current` as the authority for available operations and the current contract version. OAuth/account API keys discover projects with `list_projects` and pass `project_id` on every operation and resource; project API keys retain narrower scope. Never put credentials in chat. `create_api_key` returns a new secret once; omit `project_id` for an account key and pass it for a project key. Do not write the secret into the repository, a prompt, or another tool argument.
+Use the connected catalog and `overmind://interface/current` as the authority for available operations and the current contract version. OAuth/account API keys discover projects with `list_projects` and pass `project_id` on every operation and resource; project API keys retain narrower scope. Never put credentials in chat. `create_api_key` returns a new secret once; omit `project_id` for an account key and pass it for a project key. Do not write the secret into the repository, a prompt, or another tool argument, except the `OVERMIND_API_KEY=` prefix of the first onboarding `overmind sync`.
 
 Data-first projects do not require repository scanning, capabilities or instrumentation. Use `develop-model-from-data` when starting with uploaded data. Repository discovery remains a local workflow only for code-backed projects. Installed skills assist discovery; they are not a correctness prerequisite.
 
@@ -164,6 +164,7 @@ group's owning skill carries its workflow.
 
 - Observability: `inspect_capability_health`, `query_failures`, `query_traces`, `get_job`.
 - Signals: `list_signals`, `set_signal_subscription`.
+- Credits: `get_credit_balance` reports account balance and usage by service, with `since` for task budgets. Read the `credit_reporting` field of `overmind://interface/current` for scope and budget limits.
 - Instrumentation: `get_instrumentation_plan`, `verify_instrumentation`.
 - Datasets: `list_datasets`, `inspect_dataset`, `query_dataset`,
   `start_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`,

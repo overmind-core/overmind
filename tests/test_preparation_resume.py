@@ -14,6 +14,8 @@ from modal_shared.preparation import processor_fingerprint
 from modal_shared.training_data import file_digest
 from overbae.services.sft_assets import preprocess
 
+pytestmark = pytest.mark.covers("recovery")
+
 
 def fixture(tmp_path, rows=9):
     source = tmp_path / "rows.jsonl.gz"

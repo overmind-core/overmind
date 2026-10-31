@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 

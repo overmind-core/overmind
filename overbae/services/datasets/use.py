@@ -78,12 +78,12 @@ def label(dataset: Dataset, cell: Cell) -> str:
     return dataset.versions().get(cell.id, cell.title)
 
 
-def describe(cell: Cell | None) -> dict[str, Any] | None:
+def describe(cell: Cell | None, *, chain: list[Cell] | None = None) -> dict[str, Any] | None:
     if cell is None:
         return None
     return {
         "id": str(cell.id),
-        "version": cell.dataset.versions().get(cell.id, ""),
+        "version": cell.dataset.versions(chain=chain).get(cell.id, ""),
         "title": cell.title,
         "rows": cell.rows,
         "fingerprint": cell.fingerprint,

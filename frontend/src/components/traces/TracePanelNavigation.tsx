@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { SearchInput } from "@/components/ui/search-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -24,6 +25,7 @@ export function TracePanelNavigation() {
   } = useTraceSelection();
   const [search, setSearch] = useState("");
   const roots = useMemo(() => buildSpanTree(spans), [spans]);
+  const failedSpans = spans.filter((span) => span.statusCode === 2);
   const collapsed = roots.length > 0 && roots.every((root) => collapsedNodes.has(root.id));
   return (
     <div className="flex h-full min-w-0 flex-col bg-wash-subtle">
@@ -61,16 +63,27 @@ export function TracePanelNavigation() {
           </Tooltip>
         )}
       </div>
+      {failedSpans.length > 0 && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/70 px-3 py-1.5 text-xs">
+          <span className="text-destructive">
+            {failedSpans.length} failed {failedSpans.length === 1 ? "span" : "spans"}
+          </span>
+        </div>
+      )}
       {viewMode === "tree" && (
-        <div className="shrink-0 border-b border-border/70 px-2 py-1.5">
-          <SearchInput
-            label="Search spans"
-            onChange={(e) => setSearch(e.target.value)}
-            onClear={() => setSearch("")}
-            placeholder="Search spans…"
-            size="sm"
-            value={search}
-            variant="subtle"
+        <div className="shrink-0 border-b border-border/70 px-2 py-2">
+          <ListToolbar
+            search={
+              <SearchInput
+                aria-keyshortcuts="/"
+                className="min-w-0 flex-1"
+                label="Search spans"
+                onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
+                placeholder="Search spans…"
+                value={search}
+              />
+            }
           />
         </div>
       )}

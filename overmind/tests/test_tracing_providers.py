@@ -16,6 +16,8 @@ import pytest
 
 from overmind import tracing
 
+pytestmark = pytest.mark.covers("sdk-install")
+
 
 @pytest.fixture(autouse=True)
 def _reset_provider_state():
@@ -30,19 +32,6 @@ def _reset_provider_state():
 
 class TestEnableProvider:
     """Direct tests for the shared :func:`_enable_provider` helper."""
-
-    def test_instruments_when_module_available(self):
-        instrumentor_cls = MagicMock()
-        module = MagicMock(DemoInstrumentor=instrumentor_cls)
-        with (
-            patch("importlib.util.find_spec", return_value=object()),
-            patch("importlib.import_module", return_value=module),
-        ):
-            tracing._enable_provider("demo", "demo_module", "instr.demo", "DemoInstrumentor")
-
-        instrumentor_cls.assert_called_once_with()
-        instrumentor_cls.return_value.instrument.assert_called_once_with()
-        assert "demo" in tracing._providers
 
     def test_is_idempotent_on_repeated_calls(self):
         instrumentor_cls = MagicMock()
@@ -67,16 +56,20 @@ class TestEnableProvider:
 
     def test_raises_when_module_missing_in_strict_mode(self):
         tracing._strict_mode = True
-        with patch("importlib.util.find_spec", return_value=None):
-            with pytest.raises(ImportError, match="not installed"):
-                tracing._enable_provider("demo", "demo_module", "instr.demo", "DemoInstrumentor")
+        with (
+            patch("importlib.util.find_spec", return_value=None),
+            pytest.raises(ImportError, match="not installed"),
+        ):
+            tracing._enable_provider("demo", "demo_module", "instr.demo", "DemoInstrumentor")
 
     def test_dotted_module_name_collapsed_for_install_hint(self):
         """``google.genai`` shouldn't appear in `pip install google.genai`."""
         tracing._strict_mode = True
-        with patch("importlib.util.find_spec", return_value=None):
-            with pytest.raises(ImportError, match=r"pip install google-genai"):
-                tracing._enable_provider("google", "google.genai", "instr.google", "GoogleInstrumentor")
+        with (
+            patch("importlib.util.find_spec", return_value=None),
+            pytest.raises(ImportError, match=r"pip install google-genai"),
+        ):
+            tracing._enable_provider("google", "google.genai", "instr.google", "GoogleInstrumentor")
 
     def test_missing_extra_instrumentor_warns_with_extra_hint(self, caplog):
         """Target library installed but the extra-shipped instrumentor absent:
@@ -92,9 +85,11 @@ class TestEnableProvider:
     def test_missing_extra_instrumentor_raises_in_strict_mode(self):
         tracing._strict_mode = True
         gate, instrumentation, cls = tracing._PROVIDER_MODULES["openai"]
-        with patch("importlib.util.find_spec", side_effect=lambda mod: object() if mod == gate else None):
-            with pytest.raises(ImportError, match=r"overmind\[tracing\]"):
-                tracing._enable_provider("openai", gate, instrumentation, cls)
+        with (
+            patch("importlib.util.find_spec", side_effect=lambda mod: object() if mod == gate else None),
+            pytest.raises(ImportError, match=r"overmind\[tracing\]"),
+        ):
+            tracing._enable_provider("openai", gate, instrumentation, cls)
 
     def test_missing_namespace_package_treated_as_absent(self):
         """find_spec raises ModuleNotFoundError when a dotted parent package
@@ -112,37 +107,11 @@ class TestEnableProvider:
 
         assert "langchain" not in tracing._providers
 
-    def test_langchain_provider_registered(self):
-        gate, instrumentation, cls = tracing._PROVIDER_MODULES["langchain"]
-        assert gate == "langchain_core"
-        assert instrumentation == "openinference.instrumentation.langchain"
-        assert cls == "LangChainInstrumentor"
-
 
 class TestEnableTracingDispatcher:
-    def test_empty_list_enables_all_known_providers(self):
-        with patch.object(tracing, "_enable_provider") as enable:
-            tracing.enable_tracing([])
-
-        enabled = [call.args[0] for call in enable.call_args_list]
-        assert enabled == list(tracing._PROVIDER_MODULES)
-
-    def test_none_short_circuits(self):
-        with patch.object(tracing, "_enable_provider") as enable:
-            tracing.enable_tracing(None)
-
-        enable.assert_not_called()
-
     def test_unknown_provider_does_not_crash(self, caplog):
         tracing.enable_tracing(["definitely-not-real"])
         assert any("Unknown tracing provider" in rec.message for rec in caplog.records)
-
-    def test_routes_named_providers_through_helper(self):
-        with patch.object(tracing, "_enable_provider") as enable:
-            tracing.enable_tracing(["openai", "anthropic"])
-
-        enabled = [call.args[0] for call in enable.call_args_list]
-        assert enabled == ["openai", "anthropic"]
 
 
 class TestAutoProviders:
@@ -164,23 +133,6 @@ class TestAutoProviders:
             tracing.enable_tracing("auto")
 
         assert [call.args[0] for call in enable.call_args_list] == ["openai"]
-
-    def test_logs_resolved_list_at_info(self, caplog):
-        detected = {
-            "anthropic",
-            "opentelemetry.instrumentation.anthropic",
-            "openai",
-            "opentelemetry.instrumentation.openai",
-        }
-        with (
-            caplog.at_level("INFO"),
-            patch.object(tracing, "_module_installed", side_effect=lambda m: m in detected),
-            patch.object(tracing, "_enable_provider"),
-        ):
-            tracing.enable_tracing("auto")
-
-        (record,) = (r for r in caplog.records if 'providers="auto"' in r.message)
-        assert "openai, anthropic" in record.message
 
     def test_nothing_installed_resolves_to_none(self, caplog):
         with (

@@ -79,6 +79,7 @@ from overbae.models import (
 from overbae.models.traces import usage_slice
 from overbae.services import native_evaluation, training_plans
 from overbae.services import sync as sync_service
+from overbae.services.activity import asset, record
 from overbae.services.capabilities import identity as capability_identity
 from overbae.services.datasets import exploration as dataset_exploration
 from overbae.services.datasets import land as dataset_land
@@ -4337,6 +4338,32 @@ class Command(BaseCommand):
         # ── Summary ──────────────────────────────────────────────────────────────────────
 
         seed_model_workflows(project)
+
+        demo_assets = [asset("dataset", dataset.pk, dataset.name) for dataset in seed_datasets[:2]]
+        for index, (kind, action) in enumerate(
+            [
+                ("agent_connected", "Connected to Overmind"),
+                ("repository_synced", "Synced repository"),
+                ("capabilities_available", "Capabilities available"),
+                ("first_trace", "Received first trace"),
+                ("source_uploaded", "Uploaded source"),
+                ("source_ready", "Source ready"),
+                ("preparation_published", "Published dataset preparation"),
+            ]
+        ):
+            event = record(
+                key=f"demo-activity:{project.pk}:{kind}",
+                project_id=project.pk,
+                user_id=owner.pk,
+                kind=kind,
+                action=action,
+                actor_kind="demo",
+                actor_name="Demo",
+                assets=demo_assets
+                if kind.startswith("source_") or kind == "preparation_published"
+                else [],
+            )
+            stamp(event, days_ago(1, m=30 - index), days_ago(1, m=30 - index))
         self.stdout.write("\nSeed complete — Support Copilot.")
         for label, count in [
             ("Capabilities", Capability.objects.filter(project=project).count()),

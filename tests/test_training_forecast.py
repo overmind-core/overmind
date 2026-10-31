@@ -11,6 +11,8 @@ from overbae.services import training_release
 from overbae.services.recommendation import estimate_for_hyperparams
 from overbae.services.training_forecast import forecast
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def test_native_forecast_uses_matching_measurements_and_selected_gpu():
     recipe = {"objective": "decision_cross_entropy", "context_length": 2048, "batch_size": 128}

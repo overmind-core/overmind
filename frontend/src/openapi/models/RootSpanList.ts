@@ -102,6 +102,12 @@ export interface RootSpanList {
     readonly statusMessage: string;
     /**
      *
+     * @type {string}
+     * @memberof RootSpanList
+     */
+    readonly errorSummary: string | null;
+    /**
+     *
      * @type {number}
      * @memberof RootSpanList
      */
@@ -198,6 +204,7 @@ export function instanceOfRootSpanList(value: object): value is RootSpanList {
     if (!('kind' in value) || value['kind'] === undefined) return false;
     if (!('statusCode' in value) || value['statusCode'] === undefined) return false;
     if (!('statusMessage' in value) || value['statusMessage'] === undefined) return false;
+    if (!('errorSummary' in value) || value['errorSummary'] === undefined) return false;
     if (!('startTimeNs' in value) || value['startTimeNs'] === undefined) return false;
     if (!('endTimeNs' in value) || value['endTimeNs'] === undefined) return false;
     if (!('durationNs' in value) || value['durationNs'] === undefined) return false;
@@ -236,6 +243,7 @@ export function RootSpanListFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'kind': json['kind'],
         'statusCode': json['status_code'],
         'statusMessage': json['status_message'],
+        'errorSummary': json['error_summary'],
         'startTimeNs': json['start_time_ns'],
         'endTimeNs': json['end_time_ns'],
         'durationNs': json['duration_ns'],
@@ -256,7 +264,7 @@ export function RootSpanListToJSON(json: any): RootSpanList {
     return RootSpanListToJSONTyped(json, false);
 }
 
-export function RootSpanListToJSONTyped(value?: Omit<RootSpanList, 'trace_id'|'span_id'|'project'|'capability'|'capability_name'|'span_type'|'operation'|'name'|'service_name'|'kind'|'status_code'|'status_message'|'start_time_ns'|'end_time_ns'|'duration_ns'|'total_tokens'|'total_cost'|'cache_read_tokens'|'model'|'conversation'|'feedback_score'|'received_at'|'source'|'eval_attributes'|'trace_status'> | null, ignoreDiscriminator: boolean = false): any {
+export function RootSpanListToJSONTyped(value?: Omit<RootSpanList, 'trace_id'|'span_id'|'project'|'capability'|'capability_name'|'span_type'|'operation'|'name'|'service_name'|'kind'|'status_code'|'status_message'|'error_summary'|'start_time_ns'|'end_time_ns'|'duration_ns'|'total_tokens'|'total_cost'|'cache_read_tokens'|'model'|'conversation'|'feedback_score'|'received_at'|'source'|'eval_attributes'|'trace_status'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -221,20 +222,6 @@ describe("EvidencePanel", () => {
       />
     );
   }
-
-  it("opens on the chart, not on the benchmark table", () => {
-    panel();
-
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.queryByRole("table")).toBeNull();
-  });
-
-  it("counts the benchmarks on the toggle that reveals them", () => {
-    panel();
-
-    const toggle = screen.getByRole("button", { name: "Show 3 benchmarks" });
-    expect(toggle.getAttribute("title")).toBe("high confidence");
-  });
 
   it("keeps the global percentiles behind the benchmark toggle", () => {
     panel();

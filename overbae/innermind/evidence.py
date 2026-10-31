@@ -78,6 +78,20 @@ def _messages(span: Span) -> tuple[list[dict] | None, list[dict] | None]:
     return prompt, completion
 
 
+def _first_present(attributes: dict, keys: tuple[str, ...]) -> str | None:
+    return next((key for key in keys if attributes.get(key) not in (None, "")), None)
+
+
+def input_attribute(span: Span) -> str | None:
+    """The attribute holding the span's input: a native payload, else the GenAI messages."""
+    return _first_present(span.attributes or {}, (*INPUT_KEYS, chatml.GENAI_SEMCONV_INPUT_KEY))
+
+
+def output_attribute(span: Span) -> str | None:
+    """The attribute holding the span's output: a native payload, else the GenAI messages."""
+    return _first_present(span.attributes or {}, (*OUTPUT_KEYS, chatml.GENAI_SEMCONV_OUTPUT_KEY))
+
+
 def read_input(span: Span) -> str:
     attributes = span.attributes or {}
     value = chatml.pick(attributes, INPUT_KEYS)

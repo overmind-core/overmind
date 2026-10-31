@@ -1,7 +1,7 @@
 from asgiref.sync import sync_to_async
 
-from overbae.models import Capability
-from overbae.services.datasets import lifecycle, pipeline_bindings, workbench
+from overbae.models import Capability, DatasetPreparation
+from overbae.services.datasets import lifecycle, pipeline_bindings, preparation_workflow, workbench
 from overbae.services.mcp.contracts.common import ResourceLinkContract
 from overbae.services.mcp.contracts.workbench import (
     BindingInput,
@@ -13,7 +13,9 @@ from overbae.services.mcp.contracts.workbench import (
     RunInput,
     SaveBindingInput,
     SaveInput,
+    StartPreparationInput,
     UpdateInput,
+    UpdatePreparationInput,
     ValidateInput,
     compact_run,
 )
@@ -28,6 +30,22 @@ def invoke(name, payload, context):
     try:
         if name == "inspect_dataset_workbench":
             result = workbench.describe(dataset, project=context.project, **args)
+            latest = (
+                DatasetPreparation.objects.filter(dataset=dataset).order_by("-created_at").first()
+                if dataset
+                else None
+            )
+            result["preparation_workflow"] = (
+                preparation_workflow.describe(latest) if latest else None
+            )
+        elif name == "start_dataset_preparation":
+            result["preparation_workflow"] = preparation_workflow.describe(
+                preparation_workflow.start(dataset, context, **args)
+            )
+        elif name == "update_dataset_preparation":
+            result["preparation_workflow"] = preparation_workflow.describe(
+                preparation_workflow.update(dataset, outputs=args.pop("outputs", []), **args)
+            )
         elif name == "save_dataset_pipeline":
             result["pipeline"] = workbench.pipeline_record(
                 workbench.save_pipeline(context.project, context.user, dataset=dataset, **args)
@@ -163,64 +181,76 @@ def register_workbench_tools(catalog):
 
     definitions = [
         (
+            "start_dataset_preparation",
+            StartPreparationInput,
+            False,
+            "Begin agent work; retry request_key unchanged. Keeps Preparing between jobs. Inspect to resume; explicitly finish.",
+        ),
+        (
+            "update_dataset_preparation",
+            UpdatePreparationInput,
+            False,
+            "Overall state: preparing resumes, paused waits, cancelled abandons. Complete after all work/jobs/uploads finish with published output UUIDs. Terminal states immutable.",
+        ),
+        (
             "inspect_dataset_workbench",
             InspectInput,
             True,
-            "Discover reusable transformations. Optional pipeline is an exact revision ID: returns that recipe, paged family revisions newest first, and its runs/bindings. Optional dataset filters runs/bindings, not recipes. Page with pipeline_offset, run_offset, binding_offset and limit. Follow revision/package resources for retained code. Reads never execute scripts.",
+            "Read recipes/runs/bindings/preparation_workflow. pipeline selects revision/family history; dataset filters runs/bindings. Code in resources; no execution.",
         ),
         (
             "save_dataset_pipeline",
             SaveInput,
             False,
-            "Retain a transformation without execution. Supply dataset to give its current script a persistent home automatically; saving a correction replaces that association. No user retention decision is needed. A retained Python package is mandatory: author meaningful staged scripts, upload with overmind dataset pipeline-upload (see overmind://dataset-upload), and supply its package UUID. Package-free step definitions are rejected. Historical package-free revisions are read-only. Give steps id and input (source or earlier step), or inputs=[earlier IDs] for fan-in. Inputs concatenate in order; overlapping source_row identities fail. Last step is output; flow.unconsumed_steps identifies disconnected deliverables. Script conditions cite expression and entrypoint line; flow declarations are distinct from execution facts. Revise with pipeline family ID and expected_revision; adapt with derived_from revision ID. Changed request-key content conflicts.",
+            "Save package from pipeline-upload (overmind://dataset-upload), without execution. dataset attaches/replaces script. Steps: id + input (source/prior step) or inputs (fan-in); source_row overlap fails. Last step outputs; inspect flow.unconsumed_steps. Conditions cite expression/entrypoint line. Revise pipeline + expected_revision or derive derived_from. Changed request-key payload conflicts.",
         ),
         (
             "run_dataset_pipeline",
             RunInput,
             False,
-            "Run an exact revision on a pinned project source. Preview bounds input without publication: min_rows/max_rows are deferred population checks; preserve_rows and lineage still apply. Publish enforces all checks and atomically appends one cell per step. Scripts use the approved isolated runner. Follow poll_after_seconds; queued work is not a failure. Recover the identical request_key, never resubmit to avoid a normal wait. Semantic correctness remains unmeasured.",
+            "Run pinned revision/source in isolation. Preview bounds input, defers population limits; lineage/preserve_rows apply. Publish appends cells atomically. Semantics unmeasured. Poll after poll_after_seconds; retry same request_key.",
         ),
         (
             "validate_dataset_pipeline",
             ValidateInput,
             True,
-            "Check retained package, syntax, declared requirements and optional source columns without executing code. Does not establish semantic compatibility or full-row validity.",
+            "Check syntax, requirements, optional source columns. No execution or semantic/full-row validation.",
         ),
         (
             "cancel_dataset_pipeline_run",
             CancelRunInput,
             False,
-            "Cancel publication of one exact run. Container termination remains unconfirmed until the runner observes it; source and consumer versions remain intact.",
+            "Cancel exact run publication; container termination awaits runner observation. Retains source and consumer versions.",
         ),
         (
             "save_dataset_pipeline_binding",
             SaveBindingInput,
             False,
-            "Save a paused source-to-revision binding. Sources are another dataset's active version or a trace selection; changes rebuild full snapshots, including late updates/removals. Pin exact revision, parameters, interval and run/row limits. Revising requires expected_version and pauses the binding; enable separately.",
+            "Save paused binding to active dataset version or traces; rebuild snapshots with late edits/removals. Pin revision/parameters/interval/run/row limits. Revise with expected_version; pauses until enabled.",
         ),
         (
             "set_dataset_pipeline_binding_state",
             BindingStateInput,
             False,
-            "Explicitly enable or pause a saved binding with expected_version. Pause stops new batches, not an in-flight run. Reads and registration never enable execution.",
+            "Enable/pause with expected_version. Pause stops new batches only. Registration never enables execution.",
         ),
         (
             "run_dataset_pipeline_binding",
             BindingInput,
             False,
-            "Process one bound source snapshot with its exact saved revision and limits. An unchanged successful snapshot is a no-op. Returns the durable run; no agent authoring or paid providers are invoked.",
+            "Run bound snapshot with saved limits; unchanged source is a no-op. No agent or paid provider.",
         ),
         (
             "import_dataset_version",
             ImportInput,
             False,
-            "Import externally authored rows against a pinned source. Every row must retain source_row or declare _overmind_parent_rows. All parents are validated. Supply imported_rows up to 2000 rows/4 MiB, or artifact_cell plus artifact_fingerprint for a file uploaded as another dataset in this project. provenance describes the producer. External execution and semantic truth are not independently verified.",
+            "Import pinned source: validate source_row/_overmind_parent_rows. Supply imported_rows (2000 rows/4 MiB) or project artifact_cell + artifact_fingerprint. provenance names producer; execution/semantics unverified.",
         ),
         (
             "update_dataset",
             UpdateInput,
             False,
-            "Set an explicit dataset name, user-selected intent, capability, active version or OCR languages for subsequent imports. Empty ocr_languages uses English; a coding agent can set supported Tesseract codes before uploading to a draft. Intent and capability cannot change after use. Null clears capability or the default version. Selecting a version does not alter existing consumers.",
+            "Set name, user intent, capability, active cell or future Tesseract OCR codes ([] English). Intent/capability freeze after use; null clears capability/default. Existing cells/consumers unchanged.",
         ),
     ]
     for name, model, read_only, description in definitions:

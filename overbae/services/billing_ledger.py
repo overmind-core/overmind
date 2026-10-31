@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from overbae.models import BillingService, BillingTelemetry, User
 from overbae.services import model_catalog
@@ -23,8 +24,46 @@ MIN_TOPUP_USD = 1
 MAX_TOPUP_USD = 1000
 
 
+def credit_report(
+    user: User,
+    *,
+    since: datetime | None,
+    observed_at: datetime,
+) -> dict[str, Any]:
+    window = Q(amount__lt=0) & (Q(timestamp__gte=since) if since is not None else Q())
+    rows = list(
+        BillingTelemetry.objects.filter(user=user, timestamp__lte=observed_at)
+        .values("service")
+        .annotate(
+            balance=Sum("amount"),
+            granted=Sum("amount", filter=Q(amount__gt=0), default=Decimal("0")),
+            spent=Sum("amount", filter=Q(amount__lt=0), default=Decimal("0")),
+            used=Sum("amount", filter=window, default=Decimal("0")),
+        )
+        .order_by("service")
+    )
+    by_service = [
+        {"service": row["service"], "spent_credits": -row["used"] * CREDITS_PER_USD}
+        for row in rows
+        if row["used"]
+    ]
+    return {
+        "balance_credits": sum((row["balance"] for row in rows), Decimal("0")) * CREDITS_PER_USD,
+        "granted_credits": sum((row["granted"] for row in rows), Decimal("0")) * CREDITS_PER_USD,
+        "spent_credits": -sum((row["spent"] for row in rows), Decimal("0")) * CREDITS_PER_USD,
+        "usage": {
+            "spent_credits": -sum((row["used"] for row in rows), Decimal("0")) * CREDITS_PER_USD,
+            "by_service": by_service,
+        },
+    }
+
+
 class InsufficientCredits(Exception):  # noqa: N818
     """Raised when the user has no credits left for paid work."""
+
+
+def to_credits(amount_usd: Decimal) -> Decimal:
+    return (amount_usd * CREDITS_PER_USD).quantize(Decimal("0.01"))
 
 
 def balance_usd(user: User) -> Decimal:

@@ -30,7 +30,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -60,7 +59,6 @@ DATA_MOUNT = "/data"
 WEIGHTS_MOUNT = "/weights"
 RUNS_DIR = f"{DATA_MOUNT}/runs"
 TRAIN_TIMEOUT_S = 24 * 60 * 60  # Modal's per-attempt ceiling
-_VOLUME_COMMIT_INTERVAL_S = 5.0
 _ASSETS_REMOTE_DIR = "/root/sft_assets"
 
 # modal_shared lives outside overbae on purpose: overbae/__init__.py imports
@@ -171,23 +169,10 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
         child_env["HF_TOKEN"] = hf_token
         child_env["HUGGING_FACE_HUB_TOKEN"] = hf_token
 
-    # ProgressCallback writes to run_dir on every logged step but has no Modal
-    # awareness, so commit the Volume on a timer instead of coupling the training
-    # script to Modal internals.
-    stop_commit = threading.Event()
-
-    def _commit_loop() -> None:
-        while not stop_commit.wait(_VOLUME_COMMIT_INTERVAL_S):
-            try:
-                record_heartbeat(run_dir)
-                atomic_json(usage_path, [*previous_usage, meter.snapshot()])
-                sft_vol.commit()
-            except Exception as exc:  # noqa: BLE001 — best-effort background commit
-                print(f"[modal_sft_worker] volume commit skipped: {exc!r}")
-
-    committer = threading.Thread(target=_commit_loop, daemon=True)
-    committer.start()
-
+    # A timer commit stacks a layer per job every few seconds, and Modal then
+    # rejects new writers. Step files publish through Modal's background commit.
+    # The durable transcript stays local until a stage boundary.
+    local_log = work_dir / "train_stdout.log"
     _write_meta(run_dir, status="running")
     sft_vol.commit()
 
@@ -197,14 +182,11 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
         # constants, pretok.py's sys.path/sys.modules swap, transformers'/unsloth's
         # one-time patching) do not reset between calls — a second job inherits a
         # corrupted `trl` import. One training process per job, no shared Python state.
-        # stdout is tee'd to the Volume as well as the container: the live log stream
-        # keeps only a short rolling window, and intermittent failures need a durable
-        # per-run transcript (`modal volume get overmind-sft runs/<run_id>/train_stdout.log`).
         log_path = run_dir / "train_stdout.log"
         for verify in [False, True] if native else [False]:
             phase_env = {**child_env, "DECISION_VERIFY_CHECKPOINT": "1" if verify else "0"}
             with (
-                open(log_path, "ab") as log_f,
+                open(local_log, "ab") as log_f,
                 subprocess.Popen(  # noqa: S603
                     [sys.executable, f"{_ASSETS_REMOTE_DIR}/train.py"],
                     cwd=work_dir,
@@ -220,6 +202,8 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
                     log_f.write(line)
                     log_f.flush()
                 proc.wait()
+            if local_log.exists():
+                shutil.copy2(local_log, log_path)
             sft_vol.commit()
             if proc.returncode != 0:
                 raise RuntimeError(f"train.py exited with code {proc.returncode}")
@@ -229,13 +213,13 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
             candidate_dir.rename(final_dir)
         status = "succeeded"
     except Exception:
-        failure = failure_receipt(log_path)
+        if local_log.exists():
+            shutil.copy2(local_log, run_dir / "train_stdout.log")
+        failure = failure_receipt(run_dir / "train_stdout.log")
         _write_meta(run_dir, status="failed", error=failure["message"], failure=failure)
         sft_vol.commit()
         raise
     finally:
-        stop_commit.set()
-        committer.join(timeout=10)
         atomic_json(usage_path, [*previous_usage, meter.snapshot()])
         sft_vol.commit()
 
@@ -437,23 +421,14 @@ def upload_dataset(
         for name, selection in selections.items()
     ]
 
-    next_publication = 0.0
-
     def report_progress(values):
-        nonlocal next_publication
-        publish = time.monotonic() >= next_publication
         try:
             atomic_json(run_dir / "transfer-progress.json", {"source_at": time.time(), **values})
-            if publish:
-                sft_vol.commit()
         except Exception as exc:
             # Telemetry delivery must not invalidate the selected training rows.
             logging.getLogger(__name__).warning(
                 "Transfer telemetry unavailable (%s)", type(exc).__name__
             )
-        finally:
-            if publish:
-                next_publication = time.monotonic() + _VOLUME_COMMIT_INTERVAL_S
 
     materialize_files(
         preparation / "tokens.jsonl", artifact_sha256, files, progress=report_progress

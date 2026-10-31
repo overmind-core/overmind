@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from functools import wraps
@@ -36,6 +37,48 @@ def _renew(lock, timeout: int, stop: threading.Event) -> None:
             return
         except Exception:  # noqa: BLE001 — the holder keeps running; retry on the next beat
             logger.warning("Could not renew lock %s", lock.name, exc_info=True)
+
+
+@contextmanager
+def hold_one_slot(lock_name: str, slots: int, *, timeout: int):
+    """Hold one of ``slots`` locks until the block exits.
+
+    Modal's v1 volume rejects small commits once more than a handful of writers
+    commit at once, so training uploads share five slots.
+    """
+    if slots < 1:
+        raise ValueError("slots must be positive")
+    if not _is_redis_broker(_broker_url()):
+        yield
+        return
+    client = _get_redis_client()
+    while True:
+        for slot in range(slots):
+            lock = client.lock(
+                f"celery:lock:{lock_name}:{slot}",
+                timeout=timeout,
+                blocking_timeout=0,
+                thread_local=False,
+            )
+            if not lock.acquire(blocking=False):
+                continue
+            stop = threading.Event()
+            threading.Thread(
+                target=_renew,
+                args=(lock, timeout, stop),
+                name=f"lock {lock_name}:{slot}",
+                daemon=True,
+            ).start()
+            try:
+                yield
+            finally:
+                stop.set()
+                try:
+                    lock.release()
+                except LockNotOwnedError:
+                    logger.error("Lock %s:%s lapsed while its holder still runs", lock_name, slot)
+            return
+        time.sleep(0.5)
 
 
 @contextmanager

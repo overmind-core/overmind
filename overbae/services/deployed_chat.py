@@ -69,6 +69,7 @@ def record_inference_call(
     source: str = "internal",
     requested_model: str = "",
     started_at: datetime | None = None,
+    bill: bool = True,
 ) -> None:
     """Persist one InferenceCall. Never raises.
 
@@ -99,7 +100,7 @@ def record_inference_call(
     try:
         cost = (
             estimate_call_cost(deployed.gpu_type, latency_ms)
-            if outcome == "succeeded" or usage
+            if bill and (outcome == "succeeded" or usage)
             else None
         )
         call = InferenceCall.objects.create(

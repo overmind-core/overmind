@@ -115,7 +115,9 @@ For a repository rollout, `get_model_swap_prompt` accepts a successful fine-tune
 an optional `pin` and returns a copy-paste `prompt` plus `capability_id`,
 `old_model` and `new_model`; it is a local handoff and MCP does not edit the
 repository. Omit `pin` to point the code at the capability alias, so later swaps need
-no further code change. Apply code changes only within the requested scope and
+no further code change. Use `pin: true` for an exact deployment. A model without a
+capability is always pinned: the result returns `pin: true` and a null `capability_id`.
+Apply code changes only within the requested scope and
 verify final capability and deployment state. After `set_active_model`, verify the
 final state from the deployment and capability resources. A failed activation
 preserves the current model and can be retried with the same selection. Successful application API-key calls establish connection

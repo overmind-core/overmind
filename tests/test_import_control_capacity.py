@@ -13,7 +13,7 @@ from overbae.models import Dataset, DatasetImport, DatasetLandingWork, Project
 from overbae.services.datasets import imports
 from overbae.services.queue_capacity import read_workloads
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("capacity")]
 
 
 @pytest.fixture

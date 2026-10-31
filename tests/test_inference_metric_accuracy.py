@@ -13,7 +13,7 @@ from overbae.models import Project
 from overbae.models.inference import DeployedModel, InferenceCall
 from overbae.services.deployed_chat import record_inference_call
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("measured-facts")]
 
 
 def _model() -> DeployedModel:

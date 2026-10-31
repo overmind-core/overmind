@@ -1,5 +1,5 @@
 import { Icon } from "@/components/ui/icons";
-import { cn, usdToOvermindCredits, usdToOvermindCreditsWithLabel } from "@/lib/utils";
+import { cn, formatOvermindCredits, usdToOvermindCreditsWithLabel } from "@/lib/utils";
 
 /** The glyph replaces the word "credits" visually; screen readers still get the full
  *  phrase. */
@@ -11,7 +11,7 @@ export function CreditsAmount({ usd, className }: { usd: number; className?: str
       title={usdToOvermindCreditsWithLabel(usd)}
     >
       <Icon.credits aria-hidden className="size-3.5 shrink-0" />
-      {usdToOvermindCredits(usd).toLocaleString("en-US")}
+      {formatOvermindCredits(usd)}
     </span>
   );
 }
