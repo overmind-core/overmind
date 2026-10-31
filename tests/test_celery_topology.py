@@ -214,19 +214,19 @@ def test_overwatch_slack_is_not_a_product_worker():
     )
 
 
-def test_new_producers_wait_for_healthy_landing_capacity():
+def test_service_deploys_start_together_after_migrate():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]
 
-    def prerequisites(name):
-        needs = jobs[name].get("needs", [])
-        needs = [needs] if isinstance(needs, str) else needs
-        return set(needs).union(*(prerequisites(n) for n in needs))
+    def needs(name):
+        raw = jobs[name].get("needs", [])
+        return {raw} if isinstance(raw, str) else set(raw)
 
-    assert "deploy-landing" in jobs, "Provisioned landing consumers need a deployment gate"
-    assert "migrate" in prerequisites("deploy-landing"), "New workers require the migrated schema"
-    assert "deploy-landing" in prerequisites("deploy-api"), "Publishers must follow ready consumers"
-    assert "deploy-landing" in prerequisites("deploy-workers")
+    assert "preflight" in needs("migrate")
+    deploy_jobs = [name for name in jobs if name.startswith("deploy-")]
+    assert deploy_jobs
+    for name in deploy_jobs:
+        assert needs(name) == {"build-and-push", "migrate"}, name
     landing_steps = jobs["deploy-landing"]["steps"]
     assert any("deploy_ecs.py" in step.get("run", "") for step in landing_steps)
     assert any(
