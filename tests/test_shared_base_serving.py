@@ -12,6 +12,8 @@ import pytest
 from modal_shared.stacks import WORKER_ALLOWED, worker_cls_name
 from overbae.modal import modal_vllm_worker as serving
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
     obj = serving._BaseVLLMWorker()

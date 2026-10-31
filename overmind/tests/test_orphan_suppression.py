@@ -22,6 +22,8 @@ from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 import overmind.tracing as tracing
 from overmind.tracing import _span_processor_on_start, observe, start_span, task
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):

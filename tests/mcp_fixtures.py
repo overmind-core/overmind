@@ -2,13 +2,20 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
+import pytest
+from asgiref.sync import async_to_sync
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
+from django.test import TestCase
 from factories import make_matrix_row, make_project, make_user
 
 from overbae.models import APIToken, Capability, EvalMatrix, EvalSet
+from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 MAX_MANIFEST_BYTES = 93 * 1024
+# The ASGI MCP app serves requests on another thread with its own connection,
+# so it sees only committed rows.
+asgi_db = pytest.mark.django_db(transaction=True)
 
 EXPECTED_TOOL_NAMES = {
     "start_dataset_preparation",
@@ -97,6 +104,13 @@ EXPECTED_TOOL_NAMES = {
     "list_signals",
     "set_signal_subscription",
 }
+
+
+def call_tool(name: str, arguments: dict[str, Any], context: MCPContext):
+    # From the test thread, thread-sensitive handlers run on this thread and share the
+    # test transaction; on-commit work runs as it would after a real commit.
+    with TestCase.captureOnCommitCallbacks(execute=True):
+        return async_to_sync(CATALOG.call)(name, arguments, context)
 
 
 def mcp_context(permission: str | Sequence[str] = "read", **fields: Any) -> MCPContext:

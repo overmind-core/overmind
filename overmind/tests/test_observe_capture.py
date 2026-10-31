@@ -16,6 +16,8 @@ import overmind.tracing as tracing
 from overmind import attrs
 from overmind.tracing import SpanType, normalize_messages, observe, start_span, tool
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):
@@ -31,6 +33,7 @@ def _only_span(exporter):
     return span
 
 
+@pytest.mark.covers("privacy")
 def test_capture_auto_records_scrubbed_inputs_and_outputs(exporter):
     @observe("op")
     def op(query, api_key):
@@ -42,6 +45,7 @@ def test_capture_auto_records_scrubbed_inputs_and_outputs(exporter):
     assert json.loads(span.attributes["outputs"]) == {"hits": ["refunds"]}
 
 
+@pytest.mark.covers("privacy")
 def test_capture_none_records_no_payloads(exporter):
     @observe("op", capture="none")
     def op(secret):

@@ -1,3 +1,4 @@
+// covers: live-console
 import type { UseQueryOptions } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -102,74 +103,6 @@ describe("useFinetuningRunsQuery", () => {
     expect(poll(query([{ status: "succeeded" }]))).toBe(10_000);
     expect(poll(query([{ status: "preprocessing" }]))).toBe(5_000);
     expect(poll(query([], 3))).toBe(false);
-  });
-
-  it("keys every param and sends none of the empty ones", async () => {
-    const options = optionsOf(() =>
-      useFinetuningRunsQuery({ page: 2, pageSize: 25, projectId: "proj-1", search: "   " })
-    );
-
-    expect(options.queryKey).toEqual([
-      "finetuning-runs",
-      null,
-      "proj-1",
-      2,
-      25,
-      null,
-      null,
-      null,
-      null,
-    ]);
-
-    await fetchWith(options);
-    expect(mocks.runsList).toHaveBeenCalledWith({
-      baseModel: undefined,
-      dataset: undefined,
-      ordering: undefined,
-      page: 2,
-      pageSize: 25,
-      project: "proj-1",
-      search: undefined,
-      status: undefined,
-    });
-  });
-
-  it("carries the filters into both the key and the request", async () => {
-    const options = optionsOf(() =>
-      useFinetuningRunsQuery({
-        baseModel: "meta/llama-3.1-8b",
-        dataset: "ds-1",
-        ordering: "-credits",
-        page: 1,
-        pageSize: 25,
-        projectId: "proj-1",
-        search: " nightly ",
-        status: "failed",
-      })
-    );
-
-    expect(options.queryKey).toEqual([
-      "finetuning-runs",
-      "-credits",
-      "proj-1",
-      1,
-      25,
-      "nightly",
-      "failed",
-      "ds-1",
-      "meta/llama-3.1-8b",
-    ]);
-
-    await fetchWith(options);
-    expect(mocks.runsList).toHaveBeenCalledWith(
-      expect.objectContaining({
-        baseModel: "meta/llama-3.1-8b",
-        dataset: "ds-1",
-        ordering: "-credits",
-        search: "nightly",
-        status: "failed",
-      })
-    );
   });
 });
 

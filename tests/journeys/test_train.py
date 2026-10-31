@@ -1,8 +1,12 @@
 import re
 
+import pytest
+
 from .conftest import GOOD_REPLY, answer_turn
 from .datasets import tickets, training_rows, until, upload
 from .stack import drain
+
+pytestmark = pytest.mark.covers("train")
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
 TRAIN = "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs"
@@ -17,7 +21,7 @@ def trained_turn(request):
     return {"content": GOOD_REPLY}
 
 
-def test_a_trained_model_is_benchmarked_served_and_switched_in(
+def test_train(
     workshop,
     cli,
     sample_agent,
@@ -29,6 +33,8 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
     fake_llm,
     live_api,
     tmp_path,
+    rest_for,
+    console,
 ):
     def served(prefix):
         return lambda r: "inference.test" in r.url and r.model.startswith(prefix)
@@ -152,3 +158,24 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
     assert replies[-1] == GOOD_REPLY
     metrics = workshop.read(f"overmind://deployments/{deployment}")["metrics"]
     assert metrics["request_count"] >= 2
+
+    rest = rest_for(cli.project_key(sample_agent))
+    pinned = rest.request(
+        "GET", f"/api/finetuning-jobs/{job}/model-swap-prompt/", params={"pin": "true"}
+    )
+    assert model_id in pinned["prompt"]
+    project = workshop.project()["id"]
+    group = rest.request("GET", f"/api/finetuning-jobs/{job}/")["group_id"]
+    console._browser.call(
+        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
+    )
+    console.goto(f"/training?projectId={project}&groupId={group}&jobId={job}")
+    console.sees("Live model")
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "button", name=re.compile("^Copy a prompt switching to ")
+        ).click()
+    )
+    console.sees("Prompt copied")
+    copied = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    assert alias in copied

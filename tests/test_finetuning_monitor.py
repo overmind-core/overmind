@@ -18,7 +18,7 @@ from overbae.services.finetuning_runner import (
 )
 from overbae.tasks.finetuning import observe_finetuning_job
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("measured-facts")]
 
 
 def _auth_client(user) -> APIClient:

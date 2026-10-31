@@ -38,6 +38,8 @@ from overbae.services.connectors.langsmith.client import (
     LangSmithTimeoutError,
 )
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _SINCE = datetime(2026, 1, 2, tzinfo=UTC)
 _LS_PROJECT = "11111111-1111-1111-1111-111111111111"
 

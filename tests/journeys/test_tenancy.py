@@ -7,6 +7,8 @@ from overbae.urls import router
 
 from .stack import drain
 
+pytestmark = pytest.mark.covers("tenancy")
+
 
 @pytest.fixture
 def secrets(cli, mcp_for, sample_agent, live_api, support_desk_llm, worker):

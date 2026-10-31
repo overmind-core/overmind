@@ -10,6 +10,10 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
+pytestmark = pytest.mark.covers("sdk-install")
+
 _SCRIPT = textwrap.dedent("""
     import sys
 

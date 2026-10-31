@@ -10,7 +10,7 @@ from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from overbae.models import Capability, Project
 from overbae.models.optimizer import optimizer_dataset_error
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 def test_optimizer_rejects_ft_and_missing_datasets():

@@ -19,7 +19,7 @@ from overbae.models import FinetuningJob
 from overbae.models.inference import DeployedModel
 from overbae.services.inference_client import InferenceClient
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("llm-gateway")]
 
 
 def test_routing_headers_roundtrip():

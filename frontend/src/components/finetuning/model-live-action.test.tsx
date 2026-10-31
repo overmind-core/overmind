@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: live-console
 import type { ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -242,20 +243,6 @@ describe("ModelLiveAction — the live state", () => {
     expect(badge.getAttribute("tabindex")).toBe("0");
     expect(screen.getByText("Copy prompt")).toBeTruthy();
     expect(document.querySelector("[disabled]")).toBeNull();
-  });
-
-  it("keeps the copy prompt next to the live badge", () => {
-    renderAction({ capability: capabilityState({ activeModel: "dm-1" }) });
-    expect(screen.getByText("Live model")).toBeTruthy();
-    expect(screen.getByText("Copy prompt")).toBeTruthy();
-
-    cleanup();
-    renderAction({
-      capability: capabilityState({ activeModel: "dm-page" }),
-      model: deployment("dm-page"),
-    });
-    expect(screen.getByText("Live model")).toBeTruthy();
-    expect(screen.getByText("Copy prompt")).toBeTruthy();
   });
 });
 

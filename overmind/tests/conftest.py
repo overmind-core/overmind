@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
+from pathlib import Path
 
 import pytest
 from opentelemetry import trace as _otel_trace
 from opentelemetry.sdk.trace import TracerProvider
 
 import overmind.tracing as _overmind_tracing
+
+# The coverage map is monorepo-wide: the platform's collection guard checks these tests too.
+_platform_tests = types.ModuleType("platform_tests")
+_platform_tests.__path__ = [str(Path(__file__).resolve().parents[2] / "tests")]
+sys.modules["platform_tests"] = _platform_tests
+
+from platform_tests.coverage_guard import (  # noqa: E402
+    pytest_collection_modifyitems,  # noqa: F401
+    pytest_configure,  # noqa: F401
+)
 
 #
 # ``overmind.start_span`` / ``overmind.observe`` / ``overmind.set_tag`` all

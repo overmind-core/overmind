@@ -14,7 +14,7 @@ from overbae.models import ConnectorCredential, Span
 from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
 from overbae.tasks import connector_sync
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 @pytest.fixture

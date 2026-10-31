@@ -11,7 +11,7 @@ from overbae.models import BillingService, BillingTelemetry
 from overbae.services.billing_ledger import charge_credits, grant_free_credits
 from overbae.services.billing_provider import get_billing
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 User = get_user_model()
 

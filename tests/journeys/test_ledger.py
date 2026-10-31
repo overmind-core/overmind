@@ -9,6 +9,8 @@ import requests
 
 from overbae.models import BillingTelemetry
 
+pytestmark = pytest.mark.covers("ledger")
+
 WEBHOOK_SECRET = "whsec_journey"
 MODEL = "openai/gpt-4.1-mini"
 

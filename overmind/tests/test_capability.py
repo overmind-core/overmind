@@ -28,6 +28,8 @@ from overmind.tracing import (
     tool,
 )
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):

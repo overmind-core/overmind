@@ -13,7 +13,7 @@ from modal_shared.training_monitoring import fingerprint
 from overbae.models import Dataset, FinetuningJob, Project
 from overbae.services import training_experience, training_monitoring
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("work-once")]
 
 
 @pytest.fixture

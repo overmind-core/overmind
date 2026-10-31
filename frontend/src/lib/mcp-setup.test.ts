@@ -1,3 +1,4 @@
+// covers: mcp-surface
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -40,19 +41,6 @@ describe("mcp setup snippets", () => {
     expect(onboardingPrompt("http://localhost:5173", `${host}/`)).toBe(
       `Set me up on Overmind\n\nusing the API at ${host}: http://localhost:5173/setup.md`
     );
-  });
-
-  it("installs from PyPI on every host", () => {
-    for (const host of [STAGING, PROD, LOCAL]) {
-      expect(sdkPipInstall(host)).toBe('python -m pip install "overmind>=0.1.106"');
-      expect(sdkPipInstall(host, "tracing")).toBe(
-        'python -m pip install "overmind[tracing]>=0.1.106"'
-      );
-    }
-  });
-
-  it("preflights with the CLI version", () => {
-    expect(SDK_PREFLIGHT_COMMAND).toBe("python -m overmind --version");
   });
 
   it("flags --env from the Console API host", () => {

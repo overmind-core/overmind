@@ -7,6 +7,8 @@ import pytest
 
 import modal_shared.serving
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_snapshot_rendezvous_is_fresh_and_single_rank(monkeypatch):
     class Executor:

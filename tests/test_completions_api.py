@@ -16,7 +16,7 @@ from overbae.models import InferenceCall, Project, ProjectMembership, User
 from overbae.models.inference import DeployedModel
 from overbae.services.inference_client import InferenceClientError
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("llm-gateway")]
 
 
 def _consume(response):

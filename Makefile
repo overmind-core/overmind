@@ -1,4 +1,4 @@
-.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker sandbox check-migrations
+.PHONY: test test-serial test-journeys test-load lint-format lint-backend lint-frontend install-hooks psql worker sandbox check-migrations
 
 install-hooks:
 	uv run pre-commit install
@@ -61,11 +61,14 @@ WORKERS ?= auto
 test_args ?=
 
 test: ## Run all tests in parallel (default)
-	uv run pytest tests/ -n $(WORKERS) --dist worksteal -q $(test_args)
+	uv run pytest tests/ -m 'not load' -n $(WORKERS) --dist worksteal -q $(test_args)
 
 test-serial: ## Run all tests serially (for debugging)
 	uv run pytest tests/ -v $(test_args)
 
 test-journeys: ## Run end-to-end journeys on the live stack (needs compose Postgres and Redis)
 	TEST_REDIS_URL=redis://localhost:6379/15 OVERMIND_JOURNEY_XDIST=1 \
-		uv run pytest tests/journeys -n $(WORKERS) --maxprocesses 6 --dist loadfile -v -o console_output_style=count --durations=10 $(test_args)
+		uv run pytest tests/journeys -m 'not load' -n $(WORKERS) --maxprocesses 6 --dist loadfile -v -o console_output_style=count --durations=10 $(test_args)
+
+test-load: ## Run the capacity checks with wall-clock bounds (needs compose Postgres and Redis)
+	TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest tests/journeys tests/test_dataset_scale.py -m load -v $(test_args)

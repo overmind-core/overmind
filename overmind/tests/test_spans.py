@@ -10,7 +10,10 @@ from importlib.metadata import version
 from pathlib import Path
 from threading import Thread
 
+import pytest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 SCRIPT = """
 import json

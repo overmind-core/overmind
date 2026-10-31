@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: live-console
 // Dataset options come from the runs facet, not `/api/datasets/cards/`: that
 // endpoint's newest-100 window can omit a dataset that has runs.
 import type { ComponentProps } from "react";

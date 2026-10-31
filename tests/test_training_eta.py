@@ -1,4 +1,8 @@
+import pytest
+
 from overbae.services.finetuning_runner import PollSnapshot, progress_from_snapshot
+
+pytestmark = pytest.mark.covers("measured-facts")
 
 
 def snapshot(events, step):

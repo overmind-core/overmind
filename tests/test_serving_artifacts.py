@@ -6,6 +6,8 @@ import pytest
 
 from modal_shared.serving import artifacts
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 def base(tmp_path):
     (tmp_path / "config.json").write_text('{"model_type":"test"}')

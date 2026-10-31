@@ -10,7 +10,7 @@ from overbae.services import decision_providers, native_evaluation
 from overbae.services.decision_providers import interpret_response
 from overbae.services.native_evaluation import create_plan
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 def fixture():

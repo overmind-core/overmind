@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+import pytest
+
 from modal_shared.serving.stage import stage_base
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_stage_links_shards_and_overlays_the_adapter_template(tmp_path: Path):

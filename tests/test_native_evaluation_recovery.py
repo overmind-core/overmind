@@ -19,7 +19,7 @@ from overbae.services import (
 )
 from overbae.tasks.native_evaluation import advance_plan, reconcile
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("recovery")]
 
 
 @pytest.fixture

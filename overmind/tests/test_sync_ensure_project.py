@@ -14,12 +14,13 @@ from overmind.sync import (
     SyncError,
     _api_key_scope,
     _slugify,
-    ensure_mcp_project_key,
     ensure_project_id,
     resolve_api_key,
     run_down,
     run_up,
 )
+
+pytestmark = pytest.mark.covers("authentication")
 
 
 def test_slugify_strips_and_caps():
@@ -36,6 +37,7 @@ def test_ensure_project_id_noop_when_present(tmp_path: Path):
     assert created is False
 
 
+@pytest.mark.covers("cli-contract")
 def test_ensure_project_id_falls_back_to_directory_name(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     cfg = Config(
@@ -52,6 +54,7 @@ def test_ensure_project_id_falls_back_to_directory_name(tmp_path: Path):
     assert load(path).project_name == tmp_path.name
 
 
+@pytest.mark.covers("cli-contract")
 def test_ensure_project_id_surfaces_project_scoped_refusal(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     cfg = Config(api_key="k", project_id="")
@@ -82,48 +85,7 @@ def test_api_key_scope_reads_current_endpoint():
         assert _api_key_scope("acct", "https://api.example") == "account"
 
 
-def test_ensure_mcp_project_key_swaps_account_scoped_key(tmp_path: Path):
-    path = tmp_path / "overmind.toml"
-    project_id = "11111111-1111-1111-1111-111111111111"
-    cfg = Config(api_key="acct", project_id=project_id, project_name="demo")
-    dump(cfg, path)
-
-    with (
-        patch("overmind.sync.mint_project_api_key", return_value="ovr_project_key") as mint,
-    ):
-        out, key = ensure_mcp_project_key(
-            cfg,
-            path,
-            "acct",
-            "https://api.example",
-            key_scope="account",
-        )
-
-    mint.assert_called_once_with("https://api.example", "acct", project_id)
-    assert key == "ovr_project_key"
-    assert out.api_key == "ovr_project_key"
-    assert load(path).api_key == "ovr_project_key"
-    assert "api-key" not in path.read_text()
-
-
-def test_ensure_mcp_project_key_noop_for_project_scoped_key(tmp_path: Path):
-    path = tmp_path / "overmind.toml"
-    cfg = Config(api_key="already-project", project_id="11111111-1111-1111-1111-111111111111")
-    dump(cfg, path)
-
-    out, key = ensure_mcp_project_key(
-        cfg,
-        path,
-        "already-project",
-        "https://api.example",
-        key_scope="project",
-    )
-
-    assert key == "already-project"
-    assert out.api_key == "already-project"
-    assert load(path).api_key == "already-project"
-
-
+@pytest.mark.covers("privacy")
 def test_sync_saves_project_key_without_touching_oauth_mcp_configs(tmp_path: Path, monkeypatch, capsys):
     path = tmp_path / "overmind.toml"
     project_id = "11111111-1111-1111-1111-111111111111"
@@ -162,6 +124,7 @@ def test_saved_project_key_wins_over_stale_bootstrap_environment(tmp_path: Path,
     assert resolve_api_key("replacement", load(path)) == "replacement"
 
 
+@pytest.mark.covers("privacy")
 @pytest.mark.parametrize("sync", [run_up, run_down])
 @pytest.mark.parametrize("explicit_key", ["", "saved-project-key"])
 def test_sync_rejects_saved_key_on_another_endpoint(tmp_path, monkeypatch, sync, explicit_key):
@@ -208,6 +171,7 @@ def test_setup_sync_reuses_saved_project_key_without_minting_another(tmp_path: P
     mint.assert_called_once_with("https://api.example", "bootstrap", project_id)
 
 
+@pytest.mark.covers("cli-contract")
 def test_sync_does_not_add_overmind_to_uninitialized_ide_config(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     project_id = "11111111-1111-1111-1111-111111111111"

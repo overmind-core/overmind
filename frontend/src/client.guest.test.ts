@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: authentication
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { dismissGuestPrompt, GuestUpgradeError, onGuestUpgrade } from "@/lib/guest";

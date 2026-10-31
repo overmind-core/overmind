@@ -12,7 +12,7 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Span as ProtoSpan
 
 from overbae.models import Span
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 
 def test_a_reused_span_id_from_another_project_leaves_the_owner_row_untouched():

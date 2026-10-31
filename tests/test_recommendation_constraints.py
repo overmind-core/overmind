@@ -7,6 +7,8 @@ from django.test import override_settings
 
 from overbae.services.recommendation.constraints import Exclusion, eligible_models
 
+pytestmark = pytest.mark.covers("recommendations")
+
 _UNTRAINABLE = {"training_type": {"lora": {"enabled": False}, "full": {"enabled": False}}}
 _NO_TOOLS = {"supports_tool_calling": False}
 _SHORT_CONTEXT = {"context_length_sft": 2048}

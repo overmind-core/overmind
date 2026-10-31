@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from overbae.services.judging import funnel
 from overbae.services.judging.funnel import ResolvedJudge, parse_structured, sanitize_raw
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 
 class _Verdict(BaseModel):
     explanation: str

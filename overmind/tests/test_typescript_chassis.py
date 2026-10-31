@@ -2,12 +2,15 @@ import json
 import textwrap
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from overmind.__main__ import app
 from overmind.chassis import extract_chassis, reachable_names
 from overmind.config import load
 from overmind.utils import convert_json_to_toml
+
+pytestmark = pytest.mark.covers("agent-code")
 
 AGENT_SRC = textwrap.dedent(
     """

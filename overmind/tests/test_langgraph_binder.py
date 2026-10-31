@@ -21,6 +21,8 @@ from overmind import attrs
 from overmind.integrations.langgraph import bind, slug
 from overmind.tracing import _span_processor_on_start, start_span
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):

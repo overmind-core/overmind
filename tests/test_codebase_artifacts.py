@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from overbae.services.codebase import artifacts as A  # noqa: N812
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 def test_model_resolution_preserves_defaults_without_inventing_an_active_model():

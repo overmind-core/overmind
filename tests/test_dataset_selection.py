@@ -11,7 +11,7 @@ from factories import make_project
 from overbae.models import Span
 from overbae.services.datasets.selection import TraceSource, TraceSourceError, allowed_filters
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 NS = 1_700_000_000_000_000_000
 

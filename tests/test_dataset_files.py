@@ -6,6 +6,8 @@ import pytest
 
 from overbae.services.datasets import files
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def _read(tmp_path, name: str, body: str | bytes):
     path = tmp_path / name

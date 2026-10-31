@@ -2,6 +2,8 @@ import pytest
 
 from modal_shared.decision_batching import microbatches
 
+pytestmark = pytest.mark.covers("plans")
+
 
 def rows(lengths):
     return [{"key": str(i), "input_ids": [i] * n} for i, n in enumerate(lengths)]

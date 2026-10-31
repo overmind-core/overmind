@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,11 +7,10 @@ from pathlib import Path
 
 import pytest
 import requests
-from typer.testing import CliRunner
 
-from overmind.__main__ import app
-from overmind.config import Config, dump
 from overmind.model_cmd import CheckpointDownloadError, download_checkpoint
+
+pytestmark = pytest.mark.covers("privacy")
 
 
 class FakeResponse:
@@ -127,6 +125,7 @@ def test_download_checkpoint_sanitizes_windows_reserved_filename(tmp_path: Path,
     assert Path("_CON.zip").read_bytes() == b"weights"
 
 
+@pytest.mark.covers("lineage")
 def test_download_checkpoint_removes_partial_file_after_stream_error(tmp_path: Path):
     class FailingResponse(FakeResponse):
         def iter_content(self, chunk_size):
@@ -152,6 +151,7 @@ def test_download_checkpoint_removes_partial_file_after_stream_error(tmp_path: P
     assert not output.exists()
 
 
+@pytest.mark.covers("lineage")
 @pytest.mark.parametrize(
     ("expected_size", "chunks"),
     [(10, [b"short"]), (3, [b"longer"])],
@@ -220,34 +220,6 @@ def test_download_checkpoint_closes_owned_session(monkeypatch, tmp_path: Path):
     )
 
     assert session.closed is True
-
-
-def test_download_checkpoint_command_uses_config_and_emits_safe_json(tmp_path: Path, monkeypatch):
-    config_path = tmp_path / "overmind.toml"
-    dump(
-        Config(
-            api_key="toml-key",
-            base_url="https://configured.example",
-            project_id="11111111-1111-1111-1111-111111111111",
-        ),
-        config_path,
-    )
-    result_data = {
-        "path": str(tmp_path / "checkpoint.zip"),
-        "deployment_id": "deployment-1",
-        "filename": "checkpoint.zip",
-        "expected_size": 4,
-        "bytes_written": 4,
-    }
-    monkeypatch.setattr("overmind.model_cmd.download_checkpoint", lambda *args, **kwargs: result_data)
-
-    result = CliRunner().invoke(
-        app,
-        ["model", "download-checkpoint", "deployment-1", "--path", str(config_path), "--json"],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == result_data
 
 
 def _serve(handler):

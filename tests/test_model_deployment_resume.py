@@ -1,10 +1,10 @@
-import asyncio
 import json
 import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from asgiref.sync import async_to_sync
 from conftest import TRAIN_ROWS, frozen_dataset
 from django.utils import timezone
 from factories import make_user
@@ -16,7 +16,7 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 from overbae.tasks.inference_controller import reconcile_deployments
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 @pytest.fixture
@@ -524,7 +524,7 @@ def test_confirmed_stopped_baseline_can_start_fresh_for_a_new_job(deployed, fake
     assert fake_modal.spawns() == []
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_api_and_mcp_share_progress_without_remote_credentials(deployed, fake_modal):
     from overbae.api.serializers import DeployedModelSerializer
 
@@ -539,7 +539,7 @@ def test_api_and_mcp_share_progress_without_remote_credentials(deployed, fake_mo
         with bind_context(context):
             return list(await read_resource(f"overmind://deployments/{deployed.pk}"))
 
-    [content] = asyncio.run(read())
+    [content] = async_to_sync(read)()
     rest = DeployedModelSerializer(deployed).data["deployment_progress"]
     assert rest == json.loads(content.content)["progress"]
     assert rest["label"] == "Booting and verifying"

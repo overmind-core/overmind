@@ -7,7 +7,7 @@ from factories import api_key_client, make_member, make_project, make_span, make
 from google.protobuf.json_format import ParseDict
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("otlp-ingest")]
 
 
 @pytest.mark.parametrize("wire_format", ["json", "protobuf"])

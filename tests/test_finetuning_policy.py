@@ -8,6 +8,8 @@ from overbae.services.finetuning_policy import (
     estimated_training_context_length,
 )
 
+pytestmark = pytest.mark.covers("plans")
+
 
 def test_default_epochs_scaling():
     assert default_epochs(10) == 10  # capped

@@ -17,6 +17,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from overmind import attrs
 from overmind.evals import checkpoint, end_conversation, eval_context, expect, intent
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def inmem():

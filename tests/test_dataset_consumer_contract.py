@@ -13,6 +13,8 @@ from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.partition import contamination_keys, split_rows
 from overbae.services.datasets.sampling import select_rows
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def example(index=1, mode="extraction"):
     return {

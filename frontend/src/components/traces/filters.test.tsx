@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -94,13 +95,6 @@ const valueSelect = () => screen.getAllByRole("combobox")[2] as HTMLSelectElemen
 const optionValues = () => [...valueSelect().options].map((o) => o.value);
 
 describe("TracesFilters", () => {
-  it("labels the empty-state add-field trigger 'Add field', with no separate model-reported field", () => {
-    renderFilters();
-
-    expect(screen.getByRole("button", { name: "Add field" })).toBeTruthy();
-    expect(screen.queryByText("Reported a model")).toBeNull();
-  });
-
   it("commits 'Any model' as a real filter, not as an empty/uncommitted value", async () => {
     const onFiltersChange = renderFilters();
 

@@ -15,6 +15,8 @@ from overbae.core.model_registry import (
     resolve_openrouter_slug,
 )
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 @pytest.fixture
 def no_keys(monkeypatch):

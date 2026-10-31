@@ -10,7 +10,7 @@ from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.profile import profile_records
 from overbae.services.datasets.review import decision_changed
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 def corpus(settings, tmp_path, intent, records):

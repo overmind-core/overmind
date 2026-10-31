@@ -1,6 +1,5 @@
-import asyncio
-
 import pytest
+from mcp_fixtures import call_tool
 
 from overbae.models import Activity, DatasetPipelineRun
 from overbae.services import operational_progress
@@ -24,7 +23,7 @@ from tests.workshop_script_fixtures import (
     script_step,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 
 def decision_step(**settings):
@@ -457,7 +456,7 @@ def test_workshop_surfaces_omit_retired_checks_but_keep_execution_receipts():
     dataset = source(client, project, "Retained preparation", [{"value": 1}])
     for name in ("inspect_dataset_preparation", "record_dataset_findings"):
         assert name not in {tool.name for tool in CATALOG.tools(frozenset({"read", "write"}))}
-        result = asyncio.run(CATALOG.call(name, {"dataset": str(dataset.pk)}, context))
+        result = call_tool(name, {"dataset": str(dataset.pk)}, context)
         assert result.isError
         assert result.structuredContent["error"]["code"] == "invalid_tool"
     assert client.get(f"/api/datasets/{dataset.pk}/preparation-checks/").status_code == 404

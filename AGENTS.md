@@ -35,7 +35,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Code under `overbae/modal/`, `modal_shared/` and `overbae/services/sft_assets/` reaches Modal only after `modal deploy`; training and serving pin immutable releases.
 - Naming: UI "Optimiser" is backend `optimizer`; UI "Training" is backend `finetuning`; UI "Capability" is the `Capability` model, and the sidebar's "Agent" is the project graph.
 - Overwatch (`/api/internal/overwatch/*`, app in `sales-dashboard/`) only reads product records and runs no user authentication. Its tokens, caches and Slack boundary are in backend-architecture `references/auth-and-billing.md`.
-- `DESIGN.md` and `PRODUCT.md` carry a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the documents.
+- `DESIGN.md` carries a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the document.
 
 Subsystem detail lives in the skills: backend-architecture (Celery, tracing and scoring, evaluation, capabilities, auth and billing, training, serving, data-first), data-workshop, mcp, frontend-design.
 
@@ -67,16 +67,16 @@ Instrument voice: state the fact and stop ("9 rows", not "9 rows — small enoug
 
 ### Naming
 
-Name by behavior. Plan-phase labels (P0/P1, "Phase N") stay out of code, comments and test names. Backend tests live flat in `tests/test_<feature>.py`; journeys in `tests/journeys/test_<promise>.py`.
+Name by behavior. Plan-phase labels (P0/P1, "Phase N") stay out of code, comments and test names. Backend tests live flat in `tests/test_<feature>.py`; journeys in `tests/journeys/test_<promise>.py`, and stack-tier owners beside them as `test_<entry>.py`.
 
 ## Workflow
 
-- Don't write unit tests after you write code. Prefer E2E tests as the testing mechanism. Each E2E run ends with a repeatable artifact: the command, inputs or fixtures, environment requirements and observed results.
-- If a system must be tested in isolation, first write down the ways it can fail, then write the code. Keep an isolated test only when it catches a concrete failure that E2E coverage misses. No assertions that mirror the implementation, pin incidental text or restate declarations.
-- Tests fake only what we do not own, and only at the network (`tests/fakes`: FakeLLM, FakeModal, vendor, Stripe and Clerk APIs, `scripted` HTTP). Patch `overbae.*` only to capture a Celery `.delay`/`.apply_async`; call public entry points. Each contract has one owning test, and a journey owns a customer promise. The `test-seams` pre-commit hook refuses new seams. Detail: run-tests skill.
+- Every test covers one entry of `tests/coverage_map.py` through `pytest.mark.covers`, or a `// covers: <entry>` line in a Console test file; collection refuses a test that covers nothing. A promise is a product vertical with exactly one journey; an edge case is an invariant, contract or logic entry, never a new journey. Severity (S1–S4) sets the gate (run-tests skill).
+- Test at the lowest tier that reproduces the behaviour, with one owning test per behaviour. A fix ships with a test that fails before it and passes after it. No assertions that mirror the implementation, pin incidental text or restate declarations. Each journey run leaves a run record in `tests/journeys/.runs/`.
+- Tests fake only what we do not own, and only at the network (`tests/fakes`: FakeLLM, FakeModal, vendor, Stripe and Clerk APIs, `scripted` HTTP). Patch `overbae.*` only to capture a Celery `.delay`/`.apply_async`, and never `overmind.*`; call public entry points. Each contract has one owning test. The `test-seams` check (pre-commit and CI) refuses a rise in seams across all test files; moving a test passes. Detail: run-tests skill.
 - Stay in the asked scope: fix the stated thing plus genuine prerequisites, and list adjacent findings as "found but did not change". If the task is much bigger than framed, say so before editing.
 - Simple, self-evident fixes need typecheck and lint only; say plainly that tests did not run. When a suite run is warranted, run it once, tee to a log and grep the log.
-- Which tests to run (compose Postgres and Redis up): while editing, the feature's test file and its journey (`make test-journeys test_args="-k <name>"`); before a push, `make test` (about 75 s); when a change crosses ingest, sync, the worker, the gateway, MCP or the Console, `make test-journeys` (about 6 min). CI runs the rest.
+- Which tests to run (compose Postgres and Redis up): while editing, the feature's test file and its journey (`make test-journeys test_args="-k <name>"`); before a push, `make test`; when a change crosses ingest, sync, the worker, the gateway, MCP or the Console, `make test-journeys`; after a change to admission, landing or streaming, `make test-load`. CI runs the rest.
 - A change is finished when every surface that reflects it is updated: MCP, Celery routing, `seed_demo`, the generated client, this file and the skills, and the docs repo at `../docs` (pr-etiquette skill lists them). CI cannot catch these.
 - When a change makes this file, a skill, a hook message or another agent doc untrue, update or delete that line in the same PR; the pr-etiquette skill lists the places to search. There is one copy of every rule.
 - Commit messages: short subject plus at most one body line, no co-author trailers. Commit and push only when asked; on a sweep branch, one commit per observation.

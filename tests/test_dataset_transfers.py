@@ -18,7 +18,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import files, paths, store
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 
 @pytest.fixture

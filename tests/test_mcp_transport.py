@@ -15,14 +15,14 @@ import httpx
 import pytest
 from asgiref.sync import sync_to_async
 from django.db import connection, transaction
-from mcp_fixtures import EXPECTED_TOOL_NAMES, MAX_MANIFEST_BYTES
+from mcp_fixtures import EXPECTED_TOOL_NAMES, MAX_MANIFEST_BYTES, asgi_db
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Capability, Project, ProjectMembership, Span, User
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.mcp.tools_projects import accessible_projects
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 MCP_URL = "/api/mcp/"
 
@@ -65,6 +65,7 @@ def _application():
     return create_mcp_application()
 
 
+@asgi_db
 def test_initialize_uses_official_streamable_http_transport(settings):
     settings.FRONTEND_URL = "https://console.example.test/workspace/"
     raw, token = _token()
@@ -100,6 +101,7 @@ def test_initialize_uses_official_streamable_http_transport(settings):
     assert parse_qs(console_url.query) == {"projectId": [str(token.project_id)]}
 
 
+@asgi_db
 def test_stateless_actions_keep_reported_client_identity_and_shared_keys_stay_ambiguous():
     from overbae.models import Activity
 
@@ -163,6 +165,7 @@ def test_stateless_actions_keep_reported_client_identity_and_shared_keys_stay_am
         assert Activity.objects.count() == before
 
 
+@asgi_db
 def test_transfer_preflight_does_not_register_an_agent_or_obscure_codex():
     from overbae.models import Activity, ActivityClient
 
@@ -220,6 +223,7 @@ def test_transfer_preflight_does_not_register_an_agent_or_obscure_codex():
         )
 
 
+@asgi_db
 def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -232,6 +236,7 @@ def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
     assert ping.json()["result"] == {}
 
 
+@asgi_db
 def test_slow_tool_does_not_block_another_callers_authenticated_request(monkeypatch):
     slow_key, slow_token = _token()
     other_key, other_token = _token()
@@ -265,6 +270,7 @@ def test_slow_tool_does_not_block_another_callers_authenticated_request(monkeypa
         assert [p["id"] for p in result["structuredContent"]["projects"]] == [str(token.project_id)]
 
 
+@asgi_db
 def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     read_raw, _ = _token(permission=["read"])
     full_raw, _ = _token()
@@ -282,6 +288,7 @@ def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     assert len(full_response.content) <= MAX_MANIFEST_BYTES
 
 
+@asgi_db
 def test_resources_and_prompts_list_over_streamable_http():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -301,6 +308,7 @@ def test_resources_and_prompts_list_over_streamable_http():
     }
 
 
+@asgi_db
 def test_tool_call_exposes_complete_json_and_resource_links_to_text_only_clients():
     raw, token = _token(permission=["read"])
     capability = Capability.objects.create(
@@ -350,6 +358,7 @@ def test_tool_call_exposes_complete_json_and_resource_links_to_text_only_clients
     )
 
 
+@asgi_db
 def test_initialize_accepts_the_path_with_or_without_a_trailing_slash():
     raw, _ = _token()
     body = _rpc(
@@ -378,6 +387,7 @@ def test_initialize_accepts_the_path_with_or_without_a_trailing_slash():
     ]
 
 
+@asgi_db
 def test_initialize_accepts_an_allowed_host_with_a_port():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -391,6 +401,7 @@ def test_initialize_accepts_an_allowed_host_with_a_port():
     assert response.status_code == 200
 
 
+@asgi_db
 def test_initialize_allows_any_host_when_allowed_hosts_is_star(settings):
     settings.ALLOWED_HOSTS = ["*"]
     raw, _ = _token()
@@ -413,6 +424,7 @@ def test_initialize_allows_any_host_when_allowed_hosts_is_star(settings):
     assert response.json()["result"]["serverInfo"]["name"] == "overmind-platform"
 
 
+@asgi_db
 def test_unknown_host_is_rejected():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -427,6 +439,7 @@ def test_unknown_host_is_rejected():
     assert response.json()["error"]["code"] == "invalid_request"
 
 
+@asgi_db
 def test_unsupported_protocol_version_is_rejected():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -440,6 +453,7 @@ def test_unsupported_protocol_version_is_rejected():
     assert response.json()["error"]["code"] == "protocol_version_unsupported"
 
 
+@asgi_db
 def test_origin_is_validated_on_initialize():
     raw, _ = _token()
     with TestClient(_application()) as client:
@@ -486,6 +500,7 @@ def _a_request_waits_behind(holder_pid: int) -> bool:
         connection.close()
 
 
+@asgi_db
 @pytest.mark.asyncio
 async def test_a_request_blocked_in_the_database_does_not_hold_up_other_requests():
     raw_blocked, blocked = await sync_to_async(_token)()

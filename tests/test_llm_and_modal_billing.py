@@ -15,7 +15,7 @@ from overbae.services.billing_ledger import balance_usd, charge_llm_usage
 from overbae.services.finetuning_runner import PollSnapshot
 from overbae.tasks.finetuning import _transition, observe_finetuning_job
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 User = get_user_model()
 

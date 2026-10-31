@@ -15,7 +15,10 @@ from overmind.config import (
 )
 from overmind.utils import convert_json_to_toml
 
+pytestmark = pytest.mark.covers("privacy")
 
+
+@pytest.mark.covers("sdk-wire")
 def test_dump_writes_nested_capability_card(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     dump(
@@ -65,6 +68,7 @@ def test_dump_writes_nested_capability_card(tmp_path: Path):
     assert credentials_path(path).stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.covers("sdk-wire")
 def test_load_accepts_legacy_json_string_card(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     card = {"task": "legacy", "trajectory_map": [{"id": "a"}]}
@@ -119,6 +123,7 @@ def test_convert_json_to_toml_preserves_card_shape(tmp_path: Path):
     assert loaded.project_name == tmp_path.name
 
 
+@pytest.mark.covers("sdk-wire")
 def test_convert_json_to_toml_keeps_scan_modes_utilities_and_policy(tmp_path: Path):
     src = tmp_path / "overmind_capabilities.json"
     src.write_text(
@@ -160,6 +165,7 @@ def test_convert_json_to_toml_keeps_scan_modes_utilities_and_policy(tmp_path: Pa
     assert wire["writer"]["capability_card"]["modes"][0]["name"] == "outline"
 
 
+@pytest.mark.covers("authentication")
 def test_credentials_only_apply_to_their_project(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     dump(Config(api_key="project-a-key", project_id="project-a"), path)

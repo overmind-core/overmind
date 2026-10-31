@@ -9,6 +9,8 @@ from overbae.models import DeployedModel, Project
 from overbae.services import llm_context
 from overbae.services.judging import funnel
 
+pytestmark = pytest.mark.covers("plans")
+
 
 class Verdict(BaseModel):
     score: float

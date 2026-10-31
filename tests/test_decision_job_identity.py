@@ -1,21 +1,23 @@
-import asyncio
 import importlib
 import json
 from types import SimpleNamespace
 
 import pytest
+from asgiref.sync import async_to_sync
 from conftest import frozen_dataset
 from django.apps import apps
 from django.db import connection
 from factories import auth_client, make_project, make_user
 from mcp.shared.exceptions import McpError
+from mcp_fixtures import call_tool
 
 from overbae.models import APIToken, DecisionJob, FinetuningJob
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 from overbae.services.training_preparation import begin_preparation
 from overbae.tasks import finetuning
+
+pytestmark = pytest.mark.covers("work-once")
 
 
 def decision_dataset(project):
@@ -45,7 +47,7 @@ def decision_dataset(project):
     )
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
     settings.FINETUNING_BACKEND = "modal"
     monkeypatch.setenv("MODAL_ENVIRONMENT", "test")
@@ -97,21 +99,17 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
         project=project,
         token=APIToken(scope={"scope": "project", "permission": ["read", "write"]}),
     )
-    mcp_catalog = asyncio.run(CATALOG.call("list_decision_training_models", {}, context))
+    mcp_catalog = call_tool("list_decision_training_models", {}, context)
     assert not mcp_catalog.isError, mcp_catalog.structuredContent
     assert {entry["family"] for entry in mcp_catalog.structuredContent["models"]} == {
         "clef",
         "d3",
         "d1",
     }
-    receipt = asyncio.run(
-        CATALOG.call("get_job", {"kind": "decision_job", "id": first.data["id"]}, context)
-    )
+    receipt = call_tool("get_job", {"kind": "decision_job", "id": first.data["id"]}, context)
     assert not receipt.isError, receipt.structuredContent
     assert receipt.structuredContent["details"]["finetuning_job"] == str(run.id)
-    progress = asyncio.run(
-        CATALOG.call("inspect_training_progress", {"job": first.data["id"]}, context)
-    )
+    progress = call_tool("inspect_training_progress", {"job": first.data["id"]}, context)
     assert not progress.isError, progress.structuredContent
 
     async def read_decision_resource(bound_context):
@@ -119,49 +117,43 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
             contents = list(await read_resource(f"overmind://jobs/decision_job/{first.data['id']}"))
         return json.loads(contents[0].content)
 
-    resource = asyncio.run(read_decision_resource(context))
+    resource = async_to_sync(read_decision_resource)(context)
     assert resource["id"] == first.data["id"]
     assert resource["finetuning_job"] == str(run.id)
 
-    estimate = asyncio.run(
-        CATALOG.call(
-            "estimate_finetune",
-            {
-                "dataset": str(dataset.id),
-                "base_model": "Cloudflare/clef-flash",
-                "validation_enabled": False,
-            },
-            context,
-        )
+    estimate = call_tool(
+        "estimate_finetune",
+        {
+            "dataset": str(dataset.id),
+            "base_model": "Cloudflare/clef-flash",
+            "validation_enabled": False,
+        },
+        context,
     )
     assert not estimate.isError, estimate.structuredContent
     assert estimate.structuredContent["training_contract"]["inference_contract"] == "decision"
 
-    launched = asyncio.run(
-        CATALOG.call(
-            "start_decision_job",
-            {
-                "dataset": str(dataset.id),
-                "base_model": "Cloudflare/clef-flash",
-                "request_key": "decision-run-mcp",
-                "validation_enabled": False,
-            },
-            context,
-        )
+    launched = call_tool(
+        "start_decision_job",
+        {
+            "dataset": str(dataset.id),
+            "base_model": "Cloudflare/clef-flash",
+            "request_key": "decision-run-mcp",
+            "validation_enabled": False,
+        },
+        context,
     )
     assert not launched.isError, launched.structuredContent
     assert launched.structuredContent["decision_job"]["kind"] == "decision_job"
-    replay = asyncio.run(
-        CATALOG.call(
-            "start_decision_job",
-            {
-                "dataset": str(dataset.id),
-                "base_model": "Cloudflare/clef-flash",
-                "request_key": "decision-run-mcp",
-                "validation_enabled": False,
-            },
-            context,
-        )
+    replay = call_tool(
+        "start_decision_job",
+        {
+            "dataset": str(dataset.id),
+            "base_model": "Cloudflare/clef-flash",
+            "request_key": "decision-run-mcp",
+            "validation_enabled": False,
+        },
+        context,
     )
     assert not replay.isError, replay.structuredContent
     assert (
@@ -178,12 +170,10 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
         project=other_project,
         token=APIToken(scope={"scope": "project", "permission": ["read"]}),
     )
-    hidden = asyncio.run(
-        CATALOG.call("get_job", {"kind": "decision_job", "id": first.data["id"]}, other_context)
-    )
+    hidden = call_tool("get_job", {"kind": "decision_job", "id": first.data["id"]}, other_context)
     assert hidden.isError
     with pytest.raises(McpError):
-        asyncio.run(read_decision_resource(other_context))
+        async_to_sync(read_decision_resource)(other_context)
 
     unsupported = client.post(
         "/api/decision-jobs/",
@@ -201,7 +191,7 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
     assert wrong_hyperparameters.status_code == 400
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_general_training_launch_exposes_decision_identity(monkeypatch, settings):
     settings.FINETUNING_BACKEND = "modal"
     monkeypatch.setattr(
@@ -230,7 +220,7 @@ def test_general_training_launch_exposes_decision_identity(monkeypatch, settings
     assert general_training.data["decision_job_id"] == str(identity.id)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_decision_preparation_creates_the_same_training_identity(settings):
     settings.FINETUNING_BACKEND = "modal"
     user = make_user()
@@ -262,22 +252,20 @@ def test_decision_preparation_creates_the_same_training_identity(settings):
         project=project,
         token=APIToken(scope={"scope": "project", "permission": ["read", "write"]}),
     )
-    prepared = asyncio.run(
-        CATALOG.call(
-            "prepare_training_data",
-            {
-                "dataset": str(dataset.id),
-                "base_model": "Cloudflare/clef-flash",
-                "context_length": 32768,
-            },
-            context,
-        )
+    prepared = call_tool(
+        "prepare_training_data",
+        {
+            "dataset": str(dataset.id),
+            "base_model": "Cloudflare/clef-flash",
+            "context_length": 32768,
+        },
+        context,
     )
     assert not prepared.isError, prepared.structuredContent
     assert prepared.structuredContent["decision_job"]["id"] == str(job.decision_job.id)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_existing_native_training_run_receives_decision_identity():
     user = make_user()
     project = make_project(member=user)

@@ -12,6 +12,8 @@ from rest_framework.test import APIClient
 from overbae.models import Dataset, Project, ProjectMembership, User
 from overbae.services.datasets import files, paths
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def _upload(name, content):
     upload_id, _ = files.begin_upload(name)

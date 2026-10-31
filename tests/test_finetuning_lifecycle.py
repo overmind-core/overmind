@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from overbae.services.finetuning_runner import (
     LIFECYCLE_COMPLETED,
     LIFECYCLE_DEPLOYMENT,
@@ -10,6 +12,8 @@ from overbae.services.finetuning_runner import (
     lifecycle_stage,
     scrub_backend_names,
 )
+
+pytestmark = pytest.mark.covers("state-machines")
 
 
 def test_setup_before_first_step():

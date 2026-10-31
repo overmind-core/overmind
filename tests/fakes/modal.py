@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import itertools
 import json
+import math
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -15,6 +16,8 @@ from typing import Any
 import modal
 from asgiref.sync import sync_to_async
 from modal.exception import NotFoundError
+
+from modal_shared.decisions import DECISION_OBJECTIVES
 
 _ids = itertools.count(1)
 
@@ -177,6 +180,19 @@ class _FakeInstance:
 
 
 @dataclass
+class _FakeCls:
+    cloud: FakeModal
+    app: str
+    cls: str
+
+    def with_options(self, **_options) -> _FakeCls:
+        return self
+
+    def __call__(self, **_parameters) -> _FakeInstance:
+        return _FakeInstance(self.cloud, self.app, self.cls)
+
+
+@dataclass
 class FakeModal:
     handlers: dict[tuple[str, str], tuple[Callable[..., Any], bool]] = field(default_factory=dict)
     calls: dict[str, FakeCall] = field(default_factory=dict)
@@ -281,7 +297,7 @@ class FakeModal:
         class Cls:
             @staticmethod
             def from_name(app: str, cls: str, **_):
-                return lambda **__: _FakeInstance(cloud, app, cls)
+                return _FakeCls(cloud, app, cls)
 
         class Volume:
             @staticmethod
@@ -378,7 +394,7 @@ class SftBackend:
         self.cloud.fail("sft_", RuntimeError(message))
 
     def _train(self, run_id: str, env: dict, *, gpu_type: str = "", gpu_count: int = 1) -> dict:
-        self.runs[run_id]["status"] = "succeeded"
+        self.runs[run_id].update(status="succeeded", objective=env.get("TRAINING_OBJECTIVE"))
         return {"run_id": run_id, "status": "succeeded"}
 
     def _cancelled(self, run_id: str) -> dict:
@@ -399,13 +415,25 @@ class SftBackend:
             }
             for step in range(1, run["steps"] + 1)
         ]
-        return {
+        progress = {
             "run_id": run_id,
             "found": True,
             "meta": {"status": run["status"]},
             "metrics": metrics,
             "has_final_checkpoint": run["status"] == "succeeded" or bool(run.get("final")),
         }
+        if run["status"] == "succeeded" and run.get("objective") in DECISION_OBJECTIVES:
+            progress["native_artifact"] = {
+                "artifact_identity": hashlib.sha256(run_id.encode()).hexdigest(),
+                "reload_verification": {
+                    "decisions": len(self.materialized[run_id]["data"]),
+                    "max_absolute_error": 0.0,
+                    "tolerance": 1e-4,
+                    "weight_reload": "exact",
+                },
+                "training": {"objective": run["objective"]},
+            }
+        return progress
 
 
 @dataclass
@@ -440,3 +468,98 @@ class ServingBackend:
     def _pre_warm(self, *, model_id: str, **_) -> dict:
         self.warmed.append(model_id)
         return {"ok": True}
+
+
+def _uniform(request: dict, trained: bool) -> list[float]:
+    return [1 / len(request["options"])] * len(request["options"])
+
+
+@dataclass
+class DecisionBackend:
+    """Native decision evaluation on the training release and the decision serving worker.
+
+    ``answer(request, trained)`` returns the option probabilities a model gives."""
+
+    cloud: FakeModal
+    answer: Callable[[dict, bool], list[float]] = _uniform
+    prepared: dict[str, str] = field(default_factory=dict)
+
+    def install(self) -> DecisionBackend:
+        from overbae.services.decision_serving import current_runtime
+        from overbae.services.native_evaluation import runtime
+
+        self.release = runtime()
+        serve = current_runtime()["app"]
+        self.cloud.deploy(self.release["app"], "prepare", self._prepare)
+        self.cloud.deploy(self.release["app"], "predict", self._predict)
+        self.cloud.deploy(serve, "publish", self._publish)
+        self.cloud.deploy(serve, "pre_warm", self._pre_warm)
+        self.cloud.deploy(serve, "DecisionEndpoint.predict", self._serve)
+        return self
+
+    def _inputs(self, evaluation_id: str) -> tuple[bytes, list[dict]]:
+        body = self.cloud.files[f"/decision-evaluations/{evaluation_id}/inputs.jsonl"]
+        return body, [json.loads(line) for line in body.splitlines() if line]
+
+    def _prepare(self, evaluation_id, model_run, input_sha256, *, foundation=None, inference=None):
+        body, rows = self._inputs(evaluation_id)
+        assert hashlib.sha256(body).hexdigest() == input_sha256
+        identity = (
+            hashlib.sha256(model_run.encode()).hexdigest()
+            if model_run
+            else f"foundation:{foundation['model']}"
+        )
+        self.prepared[evaluation_id] = identity
+        self.cloud.files[f"/decision-evaluations/{evaluation_id}/failures.jsonl"] = b""
+        return {
+            "artifact_identity": identity,
+            "input_sha256": input_sha256,
+            "ready_decisions": len(rows),
+            "failures_sha256": hashlib.sha256(b"").hexdigest(),
+        }
+
+    def _predict(self, evaluation_id, model_run, *, base_only, inference=None):
+        body, rows = self._inputs(evaluation_id)
+        identity = self.prepared[evaluation_id]
+        predictions = []
+        for row in rows:
+            probabilities = self.answer(row["decision"], not base_only)
+            predictions.append(
+                {
+                    "key": row["key"],
+                    "input_sha256": row["input_sha256"],
+                    "kind": row["decision"]["kind"],
+                    "model_identity": identity,
+                    "probabilities": probabilities,
+                    "log_probabilities": [math.log(p) for p in probabilities],
+                }
+            )
+        output = "".join(json.dumps(p) + "\n" for p in predictions).encode()
+        name = "base" if base_only else "candidate"
+        self.cloud.files[f"/decision-evaluations/{evaluation_id}/{name}.jsonl"] = output
+        return {
+            "artifact_identity": identity,
+            "input_sha256": hashlib.sha256(body).hexdigest(),
+            "runtime_fingerprint": self.release["training"],
+            "predictions_sha256": hashlib.sha256(output).hexdigest(),
+            "decisions": len(predictions),
+        }
+
+    def _publish(self, *, remote_id, artifact_identity) -> dict:
+        return {
+            "weights_path": f"/weights/decisions/{remote_id}",
+            "artifact_identity": artifact_identity,
+        }
+
+    def _pre_warm(self, *, weights_path, artifact_identity, max_model_len, gpu_type) -> dict:
+        return {"verified": True, "artifact_identity": artifact_identity}
+
+    def _serve(self, requests: list[dict]) -> dict:
+        return {
+            "predictions": [
+                {"options": request["options"], "probabilities": self.answer(request, True)}
+                for request in requests
+            ],
+            "usage": {"prompt_tokens": 8 * len(requests), "completion_tokens": 0},
+            "finish_reason": "stop",
+        }

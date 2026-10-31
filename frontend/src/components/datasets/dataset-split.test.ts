@@ -1,3 +1,4 @@
+// covers: data-logic
 import { describe, expect, it } from "vitest";
 
 import { evaluationRows } from "./dataset-split";
