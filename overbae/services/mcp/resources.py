@@ -46,6 +46,7 @@ from overbae.models import (
     SignalEvent,
     SignalSubscription,
     Span,
+    TrainingCheckpoint,
     TrainingPreparation,
 )
 from overbae.services import (
@@ -1539,6 +1540,70 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         raise _not_found("resource", raw_uri)
     segments = [unquote(part) for part in parsed.path.split("/") if part]
     host = parsed.netloc
+    if host == "checkpoints" and len(segments) == 1:
+        checkpoint = TrainingCheckpoint.objects.filter(
+            job__project=project, pk=uuid_reference(segments[0])
+        ).first()
+        if checkpoint is None:
+            raise _not_found("checkpoint", segments[0])
+        return {
+            "uri": raw_uri,
+            "id": str(checkpoint.pk),
+            "training_job_id": str(checkpoint.job_id),
+            "identity": checkpoint.identity,
+            "state": checkpoint.state,
+            "step": checkpoint.step,
+            "attempt": checkpoint.attempt,
+            "selected": checkpoint.selected,
+            "created_at": checkpoint.created_at,
+            "training_resource_uri": f"overmind://finetunes/{checkpoint.job_id}?project_id={project.pk}",
+        }
+    if host == "eval-rows" and len(segments) == 1:
+        row = EvalMatrix.objects.filter(project=project, pk=uuid_reference(segments[0])).first()
+        if row is None:
+            raise _not_found("eval row", segments[0])
+        params = parse_qs(parsed.query)
+        try:
+            offset = int(params.get("offset", [0])[0])
+            limit = int(params.get("limit", [20])[0])
+            source_offset = int(params.get("source_offset", [0])[0])
+            if offset < 0 or source_offset < 0 or not 1 <= limit <= 100:
+                raise ValueError
+        except ValueError:
+            raise MCPError("invalid_input", "Use nonnegative offsets and limit 1–100.") from None
+        definition = {**row.snapshot(), "enabled": row.enabled, "updated_at": row.updated_at}
+        if params.get("revision"):
+            revision = row.revisions.filter(pk=uuid_reference(params["revision"][0])).first()
+            if revision is None:
+                raise _not_found("eval revision", params["revision"][0])
+            definition = dict(revision.definition)
+        source = definition["source"]
+        definition["source"] = source[source_offset : source_offset + 12000]
+        revisions = row.revisions.order_by("-created_at", "-pk")
+        total = revisions.count()
+        return {
+            "uri": raw_uri,
+            "id": str(row.pk),
+            "project_id": str(project.pk),
+            **definition,
+            "source_page": {
+                "offset": source_offset,
+                "total": len(source),
+                "next_offset": source_offset + 12000
+                if source_offset + 12000 < len(source)
+                else None,
+            },
+            "revisions": [
+                {
+                    "id": str(revision.pk),
+                    "created_at": revision.created_at,
+                    "resource_uri": f"overmind://eval-rows/{row.pk}?project_id={project.pk}&revision={revision.pk}",
+                }
+                for revision in revisions[offset : offset + limit]
+            ],
+            "revision_total": total,
+            "next_offset": offset + limit if offset + limit < total else None,
+        }
     if host == "activity" and not segments:
         params = parse_qs(parsed.query, keep_blank_values=True)
         try:
@@ -1809,6 +1874,8 @@ def resource_templates() -> list[types.ResourceTemplate]:
             "overmind://pipeline-diagnostics/{id}",
             "Untrusted script diagnostics; step, channel, offset and limit",
         ),
+        ("checkpoint", "overmind://checkpoints/{id}", "Retained checkpoint identity"),
+        ("eval-row", "overmind://eval-rows/{row}", "Evaluation row definition"),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
         (
             "eval-set",

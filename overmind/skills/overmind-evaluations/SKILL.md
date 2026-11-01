@@ -51,8 +51,8 @@ repository, edit the decorator's `expectations` or the toml entry and run
 `overmind sync`. Without the repository, or for a rule no catalog check
 expresses, use `create_eval_matrix_row` (an llm row is one checkable sentence;
 a deterministic row is an audited `evaluate(span)` check) and add it to the
-active set with `create_eval_set(..., activate=True)`. A row cannot be edited:
-`delete_eval_matrix_row`, then create the replacement. Preserve existing
+active set with `create_eval_set(..., activate=True)`. Revise a row with `revise_eval_matrix_row` using `expected_updated_at` from its
+`overmind://eval-rows/{id}` resource. Prior definitions and set membership are retained. Preserve existing
 evaluation semantics unless the user asks to change them.
 
 Over a dataset, rows whose `span_type` is blank or `llm_call` score each row's

@@ -200,11 +200,21 @@ JobKind = Literal[
 
 
 class GetJobInput(MCPModel):
+    view: Literal["summary", "full"] = "full"
     kind: JobKind
     id: str = Field(min_length=1, max_length=255)
 
 
 class GetJobOutput(MCPModel):
+    view: Literal["summary", "full"] = "full"
+    omitted_fields: list[str] = Field(default_factory=list)
+    project_id: str
+    stage: str | None = None
+    last_heartbeat_at: datetime | None = None
+    last_progress_at: datetime | None = None
+    next_actions: list[str] = Field(default_factory=list, max_length=20)
+    action_requirements: dict[str, Any] = Field(default_factory=dict)
+    poll_after_seconds: int | None = None
     kind: str
     id: str
     status: str

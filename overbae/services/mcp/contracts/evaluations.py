@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, AwareDatetime, Field, field_validator
 
 from overbae.services.mcp.contracts.common import (
     DatasetCellContract,
@@ -323,3 +324,9 @@ class CompareEvaluationsOutput(MCPModel):
     metrics: list[MetricComparisonContract] = Field(max_length=200)
     trust: dict[str, Any] = Field(default_factory=dict)
     resource_links: list[ResourceLinkContract] = Field(max_length=2)
+
+
+class ReviseEvalMatrixInput(CreateEvalMatrixRowInput):
+    row: UUID
+    expected_updated_at: AwareDatetime
+    enabled: bool = True

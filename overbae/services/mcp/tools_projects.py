@@ -8,13 +8,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from overbae.models import APIToken
 from overbae.models.iam import delegation_denial
 from overbae.services import activity
-from overbae.services.billing_ledger import credit_report
+from overbae.services.billing_ledger import credit_report, project_credit_report
 from overbae.services.billing_provider import get_billing
 from overbae.services.mcp.context import accessible_projects
 from overbae.services.mcp.contracts.activity import ReportOnboardingInput, ReportOnboardingOutput
 from overbae.services.mcp.contracts.projects import (
     CreateApiKeyInput,
     CreateApiKeyOutput,
+    CreditAttributionInput,
+    CreditAttributionOutput,
     GetCreditBalanceInput,
     GetCreditBalanceOutput,
 )
@@ -136,6 +138,22 @@ def register_project_tools(catalog):
 
     catalog.register(
         ToolDefinition(
+            name="get_credit_usage",
+            title="Get project credit usage",
+            description="Page posted account-owned project charges by service and recorded training job. Null job attribution is unknown. Excludes unposted charges and estimates; does not enforce budgets.",
+            input_model=CreditAttributionInput,
+            output_model=CreditAttributionOutput,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            required_scopes=frozenset({"overmind:read"}),
+            cost_class="free",
+            async_mode="sync",
+        ),
+        get_credit_usage,
+    )
+    catalog.register(
+        ToolDefinition(
             name="create_api_key",
             title="Create API key",
             description="Create a key: name, description, expiry (0=never or 30/90/180/365 days). Plaintext once. Omit project_id for account scope; project keys mint only same-project keys.",
@@ -207,4 +225,13 @@ def register_project_tools(catalog):
             async_mode="sync",
         ),
         report_onboarding_progress,
+    )
+
+
+@sync_to_async(thread_sensitive=True)
+def get_credit_usage(payload, context):
+    if payload.since and payload.before and payload.since >= payload.before:
+        raise MCPError("invalid_input", "since must precede before.")
+    return CreditAttributionOutput(
+        **project_credit_report(context.user, context.project, **payload.model_dump())
     )

@@ -14,6 +14,7 @@ from mcp import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from overbae.services.activity import mcp_succeeded
+from overbae.services.mcp import mutations
 from overbae.services.mcp.annotations import annotations_for
 from overbae.services.mcp.context import MCPContext, project_context
 from overbae.services.mcp.errors import MCPError, error_result, internal_error
@@ -98,8 +99,23 @@ class ToolDefinition(BaseModel):
         if self.destructive != (self.name in _DESTRUCTIVE_TOOLS):
             raise CatalogError("destructive tools are not supported")
 
+    @property
+    def receipt_supported(self) -> bool:
+        return (
+            self.project_scoped
+            and not self.read_only
+            and "request_key" not in self.input_model.model_fields
+        )
+
     def as_mcp_tool(self) -> types.Tool:
         schema = _compact_schema(self.input_model.model_json_schema(by_alias=True))
+        if self.receipt_supported:
+            schema.setdefault("properties", {})["request_key"] = {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Stable operation identity; identical retries recover the original result.",
+            }
         if self.project_scoped:
             schema.setdefault("properties", {})["project_id"] = {
                 "type": "string",
@@ -208,6 +224,13 @@ class ToolCatalog:
                 context = await sync_to_async(project_context, thread_sensitive=True)(
                     context, arguments.pop("project_id", None)
                 )
+            request_key = (
+                arguments.pop("request_key", None) if entry.definition.receipt_supported else None
+            )
+            if request_key is not None and (
+                not isinstance(request_key, str) or not 1 <= len(request_key) <= 128
+            ):
+                raise MCPError("invalid_input", "request_key must contain 1–128 characters.")
             payload = entry.definition.input_model.model_validate(arguments)
         except MCPError as error:
             return error_result(error)
@@ -224,16 +247,35 @@ class ToolCatalog:
                 )
             )
 
+        receipt = None
+        if request_key is not None:
+            try:
+                receipt, created = await sync_to_async(mutations.claim, thread_sensitive=True)(
+                    context, name, request_key, payload.model_dump(mode="json")
+                )
+            except MCPError as error:
+                return error_result(error)
+            if not created:
+                return types.CallToolResult.model_validate(receipt.result)
         try:
             result = entry.handler(payload, context)
             if inspect.isawaitable(result):
                 result = await result
             output = entry.definition.output_model.model_validate(result)
         except MCPError as error:
-            return error_result(error)
+            failure = error_result(error)
+            if receipt:
+                await sync_to_async(mutations.finish, thread_sensitive=True)(
+                    receipt, failure.model_dump(mode="json")
+                )
+            return failure
         except ValidationError:
+            if receipt:
+                await sync_to_async(mutations.mark_unknown, thread_sensitive=True)(receipt)
             return error_result(MCPError("invalid_output", "The tool returned an invalid result."))
         except Exception:
+            if receipt:
+                await sync_to_async(mutations.mark_unknown, thread_sensitive=True)(receipt)
             logger.exception(
                 "MCP tool %s failed for project %s", name, getattr(context.project, "id", None)
             )
@@ -249,7 +291,12 @@ class ToolCatalog:
             logger.exception("Could not retain MCP activity for %s", name)
         if entry.definition.project_scoped and context.token.scope.get("scope") == "account":
             structured = project_references(structured, context.project.pk)
-        return tool_result(structured)
+        response = tool_result(structured)
+        if receipt:
+            await sync_to_async(mutations.finish, thread_sensitive=True)(
+                receipt, response.model_dump(mode="json")
+            )
+        return response
 
     @staticmethod
     def _visible(definition: ToolDefinition, permissions: frozenset[str]) -> bool:
@@ -314,3 +361,11 @@ register_model_workflow_tools(CATALOG)
 from overbae.services.mcp.tools_signals import register_signal_tools  # noqa: E402
 
 register_signal_tools(CATALOG)
+
+from overbae.services.mcp.tools_inventory import register_inventory_tools  # noqa: E402
+
+register_inventory_tools(CATALOG)
+
+from overbae.services.mcp.tools_monitoring import register_monitoring_tools  # noqa: E402
+
+register_monitoring_tools(CATALOG)

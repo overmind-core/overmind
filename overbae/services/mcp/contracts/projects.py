@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import AwareDatetime, Field
 
@@ -61,3 +62,35 @@ class GetCreditBalanceOutput(MCPModel):
     observed_at: datetime
     since: datetime | None
     usage: CreditUsage
+
+
+class CreditAttributionInput(MCPModel):
+    since: AwareDatetime | None = None
+    before: AwareDatetime | None = None
+    training_job: UUID | None = None
+    training_experiment: UUID | None = None
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class CreditAttributionRow(MCPModel):
+    service: str
+    training_job_id: str | None
+    spent_credits: Decimal
+    entries: int
+
+
+class CreditAttributionOutput(MCPModel):
+    project_id: str
+    observed_at: datetime
+    since: datetime | None
+    before: datetime | None
+    spent_credits: Decimal
+    groups: list[CreditAttributionRow] = Field(max_length=100)
+    total_groups: int
+    next_offset: int | None
+    credits_per_usd: Literal[100] = 100
+    scope: Literal["connection_account_posted_project_charges"] = (
+        "connection_account_posted_project_charges"
+    )
+    limitations: list[str]
