@@ -26,7 +26,7 @@ export function QuickstartEmbed({
   if (projectId && milestones.isLoading) return <LoadingState label="Loading setup progress" />;
   if (source === "agent" && connected) {
     return (
-      <section aria-label="Agent onboarding" className="w-full max-w-md">
+      <section aria-label="Agent onboarding" className="w-full max-w-2xl">
         <OnboardingMilestones projectId={projectId} projectName={projectName} />
       </section>
     );
@@ -39,7 +39,7 @@ export function QuickstartEmbed({
           <div className="space-y-1">
             <h2 className="text-sm font-medium">Set up this project</h2>
             <p className="text-xs text-muted-foreground">
-              Paste the prompt into a coding agent, or upload data.
+              Open the prompt in your coding agent, or upload data.
             </p>
           </div>
           <Tabs

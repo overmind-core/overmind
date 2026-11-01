@@ -37,7 +37,7 @@ from ..stack import drain, settle
 
 def test_project_navigation_keeps_the_destination_without_a_project(console):
     console.goto("/inference?inf_search=needle")
-    console.sees("Copy onboarding prompt")
+    console.sees("Open in Codex")
     console.wait_until(
         "() => location.pathname === '/inference' && "
         "new URLSearchParams(location.search).get('inf_search') === 'needle'"
@@ -47,7 +47,7 @@ def test_project_navigation_keeps_the_destination_without_a_project(console):
 
 def test_translated_onboarding_prompt_can_be_copied(console):
     console.goto("/inference")
-    console.sees("Copy onboarding prompt")
+    console.sees("Open in Codex")
     console._browser.call(
         lambda: console._page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     )
@@ -55,20 +55,12 @@ def test_translated_onboarding_prompt_can_be_copied(console):
         console._page.evaluate,
         """() => {
             const button = [...document.querySelectorAll('button')].find(
-                element => element.textContent.includes('Copy onboarding prompt'));
-            const texts = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
-            const nodes = [];
-            while (texts.nextNode()) nodes.push(texts.currentNode);
-            for (const text of nodes) {
-                if (!text.textContent.includes('Copy onboarding prompt')) continue;
-                const translated = document.createElement('font');
-                translated.textContent = 'Copiar instrucciones';
-                text.replaceWith(translated);
-            }
+                element => element.getAttribute('aria-label') === 'Copy prompt');
+            button.setAttribute('aria-label', 'Copiar instrucciones');
         }""",
     )
     console.press("Copiar instrucciones")
-    console.sees("Paste the prompt into your coding agent to start setup.")
+    console.sees("Prompt copied")
     assert "/setup.md" in console._browser.call(
         lambda: console._page.evaluate("navigator.clipboard.readText()")
     )
@@ -95,7 +87,7 @@ def test_onboarding_prompt_retains_the_selected_project(console, rest_for, accou
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
     )
-    console.press("Copy onboarding prompt")
+    console.press("Copy prompt")
     console.sees("Prompt copied")
     prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
     assert f"project_id: {project}" in prompt
@@ -212,7 +204,7 @@ def test_route_error_home_action_reloads_the_document(console):
     console.sees("Invalid link")
     console._browser.call(console._page.evaluate, "window.failedDocument = true")
     console._browser.call(lambda: console._page.get_by_role("link", name="Go to home").click())
-    console.sees("Copy onboarding prompt")
+    console.sees("Open in Codex")
     console.wait_until("() => location.pathname === '/' && !window.failedDocument")
     console.save_evidence("route-error-home-recovery")
 
@@ -437,7 +429,7 @@ def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
     )
-    console.press("Copy onboarding prompt")
+    console.press("Copy prompt")
     console.sees("Prompt copied")
     prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
     assert prompt == (
@@ -462,7 +454,7 @@ def test_embedded_onboarding_copies_setup_and_switches_to_data(console, console_
     console._browser.call(
         lambda: console._page.get_by_role("tab", name="Agent", exact=True).click()
     )
-    console.sees("Copy onboarding prompt")
+    console.sees("Open in Codex")
     console.healthy()
 
 
@@ -535,7 +527,7 @@ def test_activity_outcomes_and_setup_progress_survive_console_reload(
         },
     )
     console.wait_until("""() => {
-        return [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.body.textContent.includes('Copy onboarding prompt');
+        return [...document.querySelectorAll('h3')].some(node => node.textContent.includes('Onboarding capability')) && document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow') === '9' && !document.querySelector('[aria-label=\"Copy prompt\"]');
     }""")
     console.save_evidence("activity-and-onboarding")
     console._browser.call(console._page.set_viewport_size, {"width": 390, "height": 844})
@@ -1101,7 +1093,7 @@ def test_data_onboarding_uploads_once_and_hands_off_training_preparation(console
         navigator.clipboard.writeText = async text => { window.copiedOnboardingPrompt = text; };
     }""")
     )
-    console.press("Copy onboarding prompt")
+    console.press("Copy prompt")
     console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
     assert prompt.startswith(

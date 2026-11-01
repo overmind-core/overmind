@@ -1,11 +1,6 @@
-import { useState } from "react";
-
 import { trackEvent } from "@/analytics";
-import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icons";
+import { PromptAgentActions } from "@/components/quickstart/prompt-agent-actions";
 import { config } from "@/config";
-import { writeClipboardText } from "@/lib/clipboard";
 import { onboardingPrompt } from "@/lib/mcp-setup";
 import { cn } from "@/lib/utils";
 
@@ -24,9 +19,6 @@ export function OnboardWithAiPanel({
   projectId?: string;
   waitingHint?: string;
 }) {
-  const [copiedPrompt, setCopiedPrompt] = useState<string>();
-  const [copyError, setCopyError] = useState("");
-
   const prompt = onboardingPrompt(
     window.location.origin,
     config.apiUrl,
@@ -34,23 +26,6 @@ export function OnboardWithAiPanel({
   );
 
   const guide = `${window.location.origin}/setup.md`;
-  const promptCopied = copiedPrompt === prompt;
-
-  const copyPrompt = () =>
-    writeClipboardText(prompt).then(
-      () => {
-        setCopyError("");
-        setCopiedPrompt(prompt);
-        trackEvent("setup_prompt_copied", { dataset_id: datasetId, project_id: projectId });
-        onPromptCopied?.();
-      },
-      () => {
-        setCopiedPrompt(undefined);
-        setCopyError("Couldn't copy — select the prompt text and copy it manually.");
-        trackEvent("setup_prompt_copy_failed", { dataset_id: datasetId, project_id: projectId });
-      }
-    );
-
   return (
     <div className={cn(compact ? "space-y-2" : "space-y-3", className)}>
       {!compact && (
@@ -84,16 +59,16 @@ export function OnboardWithAiPanel({
           prompt
         )}
       </p>
-      <Button className="w-full gap-2" onClick={() => void copyPrompt()} size="sm" type="button">
-        {promptCopied ? <Icon.success /> : <Icon.copy />}
-        <span>{promptCopied ? "Prompt copied" : "Copy onboarding prompt"}</span>
-      </Button>
-      {promptCopied ? (
-        <p aria-live="polite" className="text-xs text-muted-foreground">
-          Paste the prompt into your coding agent to start setup.
-        </p>
-      ) : null}
-      {copyError ? <Alert variant="destructive">{copyError}</Alert> : null}
+      <PromptAgentActions
+        onCopyFailed={() =>
+          trackEvent("setup_prompt_copy_failed", { dataset_id: datasetId, project_id: projectId })
+        }
+        onPromptCopied={() => {
+          trackEvent("setup_prompt_copied", { dataset_id: datasetId, project_id: projectId });
+          onPromptCopied?.();
+        }}
+        prompt={prompt}
+      />
       {waitingHint ? <p className="text-xs text-muted-foreground">{waitingHint}</p> : null}
     </div>
   );

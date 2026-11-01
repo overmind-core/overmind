@@ -1,13 +1,28 @@
 import { useEffect, useState } from "react";
 
 import { CodingAgentIcon } from "@/components/coding-agent-icon";
+import { PromptAgentActions } from "@/components/quickstart/prompt-agent-actions";
 import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/spinner";
+import { config } from "@/config";
 import { useOnboardingMilestones } from "@/hooks/use-activity";
 import { cn } from "@/lib/utils";
 
-function StageLabel({ text, active }: { text: string; active: boolean }) {
+const completedLabels: Record<string, string> = {
+  agent_connected: "Connected project",
+  capabilities_described: "Described capabilities",
+  capabilities_discovered: "Discovered capabilities",
+  capabilities_instrumented: "Instrumented capabilities",
+  configuration_validated: "Validated configuration",
+  overmind_installed: "Installed Overmind",
+  repository_inspected: "Inspected repository",
+  repository_synced: "Synced capabilities",
+  snapshot_written: "Wrote snapshot",
+  source_references_verified: "Verified source references",
+};
+
+function StageLabel({ text }: { text: string }) {
   const [length, setLength] = useState(0);
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -34,19 +49,13 @@ function StageLabel({ text, active }: { text: string; active: boolean }) {
     };
   }, [text]);
   return (
-    <h2
-      aria-current={active ? "step" : undefined}
-      className="relative shrink-0 whitespace-nowrap pr-3 text-sm font-medium"
-    >
+    <h2 className="relative shrink-0 whitespace-nowrap pr-3 text-sm font-medium">
       <span className="sr-only">{text}</span>
       <span aria-hidden="true" className="invisible">
         {text}
       </span>
       <span aria-hidden="true" className="absolute inset-0">
         {text.slice(0, length)}
-        {active && (
-          <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 bg-foreground motion-safe:animate-[blink_1s_step-end_infinite]" />
-        )}
       </span>
     </h2>
   );
@@ -105,7 +114,12 @@ export function OnboardingMilestones({
 
   const completed = steps.filter((step) => step.completedAt).length;
   const current = steps.find((step) => !step.completedAt);
-  const stage = current?.label ?? "Your agent is set up";
+  const lastCompleted = steps.filter((step) => step.completedAt).at(-1);
+  const stage = current
+    ? lastCompleted
+      ? (completedLabels[lastCompleted.kind] ?? lastCompleted.label)
+      : "Waiting for setup"
+    : "Your agent is set up";
   const reporter = current?.actorName ? current : steps.find((step) => step.actorName);
   const connected = steps.some((step) => step.kind === "agent_connected" && step.completedAt);
   const synced = steps.some((step) => step.kind === "repository_synced" && step.completedAt);
@@ -118,6 +132,13 @@ export function OnboardingMilestones({
           .map((asset) => [asset.id, asset.label] as const)
       )
   );
+  const progressResource = `overmind://activity?path=agent${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`;
+  const prompt = [
+    `Continue setting up this Overmind project${projectId ? ` (project_id: ${projectId})` : ""} using the API at ${config.apiUrl}.`,
+    `Read the setup guide at ${window.location.origin}/setup.md and check live onboarding progress through MCP by reading ${progressResource} before doing any setup work.`,
+    "Use the live milestones and saved project state to identify the current setup stage. Skip anything already completed and continue with the remaining steps in order. Do not reinstall Overmind or rerun initialization for an already configured coding agent.",
+    "Recheck live progress before each remaining step and after completing it. If setup is already complete, report that and stop. If MCP is unavailable or authentication is pending, report the blocker instead of guessing the stage or restarting setup.",
+  ].join("\n\n");
   const name = connected ? (projectName ?? "Connected") : "Waiting for connection";
 
   return (
@@ -128,7 +149,14 @@ export function OnboardingMilestones({
           aria-live="polite"
           className="flex flex-wrap items-center justify-between gap-3"
         >
-          <StageLabel active={!!current} key={stage} text={stage} />
+          <StageLabel
+            key={stage}
+            text={
+              connected && !capabilities.size && current?.kind === "overmind_installed"
+                ? "Installed Overmind"
+                : stage
+            }
+          />
           {reporter?.actorName && reporter.actorKind && (
             <span
               aria-label="Onboarding agent"
@@ -191,6 +219,12 @@ export function OnboardingMilestones({
           </div>
         </dl>
       </Card>
+      {current && (
+        <Card className="flex flex-row items-center justify-between gap-3 border-primary bg-primary px-3 py-2 text-primary-foreground">
+          <p className="text-xs">Finish setup in your coding agent.</p>
+          <PromptAgentActions defaultAgent={reporter?.actorKind} inverted prompt={prompt} />
+        </Card>
+      )}
       {query.error && (
         <Alert variant="destructive">
           Couldn’t refresh progress. Showing the last saved update.

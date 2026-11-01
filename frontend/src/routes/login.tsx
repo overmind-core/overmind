@@ -38,6 +38,11 @@ function RouteComponent() {
   const signInUrl = `/login${nextQuery ? `?${nextQuery}` : ""}`;
   const signUpUrl = `/login?mode=signup${nextQuery ? `&${nextQuery}` : ""}`;
   const forceRedirectUrl = safeNext ?? undefined;
+  // iPadOS can identify as a Mac; touch points distinguish it from desktop Safari.
+  const mobileBrowser =
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const oauthFlow = mobileBrowser ? "redirect" : "popup";
 
   if (gate.kind === "loading") {
     return (
@@ -75,7 +80,7 @@ function RouteComponent() {
             appearance={CLERK_APPEARANCE}
             fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
-            oauthFlow="popup"
+            oauthFlow={oauthFlow}
             routing="hash"
             signInUrl={signInUrl}
           />
@@ -84,7 +89,7 @@ function RouteComponent() {
             appearance={CLERK_APPEARANCE}
             fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
-            oauthFlow="popup"
+            oauthFlow={oauthFlow}
             routing="hash"
             signUpUrl={signUpUrl}
           />
