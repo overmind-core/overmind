@@ -1,6 +1,8 @@
 import { useState } from "react";
 
+import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { EntityRef } from "@/components/entity-ref";
+import { SignalDetailSheet, signalTraceIds } from "@/components/traces/signal-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DateTime } from "@/components/ui/datetime";
@@ -32,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthContext } from "@/contexts/auth-context";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import {
   useCreateSignalSubscriptionMutation,
@@ -41,9 +44,15 @@ import {
   useSignalSubscriptionsQuery,
   useUpdateSignalSubscriptionMutation,
 } from "@/hooks/use-signals";
+import { featureFlags } from "@/lib/feature-flags";
 import { humanizeKey } from "@/lib/label-case";
 import { cn } from "@/lib/utils";
-import type { SignalCatalogEntry, SignalSubscription, SignalTypeEnum } from "@/openapi";
+import type {
+  SignalCatalogEntry,
+  SignalEvent,
+  SignalSubscription,
+  SignalTypeEnum,
+} from "@/openapi";
 
 const ALL = "__all__";
 
@@ -77,6 +86,7 @@ export function SignalEvents({
   projectId,
   session,
   onSelect,
+  onInspectTrace,
   signal,
   unseen,
   page,
@@ -85,6 +95,7 @@ export function SignalEvents({
   projectId: string;
   session?: string;
   onSelect: (id: string, conversation?: string | null) => void;
+  onInspectTrace: (id: string, traceId: string) => void;
   signal: string | undefined;
   unseen: boolean;
   page: number;
@@ -94,6 +105,7 @@ export function SignalEvents({
   const events = useSignalEventsQuery(projectId, { page, session, signalType: signal, unseen });
   const markSeen = useMarkSignalsSeenMutation(projectId);
   const guard = useGuestGate();
+  const { isGuest } = useAuthContext();
   const subscriptions = useSignalSubscriptionsQuery(projectId);
   const enabledCount = catalog.data?.filter((entry) => {
     const override = subscriptions.data?.results.find(
@@ -108,6 +120,13 @@ export function SignalEvents({
   }).length;
   const rows = events.data?.results ?? [];
   const count = events.data?.count ?? 0;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [datasetFor, setDatasetFor] = useState<SignalEvent | null>(null);
+  const open = rows.find((event) => event.id === openId) ?? null;
+  const openEvent = (event: SignalEvent) => {
+    setOpenId(event.id);
+    if (!event.seenAt && !isGuest) markSeen.mutate([event.id]);
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -206,7 +225,7 @@ export function SignalEvents({
                   <TableCell className="max-w-md text-sm">
                     <button
                       className="cursor-pointer text-left hover:underline"
-                      onClick={() => onSelect(event.id, event.conversation)}
+                      onClick={() => openEvent(event)}
                       type="button"
                     >
                       {event.message}
@@ -229,7 +248,8 @@ export function SignalEvents({
                       size="sm"
                       variant="secondary"
                     >
-                      View traces
+                      {signalTraceIds(event).length}{" "}
+                      {signalTraceIds(event).length === 1 ? "trace" : "traces"}
                       <Icon.chevronRight />
                     </Button>
                   </TableCell>
@@ -241,6 +261,23 @@ export function SignalEvents({
             </TableBody>
           </Table>
         </div>
+      )}
+      <SignalDetailSheet
+        event={open}
+        onClose={() => setOpenId(null)}
+        onCreateDataset={featureFlags.datasets ? (event) => setDatasetFor(event) : undefined}
+        onInspectTrace={(event, traceId) => onInspectTrace(event.id, traceId)}
+        onViewTraces={(event) => onSelect(event.id, event.conversation)}
+        projectId={projectId}
+      />
+      {featureFlags.datasets && (
+        <NewDatasetDialog
+          initialCapabilityId={datasetFor?.capability ?? undefined}
+          initialTraceIds={datasetFor ? signalTraceIds(datasetFor) : undefined}
+          onOpenChange={(next) => !next && setDatasetFor(null)}
+          open={!!datasetFor}
+          projectId={projectId}
+        />
       )}
       {(events.data?.previous || events.data?.next) && (
         <div className="flex items-center justify-end gap-2">
