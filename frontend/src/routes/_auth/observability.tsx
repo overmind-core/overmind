@@ -464,6 +464,13 @@ function TracesPage() {
       {isSignalsView ? (
         <SignalEvents
           onChange={setSearch}
+          onInspectTrace={(id, inspectedTraceId) =>
+            navigate({
+              params: { traceId: inspectedTraceId },
+              search: { page: 1, projectId, signal_event: id, timeRange: "all", view: "roots" },
+              to: "/observability/$traceId",
+            })
+          }
           onSelect={(id, conversation) => {
             navigate({
               search: {
@@ -527,6 +534,19 @@ function TracesPage() {
             featureFlags.signals && signalEvent ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>Traces checked for the selected signal.</span>
+                {featureFlags.datasets && activeCount > 0 && (
+                  <Button
+                    onClick={() => {
+                      handleSelectAllAcrossPages();
+                      setShowAddToDataset(true);
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    <Icon.datasetAdd />
+                    Create dataset
+                  </Button>
+                )}
                 <Button
                   aria-label="Clear signal filter"
                   onClick={() =>

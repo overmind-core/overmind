@@ -29,6 +29,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import connection
@@ -2406,16 +2407,23 @@ class Command(BaseCommand):
         for root in failed_roots:
             when = datetime.fromtimestamp(root.end_time_ns / 1e9, tz=UTC) + timedelta(minutes=5)
             key = innermind_signals.group_key(root)
-            sub = (
-                tool_failure_sub
+            group = list(
+                Span.objects.filter(project=project, trace_id=root.trace_id).order_by(
+                    "start_time_ns", "span_id"
+                )
+            )
+            candidates = (
+                [tool_failure_sub, errors_sub]
                 if root.capability_id == dispute_capability.pk and random.random() < 0.5
-                else errors_sub
+                else [errors_sub]
             )
-            message = (
-                "tools failing: fetch_dispute_evidence (3/4)"
-                if sub is tool_failure_sub
-                else f"1 of {random.randint(3, 6)} spans errored: {root.name}"
-            )
+            for sub in candidates:
+                signal = innermind_signals.signal_factory.get_signal(sub)
+                finding = async_to_sync(signal.evaluate)(group)
+                if finding:
+                    break
+            if not finding:
+                continue
             signal_events.append(
                 (
                     SignalEvent(
@@ -2424,9 +2432,9 @@ class Command(BaseCommand):
                         subscription=sub,
                         signal_type=sub.signal_type,
                         conversation_id=root.conversation_id,
-                        trace_id=root.trace_id,
-                        message=message,
-                        details={"spans": random.randint(3, 6), "group": key},
+                        trace_id=finding.spans[-1][0].trace_id,
+                        message=finding.message,
+                        details=signal.details(finding, group, key, root.capability_id),
                         dedupe_key=innermind_signals.dedupe_key(sub, key, when.date().isoformat()),
                     ),
                     when,
