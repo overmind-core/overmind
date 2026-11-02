@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 
 import { useAuth, useUser } from "@clerk/clerk-react";
 
-import { trackEvent } from "@/analytics";
+import { resetUser, trackEvent } from "@/analytics";
 import apiClient, {
   clearTokens,
   getAccessToken,
@@ -113,6 +113,7 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
   const handleSignOut = useCallback(async () => {
     clearTokens();
     setGuestActive(false);
+    resetUser();
     await signOut();
   }, [signOut]);
 
@@ -189,6 +190,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
     setIsSignedIn(false);
     setIsGuest(false);
     setUser(null);
+    resetUser();
   }, []);
 
   const beginGuestSession = useCallback((access: string, refresh: string, projectId: string) => {

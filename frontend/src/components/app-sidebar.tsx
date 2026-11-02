@@ -345,10 +345,19 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
   const showPlan = me?.billingEnabled === true;
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const clerkUserId = user?.id ?? "";
+  const userEmail = user?.email ?? "";
+  const userName = user?.name ?? "";
   useEffect(() => {
     trackEvent("login_changed", { isSignedIn });
-    identifyUser({ clerkUserId, userId: clerkUserId });
-  }, [isSignedIn, clerkUserId]);
+  }, [isSignedIn]);
+  useEffect(() => {
+    identifyUser({
+      clerkUserId,
+      email: userEmail || undefined,
+      name: userName || undefined,
+      userId: clerkUserId,
+    });
+  }, [clerkUserId, userEmail, userName]);
   useEffect(() => {
     const kinds = kindsForPathname(location.pathname);
     if (kinds) clearUnseenCompletionsForKinds(kinds);

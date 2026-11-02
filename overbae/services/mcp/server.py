@@ -140,8 +140,11 @@ async def _read_resource(uri):
 
 
 def _identify(_request, _extra) -> UserIdentity | None:
-    clerk_user_id = get_context().user.clerk_user_id
-    return UserIdentity(distinct_id=clerk_user_id) if clerk_user_id else None
+    user = get_context().user
+    if not user.clerk_user_id:
+        return None
+    properties = {"email": user.email} if user.email and not user.is_guest else None
+    return UserIdentity(distinct_id=user.clerk_user_id, properties=properties)
 
 
 def _project_properties(request, _extra) -> dict[str, str]:

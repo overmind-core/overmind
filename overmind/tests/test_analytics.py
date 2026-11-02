@@ -194,7 +194,13 @@ def test_ensure_identified_caches_per_key(monkeypatch, tmp_path, posthog_client)
 
     def fake_me(api_key, base_url):
         me_calls["n"] += 1
-        return {"id": "user-1", "clerk_user_id": "user_clerk_1", "plan": "free", "is_guest": False}
+        return {
+            "id": "user-1",
+            "clerk_user_id": "user_clerk_1",
+            "email": "user@example.com",
+            "plan": "free",
+            "is_guest": False,
+        }
 
     monkeypatch.setattr(analytics, "_fetch_me", fake_me)
 
@@ -208,4 +214,5 @@ def test_ensure_identified_caches_per_key(monkeypatch, tmp_path, posthog_client)
     assert call.args == ("$identify",)
     assert call.kwargs["distinct_id"] == "user_clerk_1"
     assert call.kwargs["properties"]["$anon_distinct_id"]
+    assert call.kwargs["properties"]["$set"]["email"] == "user@example.com"
     assert call.kwargs["properties"]["$set"]["plan"] == "free"
