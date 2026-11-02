@@ -16,6 +16,7 @@ from overbae.models import (
     FinetuningJob,
     ProjectMembership,
 )
+from overbae.services.activity import actor
 from overbae.services.mcp.context import bind_context
 from overbae.services.mcp.resources import read_resource
 
@@ -228,3 +229,17 @@ def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
         state="cancelled",
     )
     assert call_tool("update_dataset_preparation", args, context).isError
+
+
+@pytest.mark.parametrize(
+    "client,kind",
+    [
+        ("claude-code", "claude"),
+        ("Codex", "codex"),
+        ("cursor-vscode", "cursor"),
+        ("opencode", "opencode"),
+        ("some-client", "coding_agent"),
+    ],
+)
+def test_every_supported_harness_keeps_its_identity(client, kind):
+    assert actor(client)[0] == kind

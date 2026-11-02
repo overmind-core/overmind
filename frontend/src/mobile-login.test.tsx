@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url":"http://localhost:5173"}
+// covers: authentication
 
 import {
+  type AnyRoute,
   createMemoryHistory,
   createRootRoute,
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@clerk/clerk-react", () => ({
   SignIn: (props: Record<string, string>) => (
@@ -18,28 +20,25 @@ vi.mock("@clerk/clerk-react", () => ({
     <div data-flow={props.oauthFlow} data-next={props.forceRedirectUrl} data-testid="clerk" />
   ),
 }));
-vi.mock("@/config", () => ({ config: { clerkReady: true } }));
-vi.mock("@/contexts/auth-context", () => ({
-  useAuthContext: () => ({
-    isGuest: false,
-    isLoaded: true,
-    isSignedIn: false,
-    refreshAuth: () => {},
-  }),
-}));
-vi.mock("@/components/splash-background", () => ({
-  SplashBackground: ({ children }: { children: React.ReactNode }) => children,
-}));
-
-import { Route as LoginRoute } from "@/routes/login";
 
 const root = createRootRoute();
-const login = LoginRoute.update({
-  getParentRoute: () => root,
-  id: "/login",
-  path: "/login",
-} as never);
-const routeTree = root.addChildren([login]);
+let routeTree: AnyRoute;
+
+beforeAll(async () => {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "pk_test_mobile");
+  vi.stubEnv("VITE_SELF_HOSTED", "false");
+  vi.resetModules();
+  window.matchMedia ??= ((query: string) => ({
+    addEventListener: () => {},
+    matches: false,
+    media: query,
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
+  const { Route } = await import("@/routes/login");
+  routeTree = root.addChildren([
+    Route.update({ getParentRoute: () => root, id: "/login", path: "/login" } as never),
+  ]);
+});
 
 afterEach(() => {
   cleanup();

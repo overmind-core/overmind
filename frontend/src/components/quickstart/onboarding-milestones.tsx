@@ -149,14 +149,12 @@ export function OnboardingMilestones({
           aria-live="polite"
           className="flex flex-wrap items-center justify-between gap-3"
         >
-          <StageLabel
-            key={stage}
-            text={
-              connected && !capabilities.size && current?.kind === "overmind_installed"
-                ? "Installed Overmind"
-                : stage
-            }
-          />
+          <StageLabel key={stage} text={stage} />
+          {current && (
+            <span aria-current="step" className="sr-only">
+              {current.label}
+            </span>
+          )}
           {reporter?.actorName && reporter.actorKind && (
             <span
               aria-label="Onboarding agent"

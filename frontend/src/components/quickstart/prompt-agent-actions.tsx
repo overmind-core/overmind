@@ -12,29 +12,37 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icons";
 import { writeClipboardText } from "@/lib/clipboard";
+import { isMobileBrowser } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
-const agents = [
+// OpenCode's desktop link needs a local directory, which the Console does not know.
+const agents: { id: string; label: string; url?: string }[] = [
+  { id: "claude", label: "Claude Code", url: "claude://code/new?q=" },
   { id: "codex", label: "Codex", url: "codex://new?prompt=" },
   { id: "cursor", label: "Cursor", url: "cursor://anysphere.cursor-deeplink/prompt?text=" },
-  { id: "claude", label: "Claude Code", url: "claude://code/new?q=" },
+  { id: "opencode", label: "OpenCode" },
 ];
 
 export function PromptAgentActions({
   prompt,
   defaultAgent,
   inverted = false,
-  onPromptCopied,
+  onCopied,
   onCopyFailed,
+  onOpened,
 }: {
   prompt: string;
   defaultAgent?: string | null;
   inverted?: boolean;
-  onPromptCopied?: () => void;
+  onCopied?: () => void;
   onCopyFailed?: () => void;
+  onOpened?: (agent: string) => void;
 }) {
   const [selectedAgent, setSelectedAgent] = useState<string>();
-  const agent = agents.find((option) => option.id === (selectedAgent ?? defaultAgent)) ?? agents[0];
+  const agent = agents.find((option) => option.id === (selectedAgent ?? defaultAgent));
+  // Agent links open desktop apps, so a phone can only copy.
+  const mobile = isMobileBrowser();
+  const url = !mobile && agent?.url;
   const colors = inverted
     ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
     : "";
@@ -44,7 +52,7 @@ export function PromptAgentActions({
     try {
       await writeClipboardText(prompt);
       toast.success("Prompt copied");
-      onPromptCopied?.();
+      onCopied?.();
     } catch {
       toast.error("Couldn't copy the prompt. Try again.");
       onCopyFailed?.();
@@ -53,40 +61,63 @@ export function PromptAgentActions({
 
   return (
     <div aria-label="Coding agent actions" className="inline-flex shrink-0" role="group">
-      <Button
-        aria-label="Copy prompt"
-        className={cn("rounded-r-none", colors)}
-        onClick={() => void copyPrompt()}
-        size="icon-sm"
-      >
-        <Icon.copy />
-      </Button>
-      <Button asChild className={cn("rounded-none", divider, colors)} size="sm">
-        <a href={agent.url + encodeURIComponent(prompt)}>
-          <CodingAgentIcon kind={agent.id} />
-          Open in {agent.label}
-        </a>
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      {url ? (
+        <>
           <Button
-            aria-label="Choose coding agent"
-            className={cn("rounded-l-none", divider, colors)}
+            aria-label="Copy prompt"
+            className={cn("rounded-r-none", colors)}
+            onClick={() => void copyPrompt()}
             size="icon-sm"
           >
-            <Icon.chevronDown />
+            <Icon.copy />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {agents.map((option) => (
-            <DropdownMenuItem key={option.id} onSelect={() => setSelectedAgent(option.id)}>
-              <CodingAgentIcon kind={option.id} />
-              {option.label}
-              {agent.id === option.id && <Icon.success className="ml-auto" />}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <Button asChild className={cn("rounded-none", divider, colors)} size="sm">
+            <a
+              aria-label={`Open in ${agent.label}`}
+              href={url + encodeURIComponent(prompt)}
+              onClick={() => onOpened?.(agent.id)}
+            >
+              <CodingAgentIcon kind={agent.id} />
+              Open in {agent.label}
+            </a>
+          </Button>
+        </>
+      ) : (
+        <Button
+          className={cn(!mobile && "rounded-r-none", colors)}
+          onClick={() => void copyPrompt()}
+          size="sm"
+        >
+          <Icon.copy />
+          Copy prompt
+        </Button>
+      )}
+      {!mobile && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label="Choose coding agent"
+              className={cn("rounded-l-none", divider, colors)}
+              size="icon-sm"
+            >
+              <Icon.chevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {agents.map((option) => (
+              <DropdownMenuItem
+                aria-label={option.label}
+                key={option.id}
+                onSelect={() => setSelectedAgent(option.id)}
+              >
+                <CodingAgentIcon kind={option.id} />
+                {option.label}
+                {agent?.id === option.id && <Icon.success className="ml-auto" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }

@@ -80,7 +80,7 @@ def copy_the_onboarding_prompt(console, console_url, live_api):
     console._browser.call(
         console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
     )
-    console.press("Copy onboarding prompt")
+    console.press("Copy prompt")
     console.sees("Prompt copied")
     prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
     assert prompt == (
@@ -105,7 +105,7 @@ def copy_the_onboarding_prompt(console, console_url, live_api):
     console._browser.call(
         lambda: console._page.get_by_role("tab", name="Agent", exact=True).click()
     )
-    console.sees("Copy onboarding prompt")
+    console.sees("Copy prompt")
 
 
 def keep_new_api_keys_out_of_session_replay(console, project, replay_recorder):

@@ -158,7 +158,7 @@ export function ResolvedStatusBadge({
       <span className="relative z-10 inline-flex items-center gap-1">
         {cfg.spinning &&
         actorKind &&
-        ["codex", "claude", "cursor", "gemini", "coding_agent"].includes(actorKind) ? (
+        ["codex", "claude", "cursor", "gemini", "opencode", "coding_agent"].includes(actorKind) ? (
           <CodingAgentIcon kind={actorKind} />
         ) : (
           icon

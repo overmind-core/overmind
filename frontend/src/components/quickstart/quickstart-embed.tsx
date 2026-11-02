@@ -39,7 +39,7 @@ export function QuickstartEmbed({
           <div className="space-y-1">
             <h2 className="text-sm font-medium">Set up this project</h2>
             <p className="text-xs text-muted-foreground">
-              Open the prompt in your coding agent, or upload data.
+              Paste the prompt into a coding agent, or upload data.
             </p>
           </div>
           <Tabs

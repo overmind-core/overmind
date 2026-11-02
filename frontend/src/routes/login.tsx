@@ -10,6 +10,7 @@ import { useAuthContext } from "@/contexts/auth-context";
 import { useLoginGate } from "@/hooks/use-login-gate";
 import { safeNextPath } from "@/lib/auth-redirect";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
+import { isMobileBrowser } from "@/lib/platform";
 
 export const Route = createFileRoute("/login")({
   component: RouteComponent,
@@ -38,11 +39,7 @@ function RouteComponent() {
   const signInUrl = `/login${nextQuery ? `?${nextQuery}` : ""}`;
   const signUpUrl = `/login?mode=signup${nextQuery ? `&${nextQuery}` : ""}`;
   const forceRedirectUrl = safeNext ?? undefined;
-  // iPadOS can identify as a Mac; touch points distinguish it from desktop Safari.
-  const mobileBrowser =
-    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  const oauthFlow = mobileBrowser ? "redirect" : "popup";
+  const oauthFlow = isMobileBrowser() ? "redirect" : "popup";
 
   if (gate.kind === "loading") {
     return (

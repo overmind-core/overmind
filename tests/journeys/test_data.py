@@ -76,7 +76,7 @@ def hand_uploaded_data_to_the_coding_agent(console, tmp_path):
         navigator.clipboard.writeText = async text => { window.copiedOnboardingPrompt = text; };
     }""")
     )
-    console.press("Copy onboarding prompt")
+    console.press("Copy prompt")
     console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
     assert prompt.startswith(
