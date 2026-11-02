@@ -59,7 +59,7 @@ function CreateProjectForm({
               }}
             />
           ) : (
-            <OnboardWithAiPanel onHandoff={onSuccess} />
+            <OnboardWithAiPanel onPromptCopied={onSuccess} />
           )}
         </div>
       </DialogBody>

@@ -29,14 +29,14 @@ export function PromptAgentActions({
   inverted = false,
   onCopied,
   onCopyFailed,
-  onOpened,
+  onOpenClicked,
 }: {
   prompt: string;
   defaultAgent?: string | null;
   inverted?: boolean;
   onCopied?: () => void;
   onCopyFailed?: () => void;
-  onOpened?: (agent: string) => void;
+  onOpenClicked?: (agent: string) => void;
 }) {
   const [selectedAgent, setSelectedAgent] = useState<string>();
   const agent = agents.find((option) => option.id === (selectedAgent ?? defaultAgent));
@@ -75,7 +75,7 @@ export function PromptAgentActions({
             <a
               aria-label={`Open in ${agent.label}`}
               href={url + encodeURIComponent(prompt)}
-              onClick={() => onOpened?.(agent.id)}
+              onClick={() => onOpenClicked?.(agent.id)}
             >
               <CodingAgentIcon kind={agent.id} />
               Open in {agent.label}

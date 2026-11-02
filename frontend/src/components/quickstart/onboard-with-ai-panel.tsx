@@ -8,14 +8,14 @@ export function OnboardWithAiPanel({
   className,
   compact = false,
   datasetId,
-  onHandoff,
+  onPromptCopied,
   projectId,
   waitingHint,
 }: {
   className?: string;
   compact?: boolean;
   datasetId?: string;
-  onHandoff?: () => void;
+  onPromptCopied?: () => void;
   projectId?: string;
   waitingHint?: string;
 }) {
@@ -62,19 +62,18 @@ export function OnboardWithAiPanel({
       <PromptAgentActions
         onCopied={() => {
           trackEvent("setup_prompt_copied", { dataset_id: datasetId, project_id: projectId });
-          onHandoff?.();
+          onPromptCopied?.();
         }}
         onCopyFailed={() =>
           trackEvent("setup_prompt_copy_failed", { dataset_id: datasetId, project_id: projectId })
         }
-        onOpened={(agent) => {
-          trackEvent("setup_prompt_opened", {
+        onOpenClicked={(agent) =>
+          trackEvent("setup_prompt_open_clicked", {
             agent,
             dataset_id: datasetId,
             project_id: projectId,
-          });
-          onHandoff?.();
-        }}
+          })
+        }
         prompt={prompt}
       />
       {waitingHint ? <p className="text-xs text-muted-foreground">{waitingHint}</p> : null}
