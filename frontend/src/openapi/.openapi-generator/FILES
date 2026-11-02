@@ -31,6 +31,7 @@ apis/OptimizerCandidatesApi.ts
 apis/OptimizerExperimentsApi.ts
 apis/ProjectsApi.ts
 apis/PublicApi.ts
+apis/RlRunsApi.ts
 apis/SessionsApi.ts
 apis/SignalEventsApi.ts
 apis/SignalSubscriptionsApi.ts
@@ -322,6 +323,7 @@ models/PaginatedProjectInviteList.ts
 models/PaginatedProjectList.ts
 models/PaginatedProjectMemberList.ts
 models/PaginatedPromptList.ts
+models/PaginatedRLRunList.ts
 models/PaginatedRootSpanListList.ts
 models/PaginatedSessionList.ts
 models/PaginatedSignalEventList.ts
@@ -375,6 +377,11 @@ models/PublicModelPricing.ts
 models/PublicTokenRefresh.ts
 models/PublicTokenRefreshRequest.ts
 models/QuantizationEnum.ts
+models/RLCatalog.ts
+models/RLColumns.ts
+models/RLRun.ts
+models/RLRunDetail.ts
+models/RLRunRequestRequest.ts
 models/RepositorySnapshot.ts
 models/RepositorySnapshotRequest.ts
 models/RoleEnum.ts
@@ -403,6 +410,7 @@ models/SplitMethod3daEnum.ts
 models/SplitMethodE87Enum.ts
 models/SplitPositionEnum.ts
 models/Status1b7Enum.ts
+models/Status520Enum.ts
 models/StrataPage.ts
 models/Stratum.ts
 models/Subscription.ts

@@ -15,6 +15,8 @@ const STOCK_NAME: Record<string, string> = {
   tool_args_match: "Tool arguments",
   tool_selection: "Tool selection",
 };
+export const stockCheckName = (name: string) => STOCK_NAME[name] ?? name;
+
 export function evaluationName(row: EvalMatrix) {
   return row.definitionSource === "stock" ? (STOCK_NAME[row.name] ?? row.name) : row.name;
 }

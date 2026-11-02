@@ -33,6 +33,7 @@ export * from './OptimizerCandidatesApi';
 export * from './OptimizerExperimentsApi';
 export * from './ProjectsApi';
 export * from './PublicApi';
+export * from './RlRunsApi';
 export * from './SessionsApi';
 export * from './SignalEventsApi';
 export * from './SignalSubscriptionsApi';

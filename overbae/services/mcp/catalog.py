@@ -297,6 +297,10 @@ from overbae.services.mcp.tools_optimizer import register_optimizer_tools  # noq
 
 register_optimizer_tools(CATALOG)
 
+from overbae.services.mcp.tools_rl import register_rl_tools  # noqa: E402
+
+register_rl_tools(CATALOG)
+
 from overbae.services.mcp.tools_connectors import register_connector_tools  # noqa: E402
 
 register_connector_tools(CATALOG)

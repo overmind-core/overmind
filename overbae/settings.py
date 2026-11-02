@@ -453,6 +453,9 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.innermind.sweep_unscored_spans": {"queue": "io_traces"},
     "overbae.tasks.innermind.score_trajectories": {"queue": "io_traces"},
     "overbae.tasks.innermind.run_signals": {"queue": "io_traces"},
+    # Spawning and draining a Modal call blocks on Modal HTTP.
+    "overbae.tasks.rl_training.dispatch_rl_run": {"queue": "io"},
+    "overbae.tasks.rl_training.poll_rl_run": {"queue": "io"},
 }
 
 CELERY_BEAT_SCHEDULE = {
@@ -508,6 +511,11 @@ CELERY_BEAT_SCHEDULE = {
     "training-preparation": {
         "task": "overbae.tasks.training_preparation.reconcile",
         "schedule": 15.0,
+    },
+    "reconcile-rl-runs": {
+        "task": "overbae.tasks.rl_training.reconcile_rl_runs",
+        "schedule": 20.0,
+        "options": {"expires": 18.0},
     },
     # Observe remote training independently of its submitting worker.
     "reconcile-finetuning-jobs": {

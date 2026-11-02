@@ -118,6 +118,10 @@ export const optimiserSearchSchema = projectIdSearchSchema.extend({
 
 export type OptimiserSearch = z.infer<typeof optimiserSearchSchema>;
 
+export const rlTrainingSearchSchema = projectIdSearchSchema.extend({
+  newRun: z.boolean().optional(),
+});
+
 // `ft_*` rather than the shared `run_*`: `ft_status` is a closed set, `run_status` is
 // free-form, and a `search: (prev) => …` navigation carries every route's params.
 export const trainingSearchSchema = projectIdSearchSchema.extend({

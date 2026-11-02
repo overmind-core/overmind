@@ -19,6 +19,7 @@ from . import (  # noqa: E402
     model_deployment,
     optimizer_reconciler,
     queue_metrics,
+    rl_training,
     training_experiments,
     training_preparation,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "model_deployment",
     "process_span",
     "refresh_dataset_context",
+    "rl_training",
     "training_experiments",
     "training_preparation",
 ]

@@ -62,6 +62,7 @@ const DYNAMIC_PARENTS = new Set([
   "datasets",
   "optimiser",
   "inference",
+  "rl-training",
 ]);
 
 const HIDDEN_BREADCRUMB_PATHS = new Set(["/evaluations/runs"]);
@@ -141,6 +142,14 @@ function useCachedName(
     select: (plan) => plan.name?.trim(),
   });
 
+  const rlRunNameQuery = useQuery({
+    enabled: kind === "rl-training" && !!slug,
+    queryFn: () => apiClient.rlRuns.rlRunsRetrieve({ id: slug ?? "" }),
+    // Same key as the run page so the label rides its cache.
+    queryKey: ["rl-run", slug],
+    select: (run) => run.name,
+  });
+
   if (kind === "evaluations") {
     return (
       (evaluationFormat === "decision"
@@ -153,6 +162,7 @@ function useCachedName(
   if (kind === "datasets") return datasetNameQuery.data;
   if (kind === "optimiser") return experimentNameQuery.data;
   if (kind === "inference") return deployedModelNameQuery.data;
+  if (kind === "rl-training") return rlRunNameQuery.data;
   return undefined;
 }
 

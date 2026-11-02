@@ -12,12 +12,17 @@ from overbae.models import APIToken, Capability, EvalMatrix, EvalSet
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-MAX_MANIFEST_BYTES = 93 * 1024
+MAX_MANIFEST_BYTES = 99 * 1024
 # The ASGI MCP app serves requests on another thread with its own connection,
 # so it sees only committed rows.
 asgi_db = pytest.mark.django_db(transaction=True)
 
 EXPECTED_TOOL_NAMES = {
+    "list_rl_training_options",
+    "preview_rl_rewards",
+    "start_rl_training",
+    "inspect_rl_training",
+    "list_rl_training_runs",
     "start_dataset_preparation",
     "update_dataset_preparation",
     "report_onboarding_progress",

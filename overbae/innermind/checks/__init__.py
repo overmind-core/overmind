@@ -9,9 +9,9 @@ contract fits one function, and enable it.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
+from modal_shared import check_rewards
 from overbae.models import EvalMatrix, Project
 
 SCRIPTS = Path(__file__).resolve().parent / "scripts"
@@ -37,16 +37,6 @@ def source(name: str) -> str:
     return (SCRIPTS / f"{name}.py").read_text(encoding="utf-8")
 
 
-def _literal(value: object) -> str:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return repr(value)
-    if isinstance(value, list):
-        return "[" + ", ".join(_literal(item) for item in value) + "]"
-    if isinstance(value, dict) and all(isinstance(key, str) for key in value):
-        return "{" + ", ".join(f"{key!r}: {_literal(item)}" for key, item in value.items()) + "}"
-    raise ValueError(f"unsupported parameter value {value!r}")
-
-
 def render(name: str, params: dict) -> str:
     """The catalog script with its top-of-file constants set to *params*.
 
@@ -56,15 +46,15 @@ def render(name: str, params: dict) -> str:
         raise ValueError(f"unknown check {name!r}")
     if not isinstance(params, dict):
         raise ValueError("params must be an object")
-    text = source(name)
-    header = text.split("\ndef ", 1)[0]
-    for key, value in params.items():
-        line = re.compile(rf"^{re.escape(str(key))} = .*$", re.MULTILINE)
-        if not re.fullmatch(r"[A-Z][A-Z_]*", str(key)) or not line.search(header):
-            raise ValueError(f"{name} has no parameter {key!r}")
-        assignment = f"{key} = {_literal(value)}"
-        text = text.replace(line.search(text).group(0), assignment, 1)
-    return text
+    unknown = [key for key in params if key not in parameters(name)]
+    if unknown:
+        raise ValueError(f"{name} has no parameter {unknown[0]!r}")
+    return check_rewards.bind(source(name), params)
+
+
+def parameters(name: str) -> dict[str, str]:
+    """Each parameter of a catalog check and its default, as written in the script."""
+    return check_rewards.constants(source(name))
 
 
 def seed(project: Project) -> list[EvalMatrix]:

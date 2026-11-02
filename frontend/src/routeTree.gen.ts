@@ -20,11 +20,13 @@ import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
 import { Route as AuthInferenceRouteImport } from './routes/_auth/inference'
 import { Route as AuthDedicatedRouteImport } from './routes/_auth/dedicated'
+import { Route as AuthRlTrainingIndexRouteImport } from './routes/_auth/rl-training.index'
 import { Route as AuthProjectsIndexRouteImport } from './routes/_auth/projects.index'
 import { Route as AuthOptimiserIndexRouteImport } from './routes/_auth/optimiser.index'
 import { Route as AuthEvaluationsIndexRouteImport } from './routes/_auth/evaluations.index'
 import { Route as AuthDatasetsIndexRouteImport } from './routes/_auth/datasets.index'
 import { Route as AuthCapabilitiesIndexRouteImport } from './routes/_auth/capabilities.index'
+import { Route as AuthRlTrainingRunIdRouteImport } from './routes/_auth/rl-training.$runId'
 import { Route as AuthOptimiserExperimentIdRouteImport } from './routes/_auth/optimiser.$experimentId'
 import { Route as AuthObservabilityIntegrationsRouteImport } from './routes/_auth/observability_.integrations'
 import { Route as AuthObservabilityTraceIdRouteImport } from './routes/_auth/observability.$traceId'
@@ -88,6 +90,11 @@ const AuthDedicatedRoute = AuthDedicatedRouteImport.update({
   path: '/dedicated',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthRlTrainingIndexRoute = AuthRlTrainingIndexRouteImport.update({
+  id: '/rl-training/',
+  path: '/rl-training/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthProjectsIndexRoute = AuthProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -111,6 +118,11 @@ const AuthDatasetsIndexRoute = AuthDatasetsIndexRouteImport.update({
 const AuthCapabilitiesIndexRoute = AuthCapabilitiesIndexRouteImport.update({
   id: '/capabilities/',
   path: '/capabilities/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthRlTrainingRunIdRoute = AuthRlTrainingRunIdRouteImport.update({
+  id: '/rl-training/$runId',
+  path: '/rl-training/$runId',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthOptimiserExperimentIdRoute =
@@ -177,11 +189,13 @@ export interface FileRoutesByFullPath {
   '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
   '/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
+  '/rl-training/$runId': typeof AuthRlTrainingRunIdRoute
   '/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/datasets/': typeof AuthDatasetsIndexRoute
   '/evaluations/': typeof AuthEvaluationsIndexRoute
   '/optimiser/': typeof AuthOptimiserIndexRoute
   '/projects/': typeof AuthProjectsIndexRoute
+  '/rl-training/': typeof AuthRlTrainingIndexRoute
   '/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/datasets/$datasetId/': typeof AuthDatasetsDatasetIdIndexRoute
   '/projects/$projectId/': typeof AuthProjectsProjectIdIndexRoute
@@ -202,11 +216,13 @@ export interface FileRoutesByTo {
   '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
   '/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
+  '/rl-training/$runId': typeof AuthRlTrainingRunIdRoute
   '/capabilities': typeof AuthCapabilitiesIndexRoute
   '/datasets': typeof AuthDatasetsIndexRoute
   '/evaluations': typeof AuthEvaluationsIndexRoute
   '/optimiser': typeof AuthOptimiserIndexRoute
   '/projects': typeof AuthProjectsIndexRoute
+  '/rl-training': typeof AuthRlTrainingIndexRoute
   '/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/datasets/$datasetId': typeof AuthDatasetsDatasetIdIndexRoute
   '/projects/$projectId': typeof AuthProjectsProjectIdIndexRoute
@@ -229,11 +245,13 @@ export interface FileRoutesById {
   '/_auth/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/_auth/observability_/integrations': typeof AuthObservabilityIntegrationsRoute
   '/_auth/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
+  '/_auth/rl-training/$runId': typeof AuthRlTrainingRunIdRoute
   '/_auth/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/_auth/datasets/': typeof AuthDatasetsIndexRoute
   '/_auth/evaluations/': typeof AuthEvaluationsIndexRoute
   '/_auth/optimiser/': typeof AuthOptimiserIndexRoute
   '/_auth/projects/': typeof AuthProjectsIndexRoute
+  '/_auth/rl-training/': typeof AuthRlTrainingIndexRoute
   '/_auth/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/_auth/datasets/$datasetId/': typeof AuthDatasetsDatasetIdIndexRoute
   '/_auth/projects/$projectId/': typeof AuthProjectsProjectIdIndexRoute
@@ -256,11 +274,13 @@ export interface FileRouteTypes {
     | '/observability/$traceId'
     | '/observability/integrations'
     | '/optimiser/$experimentId'
+    | '/rl-training/$runId'
     | '/capabilities/'
     | '/datasets/'
     | '/evaluations/'
     | '/optimiser/'
     | '/projects/'
+    | '/rl-training/'
     | '/evaluations/runs/$runId'
     | '/datasets/$datasetId/'
     | '/projects/$projectId/'
@@ -281,11 +301,13 @@ export interface FileRouteTypes {
     | '/observability/$traceId'
     | '/observability/integrations'
     | '/optimiser/$experimentId'
+    | '/rl-training/$runId'
     | '/capabilities'
     | '/datasets'
     | '/evaluations'
     | '/optimiser'
     | '/projects'
+    | '/rl-training'
     | '/evaluations/runs/$runId'
     | '/datasets/$datasetId'
     | '/projects/$projectId'
@@ -307,11 +329,13 @@ export interface FileRouteTypes {
     | '/_auth/observability/$traceId'
     | '/_auth/observability_/integrations'
     | '/_auth/optimiser/$experimentId'
+    | '/_auth/rl-training/$runId'
     | '/_auth/capabilities/'
     | '/_auth/datasets/'
     | '/_auth/evaluations/'
     | '/_auth/optimiser/'
     | '/_auth/projects/'
+    | '/_auth/rl-training/'
     | '/_auth/evaluations/runs/$runId'
     | '/_auth/datasets/$datasetId/'
     | '/_auth/projects/$projectId/'
@@ -404,6 +428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthDedicatedRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/rl-training/': {
+      id: '/_auth/rl-training/'
+      path: '/rl-training'
+      fullPath: '/rl-training/'
+      preLoaderRoute: typeof AuthRlTrainingIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/projects/': {
       id: '/_auth/projects/'
       path: '/projects'
@@ -437,6 +468,13 @@ declare module '@tanstack/react-router' {
       path: '/capabilities'
       fullPath: '/capabilities/'
       preLoaderRoute: typeof AuthCapabilitiesIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/rl-training/$runId': {
+      id: '/_auth/rl-training/$runId'
+      path: '/rl-training/$runId'
+      fullPath: '/rl-training/$runId'
+      preLoaderRoute: typeof AuthRlTrainingRunIdRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/optimiser/$experimentId': {
@@ -520,11 +558,13 @@ interface AuthRouteChildren {
   AuthInferenceModelIdRoute: typeof AuthInferenceModelIdRoute
   AuthObservabilityIntegrationsRoute: typeof AuthObservabilityIntegrationsRoute
   AuthOptimiserExperimentIdRoute: typeof AuthOptimiserExperimentIdRoute
+  AuthRlTrainingRunIdRoute: typeof AuthRlTrainingRunIdRoute
   AuthCapabilitiesIndexRoute: typeof AuthCapabilitiesIndexRoute
   AuthDatasetsIndexRoute: typeof AuthDatasetsIndexRoute
   AuthEvaluationsIndexRoute: typeof AuthEvaluationsIndexRoute
   AuthOptimiserIndexRoute: typeof AuthOptimiserIndexRoute
   AuthProjectsIndexRoute: typeof AuthProjectsIndexRoute
+  AuthRlTrainingIndexRoute: typeof AuthRlTrainingIndexRoute
   AuthEvaluationsRunsRunIdRoute: typeof AuthEvaluationsRunsRunIdRoute
   AuthDatasetsDatasetIdIndexRoute: typeof AuthDatasetsDatasetIdIndexRoute
   AuthProjectsProjectIdIndexRoute: typeof AuthProjectsProjectIdIndexRoute
@@ -541,11 +581,13 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthInferenceModelIdRoute: AuthInferenceModelIdRoute,
   AuthObservabilityIntegrationsRoute: AuthObservabilityIntegrationsRoute,
   AuthOptimiserExperimentIdRoute: AuthOptimiserExperimentIdRoute,
+  AuthRlTrainingRunIdRoute: AuthRlTrainingRunIdRoute,
   AuthCapabilitiesIndexRoute: AuthCapabilitiesIndexRoute,
   AuthDatasetsIndexRoute: AuthDatasetsIndexRoute,
   AuthEvaluationsIndexRoute: AuthEvaluationsIndexRoute,
   AuthOptimiserIndexRoute: AuthOptimiserIndexRoute,
   AuthProjectsIndexRoute: AuthProjectsIndexRoute,
+  AuthRlTrainingIndexRoute: AuthRlTrainingIndexRoute,
   AuthEvaluationsRunsRunIdRoute: AuthEvaluationsRunsRunIdRoute,
   AuthDatasetsDatasetIdIndexRoute: AuthDatasetsDatasetIdIndexRoute,
   AuthProjectsProjectIdIndexRoute: AuthProjectsProjectIdIndexRoute,

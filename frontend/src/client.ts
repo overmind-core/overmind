@@ -57,6 +57,7 @@ import {
   SignalEventsApi,
   SignalSubscriptionsApi,
   TracesApi,
+  RlRunsApi,
   TrainingExperimentsApi,
   TrainingPlansApi,
   TrainingPreparationsApi,
@@ -438,6 +439,7 @@ export class API {
   trainingPreparations: TrainingPreparationsApi;
   dataPartitions: DataPartitionsApi;
   nativeEvaluations: NativeEvaluationsApi;
+  rlRuns: RlRunsApi;
   trainingExperiments: TrainingExperimentsApi;
   trainingPlans: TrainingPlansApi;
   decisionJobs: DecisionJobsApi;
@@ -482,6 +484,7 @@ export class API {
     this.trainingPreparations = new TrainingPreparationsApi(this.cfg);
     this.dataPartitions = new DataPartitionsApi(this.cfg);
     this.nativeEvaluations = new NativeEvaluationsApi(this.cfg);
+    this.rlRuns = new RlRunsApi(this.cfg);
     this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
     this.trainingPlans = new TrainingPlansApi(this.cfg);
     this.decisionJobs = new DecisionJobsApi(this.cfg);

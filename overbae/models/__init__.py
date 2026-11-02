@@ -70,11 +70,14 @@ from .optimizer import (
     OptimizerExperiment,
     OptimizerIteration,
 )
+from .rl import RLRun, RLStep
 from .traces import Conversation, Span
 from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
 
 __all__ = [
+    "RLRun",
+    "RLStep",
     "Activity",
     "ActivityRead",
     "ActivityClient",

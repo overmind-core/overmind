@@ -58,6 +58,7 @@ from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperiment
 from overbae.api.otlp import otlp_traces
 from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
+from overbae.api.rl_training import RLRunViewSet
 from overbae.api.robots import robots_txt
 from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
@@ -95,6 +96,7 @@ router.register(
 router.register("data-explorations", DataExplorationViewSet, basename="data-exploration")
 router.register(r"training-experiments", TrainingExperimentViewSet, basename="training-experiment")
 router.register(r"decision-jobs", DecisionJobViewSet, basename="decision-job")
+router.register(r"rl-runs", RLRunViewSet, basename="rl-run")
 router.register("training-plans", TrainingPlanViewSet, basename="training-plan")
 router.register(
     r"decision-performance", DecisionPerformanceViewSet, basename="decision-performance"
