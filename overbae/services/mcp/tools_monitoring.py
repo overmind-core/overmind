@@ -14,6 +14,7 @@ from overbae.services.mcp.contracts.monitoring import (
     InspectMutationOutput,
     JobObservation,
 )
+from overbae.services.mcp.contracts.observability import GetJobInput
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.tools_observability import get_job_sync
 
@@ -26,7 +27,10 @@ def observations(payload, context):
                 JobObservation(
                     kind=reference.kind,
                     id=reference.id,
-                    job=get_job_sync(reference.model_copy(update={"view": payload.view}), context),
+                    job=get_job_sync(
+                        GetJobInput(kind=reference.kind, id=reference.id, view=payload.view),
+                        context,
+                    ),
                 )
             )
         except MCPError as error:

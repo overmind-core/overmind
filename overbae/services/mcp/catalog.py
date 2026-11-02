@@ -114,7 +114,7 @@ class ToolDefinition(BaseModel):
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "Stable operation identity; identical retries recover the original result.",
+                "description": "An identical retry recovers the original result.",
             }
         if self.project_scoped:
             schema.setdefault("properties", {})["project_id"] = {
@@ -264,7 +264,9 @@ class ToolCatalog:
             output = entry.definition.output_model.model_validate(result)
         except MCPError as error:
             failure = error_result(error)
-            if receipt:
+            if receipt and error.data.retryable:
+                await sync_to_async(mutations.release, thread_sensitive=True)(receipt)
+            elif receipt:
                 await sync_to_async(mutations.finish, thread_sensitive=True)(
                     receipt, failure.model_dump(mode="json")
                 )

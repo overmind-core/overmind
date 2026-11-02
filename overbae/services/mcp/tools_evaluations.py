@@ -185,6 +185,7 @@ def _row_contract(row: EvalMatrix) -> EvalMatrixRowContract:
         span_type=row.span_type,
         span_name=row.span_name,
         enabled=row.enabled,
+        updated_at=row.updated_at,
     )
 
 
@@ -415,7 +416,7 @@ def register_evaluation_tools(catalog) -> None:
         ToolDefinition(
             name="revise_eval_matrix_row",
             title="Revise evaluation row",
-            description="Revise an evaluator with expected_updated_at from its resource. Retains previous definitions and set membership; historical run snapshots stay immutable. Scope cannot change.",
+            description="Revise an evaluator with expected_updated_at from list_objects or its resource. Omitted fields keep their values. Retains previous definitions and set membership; historical run snapshots stay immutable. The capability cannot change.",
             input_model=ReviseEvalMatrixInput,
             output_model=CreateEvalMatrixRowOutput,
             read_only=False,

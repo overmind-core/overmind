@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.eval_serializers import EvalMatrixSerializer
@@ -18,22 +18,14 @@ def revise(project, user, payload):
             "revision_conflict",
             "The evaluator changed. Read its resource and review the current definition before revising.",
         )
-    # Scope and set membership are stable; a revision changes the definition only.
-    if payload.capability is not None and payload.capability != str(row.capability_id):
-        raise MCPError(
-            "invalid_input", "A revision cannot move an evaluator to another capability."
-        )
     serializer = EvalMatrixSerializer(
         instance=row,
         data={
             "project": str(project.pk),
             "capability": str(row.capability_id) if row.capability_id else None,
-            "name": payload.name,
-            "type": payload.type,
-            "source": payload.source,
-            "span_type": payload.span_type,
-            "span_name": payload.span_name,
-            "enabled": payload.enabled,
+            **row.snapshot(),
+            "enabled": row.enabled,
+            **payload.model_dump(exclude={"row", "expected_updated_at"}, exclude_none=True),
         },
         context={"request": SimpleNamespace(user=user)},
     )
@@ -54,4 +46,11 @@ def revise(project, user, payload):
         },
         created_by=user,
     )
-    return serializer.save()
+    try:
+        return serializer.save()
+    except IntegrityError:
+        raise MCPError(
+            "eval_matrix_row_invalid",
+            "The revision failed validation.",
+            fields={"name": "Another evaluator in this scope has this name."},
+        ) from None

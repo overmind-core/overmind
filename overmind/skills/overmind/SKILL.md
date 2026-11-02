@@ -143,8 +143,10 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
   routing; indirect/external references remain unknown.
 - **Recovery.** For mutations exposing an optional catalogue `request_key`,
   reuse it unchanged and inspect `inspect_mutation` after a disconnect.
-  Pending/unknown receipts do not authorize replay. Native request-key
-  workflows retain their own receipts and are discoverable with `list_objects`.
+  Pending/unknown receipts do not authorize replay. A retryable error releases
+  the key, so retry with the same key. Any other refusal stays on its receipt;
+  fix the cause and use a new key. Native request-key workflows retain their
+  own receipts and are discoverable with `list_objects`.
 - **Lineage.** `inspect_model_lineage` joins pinned cells, preparation,
   evaluation references, deployment and active routing. Follow its training
   resource for recipe/checkpoint details; absent pins remain unknown.
@@ -226,6 +228,8 @@ The implemented resource templates are:
 - `overmind://traces/{trace_id}`
 - `overmind://sessions/{session}`
 - `overmind://datasets/{dataset}`
+- `overmind://checkpoints/{id}`
+- `overmind://eval-rows/{row}`
 - `overmind://eval-runs/{eval_run}`
 - `overmind://eval-sets/{eval_set}`
 - `overmind://signal-events`

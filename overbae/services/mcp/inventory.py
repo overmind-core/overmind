@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.db.models import CharField, Count, F, Q, Value
+from django.db.models import CharField, Count, DateTimeField, F, Q, Value
 from django.db.models.functions import Cast, Coalesce, Collate, NullIf
 from django.utils import timezone
 
@@ -119,7 +119,7 @@ COLLECTIONS = {
     "eval_set": Collection(EvalSet, "name", None, "eval-sets", "evaluations"),
     "eval_row": Collection(EvalMatrix, "name", None, "eval-rows", "evaluations"),
     "eval_run": Collection(
-        EvalRun, "name", "status", "eval-runs", "evaluations/runs", "dataset__capability_id"
+        EvalRun, "name", "status", "eval-runs", "evaluations", "dataset__capability_id"
     ),
     "optimizer": Collection(
         OptimizerExperiment, "capability__name", "status", "optimizer-runs", "optimiser"
@@ -158,9 +158,12 @@ def queryset(project, kind, payload):
             return query.none()
         query = query.filter(**{spec.capability: payload.capability})
     if payload.request_key:
-        if not any(field.name == "request_key" for field in spec.model._meta.fields):
+        if kind == "decision_job":
+            query = query.filter(finetuning_job__request_key=payload.request_key)
+        elif any(field.name == "request_key" for field in spec.model._meta.fields):
+            query = query.filter(request_key=payload.request_key)
+        else:
             return query.none()
-        query = query.filter(request_key=payload.request_key)
     if payload.since:
         query = query.filter(**{f"{spec.created}__gte": payload.since})
     if payload.before:
@@ -238,6 +241,9 @@ def list_objects(project, payload):
                     "C",
                 ),
                 inventory_created=F(spec.created),
+                inventory_updated=F("updated_at")
+                if any(field.name == "updated_at" for field in spec.model._meta.fields)
+                else Value(None, output_field=DateTimeField()),
                 inventory_status=text_field(spec.status),
                 inventory_capability=text_field(spec.capability),
                 inventory_base=text_field(base),
@@ -256,6 +262,7 @@ def list_objects(project, payload):
                 "inventory_project",
                 "inventory_name",
                 "inventory_created",
+                "inventory_updated",
                 "inventory_status",
                 "inventory_capability",
                 "inventory_base",
@@ -290,6 +297,7 @@ def list_objects(project, payload):
                 name=row["inventory_name"],
                 status=row["inventory_status"],
                 created_at=row["inventory_created"],
+                updated_at=row["inventory_updated"],
                 capability_id=row["inventory_capability"],
                 base_model=row["inventory_base"],
                 training_job_id=row["inventory_training"],

@@ -53,6 +53,7 @@ class ObjectSummary(MCPModel):
     name: str
     status: str | None
     created_at: datetime
+    updated_at: datetime | None = None
     capability_id: str | None = None
     base_model: str | None = None
     training_job_id: str | None = None

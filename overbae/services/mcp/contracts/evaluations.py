@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -67,6 +68,7 @@ class EvalMatrixRowContract(MCPModel):
     span_type: str = ""
     span_name: str = ""
     enabled: bool
+    updated_at: datetime
 
 
 class CreateEvalMatrixRowInput(MCPModel):
@@ -326,7 +328,17 @@ class CompareEvaluationsOutput(MCPModel):
     resource_links: list[ResourceLinkContract] = Field(max_length=2)
 
 
-class ReviseEvalMatrixInput(CreateEvalMatrixRowInput):
+class ReviseEvalMatrixInput(MCPModel):
     row: UUID
     expected_updated_at: AwareDatetime
-    enabled: bool = True
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    type: MatrixType | None = None
+    source: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=20_000,
+        description="Complete replacement. A long row's resource returns its source in pages.",
+    )
+    span_type: Literal["", "llm_call", "tool_call", "retrieval", "workflow"] | None = None
+    span_name: str | None = Field(default=None, max_length=255)
+    enabled: bool | None = None

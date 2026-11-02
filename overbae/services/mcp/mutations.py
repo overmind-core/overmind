@@ -40,6 +40,10 @@ def finish(receipt, result):
     )
 
 
+def release(receipt):
+    MCPMutation.objects.filter(pk=receipt.pk).delete()
+
+
 def mark_unknown(receipt):
     MCPMutation.objects.filter(pk=receipt.pk).update(state="unknown", updated_at=timezone.now())
 
@@ -52,6 +56,7 @@ def inspect(context, request_key):
         raise MCPError(
             "resource_not_found",
             "No mutation receipt exists for this account, project and request key.",
+            next_actions=[],
         )
     return {
         "id": str(receipt.pk),

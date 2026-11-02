@@ -1,7 +1,31 @@
+from dataclasses import replace
+from decimal import Decimal
+from pathlib import Path
+from uuid import uuid4
+
 import pytest
+from django.utils import timezone
 from mcp_fixtures import call_tool, mcp_context
 
-from overbae.models import Capability, Dataset, FinetuningJob
+from overbae.models import (
+    APIToken,
+    BillingTelemetry,
+    Capability,
+    ConnectorCredential,
+    ConnectorSyncConfig,
+    Dataset,
+    DecisionJob,
+    DeployedModel,
+    EvalMatrix,
+    EvalSet,
+    FinetuningJob,
+    MCPMutation,
+    ProjectMembership,
+    TrainingCheckpoint,
+)
+from overbae.services.mcp.contracts.evaluations import CreateEvalMatrixRowInput
+from overbae.services.mcp.inventory import COLLECTIONS
+from overbae.services.mcp.mutations import claim
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
@@ -59,6 +83,9 @@ def test_inventory_search_preserves_ambiguous_names_and_request_identity():
     )
     assert call(context, search="support")["total"] == 2
     assert call(context, request_key="original")["items"][0]["id"] == str(job.pk)
+    decision = DecisionJob.objects.create(finetuning_job=job)
+    found = call(context, kinds=["decision_job"], request_key="original")["items"]
+    assert [item["id"] for item in found] == [str(decision.pk)]
     assert call(context, status="missing")["total"] == 0
 
 
@@ -85,11 +112,6 @@ def test_batch_status_cursor_reports_changes_and_isolated_errors():
 
 
 def test_project_spend_preserves_unattributed_charges_and_account_isolation():
-    from decimal import Decimal
-    from uuid import uuid4
-
-    from overbae.models import BillingTelemetry
-
     job_id = str(uuid4())
 
     context, other = mcp_context(), mcp_context()
@@ -115,8 +137,6 @@ def test_project_spend_preserves_unattributed_charges_and_account_isolation():
 
 
 def test_lineage_keeps_missing_pins_unknown_and_returns_deployment_identity():
-    from overbae.models import DeployedModel
-
     context = mcp_context()
     dataset = Dataset.objects.create(project=context.project, name="data")
     job = FinetuningJob.objects.create(
@@ -133,8 +153,6 @@ def test_lineage_keeps_missing_pins_unknown_and_returns_deployment_identity():
 
 
 def test_mutation_replay_conflict_and_versioned_evaluator_edit():
-    from overbae.models import EvalMatrix, EvalSet
-
     context = mcp_context(["read", "write"])
     args = {
         "name": "answer",
@@ -201,10 +219,6 @@ def test_cross_project_search_reports_partial_scope_and_dependencies_page():
 
 
 def test_unresolved_mutation_never_replays_and_failed_job_checkpoint_is_discoverable():
-    from overbae.models import EvalMatrix, TrainingCheckpoint
-    from overbae.services.mcp.contracts.evaluations import CreateEvalMatrixRowInput
-    from overbae.services.mcp.mutations import claim
-
     context = mcp_context(["read", "write"])
     payload = CreateEvalMatrixRowInput(name="pending", type="llm", source="Answer accurately.")
     claim(context, "create_eval_matrix_row", "lost-ack", payload.model_dump(mode="json"))
@@ -229,12 +243,6 @@ def test_unresolved_mutation_never_replays_and_failed_job_checkpoint_is_discover
 
 @pytest.mark.covers("tenancy")
 def test_account_search_pages_tied_names_across_projects_and_object_kinds():
-    from dataclasses import replace
-
-    from django.utils import timezone
-
-    from overbae.models import APIToken, ProjectMembership
-
     context, second = mcp_context(), mcp_context()
     ProjectMembership.objects.create(project=second.project, user=context.user)
     context = replace(
@@ -272,3 +280,111 @@ def test_account_search_pages_tied_names_across_projects_and_object_kinds():
             if offset is None:
                 break
         assert len(seen) == len(expected) and set(seen) == expected
+
+
+def test_revision_changes_only_the_fields_it_names():
+    context = mcp_context(["read", "write"])
+    row = EvalMatrix.objects.create(
+        project=context.project,
+        name="scoped",
+        type="llm",
+        source="Answer well.",
+        enabled=False,
+        span_type="tool_call",
+        span_name="search",
+    )
+    listed = call(context, kinds=["eval_row"])["items"][0]
+    revised = call(
+        context,
+        "revise_eval_matrix_row",
+        row=str(row.pk),
+        expected_updated_at=listed["updated_at"],
+        source="Answer accurately.",
+    )["row"]
+    assert (revised["source"], revised["enabled"]) == ("Answer accurately.", False)
+    assert (revised["span_type"], revised["span_name"]) == ("tool_call", "search")
+    assert revised["updated_at"] > listed["updated_at"]
+    row.refresh_from_db()
+    assert row.revisions.get().definition["source"] == "Answer well."
+    moved = call_tool(
+        "revise_eval_matrix_row",
+        {
+            "row": str(row.pk),
+            "expected_updated_at": revised["updated_at"],
+            "capability": "support",
+        },
+        context,
+    )
+    assert moved.isError and moved.structuredContent["error"]["code"] == "invalid_input"
+
+
+def test_revision_rename_conflict_reports_the_name_field():
+    context = mcp_context(["read", "write"])
+    EvalMatrix.objects.create(project=context.project, name="taken", type="llm", source="One.")
+    row = EvalMatrix.objects.create(project=context.project, name="free", type="llm", source="Two.")
+    result = call_tool(
+        "revise_eval_matrix_row",
+        {"row": str(row.pk), "expected_updated_at": row.updated_at.isoformat(), "name": "taken"},
+        context,
+    )
+    error = result.structuredContent["error"]
+    assert result.isError and error["code"] == "eval_matrix_row_invalid"
+    assert "name" in error["fields"]
+    row.refresh_from_db()
+    assert row.name == "free" and not row.revisions.exists()
+
+
+def test_retryable_failure_releases_the_request_key_and_a_refusal_keeps_it(monkeypatch):
+    context = mcp_context(["read", "write"])
+    connector = ConnectorCredential.objects.create(
+        project=context.project,
+        name="Langfuse",
+        connector_type=ConnectorCredential.ConnectorType.LANGFUSE,
+        api_key="provider-key",
+        api_secret="provider-secret",
+        verified_at=timezone.now(),
+        capability_mapping_confirmed=True,
+    )
+    ConnectorSyncConfig.objects.create(
+        credential=connector,
+        version=1,
+        source_project_id="source-project",
+        lookback_days=7,
+        effective_from=timezone.now(),
+    )
+    args = {"connector": str(connector.pk), "request_key": "sync-once"}
+
+    def broker_down(*_, **__):
+        raise ConnectionError
+
+    target = "overbae.tasks.connector_sync.sync_connector_chunk.apply_async"
+    monkeypatch.setattr(target, broker_down)
+    failed = call_tool("sync_connector", args, context)
+    assert failed.structuredContent["error"]["retryable"]
+    assert not MCPMutation.objects.filter(request_key="sync-once").exists()
+
+    queued = []
+    monkeypatch.setattr(target, lambda args, **_: queued.append(args[0]))
+    assert not call_tool("sync_connector", args, context).isError
+    assert not call_tool("sync_connector", args, context).isError
+    assert queued == [str(connector.pk)]
+
+    refused = {"name": "bad", "type": "deterministic", "source": "x =", "request_key": "bad-check"}
+    first = call_tool("create_eval_matrix_row", refused, context)
+    assert first.isError and not first.structuredContent["error"]["retryable"]
+    replayed = call_tool("create_eval_matrix_row", refused, context)
+    assert replayed.structuredContent == first.structuredContent
+    assert MCPMutation.objects.get(request_key="bad-check").state == "completed"
+
+
+def test_missing_receipt_names_no_recovery_tool():
+    result = call_tool("inspect_mutation", {"request_key": "unknown"}, mcp_context())
+    error = result.structuredContent["error"]
+    assert error["code"] == "resource_not_found" and error["next_actions"] == []
+
+
+def test_inventory_console_links_name_console_routes():
+    routes = Path(__file__).parents[1] / "frontend/src/routes/_auth"
+    for kind, spec in COLLECTIONS.items():
+        stem = spec.route.replace("/", ".")
+        assert (routes / f"{stem}.tsx").exists() or (routes / f"{stem}.index.tsx").exists(), kind

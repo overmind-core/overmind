@@ -140,7 +140,7 @@ def register_project_tools(catalog):
         ToolDefinition(
             name="get_credit_usage",
             title="Get project credit usage",
-            description="Page posted account-owned project charges by service and recorded training job. Null job attribution is unknown. Excludes unposted charges and estimates; does not enforce budgets.",
+            description="Page posted account-owned project charges by service and recorded training job. Pass the first page's observed_at as before on later pages. Null job attribution is unknown. Excludes unposted charges and estimates; does not enforce budgets.",
             input_model=CreditAttributionInput,
             output_model=CreditAttributionOutput,
             read_only=True,
