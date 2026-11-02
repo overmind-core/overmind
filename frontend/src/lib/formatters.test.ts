@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { describe, expect, it } from "vitest";
 
 import { formatCost, formatDuration, formatNumber, truncateText } from "./formatters";

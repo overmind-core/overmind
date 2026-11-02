@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -50,26 +51,6 @@ function setup() {
   fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Support" } });
   return done;
 }
-
-it("creates the project and uploaded training source together without extra questions", async () => {
-  const done = setup();
-  expect(screen.queryByLabelText("Capability")).toBeNull();
-  expect(screen.queryByLabelText("Purpose")).toBeNull();
-  expect(screen.queryByLabelText("Intent (optional)")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Create dataset" }));
-  await waitFor(() =>
-    expect(done).toHaveBeenCalledWith({ datasetId: "dataset-1", projectId: "project-1" })
-  );
-  expect(mocks.dataset).toHaveBeenCalledWith({
-    datasetCreateRequest: expect.objectContaining({
-      brief: "Explore the uploaded data and determine how best to prepare it for training.",
-      capability: null,
-      intent: "train",
-      project: "project-1",
-      source: { uploads: ["upload-1"] },
-    }),
-  });
-});
 
 it("retries a failed dataset creation without creating another project", async () => {
   mocks.dataset.mockRejectedValueOnce(new Error("Landing unavailable"));

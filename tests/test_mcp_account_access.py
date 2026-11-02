@@ -4,12 +4,13 @@ import json
 import uuid
 
 import pytest
+from mcp_fixtures import asgi_db
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Project, ProjectMembership, User
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 
 def account():
@@ -34,6 +35,7 @@ def rpc(client, raw, method, params=None):
     ).json()
 
 
+@asgi_db
 def test_account_discovers_projects_and_reads_each_without_shared_selection():
     _, projects, raw = account()
     with TestClient(create_mcp_application()) as client:
@@ -55,6 +57,7 @@ def test_account_discovers_projects_and_reads_each_without_shared_selection():
         assert missing["structuredContent"]["error"]["code"] == "project_required"
 
 
+@asgi_db
 def test_explicit_project_is_enforced_for_tools_resources_and_membership_revocation():
     user, projects, raw = account()
     with TestClient(create_mcp_application()) as client:
@@ -93,6 +96,7 @@ def test_explicit_project_is_enforced_for_tools_resources_and_membership_revocat
             assert "error" in resource
 
 
+@asgi_db
 def test_project_key_cannot_expand_access_to_another_membership():
     user, projects, _ = account()
     raw, _ = APIToken.create_for_user(user, project=projects[0])
@@ -115,6 +119,7 @@ def test_project_key_cannot_expand_access_to_another_membership():
         assert not result.get("isError")
 
 
+@asgi_db
 def test_account_read_key_cannot_call_write_tools():
     user, projects, _ = account()
     raw, _ = APIToken.create_for_user(user, permission=["read"])

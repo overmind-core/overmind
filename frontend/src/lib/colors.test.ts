@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { describe, expect, it } from "vitest";
 
 import { domainStatus, scoreChipClass, scoreTone, TONE_CHIP } from "./colors";

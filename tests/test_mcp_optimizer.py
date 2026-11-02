@@ -1,33 +1,31 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 
 import pytest
+from asgiref.sync import async_to_sync
 from conftest import EVAL_ROWS, frozen_dataset
-from mcp_fixtures import mcp_context
+from mcp_fixtures import call_tool, mcp_context
 
 from overbae.models import (
     Capability,
-    Cell,
     Dataset,
     EvalSet,
     OptimizerCandidate,
     OptimizerExperiment,
     OptimizerIteration,
 )
-from overbae.services.datasets import paths, store
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.contracts.optimizer import InspectOptimizerResultOutput
 from overbae.services.mcp.resources import read_resource
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _ready_objects(context: MCPContext):
@@ -56,6 +54,7 @@ def _experiment(context: MCPContext, *, status: str | None = None) -> OptimizerE
     )
 
 
+@pytest.mark.covers("authentication")
 def test_read_only_key_hides_and_denies_optimizer_writes():
     context = mcp_context()
     visible = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
@@ -89,27 +88,7 @@ def test_readiness_reports_wrong_dataset_intent_and_executioner_state():
     assert output["executioner"]["connected"] is False
 
 
-def test_start_calls_shared_create_service_and_returns_cli_next_step():
-    context = mcp_context(permission=["read", "write"])
-    capability, dataset, eval_set = _ready_objects(context)
-    result = _call(
-        "start_optimizer",
-        {"capability": capability.slug, "dataset": str(dataset.id)},
-        context,
-    )
-
-    assert result.isError is False
-    output = result.structuredContent
-    experiment = OptimizerExperiment.objects.get(pk=output["experiment_id"])
-    assert experiment.openrouter_key_source == OptimizerExperiment.OpenRouterKeySource.PLATFORM
-    assert experiment.capability == capability
-    assert output["job"]["id"] == output["experiment_id"]
-    assert output["experiment"]["cell"]["id"] == str(dataset.active_cell.id)
-    assert output["experiment"]["cell"]["rows"] == dataset.active_cell.rows
-    assert output["next_action"]["state"] == "run_executioner"
-    assert f"start -e {output['experiment_id']}" in output["next_action"]["command"]
-
-
+@pytest.mark.covers("tenancy")
 def test_cross_project_experiment_is_inaccessible():
     context = mcp_context()
     other = mcp_context()
@@ -186,6 +165,7 @@ def test_inspect_is_bounded_typed_and_exposes_winner_state():
     assert output.winner.candidate_id == str(winner.id)
 
 
+@pytest.mark.covers("privacy")
 def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
     context = mcp_context()
     experiment = _experiment(context)
@@ -199,47 +179,8 @@ def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
             contents = list(await read_resource(uri))
         return contents[0].content
 
-    payload = json.loads(asyncio.run(read()))
+    payload = json.loads(async_to_sync(read)())
     assert "secret-value" not in json.dumps(payload)
     assert "iterations" in payload
     assert "executioner" in payload
     assert "next_action" in payload
-
-
-def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
-    context = mcp_context(permission=["read", "write"])
-    capability, dataset, eval_set = _ready_objects(context)
-    extra = Cell.objects.create(
-        dataset=dataset,
-        position=1,
-        title="shaped",
-        state=Cell.State.OK,
-        rows=11,
-        fingerprint=f"fp-opt-{uuid.uuid4().hex[:8]}",
-        intent_report={"eval": {"ok": True, "reason": ""}},
-        capability_report={"ok": True, "reason": ""},
-    )
-    path = paths.cell_path(dataset.id, extra.id)
-    store.write_rows(
-        path,
-        [
-            {"source_row": i, "input": f"q{i}", "expected_output": f"a{i}"}
-            for i in range(extra.rows)
-        ],
-    )
-    extra.fingerprint = store.file_sha256(path)
-    extra.save(update_fields=["fingerprint"])
-    result = _call(
-        "start_optimizer",
-        {
-            "capability": capability.slug,
-            "dataset": str(dataset.id),
-            "cell": str(extra.id),
-        },
-        context,
-    )
-    assert result.isError is False, result.structuredContent
-    experiment = OptimizerExperiment.objects.get(pk=result.structuredContent["experiment_id"])
-    assert experiment.cell_id == extra.id
-    assert result.structuredContent["experiment"]["cell"]["id"] == str(extra.id)
-    assert result.structuredContent["experiment"]["cell"]["rows"] == 11

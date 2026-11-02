@@ -3,12 +3,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
 
 from training_chat_template import (  # noqa: E402
     KNOWN_TEMPLATE_PATCHES,
     patch_known_training_template,
 )
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 _ASSETS = Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"
 

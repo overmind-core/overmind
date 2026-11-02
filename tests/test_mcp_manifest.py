@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from mcp_fixtures import EXPECTED_TOOL_NAMES, MAX_MANIFEST_BYTES
 
 from overbae.services.mcp.catalog import CATALOG
+
+pytestmark = pytest.mark.covers("mcp-surface")
 
 SECRET_INPUT_PARTS = {
     "access_token",

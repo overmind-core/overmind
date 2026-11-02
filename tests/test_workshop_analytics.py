@@ -4,6 +4,8 @@ from overbae.models import Cell
 from overbae.services.datasets.analytics import VERSION, describe
 from overbae.services.datasets.profile import profile_records
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def decision(target, *, options=None, **extra):
     return {

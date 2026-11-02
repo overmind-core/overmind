@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import type { ComponentProps } from "react";
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -137,12 +138,6 @@ describe("InferenceToolbar capability filter", () => {
 });
 
 describe("InferenceToolbar search box", () => {
-  it("renders the draft it is handed", () => {
-    renderToolbar({ search: "llama" });
-
-    expect(screen.getByLabelText<HTMLInputElement>("Search models").value).toBe("llama");
-  });
-
   it("offers the field's own clear only while it has text", () => {
     renderToolbar();
     expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();

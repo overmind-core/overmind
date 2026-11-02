@@ -15,6 +15,8 @@ from overbae.services.datasets.contract import measure, training_line
 from overbae.services.finetuning_validator import validate_dataset, validate_rows
 from overbae.services.training_preparation import request_preparation
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def example():
     return {

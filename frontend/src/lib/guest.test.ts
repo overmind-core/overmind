@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: authentication
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -1,3 +1,4 @@
+// covers: live-console
 import { describe, expect, it } from "vitest";
 
 import {

@@ -5,11 +5,16 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 
 import uvicorn
 from celery.contrib.testing.worker import start_worker
 from celery.signals import before_task_publish, task_postrun
+from celery.worker.state import revoked
 from django.conf import settings
+
+RUNS = Path(__file__).parent / ".runs" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 class LiveAPI:
@@ -90,11 +95,20 @@ class TaskLedger:
 
     def failed(self) -> dict[str, str]:
         with self._lock:
+            known = {**self.scheduled, **self.published}
             return {
-                task_id: self.published.get(task_id, "")
+                task_id: known.get(task_id, "")
                 for task_id, state in self.finished.items()
                 if state not in ("SUCCESS", "IGNORED")
             }
+
+    def revoke_scheduled(self) -> None:
+        # A countdown task outlives its test and would run against the next test's rows.
+        with self._lock:
+            waiting = [task_id for task_id in self.scheduled if task_id not in self.finished]
+            for task_id in waiting:
+                del self.scheduled[task_id]
+        revoked.update(waiting)
 
 
 @contextmanager
@@ -125,6 +139,22 @@ def drain(ledger: TaskLedger, timeout: float = 120) -> None:
         if time.monotonic() > deadline:
             raise TimeoutError(f"Tasks still running after {timeout}s: {ledger.pending()}")
         time.sleep(0.05)
+
+
+def drain_scoring(ledger: TaskLedger, timeout: float = 120) -> None:
+    """Drain, then run scoring admission while live scoring work waits. A dispatch that
+    finds another one admitting admits nothing and leaves the work to the periodic tick,
+    which no beat runs in journeys."""
+    from overbae.celery import app
+    from overbae.models import LiveScoringWork
+
+    drain(ledger, timeout)
+    for _ in range(10):
+        if not LiveScoringWork.objects.filter(state="waiting").exists():
+            return
+        app.send_task("overbae.tasks.innermind.dispatch_live_scoring")
+        drain(ledger, timeout)
+    raise TimeoutError("Live scoring work still waits after 10 admissions")
 
 
 def settle(ledger: TaskLedger, condition, timeout: float = 60):

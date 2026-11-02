@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { type EdgeProps, type NodeProps, Position, ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -134,32 +135,6 @@ describe("trajectory model call card", () => {
     fireEvent.click(screen.getByText("1 outcome"));
     expect(onToggle).toHaveBeenCalledWith("click");
     expect(onClick).not.toHaveBeenCalled();
-  });
-
-  it("shows a branch's local outcome and continuation", () => {
-    const OutcomeNode = trajectoryNodeTypes.outcome;
-    render(
-      <ReactFlowProvider>
-        <OutcomeNode
-          {...({
-            data: {
-              branch: {
-                action: "Read dropdown options",
-                basis: "code",
-                condition: "Element is a select input",
-                next: "Return choices to the model",
-                outcome: "Available choices",
-                provenance: [],
-              },
-              kind: "outcome",
-            },
-            id: "branch",
-          } as unknown as NodeProps)}
-        />
-      </ReactFlowProvider>
-    );
-    expect(screen.getAllByText("Available choices").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Return choices to the model").length).toBeGreaterThan(0);
   });
 
   it("groups provider and model identity while retaining the behaviour and contract", () => {

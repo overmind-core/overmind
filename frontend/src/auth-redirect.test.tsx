@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url":"http://127.0.0.1:5173"}
+// covers: authentication
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import {

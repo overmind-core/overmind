@@ -1,10 +1,8 @@
-import json
 import textwrap
 from pathlib import Path
 
-from typer.testing import CliRunner
+import pytest
 
-from overmind.__main__ import app
 from overmind.chassis import (
     chassis_digest,
     declared_expectations,
@@ -12,8 +10,8 @@ from overmind.chassis import (
     reachable_names,
     verify_trajectory_claims,
 )
-from overmind.config import load
-from overmind.utils import convert_json_to_toml
+
+pytestmark = pytest.mark.covers("agent-code")
 
 AGENT_SRC = textwrap.dedent(
     """
@@ -89,53 +87,6 @@ def test_verify_trajectory_claims_stamps_verified(tmp_path):
     assert by_id["anchorless"]["verified"] is False
 
 
-def test_convert_json_to_toml_stamps_verified(tmp_path):
-    _repo(tmp_path)
-    src = tmp_path / "overmind_capabilities.json"
-    src.write_text(
-        json.dumps({
-            "repo_summary": "demo",
-            "capabilities": [
-                {
-                    "slug_hint": "triage",
-                    "name": "Triage",
-                    "capability_card": {
-                        "task": "triage",
-                        "anchors": [
-                            {
-                                "qualname": "app.agent.run_turn",
-                                "kind": "entry_point",
-                                "file": "app/agent.py",
-                            },
-                            {
-                                "qualname": "app.agent.call_llm_tools",
-                                "kind": "function",
-                                "file": "app/agent.py",
-                            },
-                        ],
-                        "trajectory_map": [
-                            {
-                                "id": "handle-turn",
-                                "anchors": ["app.agent.run_turn", "app.agent.call_llm_tools"],
-                            },
-                            {
-                                "id": "fabricated",
-                                "anchors": ["app.agent.does_not_exist"],
-                            },
-                        ],
-                    },
-                    "eval_matrix": [{"name": "Quality", "type": "custom_judge", "rubric": "score"}],
-                }
-            ],
-        })
-    )
-    dest = tmp_path / "overmind.toml"
-    convert_json_to_toml(src, dest, repo_root=tmp_path)
-    paths = {p["id"]: p for p in load(dest).capabilities["triage"].capability_card["trajectory_map"]}
-    assert paths["handle-turn"]["verified"] is True
-    assert paths["fabricated"]["verified"] is False
-
-
 DECORATED_SRC = textwrap.dedent(
     """
     import overmind
@@ -168,15 +119,6 @@ def test_declared_expectations_follow_the_entry_points_call_graph(tmp_path):
             {"expectation": "Lists the refund steps", "span_name": "summarize"},
         ]
     }
-
-
-def test_chassis_cli_prints_digest(tmp_path, monkeypatch):
-    _repo(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    result = CliRunner().invoke(app, ["chassis"], catch_exceptions=False)
-    assert result.exit_code == 0, result.output
-    assert "app.agent.run_turn" in result.output
-    assert "5 functions across 1 files" in result.output
 
 
 def test_declarations_keep_the_entrypoint_module_when_class_names_repeat(tmp_path):

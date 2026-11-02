@@ -125,7 +125,7 @@ const HEIGHT = {
 const ACRONYMS =
   /^(API|PR|LLM|OK|JSON|CSV|JSONL|ID|IDs|GitHub|OpenAI|GPU|OTEL|SDK|CLI|UI|URL|LoRA|FT|N\/A)$/;
 
-// Proper nouns exempt from sentence case (PRODUCT.md terminology). Matched as
+// Proper nouns exempt from sentence case. Matched as
 // whole phrases, so "Data" clears only inside "Data Workshop". Add terms here
 // rather than loosening the word-level check.
 const PRODUCT_TERMS = [

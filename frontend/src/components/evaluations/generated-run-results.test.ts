@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { expect, it } from "vitest";
 
 import type { EvalRun, EvalRunRow } from "@/openapi";

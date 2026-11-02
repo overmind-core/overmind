@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import type { ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -169,43 +170,6 @@ afterEach(() => {
     state: "training",
   } as TrainingExperiment);
   vi.mocked(apiClient.nativeEvaluations.nativeEvaluationsRetrieve).mockResolvedValue(null!);
-});
-
-it("renders a shared incumbent once across a training group", () => {
-  const groupJobs = ["job-a", "job-b"].map((id) => ({
-    ...job,
-    evalDataset: "data",
-    evalIncumbentBefore: true,
-    evalModelAfter: true,
-    evalModelBefore: true,
-    evalSet: "set",
-    id,
-    progress: {
-      judge_evals: [
-        {
-          eval_run_id: "shared-run",
-          id: `baseline-${id}`,
-          kind: "baseline",
-          model_id: "incumbent",
-          status: "running",
-        },
-      ],
-    },
-  }));
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TrainingMonitorPanel
-        focusJobId={null}
-        groupJobs={groupJobs}
-        onFocusJob={vi.fn()}
-        projectId={PROJECT_ID}
-      />
-    </QueryClientProvider>
-  );
-  const rows = screen.getAllByTestId("row");
-  expect(rows).toHaveLength(5);
-  expect(rows.filter((row) => row.getAttribute("data-experiments") === "2")).toHaveLength(1);
 });
 
 describe("TrainingMonitorPanel deployed-model lookup", () => {

@@ -3,8 +3,12 @@
 import importlib
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.modal import modal_vllm_worker as serving
 from overbae.services.dedicated_runtime import chat, parameters, worker_class_name
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():

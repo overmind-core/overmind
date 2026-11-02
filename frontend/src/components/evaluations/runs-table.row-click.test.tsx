@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Renders the real `DataTable` on purpose: navigation happens on the row's
 // `onClick`, and the sibling file's stub calls `onRowClick` directly, so it
@@ -113,14 +114,6 @@ const renderTable = () =>
   );
 
 describe("RunsTable row click", () => {
-  it("navigates from a plain cell", () => {
-    renderTable();
-
-    fireEvent.click(screen.getByText("nightly"));
-
-    expect(mocks.navigate).toHaveBeenCalledTimes(1);
-  });
-
   it("selects the run without navigating when the checkbox is clicked", () => {
     renderTable();
 

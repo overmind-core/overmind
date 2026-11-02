@@ -17,7 +17,7 @@ from overbae.services.mcp.server import create_mcp_application
 from overbae.services.training_transfer import stage_data
 from overbae.tasks.finetuning_reconciler import _reconcile
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 
 def test_active_transfer_reconciles_real_rows_into_console_and_mcp_without_dispatch(tmp_path):

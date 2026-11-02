@@ -6,6 +6,8 @@ from modal_shared.training_monitoring import fingerprint
 from overbae.models import Dataset, FinetuningJob, Project
 from overbae.services import training_monitoring
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 @pytest.mark.django_db
 def test_native_quality_survives_receipts_replay_and_later_loss_check():

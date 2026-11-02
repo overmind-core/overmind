@@ -7,6 +7,8 @@ from django.utils import timezone
 from overbae.models import BillingTelemetry, DedicatedDeployment, DeployedModel, Project, User
 from overbae.services.inference_metrics import dedicated_usage
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 @pytest.mark.django_db
 def test_dedicated_usage_is_model_scoped_and_preserves_missing_measurements():

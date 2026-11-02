@@ -17,7 +17,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.sft_assets.preprocess import preprocess_rows
 from overbae.tasks.finetuning import run_finetuning
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("model-runtime")]
 
 
 @pytest.fixture(autouse=True)

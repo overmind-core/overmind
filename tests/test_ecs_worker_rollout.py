@@ -7,6 +7,8 @@ import pytest
 from scripts import deploy_ecs
 from scripts.deploy_ecs import migration_request, render_task_definition, service_ready
 
+pytestmark = pytest.mark.covers("topology")
+
 
 @pytest.fixture
 def definition():

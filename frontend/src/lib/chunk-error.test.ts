@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

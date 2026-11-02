@@ -15,6 +15,8 @@ import pytest
 import yaml
 from django.conf import settings
 
+pytestmark = pytest.mark.covers("topology")
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_QUEUE = getattr(settings, "CELERY_TASK_DEFAULT_QUEUE", "celery")
 

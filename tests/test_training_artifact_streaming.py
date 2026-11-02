@@ -6,6 +6,8 @@ import pytest
 from modal_shared.training_data import materialize_files, row_key, write_selection
 from overbae.services.sft_assets.preprocess import preprocess_rows
 
+pytestmark = pytest.mark.covers("lineage")
+
 
 def test_disk_materialization_preserves_order_duplicates_and_refuses_changed_targets(tmp_path):
     rows = [{"decision": {"target_probabilities": [p, 1 - p]}} for p in [0.2, 0.8]]

@@ -1,3 +1,4 @@
+// covers: console-logic
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -416,16 +417,5 @@ describe("buildTrajectoryGraph decision surface", () => {
     expect(graph.nodes.filter((n) => n.data.kind === "actionGroup")).toHaveLength(3);
     expect(graph.nodes.filter((n) => n.data.kind === "action")).toHaveLength(4);
     expect(graph.edges.some((e) => e.label === "tool_calls" || e.label === "results")).toBe(false);
-  });
-
-  it("keeps measured cards in forward order without overlapping", async () => {
-    const laid = await graph.relayout(
-      graph.nodes.map((n) => ({ ...n, measured: { height: 400, width: 300 } }))
-    );
-    const entry = laid.find((n) => n.id === "entry")!;
-    const step = laid.find((n) => n.id === "step:handle-user-turn:0")!;
-    expect(step.position.x).toBeGreaterThan(entry.position.x);
-    const positions = new Set(laid.map((n) => `${n.position.x}:${n.position.y}`));
-    expect(positions.size).toBe(laid.length);
   });
 });

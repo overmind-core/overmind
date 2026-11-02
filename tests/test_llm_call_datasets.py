@@ -18,7 +18,7 @@ from overbae.services.datasets.land import LandError
 from overbae.services.datasets.llm_calls import call_record, hash_split, shape
 from overbae.services.finetuning_validator import validate_rows
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("data-logic")]
 
 _TOOLS = [
     {

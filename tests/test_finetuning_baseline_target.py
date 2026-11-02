@@ -24,7 +24,7 @@ from overbae.services.finetuning_eval import (
     sync_eval_scores,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("llm-gateway")]
 
 GATEWAY = "https://gateway.example.modal.run"
 

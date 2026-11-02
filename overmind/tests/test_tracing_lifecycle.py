@@ -26,6 +26,8 @@ from overmind.tracing import (
     set_workflow_name,
 )
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 def test_api_settings_reuse_synced_project_credential(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -110,16 +112,3 @@ class TestForceFlushTraces:
         with patch("overmind.tracing.trace.get_tracer_provider", return_value=provider):
             force_flush_traces(timeout_millis=750)
         provider.force_flush.assert_called_once_with(timeout_millis=750)
-
-
-class TestInitDebug:
-    def test_debug_logs_setup_summary(self, caplog):
-        import overmind.tracing as tr
-
-        # conftest already initialised the SDK, so this exercises the re-init path.
-        with caplog.at_level("INFO", logger="overmind"):
-            assert tr.init(debug=True) is True
-
-        (record,) = (r for r in caplog.records if r.message.startswith("Overmind debug:"))
-        for fragment in ("endpoint=", "capability_id=", "providers=", "export=", "export_orphan_spans="):
-            assert fragment in record.message

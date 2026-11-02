@@ -10,6 +10,8 @@ from overbae.services.connectors.schema import (
 )
 from overbae.services.connectors.spans import span_id_for
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 
 def _cred(**fields):
     return make_connector("langfuse", **fields)

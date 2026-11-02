@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelCatalog, ModelEntry } from "@/hooks/use-finetuning";

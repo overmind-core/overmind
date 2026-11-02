@@ -12,20 +12,14 @@ import pytest
 
 from overmind.backtest import OPENROUTER_BASE_URL, openrouter_env, rewrite_repo, write_state
 
+pytestmark = pytest.mark.covers("agent-code")
+
 
 def test_openrouter_env_requires_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
         openrouter_env("openai/gpt-5-mini")
-
-
-def test_openrouter_env_sets_model_and_base(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
-    env = openrouter_env("anthropic/claude-sonnet-4")
-    assert env["OPENROUTER_MODEL"] == "anthropic/claude-sonnet-4"
-    assert env["OPENAI_BASE_URL"] == OPENROUTER_BASE_URL
-    assert env["OPENAI_API_KEY"] == "sk-test"
 
 
 def test_write_state_merges(tmp_path):

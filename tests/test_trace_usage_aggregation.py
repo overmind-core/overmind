@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.api.serializers import SpanSerializer, trace_usage_totals
 from overbae.models import Project, ProjectMembership, Span, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 TRACES_URL = "/api/traces/"
 

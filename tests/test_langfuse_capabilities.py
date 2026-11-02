@@ -1,7 +1,11 @@
 """Per-subtree capability-key assignment for Langfuse observation trees."""
 
+import pytest
+
 from overbae.services.connectors.capabilities import assign_capability_keys, extract_signal_value
 from overbae.services.connectors.langfuse.client import LangFuseObservation
+
+pytestmark = pytest.mark.covers("vendor-connectors")
 
 
 def _obs(**kwargs) -> LangFuseObservation:

@@ -6,7 +6,7 @@ from factories import make_connector
 from overbae.models import ConnectorCredential, LiveScoringWork, Span
 from overbae.tasks import connector_sync
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 @pytest.fixture

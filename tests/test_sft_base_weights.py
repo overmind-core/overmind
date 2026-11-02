@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "servic
 
 from basepath import base_weights_for  # noqa: E402
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 MODEL = "Qwen/Qwen3-1.7B"
 DIRNAME = "Qwen--Qwen3-1.7B"
 

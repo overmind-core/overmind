@@ -4,20 +4,19 @@ choices, and a plaintext secret that is stored or returned twice."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import timedelta
 
 import pytest
 from factories import make_project, make_user
+from mcp_fixtures import call_tool
 
 from overbae.models import APIToken
 from overbae.models.iam import API_KEY_EXPIRY_DAYS
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.projects import CreateApiKeyInput
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def _context(*, account=False, permission=("read", "write"), guest=False):
@@ -34,7 +33,7 @@ def _context(*, account=False, permission=("read", "write"), guest=False):
 
 
 def _call(context, **arguments):
-    return asyncio.run(CATALOG.call("create_api_key", arguments, context))
+    return call_tool("create_api_key", arguments, context)
 
 
 def test_expiry_choices_match_the_console_dialog():

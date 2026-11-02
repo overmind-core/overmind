@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from modal_shared.modelfam import resolve
 from modal_shared.modelfam.registry import all_families
 from modal_shared.stacks import (
@@ -17,6 +19,8 @@ from modal_shared.stacks import (
     train_function_name,
     worker_cls_name,
 )
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "models.json"
 

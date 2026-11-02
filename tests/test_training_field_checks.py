@@ -1,19 +1,20 @@
-import asyncio
 import json
 import uuid
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
+from mcp_fixtures import call_tool
 from rest_framework.test import APIClient
 
 from modal_shared.training_monitoring import paired_generation_metrics, resolve_policy
 from modal_shared.training_monitoring_runtime import Monitor
 from overbae.models import APIToken, Dataset, FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_monitoring
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.training_monitoring import TrainingMonitoringPolicy
+
+pytestmark = pytest.mark.covers("metrics-math")
 
 
 def policy(fields):
@@ -87,7 +88,7 @@ def test_missing_or_invalid_reference_is_unscorable_not_a_model_failure(referenc
     assert measured["fields"]["/value"]["passed"] is None
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_declared_fields_flow_from_policy_through_checks_to_passive_agent_and_console(tmp_path):
     contract = policy(["/risk", "/case/id"])
     rows = [{"key": str(i), "input_ids": [1, 2], "labels": [-100, 2]} for i in range(5)]
@@ -147,16 +148,12 @@ def test_declared_fields_flow_from_policy_through_checks_to_passive_agent_and_co
     client = APIClient()
     client.force_authenticate(user)
     with patch("modal.Function.from_name", side_effect=AssertionError("read invoked provider")):
-        result = asyncio.run(
-            CATALOG.call("inspect_training_progress", {"job": str(job.id)}, context)
-        )
+        result = call_tool("inspect_training_progress", {"job": str(job.id)}, context)
         response = client.get(reverse("finetuningjob-monitoring", kwargs={"id": job.id}))
-        evidence = asyncio.run(
-            CATALOG.call(
-                "inspect_training_progress",
-                {"job": str(job.id), "check": str(job.validation_runs.order_by("step").first().id)},
-                context,
-            )
+        evidence = call_tool(
+            "inspect_training_progress",
+            {"job": str(job.id), "check": str(job.validation_runs.order_by("step").first().id)},
+            context,
         )
     assert not result.isError, result.structuredContent
     assert response.status_code == 200

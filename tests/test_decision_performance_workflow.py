@@ -9,7 +9,7 @@ from overbae.models import DecisionPerformanceRequest, DecisionPerformanceRun
 from overbae.services import decision_performance, native_evaluation
 from overbae.services.decision_performance import validate_response
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 def test_saved_performance_workload_measures_client_requests_and_retains_failures():

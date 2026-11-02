@@ -20,7 +20,7 @@ from overbae.models import (
 )
 from overbae.services.project_invites import claim_pending_invites
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 @pytest.fixture(autouse=True)

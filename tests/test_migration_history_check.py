@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.covers("migrations")
+
 CHECKER = Path(__file__).resolve().parents[1] / "scripts/check_migrations.py"
 
 

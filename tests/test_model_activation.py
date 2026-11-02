@@ -10,7 +10,7 @@ from overbae.services import model_activation as service
 from overbae.services import operational_progress
 from overbae.services.deployed_chat import is_cold_start, record_inference_call
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 
 @pytest.fixture

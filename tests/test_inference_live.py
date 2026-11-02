@@ -6,6 +6,8 @@ import pytest
 from overbae.models import DeployedModel
 from overbae.services import inference_live
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 @pytest.fixture
 def worker_status(monkeypatch):

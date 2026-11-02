@@ -34,7 +34,7 @@ from overbae.services.optimizer_ledger import (
 )
 from overbae.tasks.optimizer_reconciler import reconcile_optimizer_experiments
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
 

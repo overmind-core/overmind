@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from fakes.ledgerline import (
     langchain_style_trace,
     observation,
@@ -12,6 +13,8 @@ from overbae.services.connectors.langfuse.mapping import LANGFUSE
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
 from overbae.services.connectors.schema import CONNECTOR_CAPABILITY_KEY_ATTR
 from overbae.services.connectors.spans import span_id_for, trace_id_for
+
+pytestmark = pytest.mark.covers("vendor-connectors")
 
 # The fixture's capabilities, named the way the wizard now marks them.
 _CAPABILITY_NAMES = ["scan-inbox", "triage-invoices", "plan-payments", "triage-email"]

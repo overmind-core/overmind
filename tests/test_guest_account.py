@@ -14,7 +14,7 @@ from overbae.api.guest import start_guest_session
 from overbae.models import Project, ProjectMembership, User
 from overbae.tasks.guest_cleanup import sweep_guest_workspaces
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def _auth(user: User) -> APIClient:

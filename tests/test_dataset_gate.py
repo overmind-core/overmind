@@ -28,7 +28,7 @@ from overbae.services.datasets import lifecycle, use
 from overbae.tasks import datasets as dataset_tasks
 from tests.workshop_script_fixtures import retained_package, select_script
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("lineage")]
 
 
 def _setup():

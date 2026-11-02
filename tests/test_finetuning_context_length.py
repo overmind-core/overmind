@@ -23,6 +23,8 @@ from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.constraints import eligible_models
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 
+pytestmark = pytest.mark.covers("plans")
+
 _POLICY = get_training_context_policy("baseten")
 _BUCKETS = sorted(int(b) for b in _POLICY["context_buckets"])
 _HEADROOM = int(_POLICY["context_headroom"])

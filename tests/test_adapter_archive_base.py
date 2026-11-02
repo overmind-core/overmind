@@ -1,6 +1,10 @@
 from unittest.mock import Mock
 
+import pytest
+
 from overbae.modal import register_model as registration
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_archive_restore_preserves_base_identity_instead_of_cache_key(tmp_path, monkeypatch):

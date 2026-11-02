@@ -7,7 +7,7 @@ from overbae.models import ConnectorCredential
 from overbae.services.connectors.galileo.adapter import GalileoAdapter
 from overbae.services.connectors.galileo.client import GalileoError
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 _PROJECT = "11111111-1111-1111-1111-111111111111"
 _STREAM = "22222222-2222-2222-2222-222222222222"

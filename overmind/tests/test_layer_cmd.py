@@ -17,6 +17,8 @@ from overmind.layer_cmd import (
     run_finetune,
 )
 
+pytestmark = pytest.mark.covers("cli-contract")
+
 
 class Response:
     def __init__(self, payload, status_code=200):

@@ -20,6 +20,8 @@ import overmind.tracing as tracing
 from overmind import attrs
 from overmind.tracing import SpanType, deliver, entry_point, observe, retrieval, start_span, tool
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):

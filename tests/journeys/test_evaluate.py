@@ -1,12 +1,14 @@
+import pytest
+
 from .datasets import JUDGE, tickets, upload
 from .stack import drain
+
+pytestmark = pytest.mark.covers("evaluate")
 
 WEAK_REPLY = "Your refund is on its way."
 
 
-def test_a_backtest_compares_every_candidate_with_the_recorded_baseline(
-    workshop, cli, sample_agent, worker, tmp_path, fake_llm
-):
+def test_evaluate(workshop, cli, sample_agent, worker, tmp_path, fake_llm, console):
     fake_llm.extra_models.append("fake/weak")
     fake_llm.on(lambda r: r.model == "fake/weak", WEAK_REPLY)
     answer = workshop.capability("answer")
@@ -47,3 +49,12 @@ def test_a_backtest_compares_every_candidate_with_the_recorded_baseline(
     assert compared["candidate"]["overall"]["status"] == "unchanged"
     assert compared["weak"]["overall"]["status"] == "regressed"
     assert compared["weak"]["losses"] == 3
+
+    project = workshop.project()["id"]
+    console.goto(f"/evaluations?projectId={project}")
+    for label in ("recorded", "candidate", "weak"):
+        console.sees(f"backtest · {label}")
+    console.click("backtest · weak")
+    console.sees("Re-run")
+    console.sees("Optimise")
+    console.save_evidence("evaluate-weak-run")

@@ -16,6 +16,8 @@ import overmind.tracing as tracing
 from overmind import attrs
 from overmind.tracing import _span_processor_on_start, start_span, task
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):

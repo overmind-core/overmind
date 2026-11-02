@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -258,18 +259,5 @@ describe("analysis strip", () => {
     );
     expect(screen.queryByText("Capability context")).toBeNull();
     expect(screen.getByText("No skill weights")).toBeTruthy();
-  });
-
-  it("states the task type, the blend and the run split on one line each", () => {
-    setup();
-
-    expect(screen.getByText("Extraction").getAttribute("title")).toBe(
-      "Classified from dataset structure"
-    );
-    expect(screen.getByText("342 rows")).toBeTruthy();
-    expect(screen.getByText("Instruction Following 50%")).toBeTruthy();
-    expect(screen.getByText("Reasoning 20%")).toBeTruthy();
-    expect(screen.getByText("Train")).toBeTruthy();
-    expect(screen.getByText("273")).toBeTruthy();
   });
 });

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { writeClipboardText } from "./clipboard";

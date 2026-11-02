@@ -11,7 +11,7 @@ from overbae.models import Dataset, FinetuningJob, Project, ProjectMembership, U
 from overbae.services import native_evaluation, training_experiments
 from overbae.services.datasets import land, rows
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 def data(project, name):

@@ -1,8 +1,12 @@
 from decimal import Decimal
 
+import pytest
+
 from overbae.services import provider_pricing
 from overbae.services.compute_costs import estimate_usage
 from overbae.services.inference_pricing import gpu_usd_per_second
+
+pytestmark = pytest.mark.covers("ledger")
 
 
 def test_current_workspace_rates_drive_costs_without_historical_charges(monkeypatch):

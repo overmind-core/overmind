@@ -1,45 +1,51 @@
+from __future__ import annotations
+
+import fcntl
 import functools
 import json
 import os
-import re
+import shutil
 import subprocess
 import threading
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import pytest
 from playwright.sync_api import sync_playwright
 
-from ..conftest import RUNS
+from .stack import RUNS
 
-FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 PASSWORD = "test-pass-123"
+# Vite inlines VITE_API_BASE_URL; each worker swaps it for its own live API after the build.
+API_PLACEHOLDER = "http://journey-api.invalid"
 
 
-@pytest.fixture(scope="session")
-def replay_recorder(tmp_path_factory):
-    bundle = tmp_path_factory.mktemp("replay-recorder") / "recorder.js"
-    entry = bundle.with_suffix(".ts")
-    entry.write_text(
-        f"import {{ record }} from {json.dumps(str(FRONTEND / 'node_modules/posthog-js/dist/rrweb.js'))};"
-        "window.ReplayRecorder = { record };"
-    )
-    subprocess.run(
-        [
-            "bun",
-            "build",
-            str(entry),
-            "--format=iife",
-            "--outfile",
-            str(bundle),
-        ],
-        cwd=FRONTEND,
-        check=True,
-        capture_output=True,
-        timeout=60,
-    )
-    return bundle
+def build_console(shared: Path) -> Path:
+    dist = shared / "dist"
+    shared.mkdir(parents=True, exist_ok=True)
+    with (shared / "build.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not (dist / "index.html").exists():
+            env = {
+                **os.environ,
+                "VITE_API_BASE_URL": API_PLACEHOLDER,
+                "VITE_SELF_HOSTED": "true",
+                "VITE_CLERK_PUBLISHABLE_KEY": "",
+                "VITE_PUBLIC_POSTHOG_KEY": "",
+                "VITE_FEATURE_SIGNALS": "true",
+            }
+            subprocess.run(
+                ["bun", "run", "build", "--outDir", str(dist), "--emptyOutDir"],
+                cwd=FRONTEND,
+                env=env,
+                check=True,
+                capture_output=True,
+                timeout=300,
+            )
+    return dist
 
 
 class _SinglePageApp(SimpleHTTPRequestHandler):
@@ -52,34 +58,23 @@ class _SinglePageApp(SimpleHTTPRequestHandler):
         pass
 
 
-@pytest.fixture(scope="session")
-def console_url(live_api, tmp_path_factory, request):
-    dist = tmp_path_factory.mktemp("console")
-    env = {
-        **os.environ,
-        "VITE_API_BASE_URL": live_api.url,
-        "VITE_SELF_HOSTED": "true",
-        "VITE_CLERK_PUBLISHABLE_KEY": "",
-        "VITE_PUBLIC_POSTHOG_KEY": "",
-        "VITE_FEATURE_SIGNALS": "true",
-    }
-    if getattr(request, "param", None) == "clerk":
-        env["VITE_SELF_HOSTED"] = "false"
-        env["VITE_CLERK_PUBLISHABLE_KEY"] = "pk_test_Y2xlcmsuZXhhbXBsZS5pbnZhbGlkJA"
-    subprocess.run(
-        ["bun", "run", "build", "--outDir", str(dist), "--emptyOutDir"],
-        cwd=FRONTEND,
-        env=env,
-        check=True,
-        capture_output=True,
-        timeout=300,
-    )
+@contextmanager
+def serve_console(built: Path, into: Path, api_url: str) -> Iterator[str]:
+    dist = into / "dist"
+    shutil.copytree(built, dist)
+    for path in dist.rglob("*"):
+        if path.suffix in {".js", ".html"}:
+            text = path.read_text()
+            if API_PLACEHOLDER in text:
+                path.write_text(text.replace(API_PLACEHOLDER, api_url))
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(_SinglePageApp, directory=str(dist))
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
 
 
 class Browser:
@@ -94,7 +89,7 @@ class Browser:
     def call(self, fn, *args):
         return self._thread.submit(fn, *args).result()
 
-    def page(self, base_url: str) -> "Console":
+    def page(self, base_url: str) -> Console:
         page = self.call(lambda: self._browser.new_page(base_url=base_url))
         self.call(page.set_default_timeout, 20_000)
         return Console(self, page)
@@ -177,30 +172,3 @@ class Console:
 
     def close(self) -> None:
         self._browser.call(self._page.close)
-
-
-@pytest.fixture(scope="session")
-def browser():
-    browser = Browser()
-    yield browser
-    browser.close()
-
-
-@pytest.fixture
-def console(browser, console_url, account, settings, request) -> Console:
-    settings.CORS_ALLOW_ALL_ORIGINS = True
-    user, _key = account
-    console = browser.page(console_url)
-    console.goto("/login")
-    console.fill("#local-email", user.email)
-    console.fill("#local-password", PASSWORD)
-    console.press("Continue")
-    console.wait_until("() => !!localStorage.getItem('jwt_access')")
-    console.goto("/onboarding")
-    console.sees("Agent")
-    yield console
-    try:
-        console.save_evidence(re.sub(r"[^\w.-]+", "_", request.node.nodeid))
-        console.healthy()
-    finally:
-        console.close()

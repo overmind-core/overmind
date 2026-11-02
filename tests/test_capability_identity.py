@@ -7,7 +7,7 @@ from overbae.models import Capability, IdentityAlias, Span
 from overbae.services.capabilities import identity
 from overbae.services.connectors.capabilities import resolve_capability as connector_resolve
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("identity")]
 
 
 def _capability(project, name, slug=None, **extra) -> Capability:

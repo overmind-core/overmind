@@ -10,6 +10,8 @@ from overbae.core.llms import (
 )
 from overbae.core.model_registry import CATALOG, MODELS_BY_NAME, reasoning_of
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 def test_reasoning_metadata_reads_from_the_registry():
     assert reasoning_of("gpt-5-mini").adaptive is True

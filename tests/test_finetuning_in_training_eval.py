@@ -33,7 +33,7 @@ from overbae.services.finetuning_eval import (
     tick_job_evals,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
 
 def _setup(*, with_eval_link=True):

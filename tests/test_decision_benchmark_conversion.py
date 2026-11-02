@@ -5,6 +5,8 @@ import pytest
 
 from scripts.decision_benchmarks import convert_row, prepare
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 
 def hard_row():
     payload = {

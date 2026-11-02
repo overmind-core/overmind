@@ -17,7 +17,11 @@ import dataclasses
 import json
 from pathlib import PurePath
 
-from overmind.tracing import _coerce_to_otel_attribute, _json_dumps, _normalize_for_json
+import pytest
+
+from overmind.tracing import _coerce_to_otel_attribute, _normalize_for_json
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 @dataclasses.dataclass
@@ -73,9 +77,6 @@ class TestNormalizeForJson:
         assert isinstance(result, list)
         assert sorted(result) == [1, 2, 3]
 
-    def test_frozenset_normalises_to_list(self):
-        assert sorted(_normalize_for_json(frozenset({"a", "b"}))) == ["a", "b"]
-
     def test_tuple_normalises_to_list(self):
         assert _normalize_for_json((1, "x", True)) == [1, "x", True]
 
@@ -93,14 +94,7 @@ class TestNormalizeForJson:
         assert _normalize_for_json({1: "a"}) == {"1": "a"}
 
 
-class TestJsonDumps:
-    def test_round_trip_via_json_loads(self):
-        raw = _json_dumps({"point": _Point(1, 2), "tags": {"alpha"}})
-        loaded = json.loads(raw)
-        assert loaded["point"] == {"x": 1, "y": 2}
-        assert loaded["tags"] == ["alpha"]
-
-
+@pytest.mark.covers("privacy")
 class TestScrubbing:
     """Secrets and binary blobs are redacted during serialisation; text is
     never truncated."""

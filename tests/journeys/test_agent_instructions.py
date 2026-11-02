@@ -12,6 +12,8 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.prompts import PROMPTS, get_prompt
 from overbae.services.mcp.resources import read_resource, resource_list
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 COMMAND = re.compile(r"`(overmind [^`]+)`")
 PLACEHOLDER = re.compile(r"^(?:[A-Z][A-Z_]*|<[^>]+>|\{[^}]+\})$")
 

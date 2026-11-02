@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: authentication
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

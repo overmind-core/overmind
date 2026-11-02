@@ -3,8 +3,12 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.services.transcripts import envelope, normalizer
+
+pytestmark = pytest.mark.covers("sdk-wire")
 
 
 def expectation(exp_id="currency", kind="contains", spec="USD", scope="trace", gate=True):

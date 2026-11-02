@@ -8,6 +8,8 @@ import pytest
 
 from overbae.services.datasets import store
 
+pytestmark = pytest.mark.covers("recovery")
+
 
 def test_concurrent_statistics_are_isolated_cached_and_labelled(tmp_path):
     path = tmp_path / "rows.parquet"

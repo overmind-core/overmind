@@ -11,6 +11,8 @@ from overbae.services.inference_client import (
     InferenceClientError,
 )
 
+pytestmark = pytest.mark.covers("llm-gateway")
+
 
 @pytest.mark.asyncio
 async def test_gateway_pings_while_waiting_for_worker_headers_and_tokens():

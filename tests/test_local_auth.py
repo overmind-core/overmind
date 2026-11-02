@@ -18,7 +18,7 @@ from overbae.models import (
     User,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 @pytest.fixture(autouse=True)

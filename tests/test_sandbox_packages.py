@@ -9,6 +9,8 @@ import pytest
 from sandbox import execute, packages
 from sandbox.protocol import HeaderReader, header_bytes
 
+pytestmark = pytest.mark.covers("sandbox")
+
 
 def run_package(sandbox_server, code, *, limits=None, runtime=None, files=None):
     url, token = sandbox_server

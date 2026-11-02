@@ -31,7 +31,7 @@ from overbae.services.finetuning_eval import (
 from overbae.tasks.finetuning import run_finetuning
 from overbae.tasks.inference_controller import reconcile_deployments
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("plans")]
 FIELDS = ("eval_incumbent_before", "eval_incumbent_after", "eval_model_before", "eval_model_after")
 
 

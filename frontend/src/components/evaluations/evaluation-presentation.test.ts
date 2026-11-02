@@ -1,3 +1,4 @@
+// covers: console-logic
 import { describe, expect, it } from "vitest";
 
 import type { Capability, EvalMatrix } from "@/openapi";

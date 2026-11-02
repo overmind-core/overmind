@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: live-console
 // Forwarding `?capability=all` would 400 the list (the backend filter is a
 // `UUIDFilter`), and re-filtering a fetched page client-side would leave `count`
 // describing a different set than `results`.

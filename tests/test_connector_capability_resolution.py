@@ -13,7 +13,7 @@ from overbae.services.connectors.capability_resolution import (
     unmapped_root_names,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 def _capability(project, name, *, path="", fn="", meta=None) -> Capability:

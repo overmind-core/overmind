@@ -20,7 +20,7 @@ from overbae.services.billing_ledger import (
     granted_usd,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 User = get_user_model()
 

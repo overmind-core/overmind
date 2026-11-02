@@ -2,6 +2,8 @@ import pytest
 
 from overbae.services.datasets.partition import content_key, split_rows
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 def test_split_clusters_content_and_groups_and_reports_stratification():
     source = [

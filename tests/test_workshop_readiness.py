@@ -21,7 +21,7 @@ from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
 from overbae.services.mcp.errors import mcp_cell_contract
 from overbae.services.training_preparation import request_preparation
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 @pytest.fixture

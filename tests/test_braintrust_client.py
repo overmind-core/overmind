@@ -9,6 +9,8 @@ from overbae.services.connectors.braintrust.client import (
     build_span_query,
 )
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _WHERE = "created >= '2026-01-01'"
 
 

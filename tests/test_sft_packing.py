@@ -1,9 +1,13 @@
+import pytest
+
 from overbae.services.sft_assets.packing import (
     packs_safely,
     sft_collator_flags,
     trl_flattens_micro_batch,
     use_row_packing,
 )
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_sdpa_does_not_isolate_packed_rows():

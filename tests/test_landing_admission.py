@@ -10,7 +10,7 @@ from overbae.services.datasets import admission
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks.datasets import land
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def queue(project):

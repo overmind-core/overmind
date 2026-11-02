@@ -10,7 +10,7 @@ from conftest import EVAL_ROWS, frozen_dataset
 from overbae.api.eval_serializers import EvalRunSerializer
 from overbae.models import EvalRun, Project
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("lineage")]
 
 
 @pytest.fixture

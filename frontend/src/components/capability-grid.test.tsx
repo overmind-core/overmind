@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 
 import type { ReactNode } from "react";
 

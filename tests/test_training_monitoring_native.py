@@ -1,8 +1,12 @@
 import json
 from contextlib import nullcontext
 
+import pytest
+
 from modal_shared.training_monitoring import resolve_policy
 from overbae.services.sft_assets.native_monitor import NativeTrainingMonitor
+
+pytestmark = pytest.mark.covers("metrics-math")
 
 
 class Rows:

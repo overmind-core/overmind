@@ -16,6 +16,8 @@ from modal_shared.preparation import (
 from overbae.services.finetuning_runner import sanitize_job_error
 from overbae.services.sft_assets import preprocess
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_training_edits_preserve_token_cache_but_invalidate_optimizer_resume(tmp_path):
     (tmp_path / "preprocess.py").write_text("tokenize input")

@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from modal_shared.serving.args import (
     CUDAGRAPH_CAPTURE_SIZES,
     MAX_LORA_SLOTS,
     VllmServeContext,
     build_vllm_args,
 )
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def _checkpoint(tmp_path: Path, *, experts: int = 0) -> Path:

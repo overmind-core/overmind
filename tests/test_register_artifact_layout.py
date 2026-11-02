@@ -19,6 +19,8 @@ from overbae.modal.register_model import (  # noqa: E402
     resolve_artifact_dir,
 )
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def _touch(root: Path, *rels: str) -> None:
     for rel in rels:

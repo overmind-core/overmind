@@ -10,6 +10,8 @@ from overmind.__main__ import app
 from overmind.config import Config, dump
 from overmind.init_cmd import claude_config_path
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 runner = CliRunner()
 SKILL_SOURCE = Path(__file__).resolve().parents[1] / "skills" / "overmind"
 SURFACE_SKILLS = (
@@ -84,15 +86,6 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
         installed = tmp_path / skill_dir / "skills" / slug
         assert (installed / "SKILL.md").read_bytes() == (source / "SKILL.md").read_bytes()
         assert (installed / "agents/openai.yaml").read_bytes() == (source / "agents/openai.yaml").read_bytes()
-
-
-def test_init_writes_cursor_mcp_json(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    _init(tmp_path, "cursor")
-    cfg = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
-    assert cfg["mcpServers"]["overmind"] == {"url": "http://localhost:8000/api/mcp/"}
-    assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
-    assert (tmp_path / ".agents" / "skills" / "overmind" / "references" / "setup.md").is_file()
 
 
 def test_cursor_init_replaces_previous_skill_installs(tmp_path, monkeypatch):
@@ -208,6 +201,7 @@ def test_init_claude_preserves_other_config_and_tracked_mcp_json(tmp_path, monke
     assert (tmp_path / ".mcp.json").read_text() == tracked
 
 
+@pytest.mark.covers("privacy")
 def test_init_keeps_bootstrap_key_out_of_local_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OVERMIND_API_KEY", "secret")
@@ -276,6 +270,7 @@ def test_init_codex_replaces_own_section_and_preserves_other_config(tmp_path, mo
     assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
 
 
+@pytest.mark.covers("privacy")
 def test_init_does_not_copy_saved_project_key_into_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OVERMIND_API_URL", raising=False)
@@ -295,6 +290,7 @@ def test_init_does_not_copy_saved_project_key_into_mcp(tmp_path, monkeypatch):
     assert _claude_overmind(tmp_path) == {"type": "http", "url": "http://localhost:8000/api/mcp/"}
 
 
+@pytest.mark.covers("privacy")
 def test_init_does_not_copy_legacy_inline_key_into_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "overmind.toml").write_text(
@@ -312,6 +308,7 @@ def test_init_does_not_copy_legacy_inline_key_into_mcp(tmp_path, monkeypatch):
     assert not (tmp_path / ".overmind" / "credentials.toml").exists()
 
 
+@pytest.mark.covers("privacy")
 def test_init_can_prepare_a_tracked_unauthenticated_mcp_config(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)

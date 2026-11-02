@@ -5,7 +5,7 @@ import pytest
 from overbae.models import Dataset, FinetuningJob, Project
 from overbae.services import training_submission
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("work-once")]
 
 
 def test_submission_intent_survives_worker_loss_and_never_resubmits():

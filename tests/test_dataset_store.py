@@ -8,6 +8,8 @@ import pytest
 
 from overbae.services.datasets import files, store
 
+pytestmark = pytest.mark.covers("lineage")
+
 ROWS = [
     {
         "source_row": 0,

@@ -1,3 +1,4 @@
+// covers: measured-facts
 import { describe, expect, it } from "vitest";
 
 import type { FinetuningEvidence, FinetuningExperiment, FinetuningSkillScore } from "@/openapi";
@@ -114,20 +115,6 @@ describe("isLabClaimedOnly", () => {
 });
 
 describe("gradeFromCandidate", () => {
-  it("carries the standing off the candidate row", () => {
-    expect(gradeFromCandidate(candidate())).toEqual({
-      confidence: "high",
-      evidence: [evidence("IFBench", "measured")],
-      grade: 78,
-      labClaimedOnly: false,
-      match: 98,
-      matchPool: 30,
-      matchRank: 1,
-      nBenchmarks: 12,
-      skillScores: SKILL_SCORES,
-    });
-  });
-
   it("reads ungraded while keeping the pool it was measured against", () => {
     const row = gradeFromCandidate(
       candidate({

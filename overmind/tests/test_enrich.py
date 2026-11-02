@@ -6,6 +6,8 @@ import pytest
 from overmind.config import load
 from overmind.utils import convert_json_to_toml
 
+pytestmark = pytest.mark.covers("agent-code")
+
 
 def test_convert_enriches_then_stamps_verified(tmp_path: Path):
     pkg = tmp_path / "app"
@@ -244,6 +246,7 @@ def test_incomplete_scan_preserves_previous_snapshot(tmp_path, decision_scan, de
     assert dest.read_text() == 'project-name = "preserved"\n'
 
 
+@pytest.mark.covers("identity")
 def test_detailed_scan_preserves_branches_and_loop_transitions(tmp_path, decision_scan):
     decision_scan["capabilities"][0]["capability_card"]["trajectory_map"].append({
         "id": "declared-task",

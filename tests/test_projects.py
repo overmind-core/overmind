@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from overbae.models import Project, ProjectMembership
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("tenancy")]
 
 
 def _project_payload(slug_suffix: str | None = None) -> dict:

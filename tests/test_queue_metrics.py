@@ -8,6 +8,8 @@ from django.utils import timezone
 
 from overbae.services.queue_capacity import metric_data, read_workloads
 
+pytestmark = pytest.mark.covers("topology")
+
 
 def test_metrics_count_durable_waiting_not_only_admitted_broker_messages():
     now = timezone.now()

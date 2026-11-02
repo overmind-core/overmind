@@ -29,6 +29,8 @@ from modal_shared.stacks import (
     TRAIN_U2026_10_7,
 )
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "models.json"
 
 # Ordering cases — first match wins.

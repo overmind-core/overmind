@@ -4,6 +4,8 @@ import pytest
 
 from overbae.innermind import context as suggestions
 
+pytestmark = pytest.mark.covers("recommendations")
+
 
 @pytest.fixture
 def catalog(monkeypatch):

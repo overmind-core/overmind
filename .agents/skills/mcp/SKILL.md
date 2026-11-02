@@ -117,12 +117,12 @@ Organize the catalog by intent: discovery and read, mutation, background work, C
 
 ## Tests
 
-Follow the testing policy in AGENTS.md: prove the change through existing E2E coverage first. These files hold focused coverage:
+Follow the testing policy in AGENTS.md and the run-tests skill. A tool's happy path belongs to its vertical's journey; these files hold the edge cases. Call tools through `mcp_fixtures.call_tool`; only auth and transport tests go through the ASGI app (`mcp_fixtures.asgi_db`).
 
 | Change                       | Coverage                                                                                                                              |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Contract or catalog metadata | `tests/test_mcp_catalog.py`, `tests/test_mcp_manifest.py`                                                                             |
-| Feature tool                 | `tests/test_mcp_<domain>.py`: happy path, project isolation, expected errors, structured output, returned IDs                         |
+| Feature tool                 | `tests/test_mcp_<domain>.py`: project isolation, expected errors, structured output, returned IDs                                     |
 | Result format                | `tests/test_mcp_result_compat.py`                                                                                                     |
 | Resource or job kind         | `tests/test_mcp_resources.py`                                                                                                         |
 | Auth or transport            | `tests/test_mcp_authorization.py`, `test_mcp_oauth.py`, `test_mcp_api_keys.py`, `test_mcp_account_access.py`, `test_mcp_transport.py` |

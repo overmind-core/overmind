@@ -19,7 +19,7 @@ from overbae.services.provider_progress import read_page as read_provider_page
 from overbae.tasks.finetuning import observe_finetuning_job
 from overbae.tasks.finetuning_reconciler import reconcile_finetuning_jobs
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("measured-facts")]
 emit_provider_event = Journal.emit
 
 

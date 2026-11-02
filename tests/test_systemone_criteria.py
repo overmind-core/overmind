@@ -1,4 +1,8 @@
+import pytest
+
 from overbae.services.systemone import parse
+
+pytestmark = pytest.mark.covers("llm-gateway")
 
 
 def test_choice_descriptions_reach_the_fine_tune_question():

@@ -9,6 +9,8 @@ from overbae.models import APIToken, Project, User
 from overbae.services.mcp.catalog import CatalogError, ToolCatalog, ToolDefinition
 from overbae.services.mcp.context import MCPContext
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 
 class ReadInput(BaseModel):
     query: str

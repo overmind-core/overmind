@@ -12,6 +12,8 @@ from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.profile import profile_records
 from overbae.services.finetuning_validator import row_to_finetuning_line, validate_rows
 
+pytestmark = pytest.mark.covers("recommendations")
+
 
 def example(prompt="Extract fields", **extra):
     return {

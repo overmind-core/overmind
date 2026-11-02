@@ -17,7 +17,7 @@ from overbae.models.finetuning import FinetuningJob
 from overbae.services.finetuning_runner import PollSnapshot
 from overbae.tasks.finetuning_reconciler import _RUN_TASK, _reconcile
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("recovery")]
 
 
 def test_inflight_function_call_beats_stale_volume_failed():

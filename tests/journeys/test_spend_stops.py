@@ -3,6 +3,8 @@ import pytest
 from .datasets import tickets, training_rows, until, upload
 from .stack import drain
 
+pytestmark = pytest.mark.covers("spend-stops")
+
 PREPARE = "overbae.tasks.training_preparation.reconcile"
 TRAIN = "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs"
 

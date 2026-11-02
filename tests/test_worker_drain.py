@@ -4,6 +4,8 @@ import pytest
 
 from overbae import worker_drain
 
+pytestmark = pytest.mark.covers("topology")
+
 
 def test_mixed_consumers_stop_fetching_and_drain_reserved_work(monkeypatch):
     initial = Mock()

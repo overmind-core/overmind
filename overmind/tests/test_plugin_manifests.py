@@ -5,6 +5,8 @@ import pytest
 
 from overmind.skills_db import SKILLS_VERSION
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 SDK_ROOT = Path(__file__).resolve().parents[1]
 
 

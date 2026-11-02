@@ -7,6 +7,8 @@ from typer.testing import CliRunner
 
 from overmind.__main__ import app
 
+pytestmark = pytest.mark.covers("privacy")
+
 
 @pytest.fixture
 def transfer_workspace(tmp_path, monkeypatch):

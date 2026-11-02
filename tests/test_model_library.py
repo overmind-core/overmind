@@ -1,7 +1,11 @@
 """Public model library: provider labels and which catalog entries it lists."""
 
+import pytest
+
 from overbae.modal.model_registry import all_model_entries
 from overbae.services.model_library import _provider_from_id, public_model_catalog
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def test_unsloth_hosted_models_resolve_to_their_vendor():

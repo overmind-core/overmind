@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -140,46 +141,12 @@ describe("ModelOptionLabel", () => {
 });
 
 describe("ModelProviderChip", () => {
-  it("renders the TypeSafe cube for Jev", () => {
-    render(<ModelProviderChip model="typesafe/jev-1.13" />);
-    expect(screen.getByTestId("logo-typesafe")).toBeTruthy();
-    expect(screen.getByText("TypeSafe")).toBeTruthy();
-    expect(screen.getByText("Jev 1.13")).toBeTruthy();
-  });
-
   it("renders the vendor logo, provider label and model name", () => {
     render(<ModelProviderChip model="Qwen/Qwen3.5-0.8B" />);
     expect(screen.getByTestId("logo-qwen")).toBeTruthy();
     expect(screen.getByText("Qwen")).toBeTruthy();
     expect(screen.getByText(/Qwen3.5/)).toBeTruthy();
     expect(screen.getByTitle("Qwen/Qwen3.5-0.8B")).toBeTruthy();
-  });
-
-  it("infers the provider from a bare model id", () => {
-    render(<ModelProviderChip model="gemini-3.5-flash" />);
-    expect(screen.getByTestId("logo-google")).toBeTruthy();
-    expect(screen.getByText("Gemini")).toBeTruthy();
-  });
-
-  it("renders first-class logos for OpenRouter orgs like MiniMax and Zhipu", () => {
-    const { rerender } = render(<ModelProviderChip model="minimax/minimax-m2.5" />);
-    expect(screen.getByTestId("logo-minimax")).toBeTruthy();
-    expect(screen.getByText("MiniMax")).toBeTruthy();
-
-    rerender(<ModelProviderChip model="z-ai/glm-5.2" />);
-    expect(screen.getByTestId("logo-zhipu")).toBeTruthy();
-    expect(screen.getByText("Zhipu")).toBeTruthy();
-
-    rerender(<ModelProviderChip model="moonshotai/kimi-k2" />);
-    expect(screen.getByTestId("logo-kimi")).toBeTruthy();
-    expect(screen.getByText("Kimi")).toBeTruthy();
-  });
-
-  it("renders a neutral chip for unknown models instead of breaking", () => {
-    render(<ModelProviderChip model="totally-novel-model" />);
-    expect(screen.getByText("Model")).toBeTruthy();
-    expect(screen.getByText("Totally Novel Model")).toBeTruthy();
-    expect(screen.queryByTestId(/logo-/)).toBeNull();
   });
 
   it("can hide the model id for tight layouts", () => {

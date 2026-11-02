@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: measured-facts
 
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

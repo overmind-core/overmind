@@ -14,7 +14,7 @@ from factories import make_project
 from overbae.models import Capability, Conversation, Dataset, Span
 from overbae.services.datasets import land, paths, selection
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 NS = 1_700_000_000_000_000_000
 COLUMNS = [spec["name"] for spec in land.TRACE_MANIFEST]
@@ -251,6 +251,18 @@ def test_a_selected_capability_lands_its_own_invocation_and_score():
     assert (row["capability"], row["capability_id"]) == ("Answer", str(answer.id))
     assert (row["input"], row["output"]) == ({"question": 0}, {"answer": 0})
     assert row["score"] == pytest.approx(0.8)
+
+
+def test_a_selected_capability_absent_from_a_trace_lands_the_whole_trace():
+    project = make_project()
+    matched = Capability.objects.create(project=project, name="Matched", slug="matched")
+    selected = Capability.objects.create(project=project, name="Selected", slug="selected")
+    trace, _ = _chat_trace(project, text="kept", capability=matched)
+    dataset = Dataset.objects.create(project=project, name="t", capability=selected)
+    land.land_traces(dataset, {"trace_ids": [trace]})
+    df = read_table(paths.cell_path(dataset.id, dataset.source.id))
+    assert df["trace_id"].tolist() == [trace]
+    assert df.iloc[0]["messages"][-1]["content"] == "kept"
 
 
 def test_repeated_invocations_of_the_selected_capability_fail_the_landing():

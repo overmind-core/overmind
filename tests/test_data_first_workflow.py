@@ -22,7 +22,7 @@ from overbae.services import native_evaluation
 from overbae.services.datasets import land, lifecycle, paths, rows, store, use, workbench
 from overbae.services.datasets.partition_plans import build
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
 
 def workspace():

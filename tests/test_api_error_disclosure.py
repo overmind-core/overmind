@@ -16,6 +16,8 @@ from overbae.models import (
     User,
 )
 
+pytestmark = pytest.mark.covers("privacy")
+
 PRIVATE_DIAGNOSTIC = "Traceback: /srv/private/worker.py provider_token=do-not-expose"
 
 

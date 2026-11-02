@@ -49,7 +49,7 @@ def _start(call) -> datetime:
     return datetime.fromisoformat(call.json["start_time"].replace("Z", "+00:00"))
 
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
 
 
 def test_discovery_stays_in_the_cheap_six_day_tier_even_when_the_wizard_asks_for_thirty(api):

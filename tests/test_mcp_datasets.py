@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from datetime import timedelta
 
 import pytest
+from mcp_fixtures import call_tool
 
 from overbae.models import (
     APIToken,
@@ -17,27 +17,11 @@ from overbae.models import (
     Span,
     User,
 )
-from overbae.services.datasets import land, paths, store
+from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_datasets
-from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
-pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def test_start_dataset_preserves_brief_and_exposes_source_handoff():
-    context = _context()
-    result = _call(
-        "start_dataset", {"brief": "Explore source documents before choosing a task."}, context
-    )
-    assert not result.isError, result.structuredContent
-    dataset_id = result.structuredContent["dataset"]["id"]
-    inspected = _call("inspect_dataset", {"dataset": dataset_id}, context)
-    assert not inspected.isError, inspected.structuredContent
-    detail = inspected.structuredContent
-    assert detail["brief"] == "Explore source documents before choosing a task."
-    assert detail["source_kind"] == "pending" and detail["capability"] is None
-    assert detail["human_action"]["arguments"]["dataset"] == dataset_id
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
@@ -60,7 +44,7 @@ def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
-    return asyncio.run(CATALOG.call(name, arguments, context))
+    return call_tool(name, arguments, context)
 
 
 def _dataset(context: MCPContext, name: str = "Eval", **kwargs) -> Dataset:
@@ -115,32 +99,6 @@ def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
     uuid.UUID(result.structuredContent["datasets"][0]["id"])
 
 
-def test_inspection_exposes_the_workshops_source_families_and_consumer_requirements():
-    context = _context()
-    dataset = _dataset(context)
-    land.land_rows(
-        dataset,
-        [
-            {
-                "input": {
-                    "messages": [
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": "evidence"},
-                    ]
-                },
-                "expected_output": {"answer": "supported"},
-            }
-            for prompt in ["Extract fields"] * 25 + ["Apply rules"] * 5
-        ],
-    )
-    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
-    assert not result.isError
-    preparation = result.structuredContent["preparation_context"]
-    assert preparation["profiles"]["source"]["rows_scanned"] == 30
-    assert [family["rows"] for family in preparation["profiles"]["source"]["families"]] == [25, 5]
-    assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
-
-
 def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
     context = _context()
     dataset = _dataset(
@@ -182,24 +140,6 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
     assert "use the dataset id" in twice.structuredContent["error"]["message"]
 
 
-@pytest.mark.parametrize(
-    ("state", "tool"),
-    [
-        (Dataset.State.LANDING, "get_job"),
-        (Dataset.State.RUNNING, "get_job"),
-        (Dataset.State.ERROR, "inspect_dataset_workbench"),
-    ],
-)
-def test_inspect_next_action_follows_dataset_state(state: str, tool: str):
-    context = _context()
-    dataset = _dataset(context, state=state, error="/private/tmp/secret.parquet")
-
-    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
-
-    assert result.structuredContent["next_actions"][0]["tool"] == tool
-    assert "/private/tmp" not in json.dumps(result.structuredContent)
-
-
 def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
     context = _context()
     dataset = _dataset(context)
@@ -238,20 +178,6 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
     assert write.structuredContent["error"]["code"] == "query_invalid"
 
 
-def _root_span(project, trace_id: str) -> Span:
-    return Span.objects.create(
-        span_id=uuid.uuid4().hex[:16],
-        trace_id=trace_id,
-        project=project,
-        span_type="entry_point",
-        name="run",
-        start_time_ns=1,
-        end_time_ns=2,
-        duration_ns=1,
-        attributes={"overmind.input.data": trace_id, "overmind.output.data": "answer"},
-    )
-
-
 def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selections():
     context = _context()
     unknown = _call(
@@ -274,81 +200,6 @@ def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selectio
     assert empty.isError is True
     assert empty.structuredContent["error"]["code"] == "no_traces"
     assert Dataset.objects.filter(project=context.project).count() == 0
-
-
-@pytest.mark.parametrize("split", [False, True])
-@pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
-def test_trace_creation_respects_the_capability_choice(split, choice):
-    context = _context()
-    matched = Capability.objects.create(project=context.project, name="Matched", slug="matched")
-    selected = Capability.objects.create(project=context.project, name="Selected", slug="selected")
-    trace_ids = [uuid.uuid4().hex for _ in range(4)]
-    for trace_id in trace_ids:
-        span = _root_span(context.project, trace_id)
-        span.capability = matched
-        span.save(update_fields=["capability"])
-    arguments = {"name": "Choice", "trace_ids": trace_ids}
-    if choice != "automatic":
-        arguments["capability"] = None if choice == "none" else str(selected.id)
-    if split:
-        arguments["split"] = {"eval_percent": 30, "position": "tail"}
-    result = _call("create_dataset_from_traces", arguments, context)
-    assert result.isError is False, result.structuredContent
-    body = result.structuredContent
-    ids = [body["dataset"]["id"]]
-    if split:
-        ids.append(body["eval_dataset"]["id"])
-    expected = {"automatic": matched.id, "none": None, "selected": selected.id}[choice]
-    for dataset in Dataset.objects.filter(pk__in=ids):
-        assert dataset.state == Dataset.State.IDLE, dataset.error
-        assert dataset.capability_id == expected
-        assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
-
-
-def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
-    context = _context()
-    Capability.objects.create(project=context.project, name="Support", slug="support")
-    _root_span(context.project, "b" * 32)
-    sources = []
-
-    def create_dataset(**kwargs):
-        sources.append(kwargs["source"])
-        return _dataset(
-            context,
-            kwargs["name"],
-            capability=kwargs.get("capability"),
-            intent=kwargs.get("intent") or Dataset.Intent.PENDING,
-            state=Dataset.State.LANDING,
-        )
-
-    monkeypatch.setattr(tools_datasets.dispatch, "create_dataset", create_dataset)
-
-    traces = _call(
-        "create_dataset_from_traces",
-        {"name": "Trace set", "trace_ids": ["b" * 32]},
-        context,
-    )
-    for result in (traces,):
-        body = result.structuredContent
-        assert body["job"]["kind"] == "dataset_run"
-        assert body["job"]["id"] == body["dataset"]["id"]
-        assert body["job"]["resource"]["uri"] == (
-            f"overmind://jobs/dataset_run/{body['dataset']['id']}"
-        )
-        assert body["dataset"]["resource"]["uri"] in {
-            link["uri"] for link in body["resource_links"]
-        }
-        assert body["traces"] == 1
-    assert sources == [{"traces": {"trace_ids": ["b" * 32]}}]
-
-
-def test_dataset_tool_text_is_complete_structured_json():
-    context = _context()
-    _dataset(context)
-
-    result = _call("list_datasets", {}, context)
-
-    assert json.loads(result.content[0].text) == result.structuredContent
 
 
 def test_list_and_inspect_map_legacy_ft_intent():

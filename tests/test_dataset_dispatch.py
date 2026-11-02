@@ -11,7 +11,7 @@ from overbae.services.datasets import dispatch
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks.datasets import land as land_task
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("work-once")]
 
 ROWS = [{"question": "q1", "answer": "a1"}]
 

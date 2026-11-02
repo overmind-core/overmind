@@ -13,6 +13,8 @@ from overbae.services.benchmarks.grading import (
 from overbae.services.benchmarks.schema import BenchmarkScore, Provenance
 from overbae.services.benchmarks.taxonomy import Skill, TaskType
 
+pytestmark = pytest.mark.covers("metrics-math")
+
 _IF = str(Skill.INSTRUCTION_FOLLOWING)
 _FAITH = str(Skill.FAITHFULNESS)
 _REASONING = str(Skill.REASONING)

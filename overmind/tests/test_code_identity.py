@@ -28,6 +28,8 @@ from overmind.tracing import (
     workflow,
 )
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def inmem(monkeypatch):

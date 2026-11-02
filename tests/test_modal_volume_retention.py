@@ -11,7 +11,7 @@ from django.utils import timezone
 from overbae.models import DeployedModel, FinetuningJob, Project
 from overbae.tasks.cleanup_modal import plan_run_retention
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("spend-stops")]
 
 
 def _job(

@@ -18,7 +18,7 @@ from overbae.services.baseten_billing import (
     usage_summary_chunks,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 
 def _training_summary(*items: dict) -> dict:

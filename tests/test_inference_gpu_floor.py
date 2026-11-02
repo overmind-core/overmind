@@ -3,6 +3,8 @@ import pytest
 from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_model_config_any_backend
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 @pytest.mark.parametrize("model_id", ["google/gemma-4-E2B-it", "google/gemma-4-E4B-it"])
 @pytest.mark.parametrize("context", [512, 4096, 8192, 131072])

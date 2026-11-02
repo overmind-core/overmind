@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 
 import type { ReactNode } from "react";
 
@@ -141,16 +142,6 @@ describe("SetupPanel", () => {
     expect(screen.queryByRole("combobox", { name: /Validation source/ })).toBeNull();
   });
 
-  it("renders evaluation details without a second toggle row", () => {
-    setup();
-    expect(screen.queryByRole("checkbox", { name: "Run evaluations" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Training Dataset" })).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Eval Dataset" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Eval set" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "Benchmark models" })).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Validation source" })).toBeNull();
-  });
-
   it("shows only training inputs when evaluations are off", () => {
     setup({ evaluationEnabled: false });
     expect(screen.queryByRole("combobox", { name: "Training Dataset" })).toBeNull();
@@ -175,27 +166,6 @@ describe("SetupPanel", () => {
       screen.getByRole("button", { name: /Remove qwen\/qwen3-8b from benchmarks/ })
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add model" })).toBeTruthy();
-  });
-
-  it("keeps workshop review recommendations out of training setup", () => {
-    const readiness = {
-      assessment: {},
-      formatReason: "",
-      formatValid: true,
-      qualityPassed: false,
-      qualityReason: "Input evidence: unknown",
-      qualityReviewed: true,
-      trainingConfiguration: "not_checked",
-    };
-    setup({
-      capabilityId: "another-capability",
-      dataset: { ...TRAIN_SET, readiness },
-      evalDataset: { ...EVAL_SET, readiness },
-    });
-    expect(screen.queryByText("Review recommended")).toBeNull();
-    expect(screen.queryByText("Input evidence: unknown")).toBeNull();
-    expect(screen.queryByRole("link", { name: "Open workshop" })).toBeNull();
-    expect(screen.queryByText("Can't be trained on yet")).toBeNull();
   });
   it("shows training inputs without a capability", () => {
     setup({}, "data");
@@ -226,11 +196,4 @@ describe("SetupPanel", () => {
     expect(screen.getByText("No eval datasets for this capability.")).toBeTruthy();
     expect(screen.queryByText(/also appear in the training set/)).toBeNull();
   });
-});
-
-it("keeps validation at the standard split without an extra selector", () => {
-  setup({}, "data");
-  expect(screen.queryByRole("combobox", { name: "Validation source" })).toBeNull();
-  expect(screen.queryByText(/20% of training data/)).toBeNull();
-  expect(screen.getByRole("button", { name: "About training dataset" })).toBeTruthy();
 });

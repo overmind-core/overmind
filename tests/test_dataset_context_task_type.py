@@ -13,7 +13,7 @@ from overbae.services.benchmarks.taxonomy import TaskType
 from overbae.services.datasets import profiler
 from overbae.services.recommendation import get_recommendation
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("recommendations")]
 
 _LONG_PARAGRAPH = (
     "The quarterly filing restates revenue across every regional segment and "

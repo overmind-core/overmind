@@ -9,6 +9,8 @@ import pytest
 import requests
 from django.conf import settings
 
+pytestmark = pytest.mark.covers("boot")
+
 ROOT = Path(__file__).resolve().parents[2]
 
 FILLED = {

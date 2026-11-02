@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 @pytest.fixture
 def loader(monkeypatch):

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { afterEach, describe, expect, it } from "vitest";
 
 import { escapeScrollLock } from "./scroll-lock-escape";

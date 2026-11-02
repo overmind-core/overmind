@@ -19,6 +19,8 @@ from overmind import attrs
 from overmind.lifecycle import RunHandle, run
 from overmind.tracing import _span_processor_on_start, start_span, task
 
+pytestmark = pytest.mark.covers("sdk-wire")
+
 
 @pytest.fixture
 def exporter(monkeypatch):
@@ -180,6 +182,7 @@ def test_exception_marks_the_run_failed_and_reraises(exporter):
     assert root.attributes[attrs.ERROR_TYPE] == "ValueError"
 
 
+@pytest.mark.covers("sdk-install")
 def test_run_is_a_noop_when_uninitialised(monkeypatch):
     monkeypatch.setattr(tracing, "_initialized", False)
 
@@ -266,6 +269,7 @@ def test_run_decorator_callable_failure_degrades_to_none(exporter):
     assert "conversation.id" not in _by_name(exporter, "r").attributes
 
 
+@pytest.mark.covers("sdk-install")
 def test_run_decorator_is_noop_when_uninitialised(monkeypatch):
     monkeypatch.setattr(tracing, "_initialized", False)
 

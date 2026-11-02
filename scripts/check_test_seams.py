@@ -2,8 +2,10 @@
 
 A test may capture a Celery dispatch (``.delay`` / ``.apply_async``) and fake
 outside services through ``tests/fakes``. It may not patch other ``overbae.*``
-targets or import private ``overbae`` names. Existing seams are counted, not
-listed: a file fails only when a change adds one.
+or ``overmind.*`` targets or import their private names, and a journey may not wait on wall
+time, animations or fonts. A Console test may mock third-party modules and the
+network edge (``@/client``, ``@/openapi``), not our other modules. Existing seams are counted, not listed: a change fails
+only when it raises a count across all test files, so moving a test passes.
 """
 
 from __future__ import annotations
@@ -13,22 +15,59 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
+from itertools import chain
 from pathlib import Path
 
-PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["'](overbae\.[\w.]+)["']""")
+PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["']((?:overbae|overmind)\.[\w.]+)["']""")
 CELERY_CAPTURES = (".delay", ".apply_async")
+JOURNEY_WAIT = re.compile(r"time\.sleep\(|getAnimations|document\.fonts|fontFamily")
+VITEST_MOCK = re.compile(r"""vi\.mock\(\s*["']((?:@/|\.{1,2}/)[^"']+)["']""")
+NETWORK_EDGE = ("@/client", "@/openapi")
+CONSOLE_TESTS = (".test.ts", ".test.tsx")
+PYTHON_TESTS = ("tests/", "overmind/tests/")
+ROOTS = ("tests", "overmind/tests", "frontend/src")
 
 
-def _source(ref: str, path: str) -> str:
-    result = subprocess.run(["git", "show", f"{ref}:{path}"], capture_output=True, text=True)
-    return result.stdout if result.returncode == 0 else ""
+def _git(*args: str, stdin: bytes | None = None) -> bytes:
+    return subprocess.run(["git", *args], input=stdin, capture_output=True, check=True).stdout
 
 
-def _working(path: str) -> str:
-    try:
-        return Path(path).read_text(encoding="utf-8")
-    except OSError:
-        return ""
+def _tracked(path: str) -> bool:
+    if path.startswith("frontend/src/"):
+        return path.endswith(CONSOLE_TESTS)
+    return path.startswith(PYTHON_TESTS) and path.endswith(".py")
+
+
+def _committed(ref: str) -> dict[str, str]:
+    listed = _git("ls-tree", "-r", "-z", "--name-only", ref, "--", *ROOTS)
+    paths = [path for path in listed.decode().split("\0") if _tracked(path)]
+    blobs = _git("cat-file", "--batch", stdin="".join(f"{ref}:{p}\n" for p in paths).encode())
+    sources, offset = {}, 0
+    for path in paths:
+        header = blobs.index(b"\n", offset)
+        size = int(blobs[offset:header].split()[2])
+        sources[path] = blobs[header + 1 : header + 1 + size].decode("utf-8", errors="replace")
+        offset = header + 2 + size
+    return sources
+
+
+def _working() -> dict[str, str]:
+    listed = _git(
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "tests",
+        "frontend/src",
+    )
+    return {
+        path: Path(path).read_text(encoding="utf-8")
+        for path in listed.decode().split("\0")
+        if _tracked(path) and Path(path).is_file()
+    }
 
 
 def _patches(source: str) -> list[str]:
@@ -43,30 +82,55 @@ def _private_imports(source: str) -> list[str]:
     return [
         f"{node.module}.{alias.name}"
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("overbae")
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").startswith(("overbae", "overmind"))
         for alias in node.names
         if alias.name.startswith("_")
     ]
 
 
-def main(paths: list[str]) -> int:
+def _journey_waits(source: str) -> list[str]:
+    return JOURNEY_WAIT.findall(source)
+
+
+def _console_mocks(source: str) -> list[str]:
+    return [t for t in VITEST_MOCK.findall(source) if not t.startswith(NETWORK_EDGE)]
+
+
+KINDS = (
+    ("patch of", _patches, PYTHON_TESTS),
+    ("private import of", _private_imports, PYTHON_TESTS),
+    ("wait on", _journey_waits, "tests/journeys/"),
+    ("mock of", _console_mocks, "frontend/src/"),
+)
+
+
+def main() -> int:
+    before = _committed(os.environ.get("PRE_COMMIT_FROM_REF") or "HEAD")
+    after = _working()
     failures = []
-    for path in paths:
-        before = _source(os.environ.get("PRE_COMMIT_FROM_REF") or "HEAD", path)
-        after = _working(path)
-        for kind, count in (("patch of", _patches), ("private import of", _private_imports)):
-            added = sorted(set(count(after)) - set(count(before)))
-            if len(count(after)) > len(count(before)):
-                failures.append(f"{path}: new {kind} {', '.join(added) or 'our own code'}")
+    for kind, count, scope in KINDS:
+        old = {path: count(source) for path, source in before.items() if path.startswith(scope)}
+        new = {path: count(source) for path, source in after.items() if path.startswith(scope)}
+        added = Counter(chain.from_iterable(new.values())) - Counter(
+            chain.from_iterable(old.values())
+        )
+        for target in sorted(added):
+            paths = [
+                path
+                for path, found in sorted(new.items())
+                if found.count(target) > old.get(path, []).count(target)
+            ]
+            failures.append(f"new {kind} {target}: {', '.join(paths)}")
     for failure in failures:
         print(failure)
     if failures:
         print(
-            "Fake outside services through tests/fakes and call public entry points; "
-            "see the run-tests skill."
+            "Fake outside services through tests/fakes, call public entry points and wait "
+            "on observable state; see the run-tests skill."
         )
     return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

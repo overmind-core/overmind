@@ -22,6 +22,8 @@ from overbae.modal.weight_ops import (  # noqa: E402
     prepare_fp8_weights,
 )
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def _write_tiny_lora_pair(tmp: Path) -> tuple[Path, Path]:
     base = tmp / "base"

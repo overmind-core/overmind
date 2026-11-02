@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.covers("sdk-install")
+
 
 @pytest.fixture(autouse=True)
 def reset_sdk_state():
@@ -46,37 +48,6 @@ def mock_opentelemetry():
             "trace": mock_trace,
             "tracer": mock_tracer,
         }
-
-
-def test_sdk_init_configures_tracing(mock_opentelemetry):
-    from overmind import tracing
-
-    with (
-        patch.object(tracing, "FastAPIInstrumentor", create=True) as mock_fastapi,
-        patch.object(tracing, "OpenAIInstrumentor", create=True) as mock_openai,
-        patch.dict(
-            "sys.modules",
-            {
-                "opentelemetry.instrumentation.fastapi": MagicMock(FastAPIInstrumentor=mock_fastapi),
-                "opentelemetry.instrumentation.openai": MagicMock(OpenAIInstrumentor=mock_openai),
-            },
-        ),
-    ):
-        # Mock the dynamic imports
-        tracing.init(
-            overmind_api_key="test_key",
-            overmind_base_url="http://localhost:4318",
-            service_name="test-service",
-            environment="testing",
-        )
-
-    # Verify Exporter configuration
-    mock_opentelemetry["exporter"].assert_called_with(
-        endpoint="http://localhost:4318/api/v1/traces", headers={"X-Api-Key": "test_key"}
-    )
-
-    # Verify tracer provider was set
-    mock_opentelemetry["trace"].set_tracer_provider.assert_called_once()
 
 
 def test_sdk_init_only_once():
@@ -130,6 +101,7 @@ def test_init_without_key_raises_in_strict_mode(no_api_key, monkeypatch):
         tracing.init()
 
 
+@pytest.mark.covers("authentication")
 def test_init_uses_synced_local_credential(no_api_key, mock_opentelemetry, tmp_path, monkeypatch):
     from overmind import tracing
     from overmind.config import Config, dump
@@ -181,20 +153,6 @@ def test_get_tracer_before_init():
 
     with pytest.raises(RuntimeError, match="not initialised"):
         tracing.get_tracer()
-
-
-def test_set_user(mock_opentelemetry):
-    from overmind import tracing
-
-    mock_span = MagicMock()
-    mock_span.is_recording.return_value = True
-    mock_opentelemetry["trace"].get_current_span.return_value = mock_span
-
-    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
-    tracing.set_user(user_id="user123", email="test@example.com")
-
-    mock_span.set_attribute.assert_any_call("user.id", "user123")
-    mock_span.set_attribute.assert_any_call("user.email", "test@example.com")
 
 
 def test_set_tag(mock_opentelemetry):

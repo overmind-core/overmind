@@ -1,11 +1,14 @@
 """The profiler must find capability boundaries without relying on the CAPABILITY type."""
 
+import pytest
 from fakes.ledgerline import langchain_style_trace, scan_inbox_trace, triage_email_trace
 
 from overbae.services.connectors.braintrust.mapping import BRAINTRUST
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
 from overbae.services.connectors.profiling import profile_capability_candidates as _profile
 from overbae.services.connectors.records import ObservationRecord
+
+pytestmark = pytest.mark.covers("vendor-connectors")
 
 
 def profile_capability_candidates(traces, conventions=LANGFUSE):

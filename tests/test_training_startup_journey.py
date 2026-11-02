@@ -13,7 +13,7 @@ from overbae.services.finetuning_runner import PollSnapshot
 from overbae.services.mcp.server import create_mcp_application
 from overbae.tasks.finetuning import _persist_snapshot_progress
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("measured-facts")]
 
 
 def test_startup_stage_receipts_reach_console_and_mcp_without_provider_calls(tmp_path):

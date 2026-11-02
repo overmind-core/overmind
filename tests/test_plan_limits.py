@@ -15,7 +15,7 @@ from overbae.services.plan_limits import (
     require_seat_for_invite,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
 
 
 def _user(email: str | None = None, **extra) -> User:

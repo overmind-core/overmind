@@ -2,6 +2,8 @@ import pytest
 
 from overbae.services.datasets.partition import contamination_keys, content_key, preserve_lineage
 
+pytestmark = pytest.mark.covers("data-logic")
+
 
 @pytest.mark.parametrize(
     "column",

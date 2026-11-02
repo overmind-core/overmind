@@ -10,7 +10,7 @@ from overbae.models import APIToken, DeployedModel, InferenceCall, Project, Proj
 from overbae.services import inference_requests
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("work-once")]
 
 
 def test_disconnect_reconnect_reuses_inference_and_rejects_changed_payload(monkeypatch, settings):

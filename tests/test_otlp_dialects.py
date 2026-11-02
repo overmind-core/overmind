@@ -15,7 +15,7 @@ from factories import (
 
 from overbae.models import Span
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("otlp-ingest")]
 
 
 def _ingested(name: str, attributes: dict) -> Span:

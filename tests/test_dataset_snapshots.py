@@ -4,7 +4,7 @@ from django.utils import timezone
 from overbae.models import Cell, Dataset, Project
 from overbae.services.mcp.resources import dataset_run_job_payload
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("lineage")]
 
 
 @pytest.mark.parametrize("count", [1, 10])

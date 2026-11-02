@@ -6,7 +6,7 @@ from factories import make_project, make_user
 from overbae.models import ProjectMembership
 from overbae.services.seat_downgrade import enforce_free_seats_after_downgrade
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 
 
 def test_strips_invitees_keeps_creator():

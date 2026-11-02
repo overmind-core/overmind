@@ -18,6 +18,8 @@ from overbae.services.recommendation.constraints import eligible_models
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 from overbae.services.recommendation.ranking import DEFAULT_PICKS
 
+pytestmark = pytest.mark.covers("recommendations")
+
 _STATS = {
     "num_examples": 500,
     "avg_input_chars": 300,

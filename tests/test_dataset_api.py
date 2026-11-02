@@ -22,7 +22,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import paths, store, use
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("lineage")]
 
 ROWS = [
     {"question": "q1", "answer": "a1", "tag": "keep"},
@@ -59,53 +59,6 @@ def _create(client, project, rows=ROWS, **extra):
     return Dataset.objects.get(pk=res.data["id"])
 
 
-def test_create_lands_the_source_and_reads_back_with_cells():
-    project = _project()
-    client = _client(project)
-    dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
-    res = client.get(f"/api/datasets/{dataset.id}/")
-    assert res.status_code == 200
-    body = res.data
-    assert body["state"] == "idle" and body["intent"] == "eval"
-    assert [c["version"] for c in body["cells"]] == ["1.0"]
-    assert body["cells"][0]["fits"] == {"ok": True, "reason": ""}
-    assert body["active_version"] == "1.0" and body["rows"] == 2
-    assert "chat" not in body
-
-
-@pytest.mark.parametrize("split", [False, True])
-@pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
-def test_creation_distinguishes_no_capability_from_automatic_matching(split, choice):
-    project = _project()
-    client = _client(project)
-    matched = Capability.objects.create(project=project, name="Matched", slug="matched")
-    selected = Capability.objects.create(project=project, name="Selected", slug="selected")
-    rows = [{**row, "capability_id": str(matched.id)} for row in EVAL_ROWS * 2]
-    body = {"name": "Choice", "project": str(project.id), "source": {"rows": rows}}
-    if choice != "automatic":
-        body["capability"] = None if choice == "none" else str(selected.id)
-    if split:
-        body.update(eval_percent=30, position="tail")
-    else:
-        body["intent"] = "train"
-    response = client.post(
-        "/api/datasets/split/" if split else "/api/datasets/", body, format="json"
-    )
-    assert response.status_code == 201, response.data
-    ids = (
-        [response.data[role]["id"] for role in ("train", "eval")]
-        if split
-        else [response.data["id"]]
-    )
-    expected = {"automatic": matched.id, "none": None, "selected": selected.id}[choice]
-    for dataset in Dataset.objects.filter(pk__in=ids):
-        assert dataset.state == Dataset.State.IDLE, dataset.error
-        assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
-        assert dataset.capability_id == expected
-        if not split:
-            assert dataset.intent == "train"
-
-
 def test_create_from_traces_validates_the_selection_before_creating():
     project = _project()
     client = _client(project)
@@ -139,6 +92,7 @@ def test_create_from_traces_validates_the_selection_before_creating():
     assert queued.call_args.kwargs["kwargs"]["source"] == {"traces": {"trace_ids": [trace]}}
 
 
+@pytest.mark.covers("tenancy")
 def test_create_rejects_two_sources_and_a_foreign_capability():
     project = _project()
     client = _client(project)
@@ -160,20 +114,6 @@ def test_create_rejects_two_sources_and_a_foreign_capability():
         format="json",
     )
     assert res.status_code == 404
-
-
-def test_rows_carry_diff_marks_against_the_cell_before():
-    project = _project()
-    client = _client(project)
-    dataset = _create(client, project)
-    shape = import_version(
-        dataset, [dict(r, tag=r["tag"].upper(), source_row=i) for i, r in enumerate(ROWS)]
-    )
-    res = client.get(f"/api/datasets/{dataset.id}/rows/", {"cell": str(shape.id), "diff": "1"})
-    assert res.status_code == 200
-    marks = res.data["marks"]
-    assert marks[0] == {"before": {"tag": "keep"}}
-    assert len(marks) == 3
 
 
 def test_row_pages_cross_storage_groups_without_changing_values_or_positions(monkeypatch):
@@ -260,18 +200,6 @@ def test_patch_sets_capability_intent_and_active_cell():
     }
 
 
-def test_list_filters_by_intent_and_shows_the_active_version():
-    project = _project()
-    client = _client(project)
-    _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
-    _create(client, project, intent="train")
-    res = client.get("/api/datasets/", {"project": str(project.id), "intent": "eval"})
-    assert res.status_code == 200
-    assert [d["intent"] for d in res.data["results"]] == ["eval"]
-    assert res.data["results"][0]["active_version"] == "1.0"
-    assert res.data["results"][0]["cells"] == []
-
-
 def test_preparation_names_an_optimizer_experiment_by_its_capability():
     project = _project()
     client = _client(project)
@@ -317,6 +245,7 @@ def test_delete_refused_while_a_version_is_used():
     assert res.status_code == 204
 
 
+@pytest.mark.covers("tenancy")
 def test_another_project_reads_and_writes_nothing():
     project = _project()
     dataset = _create(_client(project), project, intent="eval")

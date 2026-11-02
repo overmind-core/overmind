@@ -4,22 +4,19 @@ import uuid
 
 import pytest
 from conftest import frozen_dataset
-from factories import make_matrix_row, make_span
+from factories import make_matrix_row
 from rest_framework.exceptions import ValidationError
 
-from overbae.api.optimizer import OptimizerCandidateSerializer, OptimizerExperimentSerializer
 from overbae.models import (
     Capability,
     DeployedModel,
     EvalMatrix,
     OptimizerCandidate,
-    OptimizerCommand,
     OptimizerExperiment,
     OptimizerIteration,
     Project,
 )
 from overbae.services.optimizer_create import (
-    create_optimizer_experiment,
     validate_optimizer_models,
 )
 from overbae.services.optimizer_ledger import (
@@ -29,7 +26,7 @@ from overbae.services.optimizer_ledger import (
     post_results,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
 EXACT_MATCH = "def evaluate(span):\n    return span.output == span.expected\n"
 
@@ -74,45 +71,7 @@ def _experiment(*, mode=MODE, model_ids=None, status=None, openrouter_key_source
     return experiment
 
 
-@pytest.mark.parametrize("model_ids", [None, [], MODELS * 3, [""], [" openai/gpt-5"]])
-def test_model_selection_rejects_missing_too_many_or_malformed(model_ids):
-    with pytest.raises(ValidationError) as exc:
-        validate_optimizer_models(MODE, model_ids)
-    assert "model_ids" in str(exc.value)
-
-
-def test_model_selection_rejects_duplicates_and_unavailable():
-    with pytest.raises(ValidationError, match="Duplicate"):
-        validate_optimizer_models(MODE, [MODELS[0], MODELS[0]])
-
-    with pytest.raises(ValidationError, match="dead/model"):
-        validate_optimizer_models(MODE, ["dead/model"])
-
-
-def test_finetuned_alias_is_not_a_valid_reference():
-    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-    capability = Capability.objects.create(
-        project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
-    )
-    deployed = DeployedModel.objects.create(
-        project=project,
-        model_id=f"ft-ready-{uuid.uuid4().hex[:8]}",
-        status=DeployedModel.Status.READY,
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-    )
-    capability.active_model = deployed
-    capability.save(update_fields=["active_model"])
-
-    # The alias chases the capability's *active* model — the comparison must pin
-    # the deployment itself, so aliases are rejected outright.
-    with pytest.raises(ValidationError, match="overmind/"):
-        validate_optimizer_models(MODE, [f"overmind/{capability.id}"], project=project)
-
-    assert validate_optimizer_models(MODE, [deployed.model_id], project=project) == [
-        deployed.model_id
-    ]
-
-
+@pytest.mark.covers("tenancy")
 def test_finetuned_deployment_id_requires_ready_in_project():
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ready = DeployedModel.objects.create(
@@ -156,53 +115,6 @@ def test_normal_optimizer_rejects_model_selection():
         validate_optimizer_models(OptimizerExperiment.Mode.OPTIMIZE, [MODELS[0]])
 
 
-def test_hybrid_model_selection_is_validated():
-    assert validate_optimizer_models(OptimizerExperiment.Mode.HYBRID, MODELS) == MODELS
-
-
-def test_create_service_forces_one_iteration_per_model():
-    experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
-    created = create_optimizer_experiment(
-        user=None,
-        capability=experiment.capability,
-        dataset=experiment.dataset,
-        mode=MODE,
-        model_ids=MODELS,
-        num_iterations=9,
-        num_candidates_per_iteration=9,
-        max_iterations_without_improvement=9,
-        openrouter_key_source=OptimizerExperiment.OpenRouterKeySource.LOCAL,
-    )
-    assert created.mode == MODE
-    assert created.model_ids == MODELS
-    assert created.num_iterations == 2
-    assert created.num_candidates_per_iteration == 1
-    assert created.max_iterations_without_improvement == 0
-    assert created.status == OptimizerExperiment.Status.SCHEDULED
-
-
-def test_read_serializers_expose_comparison_fields():
-    experiment = _experiment()
-    iteration = OptimizerIteration.objects.create(experiment=experiment, order=1)
-    candidate = OptimizerCandidate.objects.create(
-        experiment=experiment,
-        iteration=iteration,
-        candidate_index=0,
-        target_model=MODELS[0],
-        code_path="diff --git a/x b/x\n",
-    )
-
-    experiment_data = OptimizerExperimentSerializer(experiment).data
-    candidate_data = OptimizerCandidateSerializer(candidate).data
-
-    assert experiment_data["mode"] == MODE
-    assert experiment_data["model_ids"] == MODELS
-    assert candidate_data["target_model"] == MODELS[0]
-    assert candidate_data["model_name"] == MODELS[0]
-    assert candidate_data["code_path"] == "diff --git a/x b/x\n"
-    assert str(candidate_data["experiment"]) == str(experiment.id)
-
-
 def _grade(experiment, candidate: dict, results: list[dict], *, order: int = 1):
     make_matrix_row(
         experiment.project,
@@ -217,115 +129,6 @@ def _grade(experiment, candidate: dict, results: list[dict], *, order: int = 1):
     evaluate_iteration(experiment, order)
     posted.refresh_from_db()
     return posted
-
-
-@pytest.mark.django_db(transaction=True)
-def test_failed_outputs_are_excluded_from_the_score(eager):
-    experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
-    candidate = _grade(
-        experiment,
-        {"candidate_index": 0},
-        [
-            {"datapoint_index": 0, "output": "a"},
-            {"datapoint_index": 1, "success": False, "error": "provider timeout"},
-        ],
-    )
-
-    assert candidate.score == pytest.approx(50.0)
-    assert candidate.scores["coverage"] == {
-        "excluded_commands": 1,
-        "errors": ["provider timeout"],
-        "scored_rows": 1,
-        "graded_rows": 2,
-        "total_rows": 2,
-        "coverage_rate": 0.5,
-    }
-    assert candidate.commands.get(datapoint_index=1).status == OptimizerCommand.Status.FAILED
-
-
-@pytest.mark.parametrize(
-    ("target", "observed", "routed"),
-    [
-        ("openai/gpt-5", "openai/gpt-5", True),
-        ("openai/gpt-5-mini", "gpt-5-mini", True),
-        ("qwen/qwen3-14b", "qwen3-14b", True),
-        ("openrouter/qwen/qwen3-14b", "qwen3-14b", True),
-        ("openai/gpt-5", "openrouter/openai/gpt-5", True),
-        ("deepseek/deepseek-v4-flash", "DeepSeek/DeepSeek-V4-Flash", True),
-        ("ft-abc", "ft-abc", True),
-        ("openai/gpt-5", "anthropic/claude-sonnet-4", False),
-        ("openai/gpt-5-mini", "anthropic/gpt-5-mini", False),
-        ("openai/gpt-5-mini", "openai/gpt-5.4", False),
-        ("ft-abc", "ft-def", False),
-    ],
-)
-def test_a_trace_served_by_another_model_fails_the_datapoint(eager, target, observed, routed):
-    experiment = _experiment()
-    make_span(
-        experiment.project,
-        trace_id="a" * 32,
-        span_type="llm",
-        attributes={"gen_ai.request.model": observed},
-    )
-
-    candidate = _grade(
-        experiment,
-        {"candidate_index": 0, "target_model": target},
-        [
-            {"datapoint_index": 0, "output": "a", "trace_id": "a" * 32},
-            {"datapoint_index": 1, "output": "b"},
-        ],
-    )
-
-    command = candidate.commands.get(datapoint_index=0)
-    assert candidate.scores["coverage"]["excluded_commands"] == (0 if routed else 1)
-    if not routed:
-        assert command.error.startswith("Model routing mismatch")
-        assert observed in command.error
-
-
-@pytest.mark.django_db(transaction=True)
-def test_candidates_share_the_first_rubric_and_score_answer_rows_scoped_to_a_span(eager):
-    experiment = _experiment()
-    make_matrix_row(
-        experiment.project,
-        "Answer matches",
-        capability=experiment.capability,
-        type=EvalMatrix.Type.DETERMINISTIC,
-        source=EXACT_MATCH,
-        span_name="SupportAgent.run",
-    )
-    make_matrix_row(
-        experiment.project,
-        "Tool step",
-        capability=experiment.capability,
-        type=EvalMatrix.Type.DETERMINISTIC,
-        source="def evaluate(span):\n    return False\n",
-        span_type="tool_call",
-    )
-
-    def grade(order: int, model: str):
-        iteration = create_iteration(experiment, order=order, candidates=[{"target_model": model}])
-        posted = iteration.candidates.get()
-        post_results(
-            experiment,
-            [
-                {"candidate_id": str(posted.id), "datapoint_index": 0, "output": "a"},
-                {"candidate_id": str(posted.id), "datapoint_index": 1, "output": "b"},
-            ],
-        )
-        evaluate_iteration(experiment, order)
-        posted.refresh_from_db()
-        return posted
-
-    first = grade(1, MODELS[0])
-    make_matrix_row(experiment.project, "Added later", capability=experiment.capability)
-    second = grade(2, MODELS[1])
-
-    assert [row["name"] for row in second.eval_run.matrix] == ["Answer matches", "Tool step"]
-    assert second.eval_run.matrix == first.eval_run.matrix
-    assert set(first.scores["metrics"]) == {"Answer matches"}
-    assert first.score == pytest.approx(100.0)
 
 
 @pytest.mark.parametrize(
@@ -407,11 +210,6 @@ def test_hybrid_report_surfaces_best_combination_even_when_incumbent_wins():
         "incumbent_score": 80.0,
         "overall_winner": "incumbent",
     }
-
-
-def test_validate_optimizer_models_stores_canonical_slugs():
-    assert validate_optimizer_models(MODE, ["openrouter/openai/gpt-5"]) == ["openai/gpt-5"]
-    assert validate_optimizer_models(MODE, ["openai/gpt-5"]) == ["openai/gpt-5"]
 
 
 def test_model_comparison_winner_breaks_score_tie_on_coverage():

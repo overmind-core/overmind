@@ -1,3 +1,4 @@
+// covers: console-logic
 import { type EdgeProps, Position } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 

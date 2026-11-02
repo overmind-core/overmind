@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,

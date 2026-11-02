@@ -4,6 +4,8 @@ import pytest
 
 from overbae.services.connectors.galileo.client import GalileoClient, GalileoError, split_source_id
 
+pytestmark = pytest.mark.covers("vendor-connectors")
+
 _PROJECT = "11111111-1111-1111-1111-111111111111"
 _STREAM = "22222222-2222-2222-2222-222222222222"
 _SOURCE = f"{_PROJECT}:{_STREAM}"

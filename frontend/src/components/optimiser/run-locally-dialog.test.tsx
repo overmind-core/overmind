@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -140,7 +141,6 @@ vi.mock("@/components/ui/select", () => ({
 import {
   buildBacktestPrompt,
   buildOptimisePrompt,
-  isBatchModel,
   isComparisonOptionDisabled,
   MAX_COMPARISON_MODELS,
   RunLocallyDialog,
@@ -175,13 +175,6 @@ describe("toggleComparisonModel", () => {
     expect(
       toggleComparisonModel(["openai/gpt-5-mini:batch"], "google/gemini-2.5-pro:batch")
     ).toEqual(["openai/gpt-5-mini:batch", "google/gemini-2.5-pro:batch"]);
-  });
-});
-
-describe("isBatchModel", () => {
-  it("detects OpenRouter batch slugs", () => {
-    expect(isBatchModel("openai/gpt-5-mini:batch")).toBe(true);
-    expect(isBatchModel("openai/gpt-5-mini")).toBe(false);
   });
 });
 

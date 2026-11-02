@@ -5,11 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # sft_assets is uploaded to Modal as a flat directory, so its modules import each
 # other by bare name and only resolve with the directory itself on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
 
 from pretok import normalize_openai_wire  # noqa: E402
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 CALL = {
     "id": "call_1",

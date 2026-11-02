@@ -20,7 +20,7 @@ from overbae.models import (
     OptimizerExperiment,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("sdk-wire")]
 
 
 URL = "/api/v1/chat/completions"

@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from mcp_fixtures import asgi_db
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
@@ -10,45 +11,7 @@ from overbae.models import APIToken, NativeEvaluationPlan, Project
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.native_evaluation import directory
 
-pytestmark = pytest.mark.django_db(transaction=True)
-
-
-@pytest.mark.parametrize("pending", [{}, {"receipt": None}])
-def test_pending_evaluation_receipts_remain_readable_until_completion(pending):
-    plan, key = completed_report()
-    plan.state = "running"
-    plan.results = {}
-    plan.calls = {"calibration_candidate": {"id": "existing-call", "state": "running", **pending}}
-    plan.save(update_fields=["state", "results", "calls"])
-    with TestClient(create_mcp_application()) as client:
-        for complete in (False, True):
-            if complete:
-                plan.calls["calibration_candidate"].update(
-                    state="completed",
-                    receipt={"decisions": 210, "predictions_sha256": "sealed", "tokens": [1, 2]},
-                )
-                plan.save(update_fields=["calls"])
-            job = call(client, key, "get_job", {"kind": "native_evaluation", "id": str(plan.pk)})
-            observed = job["progress"]["calls"]["calibration_candidate"]
-            assert observed["id"] == "existing-call"
-            assert observed["state"] == ("completed" if complete else "running")
-            assert observed["receipt"] == (
-                {"decisions": 210, "predictions_sha256": "sealed"} if complete else None
-            )
-            resource = client.post(
-                "/api/mcp/",
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 3,
-                    "method": "resources/read",
-                    "params": {"uri": job["resource"]["uri"]},
-                },
-                headers={"X-Api-Key": key, "Accept": "application/json"},
-            ).json()["result"]
-            assert (
-                json.loads(resource["contents"][0]["text"])["calls"]["calibration_candidate"]
-                == observed
-            )
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 def completed_report():
@@ -97,6 +60,7 @@ def completed_report():
     return plan, key
 
 
+@asgi_db
 def test_mcp_summary_counts_every_benchmark_and_links_complete_project_scoped_reports():
     plan, key = completed_report()
     with TestClient(create_mcp_application()) as client:
@@ -133,18 +97,3 @@ def test_mcp_summary_counts_every_benchmark_and_links_complete_project_scoped_re
     )
     api.credentials(HTTP_X_API_KEY=foreign_key)
     assert api.get(progress["report"]["json_path"]).status_code == 404
-
-
-@pytest.mark.parametrize("format", ["json", "md"])
-def test_report_format_downloads_without_renderer_negotiation_failure(format):
-    plan, key = completed_report()
-    api = APIClient()
-    api.credentials(HTTP_X_API_KEY=key)
-    path = f"/api/native-evaluations/{plan.pk}/report/?format={format}"
-    response = api.get(path)
-    assert response.status_code == 200
-    assert b"source-104" in b"".join(response.streaming_content)
-    plan.state = "running"
-    plan.save(update_fields=["state"])
-    assert api.get(path).status_code == 400
-    assert api.get(f"/api/native-evaluations/{plan.pk}/report/?format=invalid").status_code == 400

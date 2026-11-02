@@ -7,6 +7,8 @@ from overbae.models import DatasetPipelineRunner
 from overbae.services.datasets import pipeline_runner, workbench
 from sandbox.packages import runtime_id
 
+pytestmark = pytest.mark.covers("sandbox")
+
 
 @pytest.mark.django_db
 def test_runtime_health_checks_identity_and_expires(settings):

@@ -8,13 +8,14 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from django.utils import timezone
+from mcp_fixtures import asgi_db
 from rest_framework.test import APIClient
 from starlette.testclient import TestClient
 
 from overbae.models import MCPOAuthGrant, MCPOAuthToken, Project, ProjectMembership, User
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 RESOURCE = "http://localhost:8000/api/mcp/"
 CALLBACK = "https://client.example.test/callback"
 
@@ -98,6 +99,7 @@ def mcp(client, access_token, name="list_projects", arguments=None):
     )
 
 
+@asgi_db
 def test_oauth_discovery_consent_project_access_refresh_and_revoke(flow):
     client, _, _, client_id = flow
     challenge = client.post("/api/mcp/")
@@ -144,6 +146,7 @@ def test_oauth_discovery_consent_project_access_refresh_and_revoke(flow):
     assert mcp(client, tokens["access_token"]).status_code == 401
 
 
+@asgi_db
 @pytest.mark.parametrize(
     "tampering",
     [
@@ -160,6 +163,7 @@ def test_oauth_rejects_invalid_code_exchange_without_consuming_code(flow, tamper
     assert client.post("/token", data=payload).status_code == 400
 
 
+@asgi_db
 def test_refresh_replay_revokes_family_and_disabled_owner_loses_access(flow):
     client, _, user, client_id = flow
     tokens = client.post("/token", data=authorize(flow)).json()
@@ -178,6 +182,7 @@ def test_refresh_replay_revokes_family_and_disabled_owner_loses_access(flow):
     assert mcp(client, tokens["access_token"]).status_code == 401
 
 
+@asgi_db
 def test_oauth_registration_rejects_unsafe_redirects(flow):
     client, _, _, _ = flow
     for uri in [
@@ -191,6 +196,7 @@ def test_oauth_registration_rejects_unsafe_redirects(flow):
         assert result.status_code == 400
 
 
+@asgi_db
 def test_consent_requires_account_sign_in_and_cannot_be_replayed(flow):
     client, api, user, client_id = flow
     response = client.get(
@@ -230,6 +236,7 @@ def test_consent_requires_account_sign_in_and_cannot_be_replayed(flow):
     assert api.post("/api/mcp-oauth/consent/", {"request": raw, "approve": True}).status_code == 400
 
 
+@asgi_db
 def test_expired_codes_tokens_and_wrong_resource_are_rejected(flow):
     client, _, _, _ = flow
     payload = authorize(flow)
@@ -243,6 +250,7 @@ def test_expired_codes_tokens_and_wrong_resource_are_rejected(flow):
     assert mcp(client, tokens["access_token"]).status_code == 401
 
 
+@asgi_db
 def test_refresh_cannot_expand_scopes_or_change_client(flow):
     client, _, _, client_id = flow
     tokens = client.post("/token", data=authorize(flow)).json()
@@ -262,6 +270,7 @@ def test_refresh_cannot_expand_scopes_or_change_client(flow):
     assert client.post("/token", data=payload).status_code == 200
 
 
+@asgi_db
 def test_connection_refreshes_after_years_until_revoked(flow, monkeypatch):
     client, _, _, client_id = flow
     tokens = client.post("/token", data=authorize(flow)).json()

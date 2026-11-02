@@ -11,6 +11,8 @@ from overbae.services.mcp.catalog import ToolCatalog, ToolDefinition
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.errors import MCPError, error_result
 
+pytestmark = pytest.mark.covers("mcp-surface")
+
 
 class Input(BaseModel):
     value: str

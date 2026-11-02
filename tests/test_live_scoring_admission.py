@@ -9,7 +9,7 @@ from django.utils import timezone
 from overbae.innermind import admission
 from overbae.models import LiveScoringWork, Project
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def project():

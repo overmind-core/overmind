@@ -4,12 +4,16 @@ otherwise-silent HF weight download; the runner parses them into PollSnapshot.
 
 from __future__ import annotations
 
+import pytest
+
 from overbae.services.finetuning_runner import (
     PollSnapshot,
     filter_activity_logs,
     parse_download_stage,
     progress_from_snapshot,
 )
+
+pytestmark = pytest.mark.covers("measured-facts")
 
 
 def _logs(*messages: str) -> list[dict]:

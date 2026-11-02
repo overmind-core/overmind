@@ -20,7 +20,7 @@ from overbae.services.datasets import land
 from overbae.services.datasets.partition_plans import build
 from overbae.services.mcp.server import create_mcp_application
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("plans")]
 
 
 def invoke(client, key, name, arguments, *, error=False):

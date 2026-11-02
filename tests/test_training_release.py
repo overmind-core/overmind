@@ -6,6 +6,8 @@ import pytest
 
 from overbae.services import training_release
 
+pytestmark = pytest.mark.covers("model-runtime")
+
 
 def test_release_requires_explicit_environment_and_pins_observers_to_saved_release(
     tmp_path, monkeypatch

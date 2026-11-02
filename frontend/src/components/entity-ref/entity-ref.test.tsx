@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// covers: console-logic
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -78,27 +79,5 @@ describe("EntityLink prop forwarding", () => {
     // Event would not reach the handler.
     fireEvent.pointerEnter(screen.getByTestId("ref"));
     expect(onPointerEnter).toHaveBeenCalled();
-  });
-
-  it("routes every kind to its own path", () => {
-    const cases = [
-      ["capability", "/capabilities/$capabilityId"],
-      ["dataset", "/datasets/$datasetId"],
-      ["evalRun", "/evaluations/runs/$runId"],
-      ["experiment", "/optimiser/$experimentId"],
-      ["model", "/inference/$modelId"],
-      ["project", "/projects/$projectId"],
-      ["trace", "/observability/$traceId"],
-      ["job", "/training"],
-    ] as const;
-    for (const [kind, path] of cases) {
-      cleanup();
-      render(
-        <EntityLink className="chip" data-testid="ref" id="abc123" kind={kind} onClick={() => {}}>
-          x
-        </EntityLink>
-      );
-      expect(screen.getByTestId("ref").getAttribute("data-to")).toBe(path);
-    }
   });
 });

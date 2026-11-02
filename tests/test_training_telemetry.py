@@ -9,6 +9,8 @@ from overbae.services import training_submission
 from overbae.services.finetuning_runner import ModalRunner, PollSnapshot, progress_from_snapshot
 from overbae.tasks.finetuning import _persist_snapshot_progress
 
+pytestmark = pytest.mark.covers("measured-facts")
+
 
 def test_stages_and_recovery_cross_provider_and_progress_boundaries(tmp_path):
     record_stage(tmp_path, "initial_validation", completed=12, total=30, unit="decisions")

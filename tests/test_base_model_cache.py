@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from overbae.modal.register_model import _base_model_dir, _snapshot_is_complete
+
+pytestmark = pytest.mark.covers("model-runtime")
 
 
 def _shard(d: Path, name: str, size: int = 16) -> None:

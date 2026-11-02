@@ -21,7 +21,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks import datasets as dataset_tasks
 from overbae.tasks.cleanup_tmp import cleanup_uploads
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("work-once")]
 
 
 @pytest.fixture

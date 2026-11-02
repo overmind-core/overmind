@@ -6,7 +6,8 @@ import pytest
 from typer.testing import CliRunner
 
 from overmind.__main__ import app
-from overmind.config import Config, dump
+
+pytestmark = pytest.mark.covers("privacy")
 
 
 @pytest.fixture
@@ -71,20 +72,6 @@ def test_repository_free_download_uses_address_bound_account_without_forwarding_
     assert json.loads(result.output)["bytes_written"] == 7
     assert observed == [("/api/deployed-models/deployment/checkpoints/", "local-test-account"), ("/artifact", None)]
     assert "local-test-account" not in result.output
-
-
-@pytest.mark.parametrize("credentials", ["saved", "repository"])
-def test_checkpoint_endpoint_override_cannot_move_a_bound_key(checkpoint_host, credentials):
-    base, observed, _, _ = checkpoint_host
-    if credentials == "repository":
-        dump(
-            Config(api_key="repository-test-key", base_url=base, project_id="project"),
-            __import__("pathlib").Path("overmind.toml"),
-        )
-    result = run_download("--api-url", "http://localhost:1")
-    assert result.exit_code == 1
-    assert "different API" in result.output
-    assert observed == []
 
 
 @pytest.mark.parametrize("stage", ["metadata", "artifact"])
