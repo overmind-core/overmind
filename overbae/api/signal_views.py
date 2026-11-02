@@ -1,5 +1,5 @@
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -12,10 +12,13 @@ from overbae.api.signal_serializers import (
     SignalEventSeenSerializer,
     SignalEventSerializer,
     SignalSubscriptionSerializer,
+    SignalTrendQuerySerializer,
+    SignalTrendSerializer,
 )
 from overbae.api.views import _user_project_ids
 from overbae.innermind.signals import signal_factory
 from overbae.models import Project, SignalEvent, SignalSubscription
+from overbae.services.signal_trend import signal_trend
 
 
 @extend_schema_view(
@@ -61,6 +64,23 @@ class SignalEventViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return SignalEvent.objects.filter(
             project_id__in=_user_project_ids(self.request.user, self.request.auth)
         ).select_related("capability")
+
+    @extend_schema(
+        summary="Daily signal event counts per signal type",
+        filters=True,
+        parameters=[
+            OpenApiParameter("project", str, required=True),
+            OpenApiParameter("days", int, description="1 to 90; defaults to 14."),
+        ],
+        responses=SignalTrendSerializer,
+    )
+    @action(detail=False, methods=["get"], pagination_class=None)
+    def trend(self, request):
+        query = SignalTrendQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        events = self.filter_queryset(self.get_queryset())
+        trend = signal_trend(events, query.validated_data["days"])
+        return Response(SignalTrendSerializer(trend).data)
 
     @extend_schema(
         summary="Mark signal events seen",

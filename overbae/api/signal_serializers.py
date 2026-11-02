@@ -90,3 +90,21 @@ class SignalEventSeenSerializer(serializers.Serializer):
 
 class SignalEventSeenResponseSerializer(serializers.Serializer):
     updated = serializers.IntegerField()
+
+
+class SignalTrendQuerySerializer(serializers.Serializer):
+    project = serializers.UUIDField()
+    days = serializers.IntegerField(min_value=1, max_value=90, default=14)
+
+
+class SignalTrendSeriesSerializer(serializers.Serializer):
+    signal_type = serializers.CharField()
+    total = serializers.IntegerField()
+    counts = serializers.ListField(child=serializers.IntegerField())
+
+
+class SignalTrendSerializer(serializers.Serializer):
+    days = serializers.ListField(
+        child=serializers.CharField(), help_text="ISO dates, oldest first."
+    )
+    series = SignalTrendSeriesSerializer(many=True)

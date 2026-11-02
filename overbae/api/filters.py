@@ -291,6 +291,7 @@ class EvalScoreFilter(filters.FilterSet):
 
 class SignalEventFilter(filters.FilterSet):
     unseen = filters.BooleanFilter(field_name="seen_at", lookup_expr="isnull")
+    occurred_on = filters.DateFilter(field_name="occurred_at", lookup_expr="date")
 
     class Meta:
         model = SignalEvent

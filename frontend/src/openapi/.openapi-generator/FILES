@@ -397,6 +397,8 @@ models/SignalEventSeenRequest.ts
 models/SignalEventSeenResponse.ts
 models/SignalSubscription.ts
 models/SignalSubscriptionRequest.ts
+models/SignalTrend.ts
+models/SignalTrendSeries.ts
 models/SignalTypeEnum.ts
 models/SourceEnum.ts
 models/SourceRequest.ts

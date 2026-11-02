@@ -355,6 +355,8 @@ export * from './SignalEventSeenRequest';
 export * from './SignalEventSeenResponse';
 export * from './SignalSubscription';
 export * from './SignalSubscriptionRequest';
+export * from './SignalTrend';
+export * from './SignalTrendSeries';
 export * from './SignalTypeEnum';
 export * from './SourceEnum';
 export * from './SourceRequest';

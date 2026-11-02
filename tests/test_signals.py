@@ -13,6 +13,7 @@ from overbae.innermind.signals import (
     PlanDriftSignal,
     ScoreDropSignal,
     SignalRunner,
+    UnscorableSignal,
     projects_with_recent_spans,
 )
 from overbae.models import (
@@ -102,6 +103,26 @@ def test_signal_details_carry_redacted_evidence_and_handoffs():
     }
 
 
+def test_unscorable_counts_only_spans_whose_expectations_errored():
+    signal = UnscorableSignal("test")
+
+    def scored_span(span_id, metrics):
+        return Span(
+            span_id=span_id,
+            trace_id="1" * 32,
+            eval_attributes={"score": None, "metrics": metrics},
+        )
+
+    nothing_applied = scored_span("a" * 16, {})
+    abstained = scored_span("b" * 16, {"tool ran": {"score": None, "error": ""}})
+    assert async_to_sync(signal.evaluate)([nothing_applied, abstained]) is None
+
+    errored = scored_span("c" * 16, {"answers": {"score": None, "error": "judge timed out"}})
+    finding = async_to_sync(signal.evaluate)([nothing_applied, abstained, errored])
+    assert finding.message == "1 of 2 evaluated spans failed scoring"
+    assert finding.spans == [(errored, "judge timed out")]
+
+
 def test_score_drop_measures_both_windows():
     signal = ScoreDropSignal("test")
     spans = [
@@ -178,6 +199,55 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     assert response.status_code == 200
     assert response.data["count"] == 0
     assert call(ctx, "query_traces", {"signal_event": str(foreign_event.id)})["page"]["total"] == 0
+
+
+def test_signal_trend_counts_each_day_and_filters_the_list_by_day(context):
+    ctx, client = context
+    today = timezone.localdate()
+
+    def event(signal_type, days_ago, *, project=None, seen=False):
+        created = SignalEvent.objects.create(
+            project=project or ctx.project,
+            signal_type=signal_type,
+            message=signal_type,
+            dedupe_key=uuid.uuid4().hex,
+            seen_at=timezone.now() if seen else None,
+        )
+        SignalEvent.objects.filter(pk=created.pk).update(
+            occurred_at=timezone.now() - timedelta(days=days_ago)
+        )
+        return created
+
+    event("errors", 0)
+    event("errors", 0)
+    yesterday = event("errors", 1, seen=True)
+    event("leak", 1)
+    event("leak", 20)
+    event("errors", 0, project=Project.objects.create(name="Other", slug=f"o-{uuid.uuid4()}"))
+
+    response = client.get("/api/signal-events/trend/", {"project": ctx.project.id, "days": 3})
+    assert response.status_code == 200
+    assert response.data["days"] == [
+        (today - timedelta(days=offset)).isoformat() for offset in (2, 1, 0)
+    ]
+    assert response.data["series"] == [
+        {"signal_type": "errors", "total": 3, "counts": [0, 1, 2]},
+        {"signal_type": "leak", "total": 1, "counts": [0, 1, 0]},
+    ]
+    unseen = client.get(
+        "/api/signal-events/trend/", {"project": ctx.project.id, "days": 3, "unseen": "true"}
+    )
+    assert unseen.data["series"][0] == {"signal_type": "errors", "total": 2, "counts": [0, 0, 2]}
+
+    listed = client.get(
+        "/api/signal-events/",
+        {
+            "project": ctx.project.id,
+            "signal_type": "errors",
+            "occurred_on": (today - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert [row["id"] for row in listed.data["results"]] == [str(yesterday.id)]
 
 
 def test_project_and_capability_mutes_override_defaults(context):
