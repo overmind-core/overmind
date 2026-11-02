@@ -53,13 +53,20 @@ export const useDeleteSignalSubscriptionMutation = (projectId: string | undefine
 
 export const useSignalEventsQuery = (
   projectId: string | undefined,
-  filters: { signalType?: string; unseen?: boolean; page?: number; session?: string } = {}
+  filters: {
+    signalType?: string;
+    unseen?: boolean;
+    page?: number;
+    session?: string;
+    day?: string;
+  } = {}
 ) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
       apiClient.signalEvents.signalEventsList({
         conversation: filters.session,
+        occurredOn: filters.day ? new Date(filters.day) : undefined,
         page: filters.page,
         pageSize: 50,
         project: projectId,
@@ -71,9 +78,27 @@ export const useSignalEventsQuery = (
       projectId,
       filters.session ?? null,
       filters.signalType ?? null,
+      filters.day ?? null,
       !!filters.unseen,
       filters.page ?? 1,
     ],
+    refetchInterval: 30_000,
+  });
+
+export const useSignalTrendQuery = (
+  projectId: string | undefined,
+  filters: { unseen?: boolean; session?: string; days: number }
+) =>
+  useQuery({
+    enabled: !!projectId,
+    queryFn: () =>
+      apiClient.signalEvents.signalEventsTrendRetrieve({
+        conversation: filters.session,
+        days: filters.days,
+        project: projectId!,
+        unseen: filters.unseen || undefined,
+      }),
+    queryKey: ["signal-trend", projectId, filters.session ?? null, !!filters.unseen, filters.days],
     refetchInterval: 30_000,
   });
 
@@ -95,6 +120,9 @@ export const useMarkSignalsSeenMutation = (projectId: string | undefined) => {
         signalEventSeenRequest: { ids, project: projectId! },
       }),
     onError: (e) => notify.error(e, "Couldn't mark signals seen"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["signal-events", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["signal-events", projectId] });
+      qc.invalidateQueries({ queryKey: ["signal-trend", projectId] });
+    },
   });
 };

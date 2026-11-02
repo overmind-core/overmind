@@ -2,21 +2,16 @@ import { useState } from "react";
 
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { EntityRef } from "@/components/entity-ref";
+import { SignalChecks } from "@/components/traces/signal-checks";
 import { SignalDetailSheet, signalTraceIds } from "@/components/traces/signal-detail";
+import { dayLabel } from "@/components/traces/signal-trend-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DateTime } from "@/components/ui/datetime";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
+import { lazyChart } from "@/components/ui/lazy-chart";
 import {
   Select,
   SelectContent,
@@ -37,50 +32,24 @@ import {
 import { useAuthContext } from "@/contexts/auth-context";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import {
-  useCreateSignalSubscriptionMutation,
   useMarkSignalsSeenMutation,
   useSignalCatalogQuery,
   useSignalEventsQuery,
   useSignalSubscriptionsQuery,
-  useUpdateSignalSubscriptionMutation,
+  useSignalTrendQuery,
 } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
 import { humanizeKey } from "@/lib/label-case";
+import { LABEL } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import type {
-  SignalCatalogEntry,
-  SignalEvent,
-  SignalSubscription,
-  SignalTypeEnum,
-} from "@/openapi";
+import type { SignalEvent } from "@/openapi";
 
 const ALL = "__all__";
+const TREND_DAYS = 14;
 
-function SignalChecks({ projectId }: { projectId: string }) {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="secondary">
-          <Icon.settings />
-          Signal checks
-        </Button>
-      </DialogTrigger>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>Signal checks</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Checks run automatically every five minutes over the last 24 hours of received traces.
-            Disable noisy checks or adjust their thresholds here. Plan drift is off by default
-            because it makes additional model calls.
-          </p>
-          <SubscriptionsView projectId={projectId} />
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-}
+const SignalTrendChart = lazyChart(() => import("@/components/traces/signal-trend-chart"), {
+  minHeight: 196,
+});
 
 export function SignalEvents({
   projectId,
@@ -88,6 +57,7 @@ export function SignalEvents({
   onSelect,
   onInspectTrace,
   signal,
+  day,
   unseen,
   page,
   onChange,
@@ -97,12 +67,25 @@ export function SignalEvents({
   onSelect: (id: string, conversation?: string | null) => void;
   onInspectTrace: (id: string, traceId: string) => void;
   signal: string | undefined;
+  day: string | undefined;
   unseen: boolean;
   page: number;
-  onChange: (updates: { signal?: string; unseen?: boolean; page?: number }) => void;
+  onChange: (updates: {
+    signal?: string;
+    signal_day?: string;
+    unseen?: boolean;
+    page?: number;
+  }) => void;
 }) {
   const catalog = useSignalCatalogQuery();
-  const events = useSignalEventsQuery(projectId, { page, session, signalType: signal, unseen });
+  const events = useSignalEventsQuery(projectId, {
+    day,
+    page,
+    session,
+    signalType: signal,
+    unseen,
+  });
+  const trend = useSignalTrendQuery(projectId, { days: TREND_DAYS, session, unseen });
   const markSeen = useMarkSignalsSeenMutation(projectId);
   const guard = useGuestGate();
   const { isGuest } = useAuthContext();
@@ -130,6 +113,33 @@ export function SignalEvents({
 
   return (
     <div className="flex flex-col gap-3">
+      {trend.data && trend.data.series.length > 0 && (
+        <Card className="flex flex-col gap-3 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className={cn(LABEL.pixel, "text-xs text-muted-foreground")}>
+              Last {TREND_DAYS} days
+            </h2>
+            {day && (
+              <Button
+                onClick={() => onChange({ page: 1, signal_day: undefined })}
+                size="xs"
+                variant="secondary"
+              >
+                {dayLabel(day)}
+                <Icon.close />
+              </Button>
+            )}
+          </div>
+          <SignalTrendChart
+            day={day}
+            onSelect={(selection) =>
+              onChange({ page: 1, signal: selection.signal, signal_day: selection.day })
+            }
+            signal={signal}
+            trend={trend.data}
+          />
+        </Card>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Select
           onValueChange={(v) => onChange({ page: 1, signal: v === ALL ? undefined : v })}
@@ -187,7 +197,7 @@ export function SignalEvents({
         <EmptyState
           className="rounded-md border border-dashed bg-wash-subtle"
           description={
-            signal || unseen
+            signal || unseen || day
               ? "No events match these filters."
               : enabledCount === 0
                 ? "Enable checks using Signal checks above."
@@ -301,169 +311,5 @@ export function SignalEvents({
         </div>
       )}
     </div>
-  );
-}
-
-function ExpandableText({ text, title }: { text: string; title: string }) {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <button
-          aria-label={`Show full text of ${title}`}
-          className="line-clamp-2 cursor-pointer whitespace-normal text-left hover:text-foreground"
-          type="button"
-        >
-          {text}
-        </button>
-      </DialogTrigger>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <p className="whitespace-pre-wrap text-sm">{text}</p>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SubscriptionsView({ projectId }: { projectId: string }) {
-  const catalog = useSignalCatalogQuery();
-  const subscriptions = useSignalSubscriptionsQuery(projectId);
-  if (catalog.isLoading || subscriptions.isLoading) return <LoadingState />;
-  const byType = new Map(
-    (subscriptions.data?.results ?? [])
-      .filter((sub) => !sub.capability)
-      .map((sub) => [sub.signalType, sub])
-  );
-  return (
-    <div className="overflow-auto rounded-md border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-48">Signal</TableHead>
-            <TableHead>Detects</TableHead>
-            <TableHead className="w-72">Parameters</TableHead>
-            <TableHead className="w-20 text-center">Enabled</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {(catalog.data ?? []).map((entry) => (
-            <SubscriptionRow
-              entry={entry}
-              key={entry.signalType}
-              projectId={projectId}
-              subscription={byType.get(entry.signalType as SignalTypeEnum)}
-            />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-function SubscriptionRow({
-  entry,
-  subscription,
-  projectId,
-}: {
-  entry: SignalCatalogEntry;
-  subscription: SignalSubscription | undefined;
-  projectId: string;
-}) {
-  const create = useCreateSignalSubscriptionMutation(projectId);
-  const update = useUpdateSignalSubscriptionMutation(projectId);
-  const guard = useGuestGate();
-  const config = (subscription?.config ?? {}) as Record<string, unknown>;
-  const params = Object.entries(entry.params ?? {});
-
-  const save = (body: { enabled?: boolean; config?: Record<string, unknown> }) => {
-    if (subscription) update.mutate({ body, id: subscription.id });
-    else
-      create.mutate({
-        config: body.config ?? {},
-        enabled: body.enabled ?? entry.defaultEnabled,
-        project: projectId,
-        signalType: entry.signalType as SignalTypeEnum,
-      });
-  };
-
-  return (
-    <TableRow>
-      <TableCell className="text-sm">{humanizeKey(entry.signalType)}</TableCell>
-      <TableCell className="max-w-md text-sm text-muted-foreground">
-        <ExpandableText text={entry.description} title={humanizeKey(entry.signalType)} />
-      </TableCell>
-      <TableCell>
-        {params.length === 0 ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {params.map(([name, fallback]) => (
-              <ParamInput
-                defaultValue={fallback}
-                key={name}
-                name={name}
-                onCommit={(value) => {
-                  const next = { ...config };
-                  if (value === undefined) delete next[name];
-                  else next[name] = value;
-                  save({ config: next });
-                }}
-                value={config[name]}
-              />
-            ))}
-          </div>
-        )}
-      </TableCell>
-      <TableCell className="text-center">
-        <Switch
-          aria-label={`Toggle ${entry.signalType}`}
-          checked={subscription?.enabled ?? entry.defaultEnabled}
-          disabled={create.isPending || update.isPending}
-          onCheckedChange={guard((enabled: boolean) => save({ config, enabled }))}
-          size="sm"
-        />
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function ParamInput({
-  name,
-  value,
-  defaultValue,
-  onCommit,
-}: {
-  name: string;
-  value: unknown;
-  defaultValue: unknown;
-  onCommit: (value: number | undefined) => void;
-}) {
-  const [draft, setDraft] = useState(value == null ? "" : String(value));
-  const commit = () => {
-    const trimmed = draft.trim();
-    const next = trimmed === "" ? undefined : Number(trimmed);
-    if (next !== undefined && !Number.isFinite(next)) return;
-    if (next === (value ?? undefined)) return;
-    onCommit(next);
-  };
-  return (
-    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {name}
-      <Input
-        className="w-20 font-mono"
-        inputMode="decimal"
-        onBlur={commit}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-        }}
-        placeholder={String(defaultValue ?? "")}
-        size="xs"
-        value={draft}
-      />
-    </label>
   );
 }

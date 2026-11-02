@@ -359,23 +359,32 @@ class HiddenFailureSignal(Signal):
 
 class UnscorableSignal(Signal):
     name = "unscorable"
-    description = "Evaluated spans end without a score."
+    description = "Expectations error on spans and leave them without a score."
     params = ("rate",)
     remedy = "Check the eval rows and span payloads these spans could not be scored on"
     rate = 0.5
 
     async def evaluate(self, spans):
-        evaluated = [span for span in spans if "score" in span.eval_attributes]
-        unscored = [span for span in evaluated if score_of(span) is None]
+        evaluated = [span for span in spans if span.eval_attributes.get("metrics")]
+        unscored = [
+            (span, errors[0])
+            for span in evaluated
+            if score_of(span) is None
+            and (
+                errors := [
+                    metric["error"]
+                    for metric in span.eval_attributes["metrics"].values()
+                    if metric.get("error")
+                ]
+            )
+        ]
         if evaluated and len(unscored) / len(evaluated) >= self.rate:
             return SignalFinding(
-                message=f"{len(unscored)} of {len(evaluated)} evaluated spans have no score",
-                why=f"{len(unscored) / len(evaluated):.0%} of evaluated spans ended without a "
-                f"score; the threshold is {self.rate:.0%}.",
-                spans=[
-                    (span, span.eval_attributes.get("error") or "evaluated without a score")
-                    for span in unscored
-                ],
+                message=f"{len(unscored)} of {len(evaluated)} evaluated spans failed scoring",
+                why=f"On {len(unscored) / len(evaluated):.0%} of the spans with expectations, "
+                f"no expectation produced a score and at least one errored; the threshold is "
+                f"{self.rate:.0%}.",
+                spans=[(span, clip(error)) for span, error in unscored],
                 measurements={
                     "evaluated": len(evaluated),
                     "unscored": len(unscored),
