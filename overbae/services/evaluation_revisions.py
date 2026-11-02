@@ -19,10 +19,11 @@ def revise(project, user, payload):
             "revision_conflict",
             "The evaluator changed. Read its resource and review the current definition before revising.",
         )
-    changes = payload.model_dump(exclude={"row", "expected_updated_at"}, exclude_none=True)
-    if not changes:
-        raise MCPError("invalid_input", "Name at least one field to change.")
-    definition = {**row.snapshot(), "enabled": row.enabled, **changes}
+    current = {**row.snapshot(), "enabled": row.enabled}
+    definition = {
+        **current,
+        **payload.model_dump(exclude={"row", "expected_updated_at"}, exclude_none=True),
+    }
     if len(definition["source"]) > ROW_SOURCE_MAX_CHARS:
         raise MCPError(
             "eval_matrix_row_invalid",
@@ -46,13 +47,11 @@ def revise(project, user, payload):
             "The revision failed validation.",
             fields=serializer_fields(error.detail),
         ) from None
+    if all(serializer.validated_data[field] == value for field, value in current.items()):
+        raise MCPError("invalid_input", "The revision changes nothing.")
     EvalMatrixRevision.objects.create(
         row=row,
-        definition={
-            **row.snapshot(),
-            "enabled": row.enabled,
-            "updated_at": row.updated_at.isoformat(),
-        },
+        definition={**current, "updated_at": row.updated_at.isoformat()},
         created_by=user,
     )
     try:
