@@ -192,6 +192,9 @@ class Signal:
     remedy: ClassVar[str] = ""
     # Score-based signals point the reviewer at the failing eval rows.
     scored: ClassVar[bool] = False
+    # Ranks insights: "high" for exposed data, failures and falling quality, "low" for
+    # latency, spend and scoring gaps.
+    severity: ClassVar[str] = "medium"
 
     def __init__(self, project_id: str, config: dict | None = None):
         self.project_id = str(project_id)
@@ -242,6 +245,7 @@ class Signal:
 
 class LowScoresSignal(Signal):
     name = "low_scores"
+    severity = "high"
     description = "The last scored spans all fall below the failing score."
     params = ("run",)
     remedy = "Fix the behaviour the failing eval rows describe"
@@ -264,6 +268,7 @@ class LowScoresSignal(Signal):
 
 class ScoreDropSignal(Signal):
     name = "score_drop"
+    severity = "high"
     description = "The mean of the most recent scores falls against the earlier mean."
     params = ("window", "drop")
     remedy = "Compare the recent spans against the earlier ones for a prompt, model or data change"
@@ -298,6 +303,7 @@ class ScoreDropSignal(Signal):
 
 class RepeatedFailureSignal(Signal):
     name = "repeated_failure"
+    severity = "high"
     description = "One expectation fails repeatedly."
     params = ("times",)
     remedy = "Fix the behaviour behind the repeated expectation"
@@ -326,6 +332,7 @@ class RepeatedFailureSignal(Signal):
 
 class HiddenFailureSignal(Signal):
     name = "hidden_failure"
+    severity = "high"
     description = "A step fails under a root answer that passes."
     remedy = "Fix the failing step; the passing answer hides it"
     scored = True
@@ -359,6 +366,7 @@ class HiddenFailureSignal(Signal):
 
 class UnscorableSignal(Signal):
     name = "unscorable"
+    severity = "low"
     description = "Expectations error on spans and leave them without a score."
     params = ("rate",)
     remedy = "Check the eval rows and span payloads these spans could not be scored on"
@@ -396,6 +404,7 @@ class UnscorableSignal(Signal):
 
 class ErrorsSignal(Signal):
     name = "errors"
+    severity = "high"
     description = "Spans end with an error status."
     remedy = "Fix the errors named in the span status messages"
 
@@ -414,6 +423,7 @@ class ErrorsSignal(Signal):
 
 class ToolFailureSignal(Signal):
     name = "tool_failure"
+    severity = "high"
     description = "A tool errors on a large share of its calls."
     params = ("min_calls", "rate")
     remedy = "Fix or guard the failing tool"
@@ -490,6 +500,7 @@ class RetryStormSignal(Signal):
 
 class SwallowedErrorSignal(Signal):
     name = "swallowed_error"
+    severity = "high"
     description = "A span errors inside a trace whose root finishes ok."
     remedy = "Surface or handle the error the root hides"
 
@@ -810,6 +821,7 @@ class SpikeSignal(Signal):
 
 class SlowLLMSignal(SpikeSignal):
     name = "slow_llm"
+    severity = "low"
     description = "LLM calls take many times the usual latency."
     remedy = "Check the slow calls' prompt size, model and provider"
     noun = "latency"
@@ -819,6 +831,7 @@ class SlowLLMSignal(SpikeSignal):
 
 class TokenSpikeSignal(SpikeSignal):
     name = "token_spike"
+    severity = "low"
     description = "LLM calls use many times the usual tokens."
     remedy = "Check what inflates the heavy calls' prompts or outputs"
     noun = "tokens"
@@ -828,6 +841,7 @@ class TokenSpikeSignal(SpikeSignal):
 
 class CostSpikeSignal(SpikeSignal):
     name = "cost_spike"
+    severity = "low"
     description = "LLM calls cost many times the usual amount."
     remedy = "Check the costly calls' model and token use"
     noun = "cost"
@@ -879,6 +893,7 @@ class ModelChangeSignal(Signal):
 
 class LeakSignal(Signal):
     name = "leak"
+    severity = "high"
     description = "Outputs contain an API key, an email address or a card number."
     remedy = "Strip sensitive data from the outputs"
 

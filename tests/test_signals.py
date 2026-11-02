@@ -201,53 +201,59 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     assert call(ctx, "query_traces", {"signal_event": str(foreign_event.id)})["page"]["total"] == 0
 
 
-def test_signal_trend_counts_each_day_and_filters_the_list_by_day(context):
+def test_signal_insights_rank_new_and_rising_issues_with_their_causes(context):
     ctx, client = context
-    today = timezone.localdate()
+    triage = Capability.objects.create(project=ctx.project, name="Triage", slug="triage")
 
-    def event(signal_type, days_ago, *, project=None, seen=False):
+    def event(signal_type, days_ago, *, capability=None, reason="", trace_id=None):
         created = SignalEvent.objects.create(
-            project=project or ctx.project,
+            project=ctx.project,
+            capability=capability,
             signal_type=signal_type,
-            message=signal_type,
+            message=f"{signal_type} message",
             dedupe_key=uuid.uuid4().hex,
-            seen_at=timezone.now() if seen else None,
+            details={
+                "why": f"why {signal_type}",
+                "trace_ids": [trace_id or uuid.uuid4().hex],
+                "evidence": [{"name": "lookup_order", "reason": reason}] if reason else [],
+            },
         )
         SignalEvent.objects.filter(pk=created.pk).update(
             occurred_at=timezone.now() - timedelta(days=days_ago)
         )
-        return created
 
-    event("errors", 0)
-    event("errors", 0)
-    yesterday = event("errors", 1, seen=True)
-    event("leak", 1)
-    event("leak", 20)
-    event("errors", 0, project=Project.objects.create(name="Other", slug=f"o-{uuid.uuid4()}"))
+    for _ in range(4):
+        event("tool_failure", 0, capability=triage, reason="TimeoutError: upstream", trace_id="t1")
+    event("tool_failure", 1, capability=triage, reason="KeyError: order_id")
+    event("tool_failure", 9, capability=triage)
+    for days_ago in (1, 8, 9, 10):
+        event("slow_llm", days_ago)
+    event("errors", 20, capability=triage)
+    event("errors", 0, capability=triage)
 
-    response = client.get("/api/signal-events/trend/", {"project": ctx.project.id, "days": 3})
+    response = client.get("/api/signal-events/insights/", {"project": ctx.project.id})
     assert response.status_code == 200
-    assert response.data["days"] == [
-        (today - timedelta(days=offset)).isoformat() for offset in (2, 1, 0)
+    insights = response.data["insights"]
+    assert [(i["signal_type"], i["status"]) for i in insights] == [
+        ("tool_failure", "rising"),
+        ("errors", "ongoing"),
+        ("slow_llm", "falling"),
     ]
-    assert response.data["series"] == [
-        {"signal_type": "errors", "total": 3, "counts": [0, 1, 2]},
-        {"signal_type": "leak", "total": 1, "counts": [0, 1, 0]},
+    rising = insights[0]
+    assert rising["capability_name"] == "Triage"
+    assert (rising["events"], rising["previous_events"]) == (5, 1)
+    assert rising["daily"][-2:] == [1, 4]
+    assert rising["causes"] == [
+        {"label": "lookup_order: TimeoutError: upstream", "count": 4},
+        {"label": "lookup_order: KeyError: order_id", "count": 1},
     ]
-    unseen = client.get(
-        "/api/signal-events/trend/", {"project": ctx.project.id, "days": 3, "unseen": "true"}
-    )
-    assert unseen.data["series"][0] == {"signal_type": "errors", "total": 2, "counts": [0, 0, 2]}
+    assert rising["traces"] == 2
+    assert rising["remedy"] == "Fix or guard the failing tool"
+    assert rising["why"] == "why tool_failure"
 
-    listed = client.get(
-        "/api/signal-events/",
-        {
-            "project": ctx.project.id,
-            "signal_type": "errors",
-            "occurred_on": (today - timedelta(days=1)).isoformat(),
-        },
-    )
-    assert [row["id"] for row in listed.data["results"]] == [str(yesterday.id)]
+    event("leak", 0)
+    first = client.get("/api/signal-events/insights/", {"project": ctx.project.id}).data
+    assert (first["insights"][0]["signal_type"], first["insights"][0]["status"]) == ("leak", "new")
 
 
 def test_project_and_capability_mutes_override_defaults(context):

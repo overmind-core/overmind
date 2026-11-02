@@ -463,7 +463,7 @@ function TracesPage() {
       {isSignalsView && <div className="pb-3">{viewTabs}</div>}
       {isSignalsView ? (
         <SignalEvents
-          day={search.signal_day}
+          capability={search.signal_capability}
           onChange={setSearch}
           onInspectTrace={(id, inspectedTraceId) =>
             navigate({

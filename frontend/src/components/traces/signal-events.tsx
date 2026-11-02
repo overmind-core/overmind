@@ -4,14 +4,12 @@ import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { EntityRef } from "@/components/entity-ref";
 import { SignalChecks } from "@/components/traces/signal-checks";
 import { SignalDetailSheet, signalTraceIds } from "@/components/traces/signal-detail";
-import { dayLabel } from "@/components/traces/signal-trend-label";
+import { SignalInsights } from "@/components/traces/signal-insights";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { DateTime } from "@/components/ui/datetime";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
-import { lazyChart } from "@/components/ui/lazy-chart";
 import {
   Select,
   SelectContent,
@@ -36,7 +34,6 @@ import {
   useSignalCatalogQuery,
   useSignalEventsQuery,
   useSignalSubscriptionsQuery,
-  useSignalTrendQuery,
 } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
 import { humanizeKey } from "@/lib/label-case";
@@ -45,11 +42,6 @@ import { cn } from "@/lib/utils";
 import type { SignalEvent } from "@/openapi";
 
 const ALL = "__all__";
-const TREND_DAYS = 14;
-
-const SignalTrendChart = lazyChart(() => import("@/components/traces/signal-trend-chart"), {
-  minHeight: 196,
-});
 
 export function SignalEvents({
   projectId,
@@ -57,7 +49,7 @@ export function SignalEvents({
   onSelect,
   onInspectTrace,
   signal,
-  day,
+  capability,
   unseen,
   page,
   onChange,
@@ -67,25 +59,24 @@ export function SignalEvents({
   onSelect: (id: string, conversation?: string | null) => void;
   onInspectTrace: (id: string, traceId: string) => void;
   signal: string | undefined;
-  day: string | undefined;
+  capability: string | undefined;
   unseen: boolean;
   page: number;
   onChange: (updates: {
     signal?: string;
-    signal_day?: string;
+    signal_capability?: string;
     unseen?: boolean;
     page?: number;
   }) => void;
 }) {
   const catalog = useSignalCatalogQuery();
   const events = useSignalEventsQuery(projectId, {
-    day,
+    capability,
     page,
     session,
     signalType: signal,
     unseen,
   });
-  const trend = useSignalTrendQuery(projectId, { days: TREND_DAYS, session, unseen });
   const markSeen = useMarkSignalsSeenMutation(projectId);
   const guard = useGuestGate();
   const { isGuest } = useAuthContext();
@@ -104,7 +95,10 @@ export function SignalEvents({
   const rows = events.data?.results ?? [];
   const count = events.data?.count ?? 0;
   const [openId, setOpenId] = useState<string | null>(null);
-  const [datasetFor, setDatasetFor] = useState<SignalEvent | null>(null);
+  const [datasetFrom, setDatasetFrom] = useState<{
+    capability?: string;
+    traceIds: string[];
+  } | null>(null);
   const open = rows.find((event) => event.id === openId) ?? null;
   const openEvent = (event: SignalEvent) => {
     setOpenId(event.id);
@@ -113,36 +107,33 @@ export function SignalEvents({
 
   return (
     <div className="flex flex-col gap-3">
-      {trend.data && trend.data.series.length > 0 && (
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className={cn(LABEL.pixel, "text-xs text-muted-foreground")}>
-              Last {TREND_DAYS} days
-            </h2>
-            {day && (
-              <Button
-                onClick={() => onChange({ page: 1, signal_day: undefined })}
-                size="xs"
-                variant="secondary"
-              >
-                {dayLabel(day)}
-                <Icon.close />
-              </Button>
-            )}
-          </div>
-          <SignalTrendChart
-            day={day}
-            onSelect={(selection) =>
-              onChange({ page: 1, signal: selection.signal, signal_day: selection.day })
-            }
-            signal={signal}
-            trend={trend.data}
-          />
-        </Card>
-      )}
+      <SignalInsights
+        focus={{ capability, signal }}
+        onCreateDataset={
+          featureFlags.datasets
+            ? (insight) =>
+                setDatasetFrom({
+                  capability: insight.capability ?? undefined,
+                  traceIds: insight.traceIds,
+                })
+            : undefined
+        }
+        onFocus={(insight) =>
+          onChange({
+            page: 1,
+            signal: insight?.signalType,
+            signal_capability: insight?.capability ?? undefined,
+          })
+        }
+        projectId={projectId}
+        session={session}
+      />
+      <h2 className={cn(LABEL.pixel, "pt-2 text-xs text-muted-foreground")}>Events</h2>
       <div className="flex flex-wrap items-center gap-2">
         <Select
-          onValueChange={(v) => onChange({ page: 1, signal: v === ALL ? undefined : v })}
+          onValueChange={(v) =>
+            onChange({ page: 1, signal: v === ALL ? undefined : v, signal_capability: undefined })
+          }
           value={signal ?? ALL}
         >
           <SelectTrigger aria-label="Filter by signal" className="w-56" size="default">
@@ -165,6 +156,16 @@ export function SignalEvents({
           />
           Unseen only
         </label>
+        {capability && (
+          <Button
+            onClick={() => onChange({ page: 1, signal_capability: undefined })}
+            size="xs"
+            variant="secondary"
+          >
+            {rows[0]?.capabilityName || "Capability"}
+            <Icon.close />
+          </Button>
+        )}
         <span className="font-mono text-xs tabular-nums text-muted-foreground">{count} events</span>
         <Button
           className="ml-auto"
@@ -197,7 +198,7 @@ export function SignalEvents({
         <EmptyState
           className="rounded-md border border-dashed bg-wash-subtle"
           description={
-            signal || unseen || day
+            signal || unseen || capability
               ? "No events match these filters."
               : enabledCount === 0
                 ? "Enable checks using Signal checks above."
@@ -275,17 +276,25 @@ export function SignalEvents({
       <SignalDetailSheet
         event={open}
         onClose={() => setOpenId(null)}
-        onCreateDataset={featureFlags.datasets ? (event) => setDatasetFor(event) : undefined}
+        onCreateDataset={
+          featureFlags.datasets
+            ? (event) =>
+                setDatasetFrom({
+                  capability: event.capability ?? undefined,
+                  traceIds: signalTraceIds(event),
+                })
+            : undefined
+        }
         onInspectTrace={(event, traceId) => onInspectTrace(event.id, traceId)}
         onViewTraces={(event) => onSelect(event.id, event.conversation)}
         projectId={projectId}
       />
       {featureFlags.datasets && (
         <NewDatasetDialog
-          initialCapabilityId={datasetFor?.capability ?? undefined}
-          initialTraceIds={datasetFor ? signalTraceIds(datasetFor) : undefined}
-          onOpenChange={(next) => !next && setDatasetFor(null)}
-          open={!!datasetFor}
+          initialCapabilityId={datasetFrom?.capability}
+          initialTraceIds={datasetFrom?.traceIds}
+          onOpenChange={(next) => !next && setDatasetFrom(null)}
+          open={!!datasetFrom}
           projectId={projectId}
         />
       )}

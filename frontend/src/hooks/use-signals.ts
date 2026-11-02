@@ -58,15 +58,15 @@ export const useSignalEventsQuery = (
     unseen?: boolean;
     page?: number;
     session?: string;
-    day?: string;
+    capability?: string;
   } = {}
 ) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
       apiClient.signalEvents.signalEventsList({
+        capability: filters.capability,
         conversation: filters.session,
-        occurredOn: filters.day ? new Date(filters.day) : undefined,
         page: filters.page,
         pageSize: 50,
         project: projectId,
@@ -78,28 +78,27 @@ export const useSignalEventsQuery = (
       projectId,
       filters.session ?? null,
       filters.signalType ?? null,
-      filters.day ?? null,
+      filters.capability ?? null,
       !!filters.unseen,
       filters.page ?? 1,
     ],
     refetchInterval: 30_000,
   });
 
-export const useSignalTrendQuery = (
+export const useSignalInsightsQuery = (
   projectId: string | undefined,
-  filters: { unseen?: boolean; session?: string; days: number }
+  filters: { session?: string; days: number }
 ) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
-      apiClient.signalEvents.signalEventsTrendRetrieve({
+      apiClient.signalEvents.signalEventsInsightsRetrieve({
         conversation: filters.session,
         days: filters.days,
         project: projectId!,
-        unseen: filters.unseen || undefined,
       }),
-    queryKey: ["signal-trend", projectId, filters.session ?? null, !!filters.unseen, filters.days],
-    refetchInterval: 30_000,
+    queryKey: ["signal-insights", projectId, filters.session ?? null, filters.days],
+    refetchInterval: 60_000,
   });
 
 export const useUnseenSignalCountQuery = (projectId: string | undefined) =>
@@ -120,9 +119,6 @@ export const useMarkSignalsSeenMutation = (projectId: string | undefined) => {
         signalEventSeenRequest: { ids, project: projectId! },
       }),
     onError: (e) => notify.error(e, "Couldn't mark signals seen"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["signal-events", projectId] });
-      qc.invalidateQueries({ queryKey: ["signal-trend", projectId] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["signal-events", projectId] }),
   });
 };
