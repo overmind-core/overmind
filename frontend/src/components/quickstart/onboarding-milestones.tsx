@@ -135,9 +135,9 @@ export function OnboardingMilestones({
   const progressResource = `overmind://activity?path=agent${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`;
   const prompt = [
     `Continue setting up this Overmind project${projectId ? ` (project_id: ${projectId})` : ""} using the API at ${config.apiUrl}.`,
-    `Read the setup guide at ${window.location.origin}/setup.md and check live onboarding progress through MCP by reading ${progressResource} before doing any setup work.`,
-    "Use the live milestones and saved project state to identify the current setup stage. Skip anything already completed and continue with the remaining steps in order. Do not reinstall Overmind or rerun initialization for an already configured coding agent.",
-    "Recheck live progress before each remaining step and after completing it. If setup is already complete, report that and stop. If MCP is unavailable or authentication is pending, report the blocker instead of guessing the stage or restarting setup.",
+    `Read the setup guide at ${window.location.origin}/setup.md. If this coding agent lacks the Overmind CLI or MCP connection, run the guide's install and init steps first. Then check live onboarding progress through MCP by reading ${progressResource} before doing any other setup work.`,
+    "Use the live milestones and saved project state to identify the current setup stage. Skip anything already completed and continue with the remaining steps in order.",
+    "Recheck live progress before each remaining step and after completing it. If setup is already complete, report that and stop. If authentication is pending, report the blocker instead of guessing the stage or restarting setup.",
   ].join("\n\n");
   const name = connected ? (projectName ?? "Connected") : "Waiting for connection";
 
