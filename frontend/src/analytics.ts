@@ -38,8 +38,17 @@ export const trackEvent = (event: string, properties?: Record<string, any>) => {
 export const identifyUser = ({
   userId,
   clerkUserId,
-}: Partial<{ userId: string; clerkUserId: string }>) => {
+  email,
+  name,
+}: Partial<{ userId: string; clerkUserId: string; email: string; name: string }>) => {
   if (userId && clerkUserId) {
-    void client?.then((posthog) => posthog?.identify(userId, { clerkUserId: clerkUserId }));
+    const properties: Record<string, string> = { clerkUserId };
+    if (email) properties.email = email;
+    if (name) properties.name = name;
+    void client?.then((posthog) => posthog?.identify(userId, properties));
   }
+};
+
+export const resetUser = () => {
+  void client?.then((posthog) => posthog?.reset());
 };

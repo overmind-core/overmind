@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const posthogInit = vi.fn();
 const posthogCapture = vi.fn();
 const posthogIdentify = vi.fn();
+const posthogReset = vi.fn();
 const posthogCaptureException = vi.fn();
 
 vi.mock("posthog-js", () => ({
@@ -12,6 +13,7 @@ vi.mock("posthog-js", () => ({
     captureException: posthogCaptureException,
     identify: posthogIdentify,
     init: posthogInit,
+    reset: posthogReset,
   },
 }));
 
@@ -21,6 +23,8 @@ describe("self-hosted PostHog strip", () => {
     vi.resetModules();
     posthogInit.mockClear();
     posthogCapture.mockClear();
+    posthogIdentify.mockClear();
+    posthogReset.mockClear();
   });
 
   it("skips analytics.ts init when VITE_SELF_HOSTED is true", async () => {
@@ -35,8 +39,15 @@ describe("self-hosted PostHog strip", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
     vi.stubEnv("VITE_PUBLIC_POSTHOG_HOST", "https://analytics.example");
     vi.stubEnv("MODE", "production");
-    const { trackEvent } = await import("./analytics");
+    const { identifyUser, resetUser, trackEvent } = await import("./analytics");
     trackEvent("setup_prompt_copied", { project_id: "project-1" });
+    identifyUser({
+      clerkUserId: "user_123",
+      email: "user@example.com",
+      name: "Ada Lovelace",
+      userId: "user_123",
+    });
+    resetUser();
     await vi.dynamicImportSettled();
     expect(posthogInit).toHaveBeenCalledOnce();
     expect(posthogInit).toHaveBeenCalledWith(
@@ -46,5 +57,11 @@ describe("self-hosted PostHog strip", () => {
       })
     );
     expect(posthogCapture).toHaveBeenCalledWith("setup_prompt_copied", { project_id: "project-1" });
+    expect(posthogIdentify).toHaveBeenCalledWith("user_123", {
+      clerkUserId: "user_123",
+      email: "user@example.com",
+      name: "Ada Lovelace",
+    });
+    expect(posthogReset).toHaveBeenCalledOnce();
   });
 });

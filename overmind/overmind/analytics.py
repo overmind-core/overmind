@@ -216,7 +216,7 @@ def ensure_identified(*, api_key: str | None = None, base_url: str | None = None
             _identify_attempted = True
 
             cached = _load_identity_cache()
-            if cached and cached.get("key_fp") == fingerprint and cached.get("distinct_id"):
+            if cached and cached.get("key_fp") == fingerprint and cached.get("distinct_id") and "email" in cached:
                 _identified_distinct_id = str(cached["distinct_id"])
                 return True
 
@@ -229,9 +229,11 @@ def ensure_identified(*, api_key: str | None = None, base_url: str | None = None
             if not distinct:
                 return False
 
+            email = str(me.get("email") or "").strip() if not me.get("is_guest") else ""
             traits = {
                 "sdk_surface": "python",
                 "overmind_user_id": str(me.get("id") or ""),
+                "email": email or None,
                 "plan": me.get("plan"),
                 "is_guest": me.get("is_guest"),
                 "project_id": _project_id(),
@@ -249,6 +251,7 @@ def ensure_identified(*, api_key: str | None = None, base_url: str | None = None
                 "key_fp": fingerprint,
                 "distinct_id": distinct,
                 "overmind_user_id": str(me.get("id") or ""),
+                "email": email,
             })
             return True
     except Exception:

@@ -144,6 +144,7 @@ def test_every_tool_call_reaches_posthog_as_metadata_only(instrumented):
         assert properties["$mcp_server_name"] == "overmind-platform"
         assert properties["$mcp_client_name"] == "analytics-e2e"
         assert event["distinct_id"] == user.clerk_user_id
+        assert properties["$set"] == {"email": user.email}
         captured.setdefault(properties["$mcp_tool_name"], []).append(
             (
                 properties["$mcp_is_error"],
