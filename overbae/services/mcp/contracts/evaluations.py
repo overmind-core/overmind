@@ -58,11 +58,14 @@ def _validate_safe_json(value: dict[str, Any], *, field: str) -> dict[str, Any]:
     return value
 
 
+ROW_SOURCE_MAX_CHARS = 20_000
+
+
 class EvalMatrixRowContract(MCPModel):
     id: str
     name: str
     type: MatrixType
-    source: str = Field(max_length=20_000)
+    source: str = Field(max_length=ROW_SOURCE_MAX_CHARS)
     definition_source: Literal["stock", "code", "config", "custom", "unknown"]
     capability: str | None = None
     span_type: str = ""
@@ -81,7 +84,7 @@ class CreateEvalMatrixRowInput(MCPModel):
     type: MatrixType
     source: str = Field(
         min_length=1,
-        max_length=20_000,
+        max_length=ROW_SOURCE_MAX_CHARS,
         description=(
             "deterministic: a script defining evaluate(span) returning a score in [0, 1], "
             "None to abstain, or {score, reason}. llm: one sentence the output must meet."
@@ -336,7 +339,7 @@ class ReviseEvalMatrixInput(MCPModel):
     source: str | None = Field(
         default=None,
         min_length=1,
-        max_length=20_000,
+        max_length=ROW_SOURCE_MAX_CHARS,
         description="Complete replacement. A long row's resource returns its source in pages.",
     )
     span_type: Literal["", "llm_call", "tool_call", "retrieval", "workflow"] | None = None

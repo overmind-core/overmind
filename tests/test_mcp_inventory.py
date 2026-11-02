@@ -318,6 +318,20 @@ def test_revision_changes_only_the_fields_it_names():
     assert moved.isError and moved.structuredContent["error"]["code"] == "invalid_input"
 
 
+def test_revision_refuses_no_changes_and_an_oversized_retained_source():
+    context = mcp_context(["read", "write"])
+    row = EvalMatrix.objects.create(
+        project=context.project, name="long", type="deterministic", source="#" * 20_001
+    )
+    stamp = {"row": str(row.pk), "expected_updated_at": row.updated_at.isoformat()}
+    empty = call_tool("revise_eval_matrix_row", stamp, context)
+    assert empty.isError and empty.structuredContent["error"]["code"] == "invalid_input"
+    renamed = call_tool("revise_eval_matrix_row", {**stamp, "name": "longer"}, context)
+    assert renamed.structuredContent["error"]["fields"].keys() == {"source"}
+    row.refresh_from_db()
+    assert row.name == "long" and not row.revisions.exists()
+
+
 def test_revision_rename_conflict_reports_the_name_field():
     context = mcp_context(["read", "write"])
     EvalMatrix.objects.create(project=context.project, name="taken", type="llm", source="One.")

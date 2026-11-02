@@ -114,7 +114,7 @@ class ToolDefinition(BaseModel):
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "An identical retry recovers the original result.",
+                "description": "An identical retry after completion returns the stored result.",
             }
         if self.project_scoped:
             schema.setdefault("properties", {})["project_id"] = {

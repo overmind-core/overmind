@@ -5,6 +5,7 @@ from rest_framework.exceptions import ValidationError
 
 from overbae.api.eval_serializers import EvalMatrixSerializer
 from overbae.models import EvalMatrix, EvalMatrixRevision
+from overbae.services.mcp.contracts.evaluations import ROW_SOURCE_MAX_CHARS
 from overbae.services.mcp.errors import MCPError, serializer_fields
 
 
@@ -18,14 +19,22 @@ def revise(project, user, payload):
             "revision_conflict",
             "The evaluator changed. Read its resource and review the current definition before revising.",
         )
+    changes = payload.model_dump(exclude={"row", "expected_updated_at"}, exclude_none=True)
+    if not changes:
+        raise MCPError("invalid_input", "Name at least one field to change.")
+    definition = {**row.snapshot(), "enabled": row.enabled, **changes}
+    if len(definition["source"]) > ROW_SOURCE_MAX_CHARS:
+        raise MCPError(
+            "eval_matrix_row_invalid",
+            "The revision failed validation.",
+            fields={"source": f"A source is at most {ROW_SOURCE_MAX_CHARS} characters."},
+        )
     serializer = EvalMatrixSerializer(
         instance=row,
         data={
             "project": str(project.pk),
             "capability": str(row.capability_id) if row.capability_id else None,
-            **row.snapshot(),
-            "enabled": row.enabled,
-            **payload.model_dump(exclude={"row", "expected_updated_at"}, exclude_none=True),
+            **definition,
         },
         context={"request": SimpleNamespace(user=user)},
     )
