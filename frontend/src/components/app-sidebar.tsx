@@ -349,13 +349,15 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
   const userName = user?.name ?? "";
   useEffect(() => {
     trackEvent("login_changed", { isSignedIn });
+  }, [isSignedIn]);
+  useEffect(() => {
     identifyUser({
       clerkUserId,
       email: userEmail || undefined,
       name: userName || undefined,
       userId: clerkUserId,
     });
-  }, [isSignedIn, clerkUserId, userEmail, userName]);
+  }, [clerkUserId, userEmail, userName]);
   useEffect(() => {
     const kinds = kindsForPathname(location.pathname);
     if (kinds) clearUnseenCompletionsForKinds(kinds);
