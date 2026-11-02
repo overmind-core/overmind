@@ -10,6 +10,7 @@ import { useAuthContext } from "@/contexts/auth-context";
 import { useLoginGate } from "@/hooks/use-login-gate";
 import { safeNextPath } from "@/lib/auth-redirect";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
+import { isMobileBrowser } from "@/lib/platform";
 
 export const Route = createFileRoute("/login")({
   component: RouteComponent,
@@ -38,6 +39,7 @@ function RouteComponent() {
   const signInUrl = `/login${nextQuery ? `?${nextQuery}` : ""}`;
   const signUpUrl = `/login?mode=signup${nextQuery ? `&${nextQuery}` : ""}`;
   const forceRedirectUrl = safeNext ?? undefined;
+  const oauthFlow = isMobileBrowser() ? "redirect" : "popup";
 
   if (gate.kind === "loading") {
     return (
@@ -75,7 +77,7 @@ function RouteComponent() {
             appearance={CLERK_APPEARANCE}
             fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
-            oauthFlow="popup"
+            oauthFlow={oauthFlow}
             routing="hash"
             signInUrl={signInUrl}
           />
@@ -84,7 +86,7 @@ function RouteComponent() {
             appearance={CLERK_APPEARANCE}
             fallback={<AuthenticationLoadingState />}
             forceRedirectUrl={forceRedirectUrl}
-            oauthFlow="popup"
+            oauthFlow={oauthFlow}
             routing="hash"
             signUpUrl={signUpUrl}
           />

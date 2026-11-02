@@ -26,7 +26,7 @@ export function QuickstartEmbed({
   if (projectId && milestones.isLoading) return <LoadingState label="Loading setup progress" />;
   if (source === "agent" && connected) {
     return (
-      <section aria-label="Agent onboarding" className="w-full max-w-md">
+      <section aria-label="Agent onboarding" className="w-full max-w-2xl">
         <OnboardingMilestones projectId={projectId} projectName={projectName} />
       </section>
     );

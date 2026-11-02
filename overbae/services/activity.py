@@ -26,7 +26,7 @@ AGENTS = (
     (re.compile(r"^(openai-)?codex\b"), "codex", "Codex"),
     (re.compile(r"^cursor\b"), "cursor", "Cursor"),
     (re.compile(r"^gemini[- ]cli\b"), "gemini", "Gemini CLI"),
-    (re.compile(r"^opencode\b"), "coding_agent", "OpenCode"),
+    (re.compile(r"^opencode\b"), "opencode", "OpenCode"),
 )
 
 
