@@ -92,19 +92,42 @@ class SignalEventSeenResponseSerializer(serializers.Serializer):
     updated = serializers.IntegerField()
 
 
-class SignalTrendQuerySerializer(serializers.Serializer):
+class SignalInsightsQuerySerializer(serializers.Serializer):
     project = serializers.UUIDField()
-    days = serializers.IntegerField(min_value=1, max_value=90, default=14)
+    days = serializers.IntegerField(min_value=1, max_value=30, default=7)
 
 
-class SignalTrendSeriesSerializer(serializers.Serializer):
+class SignalInsightCauseSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class SignalInsightSerializer(serializers.Serializer):
     signal_type = serializers.CharField()
-    total = serializers.IntegerField()
-    counts = serializers.ListField(child=serializers.IntegerField())
+    severity = serializers.ChoiceField(choices=["high", "medium", "low"])
+    status = serializers.ChoiceField(choices=["new", "rising", "ongoing", "falling"])
+    capability = serializers.UUIDField(allow_null=True)
+    capability_name = serializers.CharField(allow_blank=True)
+    events = serializers.IntegerField()
+    previous_events = serializers.IntegerField(help_text="Events in the window before this one.")
+    daily = serializers.ListField(child=serializers.IntegerField())
+    traces = serializers.IntegerField()
+    sessions = serializers.IntegerField()
+    first_seen = serializers.DateTimeField()
+    last_seen = serializers.DateTimeField()
+    latest_event = serializers.UUIDField()
+    message = serializers.CharField()
+    why = serializers.CharField(allow_blank=True)
+    remedy = serializers.CharField(allow_blank=True)
+    causes = SignalInsightCauseSerializer(many=True)
+    trace_ids = serializers.ListField(child=serializers.CharField())
 
 
-class SignalTrendSerializer(serializers.Serializer):
+class SignalInsightsSerializer(serializers.Serializer):
     days = serializers.ListField(
         child=serializers.CharField(), help_text="ISO dates, oldest first."
     )
-    series = SignalTrendSeriesSerializer(many=True)
+    complete = serializers.BooleanField(
+        help_text="False when causes and trace counts were read from the newest events only."
+    )
+    insights = SignalInsightSerializer(many=True)

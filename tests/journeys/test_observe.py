@@ -296,9 +296,11 @@ def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
     assert {item["trace_id"] for item in details["evidence"]} == {failing.hex}
 
     assert mcp.call("list_signals", {})["unseen_events"] >= 1
-    [shared] = [
-        e for e in mcp.read("overmind://signal-events")["events"] if e["id"] == events[0]["id"]
-    ]
+    resource = mcp.read("overmind://signal-events")
+    [insight] = [i for i in resource["insights"] if i["signal_type"] == "tool_failure"]
+    assert insight["latest_event"] == events[0]["id"]
+    assert insight["causes"][0]["label"].startswith("lookup_order")
+    [shared] = [e for e in resource["events"] if e["id"] == events[0]["id"]]
     assert [(item["span_id"], item["reason"]) for item in shared["details"]["evidence"]] == [
         (item["span_id"], item["reason"]) for item in details["evidence"]
     ]

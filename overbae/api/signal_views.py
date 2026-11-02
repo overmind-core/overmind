@@ -11,14 +11,14 @@ from overbae.api.signal_serializers import (
     SignalEventSeenResponseSerializer,
     SignalEventSeenSerializer,
     SignalEventSerializer,
+    SignalInsightsQuerySerializer,
+    SignalInsightsSerializer,
     SignalSubscriptionSerializer,
-    SignalTrendQuerySerializer,
-    SignalTrendSerializer,
 )
 from overbae.api.views import _user_project_ids
 from overbae.innermind.signals import signal_factory
 from overbae.models import Project, SignalEvent, SignalSubscription
-from overbae.services.signal_trend import signal_trend
+from overbae.services.signal_insights import signal_insights
 
 
 @extend_schema_view(
@@ -66,21 +66,21 @@ class SignalEventViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         ).select_related("capability")
 
     @extend_schema(
-        summary="Daily signal event counts per signal type",
+        summary="Signal insights: events grouped by signal and capability, ranked",
         filters=True,
         parameters=[
             OpenApiParameter("project", str, required=True),
-            OpenApiParameter("days", int, description="1 to 90; defaults to 14."),
+            OpenApiParameter("days", int, description="1 to 30; defaults to 7."),
         ],
-        responses=SignalTrendSerializer,
+        responses=SignalInsightsSerializer,
     )
     @action(detail=False, methods=["get"], pagination_class=None)
-    def trend(self, request):
-        query = SignalTrendQuerySerializer(data=request.query_params)
+    def insights(self, request):
+        query = SignalInsightsQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         events = self.filter_queryset(self.get_queryset())
-        trend = signal_trend(events, query.validated_data["days"])
-        return Response(SignalTrendSerializer(trend).data)
+        insights = signal_insights(events, query.validated_data["days"])
+        return Response(SignalInsightsSerializer(insights).data)
 
     @extend_schema(
         summary="Mark signal events seen",

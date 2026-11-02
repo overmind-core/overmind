@@ -18,7 +18,7 @@ import type {
   PaginatedSignalEventList,
   SignalEventSeenRequest,
   SignalEventSeenResponse,
-  SignalTrend,
+  SignalInsights,
 } from '../models/index';
 import {
     PaginatedSignalEventListFromJSON,
@@ -27,14 +27,25 @@ import {
     SignalEventSeenRequestToJSON,
     SignalEventSeenResponseFromJSON,
     SignalEventSeenResponseToJSON,
-    SignalTrendFromJSON,
-    SignalTrendToJSON,
+    SignalInsightsFromJSON,
+    SignalInsightsToJSON,
 } from '../models/index';
+
+export interface SignalEventsInsightsRetrieveRequest {
+    project: string;
+    capability?: string;
+    conversation?: string;
+    days?: number;
+    ordering?: string;
+    search?: string;
+    signalType?: string;
+    traceId?: string;
+    unseen?: boolean;
+}
 
 export interface SignalEventsListRequest {
     capability?: string;
     conversation?: string;
-    occurredOn?: Date;
     ordering?: string;
     page?: number;
     pageSize?: number;
@@ -49,23 +60,102 @@ export interface SignalEventsMarkSeenCreateRequest {
     signalEventSeenRequest: SignalEventSeenRequest;
 }
 
-export interface SignalEventsTrendRetrieveRequest {
-    project: string;
-    capability?: string;
-    conversation?: string;
-    days?: number;
-    occurredOn?: Date;
-    ordering?: string;
-    search?: string;
-    signalType?: string;
-    traceId?: string;
-    unseen?: boolean;
-}
-
 /**
  *
  */
 export class SignalEventsApi extends runtime.BaseAPI {
+
+    /**
+     * Signal insights: events grouped by signal and capability, ranked
+     */
+    async signalEventsInsightsRetrieveRaw(requestParameters: SignalEventsInsightsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SignalInsights>> {
+        if (requestParameters['project'] == null) {
+            throw new runtime.RequiredError(
+                'project',
+                'Required parameter "project" was null or undefined when calling signalEventsInsightsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['capability'] != null) {
+            queryParameters['capability'] = requestParameters['capability'];
+        }
+
+        if (requestParameters['conversation'] != null) {
+            queryParameters['conversation'] = requestParameters['conversation'];
+        }
+
+        if (requestParameters['days'] != null) {
+            queryParameters['days'] = requestParameters['days'];
+        }
+
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        if (requestParameters['signalType'] != null) {
+            queryParameters['signal_type'] = requestParameters['signalType'];
+        }
+
+        if (requestParameters['traceId'] != null) {
+            queryParameters['trace_id'] = requestParameters['traceId'];
+        }
+
+        if (requestParameters['unseen'] != null) {
+            queryParameters['unseen'] = requestParameters['unseen'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/signal-events/insights/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SignalInsightsFromJSON(jsonValue));
+    }
+
+    /**
+     * Signal insights: events grouped by signal and capability, ranked
+     */
+    async signalEventsInsightsRetrieve(requestParameters: SignalEventsInsightsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SignalInsights> {
+        const response = await this.signalEventsInsightsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * List signal events, newest first
@@ -79,10 +169,6 @@ export class SignalEventsApi extends runtime.BaseAPI {
 
         if (requestParameters['conversation'] != null) {
             queryParameters['conversation'] = requestParameters['conversation'];
-        }
-
-        if (requestParameters['occurredOn'] != null) {
-            queryParameters['occurred_on'] = (requestParameters['occurredOn'] as any).toISOString().substring(0,10);
         }
 
         if (requestParameters['ordering'] != null) {
@@ -218,102 +304,6 @@ export class SignalEventsApi extends runtime.BaseAPI {
      */
     async signalEventsMarkSeenCreate(requestParameters: SignalEventsMarkSeenCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SignalEventSeenResponse> {
         const response = await this.signalEventsMarkSeenCreateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Daily signal event counts per signal type
-     */
-    async signalEventsTrendRetrieveRaw(requestParameters: SignalEventsTrendRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SignalTrend>> {
-        if (requestParameters['project'] == null) {
-            throw new runtime.RequiredError(
-                'project',
-                'Required parameter "project" was null or undefined when calling signalEventsTrendRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['capability'] != null) {
-            queryParameters['capability'] = requestParameters['capability'];
-        }
-
-        if (requestParameters['conversation'] != null) {
-            queryParameters['conversation'] = requestParameters['conversation'];
-        }
-
-        if (requestParameters['days'] != null) {
-            queryParameters['days'] = requestParameters['days'];
-        }
-
-        if (requestParameters['occurredOn'] != null) {
-            queryParameters['occurred_on'] = (requestParameters['occurredOn'] as any).toISOString().substring(0,10);
-        }
-
-        if (requestParameters['ordering'] != null) {
-            queryParameters['ordering'] = requestParameters['ordering'];
-        }
-
-        if (requestParameters['project'] != null) {
-            queryParameters['project'] = requestParameters['project'];
-        }
-
-        if (requestParameters['search'] != null) {
-            queryParameters['search'] = requestParameters['search'];
-        }
-
-        if (requestParameters['signalType'] != null) {
-            queryParameters['signal_type'] = requestParameters['signalType'];
-        }
-
-        if (requestParameters['traceId'] != null) {
-            queryParameters['trace_id'] = requestParameters['traceId'];
-        }
-
-        if (requestParameters['unseen'] != null) {
-            queryParameters['unseen'] = requestParameters['unseen'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/signal-events/trend/`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => SignalTrendFromJSON(jsonValue));
-    }
-
-    /**
-     * Daily signal event counts per signal type
-     */
-    async signalEventsTrendRetrieve(requestParameters: SignalEventsTrendRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SignalTrend> {
-        const response = await this.signalEventsTrendRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
