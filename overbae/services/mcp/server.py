@@ -56,7 +56,7 @@ mcp_server = Server(
         "Use MCP for Overmind operations and the local CLI for file bytes. Missing tools, credentials or upload failures are not reasons to open a browser; report the connection error. Only open the Console when the user explicitly requests a visual view. "
         "Overmind is an agent improvement platform. Read overmind://interface/current for connected contract identity and workflow rules. Drafts never submit provider work; use explicit preparation and launch operations. Call list_projects first to find "
         "accessible projects and choose the project relevant to the user's request. "
-        "Account connections require project_id on each project tool and resource URI; "
+        "Use list_objects to discover models, jobs and evaluations. Account connections require project_id on each project tool and resource URI; "
         "there is no shared selected-project state. Follow returned resource links. "
         "Read overmind://project/current?project_id=ID for repository provenance and "
         "the ordinary Console URL. Project-scoped API keys remain limited to their project; "

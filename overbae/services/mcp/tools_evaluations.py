@@ -21,6 +21,7 @@ from overbae.innermind import comparison, runs
 from overbae.innermind.definitions import definition_source
 from overbae.models import Capability, Dataset, EvalMatrix, EvalRun, EvalSet
 from overbae.services.datasets.contract import public_intent
+from overbae.services.evaluation_revisions import revise
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.evaluations import (
     CheckEvaluationReadinessInput,
@@ -39,6 +40,7 @@ from overbae.services.mcp.contracts.evaluations import (
     EvaluationDatasetContract,
     EvaluationRunContract,
     EvaluationScopeInput,
+    ReviseEvalMatrixInput,
     RunEvaluationInput,
     RunEvaluationOutput,
 )
@@ -183,6 +185,7 @@ def _row_contract(row: EvalMatrix) -> EvalMatrixRowContract:
         span_type=row.span_type,
         span_name=row.span_name,
         enabled=row.enabled,
+        updated_at=row.updated_at,
     )
 
 
@@ -397,8 +400,34 @@ def _async_handler(function):
     return handler
 
 
+def revise_row_sync(payload, context):
+    row = revise(context.project, context.user, payload)
+    return CreateEvalMatrixRowOutput(
+        summary="Evaluator revised; set membership and historical run snapshots are preserved.",
+        row=_row_contract(row),
+        resource_links=[resource_link("eval-rows", str(row.pk), row.name)],
+    )
+
+
 def register_evaluation_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
+
+    catalog.register(
+        ToolDefinition(
+            name="revise_eval_matrix_row",
+            title="Revise evaluation row",
+            description="Revise an evaluator with expected_updated_at from list_objects or its resource. Omitted fields keep their values. Retains previous definitions and set membership; historical run snapshots stay immutable. The capability cannot change.",
+            input_model=ReviseEvalMatrixInput,
+            output_model=CreateEvalMatrixRowOutput,
+            read_only=False,
+            idempotent=False,
+            open_world=False,
+            required_scopes=frozenset({"overmind:evaluate"}),
+            cost_class="free",
+            async_mode="sync",
+        ),
+        _async_handler(revise_row_sync),
+    )
 
     definitions = [
         (

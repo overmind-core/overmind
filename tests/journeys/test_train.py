@@ -112,6 +112,15 @@ def test_train(
 
     until(beat, benchmarked, PREPARE, TRAIN, DEPLOY)
     state = finetune()
+    inventory = workshop.call(
+        "list_objects", {"kinds": ["trained_model"], "request_key": "train-support-model"}
+    )
+    assert [item["id"] for item in inventory["items"]] == [job]
+    lineage = workshop.call("inspect_model_lineage", {"training_job": job})
+    assert next(cell["id"] for cell in lineage["cells"] if cell["role"] == "train") == state["cell"]
+    observed = workshop.call("inspect_jobs", {"jobs": [{"kind": "finetune", "id": job}]})
+    assert observed["jobs"][0]["job"]["status"] == "succeeded"
+    assert observed["jobs"][0]["job"]["omitted_fields"] == ["progress", "details"]
     assert [p["train_loss"] for p in state["loss"]] == [1.0, 0.5]
     evals = {e["kind"]: e for e in state["progress"]["judge_evals"]}
     assert evals["final"]["aggregate_score"] > evals["model_before"]["aggregate_score"]

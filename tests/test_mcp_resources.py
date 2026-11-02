@@ -147,6 +147,8 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://dataset-pipeline-packages/{id}",
         "overmind://dataset-pipeline-bindings/{id}",
         "overmind://pipeline-diagnostics/{id}",
+        "overmind://checkpoints/{id}",
+        "overmind://eval-rows/{row}",
         "overmind://eval-runs/{eval_run}",
         "overmind://eval-sets/{eval_set}",
         "overmind://finetunes/{job_id}",

@@ -118,16 +118,12 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 1. **Discover the connected product.** Read `overmind://interface/current`, select an authorized project, and use named MCP operations. Keep platform-owned training, evaluation and serving on their named tools. The native agent authors dataset transformations as staged Python packages; use the upload/export CLI for local file transport. Draft comparisons and experiments do not submit paid work; preparation returns a background receipt, and launch records the authorized saved scope. Check actual schemas rather than assuming an installed skill has the newest catalog.
 1. **One skill per workflow.** Open the surface skill for the task before
    implementing. This file holds only conventions that apply everywhere.
-1. **Discover, then pass the id the schema asks for.** There are no
-   `list_capabilities`, `list_traces`, `get_trace`, `get_capability`,
-   `list_eval_sets`, `list_eval_runs`, `list_finetune_jobs`,
-   `list_deployed_models`, or `job_status` tools. Use `list_datasets`,
-   `query_*`, `inspect_*`, `get_job`, and resource reads. Never paste raw
-   UUIDs to the user when a name/slug exists.
-   Dataset names are not unique: `list_datasets` then pass that UUID to
-   `inspect_dataset` / `query_dataset` (those two reject names). Fine-tune,
-   eval, and optimizer tools also accept a unique dataset name.
-   Capability tools accept name, slug, or id.
+1. **Discover, then pass the id the schema asks for.** Use `list_objects`
+   for project-wide search and inventory, including `kinds=["trained_model"]`
+   for successful chat and decision jobs without requiring a deployment.
+   Page through `next_offset`; ambiguous names remain separate candidates.
+   Use returned scoped resource links and explicit IDs for follow-up work.
+   `list_datasets` remains the dataset-specific inventory.
 1. **Contracts gate dataset consumption.** Fine-tuning needs a `train`
    version; eval runs and optimizer experiments need `eval`; `pending` is
    refused. See [Datasets: intent and contracts](../overmind-datasets/SKILL.md#intent-and-contracts).
@@ -141,11 +137,20 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 
 ## Conventions
 
-- **List first.** `list_datasets` for datasets. Everything else:
-  `inspect_capability_health`, `query_traces`, `query_failures`, or a
-  resource read. Read `overmind://capabilities/{capability}` for capability
-  `id` and `active_model`.
-- **Async jobs.** Poll returned job references with `get_job(kind, id)`.
+- **List first.** `get_project_overview` gives counts and recent objects;
+  `list_objects` searches names and filters kinds, status, capability, time,
+  or native request keys. `inspect_dependencies` pages direct consumers and
+  routing; indirect/external references remain unknown.
+- **Recovery.** For mutations exposing an optional catalogue `request_key`,
+  reuse it unchanged and inspect `inspect_mutation` after a disconnect.
+  Pending/unknown receipts do not authorize replay. A retryable error releases
+  the key, so retry with the same key. Any other refusal stays on its receipt;
+  fix the cause and use a new key. Native request-key workflows retain their
+  own receipts and are discoverable with `list_objects`.
+- **Lineage.** `inspect_model_lineage` joins pinned cells, preparation,
+  evaluation references, deployment and active routing. Follow its training
+  resource for recipe/checkpoint details; absent pins remain unknown.
+- **Async jobs.** Poll returned job references with `get_job(kind, id)`, or inspect up to eight with `inspect_jobs`. Pass its cursor as `after` with `timeout_seconds` (0–30) to wait for changes.
   Source landing uses `kind=dataset_run`; transformations use the returned `kind=dataset_pipeline` and run ID. Other supported kinds include
   `eval_run`, `finetune_job`, `deployment`, `model_activation`, and `optimizer_experiment`.
 - `inspect_operation` reads a linked operational receipt, with `after`/`limit`
@@ -162,15 +167,17 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
 Use only these implemented names and inspect their schemas at call time. Each
 group's owning skill carries its workflow.
 
+- Discovery: `search_objects` searches up to eight explicit accessible projects and reports partial coverage; `list_objects`, `get_project_overview`, `inspect_dependencies`, `inspect_model_lineage`.
+- Recovery: `inspect_jobs`, `inspect_mutation`.
 - Observability: `inspect_capability_health`, `query_failures`, `query_traces`, `get_job`.
 - Signals: `list_signals`, `set_signal_subscription`.
-- Credits: `get_credit_balance` reports account balance and usage by service, with `since` for task budgets. Read the `credit_reporting` field of `overmind://interface/current` for scope and budget limits.
+- Credits: `get_credit_usage` pages account-owned posted project charges by service and recorded training job; experiment filters cover linked training charges only. Null attribution and unposted charges remain unknown. `get_credit_balance` reports account balance and usage by service, with `since` for task budgets. Read the `credit_reporting` field of `overmind://interface/current` for scope and budget limits.
 - Instrumentation: `get_instrumentation_plan`, `verify_instrumentation`.
 - Datasets: `list_datasets`, `inspect_dataset`, `query_dataset`,
   `start_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`,
   `inspect_dataset_workbench`, `save_dataset_pipeline`, `run_dataset_pipeline`,
   `import_dataset_version`, `update_dataset`, `cancel_dataset`.
-- Evaluations: `check_evaluation_readiness`, `create_eval_matrix_row`, `delete_eval_matrix_row`,
+- Evaluations: `check_evaluation_readiness`, `create_eval_matrix_row`, `revise_eval_matrix_row`, `delete_eval_matrix_row`,
   `create_eval_set`, `run_evaluation`, `compare_evaluations`.
 - Training: `get_model_catalog`, `check_finetune_readiness`, `estimate_finetune`,
   `start_finetune`, `save_training_plan`, `create_training_experiment`.
@@ -221,6 +228,8 @@ The implemented resource templates are:
 - `overmind://traces/{trace_id}`
 - `overmind://sessions/{session}`
 - `overmind://datasets/{dataset}`
+- `overmind://checkpoints/{id}`
+- `overmind://eval-rows/{row}`
 - `overmind://eval-runs/{eval_run}`
 - `overmind://eval-sets/{eval_set}`
 - `overmind://signal-events`
@@ -256,3 +265,7 @@ return the ordinary link. Do not add plugin-only presentation parameters or
 build another UI. Verify the browser project matches the MCP project before
 combining their evidence. Console navigation is optional; continue platform
 work through MCP when no browser is available.
+
+Retained intermediate checkpoints are discoverable with `list_objects(kinds=["checkpoint"])`,
+including checkpoints from jobs that later failed. Follow the returned checkpoint resource
+for its identity and training-job reference. Discovery does not certify serving readiness.

@@ -15,6 +15,7 @@ from overbae.services.mcp.contracts.common import MCPModel
 from overbae.services.mcp.result_compat import tool_result
 
 ErrorCode = Literal[
+    "request_in_progress",
     "authentication_required",
     "authentication_failed",
     "project_required",
@@ -96,6 +97,18 @@ class MCPErrorData(MCPModel):
     message: str
     retryable: bool = False
     fields: dict[str, str] = Field(default_factory=dict)
+    next_actions: list[str] = Field(default_factory=list, max_length=4)
+
+
+_NEXT_ACTIONS = {
+    "resource_not_found": ["list_objects"],
+    "dataset_not_found": ["list_objects"],
+    "request_key_conflict": ["list_objects", "inspect_mutation"],
+    "request_in_progress": ["inspect_mutation", "list_objects"],
+    "dataset_busy": ["inspect_dataset", "get_job"],
+    "insufficient_credits": ["get_credit_balance"],
+    "deployment_not_ready": ["get_job"],
+}
 
 
 class MCPError(Exception):
@@ -108,12 +121,14 @@ class MCPError(Exception):
         *,
         retryable: bool = False,
         fields: dict[str, str] | None = None,
+        next_actions: list[str] | None = None,
     ) -> None:
         self.data = MCPErrorData(
             code=code,
             message=message,
             retryable=retryable,
             fields=fields or {},
+            next_actions=_NEXT_ACTIONS.get(code, []) if next_actions is None else next_actions,
         )
         super().__init__(message)
 

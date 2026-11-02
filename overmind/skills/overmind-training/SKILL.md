@@ -137,8 +137,7 @@ changed rows only.
   1. After confirmation, call `create_eval_matrix_row` per metric with no
      `capability`, then `create_eval_set` with those row ids and no capability.
      Pass the set as `eval_set` to `check_finetune_readiness`, `estimate_finetune`
-     and `start_finetune`. Rows cannot be edited: `delete_eval_matrix_row`, then
-     create the replacement.
+     and `start_finetune`. Use `revise_eval_matrix_row` with the row's current `updated_at` for versioned edits.
 
 Held-out eval data is still required for the chat evaluations the user selects;
 confirming metrics does not replace it, and held-out data does not replace metrics.

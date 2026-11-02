@@ -87,7 +87,7 @@ Tools call the domain layer directly. They may share serializers or entity-resol
 1. Register one `ToolDefinition` in that module's `register_<domain>_tools` with accurate `read_only`, `idempotent`, `open_world`, `required_scopes`, `cost_class` and `async_mode`. Import a new domain module into `CATALOG` only when it is genuinely new.
 1. Return the declared output model, never a raw dict. Add `resource` or `resource_links` for durable entities.
 1. For background work, return a `JobReceipt` with `kind`, `id`, `status` and an `overmind://jobs/{kind}/{id}` resource, and teach `get_job` and the resource reader that kind.
-1. Operations that start paid or long work take a stable `request_key`; an identical retry returns the original receipt and a changed payload conflicts.
+1. Operations that start paid or long work take a stable `request_key`; an identical retry returns the original receipt and a changed payload conflicts. The catalog adds an optional `request_key` to other project mutations (`services/mcp/mutations.py`): it stores the response, a retryable `MCPError` releases the key, and an unexpected failure leaves the receipt `unknown`.
 1. Bump `CONTRACT_VERSION` in `services/mcp/__init__.py` with every contract change. `overmind://interface/current` publishes it with the catalog fingerprint.
 1. Keep `tools/list` within `MAX_MANIFEST_BYTES` (`tests/mcp_fixtures.py`); output schemas and secrets stay out of discovery.
 
@@ -97,7 +97,7 @@ Keep handlers thin. Never copy a Console view's business logic into `tools_*.py`
 
 `ToolCatalog.call` validates input, runs the handler, validates output, then `tool_result` emits the same object as `structuredContent` and as compact JSON text for clients that read only text. Matching `resource`/`resource_links` also become native `ResourceLink` content. Identifiers, costs, rows and receipts are contract fields, never prose only.
 
-`MCPError` becomes `{"error": {"code", "message", "retryable", "fields"}}` with `isError=true`. Unexpected failures become a safe `internal_error`. Messages come from authored text or authored domain errors; never leak raw exceptions, provider responses, tokens or tracebacks.
+`MCPError` becomes `{"error": {"code", "message", "retryable", "fields", "next_actions"}}` with `isError=true`. Unexpected failures become a safe `internal_error`. Messages come from authored text or authored domain errors; never leak raw exceptions, provider responses, tokens or tracebacks.
 
 Bound tool responses losslessly: page large results, or fail with a typed error such as `query_result_too_large`, rather than clip values. Action receipts stay compact and point to a resource with the full evidence.
 
