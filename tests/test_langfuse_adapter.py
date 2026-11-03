@@ -192,21 +192,9 @@ def test_backfill_watermark_stops_at_its_bound(api, clock):
 
 
 def test_backfill_watermark_compares_instants_across_formats(api, clock):
-    earlier = (_START - timedelta(hours=1)).isoformat()
-    later_same_second = earlier.replace("+00:00", ".500Z")
-    api.reply(
-        json_body={
-            "data": [
-                {
-                    "id": "o1",
-                    "traceId": "t1",
-                    "startTime": later_same_second,
-                    "name": "n",
-                    "type": "SPAN",
-                }
-            ],
-            "meta": {},
-        }
-    )
-    page = _adapter().fetch_page({"mode": "backfill", "watermark": earlier})
-    assert page.next_state["watermark"] == later_same_second
+    later = "2026-08-19T11:00:00.900500+00:00"
+    earlier = "2026-08-19T11:00:00.900Z"
+    observation = {"id": "o1", "traceId": "t1", "startTime": earlier, "name": "n", "type": "SPAN"}
+    api.reply(json_body={"data": [observation], "meta": {}})
+    page = _adapter().fetch_page({"mode": "backfill", "watermark": later})
+    assert page.next_state["watermark"] == later
