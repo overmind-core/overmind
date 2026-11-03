@@ -10,6 +10,7 @@ import { ConnectorSetupWizard } from "@/components/connectors/setup-wizard";
 import { CreateProjectDialog } from "@/components/create-project";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DateTime } from "@/components/ui/datetime";
 import { FloatingNudge } from "@/components/ui/floating-nudge";
@@ -18,7 +19,6 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { LoadingState } from "@/components/ui/spinner";
@@ -444,7 +444,6 @@ interface ConnectorSectionProps {
   meta: ConnectorMeta;
   credentials: ConnectorCredential[];
   projectId: string;
-  isLast: boolean;
   /** Called when the user wants to add a connection but has no project yet. */
   onRequireProject: () => void;
   onSyncStarted?: (info: SyncStartedInfo) => void;
@@ -455,7 +454,6 @@ function ConnectorSection({
   meta,
   credentials,
   projectId,
-  isLast,
   onRequireProject,
   onSyncStarted,
   onSyncKicked,
@@ -521,8 +519,6 @@ function ConnectorSection({
           </div>
         )}
       </div>
-
-      {!isLast && <Separator />}
 
       {/* Available connectors use the setup wizard; others fall back to the credentials dialog. */}
       {projectId &&
@@ -642,19 +638,18 @@ function IntegrationsPage() {
         </div>
       )}
 
-      <div className="rounded-md border border-border">
-        {CONNECTORS.map((meta, i) => (
-          <div className="px-4" key={meta.type}>
+      <div className="flex flex-col gap-4">
+        {CONNECTORS.map((meta) => (
+          <Card className="bg-transparent px-4" key={meta.type}>
             <ConnectorSection
               credentials={credentialsByType[meta.type] ?? []}
-              isLast={i === CONNECTORS.length - 1}
               meta={meta}
               onRequireProject={() => setCreateProjectOpen(true)}
               onSyncKicked={bumpFastPoll}
               onSyncStarted={setPostSync}
               projectId={projectId}
             />
-          </div>
+          </Card>
         ))}
       </div>
 
