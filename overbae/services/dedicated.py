@@ -72,6 +72,19 @@ def live_for(deployed):
     )
 
 
+def deployed_model(models, reference: str):
+    """Find in `models` by id or model id, or by the id or public name of a dedicated row."""
+    token = reference.strip().removeprefix("dedicated/")
+    try:
+        pk = uuid.UUID(token)
+    except ValueError:
+        pk = None
+    found = None
+    if pk is not None:
+        found = models.filter(Q(pk=pk) | Q(dedicated_deployments__pk=pk)).first()
+    return found or models.filter(model_id=token).first()
+
+
 def lookup(model_id: str, project_ids):
     if not str(model_id).startswith("dedicated/"):
         return None

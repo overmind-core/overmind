@@ -51,6 +51,7 @@ from overbae.models import (
 )
 from overbae.services import (
     activity,
+    dedicated,
     dedicated_progress,
     inference_requests,
     model_workflows,
@@ -1077,9 +1078,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
 
 
 def _dedicated_payload(deployment) -> dict | None:
-    from overbae.services.dedicated import live_for
-
-    row = live_for(deployment)
+    row = dedicated.live_for(deployment)
     if row is None:
         return None
     return {
@@ -1103,10 +1102,7 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
     query = DeployedModel.objects.filter(project=project).select_related(
         "finetuning_job__capability"
     )
-    normalized_id = uuid_reference(value)
-    deployment = query.filter(id=normalized_id).first() if normalized_id else None
-    if deployment is None:
-        deployment = query.filter(model_id=value).first()
+    deployment = dedicated.deployed_model(query, value)
     if deployment is None:
         raise _not_found("deployment", value)
     params = parse_qs(urlparse(uri).query, keep_blank_values=True)
@@ -1543,6 +1539,8 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         raise _not_found("resource", raw_uri)
     segments = [unquote(part) for part in parsed.path.split("/") if part]
     host = parsed.netloc
+    if host == "deployments" and len(segments) == 2 and segments[0] == "dedicated":
+        return _deployment_resource(project, "/".join(segments), raw_uri)
     if host == "checkpoints" and len(segments) == 1:
         checkpoint = TrainingCheckpoint.objects.filter(
             job__project=project, pk=uuid_reference(segments[0])
