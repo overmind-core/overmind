@@ -188,6 +188,7 @@ export const useDedicatedGpusQuery = (id: string | undefined, enabled: boolean) 
 
 const refreshDedicated = (qc: ReturnType<typeof useQueryClient>, id: string) => {
   qc.invalidateQueries({ queryKey: ["dedicated-deployment", id] });
+  qc.invalidateQueries({ queryKey: ["deployed-models"] });
 };
 
 export const useStartDedicatedMutation = (id: string) => {

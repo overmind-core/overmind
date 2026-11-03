@@ -153,6 +153,7 @@ const percent = (value: number) => `${value.toFixed(1)}%`;
 const latency = (value: number) => `${Math.round(value)} ms`;
 const speed = (value: number) => `${value.toFixed(1)} tok/s`;
 
+// shortcut: Two metric requests per card; batch by page when large-page traffic is material.
 function QuickMetrics({ modelId }: { modelId: string }) {
   const metrics = useModelMetricsQuery(modelId, "24h", "application");
   const activity = useModelActivityQuery(modelId, "hour", "24h", "application");

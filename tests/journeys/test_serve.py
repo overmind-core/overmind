@@ -90,9 +90,13 @@ def test_serve(
     assert dedicated.choices[0].message.content == "Order 42 left the depot."
     assert started["model_id"] in {model.id for model in client.models.list().data}
 
+    DeployedModel.objects.filter(model_id="ft-sdk-journey").update(
+        status=DeployedModel.Status.FAILED, finetuning_job=None
+    )
     console.goto(f"/inference?projectId={project.pk}")
     console.press("Stop")
     console.sees("Stop dedicated inference?")
+    console.save_evidence("inference-non-ready-dedicated-stop")
     console.press("Cancel")
     assert status() == "online"
     console.press("Stop")
@@ -108,6 +112,9 @@ def test_serve(
     console.choose('[aria-label="Filter by deployment type"]', "Dedicated")
     console.choose('[aria-label="Sort models"]', "Requests: high to low")
     console.sees("ft-sdk-journey")
+    assert console._browser.call(
+        lambda: console._page.get_by_role("button", name="Start", exact=True).is_disabled()
+    )
     console.press("Choose API snippet endpoint")
     console.click("Dedicated API snippet")
     console.sees("dedicated/ft-sdk-journey", exact=False)

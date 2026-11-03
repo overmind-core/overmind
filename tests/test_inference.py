@@ -257,7 +257,8 @@ def test_inference_deployment_filter_scopes_pagination():
     project = make_project()
     make_member(user, project)
     serverless = _deployed_model(project, _job(project))
-    dedicated = _deployed_model(project, _job(project))
+    dedicated = _deployed_model(project)
+    _deployed_model(project)
     foreign_project = make_project()
     foreign = _deployed_model(foreign_project, _job(foreign_project))
     for model, state in [(dedicated, "online"), (dedicated, "offline"), (foreign, "offline")]:
