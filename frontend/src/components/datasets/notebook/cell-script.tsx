@@ -83,7 +83,7 @@ export function CellScript({ cell }: { cell: Cell }) {
             <LoadingState label="Loading retained source" />
           )}
           {(inventory.isError || file.isError) && (
-            <div className="flex items-center gap-2 text-xs text-destructive" role="alert">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground" role="alert">
               Retained source could not be loaded.
               <Button
                 onClick={() => {

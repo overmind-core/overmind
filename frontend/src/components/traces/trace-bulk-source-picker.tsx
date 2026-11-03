@@ -167,7 +167,7 @@ export function TraceBulkSourcePicker({ projectId, onChange }: Props) {
             <Skeleton aria-hidden="true" className="h-3 w-40" />
           </div>
         ) : previewQuery.isError ? (
-          <span className="text-destructive">Couldn't count matching traces</span>
+          <span className="text-muted-foreground">Couldn't count matching traces</span>
         ) : (
           <span>
             <span className="font-semibold tabular-nums">{matchCount.toLocaleString()}</span>{" "}

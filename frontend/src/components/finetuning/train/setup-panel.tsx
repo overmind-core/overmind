@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Link } from "@tanstack/react-router";
-
 import { IntentBadge } from "@/components/datasets/badges";
 import { EvalSetEmptyWizardState } from "@/components/evaluations/eval-set-empty-wizard-state";
 import { JudgeModelSelect } from "@/components/evaluations/judge-model-select";
@@ -35,27 +33,21 @@ function splitFinding(text: string): [string | null, string] {
 
 function Findings({ items, tone }: { items: string[]; tone: "error" | "warning" }) {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+    <ul className="space-y-1 text-xs">
       {items.map((item) => {
         const [locator, reason] = splitFinding(item);
         return (
-          <div className="col-span-2 grid grid-cols-subgrid" key={item}>
-            <dt
-              className={
-                locator
-                  ? tone === "error"
-                    ? "tabular-nums text-destructive"
-                    : "tabular-nums text-warning"
-                  : "sr-only"
-              }
-            >
-              {locator ?? "—"}
-            </dt>
-            <dd className="min-w-0 text-muted-foreground">{reason}</dd>
-          </div>
+          <li className="break-words text-muted-foreground" key={item}>
+            {locator && (
+              <span className={tone === "error" ? "text-muted-foreground" : "text-warning"}>
+                {locator}:{" "}
+              </span>
+            )}
+            {reason}
+          </li>
         );
       })}
-    </dl>
+    </ul>
   );
 }
 
@@ -203,28 +195,15 @@ export function SetupPanel({
                 )}
 
                 {invalid && dataset && (
-                  <div className="flex flex-col gap-2 rounded-md border border-destructive/40 p-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-                        <Icon.warning className="size-3.5 shrink-0" />
-                        Can&apos;t be trained on yet
-                      </p>
-                      <Button asChild size="xs" variant="secondary">
-                        <Link params={{ datasetId: dataset.id }} to="/datasets/$datasetId">
-                          <Icon.workshop />
-                          Fix in workshop
-                        </Link>
-                      </Button>
+                  <details className="text-xs" open>
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Dataset needs attention before training
+                    </summary>
+                    <div className="mt-2 max-h-24 space-y-1 overflow-y-auto">
+                      <Findings items={validation.errors} tone="error" />
+                      <Findings items={validation.warnings} tone="warning" />
                     </div>
-                    <div className="max-h-24 overflow-y-auto">
-                      {validation.errors.length > 0 && (
-                        <Findings items={validation.errors} tone="error" />
-                      )}
-                      {validation.warnings.length > 0 && (
-                        <Findings items={validation.warnings} tone="warning" />
-                      )}
-                    </div>
-                  </div>
+                  </details>
                 )}
               </>
             )}

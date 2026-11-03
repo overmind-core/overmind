@@ -80,7 +80,7 @@ export function ExperimentsTable({
 }: ExperimentsTableProps) {
   const navigate = useNavigate();
   const unseenKeys = useUnseenCompletionKeys();
-  const { data, isFetched, error } = useOptimizerExperimentsQuery(projectId);
+  const { data, isFetched, error, refetch } = useOptimizerExperimentsQuery(projectId);
   const {
     run_capability: capabilityFilter,
     run_search: searchParam,
@@ -364,6 +364,7 @@ export function ExperimentsTable({
       }}
       onPageChange={(p) => onSearchChange({ page: p })}
       onPageSizeChange={(s) => onSearchChange({ page: 1, page_size: s })}
+      onRetry={() => refetch()}
       // Carry the whole search, not just `projectId` — see the runs table.
       onRowClick={(e) =>
         navigate({

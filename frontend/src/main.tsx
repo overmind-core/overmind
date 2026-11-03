@@ -5,12 +5,14 @@ import { ClerkFailed, ClerkLoaded, ClerkLoading, ClerkProvider } from "@clerk/cl
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 
 import { AuthRouter } from "./components/auth-router";
+import { ConnectionScene } from "./components/connection-scene";
 import {
   AuthenticationLoadError,
   AuthenticationLoadingState,
   RouteErrorFallback,
   RouteNotFound,
 } from "./components/route-error";
+import { SessionRecovery } from "./components/session-recovery";
 import { Toaster } from "./components/ui/sonner";
 
 import "./styles.css";
@@ -51,9 +53,9 @@ function App() {
       {config.clerkReady ? (
         <>
           <ClerkLoading>
-            <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+            <ConnectionScene>
               <AuthenticationLoadingState />
-            </div>
+            </ConnectionScene>
           </ClerkLoading>
           <ClerkFailed>
             <AuthenticationLoadError />
@@ -65,6 +67,7 @@ function App() {
       ) : (
         <AuthRouter router={router} />
       )}
+      <SessionRecovery />
       <Toaster position="bottom-right" />
     </AuthProvider>
   );

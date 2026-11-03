@@ -24,9 +24,9 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table";
 
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -161,6 +161,7 @@ export interface DataTableProps<T> {
   /** Load failure for `data`. Renders an error surface instead of `emptyState`, so a
    *  failed fetch never reads as "you have no data". */
   error?: unknown;
+  onRetry?: () => unknown;
   toolbar?: ReactNode | ((table: TanstackTable<T>) => ReactNode);
   banner?: ReactNode;
   className?: string;
@@ -209,6 +210,7 @@ export function DataTable<T>({
   getRowId,
   emptyState,
   error,
+  onRetry,
   toolbar,
   banner,
   className,
@@ -226,6 +228,18 @@ export function DataTable<T>({
   columnVisibility,
   onColumnVisibilityChange,
 }: DataTableProps<T>) {
+  const [retrying, setRetrying] = useState(false);
+  async function retry() {
+    if (!onRetry || retrying) return;
+    setRetrying(true);
+    try {
+      await onRetry();
+    } catch {
+      // The query owner supplies the error; keep its existing failure visible.
+    } finally {
+      setRetrying(false);
+    }
+  }
   const rows = data?.results ?? NO_ROWS;
   const count = data?.count ?? 0;
   const sort = parseDrfOrdering(ordering);
@@ -349,26 +363,77 @@ export function DataTable<T>({
 
   const toolbarNode = typeof toolbar === "function" ? toolbar(table) : toolbar;
 
-  const emptyNode = hasActiveFilters ? (
-    <EmptyState
-      action={
-        onClearFilters ? (
-          <Button onClick={onClearFilters} size="sm" variant="secondary">
-            <Icon.close />
-            Clear filters
-          </Button>
-        ) : undefined
-      }
-      className="flex-1"
-      description="No results match the current filters."
-      icon={Icon.search}
-      size="section"
-      title="No results"
-    />
-  ) : (
-    (emptyState ?? (
-      <EmptyState className="flex-1" icon={Icon.search} size="section" title="No results" />
-    ))
+  const emptyNode =
+    page > 1 ? (
+      <EmptyState
+        action={
+          <>
+            <Button onClick={() => onPageChange(1)} size="sm" variant="secondary">
+              First page
+            </Button>
+            {hasActiveFilters && onClearFilters && (
+              <Button onClick={onClearFilters} size="sm" variant="secondary">
+                <Icon.close />
+                Clear filters
+              </Button>
+            )}
+          </>
+        }
+        className="flex-1"
+        size="section"
+        title="No rows on this page"
+      />
+    ) : hasActiveFilters ? (
+      <EmptyState
+        action={
+          onClearFilters ? (
+            <Button onClick={onClearFilters} size="sm" variant="secondary">
+              <Icon.close />
+              Clear filters
+            </Button>
+          ) : undefined
+        }
+        className="flex-1"
+        description="No results match the current filters."
+        icon={Icon.search}
+        size="section"
+        title="No results"
+      />
+    ) : (
+      (emptyState ?? (
+        <EmptyState className="flex-1" icon={Icon.search} size="section" title="No results" />
+      ))
+    );
+
+  const errorNotice = (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="alert">
+      <HoverCard>
+        <HoverCardTrigger asChild>
+          <button
+            className="inline-flex items-center gap-1.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            type="button"
+          >
+            <Icon.warning className="size-3 text-warning" />
+            {rows.length > 0 ? "Update unavailable" : "List unavailable"}
+            <span className="sr-only">: {errorMessage(error, "Couldn't load this list.")}</span>
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent className="max-h-48 overflow-y-auto p-3 text-xs">
+          {errorMessage(error, "Couldn't load this list.")}
+        </HoverCardContent>
+      </HoverCard>
+      {onRetry && (
+        <Button
+          disabled={isLoading || retrying}
+          onClick={() => void retry()}
+          size="xs"
+          variant="secondary"
+        >
+          <Icon.refresh />
+          Retry
+        </Button>
+      )}
+    </div>
   );
 
   return (
@@ -377,6 +442,7 @@ export function DataTable<T>({
         <div className="flex shrink-0 flex-wrap items-center gap-2">{toolbarNode}</div>
       ) : null}
       {banner}
+      {error != null && rows.length > 0 && errorNotice}
 
       {unsettled && (
         <span className="sr-only" role="status">
@@ -385,7 +451,7 @@ export function DataTable<T>({
       )}
       {showError ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border p-4">
-          <Alert variant="destructive">{errorMessage(error, "Couldn't load this list.")}</Alert>
+          {errorNotice}
         </div>
       ) : showEmpty ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
@@ -555,7 +621,20 @@ export function DataTable<T>({
                           }
                         : undefined
                     }
-                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    onClick={
+                      onRowClick
+                        ? (event) => {
+                            if (
+                              event.defaultPrevented ||
+                              (event.target as Element).closest(
+                                'a,button,input,select,textarea,[role="button"],[role="checkbox"],[role="menuitem"],[contenteditable="true"]'
+                              )
+                            )
+                              return;
+                            onRowClick(row.original);
+                          }
+                        : undefined
+                    }
                     onFocus={
                       onRowClick
                         ? (e) => {

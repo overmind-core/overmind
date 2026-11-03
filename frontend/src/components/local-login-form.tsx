@@ -9,8 +9,14 @@ import { getContext } from "@/integrations/tanstack-query";
 import { ApiError } from "@/lib/api-error";
 import { errorMessage } from "@/lib/notify";
 
-export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
-  const [email, setEmail] = useState("");
+export function LocalLoginForm({
+  onSignedIn,
+  recoveryEmail,
+}: {
+  onSignedIn: () => void;
+  recoveryEmail?: string;
+}) {
+  const [email, setEmail] = useState(recoveryEmail ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +29,7 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
       const res = await apiClient.auth.authLocalCreate({
         localSessionRequest: { email: email.trim(), password },
       });
-      setTokens(res.access, res.refresh);
+      setTokens(res.access, res.refresh, res.user);
       void getContext().queryClient.invalidateQueries();
       onSignedIn();
     } catch (err) {
@@ -39,13 +45,22 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <form
-      className="flex w-full max-w-sm flex-col gap-4 rounded-md border border-auth-border bg-auth-panel/90 p-6"
+      aria-busy={submitting}
+      className={
+        recoveryEmail
+          ? "flex w-full flex-col gap-4"
+          : "flex w-full max-w-sm flex-col gap-4 rounded-md border border-auth-border bg-auth-panel/90 p-6"
+      }
       onSubmit={(e) => void onSubmit(e)}
     >
-      <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-auth-text">Continue</h1>
-      </div>
-      <p className="text-sm text-auth-text-label">Creates an account on first use.</p>
+      {!recoveryEmail && (
+        <>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-lg font-semibold text-auth-text">Continue</h1>
+          </div>
+          <p className="text-sm text-auth-text-label">Creates an account on first use.</p>
+        </>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label className="text-auth-text-label" htmlFor="local-email">
           Email
@@ -55,6 +70,7 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
           className="border-auth-border bg-auth-field text-auth-text"
           id="local-email"
           onChange={(e) => setEmail(e.target.value)}
+          readOnly={Boolean(recoveryEmail)}
           required
           type="email"
           value={email}
@@ -66,6 +82,7 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         </Label>
         <Input
           autoComplete="current-password"
+          autoFocus={Boolean(recoveryEmail)}
           className="border-auth-border bg-auth-field text-auth-text"
           id="local-password"
           minLength={8}
@@ -76,16 +93,13 @@ export function LocalLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         />
       </div>
       {error ? (
-        <p
-          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          role="alert"
-        >
+        <p className="py-2 text-sm text-muted-foreground" role="alert">
           {error}
         </p>
       ) : null}
       <Button className="w-full" disabled={submitting} size="lg" type="submit">
         {submitting ? <Spinner size="sm" /> : null}
-        Continue
+        {submitting ? "Signing in" : recoveryEmail ? "Restore session" : "Continue"}
       </Button>
     </form>
   );

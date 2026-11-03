@@ -124,7 +124,7 @@ export function TrajectoryScoresProvider({
         </TooltipContent>
       </Tooltip>
       {status === "error" && (
-        <span className="text-xs text-destructive" role="status">
+        <span className="text-xs text-muted-foreground" role="status">
           Scores unavailable
         </span>
       )}

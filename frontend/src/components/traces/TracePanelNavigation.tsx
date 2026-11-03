@@ -65,7 +65,7 @@ export function TracePanelNavigation() {
       </div>
       {failedSpans.length > 0 && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/70 px-3 py-1.5 text-xs">
-          <span className="text-destructive">
+          <span className="text-muted-foreground">
             {failedSpans.length} failed {failedSpans.length === 1 ? "span" : "spans"}
           </span>
         </div>

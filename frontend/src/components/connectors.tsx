@@ -284,9 +284,9 @@ export function ConnectorDialog({
             </p>
 
             {error && (
-              <div className="flex items-start gap-2 rounded-sm border border-destructive/40 bg-destructive/5 p-3">
-                <Icon.warning className="mt-0.5 size-4 shrink-0 text-destructive" />
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="flex items-start gap-2 py-2">
+                <Icon.warning className="mt-0.5 size-4 shrink-0 text-warning" />
+                <p className="text-sm text-muted-foreground">{error}</p>
               </div>
             )}
 

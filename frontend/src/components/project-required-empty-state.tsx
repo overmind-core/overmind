@@ -1,18 +1,47 @@
-import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
+import type { ReactNode } from "react";
+
+import { Link } from "@tanstack/react-router";
+
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/spinner";
 import { useProjectsList } from "@/hooks/use-projects";
+import { featureFlags } from "@/lib/feature-flags";
 
 export function NoProjectsEmptyState() {
-  return <QuickstartEmbed />;
+  return (
+    <EmptyState
+      action={
+        <>
+          <Button asChild>
+            <Link to="/">Set up an agent</Link>
+          </Button>
+          {featureFlags.datasets && (
+            <Button asChild variant="outline">
+              <Link to="/datasets">Upload data</Link>
+            </Button>
+          )}
+        </>
+      }
+      description={
+        featureFlags.datasets
+          ? "Set up an agent or upload data to create a project."
+          : "Set up an agent to create a project."
+      }
+      icon={Icon.folderAdd}
+      title="No projects yet"
+    />
+  );
 }
 
 export function ProjectRequiredEmptyState({
+  noProjects = <NoProjectsEmptyState />,
   title = "Please select a project",
   description = "Select a project from the selector in the top bar to see this page.",
 }: {
+  noProjects?: ReactNode;
   title?: string;
   description?: string;
 }) {
@@ -25,7 +54,7 @@ export function ProjectRequiredEmptyState({
 
   if (error && !data) return <Alert variant="destructive">Couldn’t load projects.</Alert>;
 
-  if (projects.length === 0) return <QuickstartEmbed />;
+  if (projects.length === 0) return noProjects;
 
   return <EmptyState description={description} icon={Icon.folderAdd} title={title} />;
 }

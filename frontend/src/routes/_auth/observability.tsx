@@ -505,6 +505,7 @@ function TracesPage() {
           }
           onPageChange={(p) => setSearch({ page: p })}
           onPageSizeChange={(s) => setSearch({ page: 1, page_size: s })}
+          onRetry={() => refetchSessions()}
           onRowClick={(row) =>
             setSearch({
               ordering: undefined,
@@ -579,6 +580,7 @@ function TracesPage() {
           }
           onPageChange={(p) => setSearch({ page: p })}
           onPageSizeChange={(s) => setSearch({ page: 1, page_size: s })}
+          onRetry={() => refetch()}
           onRowClick={(row) => handleTraceClick(row.traceId)}
           onRowSelectionChange={handleRowSelectionChange}
           ordering={tracesOrdering}

@@ -144,8 +144,8 @@ describe("auth redirect", () => {
     const { router } = mount("/capabilities/abc?projectId=p1");
     await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
     act(() => setAuth({ isSignedIn: true }));
-    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
-    expect(replace).toHaveBeenCalledWith("/capabilities/abc?projectId=p1");
+    await waitFor(() => expect(router.state.location.href).toBe("/capabilities/abc?projectId=p1"));
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("lands on login when the user signs out of a protected page", async () => {
@@ -176,8 +176,12 @@ describe("auth redirect", () => {
 });
 
 describe("safeNextPath", () => {
-  it.each(["/", "/a?b=1#c", "/login"])("keeps %s", (p) => expect(safeNextPath(p)).toBe(p));
+  it.each(["/", "/a?b=1#c"])("keeps %s", (p) => expect(safeNextPath(p)).toBe(p));
   it.each([
+    "/login",
+    "/login?next=%2Flogin",
+    "/login/",
+    "/%6cogin",
     "//evil.com",
     "/\\evil.com",
     "/\t/evil.com",

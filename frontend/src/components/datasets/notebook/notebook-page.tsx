@@ -9,13 +9,15 @@ import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/ce
 import { CellFlow } from "@/components/datasets/notebook/cell-flow";
 import { useCellMotion } from "@/components/datasets/notebook/cell-motion";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import { PreparationActions } from "@/components/datasets/notebook/preparation-actions";
 import {
   extractionStatus,
   SourceDetails,
   SourceLanding,
 } from "@/components/datasets/notebook/source";
-import { TracePreparation } from "@/components/datasets/notebook/trace-preparation";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/spinner";
 import {
   activeCellOf,
@@ -31,6 +33,7 @@ import {
   useDatasetEvents,
   useDatasetPreparationQuery,
   useDatasetQuery,
+  useDatasetWorkbenchQuery,
   useEndPreparationMutation,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
@@ -55,6 +58,7 @@ export function DatasetNotebook({
   const guard = useGuestGate();
   const datasetQuery = useDatasetQuery(datasetId);
   const dataset = datasetQuery.data;
+  const workbenchQuery = useDatasetWorkbenchQuery(datasetId);
   const preparationQuery = useDatasetPreparationQuery(
     datasetId,
     cellParam,
@@ -179,6 +183,27 @@ export function DatasetNotebook({
     ...capabilities.map((c) => ({ id: c.id, name: c.name })),
   ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
 
+  const latestRun = workbenchQuery.data?.runs[0];
+  const repairSource = latestRun?.state === "failed" ? latestRun.sourceCell : undefined;
+  const actionCellId = cells.some((cell) => cell.id === repairSource) ? repairSource : active?.id;
+  const preparationControls = (cell?: Cell) =>
+    !busy ? (
+      <div className="nodrag nopan pointer-events-auto">
+        <PreparationActions cell={cell} dataset={dataset} run={latestRun}>
+          {dataset.operation?.source_import?.can_resume === true && (
+            <Button
+              disabled={resumeImport.isPending}
+              onClick={guard(() => resumeImport.mutate())}
+              size="sm"
+              variant="secondary"
+            >
+              Resume import
+            </Button>
+          )}
+        </PreparationActions>
+      </div>
+    ) : undefined;
+
   const renderCell = (cell: Cell) => {
     const node = nodes?.find((node) => node.cell.id === cell.id);
     const owner = node?.dataset ?? datasetId;
@@ -214,19 +239,15 @@ export function DatasetNotebook({
           intent={node?.intent ?? intent}
           key={cell.id}
           onSelect={() => setSelectedId(cell.id)}
+          preparationActions={cell.id === actionCellId ? preparationControls(cell) : undefined}
           selected={cell.id === selectedId}
           sourceDetails={
             local ? (
-              <>
-                <SourceDetails
-                  datasetId={datasetId}
-                  kind={dataset.sourceKind}
-                  spec={dataset.sourceSpec}
-                />
-                {dataset.sourceKind === "traces" && cell.position === 0 && !busy && (
-                  <TracePreparation dataset={dataset} source={cell} />
-                )}
-              </>
+              <SourceDetails
+                datasetId={datasetId}
+                kind={dataset.sourceKind}
+                spec={dataset.sourceSpec}
+              />
             ) : undefined
           }
         />
@@ -268,30 +289,24 @@ export function DatasetNotebook({
             </div>
           )}
           <ContaminationReport spec={dataset.sourceSpec} />
-          {preparationQuery.isError && (
-            <p className="px-4 text-sm text-destructive" role="alert">
+          {workbenchQuery.isError && (
+            <Alert variant="destructive">
+              <div className="flex flex-wrap items-center gap-2">
+                Preparation status could not be loaded.
+                <Button onClick={() => void workbenchQuery.refetch()} size="sm" variant="secondary">
+                  Retry status
+                </Button>
+              </div>
+            </Alert>
+          )}
+
+          {preparationQuery.isError && preparationQuery.data && (
+            <p className="px-4 text-sm text-muted-foreground" role="alert">
               Preparation could not be loaded.
               <Button onClick={() => void preparationQuery.refetch()} size="sm" variant="secondary">
                 Retry
               </Button>
             </p>
-          )}
-          {dataset.error && (
-            <p className="px-4 text-sm text-destructive" role="alert">
-              {dataset.error}
-            </p>
-          )}
-          {dataset.operation?.source_import?.can_resume === true && (
-            <div className="px-4 py-2">
-              <Button
-                disabled={resumeImport.isPending}
-                onClick={guard(() => resumeImport.mutate())}
-                size="sm"
-                variant="secondary"
-              >
-                Resume import
-              </Button>
-            </div>
           )}
         </div>
       </div>
@@ -302,9 +317,19 @@ export function DatasetNotebook({
         />
         {preparationQuery.isPending ? (
           <LoadingState fullPage label="Loading preparation" />
+        ) : preparationQuery.isError && !preparationQuery.data ? (
+          <EmptyState
+            action={
+              <Button onClick={() => void preparationQuery.refetch()} size="sm" variant="secondary">
+                Retry
+              </Button>
+            }
+            title="Dataset contents could not be loaded"
+          />
         ) : cells.length === 0 ? (
           <div className="overflow-y-auto pr-10">
             <SourceLanding
+              actions={preparationControls()}
               brief={dataset.brief ?? ""}
               busy={busy}
               datasetId={datasetId}

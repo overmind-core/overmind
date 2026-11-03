@@ -1,3 +1,4 @@
+import json
 import re
 
 import pytest
@@ -43,15 +44,57 @@ def test_train(
     fake_llm.on(served("ft-"), trained_turn)
     fake_llm.on("You triage customer support tickets.", "refund")
     answer = workshop.capability("answer")
-    train = upload(
-        cli,
-        sample_agent,
-        training_rows(tmp_path),
-        "--intent",
-        "train",
-        "--capability",
-        answer["id"],
+    path = training_rows(tmp_path)
+    correct_rows = [json.loads(line) for line in path.read_text().splitlines()]
+    broken_rows = json.loads(json.dumps(correct_rows))
+    broken_rows[0]["messages"][-1]["content"] = ""
+    path.write_text("".join(json.dumps(row) + "\n" for row in broken_rows))
+    train = upload(cli, sample_agent, path, "--intent", "train", "--capability", answer["id"])
+    drain(worker)
+    project = workshop.project()["id"]
+    console.goto(f"/training?projectId={project}&train=true&datasetId={train}")
+    console.sees("Dataset needs attention before training")
+    assert (
+        console._browser.call(
+            lambda: console._page.get_by_role("button", name="Copy prompt", exact=True).count()
+        )
+        == 0
     )
+    console.save_evidence("training-dataset-warning")
+    console.sees("Example 1, message 3 (assistant):", exact=False)
+    console.save_evidence("training-dataset-warning-details")
+    source = workshop.call("inspect_dataset", {"dataset": train})["active"]
+    repaired = workshop.call(
+        "import_dataset_version",
+        {
+            "dataset": train,
+            "source_cell": source["id"],
+            "source_fingerprint": source["fingerprint"],
+            "name": "Repaired training rows",
+            "request_key": "repair-empty-assistant-message",
+            "provenance": "Restore the missing assistant answer from the original authored fixture.",
+            "imported_rows": [{"source_row": i, **row} for i, row in enumerate(correct_rows)],
+        },
+    )
+    drain(worker)
+    assert (
+        workshop.call("get_job", {"kind": "dataset_pipeline", "id": repaired["job"]["id"]})[
+            "status"
+        ]
+        == "completed"
+    )
+    console.goto(f"/training?projectId={project}&train=true&datasetId={train}")
+    console.wait_until(
+        """() => !document.body.innerText.includes("Dataset needs attention before training") && !document.querySelector('[aria-label="Validating dataset"]')"""
+    )
+    console._browser.call(
+        lambda: (
+            console._page.locator("#train-dataset")
+            .get_by_text("train.jsonl", exact=True)
+            .wait_for()
+        )
+    )
+    console.save_evidence("training-repair-revalidated")
     evals = upload(
         cli, sample_agent, tickets(tmp_path), "--intent", "eval", "--capability", answer["id"]
     )

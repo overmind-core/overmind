@@ -179,17 +179,6 @@ function JobDetail({ jobId, projectId }: { jobId: string; projectId: string }) {
 
         {job.status === "failed" && job.errorMessage ? (
           <FailureCard
-            alternative={
-              job.dataset ? (
-                <Link
-                  params={{ datasetId: job.dataset }}
-                  search={{ projectId }}
-                  to="/datasets/$datasetId"
-                >
-                  Fix in workshop
-                </Link>
-              ) : undefined
-            }
             error={userFacingJobError(job.errorMessage)}
             onRetry={() => retryMutation.mutate(job.id)}
             retryPending={retryMutation.isPending}

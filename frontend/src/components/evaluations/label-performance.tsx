@@ -199,6 +199,7 @@ export function LabelPerformance({
           setPageSize(size);
           setPage(1);
         }}
+        onRetry={() => query.refetch()}
         ordering={ordering}
         page={page}
         pageSize={pageSize}

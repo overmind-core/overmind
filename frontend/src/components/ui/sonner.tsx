@@ -7,7 +7,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       icons={{
-        error: <Icon.failed className="size-4 text-destructive" />,
+        error: <Icon.warning className="size-4 text-warning" />,
         info: <Icon.notify className="size-4 text-muted-foreground" />,
         loading: <Spinner className="size-4 text-muted-foreground" />,
         success: <Icon.success className="size-4 text-success" />,

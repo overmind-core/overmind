@@ -4,23 +4,41 @@ import { useEffect, useState } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
 import * as z from "zod";
 
+import { ConnectionPanel, ConnectionScene, connectionHeading } from "@/components/connection-scene";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
+import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api-error";
-import { hasChunkReloadFlag, isChunkLoadError, tryReloadOnceOnChunkError } from "@/lib/chunk-error";
+import { isChunkLoadError } from "@/lib/chunk-error";
 import { errorMessage } from "@/lib/notify";
 
-export function AuthenticationLoadingState() {
+export function AuthenticationLoadingState({ label = "Loading sign in" }: { label?: string }) {
+  const [delayed, setDelayed] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDelayed(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="flex flex-col items-center justify-center gap-4">
-      <LoadingState label="Loading sign in" />
-      <Button onClick={() => window.location.reload()} variant="outline">
-        Reload sign in
-      </Button>
-    </div>
+    <ConnectionPanel>
+      <div className="flex min-h-48 flex-col items-center justify-center gap-4 text-center">
+        <img alt="Overmind" height={40} src="/favicon.png" width={40} />
+        <LoadingState label={label} />
+        {delayed && (
+          <div className="space-y-3 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200">
+            <p className="text-sm text-muted-foreground" role="status">
+              This is taking longer than usual.
+            </p>
+            <Button onClick={() => window.location.reload()} variant="outline">
+              {label === "Loading sign in" ? "Reload sign in" : "Reload page"}
+            </Button>
+          </div>
+        )}
+      </div>
+    </ConnectionPanel>
   );
 }
 
@@ -57,13 +75,7 @@ function findZodError(err: unknown, depth = 0): z.ZodError | null {
 export function RouteErrorFallback({ error, reset }: { error: unknown; reset?: () => void }) {
   const router = useRouter();
   const chunkError = isChunkLoadError(error);
-  const awaitingChunkReload = chunkError && !hasChunkReloadFlag();
   const [retrying, setRetrying] = useState(false);
-
-  useEffect(() => {
-    if (!awaitingChunkReload) return;
-    tryReloadOnceOnChunkError(error);
-  }, [awaitingChunkReload, error]);
 
   const notFound = error instanceof ApiError && error.status === 404;
   // A `validateSearch` failure carries the raw issue array as its `.message`,
@@ -84,9 +96,9 @@ export function RouteErrorFallback({ error, reset }: { error: unknown; reset?: (
                 </Button>
               </>
             }
-            description="The app was updated while you had it open. Refresh to load the latest version."
+            description="Part of the app could not load. Check your connection, then refresh the page."
             icon={Icon.warning}
-            title="New version available"
+            title="Page unavailable"
           />
         </div>
       </div>
@@ -161,13 +173,16 @@ export function RouteNotFound() {
 
 export function AuthenticationLoadError() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
-      <EmptyState
-        action={<Button onClick={() => window.location.reload()}>Reload sign in</Button>}
-        description="The sign-in service could not load. Check your connection and reload."
-        icon={Icon.warning}
-        title="Sign in unavailable"
-      />
-    </div>
+    <ConnectionScene>
+      <PageHeader className={connectionHeading} title="Sign in unavailable" />
+      <ConnectionPanel>
+        <div className="space-y-5 text-center">
+          <p className="text-sm text-muted-foreground" role="alert">
+            The sign-in service could not load. Check your connection and reload.
+          </p>
+          <Button onClick={() => window.location.reload()}>Reload sign in</Button>
+        </div>
+      </ConnectionPanel>
+    </ConnectionScene>
   );
 }

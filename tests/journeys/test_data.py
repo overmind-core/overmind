@@ -52,21 +52,6 @@ def test_data(
 
 def hand_uploaded_data_to_the_coding_agent(console, tmp_path):
     console.goto("/projects")
-    console.press("New project")
-    console._browser.call(
-        lambda: console._page.get_by_label("Project name", exact=True).fill("Data first")
-    )
-    console.upload('input[type="file"]', tickets(tmp_path))
-    console.sees("3 rows")
-    console.press("Create dataset")
-    console.sees("Prepare your training data")
-    dataset = Dataset.objects.get(name="Data first")
-    assert dataset.intent == "train"
-    assert dataset.brief == (
-        "Explore the uploaded data and determine how best to prepare it for training."
-    )
-    assert dataset.capability_id is None
-    console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
     console._browser.call(
         lambda: console._page.evaluate("""() => {
         window.copiedOnboardingPrompt = '';
@@ -76,8 +61,46 @@ def hand_uploaded_data_to_the_coding_agent(console, tmp_path):
         navigator.clipboard.writeText = async text => { window.copiedOnboardingPrompt = text; };
     }""")
     )
+    console.press("New project")
+    console._browser.call(
+        lambda: console._page.get_by_label("Project name", exact=True).fill("Data first")
+    )
+    console.upload('input[type="file"]', tickets(tmp_path))
+    console.sees("3 rows")
+    console._browser.call(lambda: console._page.get_by_role("tab", name="From repository").click())
+    console.sees("Copy prompt")
+    console.press("Choose coding agent")
+    console._browser.call(
+        lambda: console._page.get_by_role("menuitem", name="Codex", exact=True).click()
+    )
     console.press("Copy prompt")
     console.wait_until("() => window.copiedOnboardingPrompt.length > 0")
+    console.sees("New project")
+    console.save_evidence("onboarding-prompt-copied-project-not-created")
+    console._browser.call(lambda: console._page.get_by_role("tab", name="From data").click())
+    console.sees("3 rows")
+    assert (
+        console._browser.call(
+            lambda: console._page.get_by_label("Project name", exact=True).input_value()
+        )
+        == "Data first"
+    )
+    console.press("Create dataset")
+    console.sees("Prepare your training data")
+    console._browser.call(
+        lambda: (
+            console._page.get_by_role("dialog").get_by_role("link", name="Open in Codex").wait_for()
+        )
+    )
+    dataset = Dataset.objects.get(name="Data first")
+    assert dataset.intent == "train"
+    assert dataset.brief == (
+        "Explore the uploaded data and determine how best to prepare it for training."
+    )
+    assert dataset.capability_id is None
+    console.wait_until(f"() => location.pathname.includes('/datasets/{dataset.id}')")
+    console.press("Copy prompt")
+    console.wait_until(f"() => window.copiedOnboardingPrompt.includes('{dataset.id}')")
     prompt = console._browser.call(lambda: console._page.evaluate("window.copiedOnboardingPrompt"))
     assert prompt.startswith(
         f"Set me up on Overmind with my uploaded data\n(project_id: {dataset.project_id},\ndataset_id: {dataset.id})"
@@ -209,6 +232,74 @@ def keep_the_brief_when_the_cli_attaches_data(
     console.goto(f"/datasets/{dataset}?projectId={project}")
     console.sees("Brief before data")
     console.sees("Refund order 0 please", exact=False)
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "group", name="Prepare with coding agent", exact=True
+        ).wait_for()
+    )
+    console._browser.call(
+        console._page.context.grant_permissions, ["clipboard-read", "clipboard-write"]
+    )
+    console.press("Copy prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    for fact in (dataset, project, after["active"]["id"], after["active"]["fingerprint"], brief):
+        assert fact in prompt
+    console._browser.call(
+        lambda: (
+            console._page.locator(f"#cell-{after['active']['id']}")
+            .get_by_role("button", name="Copy prompt", exact=True)
+            .wait_for()
+        )
+    )
+    console.save_evidence("file-dataset-preparation")
+
+    console._browser.call(
+        lambda: console._page.route("**/api/datasets/*/rows/**", lambda route: route.abort())
+    )
+    console.goto(f"/datasets/{dataset}?projectId={project}")
+    console.sees("Retry rows")
+    console._browser.call(
+        lambda: console._page.get_by_role("searchbox", name="Search rows", exact=True).fill(
+            "Refund order 0"
+        )
+    )
+    console.save_evidence("dataset-rows-retry")
+    console._browser.call(lambda: console._page.unroute("**/api/datasets/*/rows/**"))
+    console.press("Retry rows")
+    console.sees("Refund order 0 please", exact=False)
+    console.wait_until("() => !document.body.textContent.includes('Refund order 1 please')")
+    console._browser.call(
+        lambda: console._page.get_by_role("combobox", name="Rows per page", exact=True).click()
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("option", name="100", exact=True).click()
+    )
+    console._browser.call(
+        lambda: console._page.get_by_role("combobox", name="Rows per page", exact=True).wait_for()
+    )
+    console.wait_until("() => !!document.querySelector('article table[aria-busy=\"false\"]')")
+    console.save_evidence("dataset-rows-recovered")
+
+    console._browser.call(
+        lambda: console._page.route("**/api/datasets/?*", lambda route: route.abort())
+    )
+    console.goto(f"/datasets?projectId={project}&ds_search=Brief")
+    console.sees("Retry")
+    assert (
+        console._browser.call(
+            lambda: console._page.locator(
+                '[data-slot="page-header"] [data-slot="count-chip"]'
+            ).count()
+        )
+        == 0
+    )
+    console.save_evidence("dataset-list-retry")
+    console._browser.call(lambda: console._page.unroute("**/api/datasets/?*"))
+    console.press("Retry")
+    console.sees("Brief before data")
+    console.wait_until("() => new URLSearchParams(location.search).get('ds_search') === 'Brief'")
+    console.save_evidence("dataset-list-recovered")
 
 
 def land_selected_traces_as_rows(workshop, fake_llm, worker):
@@ -289,13 +380,33 @@ def open_traces_selected_in_the_console(console, workshop, project, live_api, wo
         "&& !!document.querySelector('article [data-cell-frame]')"
     )
     console.sees("Intent pending", exact=False)
-    console.press("Prepare with agent")
-    prompt = console._browser.call(
-        lambda: console._page.get_by_role("textbox", name="Preparation prompt").input_value()
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "group", name="Prepare with coding agent", exact=True
+        ).wait_for()
     )
+    console.press("Copy prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
     for fact in (dataset["id"], project, dataset["active"]["fingerprint"], live_api.url):
         assert fact in prompt
     console.save_evidence("trace-workshop-prepare")
+
+    console._browser.call(
+        lambda: console._page.route("**/api/datasets/*/preparation/**", lambda route: route.abort())
+    )
+    console.goto(f"/datasets/{dataset['id']}?projectId={project}")
+    console.sees("Dataset contents could not be loaded")
+    assert (
+        console._browser.call(
+            lambda: console._page.get_by_role("button", name="Add files", exact=True).count()
+        )
+        == 0
+    )
+    console.save_evidence("dataset-preparation-unavailable")
+    console._browser.call(lambda: console._page.unroute("**/api/datasets/*/preparation/**"))
+    console.press("Retry")
+    console.wait_until("() => !!document.querySelector('article [data-cell-frame]')")
 
     [trace] = workshop.call("query_traces", {})["traces"]
     without_events = Dataset.objects.create(
@@ -434,6 +545,46 @@ def keep_one_preparation_until_the_agent_finishes(
     upload(cli, sample_agent, tickets(tmp_path), "--dataset", dataset)
     drain(worker)
     source = workshop.call("inspect_dataset", {"dataset": dataset})["active"]
+    failed = workshop.call(
+        "import_dataset_version",
+        {
+            "dataset": dataset,
+            "source_cell": source["id"],
+            "source_fingerprint": source["fingerprint"],
+            "name": "Invalid source mapping",
+            "request_key": "invalid-lineage",
+            "provenance": "Journey reproduces an unknown parent row",
+            "imported_rows": [{"source_row": 999, "text": "Unbound output"}],
+        },
+    )
+    drain(worker)
+    failed_run = workshop.call("get_job", {"kind": "dataset_pipeline", "id": failed["job"]["id"]})
+    assert failed_run["status"] == "failed", failed_run
+    assert workshop.call("inspect_dataset", {"dataset": dataset})["active"]["id"] == source["id"]
+    console.goto(f"/datasets/{dataset}?projectId={project}")
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "group", name="Fix with coding agent", exact=True
+        ).wait_for()
+    )
+    console.press("Copy prompt")
+    console.sees("Prompt copied")
+    prompt = console._browser.call(console._page.evaluate, "navigator.clipboard.readText()")
+    for fact in (dataset, project, source["id"], source["fingerprint"], failed["job"]["id"]):
+        assert fact in prompt
+    assert "parent row" in prompt.lower()
+    console.sees("Refund order 0 please", exact=False)
+    console._browser.call(
+        lambda: (
+            console._page.locator(f"#cell-{source['id']}")
+            .get_by_role("button", name="Copy prompt", exact=True)
+            .wait_for()
+        )
+    )
+    console.press("Preparation error")
+    console.sees("A parent row is not present in the bound source version.")
+    console.save_evidence("dataset-preparation-failed")
+    console._browser.call(lambda: console._page.keyboard.press("Escape"))
     result = workshop.call(
         "import_dataset_version",
         {
@@ -458,6 +609,22 @@ def keep_one_preparation_until_the_agent_finishes(
     drain(worker)
     receipt = workshop.call("get_job", {"kind": "dataset_pipeline", "id": result["job"]["id"]})
     assert receipt["status"] == "completed", receipt
+    console._browser.call(
+        lambda: console._page.get_by_role(
+            "group", name="Prepare with coding agent", exact=True
+        ).wait_for()
+    )
+    console.wait_until("() => !document.querySelector('[aria-label=\"Preparation error\"]')")
+    repaired_cell = workshop.call("inspect_dataset", {"dataset": dataset})["active"]["id"]
+    console._browser.call(
+        lambda: (
+            console._page.locator(f"#cell-{repaired_cell}")
+            .get_by_role("button", name="Copy prompt", exact=True)
+            .wait_for()
+        )
+    )
+    console.save_evidence("dataset-preparation-repaired")
+    console.goto(f"/datasets?projectId={project}")
     console.sees("Preparing")
     current = workshop.call("inspect_dataset_workbench", {"dataset": dataset})
     assert current["preparation_workflow"]["state"] == "preparing"

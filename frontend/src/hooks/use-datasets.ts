@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient, { fetchWithAuth } from "@/client";
 import { notify } from "@/lib/notify";
@@ -223,10 +223,20 @@ export function useDatasetPreparationQuery(datasetId: string, cell?: string, rev
   });
 }
 
+export function useDatasetWorkbenchQuery(datasetId: string) {
+  return useQuery({
+    queryFn: ({ signal }) =>
+      apiClient.datasets.datasetsWorkbenchRetrieve({ id: datasetId, limit: 1 }, { signal }),
+    queryKey: ["datasets", datasetId, "workbench"],
+    // Failed runs preserve the active cell; they cannot be inferred from its state.
+    refetchInterval: 5000,
+  });
+}
+
 export function useDatasetsQuery(projectId: string | undefined, filters: DatasetListFilters = {}) {
   return useQuery<PaginatedDatasetList>({
     enabled: !!projectId,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, query) => (query?.queryKey[2] === projectId ? previous : undefined),
     queryFn: () =>
       apiClient.datasets.datasetsList({
         capability: filters.capability || undefined,

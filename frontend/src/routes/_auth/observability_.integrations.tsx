@@ -97,7 +97,7 @@ function SyncStatusLine({ credential }: { credential: ConnectorCredential }) {
   }
   if (syncStatus === "error") {
     return (
-      <span className="flex items-start gap-1.5 text-xs text-destructive">
+      <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <Icon.warning className="mt-0.5 size-3.5 shrink-0" />
         <span>{syncError || "Sync error — retrying automatically"}</span>
       </span>
@@ -398,7 +398,7 @@ function CredentialItem({
                           <TableCell className="text-xs">
                             {run.status}
                             {run.error ? (
-                              <span className="ml-1 text-destructive">{run.error}</span>
+                              <span className="ml-1 text-muted-foreground">{run.error}</span>
                             ) : null}
                           </TableCell>
                           <TableCell className="text-right text-xs">

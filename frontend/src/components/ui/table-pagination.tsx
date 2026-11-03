@@ -67,7 +67,11 @@ export function TablePagination({
           <span>Rows per page</span>
           <Select onValueChange={(v) => onPageSizeChange(Number(v))} value={String(pageSize)}>
             {/* w-20, not 70px — three digits plus the chevron need the room. */}
-            <SelectTrigger className="w-20" size={size === "xs" ? "xs" : "sm"}>
+            <SelectTrigger
+              aria-label="Rows per page"
+              className="w-20"
+              size={size === "xs" ? "xs" : "sm"}
+            >
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side="top">

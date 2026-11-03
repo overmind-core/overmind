@@ -76,7 +76,7 @@ export function EvalSetEmptyWizardState({
     const message = error?.trim() || "Default eval set authoring failed after retries.";
     if (variant === "compact") {
       return (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+        <div className="py-1.5 text-xs text-muted-foreground">
           {message}{" "}
           <CapabilityEvaluatorsLink
             capabilityId={capabilityId}

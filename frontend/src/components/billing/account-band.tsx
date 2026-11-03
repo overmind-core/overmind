@@ -253,7 +253,7 @@ export function AccountBand({
   if (query.error || !sub) {
     return (
       <div className={cn("rounded-md border border-border bg-card px-4 py-3", className)}>
-        <p className="text-sm text-destructive">
+        <p className="text-sm text-muted-foreground">
           {errorMessage(query.error, "Failed to load subscription")}
         </p>
       </div>

@@ -1,5 +1,3 @@
-import { toast } from "sonner";
-
 import {
   ApiError,
   extractErrorCode,
@@ -20,6 +18,7 @@ import {
   GuestUpgradeError,
 } from "./lib/guest";
 import { emitPlanLimitToast, PlanLimitError, planLimitFromBody } from "./lib/plan-limits";
+import { dismissSessionRecovery, requireSessionRecovery } from "./lib/session-recovery";
 import type { ModelSwapPrompt } from "./openapi";
 import {
   ActivityApi,
@@ -69,12 +68,28 @@ export { ResponseError };
 const TOKEN_KEY = "jwt_access";
 const REFRESH_KEY = "jwt_refresh";
 const EMAIL_KEY = "auth_email";
+const IDENTITY_KEY = "auth_identity";
 
 // Set by auth-context when Clerk is active; its presence switches this module
 // off the localStorage refresh flow entirely.
-let _asyncTokenGetter: (() => Promise<string | null>) | null = null;
+let _asyncTokenGetter: ((options?: { skipCache?: boolean }) => Promise<string | null>) | null =
+  null;
 
-export function setAsyncTokenGetter(fn: (() => Promise<string | null>) | null) {
+let sessionRevision = 0;
+let sessionIdentity: string | null = null;
+
+function changeSession() {
+  sessionRevision++;
+  refreshPromise = null;
+  dismissSessionRecovery();
+}
+
+export function setAsyncTokenGetter(
+  fn: ((options?: { skipCache?: boolean }) => Promise<string | null>) | null,
+  identity: string | null = null
+) {
+  if (_asyncTokenGetter !== fn || sessionIdentity !== identity) changeSession();
+  sessionIdentity = identity;
   _asyncTokenGetter = fn;
 }
 
@@ -89,16 +104,70 @@ export function getAccessToken(): string | null {
 export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_KEY);
 }
-export function setTokens(access: string, refresh: string) {
+// Token claims only bind cached UI identity; the API still verifies every credential.
+export function getLocalAccountId(token = getAccessToken()): string | null {
+  if (!token) return null;
+  try {
+    const claims = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof claims.user_id === "string" || typeof claims.user_id === "number"
+      ? String(claims.user_id)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberLocalIdentity(user: { id: string | number; email: string }) {
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify({ email: user.email, id: String(user.id) }));
+}
+
+export function getLocalIdentity(): { id: string; email: string } | null {
+  try {
+    const user = JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? "null");
+    return user &&
+      typeof user.id === "string" &&
+      typeof user.email === "string" &&
+      user.id === getLocalAccountId()
+      ? user
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setTokens(
+  access: string,
+  refresh: string,
+  user?: { id: string | number; email: string }
+) {
+  changeSession();
+  storeTokens(access, refresh);
+  if (user) rememberLocalIdentity(user);
+  else localStorage.removeItem(IDENTITY_KEY);
+}
+
+function storeTokens(access: string, refresh: string) {
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
 }
 export function clearTokens() {
+  changeSession();
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EMAIL_KEY);
+  localStorage.removeItem(IDENTITY_KEY);
   clearGuestSession();
 }
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.storageArea && event.storageArea !== localStorage) return;
+    if (event.key === null) changeSession();
+    if (event.key !== TOKEN_KEY && event.key !== REFRESH_KEY) return;
+    const previous = getLocalAccountId(event.oldValue);
+    if (!previous || previous !== getLocalAccountId(event.newValue)) changeSession();
+  });
+}
+
 const configuredBaseURL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const BASE_URL =
   import.meta.env.VITE_SELF_HOSTED === "true" &&
@@ -107,81 +176,79 @@ const BASE_URL =
     ? configuredBaseURL.replace(/^http:\/\/localhost(?=[:/]|$)/, "http://127.0.0.1")
     : configuredBaseURL;
 
-const LOGIN_REDIRECT_GUARD_KEY = "login_redirect_at";
+let refreshPromise: Promise<string | null> | null = null;
 
-/**
- * Guarded to once per 30s so a 401 storm — the backend rejecting tokens Clerk
- * still considers valid — degrades to per-request errors instead of a
- * full-page reload loop.
- */
-function redirectToLogin() {
-  const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_GUARD_KEY) || 0);
-  if (Date.now() - last < 30_000) return;
-  sessionStorage.setItem(LOGIN_REDIRECT_GUARD_KEY, String(Date.now()));
-  toast.error("Your session has expired. Sign in again.");
-  const next = window.location.pathname + window.location.search;
-  const suffix =
-    next && next !== "/" && next !== "/login" ? `?next=${encodeURIComponent(next)}` : "";
-  setTimeout(() => {
-    window.location.href = `/login${suffix}`;
-  }, 800);
-}
+const authApi = new AuthApi(new Configuration({ basePath: BASE_URL }));
 
-let refreshPromise: Promise<boolean> | null = null;
-
-const authApi = new AuthApi(
-  new Configuration({
-    basePath: BASE_URL,
-  })
-);
-
-async function refreshAccessToken(): Promise<boolean> {
-  if (_asyncTokenGetter) return false;
+async function refreshAccessToken(revision: number): Promise<string | null> {
+  if (_asyncTokenGetter) return _asyncTokenGetter({ skipCache: true });
   const refresh = getRefreshToken();
-  if (!refresh) return false;
+  if (!refresh) return null;
   try {
     const res = await authApi.authTokenRefreshCreate({
-      publicTokenRefreshRequest: {
-        refresh: refresh,
-      },
+      publicTokenRefreshRequest: { refresh },
     });
-    setTokens(res.access, res.refresh ?? refresh);
-    return true;
-  } catch {
-    return false;
+    // A sign-out or another tab changing accounts must not be undone by this response.
+    if (revision !== sessionRevision || getRefreshToken() !== refresh) return null;
+    storeTokens(res.access, res.refresh ?? refresh);
+    return res.access;
+  } catch (error) {
+    if (error instanceof ResponseError) {
+      if (error.response.status === 401 || error.response.status === 403) return null;
+      throw new ApiError(
+        error.response.status,
+        statusFallbackMessage(error.response.status),
+        false
+      );
+    }
+    throw new ApiError(0, NETWORK_ERROR_MESSAGE, false);
   }
 }
 
-const authRefreshMiddleware: Middleware = {
-  async post(context) {
-    if (context.response.status !== 401) return;
-    if (_asyncTokenGetter) {
-      redirectToLogin();
-      return undefined;
+// A retry belongs to the session that started the request, never a later sign-in.
+async function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const revision = sessionRevision;
+  const assertSession = () => {
+    if (revision !== sessionRevision) throw new DOMException("Session changed", "AbortError");
+  };
+  const token = await resolveToken();
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined)
+  );
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const options = { ...init, headers };
+  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+  signal?.throwIfAborted();
+  assertSession();
+  let response = await fetch(input, options);
+  signal?.throwIfAborted();
+  assertSession();
+  const url = input instanceof Request ? input.url : String(input);
+  if (response.status !== 401 || !token || new URL(url).pathname === "/api/auth/local/")
+    return response;
+
+  let current = await resolveToken();
+  assertSession();
+  if (!current || current === token) {
+    if (!refreshPromise) {
+      const pending = refreshAccessToken(revision).finally(() => {
+        if (refreshPromise === pending) refreshPromise = null;
+      });
+      refreshPromise = pending;
     }
-    if (getRefreshToken()) {
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null;
-        });
-      }
-      const refreshed = await refreshPromise;
-      if (refreshed) {
-        const retryInit: RequestInit = {
-          ...context.init,
-          headers: {
-            ...(context.init.headers as Record<string, string>),
-            Authorization: `Bearer ${getAccessToken()}`,
-          },
-        };
-        return fetch(context.url, retryInit);
-      }
-    }
-    clearTokens();
-    redirectToLogin();
-    return undefined;
-  },
-};
+    current = await refreshPromise;
+  }
+  signal?.throwIfAborted();
+  assertSession();
+  if (current) {
+    headers.set("Authorization", `Bearer ${current}`);
+    response = await fetch(input, { ...options, headers });
+  }
+  signal?.throwIfAborted();
+  assertSession();
+  if (response.status === 401) requireSessionRecovery();
+  return response;
+}
 
 /**
  * Raising the dialog here rather than at call sites means a caller that only
@@ -235,9 +302,9 @@ const errorDetailMiddleware: Middleware = {
 };
 
 const config = new Configuration({
-  accessToken: async () => (await resolveToken()) ?? "",
   basePath: BASE_URL,
-  middleware: [authRefreshMiddleware, paymentRequiredMiddleware, errorDetailMiddleware],
+  fetchApi: authenticatedFetch,
+  middleware: [paymentRequiredMiddleware, errorDetailMiddleware],
 });
 
 function snakeToCamel(s: string): string {
@@ -323,35 +390,7 @@ export function snakeize(obj: unknown): unknown {
 
 /** Authenticated fetch (multipart-safe — does not force JSON Content-Type). */
 export async function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
-  const buildHeaders = async (): Promise<Headers> => {
-    const token = await resolveToken();
-    const headers = new Headers(init?.headers);
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    return headers;
-  };
-
-  let headers = await buildHeaders();
-  let res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-
-  if (res.status === 401 && !_asyncTokenGetter && getRefreshToken()) {
-    if (!refreshPromise) {
-      refreshPromise = refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
-    }
-    const refreshed = await refreshPromise;
-    if (refreshed) {
-      headers = await buildHeaders();
-      res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-    }
-  }
-
-  if (res.status === 401) {
-    if (!_asyncTokenGetter) {
-      clearTokens();
-      redirectToLogin();
-    }
-  }
+  const res = await authenticatedFetch(`${BASE_URL}${path}`, init);
 
   // Callers read the raw Response (SSE, file export), so raise the dialog here
   // and let them fall through to their own handling.
@@ -363,32 +402,9 @@ export async function fetchWithAuth(path: string, init?: RequestInit): Promise<R
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await resolveToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(init?.headers as Record<string, string> | undefined),
-  };
-  let res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-  if (res.status === 401 && !_asyncTokenGetter && getRefreshToken()) {
-    if (!refreshPromise) {
-      refreshPromise = refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
-    }
-    const refreshed = await refreshPromise;
-    if (refreshed) {
-      headers.Authorization = `Bearer ${getAccessToken()}`;
-      res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-    }
-  }
-  if (res.status === 401) {
-    if (!_asyncTokenGetter) {
-      clearTokens();
-      redirectToLogin();
-    }
-    throw new ResponseError(res, "Unauthorized");
-  }
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const res = await fetchWithAuth(path, { ...init, headers });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     if (res.status === 402) {

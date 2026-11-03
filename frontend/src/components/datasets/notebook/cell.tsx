@@ -497,6 +497,7 @@ export function NotebookCell({
   onSelect,
   actions,
   sourceDetails,
+  preparationActions,
 }: {
   datasetId: string;
   cell: Cell;
@@ -509,6 +510,7 @@ export function NotebookCell({
   onSelect: () => void;
   actions: CellActions;
   sourceDetails?: ReactNode;
+  preparationActions?: ReactNode;
 }) {
   const source = cell.position === 0;
   const attachment = (cell.review as { kind?: string } | undefined)?.kind === "attachment";
@@ -554,7 +556,7 @@ export function NotebookCell({
     >
       {/* The chip sticks to the top of the scroll while its cell is in view; the frame
           starts half a chip lower so the border runs through the chip's middle. */}
-      <div className="pointer-events-none sticky top-1 z-20 flex items-center pl-2.5">
+      <div className="pointer-events-none sticky top-1 z-20 flex flex-wrap items-center justify-between gap-2 px-2.5">
         <div className="pointer-events-auto flex items-center gap-1 bg-card">
           <span
             className={cn(
@@ -612,6 +614,7 @@ export function NotebookCell({
             />
           )}
         </div>
+        {preparationActions}
       </div>
       <div
         className={cn(
@@ -661,11 +664,11 @@ export function NotebookCell({
         {source && sourceDetails}
         {cell.state === "failed" && cell.error && (
           <div className="mx-3 mb-2.5 flex flex-col gap-1">
-            <span className="pixel-label flex items-center gap-1 text-xs text-destructive">
+            <span className="pixel-label flex items-center gap-1 text-xs text-muted-foreground">
               <Icon.warning className="size-3" />
               Error
             </span>
-            <pre className="whitespace-pre-wrap break-words rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-xs text-destructive">
+            <pre className="whitespace-pre-wrap break-words rounded-sm border border-border px-2 py-1 font-mono text-xs text-muted-foreground">
               {cell.error}
             </pre>
           </div>

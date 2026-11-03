@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 import apiClient from "@/client";
 import { Attachment } from "@/components/datasets/attachment";
@@ -117,7 +117,7 @@ export function SourceDetails({
         )}
       </div>
       {error && (
-        <p className="mt-2 text-xs text-destructive" role="alert">
+        <p className="mt-2 text-xs text-muted-foreground" role="alert">
           {error}
         </p>
       )}
@@ -131,12 +131,14 @@ export function SourceLanding({
   busy,
   landing,
   landingStatus,
+  actions,
 }: {
   datasetId: string;
   brief: string;
   busy: boolean;
   landing: boolean;
   landingStatus?: string;
+  actions?: ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const upload = useDatasetUploads();
@@ -154,9 +156,10 @@ export function SourceLanding({
   };
   return (
     <article aria-label="Source" className="m-3 rounded-sm border border-border">
-      <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-3 py-2 text-xs">
         <Icon.file className="size-3" />
-        Source
+        <span className="mr-auto">Source</span>
+        {actions}
       </div>
       <div
         className="space-y-4 px-3 py-4"
@@ -229,7 +232,7 @@ export function SourceLanding({
           </>
         )}
         {error && (
-          <p className="text-xs text-destructive" role="alert">
+          <p className="text-xs text-muted-foreground" role="alert">
             {error}
           </p>
         )}

@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function CreateProjectForm({
   onCancel,
@@ -43,9 +43,7 @@ function CreateProjectForm({
               From repository
             </TabsTrigger>
           </TabsList>
-        </Tabs>
-        <div className="mt-4">
-          {source === "data" ? (
+          <TabsContent className="mt-4 data-[state=inactive]:hidden" forceMount value="data">
             <DataProjectForm
               onBusyChange={onBusyChange}
               onCreated={({ projectId, datasetId }) => {
@@ -58,10 +56,11 @@ function CreateProjectForm({
                 });
               }}
             />
-          ) : (
-            <OnboardWithAiPanel onPromptCopied={onSuccess} />
-          )}
-        </div>
+          </TabsContent>
+          <TabsContent className="mt-4 data-[state=inactive]:hidden" forceMount value="repository">
+            <OnboardWithAiPanel />
+          </TabsContent>
+        </Tabs>
       </DialogBody>
       <DialogFooter>
         <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">

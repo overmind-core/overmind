@@ -3,7 +3,13 @@
 export function safeNextPath(raw: string | null | undefined): string | null {
   if (!raw?.startsWith("/")) return null;
   try {
-    return new URL(raw, window.location.origin).origin === window.location.origin ? raw : null;
+    const url = new URL(raw, window.location.origin);
+    if (
+      url.origin !== window.location.origin ||
+      decodeURIComponent(url.pathname).replace(/\/+$/, "") === "/login"
+    )
+      return null;
+    return url.pathname + url.search + url.hash;
   } catch {
     return null;
   }

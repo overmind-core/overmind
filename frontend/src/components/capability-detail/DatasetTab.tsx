@@ -58,6 +58,7 @@ export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
         // The query is gated on the project and this tab has no project early-return,
         // so a capability seen without one must settle empty rather than skeleton forever.
         isLoading={!!projectId && !datasetsQuery.isFetched}
+        onRetry={() => datasetsQuery.refetch()}
         roleFilter={roleFilter}
         search={search}
         setRoleFilter={setRoleFilter}
