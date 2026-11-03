@@ -25,7 +25,11 @@ export function NoProjectsEmptyState() {
           )}
         </>
       }
-      description="Set up an agent or upload data to create a project."
+      description={
+        featureFlags.datasets
+          ? "Set up an agent or upload data to create a project."
+          : "Set up an agent to create a project."
+      }
       icon={Icon.folderAdd}
       title="No projects yet"
     />
