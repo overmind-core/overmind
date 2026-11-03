@@ -34,6 +34,7 @@ from overbae.services import (
     operational_progress,
     training_monitoring,
 )
+from overbae.services.connectors.progress import sync_progress
 from overbae.services.datasets import transfers, workbench
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
@@ -589,6 +590,7 @@ def get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         created_at, updated_at = job.created_at, job.updated_at
         label, status = job.name, job.sync_status
         job_error = "Connector sync failed." if job.sync_error else None
+        connector_progress = sync_progress(job)
         details = {
             "connector_type": job.connector_type,
             "sync": {
@@ -599,6 +601,9 @@ def get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
                 "next_poll_at": job.next_poll_at,
                 "backfill_imported": job.backfill_imported,
                 "backfill_total": job.backfill_total,
+                "progress": connector_progress.model_dump(mode="json")
+                if connector_progress
+                else None,
                 "total_spans_imported": job.total_spans_imported,
                 "total_traces_imported": job.total_traces_imported,
                 "has_error": bool(job.sync_error),

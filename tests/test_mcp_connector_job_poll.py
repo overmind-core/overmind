@@ -50,6 +50,7 @@ def test_connector_sync_get_job_uses_connector_receipt_id_and_resource():
         "next_poll_at": None,
         "backfill_imported": 7,
         "backfill_total": 12,
+        "progress": None,
         "total_spans_imported": 20,
         "total_traces_imported": 8,
         "has_error": False,

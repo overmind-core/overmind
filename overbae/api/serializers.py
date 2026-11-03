@@ -2257,6 +2257,19 @@ class ConnectorCapabilityMappingResponseSerializer(serializers.Serializer):
     relabeled_span_count = serializers.IntegerField()
 
 
+class ConnectorSyncProgressSerializer(serializers.Serializer):
+    state = serializers.ChoiceField(choices=["estimating", "importing", "waiting", "complete"])
+    total_estimate = serializers.IntegerField(allow_null=True)
+    observations_total = serializers.IntegerField(allow_null=True)
+    imported = serializers.IntegerField()
+    count_basis = serializers.CharField()
+    traces_per_second = serializers.FloatField(allow_null=True)
+    estimated_seconds_remaining = serializers.IntegerField(allow_null=True)
+    counted_at = serializers.DateTimeField(allow_null=True)
+    last_progress_at = serializers.DateTimeField(allow_null=True)
+    retry_at = serializers.DateTimeField(allow_null=True)
+
+
 class ConnectorCredentialSerializer(serializers.ModelSerializer):
     api_key = serializers.CharField(
         write_only=True,
@@ -2267,6 +2280,14 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
     api_secret = serializers.CharField(write_only=True, required=False, allow_blank=True)
     api_key_hint = serializers.SerializerMethodField(read_only=True)
     active_config = serializers.SerializerMethodField(read_only=True)
+    sync_progress = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(ConnectorSyncProgressSerializer(allow_null=True))
+    def get_sync_progress(self, obj):
+        from overbae.services.connectors.progress import sync_progress
+
+        progress = sync_progress(obj)
+        return progress.model_dump(mode="json") if progress else None
 
     class Meta:
         model = ConnectorCredential
@@ -2286,6 +2307,7 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             "sync_status",
             "backfill_imported",
             "backfill_total",
+            "sync_progress",
             "sync_error",
             "api_version",
             "verified_at",
@@ -2307,6 +2329,7 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             "sync_status",
             "backfill_imported",
             "backfill_total",
+            "sync_progress",
             "sync_error",
             "api_version",
             "verified_at",

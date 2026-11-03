@@ -1705,8 +1705,9 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
         config_kwargs = {
             "source_project_id": data.get("source_project_id") or "",
             "target_project": target_project,
-            "lookback_days": data.get("lookback_days"),
         }
+        if "lookback_days" in data:
+            config_kwargs["lookback_days"] = data["lookback_days"]
         if "backfill_from" in data:
             config_kwargs["backfill_from"] = data["backfill_from"]
         if "backfill_to" in data:

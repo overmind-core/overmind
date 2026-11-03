@@ -11,6 +11,7 @@ from factories import make_connector, sync_until_live
 from fakes.vendors import LangfuseAPI, Step
 
 from overbae.models import ConnectorCredential, Span
+from overbae.services.connectors.feedforward import save_sync_config
 from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
 from overbae.tasks import connector_sync
 
@@ -256,3 +257,148 @@ def test_a_sync_request_restarts_the_backfill_when_the_boundaries_changed(creden
     credential.refresh_from_db()
     assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
     assert credential.sync_cursor == {}
+
+
+def test_split_trace_pages_and_retries_do_not_inflate_import_counts(credential, langfuse):
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    root = Step("root", "span", None, start=start, end=start + timedelta(seconds=2))
+    child = Step(
+        "child",
+        "span",
+        root.id,
+        start=start + timedelta(seconds=1),
+        end=start + timedelta(seconds=2),
+    )
+    langfuse.record(uuid.uuid4().hex, [root, child])
+    langfuse.page_size = 1
+    cred = sync_until_live(credential)
+    assert cred.total_traces_imported == 1
+    assert cred.total_spans_imported == 2
+    _chunk(credential)
+    credential.refresh_from_db()
+    assert credential.total_traces_imported == 1
+    assert credential.total_spans_imported == 2
+
+
+def test_all_history_clears_the_previous_lookback(credential):
+    save_sync_config(credential, lookback_days=1)
+    assert save_sync_config(credential).lookback_days == 1
+    assert save_sync_config(credential, lookback_days=None).lookback_days is None
+
+
+def test_manual_import_resumes_after_provider_throttling(credential, langfuse, continuations):
+    langfuse.status = 429
+    result = _chunk(credential)
+    assert result["status"] == "error"
+    assert continuations == [str(credential.id)]
+    credential.refresh_from_db()
+    assert credential.auto_sync_enabled is False
+
+
+def test_source_count_and_eta_include_waits_and_survive_page_resume(
+    credential, langfuse, time_machine
+):
+    clock = time_machine
+    clock.move_to("2026-01-03T00:00:00Z", tick=False)
+    from overbae.services.connectors.progress import sync_progress
+
+    _traces(langfuse, 6)
+    langfuse.page_size = 2
+    _chunk(credential)
+    credential.refresh_from_db()
+    first = sync_progress(credential)
+    assert first.total_estimate == 6
+    assert first.observations_total == 6
+    assert first.imported == 2
+    clock.shift(60)
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.imported == 4
+    assert progress.estimated_seconds_remaining == 30
+    assert len([call for call in langfuse.requests if "/v2/metrics" in call.url]) == 1
+    # Status polling never calls the provider and doesn't count lease expiry as a retry.
+    assert progress.retry_at is None
+    clock.shift(301)
+    assert sync_progress(credential).estimated_seconds_remaining is None
+    assert sync_progress(credential).state == "waiting"
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.state == "complete"
+    assert progress.imported == 6
+    assert progress.estimated_seconds_remaining == 0
+
+
+def test_source_count_persists_when_a_data_page_is_throttled(credential, langfuse):
+    from overbae.services.connectors.progress import sync_progress
+
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    credential.refresh_from_db()
+    total = sync_progress(credential).total_estimate
+    langfuse.status = 429
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.total_estimate == total == 3
+    assert progress.imported == 1
+    assert progress.state == "waiting"
+    assert progress.estimated_seconds_remaining is None
+    assert progress.retry_at is not None
+
+
+def test_unavailable_count_does_not_block_import_and_is_retried(credential, langfuse, time_machine):
+    from overbae.api.serializers import ConnectorCredentialSerializer
+    from overbae.services.connectors.progress import sync_progress
+
+    time_machine.move_to("2026-01-03T00:00:00Z", tick=False)
+    _traces(langfuse, 4)
+    langfuse.page_size = 1
+    langfuse.metrics_status = 429
+    _chunk(credential)
+    credential.refresh_from_db()
+    assert sync_progress(credential).total_estimate is None
+    assert sync_progress(credential).imported == 1
+    time_machine.shift(301)
+    langfuse.metrics_status = 200
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = ConnectorCredentialSerializer(credential).data["sync_progress"]
+    assert progress["total_estimate"] == 4
+    assert progress["imported"] == 2
+    assert progress["estimated_seconds_remaining"] == 301
+    from overbae.services.mcp.resources import connector_resource_payload
+
+    resource = connector_resource_payload(
+        credential.project, credential, "overmind://connectors/test"
+    )
+    assert resource["sync"]["progress"] == progress
+
+
+def test_empty_backfill_reports_completion_instead_of_estimating(credential, langfuse):
+    from overbae.services.connectors.progress import sync_progress
+
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert credential.sync_status == "live"
+    assert progress.state == "complete"
+    assert progress.imported == 0
+    assert progress.estimated_seconds_remaining == 0
+
+
+def test_metrics_quota_wait_does_not_block_trace_pages_or_retry_early(
+    credential, langfuse, time_machine
+):
+    time_machine.move_to("2026-01-03T00:00:00Z", tick=False)
+    _traces(langfuse, 4)
+    langfuse.page_size = 1
+    langfuse.metrics_status = 429
+    langfuse.metrics_retry_after = 3600
+    _chunk(credential)
+    time_machine.shift(301)
+    _chunk(credential)
+    assert len([call for call in langfuse.requests if "/v2/metrics" in call.url]) == 1
+    assert _spans(credential) == 2

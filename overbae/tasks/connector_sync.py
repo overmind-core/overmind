@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from math import ceil
 from typing import Any
 
 from celery import shared_task
@@ -12,7 +13,9 @@ from django.db.models import Q
 from django.utils import timezone
 
 from overbae.api.otlp import enqueue_scoring
+from overbae.services.connectors.progress import checkpoint_progress
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
+from overbae.services.connectors.sync import connector_imported_spans
 from overbae.services.span_pricing import stamp_span_cost
 
 logger = logging.getLogger(__name__)
@@ -176,13 +179,15 @@ def _apply_backoff(credential, exc: Exception) -> dict:
     auth_failure = status_code in (401, 403)
 
     if status_code == 429:
-        delay = int(getattr(exc, "retry_after", None) or _BACKOFF_BASE_SECONDS)
+        delay = ceil(getattr(exc, "retry_after", None) or _BACKOFF_BASE_SECONDS)
         _save_sync_state(
             credential,
             sync_status=ConnectorCredential.SyncStatus.ERROR,
             sync_error=str(exc)[:1000],
             next_poll_at=timezone.now() + timedelta(seconds=delay),
         )
+        if not credential.auto_sync_enabled:
+            _schedule_next_chunk(credential, delay=delay)
         return {"status": "error", "retry_after": delay, "error": str(exc)}
 
     if auth_failure or retry >= _MAX_SYNC_RETRIES:
@@ -223,17 +228,19 @@ def _apply_backoff(credential, exc: Exception) -> dict:
         delay,
         exc,
     )
+    if not credential.auto_sync_enabled:
+        _schedule_next_chunk(credential, delay=delay)
     return {"status": "error", "retry_after": delay, "error": str(exc)}
 
 
-def _schedule_next_chunk(credential) -> None:
+def _schedule_next_chunk(credential, *, delay: int = 2) -> None:
     from overbae.models import ConnectorCredential
 
     # The chunk that is already running passed the active check at entry.
     # Deactivation has to stop the continuation it is about to publish.
     if not ConnectorCredential.objects.filter(pk=credential.pk, is_active=True).exists():
         return
-    sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=2)
+    sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=delay)
 
 
 def _run_adapter_chunk(credential, cursor: dict) -> dict:
@@ -242,7 +249,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     from overbae.services.connectors import get_adapter
 
     adapter = get_adapter(credential)
-    page = adapter.fetch_page(dict(cursor))
+    page = adapter.fetch_page(cursor)
 
     config = credential.active_config()
     target_project = (
@@ -252,6 +259,8 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
 
     # Empty backfill completion (no windows left) — flip to LIVE without a run row.
     if page.mode == "backfill" and page.done and not page.units and page.window_from is None:
+        if page.next_state.get("progress"):
+            checkpoint_progress(credential, page.next_state["progress"], done=True)
         _save_sync_state(
             credential,
             sync_status=ConnectorCredential.SyncStatus.LIVE,
@@ -298,11 +307,17 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     run.save()
 
     credential.refresh_from_db()
-    new_traces = credential.total_traces_imported + traces_seen
+    # Complete trees can occur in several provider pages or in a retried chunk.
+    # Report the persisted source identities, not the number of visits.
+    persisted = connector_imported_spans(credential)
+    new_traces = persisted.values(f"attributes__{adapter.source}.trace_id").distinct().count()
     type(credential).objects.filter(pk=credential.pk).update(
-        total_spans_imported=credential.total_spans_imported + imported,
+        total_spans_imported=persisted.count(),
         total_traces_imported=new_traces,
     )
+
+    if page.mode == "backfill" and page.next_state.get("progress"):
+        checkpoint_progress(credential, page.next_state["progress"], done=page.done)
 
     if page.done:
         _save_sync_state(
@@ -334,7 +349,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
         ),
         sync_cursor=page.next_state,
         backfill_imported=(new_traces if page.mode == "backfill" else credential.backfill_imported),
-        backfill_total=None if page.mode == "backfill" else credential.backfill_total,
+        backfill_total=credential.backfill_total,
         sync_error="",
         sync_retry_count=0,
         last_synced_at=timezone.now(),

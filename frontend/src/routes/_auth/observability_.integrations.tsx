@@ -63,27 +63,35 @@ function SyncStatusLine({ credential }: { credential: ConnectorCredential }) {
   const { syncStatus, backfillImported, backfillTotal, syncError, lastSyncedAt, nextPollAt } =
     credential;
 
-  if (!credential.autoSyncEnabled && syncStatus !== "backfilling" && syncStatus !== "live") {
+  if (
+    !credential.autoSyncEnabled &&
+    syncStatus !== "backfilling" &&
+    syncStatus !== "live" &&
+    syncStatus !== "error"
+  ) {
     return <span className="text-xs text-muted-foreground">Auto-sync off</span>;
   }
 
-  if (syncStatus === "backfilling") {
-    // Prefer totalTracesImported — same unit as the Traces stat.
-    // No Spinner: lookback walks many (often empty) windows after the count
-    // stops moving; a spinner reads as "still importing" when history scan
-    // is just draining older days.
-    const tracesDone = credential.totalTracesImported || backfillImported;
+  if (syncStatus === "backfilling" || (syncStatus === "error" && credential.syncProgress)) {
+    const progress = credential.syncProgress;
+    const tracesDone = progress?.imported ?? credential.totalTracesImported ?? backfillImported;
+    const total = progress?.totalEstimate ?? backfillTotal;
     const pct =
-      backfillTotal && backfillTotal > 0
-        ? Math.round((tracesDone / backfillTotal) * 100)
-        : undefined;
+      total && total > 0 ? Math.min(99, Math.round((tracesDone / total) * 100)) : undefined;
+    const seconds = progress?.estimatedSecondsRemaining;
     return (
       <div className="flex min-w-[180px] flex-col gap-1">
         <span className="text-xs text-muted-foreground">
-          Importing history · {tracesDone.toLocaleString()}
-          {backfillTotal ? ` / ~${backfillTotal.toLocaleString()}` : ""} traces
+          {progress?.state === "waiting" ? "Waiting for provider" : "Importing"}
+          {" · "}
+          {tracesDone.toLocaleString()}
+          {total != null && total > 0 ? ` / ~${total.toLocaleString()}` : ""} traces
+          {seconds != null && progress?.state !== "waiting" && (
+            <> · ~{Math.max(1, Math.ceil(seconds / 60)).toLocaleString()} min left</>
+          )}
         </span>
-        {pct != null && <Progress label="Backfill progress" percent={pct} />}
+        {pct != null && <Progress label="Estimated backfill progress" percent={pct} />}
+        {syncError && <span className="text-xs text-destructive">{syncError}</span>}
       </div>
     );
   }
