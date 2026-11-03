@@ -33,6 +33,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 
+from overbae.api.config import TraceListPagination
 from overbae.api.filters import (
     DeployedModelFilter,
     FinetuningJobFilter,
@@ -138,6 +139,7 @@ from overbae.services.inference_metrics import (
     model_metrics,
     recent_traffic_annotations,
 )
+from overbae.services.simulated_training import finish_simulated, is_simulated
 from overbae.services.training_cancellation import cancel as cancel_training
 from overbae.services.training_preparation import (
     live_progress_for_job,
@@ -397,6 +399,7 @@ class SpanViewSet(
     """The single trace-data viewset — one Span table, two read shapes."""
 
     filterset_class = SpanFilter
+    pagination_class = TraceListPagination
     search_fields = ["name", "service_name", "trace_id", "span_id"]
     ordering_fields = [
         "source",
@@ -773,12 +776,18 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         from overbae.api.credit_gate import require_credits
         from overbae.tasks.finetuning import run_finetuning
 
+        project = serializer.validated_data["project"]
+
         def admit_new_training():
-            require_credits(self.request.user)
+            if not is_simulated(project):
+                require_credits(self.request.user)
 
         serializer.context["admit_new_training"] = admit_new_training
         job = serializer.save(triggered_by=self.request.user)
         if getattr(job, "launch_reused", False):
+            return
+        if is_simulated(project):
+            finish_simulated(job)
             return
         try:
             result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})

@@ -14,6 +14,10 @@ grouped eval runs, optimiser runs (harness, model comparison), training jobs
 with judge evals and class metrics, deployed models with inference traffic, and
 the credits ledger.
 
+Observability at scale has its own command: `manage.py seed_observability [--scale 1.0]`
+builds six months of traffic in the `ledgerline-observability` project through the real
+checks, without touching this demo. The beat rules below apply to it too.
+
 ## Run
 
 ```bash

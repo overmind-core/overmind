@@ -26,6 +26,7 @@ export * from './FeedbackApi';
 export * from './FinetuningJobsApi';
 export * from './HealthApi';
 export * from './InferenceRequestsApi';
+export * from './IssuesApi';
 export * from './McpOauthApi';
 export * from './ModelsApi';
 export * from './NativeEvaluationsApi';

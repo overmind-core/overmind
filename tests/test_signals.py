@@ -14,7 +14,7 @@ from overbae.innermind.signals import (
     ScoreDropSignal,
     SignalRunner,
     UnscorableSignal,
-    projects_with_recent_spans,
+    projects_with_changes,
 )
 from overbae.models import (
     APIToken,
@@ -95,7 +95,9 @@ def test_signal_details_carry_redacted_evidence_and_handoffs():
     assert item["reason"] == "card number in output"
     assert "4242" not in item["output"]
     assert "[card number]" in item["output"]
+    assert details["recommended_actions"][0]["kind"] == "train_model"
     assert {action["kind"] for action in details["recommended_actions"]} == {
+        "train_model",
         "fix",
         "inspect_traces",
         "create_dataset",
@@ -150,7 +152,7 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
 
     monkeypatch.setattr(PlanDriftSignal, "evaluate", unexpected_judge)
     listed = call(ctx, "list_signals", {})
-    assert len([s for s in listed["signals"] if s["enabled"]]) == 24
+    assert len([s for s in listed["signals"] if s["enabled"]]) == 25
     assert (
         next(s for s in listed["signals"] if s["signal_type"] == "plan_drift")["enabled"] is False
     )
@@ -161,7 +163,7 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     unrelated = span(ctx.project)
     other_project = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4()}")
     other = span(other_project)
-    assert ctx.project.id in projects_with_recent_spans()
+    assert ctx.project.id in projects_with_changes()
     async_to_sync(SignalRunner(ctx.project.id).run)()
     async_to_sync(SignalRunner(ctx.project.id).run)()
     event = SignalEvent.objects.get(project=ctx.project, conversation=session, signal_type="errors")
@@ -291,7 +293,7 @@ def test_project_and_capability_mutes_override_defaults(context):
     effective = call(ctx, "list_signals", {"capability": "answer"})
     assert not next(s for s in effective["signals"] if s["signal_type"] == "errors")["enabled"]
     Span.objects.filter(project=ctx.project).update(received_at=timezone.now() - timedelta(days=2))
-    assert ctx.project.id not in projects_with_recent_spans()
+    assert ctx.project.id not in projects_with_changes()
 
 
 def test_signal_scan_releases_payloads_between_complete_groups(context):
@@ -338,10 +340,13 @@ def test_signal_scan_reports_oversized_group_without_dropping_other_groups(conte
     for _ in range(2):
         item = span(ctx.project, conversation=session)
         Span.objects.filter(pk=item.pk).update(attributes={"padding": "x" * (5 * 1024 * 1024)})
+    too_large = span(ctx.project)
+    Span.objects.filter(pk=too_large.pk).update(attributes={"padding": "x" * (9 * 1024 * 1024)})
     small = span(ctx.project)
     with pytest.raises(SignalInputTooLargeError, match="1 signal groups exceed"):
         async_to_sync(SignalRunner(ctx.project.id).run)()
-    assert not SignalEvent.objects.filter(conversation=session).exists()
+    assert SignalEvent.objects.filter(conversation=session, signal_type="errors").count() == 2
+    assert not SignalEvent.objects.filter(trace_id=too_large.trace_id).exists()
     assert SignalEvent.objects.filter(trace_id=small.trace_id, signal_type="errors").exists()
 
 
@@ -362,7 +367,7 @@ def test_signal_batch_rechecks_bytes_before_materializing_payloads(context):
     try:
         with pytest.raises(SignalInputTooLargeError, match="changed or exceeded"):
             async_to_sync(SignalRunner(ctx.project.id).run_batch)(
-                {item.pk: f"trace:{item.trace_id}"}, [], [], "2026-10-17"
+                {item.pk: f"trace:{item.trace_id}"}, [], []
             )
     finally:
         post_init.disconnect(observe, sender=Span)
@@ -380,9 +385,9 @@ def test_signal_scan_continues_after_concurrent_payload_growth(context):
         )
 
     class ConcurrentGrowthRunner(SignalRunner):
-        async def batches(self):
+        async def batches(self, rows):
             first = True
-            async for ids in super().batches():
+            async for ids in super().batches(rows):
                 if first:
                     await Span.objects.filter(pk=items[0].pk).aupdate(
                         eval_attributes={"padding": "y" * (4 * 1024 * 1024)}

@@ -19,6 +19,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import use
 from overbae.services.optimizer_create import create_optimizer_experiment
+from overbae.services.simulated_training import refuse_paid_work
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,7 @@ class OptimizerExperimentViewSet(viewsets.ModelViewSet):
         allowed_projects = project_ids_for(self.request.user, self.request.auth)
         if str(capability.project_id) not in [str(pid) for pid in allowed_projects]:
             raise PermissionDenied("You do not belong to this capability's project.")
+        refuse_paid_work(capability.project)
 
         validated = serializer.validated_data
         serializer.instance = create_optimizer_experiment(

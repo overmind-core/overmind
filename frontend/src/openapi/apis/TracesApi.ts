@@ -36,6 +36,7 @@ export interface TracesListRequest {
     durationNsLte?: number;
     hasError?: boolean;
     hasModel?: boolean;
+    issue?: string;
     kind?: number;
     maxDurationMs?: number;
     minDurationMs?: number;
@@ -43,6 +44,7 @@ export interface TracesListRequest {
     name?: string;
     operation?: string;
     ordering?: string;
+    outcome?: TracesListOutcomeEnum;
     page?: number;
     pageSize?: number;
     project?: string;
@@ -83,6 +85,7 @@ export interface TracesServicesListRequest {
     durationNsLte?: number;
     hasError?: boolean;
     hasModel?: boolean;
+    issue?: string;
     kind?: number;
     maxDurationMs?: number;
     minDurationMs?: number;
@@ -90,6 +93,7 @@ export interface TracesServicesListRequest {
     name?: string;
     operation?: string;
     ordering?: string;
+    outcome?: TracesServicesListOutcomeEnum;
     page?: number;
     pageSize?: number;
     project?: string;
@@ -154,6 +158,10 @@ export class TracesApi extends runtime.BaseAPI {
             queryParameters['has_model'] = requestParameters['hasModel'];
         }
 
+        if (requestParameters['issue'] != null) {
+            queryParameters['issue'] = requestParameters['issue'];
+        }
+
         if (requestParameters['kind'] != null) {
             queryParameters['kind'] = requestParameters['kind'];
         }
@@ -180,6 +188,10 @@ export class TracesApi extends runtime.BaseAPI {
 
         if (requestParameters['ordering'] != null) {
             queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['outcome'] != null) {
+            queryParameters['outcome'] = requestParameters['outcome'];
         }
 
         if (requestParameters['page'] != null) {
@@ -463,6 +475,10 @@ export class TracesApi extends runtime.BaseAPI {
             queryParameters['has_model'] = requestParameters['hasModel'];
         }
 
+        if (requestParameters['issue'] != null) {
+            queryParameters['issue'] = requestParameters['issue'];
+        }
+
         if (requestParameters['kind'] != null) {
             queryParameters['kind'] = requestParameters['kind'];
         }
@@ -489,6 +505,10 @@ export class TracesApi extends runtime.BaseAPI {
 
         if (requestParameters['ordering'] != null) {
             queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['outcome'] != null) {
+            queryParameters['outcome'] = requestParameters['outcome'];
         }
 
         if (requestParameters['page'] != null) {
@@ -624,3 +644,20 @@ export class TracesApi extends runtime.BaseAPI {
     }
 
 }
+
+/**
+ * @export
+ */
+export const TracesListOutcomeEnum = {
+    failing: 'failing',
+    passing: 'passing'
+} as const;
+export type TracesListOutcomeEnum = typeof TracesListOutcomeEnum[keyof typeof TracesListOutcomeEnum];
+/**
+ * @export
+ */
+export const TracesServicesListOutcomeEnum = {
+    failing: 'failing',
+    passing: 'passing'
+} as const;
+export type TracesServicesListOutcomeEnum = typeof TracesServicesListOutcomeEnum[keyof typeof TracesServicesListOutcomeEnum];

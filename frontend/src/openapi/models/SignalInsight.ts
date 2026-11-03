@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SeverityEnum } from './SeverityEnum';
+import type { SignalInsightSeverityEnum } from './SignalInsightSeverityEnum';
 import {
-    SeverityEnumFromJSON,
-    SeverityEnumFromJSONTyped,
-    SeverityEnumToJSON,
-    SeverityEnumToJSONTyped,
-} from './SeverityEnum';
+    SignalInsightSeverityEnumFromJSON,
+    SignalInsightSeverityEnumFromJSONTyped,
+    SignalInsightSeverityEnumToJSON,
+    SignalInsightSeverityEnumToJSONTyped,
+} from './SignalInsightSeverityEnum';
 import type { SignalInsightCause } from './SignalInsightCause';
 import {
     SignalInsightCauseFromJSON,
@@ -49,10 +49,10 @@ export interface SignalInsight {
     signalType: string;
     /**
      *
-     * @type {SeverityEnum}
+     * @type {SignalInsightSeverityEnum}
      * @memberof SignalInsight
      */
-    severity: SeverityEnum;
+    severity: SignalInsightSeverityEnum;
     /**
      *
      * @type {SignalInsightStatusEnum}
@@ -189,7 +189,7 @@ export function SignalInsightFromJSONTyped(json: any, ignoreDiscriminator: boole
     return {
 
         'signalType': json['signal_type'],
-        'severity': SeverityEnumFromJSON(json['severity']),
+        'severity': SignalInsightSeverityEnumFromJSON(json['severity']),
         'status': SignalInsightStatusEnumFromJSON(json['status']),
         'capability': json['capability'],
         'capabilityName': json['capability_name'],
@@ -221,7 +221,7 @@ export function SignalInsightToJSONTyped(value?: SignalInsight | null, ignoreDis
     return {
 
         'signal_type': value['signalType'],
-        'severity': SeverityEnumToJSON(value['severity']),
+        'severity': SignalInsightSeverityEnumToJSON(value['severity']),
         'status': SignalInsightStatusEnumToJSON(value['status']),
         'capability': value['capability'],
         'capability_name': value['capabilityName'],

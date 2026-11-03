@@ -636,9 +636,13 @@ def read_traces(project_id: Any, spec: dict[str, Any], *, on_progress: Any = Non
         raise LandError(str(exc)) from exc
     if not rows:
         raise LandError("No traces matched. Widen the selection or check the project.")
-    return Landing(
-        rows, kind=Dataset.SourceKind.TRACES, spec=source.spec(), manifest=list(TRACE_MANIFEST)
-    )
+    manifest = list(TRACE_MANIFEST)
+    # Only a passing trace's answer is a usable reference: on a failing trace it records the
+    # mistake, and an eval graded against it would reward repeating that mistake.
+    if source.filters.get("outcome") == "passing":
+        manifest.append({"name": "expected_output", "type": "json"})
+        rows = [{**row, "expected_output": row["output"]} for row in rows]
+    return Landing(rows, kind=Dataset.SourceKind.TRACES, spec=source.spec(), manifest=manifest)
 
 
 def land_traces(

@@ -24,6 +24,7 @@ apis/FeedbackApi.ts
 apis/FinetuningJobsApi.ts
 apis/HealthApi.ts
 apis/InferenceRequestsApi.ts
+apis/IssuesApi.ts
 apis/McpOauthApi.ts
 apis/ModelsApi.ts
 apis/NativeEvaluationsApi.ts
@@ -47,6 +48,7 @@ models/APITokenCreateResponse.ts
 models/APITokenMetadata.ts
 models/APITokenScope.ts
 models/APITokenScopeRequest.ts
+models/ActionEnum.ts
 models/Activity.ts
 models/ActivityAsset.ts
 models/ActivityAssetKindEnum.ts
@@ -62,9 +64,12 @@ models/BillingTelemetry.ts
 models/Binding.ts
 models/BindingStateRequest.ts
 models/BlankEnum.ts
+models/BucketEnum.ts
 models/CancelWork.ts
 models/CandidateInputRequest.ts
 models/Capability.ts
+models/CapabilityActivity.ts
+models/CapabilityActivityList.ts
 models/CapabilityFlow.ts
 models/CapabilityFlowExpectedOutput.ts
 models/CapabilityFlowMode.ts
@@ -84,6 +89,7 @@ models/CapabilityRequest.ts
 models/CapabilityStatusEnum.ts
 models/CapturedError.ts
 models/CatalogModel.ts
+models/CauseEnum.ts
 models/Cell.ts
 models/CellStateEnum.ts
 models/CellTransformation.ts
@@ -252,6 +258,12 @@ models/InferenceReceipt.ts
 models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
+models/IssueCause.ts
+models/IssueDetail.ts
+models/IssueExample.ts
+models/IssuePage.ts
+models/IssueRow.ts
+models/IssueStateRequest.ts
 models/JudgeModelEnum.ts
 models/Kind703Enum.ts
 models/LocalSessionRequest.ts
@@ -262,6 +274,7 @@ models/ModelActivationStageEnum.ts
 models/ModelCatalogResponse.ts
 models/ModelCheckpoints.ts
 models/ModelDefaults.ts
+models/ModelMarker.ts
 models/ModelSwapPrompt.ts
 models/ModelTierEnum.ts
 models/NativeBenchmarkProgress.ts
@@ -277,6 +290,9 @@ models/NativeModelProgress.ts
 models/NativeMonitor.ts
 models/NativeSample.ts
 models/NativeSamplePrediction.ts
+models/NullEnum.ts
+models/ObservabilityOverview.ts
+models/ObservabilityTrends.ts
 models/OnboardingMilestone.ts
 models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
@@ -377,6 +393,7 @@ models/PublicModelPricing.ts
 models/PublicTokenRefresh.ts
 models/PublicTokenRefreshRequest.ts
 models/QuantizationEnum.ts
+models/RelatedIssue.ts
 models/RepositorySnapshot.ts
 models/RepositorySnapshotRequest.ts
 models/RoleEnum.ts
@@ -391,13 +408,14 @@ models/ScopeEnum.ts
 models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts
-models/SeverityEnum.ts
+models/SeverityAfaEnum.ts
 models/SignalCatalogEntry.ts
 models/SignalEvent.ts
 models/SignalEventSeenRequest.ts
 models/SignalEventSeenResponse.ts
 models/SignalInsight.ts
 models/SignalInsightCause.ts
+models/SignalInsightSeverityEnum.ts
 models/SignalInsightStatusEnum.ts
 models/SignalInsights.ts
 models/SignalSubscription.ts
@@ -409,6 +427,7 @@ models/Span.ts
 models/SplitMethod3daEnum.ts
 models/SplitMethodE87Enum.ts
 models/SplitPositionEnum.ts
+models/StateFf6Enum.ts
 models/Status1b7Enum.ts
 models/StrataPage.ts
 models/Stratum.ts
@@ -416,13 +435,17 @@ models/Subscription.ts
 models/SyncSnapshot.ts
 models/SyncSnapshotRequest.ts
 models/SyncStatusEnum.ts
+models/SystemIssue.ts
 models/TaskTypeSourceEnum.ts
 models/TiersEnum.ts
 models/TokenObtainPair.ts
 models/TokenObtainPairRequest.ts
 models/TraceDetail.ts
 models/TraceErrorDetails.ts
+models/TraceIssue.ts
+models/TraceIssueList.ts
 models/TraceProviderEnum.ts
+models/TraceSelection.ts
 models/TraceStatusEnum.ts
 models/TraceUsage.ts
 models/TracesServicesList200Response.ts
@@ -436,6 +459,7 @@ models/TrainingPlanInputRequest.ts
 models/TrainingPreparation.ts
 models/TrainingPreparationRequestRequest.ts
 models/TrainingProfileRequest.ts
+models/TrainingSignal.ts
 models/TrainingTypeEnum.ts
 models/Transfer.ts
 models/TransferFile.ts
@@ -443,6 +467,8 @@ models/TransferFileInputRequest.ts
 models/TransferInputIntentEnum.ts
 models/TransferInputRequest.ts
 models/TransferReadiness.ts
+models/TrendPoint.ts
+models/TrendTotals.ts
 models/TriggerEnum.ts
 models/UploadInspection.ts
 models/UploadReserved.ts

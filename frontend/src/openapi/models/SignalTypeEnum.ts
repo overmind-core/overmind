@@ -20,6 +20,7 @@
  * * `context_overflow` - context_overflow
  * * `cost_spike` - cost_spike
  * * `errors` - errors
+ * * `failed_expectation` - failed_expectation
  * * `frustration` - frustration
  * * `hallucinated_tool` - hallucinated_tool
  * * `hidden_failure` - hidden_failure
@@ -48,6 +49,7 @@ export const SignalTypeEnum = {
     context_overflow: 'context_overflow',
     cost_spike: 'cost_spike',
     errors: 'errors',
+    failed_expectation: 'failed_expectation',
     frustration: 'frustration',
     hallucinated_tool: 'hallucinated_tool',
     hidden_failure: 'hidden_failure',

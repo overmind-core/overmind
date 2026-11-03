@@ -60,16 +60,20 @@ creating datasets, changing eval matrix rows or starting provider runs.
 
 ## Signals
 
-`list_signals` reports defaults, effective enabled state and explicit overrides.
-Deterministic checks run automatically every five minutes over spans received in the
-last day. `set_signal_subscription` disables, enables or configures a check; a
-capability setting overrides its project setting. `plan_drift` stays off until
-explicitly enabled because it makes additional model calls. Read saved findings from
-`overmind://signal-events`: events include conversation identity and their source
-trace inventory, and `query_traces(signal_event=EVENT_ID)` inspects the retained
-evidence in the same project. The Console shows Sessions, Signals and Traces inside
-Observability. A `repeated_failure` names the expectation that keeps failing; inspect
-its evidence before deciding whether the agent or the expectation should change.
+Start with `list_training_signals`: it ranks every capability whose repeating failures
+a model can learn from, with exact failing and passing trace counts and the next tools to
+call. Training is the expected outcome of a strong signal; a person still approves a paid
+run. `list_issues` pages everything that repeats, with `cause=model` for trainable failures
+and `system` or `data` for what training cannot fix. `inspect_issue` returns causes, redacted
+examples and the same failure on other capabilities; `query_traces(issue=ISSUE_ID)` returns
+its traces. After reading them, `update_issue` can give the failure a clearer name, or
+resolve or mute it. A resolved issue that recurs comes back as regressed.
+
+`list_signals` reports the checks behind issues, their defaults and overrides. Checks read
+every new span and late score every five minutes. `set_signal_subscription` disables,
+enables or configures a check; a capability setting overrides its project setting.
+`plan_drift` stays off until explicitly enabled because it makes additional model calls.
+Raw findings stay at `overmind://signal-events`.
 
 ## Instrumentation
 

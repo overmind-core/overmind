@@ -87,6 +87,31 @@ const runFilterShape = {
   run_status: z.string().optional().default("all"),
 };
 
+export const observeSearchSchema = projectIdSearchSchema.extend({
+  capability: z.string().optional().catch(undefined),
+  cause: z.enum(["model", "system", "data"]).optional().catch(undefined),
+  detailExpanded: z.coerce.boolean().optional().default(false),
+  group: z
+    .enum(["issue", "capability", "session", "trace"])
+    .optional()
+    .default("issue")
+    .catch("issue"),
+  issue: z.string().optional(),
+  issueFilter: z.string().optional(),
+  metric: z
+    .enum(["traces", "failureRate", "score", "cost"])
+    .optional()
+    .default("failureRate")
+    .catch("failureRate"),
+  page: z.coerce.number().min(1).optional().default(1),
+  page_size: z.coerce.number().min(5).max(100).optional().default(25),
+  range: z.enum(["24h", "7d", "30d", "90d", "180d"]).optional().default("7d").catch("7d"),
+  session: z.string().optional(),
+  trace: z.string().optional(),
+});
+
+export type ObserveSearch = z.infer<typeof observeSearchSchema>;
+
 export const evaluationsSearchSchema = projectIdSearchSchema.extend({
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),

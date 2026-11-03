@@ -1,7 +1,5 @@
 import { useMemo } from "react";
 
-import { getRouteApi, Link } from "@tanstack/react-router";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
@@ -11,13 +9,16 @@ import { formatCost, formatDuration, formatNumber } from "@/lib/formatters";
 import { useTraceData } from "./contexts/TraceDataContext";
 import { buildSpanTree } from "./lib/tree-building";
 
-const traceRouteApi = getRouteApi("/_auth/observability/$traceId");
-
-export function TracePanelNavigationHeader() {
-  const { spans, traceStatus, usage, isLoading } = useTraceData();
-  const navigate = traceRouteApi.useNavigate();
-  const { traceId } = traceRouteApi.useParams();
-  const { detailExpanded } = traceRouteApi.useSearch();
+export function TracePanelNavigationHeader({
+  detailExpanded,
+  onClose,
+  onToggleExpanded,
+}: {
+  detailExpanded: boolean;
+  onClose: () => void;
+  onToggleExpanded: () => void;
+}) {
+  const { spans, traceStatus, usage, isLoading, traceId } = useTraceData();
   const roots = useMemo(() => buildSpanTree(spans), [spans]);
   const root = roots[0]?.span;
   const rootName = root?.name?.trim() || "Trace";
@@ -25,10 +26,8 @@ export function TracePanelNavigationHeader() {
     <header className="flex shrink-0 items-center gap-2 border-b border-border/70 bg-card px-3 py-2">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button asChild size="icon-sm" variant="ghost">
-            <Link aria-label="Close trace" resetScroll={false} search={(prev) => prev} to="..">
-              <Icon.close />
-            </Link>
+          <Button aria-label="Close trace" onClick={onClose} size="icon-sm" variant="ghost">
+            <Icon.close />
           </Button>
         </TooltipTrigger>
         <TooltipContent>Close trace</TooltipContent>
@@ -99,9 +98,7 @@ export function TracePanelNavigationHeader() {
           <TooltipTrigger asChild>
             <Button
               aria-label={detailExpanded ? "Exit full screen" : "Full screen"}
-              onClick={() =>
-                navigate({ search: (prev) => ({ ...prev, detailExpanded: !prev.detailExpanded }) })
-              }
+              onClick={onToggleExpanded}
               size="icon-sm"
               variant="ghost"
             >

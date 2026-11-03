@@ -22,6 +22,8 @@ from overbae.models import (
     EvalRunRow,
     EvalScore,
     FinetuningJob,
+    Issue,
+    IssueTrace,
     Project,
     SignalEvent,
     Span,
@@ -131,6 +133,28 @@ class SpanFilter(LLMActivityFilterMixin, filters.FilterSet):
             return queryset.none()
         trace_ids = event.details.get("trace_ids") or [event.trace_id]
         return queryset.filter(project_id=event.project_id, trace_id__in=trace_ids)
+
+    issue = filters.UUIDFilter(method="filter_issue")
+
+    def filter_issue(self, queryset, name, value):
+        projects = self._scoped_project_ids(queryset)
+        failing = IssueTrace.objects.filter(issue_id=value, project_id__in=projects)
+        return queryset.filter(project_id__in=projects, trace_id__in=failing.values("trace_id"))
+
+    outcome = filters.ChoiceFilter(
+        choices=[("passing", "passing"), ("failing", "failing")], method="filter_outcome"
+    )
+
+    def filter_outcome(self, queryset, name, value):
+        """The two sides of a training split: traces showing no issue at all, and traces
+        showing one a model could learn from. A trace with only a system or data issue is on
+        neither side, because it teaches nothing either way."""
+        shown = IssueTrace.objects.filter(
+            project_id=OuterRef("project_id"), trace_id=OuterRef("trace_id")
+        )
+        if value == "passing":
+            return queryset.filter(~Exists(shown))
+        return queryset.filter(Exists(shown.filter(issue__cause=Issue.Cause.MODEL)))
 
     capability = filters.UUIDFilter(method="filter_capability")
     name = filters.CharFilter(lookup_expr="icontains")

@@ -146,7 +146,7 @@ def score_trajectories(*, trace_ids: list[str] | None = None) -> dict:
 
 @shared_task(name="overbae.tasks.innermind.run_signals")
 def run_signals() -> dict:
-    projects = signals.projects_with_recent_spans()
+    projects = signals.projects_with_changes()
     for project_id in projects:
         admission.enqueue(project_id, "signals", ["signals"])
     wake_live_scoring()

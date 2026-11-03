@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 
 import requests
@@ -27,6 +28,7 @@ class Trace:
     def __init__(self, capability_id: str, reply: str, tools: list[bool]):
         self.trace_id = uuid.uuid4().bytes
         self.root_id = uuid.uuid4().bytes[:8]
+        self.started = time.time_ns()
         self.capability_id = capability_id
         self.reply = reply
         self.tools = []
@@ -45,8 +47,8 @@ class Trace:
             trace_id=self.trace_id,
             span_id=self.root_id,
             name="handle_ticket",
-            start_time_unix_nano=1_000,
-            end_time_unix_nano=90_000,
+            start_time_unix_nano=self.started + 1_000,
+            end_time_unix_nano=self.started + 90_000,
             attributes=_attrs(
                 overmind__capability__id=self.capability_id,
                 overmind__span_type="workflow",
@@ -61,8 +63,8 @@ class Trace:
                 span_id=span_id,
                 parent_span_id=self.root_id,
                 name="lookup_order",
-                start_time_unix_nano=2_000 + i * 10_000,
-                end_time_unix_nano=9_000 + i * 10_000,
+                start_time_unix_nano=self.started + 2_000 + i * 10_000,
+                end_time_unix_nano=self.started + 9_000 + i * 10_000,
                 status=Status(code=Status.STATUS_CODE_OK if ok else Status.STATUS_CODE_ERROR),
                 attributes=_attrs(
                     overmind__capability__id=self.capability_id,

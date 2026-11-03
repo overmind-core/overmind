@@ -189,6 +189,8 @@ class Span(models.Model):
                 condition=Q(parent_span_id__isnull=True),
                 name="span_root_recent_idx",
             ),
+            models.Index(fields=["project", "received_at", "span_id"], name="span_arrival_idx"),
+            models.Index(fields=["project", "start_time_ns"], name="span_project_time_idx"),
             models.Index(
                 fields=["project", "received_at"],
                 condition=~Q(eval_attributes__has_key="score"),

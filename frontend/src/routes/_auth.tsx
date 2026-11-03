@@ -70,6 +70,7 @@ const HIDDEN_BREADCRUMB_PATHS = new Set(["/evaluations/runs"]);
 // Not a CSS `capitalize` class: that title-cases every word and cannot keep
 // acronyms and product names canonical (Trace ID, Langfuse).
 function prettifySegment(seg: string): string {
+  if (seg === "observe") return "Observability";
   return sentenceCase(decodeURIComponent(seg).replace(/[-_]/g, " "));
 }
 
